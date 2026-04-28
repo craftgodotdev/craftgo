@@ -1,0 +1,20 @@
+package design
+
+// Primary ProfileService declaration. The @prefix lives here and only
+// here — the `extend service` blocks in sibling files inherit it
+// because the semantic phase merges every contribution into one
+// logical service.
+@prefix("/v1")
+service ProfileService {
+    // GetProfile returns the profile with the given id.
+    @errors(ProfileNotFound)
+    get GetProfile /profiles/{id} {
+        request   GetProfileReq
+        response  Profile
+    }
+
+    // ListProfiles returns every stored profile in id order.
+    get ListProfiles /profiles {
+        response  ListProfilesResp
+    }
+}

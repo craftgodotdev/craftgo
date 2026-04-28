@@ -1,0 +1,15 @@
+package: github.com/dropship-dev/craftgo/testdata/e2e/complex
+output:
+  types:      ./internal/types
+  handler:    ./internal/handler
+  routes:     ./internal/routes
+  logic:      ./internal/logic
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+  # Skip main.go scaffolding — this fixture is loaded as `package complex`
+  # by e2e_test.go and a generated `package main` would collide.
+  main:       "-"
+openapi:
+  title:    Profiles API
+  version:  1.0.0
+  basePath: /api

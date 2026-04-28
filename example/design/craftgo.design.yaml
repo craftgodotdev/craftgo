@@ -1,0 +1,13 @@
+package: github.com/dropship-dev/craftgo/example
+output:
+  types:      ./internal/types
+  handler:    ./internal/handler
+  routes:     ./internal/routes
+  logic:      ./internal/logic
+  middleware: ./internal/middleware
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+openapi:
+  title:    Bookstore API
+  version:  1.0.0
+  basePath: /api

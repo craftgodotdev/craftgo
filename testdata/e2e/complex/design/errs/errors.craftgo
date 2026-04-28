@@ -1,0 +1,42 @@
+package design
+
+// ProfileNotFound is raised when GetProfile / UpdateProfile cannot
+// locate the addressed id. Maps to HTTP 404 / USER-style code.
+error NotFound ProfileNotFound
+
+// DuplicateEmail is the canonical 409 surfaced when CreateProfile would
+// land on an email already taken. Echoes the offending email back so the
+// client can show a precise message.
+error Conflict DuplicateEmail {
+    email  string
+}
+
+// ProfileValidationFailed is the 422 we return when business-rule
+// validation (cross-field, async, third-party) rejects an otherwise
+// schema-valid request. The `fields` slice gives the client an actionable
+// list of which paths failed.
+error UnprocessableEntity ProfileValidationFailed {
+    fields  string[]
+}
+
+// RateLimited tells the caller how many seconds to wait before retrying.
+// Maps to 429. The `message` line below shows the design-time override
+// pattern: every RateLimited returned anywhere starts with this message
+// instead of the category default ("Too many requests").
+error TooManyRequests RateLimited {
+    message      string  @default("Slow down, please")
+    retry_after  int
+}
+
+// InsufficientPermissions communicates the role the caller is missing.
+// Maps to 403.
+error Forbidden InsufficientPermissions {
+    required_role  string
+}
+
+// StaleVersion is the optimistic-concurrency 412 surfaced when a write
+// arrives with a version older than the stored row.
+error PreconditionFailed StaleVersion {
+    expected_version  int
+    actual_version    int
+}

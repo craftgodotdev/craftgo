@@ -1,0 +1,47 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+craftgo
+
+# Go test / coverage / profiling
+*.test
+*.out
+*.cov
+*.prof
+coverage.txt
+coverage.html
+
+# Go workspace / vendor (vendor mode disabled)
+go.work
+go.work.sum
+/vendor/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS detritus
+.DS_Store
+Thumbs.db
+
+# Node (only relevant if anything ships JS/TS tooling)
+node_modules/
+
+# Local env
+.env
+.env.local
+*.local
+
+# Claude / agent runtime
+.claude/
+
+# Generated docs scratch
+/.scratch/

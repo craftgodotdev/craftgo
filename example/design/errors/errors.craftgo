@@ -1,0 +1,28 @@
+package design
+
+// BookNotFound surfaces when GetBook can't locate the addressed id.
+error NotFound BookNotFound
+
+// OrderNotFound surfaces from GetOrder / CancelOrder.
+error NotFound OrderNotFound
+
+// InsufficientStock is the 422 surfaced when CreateOrder would
+// overdraw a book's stock. The `book_id` and `requested` / `available`
+// fields tell the client exactly which line item failed.
+error UnprocessableEntity InsufficientStock {
+    book_id     string
+    requested   int
+    available   int
+}
+
+// DuplicateISBN is the 409 surfaced when CreateBook receives an ISBN
+// that already exists in the catalog.
+error Conflict DuplicateISBN {
+    isbn  string
+}
+
+// RateLimited is the 429 the runtime middleware emits when an IP
+// exceeds the demo throttle.
+error TooManyRequests RateLimited {
+    retry_after  int
+}

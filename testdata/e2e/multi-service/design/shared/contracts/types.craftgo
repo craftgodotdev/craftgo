@@ -1,0 +1,21 @@
+// Shared contracts pulled in by services.craftgo via
+// `import "shared/contracts"`. Same package as the importer — the CLI
+// treats imports as a way to spread one logical package across folders.
+package design
+
+// Pong is the simple response for the ping endpoints.
+type Pong {
+    name  string
+}
+
+// Order represents a customer order in the orders service.
+type Order {
+    id     string
+    total  int
+}
+
+// Item represents a catalog item in the catalog service.
+type Item {
+    sku    string
+    price  int  @min(0)
+}

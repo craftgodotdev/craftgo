@@ -1,0 +1,24 @@
+package design
+
+// First `extend service` block — writes (Create + Patch). Lives in a
+// separate file from the primary declaration to prove the semantic
+// phase merges contributions across files in the same folder.
+extend service ProfileService {
+    // CreateProfile stores a new profile and assigns its id. The handler
+    // surfaces every error in the @errors list with the matching HTTP
+    // status driven by its category.
+    @errors(DuplicateEmail, ProfileValidationFailed, RateLimited)
+    post CreateProfile /profiles {
+        request   CreateProfileReq
+        response  Profile
+    }
+
+    // PatchProfile is the every-binding-kind end-to-end demo. It echoes
+    // path id, query dryRun, header X-Idempotency-Key, cookie session,
+    // and a body displayName so the e2e test can verify that each value
+    // arrived through the matching part of the HTTP request.
+    patch PatchProfile /profiles/{id} {
+        request   PatchProfileReq
+        response  PatchProfileResp
+    }
+}

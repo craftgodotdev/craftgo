@@ -1,0 +1,34 @@
+package design
+
+// BooksService manages the catalog. Read endpoints are public; the
+// write endpoint is gated by AuthRequired + RateLimit.
+@prefix("/v1")
+@tags(books)
+service BooksService {
+    // ListBooks returns every book in the catalog.
+    @doc("List every book in the catalog.")
+    @operationId("listBooks")
+    get ListBooks /books {
+        response  BookList
+    }
+
+    // GetBook returns a single book by id.
+    @doc("Fetch a book by id.")
+    @errors(BookNotFound)
+    get GetBook /books/{id} {
+        request   GetBookReq
+        response  Book
+    }
+
+    // CreateBook is the auth-gated catalog write. The handler chain at
+    // gen time becomes `RateLimit → AuthRequired → handler` because
+    // service-level @middlewares run outermost.
+    @doc("Add a book to the catalog (admin-only).")
+    @middlewares(AuthRequired, RateLimit)
+    @security(AuthRequired)
+    @errors(DuplicateISBN, RateLimited)
+    post CreateBook /books {
+        request   CreateBookReq
+        response  Book
+    }
+}

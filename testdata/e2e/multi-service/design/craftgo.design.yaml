@@ -1,0 +1,16 @@
+package: github.com/dropship-dev/craftgo/testdata/e2e/multi-service
+design: ./design
+output:
+  types:      ./internal/types
+  handler:    ./internal/handler
+  routes:     ./internal/routes
+  logic:      ./internal/logic
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+  # Skip main.go scaffolding — this fixture loads as `package multiservice`
+  # from e2e_test.go and a generated `package main` would collide.
+  main:       "-"
+openapi:
+  title:    Multi-Service E2E
+  version:  1.0.0
+  basePath: /api

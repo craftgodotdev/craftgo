@@ -1,0 +1,12 @@
+package design
+
+// Page is a Go-generic container reused by every list endpoint. The
+// codegen emits it as `type Page[T any] struct { Items []T; Total int }`
+// in the generated types.go, so concrete instances like `Page<Book>`
+// in BookList become `Page[Book]` references — no per-instance type
+// duplication on the Go side.
+type Page<T> {
+    items   T[]
+    total   int
+    cursor  string?
+}

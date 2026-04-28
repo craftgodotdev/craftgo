@@ -1,0 +1,13 @@
+@title("Bookstore API")
+@version("1.0.0")
+@doc("Comprehensive craftgo showcase: validation, imports across folders, per-method middleware, service-level group/prefix/tags, security decorators, custom errors with structured fields, multi-binding requests (path/query/header/cookie/body), multi-extend services, and runtime global middleware via srv.Use.")
+package design
+
+// Each subfolder owns one slice of the design. The CLI's import resolver
+// merges them into a single `package design` symbol table.
+import "errors"
+import "middlewares"
+import "types"
+import "books"
+import "orders"
+import "admin"

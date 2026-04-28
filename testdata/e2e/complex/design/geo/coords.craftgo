@@ -1,0 +1,8 @@
+package design
+
+// Coords is a geographic point. Both axes are bounded so a Profile can't
+// claim a location outside the WGS84 envelope.
+type Coords {
+    lat  float64  @range(-90, 90)
+    lng  float64  @range(-180, 180)
+}

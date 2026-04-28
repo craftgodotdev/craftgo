@@ -1,0 +1,36 @@
+package design
+
+// Book is a catalog entry. Price is stored in cents to avoid float
+// rounding; ISBN is a 13-digit string validated via @pattern.
+type Book {
+    id         string
+    title      string
+    author     string
+    isbn       string
+    priceCents int
+    stock      int
+}
+
+// BookList is the paginated response for ListBooks. Uses the generic
+// Page<T> container to avoid duplicating items/total on every list
+// type — codegen emits this as `type BookList struct { P Page[Book] }`
+// (the embedded Page exposes Items/Total/Cursor via Go's generic).
+type BookList {
+    p  Page<Book>
+}
+
+// CreateBookReq is the body for POST /books. Validators below enforce
+// every business rule we don't want to encode in handler code.
+type CreateBookReq {
+    title      string  @required @length(1, 200)
+    author     string  @required @length(1, 100)
+    isbn       string  @required @pattern("^[0-9]{13}$")
+    priceCents int     @required @min(1)
+    stock      int     @min(0) @max(100000)
+}
+
+// GetBookReq carries only the path id; the handler binds it from the
+// `{id}` segment.
+type GetBookReq {
+    id  string  @path @required
+}
