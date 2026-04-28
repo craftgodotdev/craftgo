@@ -6,7 +6,58 @@ import (
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/lexer"
 )
+
+// TestCaptureDocPropagatesDoc covers the if-true branch of
+// [Parser.captureDoc]: when the peeked token carries doc-comment
+// lines, captureDoc must copy them onto pendingDoc so the next decl
+// picks them up. The earlier coverage gap was because most parser
+// fixtures elide doc comments.
+func TestCaptureDocPropagatesDoc(t *testing.T) {
+	src := `// Foo is the canonical example.
+// Two-line doc.
+type Foo {
+	x string
+}`
+	f := mustParse(t, src)
+	if len(f.Decls) != 1 {
+		t.Fatalf("expected one decl, got %d", len(f.Decls))
+	}
+	td, ok := f.Decls[0].(*ast.TypeDecl)
+	if !ok {
+		t.Fatalf("expected TypeDecl")
+	}
+	if len(td.Doc) != 2 {
+		t.Errorf("expected 2 doc lines on Foo, got %v", td.Doc)
+	}
+}
+
+// TestIsPathWordTokenBranches pins each return path of
+// [isPathWordToken]: identifier, keyword/verb range, and the
+// "anything else" false branch. The false branch is what tells the
+// path parser when to stop consuming segments.
+func TestIsPathWordTokenBranches(t *testing.T) {
+	cases := []struct {
+		name string
+		k    lexer.Kind
+		want bool
+	}{
+		{"ident", lexer.Ident, true},
+		{"keyword", lexer.KwPackage, true},
+		{"verb", lexer.VerbOptions, true},
+		{"int", lexer.Int, false},
+		{"eof", lexer.EOF, false},
+		{"string", lexer.String, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isPathWordToken(c.k); got != c.want {
+				t.Errorf("isPathWordToken(%v) = %v, want %v", c.k, got, c.want)
+			}
+		})
+	}
+}
 
 func mustParse(t *testing.T, src string) *ast.File {
 	t.Helper()
