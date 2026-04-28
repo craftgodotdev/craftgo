@@ -350,6 +350,42 @@ func TestValidateEnumOptionalAcceptsMissing(t *testing.T) {
 	}
 }
 
+// TestFeedbackHappyPath exercises the JSON REST endpoint
+// `POST /api/v1/feedback` end-to-end: validate, dispatch to logic,
+// echo back the stored Feedback record.
+func TestFeedbackHappyPath(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	status, body := postJSON(t, ts, "/api/v1/feedback", map[string]any{
+		"homepage": "https://example.com",
+		"phone":    "+84-901-234-567",
+		"apiToken": "supersecrettoken",
+	})
+	if status != http.StatusOK && status != http.StatusNoContent {
+		t.Fatalf("expected 2xx, got %d (body=%s)", status, body)
+	}
+	if !strings.Contains(body, `"id":"fb-001"`) {
+		t.Errorf("expected echoed id in response, got:\n%s", body)
+	}
+}
+
+// TestFeedbackValidatesApiToken pins that the @length validator on the
+// request side fires (a 4-char token is below @length(8, 100)).
+func TestFeedbackValidatesApiToken(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	status, body := postJSON(t, ts, "/api/v1/feedback", map[string]any{
+		"homepage": "https://example.com",
+		"apiToken": "tiny",
+	})
+	if status != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d (body=%s)", status, body)
+	}
+	if !strings.Contains(body, "apiToken: length out of range") {
+		t.Errorf("expected length error, got %s", body)
+	}
+}
+
 // TestValidateGenericPageRejectsLength tests the OTHER inner validator
 // (@length on PageItem.name) — proves the type-assertion path runs the
 // full inner Validate(), not just one decorator.

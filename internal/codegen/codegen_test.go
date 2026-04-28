@@ -141,52 +141,6 @@ type User { Profile  name string }`)
 	}
 }
 
-func TestGenerateTypesSensitive(t *testing.T) {
-	pkg := analyze(t, `package design
-type Login {
-    username string
-    password string @sensitive
-    token    string @sensitive(replacement: "***")
-    pin      int    @sensitive
-}`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
-		t.Fatal(err)
-	}
-	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := string(out)
-	mustParseGo(t, src)
-	checks := []string{
-		"func (l Login) MarshalJSON()",
-		`c.Password = "[REDACTED]"`,
-		`c.Token = "***"`,
-		"var zeroPin int",
-		"c.Pin = zeroPin",
-		`"encoding/json"`,
-	}
-	for _, want := range checks {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q in generated source:\n%s", want, src)
-		}
-	}
-}
-
-func TestGenerateTypesSensitiveSkippedWithoutDecorator(t *testing.T) {
-	pkg := analyze(t, `package design
-type User { id string  name string }`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	if strings.Contains(string(out), "MarshalJSON") {
-		t.Errorf("did not expect MarshalJSON in non-sensitive type:\n%s", out)
-	}
-}
-
 func TestGenerateTypesNoPackageName(t *testing.T) {
 	pkg := &semantic.Package{Types: map[string]*ast.TypeDecl{}}
 	if err := GenerateTypes(pkg, t.TempDir()); err == nil {

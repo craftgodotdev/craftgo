@@ -158,7 +158,6 @@ type T {
     age  int?
 
     @default("default")
-    @sensitive
     secret  string
 }
 

@@ -1,0 +1,24 @@
+package design
+
+// FeedbackService demonstrates a JSON REST endpoint that uses the
+// existing Feedback type. The request carries a small subset of the
+// Feedback fields plus an apiToken, validates them, and the logic
+// echoes the stored record back to the client.
+@prefix("/v1")
+@tags(feedback)
+service FeedbackService {
+    @doc("Submit feedback and receive the stored record back.")
+    post Create /feedback {
+        request   CreateFeedbackReq
+        response  Feedback
+    }
+}
+
+// CreateFeedbackReq is a small body purpose-built for the feedback
+// REST demo. The shape is independent of SubmitFeedbackReq (multipart)
+// and FeedbackStreamReq (raw) so the JSON handler stays clean.
+type CreateFeedbackReq {
+    homepage  string  @required @format("uri")
+    phone     string? @format("phone")
+    apiToken  string  @required @length(8, 100)
+}

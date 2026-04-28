@@ -12,12 +12,6 @@ import (
 // "does this field qualify for validator X?" or "what's the Go-side
 // access expression for this shape?".
 
-// isStringField — non-array, non-optional `string`.
-func isStringField(f *ast.Field) bool {
-	return f.Type != nil && !f.Type.Array && !f.Type.Optional &&
-		f.Type.Named != nil && f.Type.Named.Name.String() == "string"
-}
-
 // isStringOrOptString accepts both `string` and `string?` (optional).
 // Used by validators that can sensibly skip the check when the value
 // is absent — length / pattern / format. The validators handle the

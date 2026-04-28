@@ -81,9 +81,7 @@ func renderImports(imps []string) string {
 
 // collectImports walks every field type in pkg and returns the sorted set
 // of standard-library imports that the generated structs require (`io`,
-// `mime/multipart`, `encoding/json`). The `encoding/json` import is also
-// pulled in when any field carries `@sensitive` because that path emits a
-// custom MarshalJSON.
+// `mime/multipart`, `encoding/json`).
 func collectImports(pkg *semantic.Package) []string {
 	imports := map[string]bool{}
 	for _, td := range pkg.Types {
@@ -93,9 +91,6 @@ func collectImports(pkg *semantic.Package) []string {
 				continue
 			}
 			collectFieldImports(f.Type, imports)
-			if hasSensitiveDecorator(f) {
-				imports["encoding/json"] = true
-			}
 		}
 	}
 	var out []string
@@ -104,38 +99,6 @@ func collectImports(pkg *semantic.Package) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// hasSensitiveDecorator reports whether the field carries `@sensitive`
-// (with or without a `replacement: "..."` argument). The check is name-only;
-// duplicate detection in the semantic phase guarantees at most one occurrence.
-func hasSensitiveDecorator(f *ast.Field) bool {
-	for _, d := range f.Decorators {
-		if d.Name == "sensitive" {
-			return true
-		}
-	}
-	return false
-}
-
-// sensitiveReplacement returns the override string supplied via
-// `@sensitive(replacement: "...")` or the empty string when none was given.
-// Only string-typed fields honour a replacement; everything else zeroes out.
-func sensitiveReplacement(f *ast.Field) (string, bool) {
-	for _, d := range f.Decorators {
-		if d.Name != "sensitive" {
-			continue
-		}
-		for _, a := range d.Args {
-			if !a.Named || a.Name != "replacement" {
-				continue
-			}
-			if s, ok := a.Value.(*ast.StringLit); ok {
-				return s.Value, true
-			}
-		}
-	}
-	return "", false
 }
 
 // collectFieldImports recurses into a TypeRef collecting any built-in
@@ -167,17 +130,12 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 }
 
 // renderType returns the Go source for one TypeDecl: doc, header
-// (with optional `[T any, ...]` generic params), body, and — when
-// applicable — the trailing `MarshalJSON` masking method.
+// (with optional `[T any, ...]` generic params), and body.
 func renderType(td *ast.TypeDecl) string {
 	doc := renderDoc(td.Doc, "")
 	body := renderTypeBody(td.Body)
 	header := "type " + td.Name + renderTypeParams(td.TypeParams) + " struct {\n" + body + "}\n"
-	parts := []string{doc + header}
-	if marshal := renderSensitiveMarshalJSON(td); marshal != "" {
-		parts = append(parts, marshal)
-	}
-	return strings.Join(parts, "\n")
+	return doc + header
 }
 
 // renderTypeParams returns "[T any, U any]" for a generic decl, or ""
@@ -223,61 +181,6 @@ func renderField(f *ast.Field) string {
 func renderMixin(m *ast.Mixin) string {
 	parts := strings.Split(m.Ref.Name.String(), ".")
 	return "\t" + parts[len(parts)-1] + "\n"
-}
-
-// renderSensitiveMarshalJSON returns a `MarshalJSON` method when at
-// least one field carries `@sensitive`, or "" otherwise. Generic types
-// are skipped — the alias trick doesn't generalise cleanly to type
-// parameters, and the only realistic carrier of secrets is concrete
-// request/response structs.
-//
-// The method aliases the struct (`type cloakX X`) so `json.Marshal(c)`
-// won't recurse back into `MarshalJSON`. Sensitive string fields are
-// replaced with the `@sensitive(replacement: "...")` value (default
-// "[REDACTED]"); non-string fields are zeroed via a stack-allocated
-// `var zeroX T`.
-func renderSensitiveMarshalJSON(td *ast.TypeDecl) string {
-	if len(td.TypeParams) > 0 {
-		return ""
-	}
-	var sensitive []*ast.Field
-	for _, m := range td.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
-		if hasSensitiveDecorator(f) {
-			sensitive = append(sensitive, f)
-		}
-	}
-	if len(sensitive) == 0 {
-		return ""
-	}
-	recv := strings.ToLower(td.Name[:1])
-	maskLines := make([]string, 0, len(sensitive)*2)
-	for _, f := range sensitive {
-		fname := GoFieldName(f.Name)
-		if isStringField(f) {
-			rep, ok := sensitiveReplacement(f)
-			if !ok {
-				rep = "[REDACTED]"
-			}
-			maskLines = append(maskLines, fmt.Sprintf("\tc.%s = %s", fname, strconv.Quote(rep)))
-			continue
-		}
-		maskLines = append(maskLines,
-			fmt.Sprintf("\tvar zero%s %s", fname, GoTypeRef(f.Type)),
-			fmt.Sprintf("\tc.%s = zero%s", fname, fname),
-		)
-	}
-	return fmt.Sprintf(`// MarshalJSON masks @sensitive fields when serialising %s.
-func (%s %s) MarshalJSON() ([]byte, error) {
-	type cloak%s %s
-	c := cloak%s(%s)
-%s
-	return json.Marshal(c)
-}
-`, td.Name, recv, td.Name, td.Name, td.Name, td.Name, recv, strings.Join(maskLines, "\n"))
 }
 
 // GoTypeRef converts an [ast.TypeRef] into the corresponding Go type

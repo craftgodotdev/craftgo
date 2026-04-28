@@ -5,7 +5,7 @@
 //   - validate_registry.go decorator → emit-function dispatch table
 //   - validate_emit.go     per-validator emitters + cross-cutting helpers
 //   - validate_args.go     decorator-argument extractors (intArg, sizeArg, ...)
-//   - validate_types.go    field-shape predicates (isStringField, ...)
+//   - validate_types.go    field-shape predicates (isStringOrOptString, ...)
 //
 // To add a new validator: write its emit function in validate_emit.go,
 // register it as one row in `validators` (validate_registry.go). Type

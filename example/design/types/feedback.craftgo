@@ -9,17 +9,13 @@ package design
 //   * `writer`  → `io.Writer`            (declared on the response side)
 //   * `file`    → `*multipart.FileHeader` (multipart upload)
 //
-// `@sensitive` marks a field for masking by the access-log middleware
-// (runtime masking is a v1-deferred feature; the decorator parses today
-// so user code can choose to honour it).
-//
 // `@format("uri" | "uuid" | "phone")` exercises the regex-driven
 // format catalogue inside the validator.
 type Feedback {
     id          string  @format("uuid")
     homepage    string  @format("uri")
     phone       string  @format("phone")
-    apiToken    string  @sensitive @length(8, 100)
+    apiToken    string  @length(8, 100)
     payload     any
     avatarBytes bytes?
     upload      file?

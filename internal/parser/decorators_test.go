@@ -39,7 +39,6 @@ type T {
     @examples(["a", "b"])
     @doc("field doc")
     @default("d")
-    @sensitive
     @deprecated
     name  string
 
@@ -153,7 +152,7 @@ middleware RateLimit(rps: int = 100)
 		"required", "length", "minLength", "maxLength", "pattern", "format", "enum",
 		"min", "max", "range", "positive", "negative", "multipleOf",
 		"minItems", "maxItems", "uniqueItems", "each", "maxSize", "mimeTypes",
-		"default", "nullable", "sensitive",
+		"default", "nullable",
 		"path", "query", "body", "header", "cookie", "form",
 		"prefix", "middlewares", "group", "tags", "externalDocs", "security",
 		"summary", "operationId", "errors", "status",
