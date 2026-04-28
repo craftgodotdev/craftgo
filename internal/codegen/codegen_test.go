@@ -141,6 +141,40 @@ type User { Profile  name string }`)
 	}
 }
 
+// TestGenerateTypesDeprecated covers `@deprecated` on both type and
+// field. The Go-side emission must use the canonical `// Deprecated: …`
+// line so `go vet` and `staticcheck` flag callers; per-field
+// deprecation lives in the field's own doc block.
+func TestGenerateTypesDeprecated(t *testing.T) {
+	pkg := analyze(t, `package design
+@deprecated("use NewBook instead")
+type LegacyBook {
+    title    string
+    sku      string @deprecated
+    priceUsd int    @deprecated("use priceCents instead")
+}`)
+	dir := t.TempDir()
+	if err := GenerateTypes(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+
+	// Type-level deprecation message.
+	if !strings.Contains(src, "// Deprecated: use NewBook instead") {
+		t.Errorf("expected type-level Deprecated comment:\n%s", src)
+	}
+	// Field-level deprecation with explicit reason.
+	if !strings.Contains(src, "// Deprecated: use priceCents instead") {
+		t.Errorf("expected field-level Deprecated comment with reason:\n%s", src)
+	}
+	// Field-level deprecation without reason gets the generic fallback.
+	if !strings.Contains(src, "// Deprecated: this entity is deprecated") {
+		t.Errorf("expected fallback Deprecated comment for bare @deprecated:\n%s", src)
+	}
+}
+
 func TestGenerateTypesNoPackageName(t *testing.T) {
 	pkg := &semantic.Package{Types: map[string]*ast.TypeDecl{}}
 	if err := GenerateTypes(pkg, t.TempDir()); err == nil {

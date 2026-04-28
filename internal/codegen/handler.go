@@ -308,6 +308,39 @@ func hasStreamDecorator(ds []*ast.Decorator) bool {
 	return false
 }
 
+// hasDeprecatedDecorator reports whether `@deprecated` is declared in
+// the chain. Used by OpenAPI codegen to flag operations and schemas,
+// and by the types emitter to prepend a Go-style `// Deprecated:` line
+// (which `go vet` / `staticcheck` honour).
+func hasDeprecatedDecorator(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		if d.Name == "deprecated" {
+			return true
+		}
+	}
+	return false
+}
+
+// deprecatedReason returns the optional `@deprecated("...")` argument,
+// or "" when the decorator carries no message. Both forms are valid:
+// `@deprecated` alone is "deprecated, no reason given"; `@deprecated("use Foo")`
+// supplies the reason that ends up in `// Deprecated:` comments and
+// OpenAPI descriptions.
+func deprecatedReason(ds []*ast.Decorator) string {
+	for _, d := range ds {
+		if d.Name != "deprecated" {
+			continue
+		}
+		if len(d.Args) == 0 {
+			return ""
+		}
+		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
+			return s.Value
+		}
+	}
+	return ""
+}
+
 // collectFormBindings returns the per-field form bindings used by the
 // multipart handler. `file`-typed fields land in files; plain string
 // fields without an explicit binding fall back to form-string. Fields

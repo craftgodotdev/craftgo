@@ -74,6 +74,72 @@ service S { post Send /m { request Req } }`
 	}
 }
 
+// TestGenerateOpenAPIDeprecated covers the three @deprecated emission
+// sites: type-level marks the schema deprecated, field-level marks
+// only that property, and method-level marks the operation. A
+// per-decorator string argument lands in the OpenAPI description so
+// docs viewers display the migration hint inline.
+func TestGenerateOpenAPIDeprecated(t *testing.T) {
+	src := `package design
+@deprecated
+type LegacyBook { title string  sku string @deprecated("use ISBN") }
+service S {
+    @deprecated("use NewList")
+    get LegacyList /legacy {
+        response  LegacyBook
+    }
+    get NewList /new {
+        response  LegacyBook
+    }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+
+	// Type-level: LegacyBook schema is deprecated. The marker shows
+	// up directly under the schema name in the YAML, so a small fixed
+	// window is enough — and dodges the pitfall of "next schema"
+	// indentation (4-space property prefix vs 4-space top-level key).
+	legacyIdx := strings.Index(body, "    LegacyBook:")
+	if legacyIdx < 0 {
+		t.Fatal("missing LegacyBook schema")
+	}
+	end := legacyIdx + 80
+	if end > len(body) {
+		end = len(body)
+	}
+	if !strings.Contains(body[legacyIdx:end], "deprecated: true") {
+		t.Errorf("expected schema-level deprecated near LegacyBook:\n%s", body[legacyIdx:end])
+	}
+
+	// Field-level: sku property is deprecated with description.
+	if !strings.Contains(body, "use ISBN") {
+		t.Errorf("expected field-level deprecation reason:\n%s", body)
+	}
+
+	// Method-level: legacy operation deprecated, new operation NOT.
+	legacyOpIdx := strings.Index(body, "/legacy:")
+	newOpIdx := strings.Index(body, "/new:")
+	if legacyOpIdx < 0 || newOpIdx < 0 {
+		t.Fatal("missing operations")
+	}
+	legacyBlock := body[legacyOpIdx:newOpIdx]
+	if !strings.Contains(legacyBlock, "deprecated: true") {
+		t.Errorf("expected legacy operation deprecated:\n%s", legacyBlock)
+	}
+	if !strings.Contains(legacyBlock, "use NewList") {
+		t.Errorf("expected method-level deprecation reason:\n%s", legacyBlock)
+	}
+	newBlock := body[newOpIdx:]
+	if strings.Contains(newBlock[:200], "deprecated: true") {
+		t.Errorf("non-deprecated operation should not be marked:\n%s", newBlock[:200])
+	}
+}
+
 // TestGenerateOpenAPIBasePathNotDuplicated regression-tests the bug
 // where `basePath: /api` produced path keys like `/api/v1/foo` AND a
 // servers[0].url of `/api`, so spec resolvers (kin-openapi, swagger-cli)

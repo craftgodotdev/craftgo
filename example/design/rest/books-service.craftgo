@@ -31,4 +31,16 @@ service BooksService {
         request   CreateBookReq
         response  Book
     }
+
+    // LegacyListBooks is the v0 listing endpoint kept for legacy
+    // clients. Method-level `@deprecated("…")` flips the OpenAPI
+    // operation to `deprecated: true` and surfaces the migration
+    // hint in the description so Swagger UI / Redoc render the
+    // strikethrough plus the recommended replacement.
+    @doc("Legacy book listing. Kept for old clients.")
+    @deprecated("use GET /books instead — returns Page<Book> for cursor pagination")
+    @operationId("legacyListBooks")
+    get LegacyListBooks /books-v0 {
+        response  BookList
+    }
 }

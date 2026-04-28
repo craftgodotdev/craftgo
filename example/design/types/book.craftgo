@@ -2,13 +2,19 @@ package design
 
 // Book is a catalog entry. Price is stored in cents to avoid float
 // rounding; ISBN is a 13-digit string validated via @pattern.
+//
+// `priceLegacy` is field-level `@deprecated`: the codegen prepends a
+// `// Deprecated: ...` line on the Go field and sets `deprecated: true`
+// on the OpenAPI property so Swagger UI and `staticcheck` both surface
+// the warning.
 type Book {
-    id         string
-    title      string
-    author     string
-    isbn       string
-    priceCents int
-    stock      int
+    id          string
+    title       string
+    author      string
+    isbn        string
+    priceCents  int
+    priceLegacy int    @deprecated("use priceCents instead — float prices rounded badly")
+    stock       int
 }
 
 // BookList is the paginated response for ListBooks. Uses the generic

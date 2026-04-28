@@ -131,11 +131,33 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 
 // renderType returns the Go source for one TypeDecl: doc, header
 // (with optional `[T any, ...]` generic params), and body.
+//
+// `@deprecated` on the type prepends a `// Deprecated: ...` line to
+// the doc block — the canonical Go convention so `go vet` and
+// `staticcheck` warn on every reference to the type.
 func renderType(td *ast.TypeDecl) string {
 	doc := renderDoc(td.Doc, "")
+	doc += renderDeprecatedDoc(td.Decorators, "")
 	body := renderTypeBody(td.Body)
 	header := "type " + td.Name + renderTypeParams(td.TypeParams) + " struct {\n" + body + "}\n"
 	return doc + header
+}
+
+// renderDeprecatedDoc returns a `// Deprecated: <reason>` line (with
+// the supplied indent) when the decorator chain has `@deprecated`,
+// otherwise "". The reason defaults to a generic note when the
+// decorator carries no string argument. The leading blank line keeps
+// the deprecation paragraph separated from any preceding doc per the
+// Go convention.
+func renderDeprecatedDoc(decs []*ast.Decorator, indent string) string {
+	if !hasDeprecatedDecorator(decs) {
+		return ""
+	}
+	reason := deprecatedReason(decs)
+	if reason == "" {
+		reason = "this entity is deprecated and may be removed in a future release."
+	}
+	return indent + "//\n" + indent + "// Deprecated: " + reason + "\n"
 }
 
 // renderTypeParams returns "[T any, U any]" for a generic decl, or ""
@@ -169,9 +191,12 @@ func renderTypeBody(members []ast.TypeMember) string {
 
 // renderField returns one struct field line (with leading tab). The
 // JSON tag is computed by [jsonTag]; doc comments are emitted by
-// [renderDoc] and prepended.
+// [renderDoc] and prepended. Field-level `@deprecated` adds a
+// `// Deprecated: ...` line to the field's doc block — `staticcheck`
+// flags every read/write of the field as a warning.
 func renderField(f *ast.Field) string {
 	return renderDoc(f.Doc, "\t") +
+		renderDeprecatedDoc(f.Decorators, "\t") +
 		fmt.Sprintf("\t%s %s `json:%s`\n", GoFieldName(f.Name), GoTypeRef(f.Type), strconv.Quote(jsonTag(f)))
 }
 

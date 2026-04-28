@@ -158,22 +158,50 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
 
 // schemaForType builds the openapi3.Schema for one TypeDecl. Only Field
 // members are emitted; mixin expansion is a forward-looking concern.
+//
+// `@deprecated` propagates to OpenAPI in two places: type-level marks
+// the entire schema as deprecated; field-level marks only that
+// property. Tools like Swagger UI render deprecated entries with a
+// strikethrough so consumers can spot them at a glance.
 func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
+	}
+	if hasDeprecatedDecorator(td.Decorators) {
+		s.Deprecated = true
 	}
 	for _, m := range td.Body {
 		f, ok := m.(*ast.Field)
 		if !ok {
 			continue
 		}
-		s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
+		ref := schemaForTypeRef(f.Type, pkg)
+		if hasDeprecatedDecorator(f.Decorators) && ref != nil && ref.Value != nil {
+			ref.Value.Deprecated = true
+			if reason := deprecatedReason(f.Decorators); reason != "" {
+				ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
+			}
+		}
+		s.Properties[f.Name] = ref
 		if hasRequiredDecorator(f.Decorators) {
 			s.Required = append(s.Required, f.Name)
 		}
 	}
 	return s
+}
+
+// appendDescription joins a new note onto an existing description with
+// a single blank-line separator. Empty existing description means the
+// note becomes the entire description; empty note is a no-op.
+func appendDescription(existing, note string) string {
+	if note == "" {
+		return existing
+	}
+	if existing == "" {
+		return note
+	}
+	return existing + "\n\n" + note
 }
 
 // schemaForTypeRef converts an ast.TypeRef to a SchemaRef.
@@ -468,6 +496,25 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 	}
 	if sec := securityFromDecorators(m.Decorators); sec != nil {
 		op.Security = sec
+	}
+	// @deprecated may sit on the method itself or on the primary
+	// service decl; either marks the operation deprecated. The
+	// optional reason becomes a `Deprecated: ...` line in the
+	// description so docs viewers surface it inline.
+	svc := pkg.Services[svcName]
+	deprecated := hasDeprecatedDecorator(m.Decorators)
+	if !deprecated && svc != nil && svc.Primary != nil {
+		deprecated = hasDeprecatedDecorator(svc.Primary.Decorators)
+	}
+	if deprecated {
+		op.Deprecated = true
+		reason := deprecatedReason(m.Decorators)
+		if reason == "" && svc != nil && svc.Primary != nil {
+			reason = deprecatedReason(svc.Primary.Decorators)
+		}
+		if reason != "" {
+			op.Description = appendDescription(op.Description, "Deprecated: "+reason)
+		}
 	}
 	isStream := (m.Response != nil && m.Response.Stream) || hasStreamDecorator(m.Decorators)
 	isRaw := hasRawDecorator(m.Decorators)

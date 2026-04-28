@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -347,6 +348,75 @@ func TestValidateEnumOptionalAcceptsMissing(t *testing.T) {
 	})
 	if status != http.StatusOK && status != http.StatusNoContent {
 		t.Errorf("expected 2xx, got %d (body=%s)", status, body)
+	}
+}
+
+// TestDeprecatedFieldInOpenAPI confirms the field-level @deprecated
+// on `Book.priceLegacy` flows into `docs/openapi.yaml`. The runtime
+// behaviour is unchanged (field still bound from JSON), but the spec
+// and Go field carry the migration hint.
+func TestDeprecatedFieldInOpenAPI(t *testing.T) {
+	body, err := os.ReadFile("docs/openapi.yaml")
+	if err != nil {
+		t.Skipf("openapi.yaml missing — run `craftgo gen` first: %v", err)
+	}
+	src := string(body)
+	if !strings.Contains(src, "priceLegacy:") {
+		t.Fatalf("expected priceLegacy field in spec:\n%s", src)
+	}
+	idx := strings.Index(src, "priceLegacy:")
+	end := idx + 200
+	if end > len(src) {
+		end = len(src)
+	}
+	window := src[idx:end]
+	if !strings.Contains(window, "deprecated: true") {
+		t.Errorf("expected priceLegacy.deprecated: true:\n%s", window)
+	}
+	if !strings.Contains(window, "use priceCents instead") {
+		t.Errorf("expected migration hint in description:\n%s", window)
+	}
+}
+
+// TestDeprecatedMethodInOpenAPI confirms the method-level @deprecated
+// on LegacyListBooks lands as `deprecated: true` on the operation.
+func TestDeprecatedMethodInOpenAPI(t *testing.T) {
+	body, err := os.ReadFile("docs/openapi.yaml")
+	if err != nil {
+		t.Skipf("openapi.yaml missing — run `craftgo gen` first: %v", err)
+	}
+	src := string(body)
+	idx := strings.Index(src, "/v1/books-v0:")
+	if idx < 0 {
+		t.Fatalf("expected /v1/books-v0 path in spec")
+	}
+	end := idx + 600
+	if end > len(src) {
+		end = len(src)
+	}
+	window := src[idx:end]
+	if !strings.Contains(window, "deprecated: true") {
+		t.Errorf("expected operation-level deprecated:\n%s", window)
+	}
+	if !strings.Contains(window, "use GET /books instead") {
+		t.Errorf("expected migration hint in description:\n%s", window)
+	}
+}
+
+// TestDeprecatedMethodStillRoutes pins that `@deprecated` is purely
+// metadata — the route is still registered and reachable. (We give it
+// a logic stub that returns nil so the empty response works without
+// scaffolding ceremony.)
+func TestDeprecatedMethodStillRoutes(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/v1/books-v0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		t.Errorf("unexpected 5xx on deprecated endpoint: %d", resp.StatusCode)
 	}
 }
 
