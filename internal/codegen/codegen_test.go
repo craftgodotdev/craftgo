@@ -401,6 +401,77 @@ func TestGoFieldName(t *testing.T) {
 	}
 }
 
+// TestGoTypeRefOptionalNilableBase pins the no-redundant-pointer rule:
+// optional fields whose base Go type is already nil-zeroable (slice,
+// map, pointer-shaped builtin, interface) must NOT receive an extra
+// `*`. Value-type optionals (string?, struct?) still get the pointer so
+// "absent" remains distinguishable from the zero value.
+func TestGoTypeRefOptionalNilableBase(t *testing.T) {
+	pkg := analyze(t, `package design
+type User { name string }
+type T {
+    bytesOpt    bytes?
+    fileOpt     file?
+    readerOpt   reader?
+    writerOpt   writer?
+    anyOpt      any?
+    arrayOpt    string[]?
+    mapOpt      map<string, int>?
+    stringOpt   string?
+    structOpt   User?
+}`)
+	dir := t.TempDir()
+	if err := GenerateTypes(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+
+	want := []struct {
+		ident, tag string
+	}{
+		{"BytesOpt", "[]byte"},
+		{"FileOpt", "*multipart.FileHeader"},
+		{"ReaderOpt", "io.Reader"},
+		{"WriterOpt", "io.Writer"},
+		{"AnyOpt", "json.RawMessage"},
+		{"ArrayOpt", "[]string"},
+		{"MapOpt", "map[string]int"},
+		// Value-type optionals — pointer is still required.
+		{"StringOpt", "*string"},
+		{"StructOpt", "*User"},
+	}
+	for _, w := range want {
+		if !lineHasField(src, w.ident, w.tag) {
+			t.Errorf("expected field %s with type %q in:\n%s", w.ident, w.tag, src)
+		}
+	}
+	// Negative: no double-pointer or pointer-to-slice anywhere.
+	for _, bad := range []string{"**", "*[]byte", "*[]string", "*map[", "*io.Reader", "*io.Writer", "*json.RawMessage"} {
+		if strings.Contains(src, bad) {
+			t.Errorf("found redundant %q in generated source:\n%s", bad, src)
+		}
+	}
+}
+
+// lineHasField reports whether `src` has any line containing both the
+// identifier and the type expression. Whitespace between them is
+// arbitrary so gofmt's column alignment doesn't break the assertion.
+func lineHasField(src, ident, typ string) bool {
+	for _, line := range strings.Split(src, "\n") {
+		if strings.Contains(line, ident) && strings.Contains(line, typ) {
+			// Reject pointer-to-typ accidentally matching the substring.
+			// e.g. "*[]byte" contains "[]byte" — we want only the bare form.
+			if strings.Contains(line, "*"+typ) {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 func TestGoTypeRefNil(t *testing.T) {
 	if GoTypeRef(nil) != "" {
 		t.Error()

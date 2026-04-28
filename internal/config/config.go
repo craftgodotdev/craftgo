@@ -58,11 +58,36 @@ type Output struct {
 
 // OpenAPI carries metadata that surfaces in the generated specification's
 // info / servers blocks. BasePath is also used by the runtime to compute the
-// final route string for each method.
+// final route string for each method. SecuritySchemes is a name → scheme
+// map that powers the `@security(name)` cross-check: any DSL reference
+// must resolve to a key here when the map is non-empty.
 type OpenAPI struct {
-	Title    string `yaml:"title"`
-	Version  string `yaml:"version"`
-	BasePath string `yaml:"basePath"`
+	Title           string                    `yaml:"title"`
+	Version         string                    `yaml:"version"`
+	BasePath        string                    `yaml:"basePath"`
+	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes"`
+}
+
+// SecurityScheme is the project-side projection of an OpenAPI 3.1
+// security scheme object. We retain only the fields the codegen needs to
+// validate references and (later) emit accurate OpenAPI components; the
+// full OpenAPI shape is intentionally not modelled here so the manifest
+// stays small. Fields marked with `omitempty` allow concise YAML.
+type SecurityScheme struct {
+	// Type is the OpenAPI 3.1 scheme type: "http", "apiKey", "oauth2",
+	// "openIdConnect", or "mutualTLS". Required.
+	Type string `yaml:"type"`
+	// Scheme is the HTTP authentication scheme name (`bearer`, `basic`).
+	// Used only when Type == "http".
+	Scheme string `yaml:"scheme,omitempty"`
+	// BearerFormat hints at the bearer token shape (e.g. "JWT").
+	BearerFormat string `yaml:"bearerFormat,omitempty"`
+	// In is the apiKey location: "header", "query", or "cookie".
+	In string `yaml:"in,omitempty"`
+	// Name is the apiKey header / query / cookie name.
+	Name string `yaml:"name,omitempty"`
+	// OpenIDConnectURL is the discovery URL for openIdConnect.
+	OpenIDConnectURL string `yaml:"openIdConnectUrl,omitempty"`
 }
 
 // Templates configures the project-local template override directory.

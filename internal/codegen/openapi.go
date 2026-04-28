@@ -60,11 +60,25 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) *openapi3.T {
 	return doc
 }
 
-// addSchemas populates components.schemas from every concrete TypeDecl.
-// Generic decls are skipped — there's no faithful OpenAPI 3.x
-// representation for a parametric type, so generic INSTANCES are
-// inlined at every reference site instead (see [schemaForTypeRef]).
+// addSchemas populates components.schemas from every concrete TypeDecl,
+// every EnumDecl, and every ScalarDecl. Generic type decls are skipped
+// — there's no faithful OpenAPI 3.x representation for a parametric
+// type, so generic INSTANCES are inlined at every reference site
+// instead (see [schemaForTypeRef]).
+//
+// Enums and scalars MUST be emitted here too because a `$ref` from a
+// field schema would otherwise dangle: `schemaForTypeRef` blindly
+// renders `#/components/schemas/<Name>` for any named user type, and
+// OpenAPI 3.x parsers (`kin-openapi`, swagger-cli, etc.) reject the
+// resulting document with "key not found in object".
 func addSchemas(doc *openapi3.T, pkg *semantic.Package) {
+	addTypeSchemas(doc, pkg)
+	addEnumSchemas(doc, pkg)
+	addScalarSchemas(doc, pkg)
+}
+
+// addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
+func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package) {
 	names := make([]string, 0, len(pkg.Types))
 	for n := range pkg.Types {
 		names = append(names, n)
@@ -76,6 +90,69 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package) {
 			continue
 		}
 		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: schemaForType(td, pkg)}
+	}
+}
+
+// addEnumSchemas emits one schema per EnumDecl. The schema's base type
+// is `string` for bare and string-valued enums, `integer` for int-valued.
+// The OpenAPI `enum` array enumerates the wire values: bare values use
+// the value name, string values use the literal, int values use the
+// integer.
+func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
+	names := make([]string, 0, len(pkg.Enums))
+	for n := range pkg.Enums {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		ed := pkg.Enums[name]
+		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
+		if firstEnumKind(ed) == ast.EnumInt {
+			s.Type = &openapi3.Types{"integer"}
+		}
+		s.Enum = make([]any, 0, len(ed.Values))
+		for _, v := range ed.Values {
+			switch v.Kind {
+			case ast.EnumInt:
+				s.Enum = append(s.Enum, v.IntValue)
+			case ast.EnumString:
+				s.Enum = append(s.Enum, v.StrValue)
+			default: // EnumBare — wire value is the source-side name
+				s.Enum = append(s.Enum, v.Name)
+			}
+		}
+		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: s}
+	}
+}
+
+// addScalarSchemas emits one schema per ScalarDecl. The schema is a
+// thin alias of the underlying primitive — refinements (format /
+// pattern carried via decorators on the scalar itself) are surfaced
+// here too so OpenAPI consumers see the contract.
+func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
+	names := make([]string, 0, len(pkg.Scalars))
+	for n := range pkg.Scalars {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		sc := pkg.Scalars[name]
+		base := primitiveSchema(sc.Primitive)
+		if base == nil {
+			base = &openapi3.Schema{Type: &openapi3.Types{"string"}}
+		}
+		// Decorators on the scalar (e.g. @format("email")) refine the
+		// base. Today only @format is honoured because that's the only
+		// scalar-meaningful one in the existing fixtures; the rest are
+		// folded in as we encounter them.
+		for _, d := range sc.Decorators {
+			if d.Name == "format" && len(d.Args) == 1 {
+				if name := stringOrIdentArg(d.Args[0]); name != "" {
+					base.Format = name
+				}
+			}
+		}
+		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: base}
 	}
 }
 
@@ -236,10 +313,18 @@ func primitiveSchema(name string) *openapi3.Schema {
 // emitted into components.schemas as a side effect so operations can
 // $ref them.
 func addPaths(doc *openapi3.T, pkg *semantic.Package, cfg *config.Config) {
+	// OpenAPI 3.x resolves request URLs as `servers[].url + path`. We've
+	// already pushed `basePath` onto the servers entry above, so the
+	// path keys here MUST be relative — passing the basePath through
+	// `methodFullPath` would double-stamp the prefix in spec consumers
+	// (e.g. `/api` server + `/api/v1/foo` path → resolved `/api/api/v1/foo`).
+	// Runtime routes still concatenate basePath via the same helper but
+	// from `routes.go`, which has no separate "server URL" concept.
+	_ = cfg
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
-			full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
+			full := methodFullPath("", svc.Primary, m)
 			addPerOperationRequestSchemas(doc, m, pkg)
 			addPerOperationResponseSchema(doc, m)
 			item := doc.Paths.Value(full)
@@ -777,6 +862,66 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
 			BearerFormat: "JWT",
 		}}
 	}
+}
+
+// ValidateSecurityRefs cross-checks every `@security(scheme)` reference
+// in pkg against the manifest's declared `openapi.securitySchemes` map.
+// The check is permissive when the manifest declares no schemes: in
+// that case we keep the legacy auto-generated bearer behaviour (so
+// projects that haven't migrated continue to work). When the manifest
+// HAS declared at least one scheme, every reference must resolve to a
+// key in that map; unknown references produce a sorted list of error
+// strings the caller can format.
+//
+// The special name `noauth` is always accepted — it is a marker, not a
+// scheme reference.
+func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
+	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
+		return nil
+	}
+	declared := cfg.OpenAPI.SecuritySchemes
+	collect := func(svcName, scope string, ds []*ast.Decorator, dst map[string]bool) {
+		for _, d := range ds {
+			if d.Name != "security" {
+				continue
+			}
+			for _, a := range d.Args {
+				id, ok := a.Value.(*ast.IdentExpr)
+				if !ok {
+					continue
+				}
+				name := id.Name.String()
+				if name == "noauth" {
+					continue
+				}
+				if _, exists := declared[name]; exists {
+					continue
+				}
+				key := svcName + "/" + scope + "/" + name
+				dst[key] = true
+			}
+		}
+	}
+	bad := map[string]bool{}
+	for svcName, svc := range pkg.Services {
+		if svc.Primary != nil {
+			collect(svcName, "service", svc.Primary.Decorators, bad)
+		}
+		for _, m := range svc.Methods {
+			collect(svcName, "method "+m.Name, m.Decorators, bad)
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(bad))
+	for k := range bad {
+		parts := strings.SplitN(k, "/", 3)
+		// parts: svc, scope, name
+		out = append(out, fmt.Sprintf("@security(%s) on %s %s: scheme %q is not declared in openapi.securitySchemes", parts[2], parts[1], parts[0], parts[2]))
+	}
+	sort.Strings(out)
+	return out
 }
 
 // orDefault returns v when non-empty, otherwise fallback.

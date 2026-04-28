@@ -341,6 +341,57 @@ func TestUnqualifiedRefAccepted(t *testing.T) {
 type X { items Page }`)
 }
 
+// ---------- combination rules ----------
+
+func TestCombinationRequiredOnOptional(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { name string? @required }`))
+	if !diagsContain(diags, "@required is incompatible with optional type") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestCombinationMultipleBindings(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { id string @path @query }`))
+	if !diagsContain(diags, "@query conflicts with @path") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestCombinationBodyAndForm(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { payload string @body @form }`))
+	if !diagsContain(diags, "@form conflicts with @body") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestCombinationRawAndFormat(t *testing.T) {
+	src := `service S {
+		@raw
+		@format(sse)
+		post Echo /e {}
+	}`
+	_, diags := Analyze(parseFiles(t, src))
+	if !diagsContain(diags, "@format is incompatible with @raw") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestCombinationRawAndStreamAccepted(t *testing.T) {
+	mustClean(t, `service S {
+		@raw
+		@stream
+		post Echo /e {}
+	}`)
+}
+
+func TestCombinationStreamAndFormatAccepted(t *testing.T) {
+	mustClean(t, `service S {
+		@stream
+		@format(sse)
+		get Live /l {}
+	}`)
+}
+
 // ---------- PathString ----------
 
 func TestPathString(t *testing.T) {

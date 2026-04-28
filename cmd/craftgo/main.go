@@ -111,6 +111,19 @@ func runGen(args []string) error {
 		}
 		return fmt.Errorf("%s", sb.String())
 	}
+	// `@security(name)` references are validated against the manifest's
+	// declared securitySchemes map. The check is a no-op when no schemes
+	// are declared (legacy auto-bearer behaviour kicks in then).
+	if errs := codegen.ValidateSecurityRefs(pkg, cfg); len(errs) > 0 {
+		var sb strings.Builder
+		sb.WriteString("security scheme errors:\n")
+		for _, e := range errs {
+			sb.WriteString("  ")
+			sb.WriteString(e)
+			sb.WriteString("\n")
+		}
+		return fmt.Errorf("%s", sb.String())
+	}
 
 	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
 	steps := []struct {

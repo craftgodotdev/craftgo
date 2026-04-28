@@ -81,6 +81,7 @@ func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 	a.checkServiceMethods()
 	a.checkDecoratorDuplicates(files)
 	a.checkQualifiedRefs()
+	a.checkCombinationRules(files)
 	return a.pkg, a.diags
 }
 
@@ -428,6 +429,120 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 	}
 	for _, arg := range n.Args {
 		a.walkTypeRef(scope, arg)
+	}
+}
+
+// checkCombinationRules enforces the decorator-combination contract
+// documented in the README §"Combination rules":
+//
+//   - `@required` cannot coexist with `T?` (an optional type — they
+//     contradict each other).
+//   - At most one of `@path / @query / @header / @cookie / @body / @form`
+//     may appear on a single field; multiple non-body bindings would
+//     compete for the same value at runtime.
+//   - `@raw` bypasses JSON encoding entirely, so `@format` on the same
+//     method has no defined meaning and is rejected.
+//
+// Diagnostics fire on the second / conflicting decorator so the error
+// points at the offending source location, not the (innocent) first
+// occurrence.
+func (a *analyzer) checkCombinationRules(files []*ast.File) {
+	for _, f := range files {
+		for _, d := range f.Decls {
+			a.checkDeclCombinations(d)
+		}
+	}
+}
+
+// checkDeclCombinations dispatches per-declaration: type / error bodies
+// for field-level rules, services / methods for method-level rules.
+func (a *analyzer) checkDeclCombinations(d ast.Decl) {
+	switch dd := d.(type) {
+	case *ast.TypeDecl:
+		a.checkFieldCombinations(dd.Name, dd.Body)
+	case *ast.ErrorDecl:
+		a.checkFieldCombinations(dd.Name, dd.Body)
+	case *ast.ServiceDecl:
+		for _, m := range dd.Methods {
+			a.checkMethodCombinations(dd.Name, m)
+		}
+	}
+}
+
+// checkFieldCombinations applies the per-field combination checks to
+// every Field in a type or error body. Mixin members are skipped — they
+// have no decorators of their own.
+func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMember) {
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		a.checkRequiredOptional(parent, f)
+		a.checkSingleBinding(parent, f)
+	}
+}
+
+// checkRequiredOptional rejects `@required` on a `T?` field. The two
+// say opposite things ("must be present" vs "may be absent"), and
+// silently ignoring one would let a buggy validator pass.
+func (a *analyzer) checkRequiredOptional(parent string, f *ast.Field) {
+	if f.Type == nil || !f.Type.Optional {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d.Name == "required" {
+			a.errorf(d.Pos, "field %s.%s: @required is incompatible with optional type %q (drop one)", parent, f.Name, "T?")
+			return
+		}
+	}
+}
+
+// checkSingleBinding enforces the "at most one binding" rule. The
+// six binding decorators (`@path / @query / @header / @cookie / @body /
+// @form`) are mutually exclusive; the first wins, every subsequent one
+// gets a diagnostic with a back-reference to the first.
+func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
+	bindings := map[string]bool{
+		"path": true, "query": true, "header": true,
+		"cookie": true, "body": true, "form": true,
+	}
+	first := ""
+	var firstPos lexer.Position
+	for _, d := range f.Decorators {
+		if !bindings[d.Name] {
+			continue
+		}
+		if first == "" {
+			first = d.Name
+			firstPos = d.Pos
+			continue
+		}
+		a.errorf(d.Pos, "field %s.%s: @%s conflicts with @%s at %s (a field must have at most one binding)", parent, f.Name, d.Name, first, firstPos)
+	}
+}
+
+// checkMethodCombinations enforces method-level rules. Today there is
+// only one: `@raw` bypasses the encoder, so `@format` is meaningless and
+// rejected. The streaming / raw-stream combination is intentionally
+// allowed and not flagged here.
+func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
+	hasRaw := false
+	var rawPos lexer.Position
+	for _, d := range m.Decorators {
+		if d.Name == "raw" {
+			hasRaw = true
+			rawPos = d.Pos
+			break
+		}
+	}
+	if !hasRaw {
+		return
+	}
+	for _, d := range m.Decorators {
+		if d.Name == "format" {
+			a.errorf(d.Pos, "method %s.%s: @format is incompatible with @raw at %s (raw mode bypasses encoding)", svcName, m.Name, rawPos)
+		}
 	}
 }
 

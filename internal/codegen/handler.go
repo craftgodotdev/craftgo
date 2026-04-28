@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
 	"github.com/dropship-dev/craftgo/internal/config"
@@ -42,9 +43,23 @@ type handlerData struct {
 	// into the body.
 	RespHeaders []paramBinding
 	RespCookies []paramBinding
+	// Defaults pre-fills the request struct before JSON decode so any
+	// field absent in the body keeps its DSL-declared @default value.
+	// JSON decode never zeroes fields it doesn't see, so a pre-filled
+	// default survives unless the client explicitly sends a value.
+	Defaults []defaultBinding
 	LogicImport      string
 	TypesImport      string
 	SvccontextImport string
+}
+
+// defaultBinding is one row of the request struct's pre-fill table.
+// `Literal` is the Go source for the default value already quoted /
+// formatted for direct emission (e.g. `"pending"` for strings, `20` for
+// ints). The handler template writes `req.<GoName> = <Literal>`.
+type defaultBinding struct {
+	GoName  string
+	Literal string
 }
 
 // paramBinding is one row of a handler's parameter-binding table.
@@ -174,7 +189,68 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 	if hasResp {
 		d.RespHeaders, d.RespCookies = collectResponseBindings(m, pkg)
 	}
+	if hasReq {
+		d.Defaults = collectDefaults(m, pkg)
+	}
 	return d
+}
+
+// collectDefaults walks the request type's fields and returns one
+// [defaultBinding] per field that carries `@default(value)`. Only plain
+// (non-array, non-optional, non-map) primitive fields are filled — the
+// pre-fill semantics are uncertain on collections, and pointer-typed
+// optional fields would still get nil-overwritten by the JSON decoder
+// for absent keys. Unknown literal kinds are skipped silently.
+func collectDefaults(m *ast.Method, pkg *semantic.Package) []defaultBinding {
+	if m.Request == nil {
+		return nil
+	}
+	td, ok := pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return nil
+	}
+	var out []defaultBinding
+	for _, member := range td.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		if f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Map != nil {
+			continue
+		}
+		lit := defaultLiteral(f.Decorators)
+		if lit == "" {
+			continue
+		}
+		out = append(out, defaultBinding{GoName: GoFieldName(f.Name), Literal: lit})
+	}
+	return out
+}
+
+// defaultLiteral returns the Go-source form of a `@default(...)` value
+// (or "" when the decorator is absent or carries an unrecognised
+// literal). Strings are quoted with strconv.Quote; ints / floats / bools
+// are stringified directly.
+func defaultLiteral(decs []*ast.Decorator) string {
+	for _, d := range decs {
+		if d.Name != "default" || len(d.Args) != 1 {
+			continue
+		}
+		switch v := d.Args[0].Value.(type) {
+		case *ast.StringLit:
+			return strconv.Quote(v.Value)
+		case *ast.IntLit:
+			return strconv.FormatInt(v.Value, 10)
+		case *ast.FloatLit:
+			return strconv.FormatFloat(v.Value, 'g', -1, 64)
+		case *ast.BoolLit:
+			if v.Value {
+				return "true"
+			}
+			return "false"
+		}
+	}
+	return ""
 }
 
 // collectResponseBindings walks the response type's fields and returns the

@@ -3,7 +3,7 @@ package design
 // BooksService manages the catalog. Read endpoints are public; the
 // write endpoint is gated by AuthRequired + RateLimit.
 @prefix("/v1")
-@tags(books)
+@tags(v1, books)
 service BooksService {
     // ListBooks returns every book in the catalog.
     @doc("List every book in the catalog.")

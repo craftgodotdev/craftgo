@@ -128,6 +128,58 @@ func TestGenerateHandlersAllVerbs(t *testing.T) {
 	}
 }
 
+// TestGenerateHandlersDefaults pins the @default pre-fill emission. The
+// handler must assign each declared default BEFORE the JSON decode so
+// fields absent from the body keep the DSL value; explicit fields in
+// the body still overwrite via the standard decoder semantics.
+func TestGenerateHandlersDefaults(t *testing.T) {
+	src := `package design
+type Req {
+    name   string  @default("anon")
+    limit  int     @default(20)
+    ratio  float64 @default(0.5)
+    active bool    @default(true)
+    plain  string
+}
+service S {
+    post Make /make {
+        request   Req
+    }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateHandlers(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/handler/s/make-handler.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	mustParseGo(t, body)
+	for _, want := range []string{
+		`req.Name = "anon"`,
+		"req.Limit = 20",
+		"req.Ratio = 0.5",
+		"req.Active = true",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in handler:\n%s", want, body)
+		}
+	}
+	// The non-defaulted `plain` field must NOT receive an assignment.
+	if strings.Contains(body, "req.Plain =") {
+		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
+	}
+	// Pre-fill must precede JSON decode so absent body fields keep
+	// their default.
+	if dec := strings.Index(body, "json.NewDecoder"); dec >= 0 {
+		if pre := body[:dec]; !strings.Contains(pre, `req.Name = "anon"`) {
+			t.Error("expected default assignments before json.NewDecoder")
+		}
+	}
+}
+
 func TestGenerateHandlersResponseHeaderCookie(t *testing.T) {
 	src := `package design
 type DownloadReq { id string }

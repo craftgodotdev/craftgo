@@ -114,5 +114,14 @@ func buildLogicData(svcName string, m *ast.Method, imps importPaths) logicData {
 	if hasRawDecorator(m.Decorators) {
 		d.IsRaw = true
 	}
+	// Streaming and raw scaffolds don't reference `types.<Resp>` in their
+	// signatures — the body either takes a `*server.<X>Stream` (stream
+	// mode) or an `io.Reader/Writer` (raw mode). Importing the types
+	// package in those cases produces a dead import the user has to
+	// delete, so trim it back to "imports types only when there is a
+	// request to bind".
+	if d.IsStream || d.IsRaw {
+		d.NeedsTypes = hasReq
+	}
 	return d
 }

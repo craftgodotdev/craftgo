@@ -6,8 +6,207 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dropship-dev/craftgo/internal/config"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
+
+// ---------- enum / scalar schema emission ----------
+
+// TestGenerateOpenAPIEnumSchemasEmitted pins the bug fix: any field
+// referencing an enum type must produce a `$ref` whose target schema
+// exists under components.schemas. Before the fix, refs were emitted
+// but the schemas were missing — kin-openapi (and every spec parser)
+// rejected the document with "key not found in object".
+func TestGenerateOpenAPIEnumSchemasEmitted(t *testing.T) {
+	src := `package design
+enum Priority { Low  Normal  High }
+enum Tier { Bronze = 1  Silver = 2 }
+type Req {
+    pri Priority @required
+    tir Tier
+}
+service S {
+    post Make /m {
+        request   Req
+    }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
+	body := string(out)
+	for _, want := range []string{
+		"Priority:",
+		"Tier:",
+		"- Low",
+		"- Normal",
+		"- High",
+		"type: integer", // Tier is int-based
+		"type: string",  // Priority is string-based
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in openapi:\n%s", want, body)
+		}
+	}
+}
+
+// TestGenerateOpenAPIScalarSchemasEmitted covers the parallel fix for
+// scalar declarations.
+func TestGenerateOpenAPIScalarSchemasEmitted(t *testing.T) {
+	src := `package design
+scalar Email string @format("email")
+type Req { addr Email @required }
+service S { post Send /m { request Req } }`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
+	body := string(out)
+	if !strings.Contains(body, "Email:") {
+		t.Errorf("expected Email scalar schema:\n%s", body)
+	}
+	if !strings.Contains(body, "format: email") {
+		t.Errorf("expected format on scalar:\n%s", body)
+	}
+}
+
+// TestGenerateOpenAPIBasePathNotDuplicated regression-tests the bug
+// where `basePath: /api` produced path keys like `/api/v1/foo` AND a
+// servers[0].url of `/api`, so spec resolvers (kin-openapi, swagger-cli)
+// computed the request URL as `/api/api/v1/foo`. After the fix path
+// keys are relative and the basePath lives only in servers[0].url.
+func TestGenerateOpenAPIBasePathNotDuplicated(t *testing.T) {
+	pkg := analyzePkg(t, `package design
+@prefix("/v1")
+service S {
+    get GetThing /things/{id} {}
+}`)
+	cfg := &config.Config{
+		Package: "x/y",
+		Output: config.Output{
+			Types: "./internal/types", Handler: "./internal/handler",
+			Routes: "./internal/routes", Logic: "./internal/logic",
+			Svccontext: "./svccontext/svccontext.go",
+			OpenAPI:    "./docs/openapi.yaml",
+		},
+		OpenAPI: config.OpenAPI{BasePath: "/api"},
+	}
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	src := string(body)
+	if !strings.Contains(src, "- url: /api") {
+		t.Errorf("expected basePath in servers, got:\n%s", src)
+	}
+	if !strings.Contains(src, "/v1/things/{id}:") {
+		t.Errorf("expected relative path key, got:\n%s", src)
+	}
+	if strings.Contains(src, "/api/v1/things/{id}:") {
+		t.Errorf("basePath leaked into path key (regression):\n%s", src)
+	}
+}
+
+// ---------- @security cross-check ----------
+
+func TestValidateSecurityRefsHappyPath(t *testing.T) {
+	pkg := analyzePkg(t, `service S {
+    @security(bearerAuth)
+    get GetUser /u {}
+}`)
+	cfg := &config.Config{
+		Package: "x/y",
+		OpenAPI: config.OpenAPI{
+			SecuritySchemes: map[string]config.SecurityScheme{
+				"bearerAuth": {Type: "http", Scheme: "bearer"},
+			},
+		},
+	}
+	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
+		t.Errorf("expected no errors, got: %v", errs)
+	}
+}
+
+func TestValidateSecurityRefsUnknownScheme(t *testing.T) {
+	pkg := analyzePkg(t, `service S {
+    @security(BearAuth)
+    get GetUser /u {}
+}`)
+	cfg := &config.Config{
+		Package: "x/y",
+		OpenAPI: config.OpenAPI{
+			SecuritySchemes: map[string]config.SecurityScheme{
+				"bearerAuth": {Type: "http", Scheme: "bearer"},
+			},
+		},
+	}
+	errs := ValidateSecurityRefs(pkg, cfg)
+	if len(errs) == 0 {
+		t.Fatal("expected error for unknown scheme")
+	}
+	joined := strings.Join(errs, "\n")
+	if !strings.Contains(joined, `"BearAuth"`) {
+		t.Errorf("expected scheme name in error, got: %s", joined)
+	}
+	if !strings.Contains(joined, "is not declared") {
+		t.Errorf("expected declaration error, got: %s", joined)
+	}
+}
+
+func TestValidateSecurityRefsServiceLevel(t *testing.T) {
+	pkg := analyzePkg(t, `@security(typo)
+service S {
+    get GetUser /u {}
+}`)
+	cfg := &config.Config{
+		Package: "x/y",
+		OpenAPI: config.OpenAPI{
+			SecuritySchemes: map[string]config.SecurityScheme{
+				"bearerAuth": {Type: "http", Scheme: "bearer"},
+			},
+		},
+	}
+	errs := ValidateSecurityRefs(pkg, cfg)
+	if len(errs) == 0 {
+		t.Fatal("expected error for service-level unknown scheme")
+	}
+}
+
+func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
+	// When the manifest declares no schemes the cross-check is a no-op
+	// — projects that haven't migrated continue to work.
+	pkg := analyzePkg(t, `service S {
+    @security(anything)
+    get GetUser /u {}
+}`)
+	cfg := &config.Config{Package: "x/y"}
+	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
+		t.Errorf("expected permissive pass-through, got: %v", errs)
+	}
+}
+
+func TestValidateSecurityRefsAllowsNoauth(t *testing.T) {
+	pkg := analyzePkg(t, `service S {
+    @security(noauth)
+    get GetUser /u {}
+}`)
+	cfg := &config.Config{
+		Package: "x/y",
+		OpenAPI: config.OpenAPI{
+			SecuritySchemes: map[string]config.SecurityScheme{
+				"bearerAuth": {Type: "http", Scheme: "bearer"},
+			},
+		},
+	}
+	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
+		t.Errorf("noauth must be accepted, got: %v", errs)
+	}
+}
 
 func TestGenerateOpenAPI(t *testing.T) {
 	pkg := analyzePkg(t, handlerSampleDSL)
@@ -27,7 +226,12 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"openapi: 3.1.0",
 		"title: API",
 		"version: 1.2.3",
-		"/v1/api/v1/users/{id}",
+		// Path keys are RELATIVE to servers[].url. With basePath "/v1"
+		// pushed onto servers and the service @prefix("/api/v1"), the
+		// path entry is /api/v1/users/{id}; the resolved URL becomes
+		// /v1/api/v1/users/{id}, matching the runtime listen path.
+		"/api/v1/users/{id}",
+		"- url: /v1",
 		"get:",
 		"post:",
 		"delete:",
@@ -42,6 +246,11 @@ func TestGenerateOpenAPI(t *testing.T) {
 		if !strings.Contains(src, want) {
 			t.Errorf("expected %q in:\n%s", want, src)
 		}
+	}
+	// Negative: the basePath must NOT appear at the start of any path
+	// key — that's the doubled-prefix bug from before the fix.
+	if strings.Contains(src, "/v1/api/v1/users/{id}") {
+		t.Errorf("path key still has duplicated basePath:\n%s", src)
 	}
 }
 

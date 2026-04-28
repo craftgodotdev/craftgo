@@ -288,8 +288,13 @@ func emitMixin(sb *strings.Builder, m *ast.Mixin) {
 }
 
 // GoTypeRef converts an [ast.TypeRef] into the corresponding Go type
-// expression. Order of suffixes matches DSL semantics: `T[]?` becomes
-// `*[]T` (the slice itself can be nil to indicate "absent").
+// expression. The optional suffix (`?`) prepends `*` only when the
+// underlying Go type isn't already nilable: slices, maps, channels,
+// interfaces, and pointer-shaped builtins (`file` → `*multipart.FileHeader`)
+// already use `nil` as their zero value, so wrapping them in another
+// pointer would just produce `**T` / `*[]T` for no semantic gain. Value
+// types (`string`, `int`, user structs) still receive `*` so the
+// generated field can distinguish "absent" from the zero value.
 func GoTypeRef(t *ast.TypeRef) string {
 	if t == nil {
 		return ""
@@ -303,10 +308,40 @@ func GoTypeRef(t *ast.TypeRef) string {
 	if t.Array {
 		s = "[]" + s
 	}
-	if t.Optional {
+	if t.Optional && !isNilableGoType(s) {
 		s = "*" + s
 	}
 	return s
+}
+
+// isNilableGoType reports whether the Go type expression `s` can take
+// the value `nil` directly. Used by [GoTypeRef] to skip a redundant
+// pointer wrap on optional fields whose base type is already nilable.
+//
+// The check is purely syntactic — it inspects the leading characters of
+// the rendered type, plus a small fixed set of builtin/std-lib names —
+// because the codegen never sees a Go reflect.Type. That's enough to
+// catch every shape the DSL currently produces: arrays, maps, the
+// `file` / `reader` / `writer` / `any` / `bytes` builtins, and any
+// user-supplied pointer.
+func isNilableGoType(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(s, "[]"),
+		strings.HasPrefix(s, "map["),
+		strings.HasPrefix(s, "*"),
+		strings.HasPrefix(s, "chan "),
+		strings.HasPrefix(s, "func("):
+		return true
+	}
+	switch s {
+	case "io.Reader", "io.Writer", "io.ReadWriter",
+		"any", "interface{}", "json.RawMessage", "error":
+		return true
+	}
+	return false
 }
 
 // goNamedType maps a [ast.NamedTypeRef] to its Go form. Built-in DSL

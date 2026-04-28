@@ -11,3 +11,12 @@ openapi:
   title:    Bookstore API
   version:  1.0.0
   basePath: /api
+  # securitySchemes is the source of truth for `@security(name)`
+  # references. craftgo gen rejects any DSL reference that does not
+  # appear here — typos surface at build time rather than as broken
+  # OpenAPI output.
+  securitySchemes:
+    AuthRequired:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

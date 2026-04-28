@@ -1,0 +1,21 @@
+package design
+
+// AdminService showcases service-level decorators (@prefix, @group,
+// @middlewares, @tags, @security) shared across every method. Other
+// modes — streaming, raw, multipart — live in extend-service files
+// under stream/, raw/, file/ so the directory layout mirrors the HTTP
+// behaviour. The shared decorators on this primary declaration apply
+// to every extend-service method automatically.
+@prefix("/v1")
+@group("admin")
+@middlewares(AuthRequired)
+@tags(admin, ops)
+@security(AuthRequired)
+service AdminService {
+    // Stats returns aggregate book/order counts. Path resolves to
+    // `/api/v1/admin/stats`.
+    @doc("Aggregate counts for the admin dashboard.")
+    get Stats /stats {
+        response  AdminStats
+    }
+}

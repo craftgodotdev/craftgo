@@ -24,6 +24,9 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 {{- if .HasRequest}}
 		var req types.{{.RequestType}}
+{{- range .Defaults}}
+		req.{{.GoName}} = {{.Literal}}
+{{- end}}
 {{- if .BodyDecode}}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

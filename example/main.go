@@ -30,7 +30,6 @@ import (
 	"github.com/dropship-dev/craftgo/pkg/otel"
 	"github.com/dropship-dev/craftgo/pkg/server"
 
-	"github.com/dropship-dev/craftgo/example/extras"
 	"github.com/dropship-dev/craftgo/example/internal/middleware"
 	"github.com/dropship-dev/craftgo/example/internal/routes"
 	"github.com/dropship-dev/craftgo/example/svccontext"
@@ -77,13 +76,10 @@ func main() {
 	srv.Use(metrics.HTTPMiddleware())
 
 	// One call wires every service. The umbrella RegisterAll is
-	// generated from the DSL service set on every `craftgo gen`.
+	// generated from the DSL service set on every `craftgo gen`. All
+	// HTTP modes (multipart, SSE, NDJSON, raw, raw+stream) are now
+	// expressed in the DSL — see example/design/admin/admin-service.craftgo.
 	routes.RegisterAll(srv, svc)
-
-	// Hand-written routes for HTTP modes the v1 codegen does not yet
-	// emit (multipart upload, SSE, NDJSON, raw bytes). Lives in
-	// `example/extras/` and uses the same Server + ServiceContext.
-	extras.RegisterExtras(srv, svc)
 
 	go func() {
 		log.Println("listening on :8080")

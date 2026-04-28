@@ -1,0 +1,219 @@
+package design
+
+// ============================================================================
+// LEGACY — original demo types kept so existing smoke tests stay green.
+// ============================================================================
+
+// CalcRequest exercises every newly added numeric validator:
+//   - @positive on `quantity`
+//   - @negative on `delta`
+//   - @multipleOf on `pageSize`
+type CalcRequest {
+    quantity int    @required @positive
+    delta    int    @required @negative
+    pageSize int    @required @multipleOf(10)
+}
+
+type CalcResponse {
+    quantity int
+    delta    int
+    pageSize int
+}
+
+// FormatsRequest covers each new @format pattern documented in the
+// README. Every field stays optional so a single happy-path test can
+// fill any subset; @required isn't appropriate when the goal is to
+// demo the regex catalogue itself.
+type FormatsRequest {
+    ipv6       string? @format(ipv6)
+    happenedAt string? @format(datetime)
+    onDay      string? @format(date)
+    atTime     string? @format(time)
+    cidr       string? @format(cidr)
+    mac        string? @format(mac)
+    card       string? @format(creditcard)
+    blob       string? @format(base64)
+    color      string? @format(hexcolor)
+    payload    string? @format(json)
+}
+
+type FormatsResponse {
+    ipv6       string?
+    happenedAt string?
+    onDay      string?
+    atTime     string?
+    cidr       string?
+    mac        string?
+    card       string?
+    blob       string?
+    color      string?
+    payload    string?
+}
+
+// TagsRequest demonstrates the array-side validators: @minItems +
+// @maxItems on the count, @uniqueItems on the elements. Combined,
+// they reject empty / oversized / duplicate-bearing tag lists.
+type TagsRequest {
+    tags string[] @required @minItems(1) @maxItems(10) @uniqueItems
+}
+
+type TagsResponse {
+    tags  string[]
+    count int
+}
+
+// PageItem is a small struct with its own validators. Used to verify
+// that Page<PageItem>.Validate() recurses into each item via the
+// runtime type-assertion path the codegen emits for generic params.
+type PageItem {
+    name string @required @length(1, 50)
+}
+
+type PageRequest {
+    page Page<PageItem>
+}
+
+type PageResponse {
+    total int
+}
+
+// Priority / Tier — enum coverage.
+enum Priority {
+    Low
+    Normal
+    High
+    Critical
+}
+
+enum Tier {
+    Bronze = 1
+    Silver = 2
+    Gold   = 3
+}
+
+type EnumDemoRequest {
+    priority Priority   @required @doc("Severity tier") @deprecated
+    tier     Tier       @required
+    tags     Priority[] @minItems(1) @maxItems(5)
+    fallback Priority?
+}
+
+type EnumDemoResponse {
+    priority Priority
+    tier     Tier
+    tagsLen  int
+}
+
+// ============================================================================
+// SINGLE — one validator per field. Each field isolates a single
+// generated check so a smoke test can confirm it fires (or skips) on
+// its own.
+// ============================================================================
+
+type SingleStringReq {
+    name      string @required
+    bounded   string @length(3, 10)
+    minOnly   string @minLength(2)
+    maxOnly   string @maxLength(8)
+    alpha     string @pattern("^[a-z]+$")
+    email     string @format(email)
+}
+
+type SingleStringResp {
+    name      string
+    bounded   string
+    minOnly   string
+    maxOnly   string
+    alpha     string
+    email     string
+}
+
+type SingleNumericReq {
+    minVal    int @min(0)
+    maxVal    int @max(100)
+    inRange   int @range(1, 99)
+    pos       int @positive
+    neg       int @negative
+    multOf5   int @multipleOf(5)
+}
+
+type SingleNumericResp {
+    minVal    int
+    maxVal    int
+    inRange   int
+    pos       int
+    neg       int
+    multOf5   int
+}
+
+type SingleArrayReq {
+    atLeastOne string[] @minItems(1)
+    atMostFive string[] @maxItems(5)
+    distinct   string[] @uniqueItems
+}
+
+type SingleArrayResp {
+    atLeastOne string[]
+    atMostFive string[]
+    distinct   string[]
+}
+
+// ============================================================================
+// MIXED — multiple validators on one field. Order in the DSL is the
+// order checks fire: first failure short-circuits the rest.
+// ============================================================================
+
+type MixedReq {
+    // Username: required + length + pattern.
+    username string @required @length(3, 20) @pattern("^[a-z][a-z0-9_]*$")
+    // Score: required + range + multipleOf.
+    score    int    @required @range(0, 100) @multipleOf(5)
+    // Tags: required + minItems + maxItems + uniqueItems.
+    tags     string[] @required @minItems(1) @maxItems(10) @uniqueItems
+    // Optional contact with format guard (only fires when present).
+    contact  string? @format(email)
+}
+
+type MixedResp {
+    username string
+    score    int
+    tags     string[]
+    contact  string?
+}
+
+// ============================================================================
+// DEFAULTS — fields with @default values. JSON decoder never zeroes
+// fields absent from the body, so the pre-filled default survives.
+// ============================================================================
+
+type DefaultsReq {
+    status string  @default("pending") @required
+    limit  int     @default(20) @range(1, 100)
+    active bool    @default(true)
+    ratio  float64 @default(0.5) @min(0)
+}
+
+type DefaultsResp {
+    status string
+    limit  int
+    active bool
+    ratio  float64
+}
+
+// ============================================================================
+// GENERIC — Page<Item> with Item carrying its own validators. Validates
+// via runtime type-assertion in the generic Validate() method.
+// ============================================================================
+
+type GenericItem {
+    label string @required @length(1, 50)
+    qty   int    @positive
+}
+
+type GenericPageItemsReq {
+    page Page<GenericItem>
+}
+
+type GenericPageItemsResp {
+    total int
+}

@@ -1,0 +1,85 @@
+package design
+
+// ValidationService is the demo surface for every validator. Endpoints
+// are grouped by intent: the original /validate/* set covers the v1
+// validator catalogue; /validate/single, /validate/mixed,
+// /validate/defaults, /validate/generic exercise per-shape coverage.
+@prefix("/v1")
+@tags(validation, demo)
+service ValidationService {
+    // ------ legacy endpoints (kept so existing tests stay green) -----------
+
+    @doc("Numeric validators: @positive / @negative / @multipleOf.")
+    post Calc /validate/calc {
+        request   CalcRequest
+        response  CalcResponse
+    }
+
+    @doc("Each new @format pattern in the catalogue.")
+    post Formats /validate/formats {
+        request   FormatsRequest
+        response  FormatsResponse
+    }
+
+    @doc("Array validators: @minItems / @maxItems / @uniqueItems.")
+    post Tags /validate/tags {
+        request   TagsRequest
+        response  TagsResponse
+    }
+
+    @doc("Generic Page<PageItem> validates each item via runtime type-assertion.")
+    post Page /validate/page {
+        request   PageRequest
+        response  PageResponse
+    }
+
+    @doc("Enum validation: required + auto value-check + array of enum.")
+    post EnumDemo /validate/enum {
+        request   EnumDemoRequest
+        response  EnumDemoResponse
+    }
+
+    // ------ single-decorator coverage --------------------------------------
+
+    @doc("Single string validator per field.")
+    post SingleString /validate/single/string {
+        request   SingleStringReq
+        response  SingleStringResp
+    }
+
+    @doc("Single numeric validator per field.")
+    post SingleNumeric /validate/single/numeric {
+        request   SingleNumericReq
+        response  SingleNumericResp
+    }
+
+    @doc("Single array validator per field.")
+    post SingleArray /validate/single/array {
+        request   SingleArrayReq
+        response  SingleArrayResp
+    }
+
+    // ------ mixed-decorator coverage ---------------------------------------
+
+    @doc("Multiple validators stacked per field.")
+    post Mixed /validate/mixed {
+        request   MixedReq
+        response  MixedResp
+    }
+
+    // ------ default-value coverage -----------------------------------------
+
+    @doc("Pre-filled @default values survive JSON decode for absent fields.")
+    post Defaults /validate/defaults {
+        request   DefaultsReq
+        response  DefaultsResp
+    }
+
+    // ------ generic-with-inner-validators coverage -------------------------
+
+    @doc("Page<GenericItem> exercises generic Validate via type-assertion.")
+    post GenericPageItems /validate/generic {
+        request   GenericPageItemsReq
+        response  GenericPageItemsResp
+    }
+}

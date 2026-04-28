@@ -28,6 +28,9 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.{{.RequestType}}
+{{- range .Defaults}}
+		req.{{.GoName}} = {{.Literal}}
+{{- end}}
 {{- range .PathParams}}
 		req.{{.GoName}} = r.PathValue("{{.DSLName}}")
 {{- end}}
