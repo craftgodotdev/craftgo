@@ -78,7 +78,7 @@ type T {
     bodyField  string?
 }
 
-@aliases(["a", "b"])
+@doc("enum doc")
 enum E {
     A
     B
@@ -158,7 +158,7 @@ middleware RateLimit(rps: int = 100)
 		"summary", "operationId", "errors", "status",
 		"consumes", "produces", "raw", "stream", "accepts",
 		"readTimeout", "writeTimeout", "maxBodySize", "maxHeaderSize",
-		"responseDoc", "responseExample", "responseHeaders", "aliases",
+		"responseDoc", "responseExample", "responseHeaders",
 	}
 	seen := collectAllDecoratorNames(f)
 	for _, w := range want {

@@ -399,6 +399,86 @@ func TestDefaults_ExplicitNegativeRejectsRatio(t *testing.T) {
 }
 
 // ============================================================================
+// CROSS-FIELD — @requiresOneOf + @mutuallyExclusive
+// ============================================================================
+
+// TestCrossField_RequiresOneOfRejectsBothEmpty verifies the
+// @requiresOneOf rule fires when neither email nor phone is supplied.
+func TestCrossField_RequiresOneOfRejectsBothEmpty(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	status, body := postJSON(t, ts, "/api/v1/validate/cross", map[string]any{})
+	if status != http.StatusBadRequest || !strings.Contains(body, "requiresOneOf") {
+		t.Errorf("got %d %s", status, body)
+	}
+}
+
+// TestCrossField_RequiresOneOfAcceptsEither happy path: providing one
+// of the two channels is enough.
+func TestCrossField_RequiresOneOfAcceptsEither(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	status, body := postJSON(t, ts, "/api/v1/validate/cross", map[string]any{
+		"email": "x@y.z",
+	})
+	if status != http.StatusOK && status != http.StatusNoContent {
+		t.Errorf("got %d %s", status, body)
+	}
+}
+
+// TestCrossField_MutuallyExclusiveRejectsBoth verifies the
+// @mutuallyExclusive rule fires when both legacy toggles are true.
+func TestCrossField_MutuallyExclusiveRejectsBoth(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	status, body := postJSON(t, ts, "/api/v1/validate/cross", map[string]any{
+		"email":     "x@y.z",
+		"sms":       true,
+		"voicemail": true,
+	})
+	if status != http.StatusBadRequest || !strings.Contains(body, "mutuallyExclusive") {
+		t.Errorf("got %d %s", status, body)
+	}
+}
+
+// ============================================================================
+// METHOD LIMITS — @readTimeout + @maxBodySize
+// ============================================================================
+
+// TestLimited_RejectsOversizedBody pins @maxBodySize: a request body
+// over the cap (1024 bytes) trips http.MaxBytesReader before
+// json.Decode runs, so the handler reports a 400 with a body-size
+// error instead of decoding successfully.
+func TestLimited_RejectsOversizedBody(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	// Build a tags array large enough to push the JSON body past 1KB.
+	big := make([]string, 0, 200)
+	for i := 0; i < 200; i++ {
+		big = append(big, "tag-with-padding-just-to-grow-the-body")
+	}
+	status, body := postJSON(t, ts, "/api/v1/validate/limited", map[string]any{
+		"tags": big,
+	})
+	if status >= 200 && status < 300 {
+		t.Errorf("expected 4xx for oversized body, got %d %s", status, body)
+	}
+}
+
+// TestLimited_AcceptsSmallBody pins the negative case: a tiny body
+// passes through both the size cap and the validators.
+func TestLimited_AcceptsSmallBody(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	status, body := postJSON(t, ts, "/api/v1/validate/limited", map[string]any{
+		"tags": []string{"a", "b"},
+	})
+	if status != http.StatusOK && status != http.StatusNoContent {
+		t.Errorf("got %d %s", status, body)
+	}
+}
+
+// ============================================================================
 // GENERIC — Page<GenericItem> validates each item via type-assertion
 // ============================================================================
 

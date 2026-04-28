@@ -146,6 +146,37 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 	}
 }
 
+// ---------- cross-field validators ----------
+
+func TestValidateRequiresOneOf(t *testing.T) {
+	src := runValidateGen(t, `package design
+@requiresOneOf(["email", "phone"])
+type Contact { email string?  phone string? }`)
+	if !strings.Contains(src, "requiresOneOf") {
+		t.Errorf("missing requiresOneOf message:\n%s", src)
+	}
+	// De Morgan'd absence-AND form (idiomatic for staticcheck QF1001).
+	if !strings.Contains(src, "v.Email == nil && v.Phone == nil") {
+		t.Errorf("expected absence-AND check (De Morgan'd):\n%s", src)
+	}
+	// Negative — the original `!(... || ...)` form must NOT leak in.
+	if strings.Contains(src, "!(v.Email") {
+		t.Errorf("non-De-Morgan'd form leaked:\n%s", src)
+	}
+}
+
+func TestValidateMutuallyExclusive(t *testing.T) {
+	src := runValidateGen(t, `package design
+@mutuallyExclusive(["a", "b"])
+type T { a bool  b bool }`)
+	if !strings.Contains(src, "mutuallyExclusive") {
+		t.Errorf("missing mutuallyExclusive message:\n%s", src)
+	}
+	if !strings.Contains(src, "n := 0") || !strings.Contains(src, "n > 1") {
+		t.Errorf("expected counter-based check:\n%s", src)
+	}
+}
+
 // ---------- enum value validation ----------
 
 func TestValidateEnumValueSwitchEmitted(t *testing.T) {

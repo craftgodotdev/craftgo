@@ -161,7 +161,7 @@ type T {
     secret  string
 }
 
-@aliases(["a","b"])
+@doc("enum E")
 enum E {
     A
     B

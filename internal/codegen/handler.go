@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
 	"github.com/dropship-dev/craftgo/internal/config"
@@ -327,8 +328,17 @@ func hasDeprecatedDecorator(ds []*ast.Decorator) bool {
 // supplies the reason that ends up in `// Deprecated:` comments and
 // OpenAPI descriptions.
 func deprecatedReason(ds []*ast.Decorator) string {
+	return decoratorStringArg(ds, "deprecated")
+}
+
+// decoratorStringArg returns the first positional string argument of
+// the named decorator, or "" when absent. Used for simple
+// "decorator-with-text" forms: `@doc("...")`, `@summary("...")`,
+// `@deprecated("...")`. Multiple-argument or object-form decorators
+// have their own dedicated extractors.
+func decoratorStringArg(ds []*ast.Decorator, name string) string {
 	for _, d := range ds {
-		if d.Name != "deprecated" {
+		if d.Name != name {
 			continue
 		}
 		if len(d.Args) == 0 {
@@ -339,6 +349,21 @@ func deprecatedReason(ds []*ast.Decorator) string {
 		}
 	}
 	return ""
+}
+
+// resolveDescription returns the OpenAPI description for a node by
+// preferring the explicit `@doc("...")` decorator over the leading `//`
+// comment block. Both forms are documented in the README; `@doc` wins
+// because it's an intentional override, while comments are often
+// implementation notes the API consumer doesn't care about.
+func resolveDescription(decs []*ast.Decorator, doc []string) string {
+	if s := decoratorStringArg(decs, "doc"); s != "" {
+		return s
+	}
+	if len(doc) == 0 {
+		return ""
+	}
+	return strings.Join(doc, "\n")
 }
 
 // collectFormBindings returns the per-field form bindings used by the

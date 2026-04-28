@@ -3,6 +3,10 @@
 package {{.Package}}
 
 import (
+{{- if .NeedsTime}}
+	"time"
+
+{{end -}}
 	handler "{{.HandlerImport}}"
 	"github.com/dropship-dev/craftgo/pkg/server"
 	"{{.SvccontextImport}}"

@@ -77,7 +77,10 @@ type PageResponse {
     total int
 }
 
-// Priority / Tier — enum coverage.
+// Priority / Tier — enum coverage. Values are canonical-only; clients
+// must send the exact name. For migration scenarios use a versioned
+// endpoint (`/v1` vs `/v2`) instead of accepting alias spellings —
+// it's cleaner to retire and easier to validate.
 enum Priority {
     Low
     Normal
@@ -111,12 +114,12 @@ type EnumDemoResponse {
 // ============================================================================
 
 type SingleStringReq {
-    name      string @required
-    bounded   string @length(3, 10)
-    minOnly   string @minLength(2)
-    maxOnly   string @maxLength(8)
-    alpha     string @pattern("^[a-z]+$")
-    email     string @format(email)
+    name      string @required @example("alice") @doc("Display name — required, no length cap.")
+    bounded   string @length(3, 10) @example("morgan") @doc("Length bounded to [3, 10].")
+    minOnly   string @minLength(2) @example("ab") @doc("Floor-bounded length, no ceiling.")
+    maxOnly   string @maxLength(8) @example("short") @doc("Ceiling-bounded length, no floor.")
+    alpha     string @pattern("^[a-z]+$") @example("lowercase") @doc("Lowercase Latin letters only.")
+    email     string @format(email) @example("user@example.com") @doc("RFC-5322 email-shaped string.")
 }
 
 type SingleStringResp {
@@ -129,12 +132,12 @@ type SingleStringResp {
 }
 
 type SingleNumericReq {
-    minVal    int @min(0)
-    maxVal    int @max(100)
-    inRange   int @range(1, 99)
-    pos       int @positive
-    neg       int @negative
-    multOf5   int @multipleOf(5)
+    minVal    int @min(0)        @example(0)   @doc("Floor-bounded: rejects values < 0.")
+    maxVal    int @max(100)      @example(100) @doc("Ceiling-bounded: rejects values > 100.")
+    inRange   int @range(1, 99)  @example(50)  @doc("Inclusive range [1, 99].")
+    pos       int @positive      @example(1)   @doc("Strictly positive (> 0).")
+    neg       int @negative      @example(-1)  @doc("Strictly negative (< 0).")
+    multOf5   int @multipleOf(5) @example(25)  @doc("Must be a whole multiple of 5.")
 }
 
 type SingleNumericResp {
@@ -147,9 +150,9 @@ type SingleNumericResp {
 }
 
 type SingleArrayReq {
-    atLeastOne string[] @minItems(1)
-    atMostFive string[] @maxItems(5)
-    distinct   string[] @uniqueItems
+    atLeastOne string[] @minItems(1)  @example(["a"])         @doc("Non-empty list (≥ 1 item).")
+    atMostFive string[] @maxItems(5)  @example(["a", "b"])    @doc("At most five items.")
+    distinct   string[] @uniqueItems  @example(["red", "blue"]) @doc("Items must be unique.")
 }
 
 type SingleArrayResp {
@@ -191,6 +194,28 @@ type DefaultsReq {
     limit  int     @default(20) @range(1, 100)
     active bool    @default(true)
     ratio  float64 @default(0.5) @min(0)
+}
+
+// CrossFieldReq exercises the type-level cross-field validators
+// `@requiresOneOf` and `@mutuallyExclusive`. The generated Validate()
+// runs after every per-field check and short-circuits on the first
+// violation.
+//
+//   - `@requiresOneOf(["email", "phone"])` — at least one contact
+//     channel must be supplied; both empty rejects.
+//   - `@mutuallyExclusive(["sms", "voicemail"])` — the legacy
+//     boolean toggles can't both be true at once.
+@requiresOneOf(["email", "phone"])
+@mutuallyExclusive(["sms", "voicemail"])
+type CrossFieldReq {
+    email     string?
+    phone     string?
+    sms       bool
+    voicemail bool
+}
+
+type CrossFieldResp {
+    accepted bool
 }
 
 type DefaultsResp {

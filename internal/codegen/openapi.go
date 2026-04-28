@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -75,6 +76,47 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package) {
 	addTypeSchemas(doc, pkg)
 	addEnumSchemas(doc, pkg)
 	addScalarSchemas(doc, pkg)
+	addErrorSchemas(doc, pkg)
+}
+
+// addErrorSchemas emits one components.schemas entry per ErrorDecl so
+// `@errors(Name)` references on methods can $ref a stable target. The
+// shape mirrors the wire JSON the runtime emits: `code` (string),
+// `message` (string), plus any user-declared custom field. The
+// resulting schema name uses the smart-suffix rule (`UserNotFound` →
+// `UserNotFoundErr`), matching the Go type name in errors.go.
+func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
+	names := make([]string, 0, len(pkg.Errors))
+	for n := range pkg.Errors {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		ed := pkg.Errors[name]
+		typeName := errSuffix(ed.Name)
+		s := &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: openapi3.Schemas{},
+			Description: fmt.Sprintf("%s error response (HTTP %d).",
+				ed.Category, categoryStatus[ed.Category]),
+		}
+		s.Properties["code"] = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+		s.Properties["message"] = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+		// Custom user-declared fields (anything other than code /
+		// message) become regular properties on the same schema.
+		for _, m := range ed.Body {
+			f, ok := m.(*ast.Field)
+			if !ok {
+				continue
+			}
+			if f.Name == "code" || f.Name == "message" {
+				continue
+			}
+			s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
+		}
+		s.Required = []string{"code", "message"}
+		doc.Components.Schemas[typeName] = &openapi3.SchemaRef{Value: s}
+	}
 }
 
 // addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
@@ -168,8 +210,15 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
 	}
+	s.Description = resolveDescription(td.Decorators, td.Doc)
+	if title := decoratorStringArg(td.Decorators, "title"); title != "" {
+		s.Title = title
+	}
 	if hasDeprecatedDecorator(td.Decorators) {
 		s.Deprecated = true
+	}
+	if ed := externalDocsFromDecorators(td.Decorators); ed != nil {
+		s.ExternalDocs = ed
 	}
 	for _, m := range td.Body {
 		f, ok := m.(*ast.Field)
@@ -177,18 +226,144 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 			continue
 		}
 		ref := schemaForTypeRef(f.Type, pkg)
-		if hasDeprecatedDecorator(f.Decorators) && ref != nil && ref.Value != nil {
-			ref.Value.Deprecated = true
-			if reason := deprecatedReason(f.Decorators); reason != "" {
-				ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
-			}
-		}
+		applyFieldMetadata(f, ref)
 		s.Properties[f.Name] = ref
 		if hasRequiredDecorator(f.Decorators) {
 			s.Required = append(s.Required, f.Name)
 		}
 	}
 	return s
+}
+
+// applyFieldMetadata layers the OpenAPI-side decorator effects onto a
+// property schema: doc → description, deprecated → flag + note,
+// nullable → schema.Nullable, example → schema.Example.
+func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
+	if ref == nil || ref.Value == nil {
+		return
+	}
+	if desc := resolveDescription(f.Decorators, f.Doc); desc != "" {
+		ref.Value.Description = desc
+	}
+	if hasDeprecatedDecorator(f.Decorators) {
+		ref.Value.Deprecated = true
+		if reason := deprecatedReason(f.Decorators); reason != "" {
+			ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
+		}
+	}
+	if hasNullableDecorator(f.Decorators) {
+		applyNullable(ref.Value)
+	}
+	if ex, ok := exampleValue(f.Decorators); ok {
+		ref.Value.Example = ex
+	}
+}
+
+// exampleValue extracts an `@example(v)` argument as a typed Go value
+// suitable for `openapi3.Schema.Example`. Strings, ints, floats, and
+// booleans all round-trip through YAML correctly when assigned to the
+// `any` Example field. Array literals (`@example(["a", "b"])`) become
+// `[]any` so array-typed properties get a sensible YAML rendering.
+// Returns (nil, false) when no example decorator is present so the
+// caller leaves the schema untouched.
+func exampleValue(ds []*ast.Decorator) (any, bool) {
+	for _, d := range ds {
+		if d.Name != "example" || len(d.Args) == 0 {
+			continue
+		}
+		return literalToAny(d.Args[0].Value)
+	}
+	return nil, false
+}
+
+// literalToAny converts an [ast.Expr] literal into the equivalent Go
+// runtime value. Arrays recurse so nested literals (e.g. an array of
+// ints) round-trip without losing element types. Unsupported nodes
+// return (nil, false) and the caller skips emission.
+func literalToAny(e ast.Expr) (any, bool) {
+	switch v := e.(type) {
+	case *ast.StringLit:
+		return v.Value, true
+	case *ast.IntLit:
+		return v.Value, true
+	case *ast.FloatLit:
+		return v.Value, true
+	case *ast.BoolLit:
+		return v.Value, true
+	case *ast.NullLit:
+		return nil, true
+	case *ast.ArrayLit:
+		out := make([]any, 0, len(v.Elements))
+		for _, el := range v.Elements {
+			x, ok := literalToAny(el)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, x)
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// hasNullableDecorator reports whether `@nullable` appears on the
+// field. The DSL already has `T?` for "optional" (field can be absent);
+// `@nullable` is the orthogonal "value can be null when present" flag,
+// surfaced via OpenAPI's null-type entry so spec consumers know
+// `null` is a valid wire value.
+func hasNullableDecorator(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		if d.Name == "nullable" {
+			return true
+		}
+	}
+	return false
+}
+
+// applyNullable marks a schema as nullable. We emit the OpenAPI 3.0
+// boolean form (`nullable: true`) even though our doc carries the
+// `openapi: 3.1.0` header — kin-openapi 0.124's validator rejects the
+// 3.1 canonical `type: [<base>, null]` array (it doesn't recognise
+// "null" as a valid type entry). Once kin-openapi catches up, this
+// helper can switch to appending "null" onto Schema.Type without any
+// caller change.
+func applyNullable(s *openapi3.Schema) {
+	if s != nil {
+		s.Nullable = true
+	}
+}
+
+// externalDocsFromDecorators reads `@externalDocs(url: "…", description: "…")`
+// off a chain. Both `url` and `description` are accepted as named args;
+// missing url returns nil because OpenAPI treats `externalDocs.url` as
+// required and consumers (Swagger UI) drop entries without it.
+func externalDocsFromDecorators(ds []*ast.Decorator) *openapi3.ExternalDocs {
+	for _, d := range ds {
+		if d.Name != "externalDocs" {
+			continue
+		}
+		var url, desc string
+		for _, a := range d.Args {
+			if !a.Named {
+				continue
+			}
+			s, ok := a.Value.(*ast.StringLit)
+			if !ok {
+				continue
+			}
+			switch a.Name {
+			case "url":
+				url = s.Value
+			case "description":
+				desc = s.Value
+			}
+		}
+		if url == "" {
+			return nil
+		}
+		return &openapi3.ExternalDocs{URL: url, Description: desc}
+	}
+	return nil
 }
 
 // appendDescription joins a new note onto an existing description with
@@ -493,6 +668,11 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 		OperationID: operationID(m),
 		Tags:        operationTags(svcName, m, pkg),
 		Responses:   openapi3.NewResponses(),
+		Description: resolveDescription(m.Decorators, m.Doc),
+		Summary:     decoratorStringArg(m.Decorators, "summary"),
+	}
+	if ed := externalDocsFromDecorators(m.Decorators); ed != nil {
+		op.ExternalDocs = ed
 	}
 	if sec := securityFromDecorators(m.Decorators); sec != nil {
 		op.Security = sec
@@ -560,22 +740,23 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, m.Name)
 		}
 	}
+	successCode := successStatus(m)
 	switch {
 	case isRaw:
 		desc := "OK"
-		op.Responses.Set("200", &openapi3.ResponseRef{Value: &openapi3.Response{
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
 			Content:     octetStreamContent(),
 		}})
 	case isStream && m.Response != nil && m.Response.Type != nil:
 		desc := "OK"
-		op.Responses.Set("200", &openapi3.ResponseRef{Value: &openapi3.Response{
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
 			Content:     streamContent(streamMime(m), m.Name),
 		}})
 	case m.Response != nil && m.Response.Type != nil:
 		desc := "OK"
-		op.Responses.Set("200", &openapi3.ResponseRef{Value: &openapi3.Response{
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
 				"application/json": &openapi3.MediaType{
@@ -588,9 +769,88 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 		}})
 	default:
 		desc := "No Content"
-		op.Responses.Set("204", &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
+		fallback := "204"
+		if successCode != "200" {
+			fallback = successCode
+		}
+		op.Responses.Set(fallback, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
 	}
+	addErrorResponses(op, m, pkg)
 	return op
+}
+
+// successStatus returns the HTTP status code key for the success
+// response. `@status(N)` overrides the default; otherwise body verbs
+// without a response default to 204 elsewhere, and everything else
+// to 200 here.
+func successStatus(m *ast.Method) string {
+	for _, d := range m.Decorators {
+		if d.Name != "status" || len(d.Args) == 0 {
+			continue
+		}
+		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
+			return strconv.FormatInt(i.Value, 10)
+		}
+	}
+	return "200"
+}
+
+// addErrorResponses walks `@errors(NameA, NameB)` on the method and
+// adds one OpenAPI response entry per declared error type. The status
+// code comes from the error's category (categoryStatus) and the schema
+// $refs the error type's components.schemas entry. Unknown error names
+// are silently skipped — semantic phase doesn't validate the refs yet,
+// so we treat that as best-effort docs rather than fail codegen.
+func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package) {
+	names := errorRefsFromDecorators(m.Decorators)
+	if len(names) == 0 {
+		return
+	}
+	for _, name := range names {
+		ed, ok := pkg.Errors[name]
+		if !ok {
+			continue
+		}
+		typeName := errSuffix(ed.Name)
+		status := strconv.Itoa(categoryStatus[ed.Category])
+		desc := ed.Category
+		op.Responses.Set(status, &openapi3.ResponseRef{Value: &openapi3.Response{
+			Description: &desc,
+			Content: openapi3.Content{
+				"application/json": &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + typeName},
+				},
+			},
+		}})
+	}
+}
+
+// errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`
+// chain on the method into a deduplicated list of error declaration
+// names. Both the bare-ident form (`@errors(Foo)`) and the
+// fully-qualified `pkg.Foo` form parse here — qualified refs collapse
+// to the trailing segment because cross-package resolution is v2.
+func errorRefsFromDecorators(ds []*ast.Decorator) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, d := range ds {
+		if d.Name != "errors" {
+			continue
+		}
+		for _, a := range d.Args {
+			id, ok := a.Value.(*ast.IdentExpr)
+			if !ok || id.Name == nil {
+				continue
+			}
+			name := id.Name.Parts[len(id.Name.Parts)-1]
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // rawRequestBody describes a `@raw` POST/PUT/PATCH body — opaque bytes

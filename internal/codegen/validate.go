@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
 	"github.com/dropship-dev/craftgo/internal/semantic"
@@ -132,5 +133,205 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, uses map[string]bool
 			out = append(out, nested)
 		}
 	}
+	// Type-level cross-field validators (@requiresOneOf,
+	// @mutuallyExclusive) run AFTER per-field checks so a clearly-bad
+	// individual field surfaces its own error first. The cross-field
+	// rules then assume each visible value is structurally sound.
+	out = append(out, crossFieldChecks(td, uses)...)
 	return out
+}
+
+// crossFieldChecks emits the type-level validators @requiresOneOf and
+// @mutuallyExclusive. Each takes an array of field names; the
+// generated code computes each field's "presence" via [presenceExpr]
+// and then asserts the count constraint.
+//
+//	@requiresOneOf(["a", "b"])     → at least one must be present
+//	@mutuallyExclusive(["a", "b"]) → at most one may be present
+func crossFieldChecks(td *ast.TypeDecl, uses map[string]bool) []string {
+	if len(td.Decorators) == 0 {
+		return nil
+	}
+	var out []string
+	for _, d := range td.Decorators {
+		switch d.Name {
+		case "requiresOneOf":
+			if names := stringArrayDecoratorArg(d); len(names) > 0 {
+				out = append(out, requiresOneOfCheck(td, names, uses))
+			}
+		case "mutuallyExclusive":
+			if names := stringArrayDecoratorArg(d); len(names) > 0 {
+				out = append(out, mutuallyExclusiveCheck(td, names, uses))
+			}
+		}
+	}
+	return out
+}
+
+// stringArrayDecoratorArg returns the string-array argument of a
+// type-level decorator, or nil when the first arg isn't an
+// `[ "a", "b" ]` literal.
+func stringArrayDecoratorArg(d *ast.Decorator) []string {
+	if len(d.Args) == 0 {
+		return nil
+	}
+	arr, ok := d.Args[0].Value.(*ast.ArrayLit)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr.Elements))
+	for _, e := range arr.Elements {
+		if s, ok := e.(*ast.StringLit); ok {
+			out = append(out, s.Value)
+		}
+	}
+	return out
+}
+
+// requiresOneOfCheck emits a De Morgan'd absence-conjunction:
+// "all fields are absent" → reject. The natural negation
+// `!(presentA || presentB)` triggers `staticcheck`'s QF1001
+// (De Morgan), so we invert each presence expression up-front and
+// join with `&&` — the generated source is what `staticcheck` would
+// rewrite to anyway.
+func requiresOneOfCheck(td *ast.TypeDecl, names []string, uses map[string]bool) string {
+	uses["fmt"] = true
+	parts := absenceParts(td, names)
+	cond := strings.Join(parts, " && ")
+	msg := fmt.Sprintf(`"%s: requiresOneOf %v — at least one must be set"`, td.Name, names)
+	return ifReturnf(cond, msg)
+}
+
+// mutuallyExclusiveCheck emits a counter-based block: count how many
+// of the listed fields are present and reject when > 1. The whole
+// thing is wrapped in a bare `{ ... }` block so the `n` counter
+// scopes locally — multiple @mutuallyExclusive declarations on the
+// same struct don't shadow each other.
+func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, uses map[string]bool) string {
+	uses["fmt"] = true
+	parts := presenceParts(td, names)
+	counters := make([]string, len(parts))
+	for i, p := range parts {
+		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
+	}
+	return fmt.Sprintf(`{
+n := 0
+%s
+if n > 1 {
+return fmt.Errorf("%s: mutuallyExclusive %v — at most one may be set")
+}
+}`, strings.Join(counters, "\n"), td.Name, names)
+}
+
+// presenceParts returns one Go boolean expression per name in the
+// list. Unknown names (typoed by the user) become a literal `false`
+// so the generated code compiles even when the decorator references a
+// missing field — the resulting check is a no-op for that slot.
+func presenceParts(td *ast.TypeDecl, names []string) []string {
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		f := lookupField(td, name)
+		if f == nil {
+			parts = append(parts, "false")
+			continue
+		}
+		parts = append(parts, presenceExpr(f))
+	}
+	return parts
+}
+
+// lookupField finds the Field in a TypeDecl by DSL field name.
+func lookupField(td *ast.TypeDecl, name string) *ast.Field {
+	for _, m := range td.Body {
+		f, ok := m.(*ast.Field)
+		if ok && f.Name == name {
+			return f
+		}
+	}
+	return nil
+}
+
+// presenceExpr returns the Go expression that's true when the field
+// has a meaningful value (matching @required's definition):
+//
+//   - optional `T?` (pointer) → `v.X != nil`
+//   - slice / map            → `len(v.X) > 0`
+//   - string                 → `v.X != ""`
+//   - numeric                → `v.X != 0`
+//   - other                  → fall back to "true" (always present)
+func presenceExpr(f *ast.Field) string {
+	access := "v." + GoFieldName(f.Name)
+	if f.Type == nil {
+		return "true"
+	}
+	if f.Type.Optional {
+		return access + " != nil"
+	}
+	if f.Type.Array || f.Type.Map != nil {
+		return "len(" + access + ") > 0"
+	}
+	if f.Type.Named != nil {
+		switch f.Type.Named.Name.String() {
+		case "string":
+			return access + ` != ""`
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint8", "uint16", "uint32", "uint64",
+			"float32", "float64":
+			return access + " != 0"
+		case "bool":
+			return access
+		}
+	}
+	return "true"
+}
+
+// absenceParts is the De Morgan inverse of [presenceParts]: each entry
+// is the Go expression that's true when the field is "missing". Used
+// by [requiresOneOfCheck] so the emitted condition reads as
+// `!a && !b && !c` (idiomatic) instead of `!(a || b || c)` (which
+// staticcheck flags as QF1001).
+func absenceParts(td *ast.TypeDecl, names []string) []string {
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		f := lookupField(td, name)
+		if f == nil {
+			// Unknown field → treat as "present" so the rule never
+			// fires for typoed names; mirrors presenceParts's
+			// `false` literal but on the absence side.
+			parts = append(parts, "false")
+			continue
+		}
+		parts = append(parts, absenceExpr(f))
+	}
+	return parts
+}
+
+// absenceExpr is the inverse of [presenceExpr]. Operators are flipped
+// directly (`!=` ↔ `==`, `> 0` → `== 0`, `bool` → `!bool`) so the
+// generated source is the form `staticcheck` recommends and no extra
+// `!(...)` wrapping leaks into the output.
+func absenceExpr(f *ast.Field) string {
+	access := "v." + GoFieldName(f.Name)
+	if f.Type == nil {
+		return "false"
+	}
+	if f.Type.Optional {
+		return access + " == nil"
+	}
+	if f.Type.Array || f.Type.Map != nil {
+		return "len(" + access + ") == 0"
+	}
+	if f.Type.Named != nil {
+		switch f.Type.Named.Name.String() {
+		case "string":
+			return access + ` == ""`
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint8", "uint16", "uint32", "uint64",
+			"float32", "float64":
+			return access + " == 0"
+		case "bool":
+			return "!" + access
+		}
+	}
+	return "false"
 }

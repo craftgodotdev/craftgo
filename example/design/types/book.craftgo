@@ -27,12 +27,17 @@ type BookList {
 
 // CreateBookReq is the body for POST /books. Validators below enforce
 // every business rule we don't want to encode in handler code.
+//
+// Demonstrates the metadata trio: `@example("…")` seeds Swagger UI's
+// "Try it out" panel, `@nullable` lets `null` ride the wire as a
+// distinct value from absence (`isbn: null` valid, `isbn: "x"` valid),
+// and `@doc("…")` overrides the generated description.
 type CreateBookReq {
-    title      string  @required @length(1, 200)
-    author     string  @required @length(1, 100)
-    isbn       string  @required @pattern("^[0-9]{13}$")
-    priceCents int     @required @min(1)
-    stock      int     @min(0) @max(100000)
+    title      string  @required @length(1, 200) @example("The Go Programming Language") @doc("Display title — shown verbatim on book lists.")
+    author     string  @required @length(1, 100) @example("Alan A. A. Donovan") @doc("Author full name in display order.")
+    isbn       string  @required @pattern("^[0-9]{13}$") @example("9780134190440") @nullable
+    priceCents int     @required @min(1) @example(4995)
+    stock      int     @min(0) @max(100000) @example(10)
 }
 
 // GetBookReq carries only the path id; the handler binds it from the

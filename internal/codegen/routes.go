@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
 	"github.com/dropship-dev/craftgo/internal/config"
@@ -25,18 +27,117 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 }
 
 // buildHandlerCall produces the Go expression that lands as the second
-// argument to `srv.HandleFunc`. Middlewares are wrapped LEFT-TO-RIGHT
-// so the first name in the slice ends up outermost, matching how
-// readers expect to see the chain ("Auth wraps everything else").
-func buildHandlerCall(methodName string, mws []string) string {
-	core := "handler." + methodName + "Handler(svcCtx)"
-	if len(mws) == 0 {
-		return core
-	}
+// argument to `srv.Handle`. Middlewares are wrapped LEFT-TO-RIGHT so
+// the first name in the slice ends up outermost, matching how readers
+// expect to see the chain ("Auth wraps everything else"). When the
+// method declares any of the limit decorators (@readTimeout,
+// @writeTimeout, @maxBodySize, @maxHeaderSize) the entire chain is
+// further wrapped in `server.WithLimits(...)` so the limits apply
+// outside any middleware — timeouts include the middleware's own
+// work, not just the handler's.
+func buildHandlerCall(m *ast.Method, mws []string) string {
+	core := "handler." + m.Name + "Handler(svcCtx)"
 	for i := len(mws) - 1; i >= 0; i-- {
 		core = "svcCtx." + mws[i] + "(" + core + ")"
 	}
+	if lit, ok := methodLimitsLiteral(m); ok {
+		core = "server.WithLimits(" + core + ", " + lit + ")"
+	}
 	return core
+}
+
+// methodLimitsLiteral renders a `server.Limits{...}` Go-source struct
+// literal from the method's decorators, or returns ("", false) when
+// none of the limit decorators are present. Streaming methods opt out
+// of `@readTimeout` because `http.TimeoutHandler` would cut the stream
+// mid-flight; @maxBodySize and informational fields still apply.
+func methodLimitsLiteral(m *ast.Method) (string, bool) {
+	streaming := hasStreamDecorator(m.Decorators)
+	var fields []string
+	if !streaming {
+		if d := durationDecoratorArg(m.Decorators, "readTimeout"); d != "" {
+			fields = append(fields, "ReadTimeout: "+d)
+		}
+		if d := durationDecoratorArg(m.Decorators, "writeTimeout"); d != "" {
+			fields = append(fields, "WriteTimeout: "+d)
+		}
+	}
+	if n := sizeDecoratorArg(m.Decorators, "maxBodySize"); n > 0 {
+		fields = append(fields, fmt.Sprintf("MaxBodySize: %d", n))
+	}
+	if n := sizeDecoratorArg(m.Decorators, "maxHeaderSize"); n > 0 {
+		fields = append(fields, fmt.Sprintf("MaxHeaderSize: %d", n))
+	}
+	if len(fields) == 0 {
+		return "", false
+	}
+	return "server.Limits{" + strings.Join(fields, ", ") + "}", true
+}
+
+// durationDecoratorArg returns the Go-source expression for a
+// duration argument like `@readTimeout(30s)`. Supports both
+// DurationLit (preferred) and bare integers (interpreted as seconds
+// per the README's "bare number → seconds" rule). Empty string means
+// the decorator is absent or carries an unsupported literal.
+func durationDecoratorArg(ds []*ast.Decorator, name string) string {
+	for _, d := range ds {
+		if d.Name != name || len(d.Args) == 0 {
+			continue
+		}
+		switch v := d.Args[0].Value.(type) {
+		case *ast.DurationLit:
+			if dur, ok := parseDurationText(v.Text); ok {
+				return formatDurationGo(dur)
+			}
+		case *ast.IntLit:
+			return fmt.Sprintf("%d * time.Second", v.Value)
+		}
+	}
+	return ""
+}
+
+// sizeDecoratorArg returns the byte count for a size argument like
+// `@maxBodySize(10MB)` or `@maxBodySize(1024)`. Reuses the size parser
+// from the file-validator codegen path.
+func sizeDecoratorArg(ds []*ast.Decorator, name string) int64 {
+	for _, d := range ds {
+		if d.Name != name || len(d.Args) == 0 {
+			continue
+		}
+		if n, ok := sizeArg(d.Args[0]); ok {
+			return n
+		}
+	}
+	return 0
+}
+
+// parseDurationText converts a DSL duration literal (e.g. "30s",
+// "1.5h") into a time.Duration. Wraps the stdlib parser so we don't
+// duplicate the suffix matrix.
+func parseDurationText(text string) (time.Duration, bool) {
+	// `µs` and `us` are both DSL-legal; ParseDuration accepts both.
+	d, err := time.ParseDuration(text)
+	if err != nil {
+		return 0, false
+	}
+	return d, true
+}
+
+// formatDurationGo emits a duration as a Go-source expression,
+// preferring the largest unit that divides cleanly so the generated
+// routes file reads naturally ("30 * time.Second" beats "30000000000").
+func formatDurationGo(d time.Duration) string {
+	switch {
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%d * time.Hour", d/time.Hour)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%d * time.Minute", d/time.Minute)
+	case d%time.Second == 0:
+		return fmt.Sprintf("%d * time.Second", d/time.Second)
+	case d%time.Millisecond == 0:
+		return fmt.Sprintf("%d * time.Millisecond", d/time.Millisecond)
+	}
+	return fmt.Sprintf("%d * time.Nanosecond", d.Nanoseconds())
 }
 
 // extractMiddlewareNames pulls the identifier arguments out of every
@@ -67,13 +168,17 @@ type routeEntry struct {
 	HandlerCall string
 }
 
-// routesData is the template input for `routes.tmpl`.
+// routesData is the template input for `routes.tmpl`. NeedsTime tells
+// the template whether to import "time"; we set it when at least one
+// route emits a duration literal so the generated file stays clean
+// for projects that don't use timeout decorators.
 type routesData struct {
 	Package          string
 	Service          string
 	HandlerImport    string
 	SvccontextImport string
 	Routes           []routeEntry
+	NeedsTime        bool
 }
 
 // GenerateRoutes emits one `routes.go` per service under
@@ -155,10 +260,14 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 	for _, m := range svc.Methods {
 		full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
 		mws := middlewareNames(m, svc.Primary)
+		call := buildHandlerCall(m, mws)
+		if strings.Contains(call, "time.") {
+			data.NeedsTime = true
+		}
 		data.Routes = append(data.Routes, routeEntry{
 			Pattern:     httpVerb(m.Verb) + " " + full,
 			Method:      m.Name,
-			HandlerCall: buildHandlerCall(m.Name, mws),
+			HandlerCall: call,
 		})
 	}
 	formatted, err := renderGo(tmpl("routes.tmpl"), data)

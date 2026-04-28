@@ -415,6 +415,67 @@ service AdminService {
 	}
 }
 
+// TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for
+// methods declaring `@readTimeout` / `@writeTimeout` / `@maxBodySize`.
+// Routes get wrapped in `server.WithLimits(handler, server.Limits{...})`
+// at the call site; the routes file imports "time" because the
+// emitted literal uses time.Millisecond / time.Second helpers.
+func TestGenerateRoutesMethodLimits(t *testing.T) {
+	src := `package design
+type Req { x string }
+service S {
+    @readTimeout(500ms)
+    @maxBodySize(1024)
+    post Make /m { request Req }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
+	body := string(out)
+	mustParseGo(t, body)
+	for _, want := range []string{
+		`"time"`,
+		"server.WithLimits",
+		"ReadTimeout: 500 * time.Millisecond",
+		"MaxBodySize: 1024",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in routes:\n%s", want, body)
+		}
+	}
+}
+
+// TestGenerateRoutesStreamSkipsReadTimeout pins the streaming-method
+// carve-out: `@readTimeout` is silently dropped when the method also
+// has `@stream` because http.TimeoutHandler would cut the stream
+// mid-flight.
+func TestGenerateRoutesStreamSkipsReadTimeout(t *testing.T) {
+	src := `package design
+type Tick { i int }
+service S {
+    @stream
+    @readTimeout(5s)
+    @maxBodySize(2048)
+    get Live /live { response stream Tick }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
+	src2 := string(body)
+	if strings.Contains(src2, "ReadTimeout:") {
+		t.Errorf("streaming method should not get ReadTimeout:\n%s", src2)
+	}
+	if !strings.Contains(src2, "MaxBodySize:") {
+		t.Errorf("MaxBodySize should still apply to streams:\n%s", src2)
+	}
+}
+
 func TestGenerateRoutesNoBasePathNoPrefix(t *testing.T) {
 	pkg := analyzePkg(t, `package design
 

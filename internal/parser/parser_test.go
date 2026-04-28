@@ -264,7 +264,7 @@ func TestEnumString(t *testing.T) {
 }
 
 func TestEnumWithDecorator(t *testing.T) {
-	f := mustParse(t, `enum X { A @aliases("a") }`)
+	f := mustParse(t, `enum X { A @doc("the A value") }`)
 	v := f.Decls[0].(*ast.EnumDecl).Values[0]
 	if len(v.Decorators) != 1 {
 		t.Error()

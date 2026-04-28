@@ -47,11 +47,13 @@ func ifReturnf(cond, msg string) string {
 
 // ----- presence ----------------------------------------------------------
 
-// requiredKind picks the right Go conditional for an absent value. The
-// extra `false` sentinel signals "this field type has no obvious empty
-// value" so the caller drops the check rather than emitting a no-op.
+// requiredKind picks the right Go conditional for an absent value.
+// The empty-string sentinel signals "this field type has no obvious
+// empty value" so the caller drops the check rather than emitting a
+// no-op. `@nullable` upgrades the field to a pointer; the nil check
+// covers both "absent from JSON" and "explicit null".
 func requiredKind(f *ast.Field, access string) string {
-	if f.Type == nil || f.Type.Optional {
+	if f.Type == nil || f.Type.Optional || goFieldIsPointer(f) {
 		return access + " == nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {

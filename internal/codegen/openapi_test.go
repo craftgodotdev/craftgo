@@ -74,6 +74,147 @@ service S { post Send /m { request Req } }`
 	}
 }
 
+// TestGenerateOpenAPIErrorsDecorator pins the @errors flow:
+// referenced error decls land as components.schemas entries AND as
+// per-operation responses keyed by the error category's HTTP status.
+func TestGenerateOpenAPIErrorsDecorator(t *testing.T) {
+	src := `package design
+error NotFound BookNotFound
+error Conflict DuplicateISBN { sku string }
+type Book { id string }
+service S {
+    @errors(BookNotFound)
+    get GetBook /books/{id} { response Book }
+    @errors(DuplicateISBN)
+    @status(201)
+    post CreateBook /books { request Book  response Book }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+
+	// Error type schemas are emitted under components.schemas.
+	for _, want := range []string{"BookNotFoundErr:", "DuplicateISBNErr:"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected error schema %q:\n%s", want, body)
+		}
+	}
+	// GetBook response 404 → BookNotFoundErr.
+	if !strings.Contains(body, `'#/components/schemas/BookNotFoundErr'`) {
+		t.Error("expected BookNotFoundErr ref")
+	}
+	// CreateBook overrides success to 201 via @status.
+	if !strings.Contains(body, `"201":`) {
+		t.Errorf("expected @status(201) override:\n%s", body)
+	}
+	// CreateBook also registers 409 (Conflict) for DuplicateISBN.
+	if !strings.Contains(body, `"409":`) {
+		t.Errorf("expected 409 Conflict response:\n%s", body)
+	}
+}
+
+// TestGenerateOpenAPIDocSummaryDescription covers the doc-flavour
+// trio: type/field/operation `@doc` propagates to OpenAPI
+// `description`, `@summary` lands on the operation summary, and
+// leading `// comment` blocks fall through as descriptions when no
+// `@doc` is supplied.
+func TestGenerateOpenAPIDocSummaryDescription(t *testing.T) {
+	src := `package design
+// Book represents a catalog entry.
+type Book {
+    id    string @doc("Stable identifier.")
+    title string
+}
+service S {
+    @doc("Fetch a single book.")
+    @summary("Get a book")
+    get GetBook /books/{id} { response Book }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	src2 := string(body)
+
+	if !strings.Contains(src2, "Book represents a catalog entry.") {
+		t.Errorf("expected type description from leading // comment:\n%s", src2)
+	}
+	if !strings.Contains(src2, "Stable identifier.") {
+		t.Errorf("expected field description from @doc:\n%s", src2)
+	}
+	if !strings.Contains(src2, "Fetch a single book.") {
+		t.Errorf("expected operation description:\n%s", src2)
+	}
+	if !strings.Contains(src2, "summary: Get a book") {
+		t.Errorf("expected operation summary:\n%s", src2)
+	}
+}
+
+// TestGenerateOpenAPIExampleNullable covers the field-side metadata
+// pair (@example/@nullable). Aliases on enum values were removed —
+// the API surface insisted on canonical wire vocabulary.
+func TestGenerateOpenAPIExampleNullable(t *testing.T) {
+	src := `package design
+type T {
+    name  string @example("alice")
+    age   int    @example(30)
+    nick  string @nullable
+}
+service S { post Create /c { request T  response T } }`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	src2 := string(body)
+
+	if !strings.Contains(src2, "example: alice") {
+		t.Errorf("expected string example:\n%s", src2)
+	}
+	if !strings.Contains(src2, "example: 30") {
+		t.Errorf("expected int example:\n%s", src2)
+	}
+	if !strings.Contains(src2, "nullable: true") {
+		t.Errorf("expected nullable: true on field:\n%s", src2)
+	}
+}
+
+// TestGenerateOpenAPIExternalDocs covers `@externalDocs(url:..., description:...)`
+// on operations and types.
+func TestGenerateOpenAPIExternalDocs(t *testing.T) {
+	src := `package design
+@externalDocs(url: "https://docs.example.com/book", description: "Book schema reference")
+type Book { id string }
+service S {
+    @externalDocs(url: "https://docs.example.com/list", description: "Listing endpoint guide")
+    get List /books { response Book }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	src2 := string(body)
+	for _, want := range []string{
+		"https://docs.example.com/book",
+		"Book schema reference",
+		"https://docs.example.com/list",
+		"Listing endpoint guide",
+	} {
+		if !strings.Contains(src2, want) {
+			t.Errorf("expected externalDocs entry %q:\n%s", want, src2)
+		}
+	}
+}
+
 // TestGenerateOpenAPIDeprecated covers the three @deprecated emission
 // sites: type-level marks the schema deprecated, field-level marks
 // only that property, and method-level marks the operation. A

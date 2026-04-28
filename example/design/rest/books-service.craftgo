@@ -23,10 +23,19 @@ service BooksService {
     // CreateBook is the auth-gated catalog write. The handler chain at
     // gen time becomes `RateLimit → AuthRequired → handler` because
     // service-level @middlewares run outermost.
-    @doc("Add a book to the catalog (admin-only).")
+    //
+    // Demonstrates the operation-metadata trio: `@summary` becomes the
+    // 1-line operation header in Swagger UI; `@doc("…")` overrides the
+    // longer description; `@status(201)` swaps the success response
+    // code from the default 200 to "Created"; `@externalDocs(...)`
+    // attaches a documentation link rendered alongside the operation.
+    @summary("Create a book")
+    @doc("Add a book to the catalog. Admins only — request must carry a valid bearer token.")
     @middlewares(AuthRequired, RateLimit)
     @security(AuthRequired)
     @errors(DuplicateISBN, RateLimited)
+    @status(201)
+    @externalDocs(url: "https://docs.example.com/books/create", description: "Catalog write guide")
     post CreateBook /books {
         request   CreateBookReq
         response  Book

@@ -104,23 +104,25 @@ func arrayElemType(t *ast.TypeRef) string {
 	return GoTypeRef(&clone)
 }
 
-// optionalGuard returns the leading nil-check expression for an
-// optional field, e.g. "v.X != nil && ". Plain (non-optional) fields
-// return the empty string — their access expression is already a
-// concrete value.
+// optionalGuard returns the leading nil-check expression for any
+// field whose generated Go type is a pointer (`*T`). Plain value
+// fields return the empty string — their access expression is already
+// a concrete value. Both `T?` (optional) and `T @nullable` (forced
+// pointer to allow JSON null) end up as Go pointers, so the same
+// guard handles both.
 func optionalGuard(f *ast.Field, access string) string {
-	if f != nil && f.Type != nil && f.Type.Optional {
+	if goFieldIsPointer(f) {
 		return access + " != nil && "
 	}
 	return ""
 }
 
-// stringValueExpr returns the string-typed access expression. For
-// optional fields the pointer is dereferenced once; for plain fields
-// the access is used as-is. Pair with [optionalGuard] to ensure the
-// dereference only runs after the nil check.
+// stringValueExpr returns the string-typed access expression. Pointer
+// fields (`T?` or `@nullable T`) get a single dereference; plain fields
+// pass through. Pair with [optionalGuard] so the dereference only
+// runs after the nil check.
 func stringValueExpr(f *ast.Field, access string) string {
-	if f != nil && f.Type != nil && f.Type.Optional {
+	if goFieldIsPointer(f) {
 		return "*" + access
 	}
 	return access

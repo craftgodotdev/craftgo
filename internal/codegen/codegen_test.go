@@ -175,6 +175,47 @@ type LegacyBook {
 	}
 }
 
+// TestGenerateTypesNullable pins the Go-side wiring for `@nullable`:
+//
+//   - value type (string) → `*T` field, no omitempty (null-emitting).
+//   - already-nilable ([]byte slice / `*FileHeader`) → no extra wrap,
+//     just drop omitempty.
+//   - combined `T? @nullable` → still `*T` (no double-wrap), no omitempty.
+//   - non-nullable required field → unchanged (`T` value, no omitempty).
+func TestGenerateTypesNullable(t *testing.T) {
+	pkg := analyze(t, `package design
+type T {
+    plain    string
+    nullStr  string @nullable
+    nullBlob bytes  @nullable
+    optNull  string? @nullable
+}`)
+	dir := t.TempDir()
+	if err := GenerateTypes(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+
+	want := []struct{ ident, typ, tag string }{
+		{"Plain", "string", `json:"plain"`},
+		{"NullStr", "*string", `json:"nullStr"`},   // pointer + no omitempty
+		{"NullBlob", "[]byte", `json:"nullBlob"`},  // already nilable + no omitempty
+		{"OptNull", "*string", `json:"optNull"`},   // single pointer, no omitempty
+	}
+	for _, w := range want {
+		if !lineHasField(src, w.ident, w.typ) || !lineHasField(src, w.ident, w.tag) {
+			t.Errorf("expected %s %s with tag %s in:\n%s", w.ident, w.typ, w.tag, src)
+		}
+	}
+	// `omitempty` must NOT appear anywhere — every field is either
+	// required (no omitempty) or @nullable (no omitempty).
+	if strings.Contains(src, "omitempty") {
+		t.Errorf("@nullable fields should not carry omitempty:\n%s", src)
+	}
+}
+
 func TestGenerateTypesNoPackageName(t *testing.T) {
 	pkg := &semantic.Package{Types: map[string]*ast.TypeDecl{}}
 	if err := GenerateTypes(pkg, t.TempDir()); err == nil {

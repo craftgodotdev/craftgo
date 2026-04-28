@@ -194,10 +194,41 @@ func renderTypeBody(members []ast.TypeMember) string {
 // [renderDoc] and prepended. Field-level `@deprecated` adds a
 // `// Deprecated: ...` line to the field's doc block — `staticcheck`
 // flags every read/write of the field as a warning.
+//
+// The Go type comes from [goFieldType] rather than [GoTypeRef]
+// directly because `@nullable` on value types (string, int, struct)
+// requires an extra `*T` wrap so the field can hold nil and JSON-encode
+// to `null` without a custom marshaller.
 func renderField(f *ast.Field) string {
 	return renderDoc(f.Doc, "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
-		fmt.Sprintf("\t%s %s `json:%s`\n", GoFieldName(f.Name), GoTypeRef(f.Type), strconv.Quote(jsonTag(f)))
+		fmt.Sprintf("\t%s %s `json:%s`\n", GoFieldName(f.Name), goFieldType(f), strconv.Quote(jsonTag(f)))
+}
+
+// goFieldType returns the final Go type expression for a field with
+// `@nullable` taken into account. The DSL semantics are:
+//
+//   - Already-nilable Go types (slice, map, pointer, interface) — no
+//     extra wrap; nil naturally encodes to JSON `null`.
+//   - Value types (string, int, struct) — wrap in `*T` so the field
+//     can hold nil. Combined with [jsonTag] dropping `omitempty`,
+//     the encoder emits `"f": null` for nil and `"f": value` otherwise.
+//
+// The [GoTypeRef] base already inserts `*` for `T?` (Optional),
+// so a `T? @nullable` field stays single-pointer.
+func goFieldType(f *ast.Field) string {
+	s := GoTypeRef(f.Type)
+	if hasNullableDecorator(f.Decorators) && !isNilableGoType(s) {
+		s = "*" + s
+	}
+	return s
+}
+
+// goFieldIsPointer reports whether the generated Go type for f is a
+// `*T` form. Used by validators that need to nil-guard before
+// dereferencing the underlying value.
+func goFieldIsPointer(f *ast.Field) bool {
+	return strings.HasPrefix(goFieldType(f), "*")
 }
 
 // renderMixin returns one Go-level embedded-type line. Qualified mixin
@@ -375,14 +406,19 @@ func splitFieldName(s string) []string {
 
 // jsonTag renders the JSON tag for a field. Per the project convention
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is
-// used verbatim. Optional fields receive `,omitempty`; required fields
-// (carrying `@required`) do not, even when also marked optional.
+// used verbatim.
+//
+// `omitempty` rules:
+//   - Required fields → never (always emit, must be present).
+//   - `@nullable` → never (always emit, may be null).
+//   - Optional `T?` (no @nullable) → yes (omit when zero/nil).
+//   - Plain field → never.
 //
 // Fields bound to a non-body location (`@path`, `@query`, `@header`,
-// `@cookie`) are excluded from the JSON shape entirely (`json:"-"`) so
-// neither the request decoder nor the response encoder picks them up.
-// `@form` is left in the body tag because the multipart handler binds
-// its own table; the JSON tag is harmless for those types.
+// `@cookie`) are excluded from the JSON shape entirely (`json:"-"`)
+// so neither the request decoder nor the response encoder picks them
+// up. `@form` is left in the body tag because the multipart handler
+// binds its own table; the JSON tag is harmless for those types.
 func jsonTag(f *ast.Field) string {
 	if isNonBodyBound(f) {
 		return "-"
@@ -391,6 +427,14 @@ func jsonTag(f *ast.Field) string {
 		if d.Name == "required" {
 			return f.Name
 		}
+	}
+	// `@nullable` keeps the field always-emitting so a nil value
+	// surfaces as JSON `null` rather than being skipped. The combined
+	// `T? @nullable` form collapses to "always emit, may be null" —
+	// std encoding/json can't distinguish "absent" from "null" with a
+	// single pointer field, and `@nullable` is the more specific intent.
+	if hasNullableDecorator(f.Decorators) {
+		return f.Name
 	}
 	if f.Type != nil && f.Type.Optional {
 		return f.Name + ",omitempty"

@@ -39,6 +39,24 @@ service ValidationService {
         response  EnumDemoResponse
     }
 
+    @doc("Type-level @requiresOneOf + @mutuallyExclusive cross-field rules.")
+    post CrossField /validate/cross {
+        request   CrossFieldReq
+        response  CrossFieldResp
+    }
+
+    // Demonstrates method-limit decorators: @readTimeout and
+    // @maxBodySize wrap the generated handler in
+    // `server.WithLimits(...)`. Slow clients get cut at 500ms; oversized
+    // bodies (> 1KB) trip http.MaxBytesReader before json.Decode runs.
+    @doc("Tight request limits — for stress-test endpoints.")
+    @readTimeout(500ms)
+    @maxBodySize(1024)
+    post Limited /validate/limited {
+        request   TagsRequest
+        response  TagsResponse
+    }
+
     // ------ single-decorator coverage --------------------------------------
 
     @doc("Single string validator per field.")

@@ -28,16 +28,20 @@ func NewCreateBookLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // CreateBook is the business-logic entry point. Replace the
 // TODO with the real implementation.
 func (l *CreateBookLogic) CreateBook(req *types.CreateBookReq) (*types.Book, error) {
+	// Validate() already guaranteed Isbn != nil (it's @required), so the
+	// dereference is safe. The pointer comes from `string @nullable` —
+	// emitted as `*string` so the type can JSON-encode to `null`.
+	isbn := *req.Isbn
 	l.svcCtx.Lock()
 	defer l.svcCtx.Unlock()
 	for _, b := range l.svcCtx.Books {
-		if b.ISBN == req.Isbn {
-			return nil, types.NewDuplicateISBNErr(req.Isbn)
+		if b.ISBN == isbn {
+			return nil, types.NewDuplicateISBNErr(isbn)
 		}
 	}
 	id := l.svcCtx.NextBookID()
 	b := svccontext.Book{
-		ID: id, Title: req.Title, Author: req.Author, ISBN: req.Isbn,
+		ID: id, Title: req.Title, Author: req.Author, ISBN: isbn,
 		PriceCents: req.PriceCents, Stock: req.Stock,
 	}
 	l.svcCtx.Books[id] = b
