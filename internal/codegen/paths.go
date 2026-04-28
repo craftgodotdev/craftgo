@@ -173,15 +173,21 @@ func kebabCase(s string) string {
 	return strings.Join(parts, "-")
 }
 
-// emitDoc writes the user's leading `//` comments verbatim, with the same
-// `//` prefix added back. Each line becomes its own Go-level comment line.
-// indent is prepended to every emitted line so field-level comments stay
-// inside the struct body.
-func emitDoc(sb *strings.Builder, doc []string, indent string) {
+// renderDoc returns the user's leading `//` comments verbatim, with the
+// same `//` prefix added back. Each line becomes its own Go-level
+// comment line. `indent` is prepended to every emitted line so
+// field-level comments stay inside the struct body. Returns "" for an
+// empty doc slice so callers can concatenate unconditionally.
+func renderDoc(doc []string, indent string) string {
+	if len(doc) == 0 {
+		return ""
+	}
+	var sb strings.Builder
 	for _, line := range doc {
 		sb.WriteString(indent)
 		sb.WriteString("// ")
 		sb.WriteString(line)
-		sb.WriteString("\n")
+		sb.WriteByte('\n')
 	}
+	return sb.String()
 }
