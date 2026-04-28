@@ -68,6 +68,27 @@ func analyzePkg(t *testing.T, src string) *semantic.Package {
 	return pkg
 }
 
+// ---------- streamCtor mapping ----------
+
+func TestStreamCtorMapping(t *testing.T) {
+	cases := map[string]string{
+		"":               "SSE",
+		"sse":            "SSE",
+		"ndjson":         "NDJSON",
+		"jsonl":          "NDJSON",
+		"jsonarray":      "JSONArray",
+		"csv":            "CSV",
+		"concat":         "Concat",
+		"lengthprefixed": "LengthPrefixed",
+		"unknown":        "SSE",
+	}
+	for in, want := range cases {
+		if got := streamCtor(in); got != want {
+			t.Errorf("streamCtor(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // ---------- handler ----------
 
 func TestGenerateHandlersAllVerbs(t *testing.T) {
@@ -105,6 +126,100 @@ func TestGenerateHandlersAllVerbs(t *testing.T) {
 	if !strings.Contains(string(pingSrc), "http.StatusNoContent") {
 		t.Errorf("Ping handler should write 204:\n%s", pingSrc)
 	}
+}
+
+func TestGenerateHandlersResponseHeaderCookie(t *testing.T) {
+	src := `package design
+type DownloadReq { id string }
+type DownloadResp {
+    body       string
+    etag       string @header
+    sessionID  string @cookie
+}
+service FilesService {
+    get Download /files/{id} {
+        request   DownloadReq
+        response  DownloadResp
+    }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateHandlers(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/handler/files-service/download-handler.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustParseGo(t, string(out))
+	body := string(out)
+	checks := []string{
+		`w.Header().Set("etag", resp.Etag)`,
+		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID})`,
+		`w.Header().Set("Content-Type", "application/json")`,
+	}
+	for _, want := range checks {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in handler:\n%s", want, body)
+		}
+	}
+	// Ensure header/cookie writes precede the body encoder so they hit the
+	// wire before WriteHeader implicitly fires.
+	if idx := strings.Index(body, "json.NewEncoder"); idx >= 0 {
+		pre := body[:idx]
+		if !strings.Contains(pre, "w.Header().Set(\"etag\"") {
+			t.Error("expected response header write to precede json.NewEncoder")
+		}
+	}
+
+	// And the response struct should hide etag/sessionID from the JSON body.
+	typesOut, err := os.ReadFile(filepath.Join(root, "internal/types", "design", "types.go"))
+	if err == nil {
+		// types.go is generated separately; only assert when present.
+		typesSrc := string(typesOut)
+		if strings.Contains(typesSrc, `Etag string `+"`json:\"etag\"`") {
+			t.Errorf("etag field should be tagged json:\"-\":\n%s", typesSrc)
+		}
+	}
+}
+
+func TestGenerateTypesNonBodyBindingsAreSkipped(t *testing.T) {
+	pkg := analyzePkg(t, `package design
+type Req {
+    id      string @path
+    q       string @query
+    auth    string @header
+    sess    string @cookie
+    payload string
+}`)
+	dir := t.TempDir()
+	if err := GenerateTypes(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	// Each non-body-bound field must have json:"-" on the same line.
+	for _, ident := range []string{"ID", "Q", "Auth", "Sess"} {
+		if !lineHas(src, ident, `json:"-"`) {
+			t.Errorf("expected %q with json:\"-\" tag:\n%s", ident, src)
+		}
+	}
+	if !lineHas(src, "Payload", `json:"payload"`) {
+		t.Errorf("expected payload field to keep its JSON tag:\n%s", src)
+	}
+}
+
+// lineHas reports whether `src` has a line containing both `ident` and
+// `tag`. Used by the binding tests because gofmt may align field columns
+// with extra whitespace, defeating literal substring matches.
+func lineHas(src, ident, tag string) bool {
+	for _, line := range strings.Split(src, "\n") {
+		if strings.Contains(line, ident) && strings.Contains(line, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGenerateHandlersMissingPackageName(t *testing.T) {

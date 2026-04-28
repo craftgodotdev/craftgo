@@ -35,6 +35,13 @@ type handlerData struct {
 	CookieParams     []paramBinding
 	FormStrings      []paramBinding
 	FormFiles        []paramBinding
+	// Response-side bindings: fields on the response struct tagged with
+	// `@header` / `@cookie`. The handler emits them onto the writer
+	// before the JSON body is encoded; the matching JSON tag on the
+	// generated struct is `json:"-"` so the values do not also leak
+	// into the body.
+	RespHeaders []paramBinding
+	RespCookies []paramBinding
 	LogicImport      string
 	TypesImport      string
 	SvccontextImport string
@@ -164,7 +171,42 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 			d.FormFiles = files
 		}
 	}
+	if hasResp {
+		d.RespHeaders, d.RespCookies = collectResponseBindings(m, pkg)
+	}
 	return d
+}
+
+// collectResponseBindings walks the response type's fields and returns the
+// `@header` / `@cookie` bindings that should be written to the
+// http.ResponseWriter before the JSON body. Both kinds accept plain string
+// fields only — richer types (slices, maps, structs) stay in the body
+// where the JSON encoder can handle them.
+func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, cookies []paramBinding) {
+	if m.Response == nil || m.Response.Type == nil {
+		return nil, nil
+	}
+	td, ok := pkg.Types[m.Response.Type.Name.String()]
+	if !ok {
+		return nil, nil
+	}
+	for _, member := range td.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		if !isPlainStringField(f) {
+			continue
+		}
+		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
+		switch bindingFromDecorators(f.Decorators) {
+		case "header":
+			headers = append(headers, entry)
+		case "cookie":
+			cookies = append(cookies, entry)
+		}
+	}
+	return headers, cookies
 }
 
 // hasRawDecorator reports whether `@raw` is declared on the method.
@@ -259,11 +301,20 @@ func streamFormat(m *ast.Method) string {
 
 // streamCtor maps a DSL stream-format name to the matching runtime
 // constructor in pkg/server. Unknown formats fall back to SSE — same
-// rationale as streamFormat's default.
+// rationale as streamFormat's default. Each branch corresponds to a
+// `New<Name>Stream` constructor in pkg/server/stream.go.
 func streamCtor(format string) string {
 	switch format {
 	case "ndjson", "jsonl":
 		return "NDJSON"
+	case "jsonarray":
+		return "JSONArray"
+	case "csv":
+		return "CSV"
+	case "concat":
+		return "Concat"
+	case "lengthprefixed":
+		return "LengthPrefixed"
 	}
 	return "SSE"
 }

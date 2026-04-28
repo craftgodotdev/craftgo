@@ -64,6 +64,12 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 {{- if .HasResponse}}
+{{- range .RespHeaders}}
+		w.Header().Set("{{.DSLName}}", resp.{{.GoName}})
+{{- end}}
+{{- range .RespCookies}}
+		http.SetCookie(w, &http.Cookie{Name: "{{.DSLName}}", Value: resp.{{.GoName}}})
+{{- end}}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 {{- else}}

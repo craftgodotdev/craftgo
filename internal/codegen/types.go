@@ -76,7 +76,9 @@ func buildTypesGo(pkg *semantic.Package) string {
 
 // collectImports walks every field type in pkg and returns the sorted set
 // of standard-library imports that the generated structs require (`io`,
-// `mime/multipart`, `encoding/json`).
+// `mime/multipart`, `encoding/json`). The `encoding/json` import is also
+// pulled in when any field carries `@sensitive` because that path emits a
+// custom MarshalJSON.
 func collectImports(pkg *semantic.Package) []string {
 	imports := map[string]bool{}
 	for _, td := range pkg.Types {
@@ -86,6 +88,9 @@ func collectImports(pkg *semantic.Package) []string {
 				continue
 			}
 			collectFieldImports(f.Type, imports)
+			if hasSensitiveDecorator(f) {
+				imports["encoding/json"] = true
+			}
 		}
 	}
 	var out []string
@@ -94,6 +99,38 @@ func collectImports(pkg *semantic.Package) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// hasSensitiveDecorator reports whether the field carries `@sensitive`
+// (with or without a `replacement: "..."` argument). The check is name-only;
+// duplicate detection in the semantic phase guarantees at most one occurrence.
+func hasSensitiveDecorator(f *ast.Field) bool {
+	for _, d := range f.Decorators {
+		if d.Name == "sensitive" {
+			return true
+		}
+	}
+	return false
+}
+
+// sensitiveReplacement returns the override string supplied via
+// `@sensitive(replacement: "...")` or the empty string when none was given.
+// Only string-typed fields honour a replacement; everything else zeroes out.
+func sensitiveReplacement(f *ast.Field) (string, bool) {
+	for _, d := range f.Decorators {
+		if d.Name != "sensitive" {
+			continue
+		}
+		for _, a := range d.Args {
+			if !a.Named || a.Name != "replacement" {
+				continue
+			}
+			if s, ok := a.Value.(*ast.StringLit); ok {
+				return s.Value, true
+			}
+		}
+	}
+	return "", false
 }
 
 // collectFieldImports recurses into a TypeRef collecting any built-in
@@ -151,6 +188,79 @@ func emitType(sb *strings.Builder, td *ast.TypeDecl) {
 		}
 	}
 	sb.WriteString("}\n\n")
+	emitSensitiveMarshalJSON(sb, td)
+}
+
+// emitSensitiveMarshalJSON writes a `MarshalJSON` method for any type whose
+// fields include at least one `@sensitive`. The method aliases the struct to
+// avoid infinite recursion, zeros (or replaces) sensitive fields on the
+// alias copy, and delegates back to encoding/json. Generic types are
+// skipped — the alias trick doesn't generalise cleanly to type parameters,
+// and the only realistic carrier of secrets is concrete request/response
+// structs.
+func emitSensitiveMarshalJSON(sb *strings.Builder, td *ast.TypeDecl) {
+	if len(td.TypeParams) > 0 {
+		return
+	}
+	var sensitive []*ast.Field
+	for _, m := range td.Body {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		if hasSensitiveDecorator(f) {
+			sensitive = append(sensitive, f)
+		}
+	}
+	if len(sensitive) == 0 {
+		return
+	}
+	receiver := strings.ToLower(td.Name[:1])
+	sb.WriteString("// MarshalJSON masks @sensitive fields when serialising " + td.Name + ".\n")
+	sb.WriteString("func (" + receiver + " " + td.Name + ") MarshalJSON() ([]byte, error) {\n")
+	sb.WriteString("\ttype cloak" + td.Name + " " + td.Name + "\n")
+	sb.WriteString("\tc := cloak" + td.Name + "(" + receiver + ")\n")
+	for _, f := range sensitive {
+		fname := GoFieldName(f.Name)
+		if isStringField(f) {
+			rep, ok := sensitiveReplacement(f)
+			if !ok {
+				rep = "[REDACTED]"
+			}
+			sb.WriteString("\tc." + fname + " = " + strconvQuote(rep) + "\n")
+		} else {
+			sb.WriteString("\tvar zero" + fname + " " + GoTypeRef(f.Type) + "\n")
+			sb.WriteString("\tc." + fname + " = zero" + fname + "\n")
+		}
+	}
+	sb.WriteString("\treturn json.Marshal(c)\n")
+	sb.WriteString("}\n\n")
+}
+
+// strconvQuote escapes s as a Go double-quoted string literal. We avoid
+// importing strconv just for one call site by handling the small set of
+// characters that need escaping (the templates already trust UTF-8 input).
+func strconvQuote(s string) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '\\':
+			sb.WriteString(`\\`)
+		case '"':
+			sb.WriteString(`\"`)
+		case '\n':
+			sb.WriteString(`\n`)
+		case '\t':
+			sb.WriteString(`\t`)
+		case '\r':
+			sb.WriteString(`\r`)
+		default:
+			sb.WriteRune(r)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
 }
 
 // emitField writes a single struct field with its Go-style name, Go type
@@ -311,7 +421,16 @@ func splitFieldName(s string) []string {
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is
 // used verbatim. Optional fields receive `,omitempty`; required fields
 // (carrying `@required`) do not, even when also marked optional.
+//
+// Fields bound to a non-body location (`@path`, `@query`, `@header`,
+// `@cookie`) are excluded from the JSON shape entirely (`json:"-"`) so
+// neither the request decoder nor the response encoder picks them up.
+// `@form` is left in the body tag because the multipart handler binds
+// its own table; the JSON tag is harmless for those types.
 func jsonTag(f *ast.Field) string {
+	if isNonBodyBound(f) {
+		return "-"
+	}
 	for _, d := range f.Decorators {
 		if d.Name == "required" {
 			return f.Name
@@ -321,4 +440,19 @@ func jsonTag(f *ast.Field) string {
 		return f.Name + ",omitempty"
 	}
 	return f.Name
+}
+
+// isNonBodyBound reports whether f carries an explicit binding decorator
+// that places its value outside the JSON body (`@path`, `@query`,
+// `@header`, `@cookie`). Those values are populated from the URL / headers
+// / cookies — never from the body — so the generated struct should hide
+// them from JSON entirely.
+func isNonBodyBound(f *ast.Field) bool {
+	for _, d := range f.Decorators {
+		switch d.Name {
+		case "path", "query", "header", "cookie":
+			return true
+		}
+	}
+	return false
 }

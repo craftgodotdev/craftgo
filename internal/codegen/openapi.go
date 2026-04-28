@@ -531,11 +531,18 @@ func streamContent(mime, methodName string) openapi3.Content {
 
 // streamMime picks the response media-type for a stream method based on
 // `@format(...)`. Unknown / missing format falls back to SSE — matches
-// the runtime `streamCtor` default.
+// the runtime `streamCtor` default. Each case mirrors the Content-Type
+// header set by the corresponding constructor in pkg/server/stream.go.
 func streamMime(m *ast.Method) string {
 	switch streamFormat(m) {
 	case "ndjson", "jsonl":
 		return "application/x-ndjson"
+	case "jsonarray", "concat":
+		return "application/json"
+	case "csv":
+		return "text/csv"
+	case "lengthprefixed":
+		return "application/octet-stream"
 	}
 	return "text/event-stream"
 }

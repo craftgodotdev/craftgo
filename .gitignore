@@ -6,7 +6,8 @@
 *.dll
 *.so
 *.dylib
-craftgo
+# Anchor the binary name to the repo root so it does NOT shadow the
+# `cmd/craftgo` source package.
 
 # Go test / coverage / profiling
 *.test
@@ -45,3 +46,6 @@ node_modules/
 
 # Generated docs scratch
 /.scratch/
+
+knowledge.md
+readme.md

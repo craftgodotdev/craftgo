@@ -238,6 +238,109 @@ func TestEnumDuplicateString(t *testing.T) {
 	}
 }
 
+// ---------- duplicate decorators ----------
+
+func TestDuplicateDecoratorOnField(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { name string @required @required }`))
+	if !diagsContain(diags, "duplicate decorator @required") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorOnType(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `@deprecated
+@deprecated
+type X { name string }`))
+	if !diagsContain(diags, "duplicate decorator @deprecated on type X") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorOnMethod(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `service S {
+		@tags("a")
+		@tags("b")
+		get GetUser /u {}
+	}`))
+	if !diagsContain(diags, "duplicate decorator @tags on method S.GetUser") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorOnService(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `@prefix("/a")
+@prefix("/b")
+service S {}`))
+	if !diagsContain(diags, "duplicate decorator @prefix on service S") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorOnEnumValue(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `enum X { A @doc("a") @doc("b") }`))
+	if !diagsContain(diags, "duplicate decorator @doc on enum value X.A") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorOnError(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `@doc("a")
+@doc("b")
+error NotFound UserNotFound`))
+	if !diagsContain(diags, "duplicate decorator @doc on error UserNotFound") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorOnErrorField(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `error BadRequest E { code string @required @required }`))
+	if !diagsContain(diags, "duplicate decorator @required on field E.code") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestDuplicateDecoratorPreservesFirst(t *testing.T) {
+	// First decorator stays in the AST untouched; only the second is reported.
+	_, diags := Analyze(parseFiles(t, `type X { name string @required @required @length(1, 10) }`))
+	if len(diags) != 1 {
+		t.Fatalf("want 1 diagnostic, got %d: %v", len(diags), diags)
+	}
+}
+
+func TestDecoratorUnique_NoFalsePositive(t *testing.T) {
+	mustClean(t, `@deprecated
+@doc("ok")
+type X { name string @required @length(1, 10) @pattern("^[a-z]+$") }`)
+}
+
+// ---------- qualified refs ----------
+
+func TestQualifiedRefInField(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { user shared.User }`))
+	if !diagsContain(diags, "cross-package qualified reference") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestQualifiedRefInMethodResponse(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `service S { get GetUser /u { response shared.User } }`))
+	if !diagsContain(diags, "cross-package qualified reference") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestQualifiedRefInGenericArg(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { items Page<shared.User> }`))
+	if !diagsContain(diags, "cross-package qualified reference") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+func TestUnqualifiedRefAccepted(t *testing.T) {
+	mustClean(t, `type Page { total int }
+type X { items Page }`)
+}
+
 // ---------- PathString ----------
 
 func TestPathString(t *testing.T) {

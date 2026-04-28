@@ -79,6 +79,8 @@ func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 	a.checkFieldUniqueness()
 	a.checkEnums()
 	a.checkServiceMethods()
+	a.checkDecoratorDuplicates(files)
+	a.checkQualifiedRefs()
 	return a.pkg, a.diags
 }
 
@@ -275,6 +277,157 @@ func (a *analyzer) checkServiceMethods() {
 				seenRoute[key] = m.Pos
 			}
 		}
+	}
+}
+
+// checkDecoratorDuplicates rejects two `@same` decorators in the same
+// declaration scope. Decorators are identified by their bare name; arguments
+// don't disambiguate (`@tags("a")` + `@tags("b")` is still a duplicate). The
+// second occurrence is reported, pointing back at the first for context. We
+// walk every scope that can carry decorators: the file header, top-level
+// declarations, fields inside type / error bodies, enum values, service
+// methods, and middleware-declaration sites.
+func (a *analyzer) checkDecoratorDuplicates(files []*ast.File) {
+	for _, f := range files {
+		a.checkDecoratorScope("file", f.Decorators)
+		for _, d := range f.Decls {
+			a.checkDeclDecorators(d)
+		}
+	}
+}
+
+// checkDeclDecorators dispatches decorator-uniqueness checks for one
+// top-level declaration plus every nested scope it owns (fields, methods,
+// enum values).
+func (a *analyzer) checkDeclDecorators(d ast.Decl) {
+	switch dd := d.(type) {
+	case *ast.TypeDecl:
+		a.checkDecoratorScope("type "+dd.Name, dd.Decorators)
+		a.checkFieldDecorators(dd.Name, dd.Body)
+	case *ast.EnumDecl:
+		a.checkDecoratorScope("enum "+dd.Name, dd.Decorators)
+		for _, v := range dd.Values {
+			a.checkDecoratorScope("enum value "+dd.Name+"."+v.Name, v.Decorators)
+		}
+	case *ast.ErrorDecl:
+		a.checkDecoratorScope("error "+dd.Name, dd.Decorators)
+		a.checkFieldDecorators(dd.Name, dd.Body)
+	case *ast.ScalarDecl:
+		a.checkDecoratorScope("scalar "+dd.Name, dd.Decorators)
+	case *ast.MiddlewareDecl:
+		a.checkDecoratorScope("middleware "+dd.Name, dd.Decorators)
+	case *ast.ServiceDecl:
+		scope := "service " + dd.Name
+		if dd.Extend {
+			scope = "extend " + scope
+		}
+		a.checkDecoratorScope(scope, dd.Decorators)
+		for _, m := range dd.Methods {
+			a.checkDecoratorScope("method "+dd.Name+"."+m.Name, m.Decorators)
+		}
+	}
+}
+
+// checkFieldDecorators applies the duplicate check to every Field in a type
+// or error body. Mixin members carry no decorators and are skipped.
+func (a *analyzer) checkFieldDecorators(parent string, members []ast.TypeMember) {
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		a.checkDecoratorScope("field "+parent+"."+f.Name, f.Decorators)
+	}
+}
+
+// checkDecoratorScope is the leaf check: emit a diagnostic for any decorator
+// whose Name appears more than once in decs. The first occurrence is silent;
+// every subsequent one is flagged with a back-reference to the first.
+func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
+	seen := map[string]lexer.Position{}
+	for _, d := range decs {
+		if d == nil {
+			continue
+		}
+		if prev, ok := seen[d.Name]; ok {
+			a.errorf(d.Pos, "duplicate decorator @%s on %s (previously at %s)", d.Name, scope, prev)
+			continue
+		}
+		seen[d.Name] = d.Pos
+	}
+}
+
+// checkQualifiedRefs flags any `pkg.Type` reference that the v1 model
+// cannot resolve. CraftGo v1 uses a folder-merge import model: every
+// `.craftgo` file reachable from the design root contributes to a single
+// logical package, so type references should be unqualified. A multi-part
+// qualified name (e.g. `shared.User`) parses successfully — the AST keeps it
+// so the v2 cross-package resolver has something to work with — but produces
+// a Go compile error downstream because no Go-level import is emitted. We
+// turn that latent failure into a friendly diagnostic up front.
+//
+// Mixin references are exempt from the check because the codegen already
+// strips qualified prefixes (`emitMixin` uses the trailing segment) and the
+// generated Go has no other way to spell the embedded field name.
+func (a *analyzer) checkQualifiedRefs() {
+	for _, td := range a.pkg.Types {
+		a.walkTypeMembers(td.Name, td.Body)
+	}
+	for _, ed := range a.pkg.Errors {
+		a.walkTypeMembers(ed.Name, ed.Body)
+	}
+	for _, si := range a.pkg.Services {
+		for _, m := range si.Methods {
+			if m.Request != nil {
+				a.checkNamedRef("method "+m.Name+" request", m.Request)
+			}
+			if m.Response != nil && m.Response.Type != nil {
+				a.checkNamedRef("method "+m.Name+" response", m.Response.Type)
+			}
+		}
+	}
+}
+
+// walkTypeMembers checks every Field type reference in a type or error body
+// for a qualified prefix. Mixin members are skipped (see [checkQualifiedRefs]).
+func (a *analyzer) walkTypeMembers(parent string, members []ast.TypeMember) {
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		a.walkTypeRef("field "+parent+"."+f.Name, f.Type)
+	}
+}
+
+// walkTypeRef descends into a TypeRef and applies the qualified-name check
+// to every NamedTypeRef encountered. Map keys, map values, and generic
+// arguments are all visited recursively.
+func (a *analyzer) walkTypeRef(scope string, t *ast.TypeRef) {
+	if t == nil {
+		return
+	}
+	if t.Map != nil {
+		a.walkTypeRef(scope, t.Map.Key)
+		a.walkTypeRef(scope, t.Map.Value)
+		return
+	}
+	if t.Named != nil {
+		a.checkNamedRef(scope, t.Named)
+	}
+}
+
+// checkNamedRef reports a diagnostic when n.Name has more than one segment
+// and recurses through n.Args so generic arguments are validated too.
+func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
+	if n == nil || n.Name == nil {
+		return
+	}
+	if len(n.Name.Parts) > 1 {
+		a.errorf(n.Pos, "cross-package qualified reference %q in %s is not supported in v1 (folder-merge model); use the unqualified name", n.Name.String(), scope)
+	}
+	for _, arg := range n.Args {
+		a.walkTypeRef(scope, arg)
 	}
 }
 
