@@ -698,6 +698,15 @@ func localDeclItems(view snapshotView) []protocol.CompletionItem {
 // LSP client also filters, so an empty prefix is fine.
 func decoratorCompletions(view snapshotView, pos protocol.Position, prefix string) []protocol.CompletionItem {
 	level := guessLevel(view, pos)
+	// At field level, narrow further by the field's primitive type
+	// so a `total int? @<cursor>` does not surface string-only or
+	// array-only validators. Returns 0 (PrimAny) when the cursor is
+	// not on a field row, in which case the AppliesTo filter is a
+	// no-op and only the level filter applies.
+	var fieldPrim semantic.Prims
+	if level == semantic.LvlField {
+		fieldPrim = fieldPrimAt(view, pos)
+	}
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
 		names = append(names, name)
@@ -706,7 +715,20 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	out := make([]protocol.CompletionItem, 0, len(names))
 	for _, name := range names {
 		spec := semantic.Registry[name]
-		if level != 0 && spec.Levels != 0 && spec.Levels&level == 0 {
+		// Strict level filter: only surface decorators whose
+		// declared site mask intersects the cursor's level. The
+		// guard against `spec.Levels == 0` is defensive for any
+		// future Registry entry without a Levels declaration —
+		// treating "no levels" as "not applicable here" keeps the
+		// completion list focused on supported decorators.
+		if spec.Levels == 0 || spec.Levels&level == 0 {
+			continue
+		}
+		// Per-primitive filter: at field level, drop validators
+		// whose AppliesTo doesn't intersect the field's resolved
+		// primitive. Decorators with AppliesTo == 0 (PrimAny) pass
+		// through — they apply regardless of type.
+		if fieldPrim != 0 && spec.AppliesTo != 0 && spec.AppliesTo&fieldPrim == 0 {
 			continue
 		}
 		if prefix != "" && !strings.HasPrefix(name, prefix) {
@@ -791,9 +813,18 @@ func keywordCompletions() []protocol.CompletionItem {
 // each AST node.
 func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	if view.file == nil {
-		return 0
+		return semantic.LvlFile
 	}
 	line := int(pos.Line) + 1
+	// File-header decorator zone: cursor sits AT or above the
+	// `package` line — anything legal at file scope (`@title`,
+	// `@version`, `@doc`) wins. Without this branch the zone above
+	// `package` would be classified by the first decl below it,
+	// which is almost always wrong (you can't put `@required`
+	// before `package`).
+	if view.file.Package != nil && line <= view.file.Package.Pos.Line {
+		return semantic.LvlFile
+	}
 	var prevDecl, nextDecl ast.Decl
 	for _, d := range view.file.Decls {
 		if d.DeclPos().Line >= line {
@@ -805,6 +836,12 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 		}
 	}
 	if prevDecl != nil && cursorInsideDeclBody(view, pos, prevDecl) {
+		// Inside prev's body → field / method / enum value scope.
+		// ErrorDecl without a body slot, ScalarDecl, and
+		// MiddlewareDecl have no body to be inside; the brace-
+		// depth check should already reject those, but we keep
+		// the switch exhaustive so any future decl kind that
+		// adds a body lands in the right bucket.
 		switch v := prevDecl.(type) {
 		case *ast.TypeDecl:
 			return semantic.LvlField
@@ -819,8 +856,14 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 		}
 	}
 	if nextDecl != nil {
+		// Decorator zone — the cursor is in a blank stretch ABOVE
+		// nextDecl, where every `@…` line ends up as a decorator
+		// for that decl.
 		return declSiteLevel(nextDecl)
 	}
+	// Trailing zone after the last decl. No syntactic owner; treat
+	// as file scope so file-only decorators stay visible while
+	// decl-only ones are correctly hidden.
 	return semantic.LvlFile
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/dropship-dev/craftgo/internal/config"
 	"github.com/dropship-dev/craftgo/internal/lexer"
 	"github.com/dropship-dev/craftgo/internal/parser"
+	"github.com/dropship-dev/craftgo/internal/semantic"
 )
 
 // snapshot is the shared parse view that every feature handler operates
@@ -262,6 +263,101 @@ func inDir(path, dir string) bool {
 		return true
 	}
 	return false
+}
+
+// fieldPrimAt returns the primitive category of the field at the
+// cursor's source line, when the cursor is inside a type / error
+// body. The category drives the AppliesTo filter on `@<decorator>`
+// completion: a `total int? @<cursor>` should only see number-side
+// validators, not string-side or array-side ones.
+//
+// Returns 0 (PrimAny) when the cursor is not inside a recognised
+// field row — caller treats that as "no AppliesTo filter".
+func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
+	if view.file == nil {
+		return 0
+	}
+	line := int(pos.Line) + 1
+	for _, d := range view.file.Decls {
+		body, ok := declBody(d)
+		if !ok {
+			continue
+		}
+		for _, m := range body {
+			f, ok := m.(*ast.Field)
+			if !ok || f.Pos.Line != line {
+				continue
+			}
+			return primOfTypeRef(f.Type, view.file)
+		}
+	}
+	return 0
+}
+
+// declBody returns a type-body slice for declarations that have one
+// (TypeDecl always; ErrorDecl when HasBody is set). The bool says
+// whether a body exists; nil-body decls return false so callers can
+// short-circuit cleanly.
+func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
+	switch v := d.(type) {
+	case *ast.TypeDecl:
+		return v.Body, true
+	case *ast.ErrorDecl:
+		if v.HasBody {
+			return v.Body, true
+		}
+	}
+	return nil, false
+}
+
+// primOfTypeRef reduces a TypeRef to its primitive bucket.
+//
+// Array and map fields collapse to [semantic.PrimArray] regardless of
+// their element type — that's the bucket the array-level decorators
+// (`@minItems`, `@maxItems`, `@uniqueItems`) check against. Optional
+// (`?`) is transparent: `int?` is still PrimNumber.
+//
+// User scalars look up the scalar's primitive (recursively, in case a
+// scalar references another scalar). Unknown / cross-package refs
+// return 0 so the caller falls back to "no AppliesTo filter" rather
+// than hiding decorators we cannot classify.
+func primOfTypeRef(t *ast.TypeRef, file *ast.File) semantic.Prims {
+	if t == nil {
+		return 0
+	}
+	if t.Array || t.Map != nil {
+		return semantic.PrimArray
+	}
+	if t.Named == nil {
+		return 0
+	}
+	name := t.Named.Name.String()
+	switch name {
+	case "string", "bytes":
+		return semantic.PrimString
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return semantic.PrimNumber
+	case "bool":
+		return semantic.PrimBool
+	case "file":
+		return semantic.PrimFile
+	case "any", "object", "reader", "writer":
+		return 0
+	}
+	if file != nil {
+		for _, d := range file.Decls {
+			if sd, ok := d.(*ast.ScalarDecl); ok && sd.Name == name {
+				// Synthesise a TypeRef around the scalar's primitive
+				// name and recurse so the lookup transparently
+				// handles scalar-of-scalar chains.
+				inner := &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{sd.Primitive}}}}
+				return primOfTypeRef(inner, file)
+			}
+		}
+	}
+	return 0
 }
 
 // pathToFileURIString builds a `file://...` URI string from an absolute
