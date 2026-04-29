@@ -291,7 +291,7 @@ func TestCrossPackageScalarInPaymentField(t *testing.T) {
 		Method:      ordersapi.PaymentMethodCard,
 		ReferenceID: "pay_ABCDEF",
 		AuthCents:   1000,
-		ReceiptURL:  ptr[sharedapi.SafeURL]("https://example.com/r/1"),
+		ReceiptURL:  ptr("https://example.com/r/1"),
 	}
 	if pay.AuthCents != 1000 {
 		t.Errorf("AuthCents lost: %+v", pay)
@@ -340,6 +340,378 @@ func TestMutuallyExclusiveNowEnforced(t *testing.T) {
 	}
 	if err := onlyWork.Validate(); err != nil {
 		t.Errorf("only work=true should validate: %v", err)
+	}
+}
+
+// TestLocalScalarInheritance verifies a field typed as a LOCAL
+// scalar (`country CountryCode`) actually runs the scalar's
+// validators (@length(2,2) + @pattern("^[A-Z]{2}$")) at the
+// containing type's Validate() — the inheritance must NOT require
+// the field-level decorator chain to repeat the scalar's checks.
+func TestLocalScalarInheritance(t *testing.T) {
+	good := ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"}
+	if err := good.Validate(); err != nil {
+		t.Fatalf("ISO-2 country US should pass: %v", err)
+	}
+
+	// Pattern violation — lower-case fails the scalar's regex.
+	bad := good
+	bad.Country = "us"
+	if err := bad.Validate(); err == nil {
+		t.Errorf("country=%q should fail @pattern from CountryCode scalar", bad.Country)
+	}
+
+	// Length violation — three-letter fails the scalar's @length.
+	bad2 := good
+	bad2.Country = "USA"
+	if err := bad2.Validate(); err == nil {
+		t.Errorf("country=%q should fail @length(2,2) from CountryCode scalar", bad2.Country)
+	}
+}
+
+// TestCrossPackageScalarInheritance verifies a field typed as a
+// CROSS-PACKAGE scalar (`bpsBonus shared.PercentBP`) inherits the
+// scalar's @min/@max from the sibling package — the validator
+// codegen looks up shared.PercentBP via the project-level scalar
+// table built by [BuildScalarTable].
+func TestCrossPackageScalarInheritance(t *testing.T) {
+	// Happy path inside the 0..10000 basis-points range.
+	good := ordersapi.Discount{Code: "SUMMER", Percent: 10.0, BpsBonus: 500}
+	if err := good.Validate(); err != nil {
+		t.Fatalf("BpsBonus=500 should pass: %v", err)
+	}
+
+	// Below the scalar's @min(0) — must fail.
+	bad := good
+	bad.BpsBonus = -1
+	if err := bad.Validate(); err == nil {
+		t.Errorf("BpsBonus=-1 should fail @min(0) from shared.PercentBP")
+	}
+
+	// Above the scalar's @max(10000) — must fail.
+	bad2 := good
+	bad2.BpsBonus = 99999
+	if err := bad2.Validate(); err == nil {
+		t.Errorf("BpsBonus=99999 should fail @max(10000) from shared.PercentBP")
+	}
+}
+
+// TestCrossPackageScalarInheritanceOptional confirms scalar
+// inheritance respects the field's optional/pointer wrapping.
+// `receiptURL shared.SafeURL?` carries the scalar's @format(url)
+// + @maxLength(2048) but the validator must nil-guard before
+// dereferencing the pointer — exactly the same pattern as plain
+// optional-string validators.
+func TestCrossPackageScalarInheritanceOptional(t *testing.T) {
+	// Nil pointer → validators short-circuit, no error.
+	pay := ordersapi.Payment{
+		Method:      ordersapi.PaymentMethodCard,
+		ReferenceID: "pay_ABCD",
+		AuthCents:   100,
+	}
+	if err := pay.Validate(); err != nil {
+		t.Fatalf("nil ReceiptURL should validate: %v", err)
+	}
+
+	// Bad URL → @format(url) inherited from shared.SafeURL fires.
+	pay.ReceiptURL = ptr("not-a-url")
+	if err := pay.Validate(); err == nil {
+		t.Errorf("malformed ReceiptURL should fail inherited @format(url)")
+	}
+
+	// Good URL → passes.
+	pay.ReceiptURL = ptr("https://example.com/receipt")
+	if err := pay.Validate(); err != nil {
+		t.Errorf("valid ReceiptURL should pass: %v", err)
+	}
+}
+
+// TestArrayOfScalarInheritance pins the per-element validator
+// inheritance for `tags Tag[]`. Each scalar decorator on Tag
+// (@minLength, @maxLength, @pattern) runs once per slice entry
+// inside a `for i := range v.Tags` loop emitted by codegen; the
+// field-level array decorators (@minItems / @maxItems /
+// @uniqueItems) run on the slice as a whole. A single bad
+// element fails the whole Order.
+func TestArrayOfScalarInheritance(t *testing.T) {
+	base := func(tags []ordersapi.Tag) ordersapi.Order {
+		return ordersapi.Order{
+			ID:       "ord_ABC12345",
+			Customer: ordersapi.Customer{ID: "550e8400-e29b-41d4-a716-446655440000", Email: "x@y.com", Name: "X", PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"}},
+			Items:    []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 1}},
+			AuditedBy: usersapi.UserRef{ID: "u-admin", Name: "Admin"},
+			TotalCents: 1,
+			Status:   ordersapi.OrderStatusPending,
+			Currency: "USD",
+			Tags:     tags,
+			CreatedAt: "2026-04-29T08:00:00Z",
+		}
+	}
+
+	// Happy path — every tag matches Tag's scalar pattern.
+	good := base([]ordersapi.Tag{"web", "mobile-2"})
+	if err := good.Validate(); err != nil {
+		t.Fatalf("clean tags should pass: %v", err)
+	}
+
+	// Per-element @pattern fires (Tag scalar requires
+	// `^[a-z][a-z0-9-]*$`).
+	uppercased := base([]ordersapi.Tag{"Web"})
+	if err := uppercased.Validate(); err == nil {
+		t.Errorf(`"Web" should fail Tag's @pattern via per-element loop`)
+	}
+
+	// Per-element @minLength fires — empty string in a slot.
+	withEmpty := base([]ordersapi.Tag{"web", ""})
+	if err := withEmpty.Validate(); err == nil {
+		t.Errorf("empty tag entry should fail Tag's @minLength(1) via per-element loop")
+	}
+
+	// Per-element @maxLength fires — 33-char string.
+	tooLong := base([]ordersapi.Tag{strings.Repeat("a", 33)})
+	if err := tooLong.Validate(); err == nil {
+		t.Errorf("33-char tag should fail Tag's @maxLength(32) via per-element loop")
+	}
+
+	// Field-level @minItems still fires when scalar checks pass.
+	empty := base([]ordersapi.Tag{})
+	if err := empty.Validate(); err == nil {
+		t.Errorf("empty tags slice should fail @minItems(1)")
+	}
+
+	// Field-level @uniqueItems still fires alongside scalar checks.
+	dup := base([]ordersapi.Tag{"web", "web"})
+	if err := dup.Validate(); err == nil {
+		t.Errorf("duplicate tags should fail @uniqueItems")
+	}
+}
+
+// TestMapScalarInheritance pins per-element validator inheritance
+// for `metadata map<Tag, shared.SafeURL>?`. Tag's per-key
+// validators (@minLength, @maxLength, @pattern) run inside a
+// `for k := range v.Metadata` loop; SafeURL's per-value
+// validators (@format(url), @maxLength) run inside a separate
+// `for _, val := range v.Metadata` loop. Either side rejects.
+func TestMapScalarInheritance(t *testing.T) {
+	base := func(meta map[ordersapi.Tag]sharedapi.SafeURL) ordersapi.Order {
+		return ordersapi.Order{
+			ID:        "ord_ABC12345",
+			Customer:  ordersapi.Customer{ID: "550e8400-e29b-41d4-a716-446655440000", Email: "x@y.com", Name: "X", PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"}},
+			Items:     []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 1}},
+			AuditedBy: usersapi.UserRef{ID: "u-admin", Name: "Admin"},
+			TotalCents: 1,
+			Status:    ordersapi.OrderStatusPending,
+			Currency:  "USD",
+			Tags:      []ordersapi.Tag{"web"},
+			Metadata:  meta,
+			CreatedAt: "2026-04-29T08:00:00Z",
+		}
+	}
+
+	// Nil map → both for-range loops iterate zero times → pass.
+	nilOrder := base(nil)
+	if err := nilOrder.Validate(); err != nil {
+		t.Fatalf("nil metadata should validate: %v", err)
+	}
+
+	// Empty map → same.
+	emptyOrder := base(map[ordersapi.Tag]sharedapi.SafeURL{})
+	if err := emptyOrder.Validate(); err != nil {
+		t.Fatalf("empty metadata should validate: %v", err)
+	}
+
+	// Happy path — keys are kebab-lowercase Tag, values are URLs.
+	good := base(map[ordersapi.Tag]sharedapi.SafeURL{
+		"primary": "https://example.com/a",
+		"backup":  "https://example.com/b",
+	})
+	if err := good.Validate(); err != nil {
+		t.Fatalf("clean metadata should validate: %v", err)
+	}
+
+	// Bad KEY: uppercase fails Tag's @pattern.
+	badKey := base(map[ordersapi.Tag]sharedapi.SafeURL{
+		"Primary": "https://example.com/a",
+	})
+	if err := badKey.Validate(); err == nil {
+		t.Errorf("uppercase key should fail Tag's @pattern via map-key loop")
+	}
+
+	// Bad KEY: empty string fails Tag's @minLength.
+	emptyKey := base(map[ordersapi.Tag]sharedapi.SafeURL{
+		"": "https://example.com/a",
+	})
+	if err := emptyKey.Validate(); err == nil {
+		t.Errorf("empty key should fail Tag's @minLength via map-key loop")
+	}
+
+	// Bad VALUE: not a URL fails SafeURL's @format(url).
+	badVal := base(map[ordersapi.Tag]sharedapi.SafeURL{
+		"primary": "not-a-url",
+	})
+	if err := badVal.Validate(); err == nil {
+		t.Errorf("malformed value should fail SafeURL's @format(url) via map-value loop")
+	}
+}
+
+// TestMapValueArrayOfScalar pins the doubly-nested validator
+// inheritance for `map<string, Tag[]>`. Each scalar decorator on
+// Tag produces a `for _, val := range v.M { for i := range val
+// { ... } }` pair so the per-element check fires on every Tag in
+// every slice value across the whole map.
+func TestMapValueArrayOfScalar(t *testing.T) {
+	customer := func(channels map[string][]ordersapi.Tag) ordersapi.Customer {
+		return ordersapi.Customer{
+			ID:             "550e8400-e29b-41d4-a716-446655440000",
+			Email:          "x@y.com",
+			Name:           "X",
+			PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"},
+			Channels:       channels,
+		}
+	}
+
+	// Nil / empty map → no inner iteration → pass.
+	clean := customer(nil)
+	if err := clean.Validate(); err != nil {
+		t.Fatalf("nil channels should validate: %v", err)
+	}
+
+	// Happy path — every Tag matches the scalar's pattern.
+	good := customer(map[string][]ordersapi.Tag{
+		"email": {"welcome", "newsletter"},
+		"sms":   {"otp"},
+	})
+	if err := good.Validate(); err != nil {
+		t.Fatalf("clean channels should validate: %v", err)
+	}
+
+	// One bad element inside one slice — outer loop reaches the
+	// bad bucket, inner loop hits the bad tag, @pattern fails.
+	badInner := customer(map[string][]ordersapi.Tag{
+		"email": {"welcome", "BadTag"}, // uppercase fails Tag's @pattern
+	})
+	if err := badInner.Validate(); err == nil {
+		t.Errorf("uppercase tag inside a channel slice should fail Tag's @pattern via nested loop")
+	}
+
+	// Empty string in a different bucket — fails Tag's @minLength
+	// from inside the inner loop.
+	emptyInner := customer(map[string][]ordersapi.Tag{
+		"sms": {""},
+	})
+	if err := emptyInner.Validate(); err == nil {
+		t.Errorf("empty tag in nested slice should fail Tag's @minLength via inner loop")
+	}
+
+	// 33-char element — fails Tag's @maxLength from the inner loop.
+	longInner := customer(map[string][]ordersapi.Tag{
+		"email": {strings.Repeat("a", 33)},
+	})
+	if err := longInner.Validate(); err == nil {
+		t.Errorf("33-char tag in nested slice should fail Tag's @maxLength via inner loop")
+	}
+}
+
+// TestNestedMapScalarBothSides drives the recursive scalar walker
+// through `index map<string, map<Tag, shared.SafeURL>>?` —
+// validators inherited from BOTH inner sides (Tag on the inner
+// key, shared.SafeURL on the inner value) cascade through a
+// doubly-nested for-range emit. Either side rejecting a single
+// element fails the whole Customer.
+func TestNestedMapScalarBothSides(t *testing.T) {
+	customer := func(idx map[string]map[ordersapi.Tag]sharedapi.SafeURL) ordersapi.Customer {
+		return ordersapi.Customer{
+			ID:             "550e8400-e29b-41d4-a716-446655440000",
+			Email:          "x@y.com",
+			Name:           "X",
+			PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"},
+			Index:          idx,
+			GridLabels:     [][]ordersapi.Tag{{"row-1"}, {"row-2"}},
+		}
+	}
+
+	// Happy path — every inner key matches Tag's pattern, every
+	// inner value matches SafeURL's @format(url).
+	good := customer(map[string]map[ordersapi.Tag]sharedapi.SafeURL{
+		"primary": {"alpha": "https://example.com/a", "beta": "https://example.com/b"},
+		"backup":  {"gamma": "https://example.com/c"},
+	})
+	if err := good.Validate(); err != nil {
+		t.Fatalf("clean nested map should validate: %v", err)
+	}
+
+	// Bad inner KEY — uppercase fails Tag's @pattern, traversed
+	// via the outer map's value iteration.
+	badKey := customer(map[string]map[ordersapi.Tag]sharedapi.SafeURL{
+		"primary": {"BadKey": "https://example.com"},
+	})
+	if err := badKey.Validate(); err == nil {
+		t.Errorf("bad inner key should fail Tag's @pattern through nested map walker")
+	}
+
+	// Bad inner VALUE — non-URL fails SafeURL's @format(url).
+	badVal := customer(map[string]map[ordersapi.Tag]sharedapi.SafeURL{
+		"primary": {"alpha": "not-a-url"},
+	})
+	if err := badVal.Validate(); err == nil {
+		t.Errorf("bad inner value should fail SafeURL's @format(url) through nested map walker")
+	}
+}
+
+// TestMultiArrayScalarInheritance drives the recursive walker
+// through `gridLabels Tag[][]` — a slice-of-slices that the
+// extended parser/AST now accept. Each scalar decorator on Tag
+// produces ONE doubly-nested for-loop pair, and a single bad
+// element in any inner slice fails the wrapping struct.
+func TestMultiArrayScalarInheritance(t *testing.T) {
+	customer := func(grid [][]ordersapi.Tag) ordersapi.Customer {
+		return ordersapi.Customer{
+			ID:             "550e8400-e29b-41d4-a716-446655440000",
+			Email:          "x@y.com",
+			Name:           "X",
+			PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"},
+			GridLabels:     grid,
+		}
+	}
+
+	// Happy path — every cell matches Tag's pattern.
+	good := customer([][]ordersapi.Tag{
+		{"row-1", "col-a"},
+		{"row-2", "col-b", "col-c"},
+	})
+	if err := good.Validate(); err != nil {
+		t.Fatalf("clean grid should validate: %v", err)
+	}
+
+	// Empty outer slice → no iteration → pass.
+	nilCust := customer(nil)
+	if err := nilCust.Validate(); err != nil {
+		t.Fatalf("nil grid should validate: %v", err)
+	}
+
+	// Empty inner slice → outer iter visits but inner iter is
+	// no-op → pass.
+	emptyInner := customer([][]ordersapi.Tag{{}})
+	if err := emptyInner.Validate(); err != nil {
+		t.Fatalf("empty inner slice should validate: %v", err)
+	}
+
+	// Bad cell — uppercase fails Tag's @pattern via the inner
+	// loop nested inside the outer loop.
+	bad := customer([][]ordersapi.Tag{
+		{"row-1", "BadCell"},
+	})
+	if err := bad.Validate(); err == nil {
+		t.Errorf("bad cell should fail Tag's @pattern via doubly-nested loop")
+	}
+
+	// Bad cell deeper — second outer slice, first inner element.
+	badDeeper := customer([][]ordersapi.Tag{
+		{"row-1"},
+		{strings.Repeat("a", 33)}, // fails @maxLength
+	})
+	if err := badDeeper.Validate(); err == nil {
+		t.Errorf("33-char cell in second row should fail Tag's @maxLength via doubly-nested loop")
 	}
 }
 

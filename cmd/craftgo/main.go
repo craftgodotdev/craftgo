@@ -164,6 +164,7 @@ func runGen(args []string) error {
 	for _, name := range pkgNames {
 		p := proj.Packages[name]
 		cross := codegen.BuildCrossPkg(proj, cfg, name)
+		scalars := codegen.BuildScalarTable(proj, name)
 		genSteps := []struct {
 			name string
 			fn   func() error
@@ -171,7 +172,7 @@ func runGen(args []string) error {
 			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, cross) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
 			{"errors(" + name + ")", func() error { return codegen.GenerateErrors(p, typesDir) }},
-			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsPackage(p, typesDir, cross) }},
+			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsWith(p, typesDir, cross, scalars) }},
 		}
 		for _, s := range genSteps {
 			if err := s.fn(); err != nil {

@@ -459,11 +459,12 @@ func (p *Parser) parseTypeRef() *ast.TypeRef {
 	} else {
 		tr.Named = p.parseNamedTypeRef()
 	}
-	if p.peek().Kind == lexer.LBracket {
+	for p.peek().Kind == lexer.LBracket {
 		p.advance()
 		p.expect(lexer.RBracket)
-		tr.Array = true
+		tr.ArrayDepth++
 	}
+	tr.Array = tr.ArrayDepth > 0
 	if p.peek().Kind == lexer.Question {
 		p.advance()
 		tr.Optional = true

@@ -732,8 +732,16 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 	}
 	if t.Array {
+		// Peel ONE bracket per recursion so multi-array types
+		// (`Tag[][]`) emit nested OpenAPI `array` schemas. The
+		// inner schemaForTypeRef call sees `Tag[]`, then `Tag`.
 		inner := *t
-		inner.Array = false
+		if inner.ArrayDepth > 0 {
+			inner.ArrayDepth--
+		}
+		if inner.ArrayDepth == 0 {
+			inner.Array = false
+		}
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:  &openapi3.Types{"array"},
 			Items: schemaForTypeRef(&inner, pkg),
@@ -806,8 +814,9 @@ func substituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 				Key:   substituteTypeRef(t.Map.Key, subst),
 				Value: substituteTypeRef(t.Map.Value, subst),
 			},
-			Array:    t.Array,
-			Optional: t.Optional,
+			Array:      t.Array,
+			ArrayDepth: t.ArrayDepth,
+			Optional:   t.Optional,
 		}
 	}
 	if t.Named != nil {
@@ -815,6 +824,14 @@ func substituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 			out := *rep
 			if t.Array {
 				out.Array = true
+				// Add the outer's array dim count on top of any
+				// the substituted ref carried (e.g. `T?` →
+				// `Book[]` becomes `Book[]?` with depth=1).
+				if t.ArrayDepth > 0 {
+					out.ArrayDepth += t.ArrayDepth
+				} else if out.ArrayDepth == 0 {
+					out.ArrayDepth = 1
+				}
 			}
 			if t.Optional {
 				out.Optional = true

@@ -99,7 +99,12 @@ func arrayElemType(t *ast.TypeRef) string {
 		return ""
 	}
 	clone := *t
-	clone.Array = false
+	if clone.ArrayDepth > 0 {
+		clone.ArrayDepth--
+	}
+	if clone.ArrayDepth == 0 {
+		clone.Array = false
+	}
 	clone.Optional = false
 	return GoTypeRef(&clone)
 }

@@ -404,12 +404,23 @@ func (q *QualifiedIdent) String() string { return strings.Join(q.Parts, ".") }
 
 // TypeRef describes a type expression. Exactly one of Map or Named is set;
 // Array and Optional are independent suffix flags so `T[]?` is legal.
+//
+// `ArrayDepth` is the number of trailing `[]` suffixes parsed (0 =
+// not an array). The legacy `Array bool` is kept as a derived
+// convenience for the wide set of call sites that only care
+// whether the field is "any kind of array" — it equals
+// `ArrayDepth > 0` after every parse.
 type TypeRef struct {
 	Pos      Pos
 	Map      *MapType
 	Named    *NamedTypeRef
 	Array    bool
 	Optional bool
+	// ArrayDepth captures multi-dimensional arrays (`Tag[][]` →
+	// 2). Single-dim arrays use depth 1. Code that only needs
+	// "is this an array?" can keep checking [Array] / `> 0`
+	// equivalently.
+	ArrayDepth int
 }
 
 // MapType represents `map<K, V>`. Both Key and Value are recursive [TypeRef]

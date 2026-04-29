@@ -28,6 +28,46 @@ import (
 // emitted.
 type CrossPkg map[string]string
 
+// ScalarTable is the per-target-package lookup of scalar declarations
+// reachable from the package being generated. Local scalars are
+// keyed by bare name (`OrderID`); cross-package scalars use the
+// qualified DSL form (`shared.NonEmptyID`). The codegen consults
+// the table when a field's declared type is a scalar so the
+// scalar's decorators (e.g. `@format(email)` on `scalar Email`)
+// inherit into the field's effective validator chain.
+//
+// Empty / nil table disables inheritance and the generated
+// validators only honour the field's own decorator list — the
+// legacy single-package behaviour.
+type ScalarTable map[string]*ast.ScalarDecl
+
+// BuildScalarTable returns the lookup table for `currentPkgName`.
+// Every scalar declared anywhere in the project is included once;
+// scalars from other packages are keyed by their qualified DSL
+// form so a field typed `shared.NonEmptyID` resolves cleanly.
+//
+// Returns nil when proj is nil — callers can still pass the result
+// straight into [GenerateValidatorsPackage] without a guard.
+func BuildScalarTable(proj *semantic.Project, currentPkgName string) ScalarTable {
+	if proj == nil {
+		return nil
+	}
+	out := ScalarTable{}
+	for pkgName, p := range proj.Packages {
+		if p == nil {
+			continue
+		}
+		for sname, sd := range p.Scalars {
+			if pkgName == "" || pkgName == currentPkgName {
+				out[sname] = sd
+				continue
+			}
+			out[pkgName+"."+sname] = sd
+		}
+	}
+	return out
+}
+
 // BuildCrossPkg returns a fully-populated lookup table for every
 // non-current package in the project. The current package is
 // excluded so a self-reference (`design.Foo` inside `package design`)

@@ -113,13 +113,22 @@ type Order {
     // the default value.
     currency     CurrencyCode @default("USD")
 
-    // Array validators stack: must have ≥1, ≤10, all unique.
-    tags         string[] @minItems(1) @maxItems(10) @uniqueItems
+    // ARRAY OF SCALAR — `tags Tag[]` inherits the Tag scalar's
+    // per-element validators (@minLength, @maxLength, @pattern)
+    // automatically. The field-level chain only carries the
+    // array-level rules (@minItems, @maxItems, @uniqueItems).
+    tags         Tag[] @minItems(1) @maxItems(10) @uniqueItems
 
-    // Optional map. v1 doesn't yet emit per-value validators for
-    // map types; the decorator placement still validates as
-    // present so future support drops in cleanly.
-    metadata     map<string, string>?
+    // MAP-OF-SCALAR — both the key and the value are scalars.
+    // Codegen emits two per-element loops:
+    //
+    //   for k := range v.Metadata     { /* Tag's @minLength + @maxLength + @pattern on k   */ }
+    //   for _, val := range v.Metadata { /* SafeURL's @format(url) + @maxLength on val      */ }
+    //
+    // So the wire shape `{"primary": "https://...", ...}` rejects
+    // both an upper-case key (fails Tag pattern) and a non-URL
+    // value (fails SafeURL format) at the validator boundary.
+    metadata     map<Tag, shared.SafeURL>?
 
     // Required ISO timestamp at the wrapper level. Top-level
     // datetime is always required for audit trails.
@@ -134,6 +143,44 @@ type Order {
 // (`referrer users.UserRef?`) with file uploads (`profilePic`)
 // and the `@nullable` forced-pointer pattern on `loyaltyPoints`.
 type Customer {
+    // MAP-WITH-NESTED-COLLECTION: `map<string, Tag[]>` — each
+    // value is an ARRAY of Tag scalar. Codegen emits a doubly-
+    // nested loop pulling the scalar's per-element validators
+    // through both layers:
+    //
+    //   for _, val := range v.Channels {
+    //       for i := range val { /* @minLength + @maxLength + @pattern on val[i] */ }
+    //   }
+    //
+    // Use case: bucketing tag-style labels per channel
+    // ("email" → ["welcome", "newsletter"], "sms" → [...]).
+    channels        map<string, Tag[]>?
+
+    // NESTED MAP: `map<string, map<Tag, shared.SafeURL>>` — the
+    // outer map's value is itself a map whose key is a scalar
+    // (Tag) and value is a cross-package scalar (SafeURL).
+    // Codegen recursively walks both inner sides: 4 layers of
+    // wrapping per scalar decorator.
+    //
+    //   for _, val0 := range v.Index {                 // outer map values
+    //       for k1 := range val0 { /* Tag's @pattern on k1 */ }
+    //       for _, val1 := range val0 { /* SafeURL's @format(url) on val1 */ }
+    //   }
+    index           map<string, map<Tag, shared.SafeURL>>?
+
+    // MULTI-DIMENSIONAL ARRAY: `Tag[][]` — slice of slices. v1
+    // grammar accepts repeated `[]` suffixes; codegen emits the
+    // matching doubly-nested for-loops per scalar decorator.
+    //
+    //   for i0 := range v.GridLabels {
+    //       for i1 := range v.GridLabels[i0] {
+    //           /* Tag's @pattern on v.GridLabels[i0][i1] */
+    //       }
+    //   }
+    //
+    // Use case: row-and-column labelling of an analytics grid.
+    gridLabels      Tag[][]
+
     // String + format(uuid).
     id              string @required @format(uuid)
 

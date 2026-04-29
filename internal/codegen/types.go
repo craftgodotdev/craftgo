@@ -335,7 +335,13 @@ func GoTypeRef(t *ast.TypeRef) string {
 	} else if t.Named != nil {
 		s = goNamedType(t.Named)
 	}
-	if t.Array {
+	depth := t.ArrayDepth
+	if depth == 0 && t.Array {
+		// Older AST nodes (hand-built or pre-parser-change tests)
+		// might set Array=true without populating ArrayDepth.
+		depth = 1
+	}
+	for i := 0; i < depth; i++ {
 		s = "[]" + s
 	}
 	if t.Optional && !isNilableGoType(s) {

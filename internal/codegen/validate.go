@@ -60,7 +60,24 @@ func GenerateValidators(pkg *semantic.Package, outDir string) error {
 // [GenerateValidators]. crossPkg adds Go imports for every cross-
 // package alias used in pkg's field types so `req.User.Validate()`
 // can dispatch to the sibling package's validator.
+//
+// Equivalent to [GenerateValidatorsWith] with a nil scalar table —
+// scalar inheritance is disabled in this entry point so existing
+// single-package callers keep their pre-scalar-inheritance output.
 func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
+	return GenerateValidatorsWith(pkg, outDir, crossPkg, nil)
+}
+
+// GenerateValidatorsWith is the project-aware entry point: it
+// accepts the [ScalarTable] built by [BuildScalarTable] so a field
+// typed `Email` (local scalar) or `shared.NonEmptyID` (cross-pkg
+// scalar) inherits the scalar's own decorator chain into its
+// generated Validate() body.
+//
+// Used by the multi-package CLI flow; single-package fixtures and
+// tests continue calling [GenerateValidators] / [GenerateValidatorsPackage]
+// which pass nil for the table.
+func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -68,7 +85,7 @@ func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg Cr
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	data := buildValidateData(pkg, crossPkg)
+	data := buildValidateData(pkg, crossPkg, scalars)
 	formatted, err := renderGo(tmpl("validate.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render validate.go: %w", err)
@@ -86,7 +103,12 @@ func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg Cr
 // method via the field's declared type, which is already imported by
 // types.go. Emitting an unused Go import in validate.go would fail
 // `go vet` (`imported and not used`).
-func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg) validateData {
+//
+// scalars, when non-nil, enables scalar-decorator inheritance: a
+// field whose declared type is a scalar gains the scalar's own
+// `@format` / `@length` / `@min` / etc. validators on top of the
+// field-level chain. See [scalarInheritedDecorators].
+func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarTable) validateData {
 	_ = crossPkg
 	names := make([]string, 0, len(pkg.Types))
 	for n := range pkg.Types {
@@ -101,7 +123,7 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg) validateData {
 		types = append(types, validatorType{
 			Name:       name,
 			TypeParams: td.TypeParams,
-			Checks:     collectChecks(td, pkg, uses),
+			Checks:     collectChecks(td, pkg, scalars, uses),
 		})
 	}
 
@@ -131,14 +153,14 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg) validateData {
 //
 // Steps 2-4 are mutually exclusive: a field is either a typeParam ref,
 // an enum, a struct, or a primitive. Primitives reach none of them.
-func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, uses map[string]bool) []string {
+func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, uses map[string]bool) []string {
 	var out []string
 	for _, m := range td.Body {
 		f, ok := m.(*ast.Field)
 		if !ok {
 			continue
 		}
-		out = append(out, fieldChecksWithPkg(f, pkg, uses)...)
+		out = append(out, fieldChecksWithScalar(f, pkg, scalars, uses)...)
 		if isTypeParamRef(f.Type, td.TypeParams) {
 			if call := typeParamValidateCall(f); call != "" {
 				out = append(out, call)

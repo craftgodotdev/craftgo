@@ -38,3 +38,15 @@ scalar Cents int @min(0) @multipleOf(1)
 // scalar reference.
 scalar Latitude  float64 @min(-90)  @max(90)
 scalar Longitude float64 @min(-180) @max(180)
+
+// Tag is the per-element scalar used by `tags Tag[]` arrays. The
+// array-level constraints (@minItems / @maxItems / @uniqueItems)
+// stay on the field; the per-element shape (kebab-case alphanum
+// up to 32 chars) lives here so EVERY tag in the project has the
+// same legal-character set.
+//
+// Generated Go: each `for i := range v.Tags { ... }` loop runs
+// the inherited @minLength + @maxLength + @pattern against
+// `v.Tags[i]` once per element, then the field-level @minItems /
+// @maxItems / @uniqueItems run over the whole slice afterwards.
+scalar Tag string @minLength(1) @maxLength(32) @pattern("^[a-z][a-z0-9-]*$")
