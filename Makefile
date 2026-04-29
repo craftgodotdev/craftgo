@@ -87,6 +87,27 @@ gen-diff: gen-go ## Re-gen and fail if anything changed (drift guard for CI).
 		exit 1; \
 	fi
 
+# ---- bench ---------------------------------------------------------------
+BENCH_DIR    := bench
+BENCH_RAW    := $(BENCH_DIR)/results.txt
+BENCH_REPORT := $(BENCH_DIR)/REPORT.md
+BENCH_PKG    := ./internal/bench/...
+BENCH_RUN    ?= BenchmarkParse
+BENCH_TIME   ?= 2s
+BENCH_COUNT  ?= 3
+
+.PHONY: bench
+bench: ## Run bind-path microbenchmarks; raw output to $(BENCH_RAW).
+	@mkdir -p $(BENCH_DIR)
+	$(GO) test -run=^$$ -bench=$(BENCH_RUN) -benchmem -benchtime=$(BENCH_TIME) -count=$(BENCH_COUNT) $(BENCH_PKG) | tee $(BENCH_RAW)
+
+.PHONY: bench-report
+bench-report: ## Convert $(BENCH_RAW) into Markdown at $(BENCH_REPORT).
+	@scripts/bench-report.sh $(BENCH_RAW) $(BENCH_REPORT)
+
+.PHONY: bench-all
+bench-all: bench bench-report ## Run benchmarks and regenerate the Markdown report.
+
 # ---- module hygiene ------------------------------------------------------
 .PHONY: tidy
 tidy: ## go mod tidy in the root module and every sub-module.
@@ -103,7 +124,7 @@ deps: ## Download/verify modules.
 # ---- clean ---------------------------------------------------------------
 .PHONY: clean
 clean: ## Remove build artefacts and coverage files.
-	rm -rf $(BIN_DIR) dist coverage.txt coverage.html
+	rm -rf $(BIN_DIR) dist coverage.txt coverage.html $(BENCH_DIR)
 	@find . -type f \( -name '*.test' -o -name '*.out' -o -name '*.prof' -o -name '*.cov' \) -delete
 
 .PHONY: clean-gen
