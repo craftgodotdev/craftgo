@@ -147,7 +147,16 @@ func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req j
 			DocumentFormattingProvider: true,
 			RenameProvider:             &protocol.RenameOptions{PrepareProvider: true},
 			CompletionProvider: &protocol.CompletionOptions{
-				TriggerCharacters: []string{"@", " ", ".", "/", "{"},
+				// Generous trigger set so completion auto-fires at
+				// every transition the user is likely to want help
+				// at: decorator start (`@`), token boundary
+				// (space, comma), qualified ref (`.`), path segment
+				// (`/`), brace open (`{`), and string open (`"`)
+				// for `import "..."` paths. Identifier-letter
+				// triggering is delegated to VSCode's
+				// `editor.quickSuggestions.other` (set in the
+				// extension's configurationDefaults).
+				TriggerCharacters: []string{"@", " ", ",", ".", "/", "{", "\""},
 			},
 		},
 		ServerInfo: &protocol.ServerInfo{

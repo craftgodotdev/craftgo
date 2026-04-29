@@ -52,12 +52,21 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 		prefix := importStringPrefix(view, pos)
 		return s.importPathCompletions(currentURI, currentSrc, prefix)
 	}
+	// After `extend service ` — list every primary service name in
+	// the project so the user can pick which one this block extends.
+	if isExtendServiceContext(view, pos) {
+		return s.serviceNameCompletions(currentURI, currentSrc)
+	}
 	// Inside a decorator argument list `@name(…|…)` — surface the
-	// registered enum values when the spec restricts them. Must run
-	// before the qualified-ref check because the cursor sits between
-	// `(` and `)` so the surrounding-token analysis would otherwise
-	// route to the type-position branch.
+	// registered enum values when the spec restricts them, OR the
+	// project's declared middleware names for `@middlewares(...)`.
+	// Must run before the qualified-ref check because the cursor sits
+	// between `(` and `)` so the surrounding-token analysis would
+	// otherwise route to the type-position branch.
 	if name, ok := decoratorArgContext(view, pos); ok {
+		if name == "middlewares" {
+			return s.middlewareNameCompletions(currentURI, currentSrc)
+		}
 		if items := decoratorArgCompletions(view, pos, name); items != nil {
 			return items
 		}
@@ -269,16 +278,31 @@ func (s *Server) importPathCompletions(currentURI, currentSrc, prefix string) []
 // preceding tokens spell `@Ident`. A `)` along the way pops the depth
 // counter — once it goes negative we have left every enclosing
 // decorator and the cursor is not in an arg list.
+//
+// Walks include the cursor's own token (`idx`, not `idx-1`) so a
+// cursor sitting exactly on the opening `(` — common right after the
+// user types `@middlewares(` — still resolves cleanly. RParens are
+// only counted when they're STRICTLY before the cursor; that keeps
+// the closing paren of the decorator we're inside from prematurely
+// flipping `depth` negative.
 func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx < 0 {
 		idx = len(view.tokens)
 	}
 	depth := 0
-	for i := idx - 1; i >= 0; i-- {
+	for i := idx; i >= 0; i-- {
+		if i >= len(view.tokens) {
+			continue
+		}
 		t := view.tokens[i]
 		switch t.Kind {
 		case lexer.RParen:
+			// Skip the cursor's own RParen — we're INSIDE its
+			// decorator, not after it.
+			if i == idx {
+				continue
+			}
 			depth++
 		case lexer.LParen:
 			if depth > 0 {
@@ -324,6 +348,127 @@ func decoratorArgCompletions(view snapshotView, pos protocol.Position, name stri
 			InsertText: v,
 		})
 	}
+	return out
+}
+
+// isExtendServiceContext reports whether the cursor sits at the
+// identifier slot of an `extend service <cursor>` clause. The check
+// walks tokens backwards: if the two most recent non-cursor tokens
+// (skipping any partial ident the user is typing) are `service` then
+// `extend`, we are at the slot.
+//
+// Boundary handling: when the cursor sits past the last real token
+// (tokenAt returned -1 because EOF is the only thing left),
+// `idx == len(view.tokens)` and we must NOT index into the slice.
+// Likewise the partial-ident skip needs to verify `idx` is in range
+// before reading `view.tokens[idx]`.
+func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
+	idx, _ := view.tokenAt(pos.Line, pos.Character)
+	if idx < 0 {
+		idx = len(view.tokens)
+	}
+	// Skip a partial ident at the cursor — the user is mid-typing
+	// the service name and we still want to fire.
+	if idx >= 0 && idx < len(view.tokens) && view.tokens[idx].Kind == lexer.Ident {
+		idx--
+	}
+	if idx < 2 {
+		return false
+	}
+	prev := view.tokens[idx-1]
+	prev2 := view.tokens[idx-2]
+	return prev.Kind == lexer.KwService && prev2.Kind == lexer.KwExtend
+}
+
+// serviceNameCompletions enumerates primary `service Name`
+// declarations that are valid extension targets from the cursor's
+// current file. Extends resolve per-package, so cross-package
+// services would always trip `service/extend-orphan` — including
+// them in the completion list would mislead the user. The function
+// therefore filters by the current file's package name.
+func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+	files := s.projectASTs(uriToPath(currentURI), currentSrc)
+	currentPkg := ""
+	currentPath := uriToPath(currentURI)
+	for _, p := range files {
+		if p.path == currentPath && p.file != nil && p.file.Package != nil {
+			currentPkg = p.file.Package.Name
+			break
+		}
+	}
+	seen := map[string]struct{}{}
+	var out []protocol.CompletionItem
+	for _, p := range files {
+		if p.file == nil || p.file.Package == nil {
+			continue
+		}
+		if currentPkg != "" && p.file.Package.Name != currentPkg {
+			continue
+		}
+		for _, d := range p.file.Decls {
+			sd, ok := d.(*ast.ServiceDecl)
+			if !ok || sd.Extend {
+				continue
+			}
+			if _, dup := seen[sd.Name]; dup {
+				continue
+			}
+			seen[sd.Name] = struct{}{}
+			out = append(out, protocol.CompletionItem{
+				Label:         sd.Name,
+				Kind:          protocol.CompletionItemKindInterface,
+				Detail:        "service (" + p.file.Package.Name + ")",
+				Documentation: strings.Join(sd.Doc, "\n"),
+				InsertText:    sd.Name,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out
+}
+
+// middlewareNameCompletions enumerates every `middleware Name`
+// declaration across the project so an `@middlewares(...)` argument
+// list shows the same closed set the semantic resolver accepts.
+// Names are emitted as Function-kind items because that is how
+// editors render them with the closest icon to "function pointer
+// the runtime calls" — the closest analogue available in LSP's
+// CompletionItemKind set.
+func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+	files := s.projectASTs(uriToPath(currentURI), currentSrc)
+	seen := map[string]struct{}{}
+	var out []protocol.CompletionItem
+	for _, p := range files {
+		if p.file == nil {
+			continue
+		}
+		for _, d := range p.file.Decls {
+			md, ok := d.(*ast.MiddlewareDecl)
+			if !ok {
+				continue
+			}
+			if _, dup := seen[md.Name]; dup {
+				continue
+			}
+			seen[md.Name] = struct{}{}
+			pkgName := ""
+			if p.file.Package != nil {
+				pkgName = p.file.Package.Name
+			}
+			detail := "middleware"
+			if pkgName != "" {
+				detail = "middleware (" + pkgName + ")"
+			}
+			out = append(out, protocol.CompletionItem{
+				Label:         md.Name,
+				Kind:          protocol.CompletionItemKindFunction,
+				Detail:        detail,
+				Documentation: strings.Join(md.Doc, "\n"),
+				InsertText:    md.Name,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
 }
 
@@ -627,56 +772,104 @@ func keywordCompletions() []protocol.CompletionItem {
 	return out
 }
 
-// guessLevel inspects the AST around the cursor and returns the
-// declaration-site mask that any decorator at the current position
-// must satisfy. The mapping is conservative — the worst case is a
-// zero return, which means "do not filter".
+// guessLevel returns the decorator-site mask for the cursor's
+// position. Three structural zones map to distinct levels:
+//
+//  1. Inside a decl body (between `{` and `}`) → field / method /
+//     enum value, depending on the enclosing decl kind.
+//  2. ABOVE a decl (the decorator zone — every `@…` line that
+//     precedes a `type` / `service` / `enum` / `error` / `scalar` /
+//     `middleware` keyword) → the level of THAT decl. This is what
+//     the user expects when they hit `@` on a blank line above
+//     `service Foo`: the completion list should surface
+//     service-only decorators, not file-level ones.
+//  3. Anywhere else (top of file before the first decl, between two
+//     completed decls, etc.) → file level.
+//
+// The brace-depth scan disambiguates "inside prev's body" from
+// "between prev and next" without needing end-position metadata on
+// each AST node.
 func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	if view.file == nil {
 		return 0
 	}
 	line := int(pos.Line) + 1
-	// Find the most specific enclosing declaration by source line.
-	var best ast.Decl
+	var prevDecl, nextDecl ast.Decl
 	for _, d := range view.file.Decls {
-		if d.DeclPos().Line <= line {
-			best = d
+		if d.DeclPos().Line >= line {
+			if nextDecl == nil {
+				nextDecl = d
+			}
+		} else {
+			prevDecl = d
 		}
 	}
-	if best == nil {
-		return semantic.LvlFile
-	}
-	switch v := best.(type) {
-	case *ast.TypeDecl:
-		// Inside the body? Pick field-level; otherwise the type itself.
-		if line > v.Pos.Line {
+	if prevDecl != nil && cursorInsideDeclBody(view, pos, prevDecl) {
+		switch v := prevDecl.(type) {
+		case *ast.TypeDecl:
 			return semantic.LvlField
+		case *ast.EnumDecl:
+			return semantic.LvlEnumValue
+		case *ast.ErrorDecl:
+			if v.HasBody {
+				return semantic.LvlField
+			}
+		case *ast.ServiceDecl:
+			return semantic.LvlMethod
 		}
+	}
+	if nextDecl != nil {
+		return declSiteLevel(nextDecl)
+	}
+	return semantic.LvlFile
+}
+
+// cursorInsideDeclBody walks the token stream from the start of
+// prev until the cursor and tracks brace depth. A positive count
+// means the cursor sits between an opening `{` and its matching
+// `}` — i.e. inside the decl body — which is the only signal we
+// have without explicit End positions on AST nodes.
+func cursorInsideDeclBody(view snapshotView, pos protocol.Position, prev ast.Decl) bool {
+	if prev == nil {
+		return false
+	}
+	cursorLine := int(pos.Line) + 1
+	cursorCol := int(pos.Character) + 1
+	startLine := prev.DeclPos().Line
+	depth := 0
+	for _, t := range view.tokens {
+		if t.Pos.Line < startLine {
+			continue
+		}
+		if t.Pos.Line > cursorLine || (t.Pos.Line == cursorLine && t.Pos.Column > cursorCol) {
+			break
+		}
+		switch t.Kind {
+		case lexer.LBrace:
+			depth++
+		case lexer.RBrace:
+			depth--
+		}
+	}
+	return depth > 0
+}
+
+// declSiteLevel maps a top-level declaration to the decorator-site
+// bit it accepts. Used to filter the completion popup to decorators
+// legal on the decl currently being authored.
+func declSiteLevel(d ast.Decl) semantic.Level {
+	switch d.(type) {
+	case *ast.TypeDecl:
 		return semantic.LvlType
 	case *ast.EnumDecl:
-		if line > v.Pos.Line {
-			return semantic.LvlEnumValue
-		}
 		return semantic.LvlEnum
 	case *ast.ErrorDecl:
-		if v.HasBody && line > v.Pos.Line {
-			return semantic.LvlField
-		}
 		return semantic.LvlError
 	case *ast.ScalarDecl:
 		return semantic.LvlScalar
 	case *ast.MiddlewareDecl:
 		return semantic.LvlMiddleware
 	case *ast.ServiceDecl:
-		// Inside a method body or on the method line itself?
-		for _, m := range v.Methods {
-			if m.Pos.Line == line {
-				return semantic.LvlMethod
-			}
-		}
-		if line > v.Pos.Line {
-			return semantic.LvlMethod
-		}
 		return semantic.LvlService
 	}
 	return 0

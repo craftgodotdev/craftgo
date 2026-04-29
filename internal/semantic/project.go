@@ -98,6 +98,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	perPkgOpts := opts
 	perPkgOpts.skipQualifiedRefCheck = true
 	perPkgOpts.skipMiddlewareRefCheck = true
+	perPkgOpts.skipExtendOrphanCheck = true
 	var diags []Diagnostic
 	for name, group := range groups {
 		pkg, pkgDiags := AnalyzeWith(group, perPkgOpts)
@@ -109,6 +110,8 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	for _, f := range files {
 		r.processFile(f, opts.DesignRoot)
 	}
+	r.checkProjectServiceUniqueness()
+	r.checkProjectExtendOrphans()
 	r.checkProjectMiddlewareUniqueness()
 	r.checkProjectMiddlewareRefs(files)
 	return proj, r.diags

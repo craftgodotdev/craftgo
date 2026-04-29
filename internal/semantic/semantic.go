@@ -116,6 +116,14 @@ type Options struct {
 	// declaration in a sibling package without the per-package pass
 	// reporting it as unknown first.
 	skipMiddlewareRefCheck bool
+
+	// skipExtendOrphanCheck disables the in-package orphan-extend
+	// diagnostic. [AnalyzeProject] sets it so the project-level
+	// resolver can produce a better message when the extended
+	// service exists in a SIBLING package (a common typo source);
+	// without the skip the per-package pass would fire first with
+	// the generic "no primary declaration" message.
+	skipExtendOrphanCheck bool
 }
 
 // Analyze validates the supplied AST files as a single package and returns
@@ -254,6 +262,14 @@ const (
 	// CodeRequiredOptional fires when `@required` appears on a `T?`
 	// field.
 	CodeRequiredOptional = "binding/required-optional"
+	// CodeServiceCollision fires when two packages in the same
+	// project both declare a primary `service` of the same name.
+	// The generated codegen layout keys output directories by
+	// service name (`internal/routes/<svc>/`, `internal/handler/<svc>/`),
+	// so a collision would silently overwrite one package's
+	// scaffolds with the other's. Surface every conflicting
+	// declaration so the author can rename one.
+	CodeServiceCollision = "service/collision"
 	// CodeMiddlewareCollision fires when two packages in the same
 	// project both declare a `middleware` of the same name. Cross-
 	// package middleware references are global by design, so a
@@ -579,9 +595,11 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 func (a *analyzer) mergeServices() {
 	for name, si := range a.pkg.Services {
 		if si.Primary == nil {
-			for _, e := range si.Extends {
-				a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
-					"extend service %q has no primary declaration", name)
+			if !a.opts.skipExtendOrphanCheck {
+				for _, e := range si.Extends {
+					a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
+						"extend service %q has no primary declaration", name)
+				}
 			}
 			continue
 		}

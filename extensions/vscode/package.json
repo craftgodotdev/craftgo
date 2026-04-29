@@ -99,7 +99,11 @@
           "other": "on",
           "comments": "off",
           "strings": "on"
-        }
+        },
+        "editor.quickSuggestionsDelay": 0,
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.acceptSuggestionOnEnter": "on",
+        "editor.wordBasedSuggestions": "off"
       }
     }
   },
