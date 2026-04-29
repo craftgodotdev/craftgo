@@ -18,14 +18,12 @@ func NewUpdateUserLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	return &UpdateUserLogic{ctx: ctx, svcCtx: svcCtx}
 }
 
-// UpdateUser overwrites the row for the supplied request body. The handler
-// hasn't bound the path :id yet (TODO in v1) so the request ID lives on
-// req.Name placeholder until path-binding lands.
-func (l *UpdateUserLogic) UpdateUser(req *types.CreateUserReq) (*types.User, error) {
+// UpdateUser overwrites the row addressed by the path-bound id with the
+// fields carried in the request body.
+func (l *UpdateUserLogic) UpdateUser(req *types.UpdateUserReq) (*types.User, error) {
 	l.svcCtx.Lock()
 	defer l.svcCtx.Unlock()
-	id := req.Name
 	row := map[string]any{"name": req.Name, "age": req.Age, "tags": req.Tags, "meta": req.Meta}
-	l.svcCtx.Users[id] = row
-	return &types.User{ID: id, Name: req.Name, Age: req.Age, Tags: req.Tags, Meta: req.Meta}, nil
+	l.svcCtx.Users[req.ID] = row
+	return &types.User{ID: req.ID, Name: req.Name, Age: req.Age, Tags: req.Tags, Meta: req.Meta}, nil
 }

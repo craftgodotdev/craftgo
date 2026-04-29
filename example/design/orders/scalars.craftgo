@@ -31,12 +31,13 @@ scalar CurrencyCode string @length(3, 3) @pattern("^[A-Z]{3}$")
 
 // Cents is the canonical money type — non-negative integer, no
 // fractional currency units allowed at the wire boundary.
-scalar Cents int @min(0) @multipleOf(1)
+scalar Cents int @min(0) @multipleOf(2)
 
 // Latitude / Longitude carry the geographic-bound validators so a
 // Geocode field's per-field constraints reduce to just the
 // scalar reference.
-scalar Latitude  float64 @min(-90)  @max(90)
+scalar Latitude float64 @min(-90) @max(90)
+
 scalar Longitude float64 @min(-180) @max(180)
 
 // Tag is the per-element scalar used by `tags Tag[]` arrays. The

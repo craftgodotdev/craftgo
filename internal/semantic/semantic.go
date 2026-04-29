@@ -152,6 +152,8 @@ func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	a.checkMixins()
 	a.checkGenerics()
 	a.checkPathResolution()
+	a.checkImports(files)
+	a.checkLocalTypeRefs(files)
 	if !a.opts.skipQualifiedRefCheck {
 		a.checkQualifiedRefs()
 	}
@@ -242,6 +244,13 @@ const (
 	// CodeRequiredOptional fires when `@required` appears on a `T?`
 	// field.
 	CodeRequiredOptional = "binding/required-optional"
+	// CodeRawType fires when a method tagged `@raw` declares a
+	// request/response whose underlying type is anything other than
+	// the byte-pass primitives (`bytes`, `reader`, `writer`). Raw
+	// mode skips JSON encoding wholesale, so a struct on either side
+	// would never round-trip — the diagnostic catches the mistake at
+	// design time.
+	CodeRawType = "method/raw-type"
 	// CodeRawFormat fires when `@raw` and `@format` are both on the
 	// same method.
 	CodeRawFormat = "method/raw-format"
@@ -299,6 +308,14 @@ const (
 	// CodeImportEscape fires when an import path uses `..` or starts
 	// with `/` to escape the design root.
 	CodeImportEscape = "import/escape"
+	// CodeImportDuplicate fires when one file imports the same path
+	// twice (with or without matching aliases) — a clear redundancy
+	// the parser cannot detect without per-file context.
+	CodeImportDuplicate = "import/duplicate"
+	// CodeImportAliasConflict fires when two imports in the same
+	// file resolve to the same alias (explicit or implicit), making
+	// later qualified references like `alias.Type` ambiguous.
+	CodeImportAliasConflict = "import/alias-conflict"
 	// CodeImportSelf fires when a file imports a folder whose files
 	// share its own `package X` declaration — the import is a no-op
 	// since the analyser already merges them by package name.
@@ -915,10 +932,16 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 	}
 }
 
-// checkMethodCombinations enforces method-level rules. Today there is
-// only one: `@raw` bypasses the encoder, so `@format` is meaningless and
-// rejected. The streaming / raw-stream combination is intentionally
-// allowed and not flagged here.
+// checkMethodCombinations enforces method-level rules:
+//
+//   - `@raw` + `@format` are mutually exclusive (raw skips encoding).
+//   - `@raw` + a non-byte request/response shape is a contradiction —
+//     the encoder would never run, so a structured type can't be
+//     marshalled either way. Only `bytes`, `reader`, and `writer`
+//     pass through cleanly.
+//
+// Streaming / raw-stream combinations are intentionally allowed and
+// not flagged here.
 func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	hasRaw := false
 	var rawPos lexer.Position
@@ -940,6 +963,46 @@ func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 			diag.Related = related(rawPos, "@raw declared here")
 		}
 	}
+	a.checkRawSideShape(svcName, m, "request", m.Request, rawPos)
+	if m.Response != nil {
+		a.checkRawSideShape(svcName, m, "response", m.Response.Type, rawPos)
+	}
+}
+
+// rawByteTypes is the closed set of named primitives whose Go form
+// is a byte stream — the only shapes `@raw` can pass through without
+// triggering JSON marshalling.
+var rawByteTypes = map[string]bool{
+	"bytes":  true,
+	"reader": true,
+	"writer": true,
+}
+
+// checkRawSideShape validates one side (request or response) of an
+// `@raw` method. The type must reduce to a single byte-pass primitive
+// — array, map, optional, generic, scalar, and user types are all
+// rejected. nil ref is fine (no body / no response).
+func (a *analyzer) checkRawSideShape(svcName string, m *ast.Method, side string, ref *ast.NamedTypeRef, rawPos lexer.Position) {
+	if ref == nil || ref.Name == nil {
+		return
+	}
+	if len(ref.Name.Parts) != 1 {
+		// Cross-package qualified ref — never a byte primitive.
+		a.rawShapeError(svcName, m, side, ref.Pos, ref.Name.String(), rawPos)
+		return
+	}
+	name := ref.Name.Parts[0]
+	if rawByteTypes[name] {
+		return
+	}
+	a.rawShapeError(svcName, m, side, ref.Pos, name, rawPos)
+}
+
+func (a *analyzer) rawShapeError(svcName string, m *ast.Method, side string, pos lexer.Position, name string, rawPos lexer.Position) {
+	diag := a.diag(pos, pos, lexer.SeverityError, CodeRawType,
+		"method %s.%s: @raw %s must be one of bytes / reader / writer (got %q) — raw mode bypasses encoding so structured types cannot round-trip",
+		svcName, m.Name, side, name)
+	diag.Related = related(rawPos, "@raw declared here")
 }
 
 // PathString renders an [ast.Path] as a printable route string, e.g.

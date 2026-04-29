@@ -8,8 +8,8 @@ package users
 // avoiding bloated wire payloads while keeping responses self-
 // contained (no client-side join lookup needed).
 type UserRef {
-    id    string @required
-    name  string @required @length(1, 80)
+	id   string @required
+	name string @required @length(1, 80)
 }
 
 // Avatar is the optional nested image metadata attached to a User.
@@ -23,8 +23,8 @@ type UserRef {
 //     fields; logic code calls avatar.Validate() explicitly when
 //     it needs the cascade.)
 type Avatar {
-    url        string @required @format(url) @maxLength(2048)
-    sizeBytes  int    @required @min(0) @max(5242880) // 5 MiB
+	url       string @required @format(url) @maxLength(2048)
+	sizeBytes int    @required @min(0) @max(5242880) // 5 MiB
 }
 
 // User is the full entity. Notice the @required + @length / @format
@@ -32,14 +32,14 @@ type Avatar {
 // bad input at the handler boundary so logic code can assume the
 // invariant holds.
 type User {
-    id        string @required @length(1, 64)
-    email     string @required @format(email) @maxLength(254)
-    name      string @required @length(1, 80)
-    bio       string? @maxLength(500)
-    // avatar is the nested-with-pointer case: the field is OPTIONAL
-    // (User without an avatar is fine) and the nested type carries
-    // its own validators.
-    avatar    Avatar?
+	id     string  @required @length(1, 64)
+	email  string  @required @format(email) @maxLength(254)
+	name   string  @required @length(1, 80)
+	bio    string? @maxLength(500)
+	// avatar is the nested-with-pointer case: the field is OPTIONAL
+	// (User without an avatar is fine) and the nested type carries
+	// its own validators.
+	avatar Avatar?
 }
 
 // CreateUserReq is the request body for POST /users. Domain
@@ -47,12 +47,12 @@ type User {
 // produces a happy User without an extra round-trip through the
 // store's persistence layer.
 type CreateUserReq {
-    email  string  @required @format(email) @maxLength(254)
-    name   string  @required @length(1, 80)
-    bio    string? @maxLength(500)
-    // Optional avatar at create-time — the request struct uses the
-    // same Avatar type so the wire shape stays canonical.
-    avatar Avatar?
+	email  string  @required @format(email) @maxLength(254)
+	name   string  @required @length(1, 80)
+	bio    string? @maxLength(500)
+	// Optional avatar at create-time — the request struct uses the
+	// same Avatar type so the wire shape stays canonical.
+	avatar Avatar?
 }
 
 // UpdateUserReq is the PATCH body. Every domain field is OPTIONAL
@@ -60,8 +60,8 @@ type CreateUserReq {
 // `id` carries `@path` so the route segment binds straight onto the
 // struct.
 type UpdateUserReq {
-    id     string  @path @required @length(1, 64)
-    name   string? @length(1, 80)
-    bio    string? @maxLength(500)
-    avatar Avatar?
+	id     string  @path @required @length(1, 64)
+	name   string? @length(1, 80)
+	bio    string? @maxLength(500)
+	avatar Avatar?
 }

@@ -827,8 +827,11 @@ func TestComplexGeneratedOpenAPIShape(t *testing.T) {
 		"operationId: CreateProfile",
 		"operationId: GetProfile",
 		"operationId: ListProfiles",
-		"/api/v1/profiles",
-		"/api/v1/profiles/{id}",
+		// Paths in the OpenAPI doc are relative to the `servers` entry
+		// (which carries the `/api` base) — so the keys here are the
+		// craftgo.design.yaml-prefixed routes alone, not the full URL.
+		"/v1/profiles:",
+		"/v1/profiles/{id}:",
 		// GET /api/v1/profiles/{id} exposes id as a path parameter,
 		// not a request body or a grouped schema.
 		"in: path",

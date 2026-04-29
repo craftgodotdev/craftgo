@@ -39,6 +39,14 @@ var astMarkerCalled bool
 // belong to the first declaration instead and are attached there by the
 // parser.
 type File struct {
+	// LeadingDoc preserves a `//` block at the very top of the file
+	// when the first AST-bearing token is a file-level decorator
+	// (`@title`, `@version`, ...). [Decorator] has no Doc field, so
+	// without LeadingDoc the lexer-attached comment would be lost
+	// after the parse / format round trip. When the first token is
+	// `package`, the same comment lands on [PackageDecl.Doc] instead
+	// and LeadingDoc stays empty.
+	LeadingDoc []string
 	Decorators []*Decorator
 	Package    *PackageDecl
 	Imports    []*Import
@@ -49,6 +57,7 @@ type File struct {
 // required when more than one file participates in the same logical package.
 type PackageDecl struct {
 	Pos  Pos
+	Doc  []string
 	Name string
 }
 
@@ -175,10 +184,13 @@ func (*ErrorDecl) declNode()          { astMarker() }
 func (d *ErrorDecl) DeclName() string { return d.Name }
 func (d *ErrorDecl) DeclPos() Pos     { return d.Pos }
 
-// ScalarDecl is `scalar Name <PrimitiveType> [@decorators]`.
+// ScalarDecl is `scalar Name <PrimitiveType> [@decorators]`. Doc holds
+// the run of `//` comments immediately preceding the `scalar` keyword,
+// captured for hover popups and round-trip-safe formatting.
 type ScalarDecl struct {
 	Pos        Pos
 	Decorators []*Decorator
+	Doc        []string
 	Name       string
 	Primitive  string
 }
@@ -189,10 +201,11 @@ func (d *ScalarDecl) DeclPos() Pos     { return d.Pos }
 
 // MiddlewareDecl is `middleware Name [(Params)]`. Params is non-nil only
 // when parentheses are present; an empty parameter list `()` and no
-// parentheses both produce nil.
+// parentheses both produce nil. Doc preserves the leading `//` block.
 type MiddlewareDecl struct {
 	Pos        Pos
 	Decorators []*Decorator
+	Doc        []string
 	Name       string
 	Params     []*MiddlewareParam
 }

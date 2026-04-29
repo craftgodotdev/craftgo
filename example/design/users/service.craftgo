@@ -11,44 +11,41 @@ import "shared"
 @prefix("/users")
 @tags(users)
 service UserService {
-    @doc("List users with cursor pagination. The request shape mirrors shared.Pagination — see the comment in shared/shared.craftgo for why the showcase keeps a local copy.")
-    get ListUsers / {
-        request   ListUsersReq
-        response  UserList
-    }
+	@doc("List users with cursor pagination. The request shape mirrors shared.Pagination — see the comment in shared/shared.craftgo for why the showcase keeps a local copy.")
+	get ListUsers / {
+		request  ListUsersReq
+		response UserList
+	}
 
-    @doc("Fetch one user by id.")
-    get GetUser /{id} {
-        request   GetUserReq
-        response  User
-    }
+	@doc("Fetch one user by id.")
+	get GetUser /{id} {
+		request  GetUserReq
+		response User
+	}
 
-    @doc("Create a new user.")
-    post CreateUser / {
-        request   CreateUserReq
-        response  User
-    }
+	@doc("Create a new user.")
+	post CreateUser / {
+		request  CreateUserReq
+		response User
+	}
 
-    @doc("Patch a user. Every field except id is optional.")
-    patch UpdateUser /{id} {
-        request   UpdateUserReq
-        response  User
-    }
+	@doc("Patch a user. Every field except id is optional.")
+	patch UpdateUser /{id} {
+		request  UpdateUserReq
+		response User
+	}
 
-    @doc("Delete a user. Returns shared.OkResp regardless of prior state — idempotent.")
-    delete DeleteUser /{id} {
-        request   GetUserReq
-        // Cross-package SHARED RESPONSE: every write endpoint that
-        // doesn't return a domain entity surfaces the same OkResp
-        // envelope.
-        response  shared.OkResp
-    }
+	@doc("Delete a user. Returns shared.OkResp regardless of prior state — idempotent.")
+	delete DeleteUser /{id} {
+		request  GetUserReq
+		response shared.OkResp
+	}
 
-    @doc("Attach a Contact to a user. Demonstrates a nested type whose own type-level validators (@requiresOneOf / @mutuallyExclusive) gate the wire shape.")
-    post AddContact /{userId}/contacts {
-        request   AddContactReq
-        response  shared.OkResp
-    }
+	@doc("Attach a Contact to a user. Demonstrates a nested type whose own type-level validators (@requiresOneOf / @mutuallyExclusive) gate the wire shape.")
+	post AddContact /{userId}/contacts {
+		request  AddContactReq
+		response shared.OkResp
+	}
 }
 
 // GetUserReq is the path-only request used by GetUser and DeleteUser.
@@ -56,7 +53,7 @@ service UserService {
 // "lookup by id" handle and de-duplicating the type avoids two
 // near-identical structs in the generated code.
 type GetUserReq {
-    id string @path @required @length(1, 64)
+	id string @path @required @length(1, 64)
 }
 
 // ListUsersReq mirrors shared.Pagination's field set. The v1 query
@@ -67,8 +64,8 @@ type GetUserReq {
 // lands; the field shape stays canonical so the wire contract is
 // indistinguishable from the shared reference.
 type ListUsersReq {
-    cursor string?
-    limit  int    @min(0) @max(100)
+	cursor string?
+	limit  int     @min(0) @max(100)
 }
 
 // UserList is the ListUsers response. Each list endpoint in the
@@ -77,7 +74,7 @@ type ListUsersReq {
 // services so a generic client can paginate without per-resource
 // special-casing.
 type UserList {
-    items   User[]
-    cursor  string?
-    total   int?
+	items  User[]
+	cursor string?
+	total  int?
 }

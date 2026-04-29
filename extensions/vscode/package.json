@@ -1,0 +1,123 @@
+{
+  "name": "craftgo",
+  "displayName": "craftgo",
+  "description": "Syntax, snippets, and full LSP-backed language support (diagnostics, hover, completion, go-to-def, formatting, rename) for CraftGo DSL (.craftgo files).",
+  "version": "0.2.0",
+  "publisher": "craftgo",
+  "license": "MIT",
+  "icon": "icons/craftgo.png",
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "craftgo",
+    "dsl",
+    "design-first",
+    "go",
+    "openapi"
+  ],
+  "activationEvents": [
+    "onLanguage:craftgo"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dropship-dev/craftgo",
+    "directory": "extensions/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/dropship-dev/craftgo/issues"
+  },
+  "homepage": "https://github.com/dropship-dev/craftgo/tree/main/extensions/vscode#readme",
+  "contributes": {
+    "languages": [
+      {
+        "id": "craftgo",
+        "aliases": [
+          "CraftGo",
+          "craftgo"
+        ],
+        "extensions": [
+          ".craftgo"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/craftgo.svg",
+          "dark": "./icons/craftgo.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "craftgo",
+        "scopeName": "source.craftgo",
+        "path": "./syntaxes/craftgo.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "craftgo",
+        "path": "./snippets/craftgo.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "craftgo.restartServer",
+        "title": "craftgo: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "craftgo",
+      "properties": {
+        "craftgo.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the craftgo-lsp binary. Leave empty to use whatever 'craftgo-lsp' resolves to on $PATH (default after `go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest`)."
+        },
+        "craftgo.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the craftgo language server."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[craftgo]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "craftgo.craftgo",
+        "editor.tabSize": 4,
+        "editor.insertSpaces": false,
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "off",
+          "strings": "on"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild client/src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "npm run build -- --watch",
+    "package": "npm run build && vsce package",
+    "publish": "npm run build && vsce publish",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.3.3"
+  }
+}

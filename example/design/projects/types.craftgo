@@ -8,8 +8,8 @@ import "users"
 // `users.UserRef` pattern: every cross-package mention of a domain
 // entity flows through a Ref type.
 type ProjectRef {
-    id    string @required
-    name  string @required @length(1, 200)
+	id   string @required
+	name string @required @length(1, 200)
 }
 
 // Project is the full entity. Demonstrates two cross-package
@@ -21,23 +21,23 @@ type ProjectRef {
 //   - `members users.UserRef[]` — slice-of-cross-package nested
 //     refs. Same import resolution, different cardinality.
 type Project {
-    id           string @required @length(1, 64)
-    name         string @required @length(1, 200)
-    description  string? @maxLength(2000)
-    // owner is the canonical "creator" of the project — exactly
-    // one. Required.
-    owner        users.UserRef
-    // members is the project's collaborator list. Empty array is
-    // valid (a fresh project has only its owner); the @maxItems
-    // gate caps explosion attacks.
-    members      users.UserRef[] @maxItems(100)
+	id          string          @required @length(1, 64)
+	name        string          @required @length(1, 200)
+	description string?         @maxLength(2000)
+	// owner is the canonical "creator" of the project — exactly
+	// one. Required.
+	owner       users.UserRef
+	// members is the project's collaborator list. Empty array is
+	// valid (a fresh project has only its owner); the @maxItems
+	// gate caps explosion attacks.
+	members     users.UserRef[] @maxItems(100)
 }
 
 // ProjectList is the ListProjects response. Same shape contract as
 // users.UserList — generic clients can reuse their pagination
 // helpers across resources.
 type ProjectList {
-    items   Project[]
-    cursor  string?
-    total   int?
+	items  Project[]
+	cursor string?
+	total  int?
 }

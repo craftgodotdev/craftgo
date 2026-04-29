@@ -13,14 +13,14 @@ package shared
 // referencing this type, so a `?limit=999` query is rejected the
 // same way regardless of which service receives it.
 type Pagination {
-    // cursor is an opaque continuation token returned by the
-    // previous page. Empty / absent on the first request.
-    cursor string?
-    // limit caps the page size. Logic treats 0 as "use the default"
-    // (the v1 query binder doesn't support optional ints, so 0
-    // serves as the "absent" sentinel); the upper bound is
-    // enforced here so a hostile client can't request 1M rows.
-    limit int @min(0) @max(100)
+	// cursor is an opaque continuation token returned by the
+	// previous page. Empty / absent on the first request.
+	cursor string?
+	// limit caps the page size. Logic treats 0 as "use the default"
+	// (the v1 query binder doesn't support optional ints, so 0
+	// serves as the "absent" sentinel); the upper bound is
+	// enforced here so a hostile client can't request 1M rows.
+	limit  int     @min(0) @max(100)
 }
 
 // OkResp is the conventional response shape for write endpoints
@@ -28,7 +28,7 @@ type Pagination {
 // keeps the wire vocabulary tight: clients learn ONE success
 // envelope, not one per service.
 type OkResp {
-    ok bool
+	ok bool
 }
 
 // ---------------------------------------------------------------
@@ -59,4 +59,3 @@ scalar PercentBP int @min(0) @max(10000)
 // package field carrying a public-facing URL should reference this
 // scalar so the length cap stays uniform.
 scalar SafeURL string @format(url) @maxLength(2048)
-

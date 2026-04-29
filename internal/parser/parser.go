@@ -69,6 +69,14 @@ func (p *Parser) Diagnostics() []lexer.Diagnostic { return p.diags }
 // to the first declaration instead.
 func (p *Parser) Parse() *ast.File {
 	f := &ast.File{}
+	// Capture the file-header `//` block when it would otherwise be
+	// dropped: a decorator-led file (`@title(...) ... package x`)
+	// lets the lexer attach the comment to the first `@` token, but
+	// [ast.Decorator] has no Doc field, so without this snapshot the
+	// comment vanishes through the parser/format round trip.
+	if p.peek().Kind == lexer.At {
+		f.LeadingDoc = p.peek().Doc
+	}
 	leading := p.parseDecorators()
 	if p.peek().Kind == lexer.KwPackage {
 		f.Decorators = leading
@@ -300,11 +308,13 @@ func (p *Parser) parseValue() ast.Expr {
 
 // ----- top-level -----
 
-// parsePackage reads the `package <name>` line.
+// parsePackage reads the `package <name>` line. Any `//` block
+// preceding the `package` keyword is captured as Doc so file-header
+// comments survive a parse / format round-trip.
 func (p *Parser) parsePackage() *ast.PackageDecl {
-	p.advance()
+	pkgTok := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	return &ast.PackageDecl{Pos: name.Pos, Name: name.Text}
+	return &ast.PackageDecl{Pos: name.Pos, Doc: pkgTok.Doc, Name: name.Text}
 }
 
 // parseImport reads `import [alias] "path"`. Both alias and path are
@@ -611,7 +621,7 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	prim, _ := p.expect(lexer.Ident)
-	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Name: name.Text, Primitive: prim.Text}
+	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text, Primitive: prim.Text}
 	sd.Decorators = append(sd.Decorators, p.parseDecorators()...)
 	return sd
 }
@@ -622,7 +632,7 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 func (p *Parser) parseMiddlewareDecl(decs []*ast.Decorator) *ast.MiddlewareDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	md := &ast.MiddlewareDecl{Pos: pos, Decorators: decs, Name: name.Text}
+	md := &ast.MiddlewareDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
 		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {

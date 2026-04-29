@@ -52,6 +52,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
 			os.Exit(1)
 		}
+	case "fmt":
+		if err := runFmt(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
+			os.Exit(1)
+		}
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "help", "--help", "-h":
@@ -73,13 +78,16 @@ Usage:
   craftgo init [path] [-package <module>]
                           Scaffold design/ with a sample manifest, type, service
   craftgo gen [path]      Generate types, handlers, routes, OpenAPI from .craftgo
+  craftgo fmt [path] [-l] [-w]
+                          Canonical-format .craftgo files (default: write back)
   craftgo version         Print the CLI version
   craftgo help            Show this message
 
 For 'gen', path is optional; when omitted craftgo searches the current
 directory upward for a craftgo.design.yaml (or a sibling design/ folder
 containing one). For 'init', path defaults to '.' and -package defaults to
-'github.com/example/app' (which you should edit immediately).`)
+'github.com/example/app' (which you should edit immediately). For 'fmt',
+path may be a single file or a directory (recursed for *.craftgo).`)
 }
 
 // runGen wires the full design → codegen pipeline. The implementation is a

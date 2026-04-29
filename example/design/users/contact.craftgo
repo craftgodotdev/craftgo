@@ -14,10 +14,10 @@ package users
 @requiresOneOf(email, phone)
 @mutuallyExclusive(work, personal)
 type Contact {
-    email     string?  @format(email) @maxLength(254)
-    phone     string?  @pattern("^\\+?[0-9 ()-]{6,20}$")
-    work      bool?
-    personal  bool?
+	email    string? @format(email) @maxLength(254)
+	phone    string? @pattern("^\\+?[0-9 ()-]{6,20}$")
+	work     bool?
+	personal bool?
 }
 
 // AddContactReq is the body for AddContact below. Composes the
@@ -26,6 +26,6 @@ type Contact {
 // logic code calls `req.Contact.Validate()` to opt into the deep
 // check before persisting.
 type AddContactReq {
-    userId   string  @path @required @length(1, 64)
-    contact  Contact
+	userId  string  @path @required @length(1, 64)
+	contact Contact
 }

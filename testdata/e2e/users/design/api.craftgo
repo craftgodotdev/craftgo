@@ -8,8 +8,20 @@ type GetUserReq {
     id  string  @required
 }
 
-// CreateUserReq is the body for POST /users and PUT /users/{id}.
+// CreateUserReq is the body for POST /users.
 type CreateUserReq {
+    name  string  @required @length(1, 50)
+    age   int?
+    tags  string[]
+    meta  map<string, string>
+}
+
+// UpdateUserReq is the request for PUT /users/{id}. The path-bound `id`
+// is required by the semantic phase to match the {id} segment; the body
+// fields mirror CreateUserReq so a JSON body shaped for create works for
+// update too.
+type UpdateUserReq {
+    id    string  @path @required
     name  string  @required @length(1, 50)
     age   int?
     tags  string[]
@@ -77,7 +89,7 @@ service UserService {
 extend service UserService {
     // UpdateUser overwrites an existing user.
     put UpdateUser /users/{id} {
-        request   CreateUserReq
+        request   UpdateUserReq
         response  User
     }
 }

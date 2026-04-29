@@ -7,10 +7,10 @@ import "projects"
 // — wire JSON carries the lower-cased label, generated Go has
 // PascalCase constants pinned to those literals.
 enum TaskStatus {
-    Open       = "open"
-    InProgress = "in_progress"
-    Done       = "done"
-    Archived   = "archived"
+	Open       = "open"
+	InProgress = "in_progress"
+	Done       = "done"
+	Archived   = "archived"
 }
 
 // Comment is a NESTED type that itself NESTS another cross-package
@@ -18,10 +18,10 @@ enum TaskStatus {
 // arbitrarily-deep cross-package references resolve cleanly:
 // Task → Comment → users.UserRef.
 type Comment {
-    id        string @required @length(1, 64)
-    author    users.UserRef
-    body      string @required @length(1, 4000)
-    createdAt string @required @format(datetime)
+	id        string        @required @length(1, 64)
+	author    users.UserRef
+	body      string        @required @length(1, 4000)
+	createdAt string        @required @format(datetime)
 }
 
 // Task is the marquee multi-nested type. It demonstrates:
@@ -39,24 +39,24 @@ type Comment {
 // can be invoked explicitly from logic when deep validation is
 // required (v1 doesn't auto-recurse).
 type Task {
-    id          string @required @length(1, 64)
-    title       string @required @length(1, 200)
-    status      TaskStatus
-    project     projects.ProjectRef
-    // OPTIONAL CROSS-PACKAGE NESTED — the showcase pointer case.
-    // Generated Go: `Assignee *users.UserRef` (the `T?` postfix
-    // turns into a pointer + omitempty), so an unassigned task
-    // marshals without an `assignee` key on the wire.
-    assignee    users.UserRef?
-    // Slice of nested struct. Empty array is fine; @maxItems caps
-    // pathological growth.
-    comments    Comment[] @maxItems(500)
+	id       string              @required @length(1, 64)
+	title    string              @required @length(1, 200)
+	status   TaskStatus
+	project  projects.ProjectRef
+	// OPTIONAL CROSS-PACKAGE NESTED — the showcase pointer case.
+	// Generated Go: `Assignee *users.UserRef` (the `T?` postfix
+	// turns into a pointer + omitempty), so an unassigned task
+	// marshals without an `assignee` key on the wire.
+	assignee users.UserRef?
+	// Slice of nested struct. Empty array is fine; @maxItems caps
+	// pathological growth.
+	comments Comment[]           @maxItems(500)
 }
 
 // TaskList is the ListTasks response — same envelope contract as
 // UserList / ProjectList for consistent client pagination.
 type TaskList {
-    items   Task[]
-    cursor  string?
-    total   int?
+	items  Task[]
+	cursor string?
+	total  int?
 }
