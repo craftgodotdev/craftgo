@@ -122,14 +122,6 @@ func TestArgsScopeNilEntry(t *testing.T) {
 	}
 }
 
-func TestArgTypeStreamFormatAcceptsString(t *testing.T) {
-	mustClean(t, `service S {
-		@stream
-		@format("sse")
-		get Live /l {}
-	}`)
-}
-
 // ---------- Enum value-set ----------
 
 func TestArgValueFormatAccepted(t *testing.T) {
@@ -159,26 +151,6 @@ func TestArgValueEnumSkipsWhenWrongShape(t *testing.T) {
 	}
 	if findCode(diags, CodeDecoratorArgValue) != nil {
 		t.Errorf("did not expect argvalue diag stacked on argtype, got %v", codes(diags))
-	}
-}
-
-func TestArgValueStreamFormatAccepted(t *testing.T) {
-	mustClean(t, `service S {
-		@stream
-		@format(ndjson)
-		get Live /l {}
-	}`)
-}
-
-func TestArgValueStreamFormatRejected(t *testing.T) {
-	// `email` is a string format, not a streaming wire format.
-	_, diags := Analyze(parseFiles(t, `service S {
-		@stream
-		@format(email)
-		get Live /l {}
-	}`))
-	if findCode(diags, CodeDecoratorArgValue) == nil {
-		t.Fatalf("expected argvalue diag, got %v", codes(diags))
 	}
 }
 

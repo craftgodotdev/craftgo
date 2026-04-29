@@ -36,10 +36,7 @@ type handlerData struct {
 	BodyVerb        bool
 	BodyDecode      bool
 	NeedsTypes      bool
-	IsStream        bool
-	StreamFormat    string // "sse" / "ndjson" / "" when not a stream method
-	StreamCtor      string // "SSE" / "NDJSON" — matches the runtime constructor name
-	IsRaw           bool
+	IsPassthrough   bool
 	IsMultipart     bool
 	PathParams      []paramBinding
 	QueryParams     []paramBinding
@@ -157,9 +154,7 @@ func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semanti
 		return err
 	}
 	jsonTpl := tmpl("handler.tmpl")
-	streamTpl := tmpl("handler-stream.tmpl")
-	rawTpl := tmpl("handler-raw.tmpl")
-	rawStreamTpl := tmpl("handler-raw-stream.tmpl")
+	passthroughTpl := tmpl("handler-passthrough.tmpl")
 	multipartTpl := tmpl("handler-multipart.tmpl")
 	for _, m := range svc.Methods {
 		data, err := buildHandlerData(svcName, m, imps, pkg, crossPkg)
@@ -168,12 +163,8 @@ func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semanti
 		}
 		t := jsonTpl
 		switch {
-		case data.IsRaw && data.IsStream:
-			t = rawStreamTpl
-		case data.IsStream:
-			t = streamTpl
-		case data.IsRaw:
-			t = rawTpl
+		case data.IsPassthrough:
+			t = passthroughTpl
 		case data.IsMultipart:
 			t = multipartTpl
 		}
@@ -242,15 +233,20 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 		// body-bound (default for body verbs unless explicitly tagged).
 		d.BodyDecode = hasBodyVerb(m.Verb) && hasUnboundField(m, pkg)
 	}
-	if (m.Response != nil && m.Response.Stream) || hasStreamDecorator(m.Decorators) {
-		d.IsStream = true
-		d.StreamFormat = streamFormat(m)
-		d.StreamCtor = streamCtor(d.StreamFormat)
+	if hasPassthroughDecorator(m.Decorators) {
+		d.IsPassthrough = true
+		// Passthrough endpoints reach into r/w directly, so the
+		// handler skips request decoding entirely.
+		d.NeedsTypes = false
+		d.HasRequest = false
+		d.HasResponse = false
+		d.BodyDecode = false
+		d.PathParams = nil
+		d.QueryParams = nil
+		d.HeaderParams = nil
+		d.CookieParams = nil
 	}
-	if hasRawDecorator(m.Decorators) {
-		d.IsRaw = true
-	}
-	if hasReq && !d.IsStream && !d.IsRaw {
+	if hasReq && !d.IsPassthrough {
 		if forms, files := collectFormBindings(m, pkg); len(files) > 0 {
 			d.IsMultipart = true
 			d.FormStrings = forms
@@ -356,23 +352,13 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, coo
 	return headers, cookies
 }
 
-// hasRawDecorator reports whether `@raw` is declared on the method.
-func hasRawDecorator(ds []*ast.Decorator) bool {
+// hasPassthroughDecorator reports whether `@passthrough` is declared
+// on the method. Passthrough methods bypass the framework entirely:
+// codegen emits a thin `http.HandlerFunc` that delegates to logic
+// without parsing, validating, or encoding anything.
+func hasPassthroughDecorator(ds []*ast.Decorator) bool {
 	for _, d := range ds {
-		if d.Name == "raw" {
-			return true
-		}
-	}
-	return false
-}
-
-// hasStreamDecorator reports whether `@stream` is declared on the
-// method. The flag is also implicitly set by `response stream T` in
-// the DSL — both forms route the codegen through the streaming
-// templates.
-func hasStreamDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d.Name == "stream" {
+		if d.Name == "passthrough" {
 			return true
 		}
 	}
@@ -479,48 +465,6 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 		}
 	}
 	return strings, files
-}
-
-// streamFormat reads the `@format(...)` decorator argument; defaults
-// to `"sse"` when no format is declared so a bare `@stream` produces
-// Server-Sent Events out of the box.
-func streamFormat(m *ast.Method) string {
-	for _, d := range m.Decorators {
-		if d.Name != "format" || len(d.Args) == 0 {
-			continue
-		}
-		switch v := d.Args[0].Value.(type) {
-		case *ast.StringLit:
-			if v.Value != "" {
-				return v.Value
-			}
-		case *ast.IdentExpr:
-			if name := v.Name.String(); name != "" {
-				return name
-			}
-		}
-	}
-	return "sse"
-}
-
-// streamCtor maps a DSL stream-format name to the matching runtime
-// constructor in pkg/server. Unknown formats fall back to SSE — same
-// rationale as streamFormat's default. Each branch corresponds to a
-// `New<Name>Stream` constructor in pkg/server/stream.go.
-func streamCtor(format string) string {
-	switch format {
-	case "ndjson", "jsonl":
-		return "NDJSON"
-	case "jsonarray":
-		return "JSONArray"
-	case "csv":
-		return "CSV"
-	case "concat":
-		return "Concat"
-	case "lengthprefixed":
-		return "LengthPrefixed"
-	}
-	return "SSE"
 }
 
 // collectBindings walks the request type's fields and returns per-kind

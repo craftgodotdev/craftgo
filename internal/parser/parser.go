@@ -156,8 +156,8 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 
 // parseDecorator reads a single `@Name [(args...)]`. The name token may be
 // any [lexer.Ident] or any keyword spelling — this lets users name decorators
-// after reserved words (e.g. `@stream`, `@true`) without clashing with
-// keyword usage elsewhere in the grammar.
+// after reserved words (e.g. `@true`) without clashing with keyword usage
+// elsewhere in the grammar.
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
@@ -720,10 +720,6 @@ func (p *Parser) parseMethod() *ast.Method {
 		case lexer.KwResponse:
 			p.advance()
 			mr := &ast.MethodResponse{Pos: p.peek().Pos}
-			if p.peek().Kind == lexer.KwStream {
-				p.advance()
-				mr.Stream = true
-			}
 			mr.Type = p.parseNamedTypeRef()
 			m.Response = mr
 		default:

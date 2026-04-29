@@ -64,10 +64,8 @@ service UserService {
         response  User
     }
 
-    @stream
-    @format(ndjson)
+    @passthrough
     get StreamUsers /users-feed {
-        response  stream User
     }
 }
 

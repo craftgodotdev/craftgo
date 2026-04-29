@@ -210,14 +210,11 @@ func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.
 }
 
 // checkEnumOnFirst applies the value-set check on the first positional
-// arg. Method-level `@format` uses [Spec.MethodEnum]; everything else
-// reads [ArgsRule.Enum]. Bare-int / non-textual args silently skip —
-// the kind check above already flagged them.
+// arg. Bare-int / non-textual args silently skip — the kind check above
+// already flagged them.
 func (a *analyzer) checkEnumOnFirst(site Level, d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
+	_ = site
 	enum := spec.Args.Enum
-	if site == LvlMethod && len(spec.MethodEnum) > 0 {
-		enum = spec.MethodEnum
-	}
 	if len(enum) == 0 || len(pos) == 0 {
 		return
 	}

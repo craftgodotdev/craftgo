@@ -141,7 +141,7 @@ func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lex
 
 func isTypePositionTrigger(t lexer.Token) bool {
 	switch t.Kind {
-	case lexer.KwRequest, lexer.KwResponse, lexer.KwStream,
+	case lexer.KwRequest, lexer.KwResponse,
 		lexer.Colon, lexer.LAngle, lexer.Comma:
 		return true
 	}
@@ -311,7 +311,7 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 			}
 			// Found the unmatched `(`. Look two tokens back for
 			// `@<ident>`. The Ident may be either a plain identifier
-			// or one of the keyword-spelt decorators (`@stream`).
+			// or one of the keyword-spelt decorators (`@true`).
 			if i >= 2 && view.tokens[i-2].Kind == lexer.At {
 				return view.tokens[i-1].Text, true
 			}
@@ -322,20 +322,17 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 }
 
 // decoratorArgCompletions returns enum-value completions for the
-// decorator at the cursor when the spec restricts them. The level
-// is inferred from the surrounding declaration so `@format` on a
-// method emits streaming wire formats while `@format` on a field
-// emits string formats. Returns nil to signal "no enum applies — let
-// the next branch handle this position".
+// decorator at the cursor when the spec restricts them. Returns nil
+// to signal "no enum applies — let the next branch handle this
+// position".
 func decoratorArgCompletions(view snapshotView, pos protocol.Position, name string) []protocol.CompletionItem {
 	spec, ok := semantic.Registry[name]
 	if !ok {
 		return nil
 	}
+	_ = view
+	_ = pos
 	values := spec.Args.Enum
-	if guessLevel(view, pos) == semantic.LvlMethod && len(spec.MethodEnum) > 0 {
-		values = spec.MethodEnum
-	}
 	if len(values) == 0 {
 		return nil
 	}
@@ -781,7 +778,7 @@ func keywordCompletions() []protocol.CompletionItem {
 	kw := []string{
 		"package", "import", "type", "enum", "error", "scalar",
 		"service", "extend", "middleware", "request", "response",
-		"stream", "map", "true", "false", "null",
+		"map", "true", "false", "null",
 		"get", "post", "put", "patch", "delete", "head", "options",
 	}
 	out := make([]protocol.CompletionItem, 0, len(kw))

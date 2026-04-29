@@ -11,7 +11,9 @@ import (
 	"strconv"
 {{- end}}
 
+{{- if .HasRequest}}
 	"github.com/dropship-dev/craftgo/pkg/server"
+{{- end}}
 
 	logic "{{.LogicImport}}"
 {{- if .NeedsTypes}}

@@ -77,7 +77,11 @@ func requiredKind(f *ast.Field, access string) string {
 		return access + " == nil"
 	}
 	if f.Type.Named != nil && f.Type.Named.Name.String() == "any" {
-		return fmt.Sprintf(`string(%s) == "null"`, access)
+		// `any` lands on Go's empty interface; the codec leaves it
+		// nil for absent fields and for explicit JSON `null` (the
+		// decoder collapses both into the zero interface value).
+		// `@required` rejects either by checking for nil.
+		return access + " == nil"
 	}
 	return ""
 }
@@ -391,23 +395,13 @@ func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool) string 
 		return ""
 	}
 	elem := arrayElemType(f.Type)
-	if elem == "json.RawMessage" {
-		// `string(item)` cast is a built-in conversion; no extra
-		// import required even though the element type's full Go
-		// spelling is `json.RawMessage`.
-		uses["fmt"] = true
-		return fmt.Sprintf(`{
-seen := make(map[string]struct{}, len(%s))
-for _, item := range %s {
-key := string(item)
-if _, dup := seen[key]; dup {
-return fmt.Errorf("%s: items must be unique")
-}
-seen[key] = struct{}{}
-}
-}`, access, access, f.Name)
-	}
 	if !isComparableElem(elem) {
+		// `any` (Go: `interface{}`) IS comparable in the
+		// language sense — but only when its dynamic type is
+		// itself comparable. The runtime `==` over interfaces
+		// panics for slices / maps / funcs. Skip the
+		// auto-emitted dedupe loop for those element types and
+		// let logic deduplicate by-shape if it matters.
 		return ""
 	}
 	uses["fmt"] = true

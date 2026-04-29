@@ -49,13 +49,15 @@ func buildHandlerCall(m *ast.Method, mws []string) string {
 
 // methodLimitsLiteral renders a `server.Limits{...}` Go-source struct
 // literal from the method's decorators, or returns ("", false) when
-// none of the limit decorators are present. Streaming methods opt out
-// of `@readTimeout` because `http.TimeoutHandler` would cut the stream
-// mid-flight; @maxBodySize and informational fields still apply.
+// none of the limit decorators are present. Passthrough methods opt
+// out of `@readTimeout` and `@writeTimeout` because the framework
+// hands the writer/request to logic verbatim and `http.TimeoutHandler`
+// would cut whatever stream logic decides to produce; @maxBodySize
+// and informational fields still apply.
 func methodLimitsLiteral(m *ast.Method) (string, bool) {
-	streaming := hasStreamDecorator(m.Decorators)
+	passthrough := hasPassthroughDecorator(m.Decorators)
 	var fields []string
-	if !streaming {
+	if !passthrough {
 		if d := durationDecoratorArg(m.Decorators, "readTimeout"); d != "" {
 			fields = append(fields, "ReadTimeout: "+d)
 		}

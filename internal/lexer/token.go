@@ -50,7 +50,6 @@ const (
 	KwMiddleware
 	KwRequest
 	KwResponse
-	KwStream
 	KwMap
 	KwTrue
 	KwFalse
@@ -97,7 +96,7 @@ var kindNames = map[Kind]string{
 	KwPackage: "package", KwImport: "import", KwType: "type",
 	KwEnum: "enum", KwError: "error", KwScalar: "scalar",
 	KwService: "service", KwExtend: "extend", KwMiddleware: "middleware",
-	KwRequest: "request", KwResponse: "response", KwStream: "stream",
+	KwRequest: "request", KwResponse: "response",
 	KwMap: "map", KwTrue: "true", KwFalse: "false", KwNull: "null",
 
 	VerbGet: "get", VerbPost: "post", VerbPut: "put", VerbPatch: "patch",
@@ -134,7 +133,6 @@ var keywords = map[string]Kind{
 	"middleware": KwMiddleware,
 	"request":    KwRequest,
 	"response":   KwResponse,
-	"stream":     KwStream,
 	"map":        KwMap,
 	"true":       KwTrue,
 	"false":      KwFalse,

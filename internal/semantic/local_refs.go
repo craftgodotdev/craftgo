@@ -19,8 +19,6 @@ var builtinTypes = map[string]bool{
 	"bytes":  true,
 	"any":    true,
 	"object": true, // permissive bag-of-fields, used in `@example({...})`
-	"reader": true,
-	"writer": true,
 	"file":   true,
 }
 

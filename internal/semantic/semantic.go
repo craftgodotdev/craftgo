@@ -278,16 +278,12 @@ const (
 	// surfaces every conflicting declaration so the author can
 	// rename or consolidate.
 	CodeMiddlewareCollision = "middleware/collision"
-	// CodeRawType fires when a method tagged `@raw` declares a
-	// request/response whose underlying type is anything other than
-	// the byte-pass primitives (`bytes`, `reader`, `writer`). Raw
-	// mode skips JSON encoding wholesale, so a struct on either side
-	// would never round-trip — the diagnostic catches the mistake at
-	// design time.
-	CodeRawType = "method/raw-type"
-	// CodeRawFormat fires when `@raw` and `@format` are both on the
-	// same method.
-	CodeRawFormat = "method/raw-format"
+	// CodePassthroughBody fires when a method tagged `@passthrough`
+	// declares a `request` or `response` block. Passthrough endpoints
+	// hand the raw `http.ResponseWriter` and `*http.Request` to logic;
+	// any framework-side request/response shape would be ignored, so
+	// the analyser rejects the mistake up front.
+	CodePassthroughBody = "passthrough/has-body"
 
 	// CodeQualifiedRef fires for a `pkg.Type` reference; v1 uses a
 	// folder-merge import model and rejects qualified names.
@@ -881,8 +877,9 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 //   - At most one of `@path / @query / @header / @cookie / @body / @form`
 //     may appear on a single field; multiple non-body bindings would
 //     compete for the same value at runtime.
-//   - `@raw` bypasses JSON encoding entirely, so `@format` on the same
-//     method has no defined meaning and is rejected.
+//   - `@passthrough` methods may not declare `request` or `response` —
+//     logic handles the wire format directly, so any framework-managed
+//     shape would be silently ignored.
 //
 // Diagnostics fire on the second / conflicting decorator so the error
 // points at the offending source location, not the (innocent) first
@@ -970,75 +967,50 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 
 // checkMethodCombinations enforces method-level rules:
 //
-//   - `@raw` + `@format` are mutually exclusive (raw skips encoding).
-//   - `@raw` + a non-byte request/response shape is a contradiction —
-//     the encoder would never run, so a structured type can't be
-//     marshalled either way. Only `bytes`, `reader`, and `writer`
-//     pass through cleanly.
-//
-// Streaming / raw-stream combinations are intentionally allowed and
-// not flagged here.
+//   - `@passthrough` methods must not declare a `request` or `response`
+//     block — logic handles the wire format directly, so any framework-
+//     managed shape would be silently ignored.
 func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
-	hasRaw := false
-	var rawPos lexer.Position
+	a.checkPassthroughBody(svcName, m)
+}
+
+// checkPassthroughBody rejects `request` or `response` blocks on any
+// method tagged `@passthrough`. The decorator hands the raw
+// http.ResponseWriter and *http.Request to logic; declaring a typed
+// shape next to it would mislead readers into expecting framework
+// validation that never runs.
+func (a *analyzer) checkPassthroughBody(svcName string, m *ast.Method) {
+	var passPos lexer.Position
+	hasPassthrough := false
 	for _, d := range m.Decorators {
-		if d.Name == "raw" {
-			hasRaw = true
-			rawPos = d.Pos
+		if d == nil {
+			continue
+		}
+		if d.Name == "passthrough" {
+			hasPassthrough = true
+			passPos = d.Pos
 			break
 		}
 	}
-	if !hasRaw {
+	if !hasPassthrough {
 		return
 	}
-	for _, d := range m.Decorators {
-		if d.Name == "format" {
-			diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeRawFormat,
-				"method %s.%s: @format is incompatible with @raw (raw mode bypasses encoding)",
-				svcName, m.Name)
-			diag.Related = related(rawPos, "@raw declared here")
-		}
+	if m.Request != nil {
+		diag := a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodePassthroughBody,
+			"method %s.%s: @passthrough method must not declare request or response — logic handles wire format directly",
+			svcName, m.Name)
+		diag.Related = related(passPos, "@passthrough declared here")
 	}
-	a.checkRawSideShape(svcName, m, "request", m.Request, rawPos)
 	if m.Response != nil {
-		a.checkRawSideShape(svcName, m, "response", m.Response.Type, rawPos)
+		pos := m.Response.Pos
+		if m.Response.Type != nil {
+			pos = m.Response.Type.Pos
+		}
+		diag := a.diag(pos, pos, lexer.SeverityError, CodePassthroughBody,
+			"method %s.%s: @passthrough method must not declare request or response — logic handles wire format directly",
+			svcName, m.Name)
+		diag.Related = related(passPos, "@passthrough declared here")
 	}
-}
-
-// rawByteTypes is the closed set of named primitives whose Go form
-// is a byte stream — the only shapes `@raw` can pass through without
-// triggering JSON marshalling.
-var rawByteTypes = map[string]bool{
-	"bytes":  true,
-	"reader": true,
-	"writer": true,
-}
-
-// checkRawSideShape validates one side (request or response) of an
-// `@raw` method. The type must reduce to a single byte-pass primitive
-// — array, map, optional, generic, scalar, and user types are all
-// rejected. nil ref is fine (no body / no response).
-func (a *analyzer) checkRawSideShape(svcName string, m *ast.Method, side string, ref *ast.NamedTypeRef, rawPos lexer.Position) {
-	if ref == nil || ref.Name == nil {
-		return
-	}
-	if len(ref.Name.Parts) != 1 {
-		// Cross-package qualified ref — never a byte primitive.
-		a.rawShapeError(svcName, m, side, ref.Pos, ref.Name.String(), rawPos)
-		return
-	}
-	name := ref.Name.Parts[0]
-	if rawByteTypes[name] {
-		return
-	}
-	a.rawShapeError(svcName, m, side, ref.Pos, name, rawPos)
-}
-
-func (a *analyzer) rawShapeError(svcName string, m *ast.Method, side string, pos lexer.Position, name string, rawPos lexer.Position) {
-	diag := a.diag(pos, pos, lexer.SeverityError, CodeRawType,
-		"method %s.%s: @raw %s must be one of bytes / reader / writer (got %q) — raw mode bypasses encoding so structured types cannot round-trip",
-		svcName, m.Name, side, name)
-	diag.Related = related(rawPos, "@raw declared here")
 }
 
 // PathString renders an [ast.Path] as a printable route string, e.g.

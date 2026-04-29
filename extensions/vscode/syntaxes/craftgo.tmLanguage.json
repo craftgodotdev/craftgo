@@ -67,7 +67,7 @@
         },
         {
           "name": "keyword.other.craftgo",
-          "match": "\\b(request|response|stream|map)\\b"
+          "match": "\\b(request|response|map)\\b"
         }
       ]
     },
@@ -91,7 +91,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.craftgo",
-          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|reader|writer|file)\\b"
+          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|file)\\b"
         }
       ]
     },

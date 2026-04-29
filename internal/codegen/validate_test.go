@@ -43,8 +43,8 @@ type X { name string @required }`)
 	// silently, so the validator does need to fire.
 	srcAny := runValidateGen(t, `package design
 type X { data any @required }`)
-	if !strings.Contains(srcAny, `string(v.Data) == "null"`) {
-		t.Errorf("@required on any should reject explicit null:\n%s", srcAny)
+	if !strings.Contains(srcAny, `v.Data == nil`) {
+		t.Errorf("@required on any should reject nil interface:\n%s", srcAny)
 	}
 }
 

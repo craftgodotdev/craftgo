@@ -33,7 +33,7 @@ func isErrorCategory(s string) bool { return errorCategories[s] }
 // imperative, formatted markdown, opinionated, and likely to change as
 // docs improve. Keep entries sorted alphabetically.
 var builtinDocs = map[string]string{
-	"any":     "**`any`** — opaque JSON value.\n\nGenerates `json.RawMessage` in Go.",
+	"any":     "**`any`** — opaque JSON value.\n\nGenerates `any` in Go.",
 	"bool":    "**`bool`** — boolean primitive (`true` / `false`).",
 	"bytes":   "**`bytes`** — raw byte buffer.\n\nGenerates `[]byte` in Go.",
 	"file":    "**`file`** — multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`.",
@@ -44,14 +44,12 @@ var builtinDocs = map[string]string{
 	"int16":   "**`int16`** — 16-bit signed integer.",
 	"int32":   "**`int32`** — 32-bit signed integer.",
 	"int64":   "**`int64`** — 64-bit signed integer.",
-	"reader":  "**`reader`** — streaming response body.\n\nGenerates `io.Reader` (response only).",
 	"string":  "**`string`** — UTF-8 text primitive.",
 	"uint":    "**`uint`** — platform-sized unsigned integer.",
 	"uint8":   "**`uint8`** — 8-bit unsigned integer.",
 	"uint16":  "**`uint16`** — 16-bit unsigned integer.",
 	"uint32":  "**`uint32`** — 32-bit unsigned integer.",
 	"uint64":  "**`uint64`** — 64-bit unsigned integer.",
-	"writer":  "**`writer`** — streaming response sink.\n\nGenerates `io.Writer` (response only).",
 }
 
 // onHover answers `textDocument/hover`. It tokenises the buffer, finds

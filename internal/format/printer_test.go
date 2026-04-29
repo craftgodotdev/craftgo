@@ -143,12 +143,12 @@ type X {
 `,
 		},
 		{
-			name: "stream response",
+			name: "passthrough method",
 			src: `package x
 
 service S {
+	@passthrough
 	get Feed /feed {
-		response stream Event
 	}
 }
 `,

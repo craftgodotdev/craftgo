@@ -101,10 +101,8 @@ service S {
         response  User
     }
 
-    @stream
-    @format(ndjson)
+    @passthrough
     get StreamUsers /feed {
-        response  stream User
     }
 
 }

@@ -28,9 +28,7 @@ type logicData struct {
 	HasRequest       bool
 	HasResponse      bool
 	NeedsTypes       bool
-	IsStream         bool
-	StreamCtor       string // "SSE" / "NDJSON" — populated for stream methods
-	IsRaw            bool
+	IsPassthrough    bool
 	TypesImport      string
 	SvccontextImport string
 	// ExtraTypesImports lists Go imports for cross-package request
@@ -74,9 +72,7 @@ func generateLogicFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.P
 		return err
 	}
 	jsonTpl := tmpl("logic.tmpl")
-	streamTpl := tmpl("logic-stream.tmpl")
-	rawTpl := tmpl("logic-raw.tmpl")
-	rawStreamTpl := tmpl("logic-raw-stream.tmpl")
+	passthroughTpl := tmpl("logic-passthrough.tmpl")
 	for _, m := range svc.Methods {
 		filename := kebabCase(m.Name) + "-logic.go"
 		fullPath := filepath.Join(dir, filename)
@@ -85,13 +81,8 @@ func generateLogicFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.P
 		}
 		data := buildLogicData(svcName, m, imps, crossPkg)
 		t := jsonTpl
-		switch {
-		case data.IsRaw && data.IsStream:
-			t = rawStreamTpl
-		case data.IsStream:
-			t = streamTpl
-		case data.IsRaw:
-			t = rawTpl
+		if data.IsPassthrough {
+			t = passthroughTpl
 		}
 		formatted, err := renderGo(t, data)
 		if err != nil {
@@ -154,21 +145,20 @@ func buildLogicData(svcName string, m *ast.Method, imps importPaths, crossPkg Cr
 	} else if !hasReq && hasResp && d.ResponsePkgAlias != "types" {
 		d.NeedsTypes = false
 	}
-	if (m.Response != nil && m.Response.Stream) || hasStreamDecorator(m.Decorators) {
-		d.IsStream = true
-		d.StreamCtor = streamCtor(streamFormat(m))
-	}
-	if hasRawDecorator(m.Decorators) {
-		d.IsRaw = true
-	}
-	// Streaming and raw scaffolds don't reference `types.<Resp>` in their
-	// signatures — the body either takes a `*server.<X>Stream` (stream
-	// mode) or an `io.Reader/Writer` (raw mode). Importing the types
-	// package in those cases produces a dead import the user has to
-	// delete, so trim it back to "imports types only when there is a
-	// request to bind".
-	if d.IsStream || d.IsRaw {
-		d.NeedsTypes = hasReq && d.RequestPkgAlias == "types"
+	if hasPassthroughDecorator(m.Decorators) {
+		d.IsPassthrough = true
+		// Passthrough scaffolds don't reference `types.<X>` at all
+		// — the entry point takes (w, r) directly — so drop every
+		// type-related import to keep the generated file compiling
+		// cleanly without manual edits.
+		d.NeedsTypes = false
+		d.HasRequest = false
+		d.HasResponse = false
+		d.RequestPkgAlias = ""
+		d.RequestType = ""
+		d.ResponsePkgAlias = ""
+		d.ResponseType = ""
+		d.ExtraTypesImports = nil
 	}
 	return d
 }

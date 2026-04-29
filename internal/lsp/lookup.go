@@ -343,7 +343,7 @@ func primOfTypeRef(t *ast.TypeRef, file *ast.File) semantic.Prims {
 		return semantic.PrimBool
 	case "file":
 		return semantic.PrimFile
-	case "any", "object", "reader", "writer":
+	case "any", "object":
 		return 0
 	}
 	if file != nil {

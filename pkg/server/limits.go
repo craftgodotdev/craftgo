@@ -18,9 +18,9 @@ import (
 type Limits struct {
 	// ReadTimeout caps the duration of a single in-flight request.
 	// Implemented via [http.TimeoutHandler]; the client receives a
-	// 503 when the deadline elapses. Streaming endpoints should use a
-	// per-write idle timeout instead — `@stream` skips ReadTimeout
-	// emission for that reason.
+	// 503 when the deadline elapses. Passthrough endpoints should
+	// implement their own idle timeouts instead — `@passthrough`
+	// skips ReadTimeout emission for that reason.
 	ReadTimeout time.Duration
 
 	// WriteTimeout is currently informational. The stdlib expresses

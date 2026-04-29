@@ -412,11 +412,17 @@ func TestMethodPathHyphenated(t *testing.T) {
 	}
 }
 
-func TestMethodResponseStream(t *testing.T) {
-	f := mustParse(t, `service S { get Stream /s { response stream Event } }`)
+func TestMethodPassthroughEmptyBody(t *testing.T) {
+	f := mustParse(t, `service S {
+	@passthrough
+	get Tail /tail {}
+}`)
 	m := f.Decls[0].(*ast.ServiceDecl).Methods[0]
-	if !m.Response.Stream {
-		t.Error()
+	if m.Request != nil || m.Response != nil {
+		t.Errorf("@passthrough method must not bind request/response, got req=%v resp=%v", m.Request, m.Response)
+	}
+	if len(m.Decorators) != 1 || m.Decorators[0].Name != "passthrough" {
+		t.Errorf("expected single @passthrough decorator, got %+v", m.Decorators)
 	}
 }
 

@@ -466,6 +466,10 @@ func (p *Printer) Method(m *ast.Method) {
 		p.Path(m.Path)
 	}
 	if m.Request == nil && m.Response == nil {
+		// The grammar always wraps the method with `{ ... }` even
+		// when both sides are absent (e.g. a `@passthrough` method),
+		// so emit an empty body literal to keep round-trip parity.
+		p.write(" {}")
 		p.nl()
 		return
 	}
@@ -481,9 +485,6 @@ func (p *Printer) Method(m *ast.Method) {
 	if m.Response != nil {
 		p.indent()
 		p.write("response ")
-		if m.Response.Stream {
-			p.write("stream ")
-		}
 		p.NamedTypeRef(m.Response.Type)
 		p.nl()
 	}

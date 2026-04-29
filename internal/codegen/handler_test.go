@@ -68,27 +68,6 @@ func analyzePkg(t *testing.T, src string) *semantic.Package {
 	return pkg
 }
 
-// ---------- streamCtor mapping ----------
-
-func TestStreamCtorMapping(t *testing.T) {
-	cases := map[string]string{
-		"":               "SSE",
-		"sse":            "SSE",
-		"ndjson":         "NDJSON",
-		"jsonl":          "NDJSON",
-		"jsonarray":      "JSONArray",
-		"csv":            "CSV",
-		"concat":         "Concat",
-		"lengthprefixed": "LengthPrefixed",
-		"unknown":        "SSE",
-	}
-	for in, want := range cases {
-		if got := streamCtor(in); got != want {
-			t.Errorf("streamCtor(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 // ---------- handler ----------
 
 func TestGenerateHandlersAllVerbs(t *testing.T) {
@@ -448,18 +427,19 @@ service S {
 	}
 }
 
-// TestGenerateRoutesStreamSkipsReadTimeout pins the streaming-method
-// carve-out: `@readTimeout` is silently dropped when the method also
-// has `@stream` because http.TimeoutHandler would cut the stream
-// mid-flight.
-func TestGenerateRoutesStreamSkipsReadTimeout(t *testing.T) {
+// TestGenerateRoutesPassthroughSkipsReadTimeout pins the passthrough
+// carve-out: `@readTimeout` and `@writeTimeout` are silently dropped
+// when the method also carries `@passthrough` because the framework
+// hands the writer to logic verbatim and `http.TimeoutHandler` would
+// cut whatever stream logic decides to produce.
+func TestGenerateRoutesPassthroughSkipsReadTimeout(t *testing.T) {
 	src := `package design
-type Tick { i int }
 service S {
-    @stream
+    @passthrough
     @readTimeout(5s)
+    @writeTimeout(5s)
     @maxBodySize(2048)
-    get Live /live { response stream Tick }
+    get Live /live {}
 }`
 	pkg := analyzePkg(t, src)
 	root := t.TempDir()
@@ -468,11 +448,11 @@ service S {
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
 	src2 := string(body)
-	if strings.Contains(src2, "ReadTimeout:") {
-		t.Errorf("streaming method should not get ReadTimeout:\n%s", src2)
+	if strings.Contains(src2, "ReadTimeout:") || strings.Contains(src2, "WriteTimeout:") {
+		t.Errorf("passthrough method should not get ReadTimeout or WriteTimeout:\n%s", src2)
 	}
 	if !strings.Contains(src2, "MaxBodySize:") {
-		t.Errorf("MaxBodySize should still apply to streams:\n%s", src2)
+		t.Errorf("MaxBodySize should still apply to passthrough:\n%s", src2)
 	}
 }
 
@@ -626,30 +606,27 @@ func TestGeneratePipelineEndToEnd(t *testing.T) {
 	}
 }
 
-// ---------- mode dispatch: stream / raw / raw-stream / multipart ----------
+// ---------- mode dispatch: passthrough / multipart ----------
 
-const streamSampleDSL = `package design
-
-type Tick { value int }
+const passthroughSampleDSL = `package design
 
 service FeedService {
-    @stream
-    @format(sse)
-    get TickStream /ticks {
-        response  stream Tick
+    @passthrough
+    get LiveTail /tail {
     }
-    @stream
-    @format(ndjson)
-    get TickJSON /ticks/jsonl {
-        response  stream Tick
+    @passthrough
+    get UserTail /users/{id}/tail {
     }
 }`
 
-func TestGenerateHandlersStreamSSEAndNDJSON(t *testing.T) {
-	pkg := analyzePkg(t, streamSampleDSL)
+func TestGenerateHandlerPassthrough(t *testing.T) {
+	pkg := analyzePkg(t, passthroughSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateHandlers(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateHandlerHelpers(pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	if err := GenerateLogic(pkg, cfg, root); err != nil {
@@ -658,100 +635,29 @@ func TestGenerateHandlersStreamSSEAndNDJSON(t *testing.T) {
 	hDir := filepath.Join(root, "internal/handler/feed-service")
 	lDir := filepath.Join(root, "internal/logic/feed-service")
 
-	sseHandler, _ := os.ReadFile(filepath.Join(hDir, "tick-stream-handler.go"))
-	mustParseGo(t, string(sseHandler))
-	for _, want := range []string{"server.NewSSEStream(w", "l.TickStream(stream)"} {
-		if !strings.Contains(string(sseHandler), want) {
-			t.Errorf("SSE handler missing %q:\n%s", want, sseHandler)
+	handler, _ := os.ReadFile(filepath.Join(hDir, "live-tail-handler.go"))
+	hSrc := string(handler)
+	mustParseGo(t, hSrc)
+	for _, want := range []string{
+		"l.LiveTail(w, r)",
+		"writeError(w, err)",
+		"http.HandlerFunc",
+	} {
+		if !strings.Contains(hSrc, want) {
+			t.Errorf("passthrough handler missing %q:\n%s", want, hSrc)
 		}
 	}
-	if strings.Contains(string(sseHandler), "json.NewDecoder") {
-		t.Errorf("SSE handler must not decode JSON body:\n%s", sseHandler)
-	}
-
-	ndHandler, _ := os.ReadFile(filepath.Join(hDir, "tick-json-handler.go"))
-	mustParseGo(t, string(ndHandler))
-	if !strings.Contains(string(ndHandler), "server.NewNDJSONStream(w") {
-		t.Errorf("NDJSON handler should call NewNDJSONStream:\n%s", ndHandler)
-	}
-
-	sseLogic, _ := os.ReadFile(filepath.Join(lDir, "tick-stream-logic.go"))
-	mustParseGo(t, string(sseLogic))
-	if !strings.Contains(string(sseLogic), "func (l *TickStreamLogic) TickStream(stream *server.SSEStream) error") {
-		t.Errorf("SSE logic signature mismatch:\n%s", sseLogic)
-	}
-}
-
-const rawSampleDSL = `package design
-
-service BlobService {
-    @raw
-    post EchoBlob /echo {
-    }
-}`
-
-func TestGenerateHandlersRawBypassesJSON(t *testing.T) {
-	pkg := analyzePkg(t, rawSampleDSL)
-	root := t.TempDir()
-	cfg := sampleConfig()
-	if err := GenerateHandlers(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
-	if err := GenerateLogic(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
-	handler, _ := os.ReadFile(filepath.Join(root, "internal/handler/blob-service/echo-blob-handler.go"))
-	mustParseGo(t, string(handler))
-	for _, want := range []string{"io.Copy(w, out)", "l.EchoBlob(body)", "io.Reader"} {
-		if !strings.Contains(string(handler), want) {
-			t.Errorf("raw handler missing %q:\n%s", want, handler)
+	for _, banned := range []string{"json.NewDecoder", "json.NewEncoder", "req.Validate", "types."} {
+		if strings.Contains(hSrc, banned) {
+			t.Errorf("passthrough handler should not contain %q:\n%s", banned, hSrc)
 		}
 	}
-	if strings.Contains(string(handler), "json.NewDecoder") || strings.Contains(string(handler), "json.NewEncoder") {
-		t.Errorf("raw handler must not touch JSON:\n%s", handler)
-	}
 
-	logic, _ := os.ReadFile(filepath.Join(root, "internal/logic/blob-service/echo-blob-logic.go"))
-	mustParseGo(t, string(logic))
-	if !strings.Contains(string(logic), "func (l *EchoBlobLogic) EchoBlob(body io.Reader) (io.Reader, error)") {
-		t.Errorf("raw logic signature mismatch:\n%s", logic)
-	}
-}
-
-const rawStreamSampleDSL = `package design
-
-service PipeService {
-    @raw
-    @stream
-    post EchoStream /echo-stream {
-    }
-}`
-
-func TestGenerateHandlersRawStreamCombo(t *testing.T) {
-	pkg := analyzePkg(t, rawStreamSampleDSL)
-	root := t.TempDir()
-	cfg := sampleConfig()
-	if err := GenerateHandlers(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
-	if err := GenerateLogic(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
-	handler, _ := os.ReadFile(filepath.Join(root, "internal/handler/pipe-service/echo-stream-handler.go"))
-	mustParseGo(t, string(handler))
-	for _, want := range []string{"server.NewRawStream(w", "l.EchoStream(r.Body, stream)"} {
-		if !strings.Contains(string(handler), want) {
-			t.Errorf("raw-stream handler missing %q:\n%s", want, handler)
-		}
-	}
-	if strings.Contains(string(handler), "json.NewDecoder") || strings.Contains(string(handler), "json.NewEncoder") {
-		t.Errorf("raw-stream handler must not touch JSON:\n%s", handler)
-	}
-
-	logic, _ := os.ReadFile(filepath.Join(root, "internal/logic/pipe-service/echo-stream-logic.go"))
-	mustParseGo(t, string(logic))
-	if !strings.Contains(string(logic), "func (l *EchoStreamLogic) EchoStream(body io.Reader, stream *server.RawStream) error") {
-		t.Errorf("raw-stream logic signature mismatch:\n%s", logic)
+	logic, _ := os.ReadFile(filepath.Join(lDir, "live-tail-logic.go"))
+	lSrc := string(logic)
+	mustParseGo(t, lSrc)
+	if !strings.Contains(lSrc, "func (l *LiveTailLogic) LiveTail(w http.ResponseWriter, r *http.Request) error") {
+		t.Errorf("passthrough logic signature mismatch:\n%s", lSrc)
 	}
 }
 

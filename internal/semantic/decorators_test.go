@@ -69,10 +69,10 @@ func TestRegistrySpecLevels(t *testing.T) {
 		{"prefix", LvlService},
 		{"summary", LvlMethod},
 		{"requiresOneOf", LvlType},
-		{"raw", LvlMethod},
+		{"passthrough", LvlMethod},
 		{"path", LvlField},
 		{"length", LvlField | LvlScalar},
-		{"format", LvlField | LvlMethod | LvlScalar},
+		{"format", LvlField | LvlScalar},
 	}
 	for _, c := range cases {
 		s, ok := Lookup(c.name)
@@ -152,9 +152,9 @@ type X {}`))
 	}
 }
 
-func TestPlacementRawOnField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { body string @raw }`))
-	if !diagsContain(diags, "@raw is not allowed on field") {
+func TestPlacementPassthroughOnField(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type X { body string @passthrough }`))
+	if !diagsContain(diags, "@passthrough is not allowed on field") {
 		t.Errorf("got %v", diags)
 	}
 }
@@ -213,8 +213,7 @@ service Users {
 }
 
 extend service Users {
-	@stream
-	@format(sse)
+	@passthrough
 	get Live /live {}
 }
 
@@ -401,15 +400,18 @@ func TestCodeOnBindingConflict(t *testing.T) {
 	}
 }
 
-func TestCodeOnRawFormat(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
-		@raw
-		@format(sse)
-		post Echo /e {}
-	}`))
-	d := findCode(diags, CodeRawFormat)
+func TestCodeOnPassthroughBody(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `package x
+type Req { name string }
+service S {
+	@passthrough
+	post Echo /e {
+		request Req
+	}
+}`))
+	d := findCode(diags, CodePassthroughBody)
 	if d == nil || len(d.Related) != 1 {
-		t.Fatalf("want method/raw-format with related; got %v", diags)
+		t.Fatalf("want passthrough/has-body with related; got %v", diags)
 	}
 }
 

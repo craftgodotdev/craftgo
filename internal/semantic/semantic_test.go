@@ -414,30 +414,9 @@ func TestCombinationBodyAndForm(t *testing.T) {
 	}
 }
 
-func TestCombinationRawAndFormat(t *testing.T) {
-	src := `service S {
-		@raw
-		@format(sse)
-		post Echo /e {}
-	}`
-	_, diags := Analyze(parseFiles(t, src))
-	if !diagsContain(diags, "@format is incompatible with @raw") {
-		t.Errorf("got %v", diags)
-	}
-}
-
-func TestCombinationRawAndStreamAccepted(t *testing.T) {
+func TestCombinationPassthroughAccepted(t *testing.T) {
 	mustClean(t, `service S {
-		@raw
-		@stream
-		post Echo /e {}
-	}`)
-}
-
-func TestCombinationStreamAndFormatAccepted(t *testing.T) {
-	mustClean(t, `service S {
-		@stream
-		@format(sse)
+		@passthrough
 		get Live /l {}
 	}`)
 }

@@ -169,8 +169,8 @@ type ArgsRule struct {
 	// meaningful when Max < 0 or Max > len(Kinds).
 	Variadic ArgKind
 	// Enum, when non-empty, restricts the first positional argument
-	// value (string OR ident) to this set. Used by `@format` per-
-	// level — method-level overrides via [Spec.MethodEnum].
+	// value (string OR ident) to this set. Used by `@format` to
+	// constrain string formats (`email`, `uuid`, ...).
 	Enum []string
 	// AllowArrayShortcut treats a single array-literal positional arg
 	// as variadic-equivalent. Used by `@requiresOneOf(["a","b"])`,
@@ -249,11 +249,6 @@ type Spec struct {
 	// Args is the positional argument shape; the zero value means
 	// "no args expected".
 	Args ArgsRule
-	// MethodEnum, when set, replaces [ArgsRule.Enum] when the decorator
-	// appears on a method site. Used by `@format` whose value set
-	// differs between field-level (string format) and method-level
-	// (streaming wire format).
-	MethodEnum []string
 	// AppliesTo restricts the decorator to fields / scalars whose
 	// primitive type is in the listed categories. Zero (PrimAny)
 	// means no constraint — used by metadata-style decorators. The
@@ -268,12 +263,6 @@ var formatValues = []string{
 	"email", "url", "uri", "uuid", "datetime", "date", "time",
 	"phone", "hostname", "ipv4", "ipv6", "cidr", "mac",
 	"creditcard", "base64", "hexcolor", "json",
-}
-
-// streamFormatValues lists the wire formats accepted by `@format` on a
-// streaming method. Source: README §"Decorators by level".
-var streamFormatValues = []string{
-	"ndjson", "jsonl", "sse", "jsonarray", "csv", "concat", "lengthprefixed",
 }
 
 // Registry is the closed set of decorators the framework recognises. A
@@ -391,15 +380,14 @@ var Registry = map[string]Spec{
 	},
 	"format": {
 		Name:   "format",
-		Levels: LvlField | LvlScalar | LvlMethod,
-		Doc:    "Named format constraint; method-level selects a streaming wire format.",
+		Levels: LvlField | LvlScalar,
+		Doc:    "Named format constraint (e.g. email, uuid, datetime).",
 		Args: ArgsRule{
 			Min: 1, Max: 1,
 			Kinds: []ArgKind{ArgStringOrIdent},
 			Enum:  formatValues,
 		},
-		MethodEnum: streamFormatValues,
-		AppliesTo:  PrimString,
+		AppliesTo: PrimString,
 	},
 
 	// ---- Field validation: number ----
@@ -516,9 +504,8 @@ var Registry = map[string]Spec{
 	"produces":    {Name: "produces", Levels: LvlMethod, Doc: "Emitted response content types.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method behavior ----
-	"raw":     {Name: "raw", Levels: LvlMethod, Doc: "Bypass JSON encoding; pass bytes/reader through."},
-	"stream":  {Name: "stream", Levels: LvlMethod, Doc: "Streaming response (one of 7 wire formats)."},
-	"accepts": {Name: "accepts", Levels: LvlMethod, Doc: "Restrict allowed request encodings.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
+	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing — logic receives the raw http.ResponseWriter and *http.Request and writes the response directly."},
+	"accepts":     {Name: "accepts", Levels: LvlMethod, Doc: "Restrict allowed request encodings.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method limits ----
 	"readTimeout":   {Name: "readTimeout", Levels: LvlMethod, Doc: "Override server read timeout for this method.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},

@@ -130,8 +130,8 @@ func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 }
 
 // primFromName maps a built-in primitive name to its [Prims] category.
-// Returns 0 for names this layer can't classify (custom types,
-// `object`, `reader`, `writer` — those are handled by the caller).
+// Returns 0 for names this layer can't classify (custom types, `any`,
+// `object` — those are handled by the caller).
 func primFromName(name string) Prims {
 	switch name {
 	case "string", "bytes":

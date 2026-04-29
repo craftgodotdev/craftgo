@@ -721,7 +721,7 @@ func appendDescription(existing, note string) string {
 // schemaForTypeRef converts an ast.TypeRef to a SchemaRef.
 //
 //   - Primitive DSL names (string, bool, int family, float family,
-//     bytes, any, file, reader, writer) collapse to inline schemas.
+//     bytes, any, file) collapse to inline schemas.
 //   - Generic instances (`Page<Book>`) are inlined by substituting the
 //     type-param refs in the generic body — OpenAPI 3.x has no
 //     parametric-schema concept, so $ref into the generic decl would
@@ -857,8 +857,6 @@ func primitiveSchema(name string) *openapi3.Schema {
 	case "bytes":
 		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "byte"}
 	case "file":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}
-	case "reader", "writer":
 		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}
 	case "any":
 		return &openapi3.Schema{}
@@ -1052,25 +1050,22 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 			op.Description = appendDescription(op.Description, "Deprecated: "+reason)
 		}
 	}
-	isStream := (m.Response != nil && m.Response.Stream) || hasStreamDecorator(m.Decorators)
-	isRaw := hasRawDecorator(m.Decorators)
+	isPassthrough := hasPassthroughDecorator(m.Decorators)
 	isMultipart := false
 	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
-	if m.Request != nil && !isStream && !isRaw {
+	if m.Request != nil && !isPassthrough {
 		if fs, ff := collectFormBindings(m, pkg); len(ff) > 0 {
 			isMultipart = true
 			formStrings, formFiles = fs, ff
 		}
 	}
-	if m.Request != nil {
+	if m.Request != nil && !isPassthrough {
 		bins := binRequestFields(m, pkg)
 		// Body-bearing verbs $ref the per-method body schema. The
 		// per-kind schemas live in components.schemas so consumers have
 		// a single canonical reference for each binding kind.
 		if hasBodyVerb(m.Verb) {
 			switch {
-			case isRaw:
-				op.RequestBody = rawRequestBody()
 			case isMultipart:
 				op.RequestBody = multipartRequestBody(formStrings, formFiles)
 			case len(bins.body) > 0:
@@ -1096,19 +1091,18 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, m.Name)
 		}
 	}
+	if isPassthrough {
+		op.Parameters = passthroughPathParams(m)
+	}
 	successCode := successStatus(m)
 	switch {
-	case isRaw:
+	case isPassthrough:
 		desc := "OK"
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
-			Content:     octetStreamContent(),
-		}})
-	case isStream && m.Response != nil && m.Response.Type != nil:
-		desc := "OK"
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
-			Description: &desc,
-			Content:     streamContent(streamMime(m), m.Name),
+			Content: openapi3.Content{
+				"*/*": &openapi3.MediaType{},
+			},
 		}})
 	case m.Response != nil && m.Response.Type != nil:
 		desc := "OK"
@@ -1209,14 +1203,30 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	return out
 }
 
-// rawRequestBody describes a `@raw` POST/PUT/PATCH body — opaque bytes
-// served as `application/octet-stream`. The schema is `string,
-// format: binary`, the OpenAPI 3.x convention for arbitrary file uploads.
-func rawRequestBody() *openapi3.RequestBodyRef {
-	return &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
-		Required: true,
-		Content:  octetStreamContent(),
-	}}
+// passthroughPathParams emits one OpenAPI path-parameter entry per
+// `{name}` segment in the route. Passthrough endpoints have no
+// request type to mine for typed parameters, so the schema is the
+// minimal `string` placeholder — enough to render Swagger UI's
+// "try it" form without lying about the wire shape.
+func passthroughPathParams(m *ast.Method) openapi3.Parameters {
+	if m.Path == nil {
+		return nil
+	}
+	var params openapi3.Parameters
+	for _, seg := range m.Path.Segments {
+		if !seg.Param {
+			continue
+		}
+		params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
+			Name:     seg.Literal,
+			In:       "path",
+			Required: true,
+			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
+				Type: &openapi3.Types{"string"},
+			}},
+		}})
+	}
+	return params
 }
 
 // multipartRequestBody renders a `multipart/form-data` schema covering
@@ -1247,52 +1257,6 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 			},
 		},
 	}}
-}
-
-// octetStreamContent returns the canonical raw-bytes media-type entry —
-// reused by both raw request bodies and raw responses (including the
-// `@raw @stream` combo, where chunking is a transport detail OpenAPI
-// doesn't model directly).
-func octetStreamContent() openapi3.Content {
-	return openapi3.Content{
-		"application/octet-stream": &openapi3.MediaType{
-			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
-				Type:   &openapi3.Types{"string"},
-				Format: "binary",
-			}},
-		},
-	}
-}
-
-// streamContent maps a stream method to its event-framed media-type.
-// SSE uses `text/event-stream`; NDJSON/JSONL uses `application/x-ndjson`.
-// In both cases the schema $refs the declared event type — the on-wire
-// envelope (`data: <json>\n\n` or `<json>\n` per line) is documented
-// out-of-band since OpenAPI 3.x has no native streaming codec.
-func streamContent(mime, methodName string) openapi3.Content {
-	return openapi3.Content{
-		mime: &openapi3.MediaType{
-			Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + methodName + "RespBody"},
-		},
-	}
-}
-
-// streamMime picks the response media-type for a stream method based on
-// `@format(...)`. Unknown / missing format falls back to SSE — matches
-// the runtime `streamCtor` default. Each case mirrors the Content-Type
-// header set by the corresponding constructor in pkg/server/stream.go.
-func streamMime(m *ast.Method) string {
-	switch streamFormat(m) {
-	case "ndjson", "jsonl":
-		return "application/x-ndjson"
-	case "jsonarray", "concat":
-		return "application/json"
-	case "csv":
-		return "text/csv"
-	case "lengthprefixed":
-		return "application/octet-stream"
-	}
-	return "text/event-stream"
 }
 
 // paramsFromBins flattens the non-body bins into the `parameters[]`

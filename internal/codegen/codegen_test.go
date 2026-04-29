@@ -93,7 +93,7 @@ type X { tags string[]  meta map<string, string> }`)
 
 func TestGenerateTypesBuiltins(t *testing.T) {
 	pkg := analyze(t, `package design
-type X { blob bytes  raw any  in reader  out writer  upload file }`)
+type X { blob bytes  raw any  upload file }`)
 	dir := t.TempDir()
 	if err := GenerateTypes(pkg, dir); err != nil {
 		t.Fatal(err)
@@ -101,8 +101,8 @@ type X { blob bytes  raw any  in reader  out writer  upload file }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	for _, want := range []string{"[]byte", "json.RawMessage", "io.Reader", "io.Writer", "*multipart.FileHeader",
-		`"encoding/json"`, `"io"`, `"mime/multipart"`} {
+	for _, want := range []string{"[]byte", "any", "*multipart.FileHeader",
+		`"mime/multipart"`} {
 		if !strings.Contains(src, want) {
 			t.Errorf("missing %q in:\n%s", want, src)
 		}
@@ -453,8 +453,6 @@ type User { name string }
 type T {
     bytesOpt    bytes?
     fileOpt     file?
-    readerOpt   reader?
-    writerOpt   writer?
     anyOpt      any?
     arrayOpt    string[]?
     mapOpt      map<string, int>?
@@ -474,9 +472,7 @@ type T {
 	}{
 		{"BytesOpt", "[]byte"},
 		{"FileOpt", "*multipart.FileHeader"},
-		{"ReaderOpt", "io.Reader"},
-		{"WriterOpt", "io.Writer"},
-		{"AnyOpt", "json.RawMessage"},
+		{"AnyOpt", "any"},
 		{"ArrayOpt", "[]string"},
 		{"MapOpt", "map[string]int"},
 		// Value-type optionals — pointer is still required.
@@ -489,7 +485,7 @@ type T {
 		}
 	}
 	// Negative: no double-pointer or pointer-to-slice anywhere.
-	for _, bad := range []string{"**", "*[]byte", "*[]string", "*map[", "*io.Reader", "*io.Writer", "*json.RawMessage"} {
+	for _, bad := range []string{"**", "*[]byte", "*[]string", "*map[", "*any"} {
 		if strings.Contains(src, bad) {
 			t.Errorf("found redundant %q in generated source:\n%s", bad, src)
 		}

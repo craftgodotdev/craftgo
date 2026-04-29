@@ -221,67 +221,50 @@ type T { name string @required @nullable }`))
 	}
 }
 
-// ---------- @raw + structured request/response ----------
+// ---------- @passthrough body checks ----------
 
-func TestRawTypeMismatchRequest(t *testing.T) {
+func TestPassthroughRejectsRequest(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type Req { name string }
-type Resp { ok bool }
 service S {
-    @raw
-    post Upload /u {
+    @passthrough
+    post Tail /t {
         request Req
-        response bytes
     }
 }`))
-	d := findCode(diags, CodeRawType)
+	d := findCode(diags, CodePassthroughBody)
 	if d == nil {
-		t.Fatalf("expected %s for @raw + struct request, got %v", CodeRawType, diags)
+		t.Fatalf("expected %s for @passthrough + request, got %v", CodePassthroughBody, diags)
 	}
-	if !strings.Contains(d.Msg, "@raw request") {
-		t.Errorf("expected request-side message, got %q", d.Msg)
+	if !strings.Contains(d.Msg, "@passthrough method must not declare request or response") {
+		t.Errorf("expected canonical message, got %q", d.Msg)
 	}
 }
 
-func TestRawTypeMismatchResponse(t *testing.T) {
+func TestPassthroughRejectsResponse(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type Resp { ok bool }
 service S {
-    @raw
-    post Upload /u {
-        request bytes
+    @passthrough
+    get Tail /t {
         response Resp
     }
 }`))
-	d := findCode(diags, CodeRawType)
+	d := findCode(diags, CodePassthroughBody)
 	if d == nil {
-		t.Fatalf("expected %s for @raw + struct response, got %v", CodeRawType, diags)
+		t.Fatalf("expected %s for @passthrough + response, got %v", CodePassthroughBody, diags)
 	}
-	if !strings.Contains(d.Msg, "@raw response") {
-		t.Errorf("expected response-side message, got %q", d.Msg)
+	if len(d.Related) != 1 {
+		t.Errorf("expected related to point at @passthrough decorator, got %+v", d.Related)
 	}
 }
 
-func TestRawTypeAcceptsByteShapes(t *testing.T) {
+func TestPassthroughCleanShape(t *testing.T) {
 	mustClean(t, `package x
 service S {
-    @raw post UploadBytes /a { request bytes response bytes }
-    @raw post UploadStream /b { request reader response writer }
-    @raw post NoBody /c { }
+    @passthrough get Tail /t {}
+    @passthrough get UserTail /users/{id}/tail {}
 }`)
-}
-
-func TestRawTypeRejectsCrossPackageRef(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-service S {
-    @raw post Upload /u {
-        request other.Foo
-        response bytes
-    }
-}`))
-	if findCode(diags, CodeRawType) == nil {
-		t.Fatalf("expected %s for qualified ref under @raw, got %v", CodeRawType, diags)
-	}
 }
 
 // ---------- local type ref unknown ----------

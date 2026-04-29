@@ -180,9 +180,9 @@ func collectImports(pkg *semantic.Package, crossPkg CrossPkg) []string {
 }
 
 // collectFieldImports recurses into a TypeRef collecting any built-in
-// names that resolve to imported Go types (`any` → encoding/json, `reader`
-// / `writer` → io, `file` → mime/multipart). Generic and map types are
-// recursed into so nested usages are caught too.
+// names that resolve to imported Go types (`file` → mime/multipart).
+// Generic and map types are recursed into so nested usages are caught
+// too.
 func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 	if t == nil {
 		return
@@ -193,12 +193,7 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 		return
 	}
 	if t.Named != nil {
-		switch t.Named.Name.String() {
-		case "any":
-			set["encoding/json"] = true
-		case "reader", "writer":
-			set["io"] = true
-		case "file":
+		if t.Named.Name.String() == "file" {
 			set["mime/multipart"] = true
 		}
 		for _, a := range t.Named.Args {
@@ -358,8 +353,7 @@ func GoTypeRef(t *ast.TypeRef) string {
 // the rendered type, plus a small fixed set of builtin/std-lib names —
 // because the codegen never sees a Go reflect.Type. That's enough to
 // catch every shape the DSL currently produces: arrays, maps, the
-// `file` / `reader` / `writer` / `any` / `bytes` builtins, and any
-// user-supplied pointer.
+// `file` / `any` / `bytes` builtins, and any user-supplied pointer.
 func isNilableGoType(s string) bool {
 	if s == "" {
 		return false
@@ -373,8 +367,7 @@ func isNilableGoType(s string) bool {
 		return true
 	}
 	switch s {
-	case "io.Reader", "io.Writer", "io.ReadWriter",
-		"any", "interface{}", "json.RawMessage", "error":
+	case "any", "interface{}", "error":
 		return true
 	}
 	return false
@@ -390,11 +383,14 @@ func goNamedType(n *ast.NamedTypeRef) string {
 	case "bytes":
 		return "[]byte"
 	case "any":
-		return "json.RawMessage"
-	case "reader":
-		return "io.Reader"
-	case "writer":
-		return "io.Writer"
+		// Codec-agnostic: `any` lands on Go's empty interface so
+		// every codec (json / msgpack / cbor / ...) can decode and
+		// re-encode the value without being coupled to a specific
+		// raw-message type. The previous mapping
+		// (`json.RawMessage`) preserved bytes verbatim but only
+		// worked under JSON — swapping the codec quietly broke
+		// marshalling.
+		return "any"
 	case "file":
 		return "*multipart.FileHeader"
 	}

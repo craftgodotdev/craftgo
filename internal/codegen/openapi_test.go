@@ -775,27 +775,12 @@ func TestGenerateOpenAPIMissingPackage(t *testing.T) {
 func TestGenerateOpenAPIPerModeMediaTypes(t *testing.T) {
 	const dsl = `package design
 
-type Tick { value int }
 type UploadReq { note string  avatar file }
 type UploadResp { ok bool }
 
 service S {
-    @stream
-    @format(sse)
-    get TickSSE /sse {
-        response  stream Tick
-    }
-    @stream
-    @format(ndjson)
-    get TickJSONL /jsonl {
-        response  stream Tick
-    }
-    @raw
-    post EchoBlob /echo {
-    }
-    @raw
-    @stream
-    post EchoStream /echo-stream {
+    @passthrough
+    get LiveTail /tail {
     }
     post Upload /upload {
         request   UploadReq
@@ -812,10 +797,11 @@ service S {
 		t.Fatal(err)
 	}
 	src := string(out)
+	// Passthrough endpoint advertises `*/*` for its response body
+	// because the framework lets logic write whatever wire format it
+	// likes — there is no schema to publish.
 	for _, want := range []string{
-		"text/event-stream",
-		"application/x-ndjson",
-		"application/octet-stream",
+		"'*/*'",
 		"multipart/form-data",
 		"format: binary",
 	} {

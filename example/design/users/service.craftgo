@@ -64,6 +64,12 @@ service UserService {
 		request  AddContactReq
 		response shared.OkResp
 	}
+
+	// LiveTail streams server logs as Server-Sent Events. The framework
+	// stays out of the way: logic writes `data: ...\n\n` chunks directly
+	// to the ResponseWriter and flushes between events.
+	@passthrough
+	get LiveTail /tail {}
 }
 
 // GetUserReq is the path-only request used by GetUser and DeleteUser.

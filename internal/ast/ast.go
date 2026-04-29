@@ -253,13 +253,13 @@ type Method struct {
 	Response   *MethodResponse
 }
 
-// MethodResponse describes the response side of a method. Stream is true
-// when the DSL says `response stream Type` — codegen uses it to switch
-// between a typed JSON response and one of the seven streaming codecs.
+// MethodResponse describes the response side of a method. The framework
+// always JSON-encodes the named type; endpoints that want to bypass the
+// framework entirely use the `@passthrough` decorator (which forbids a
+// response block) instead.
 type MethodResponse struct {
-	Pos    Pos
-	Stream bool
-	Type   *NamedTypeRef
+	Pos  Pos
+	Type *NamedTypeRef
 }
 
 // Path is the parsed representation of a route path. Each segment is either

@@ -116,9 +116,7 @@ service S {
     @produces("application/json")
     @deprecated
     @externalDocs("https://docs.example.com")
-    @raw
-    @stream
-    @format(ndjson)
+    @passthrough
     @accepts("application/json")
     @readTimeout(5s)
     @writeTimeout(5s)
@@ -128,8 +126,6 @@ service S {
     @responseExample("e")
     @responseHeaders("h")
     get GetX /x {
-        request   T
-        response  stream T
     }
 }
 
@@ -156,7 +152,7 @@ middleware RateLimit(rps: int = 100)
 		"path", "query", "body", "header", "cookie", "form",
 		"prefix", "middlewares", "group", "tags", "externalDocs", "security",
 		"summary", "operationId", "errors", "status",
-		"consumes", "produces", "raw", "stream", "accepts",
+		"consumes", "produces", "passthrough", "accepts",
 		"readTimeout", "writeTimeout", "maxBodySize", "maxHeaderSize",
 		"responseDoc", "responseExample", "responseHeaders",
 	}

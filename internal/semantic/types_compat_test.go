@@ -43,7 +43,6 @@ func TestPrimFromName(t *testing.T) {
 		{"bool", PrimBool},
 		{"file", PrimFile},
 		{"any", 0}, // not classified at this layer
-		{"reader", 0},
 		{"User", 0},
 	}
 	for _, c := range cases {
