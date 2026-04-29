@@ -21,11 +21,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
 	"github.com/dropship-dev/craftgo/internal/codegen"
 	"github.com/dropship-dev/craftgo/internal/config"
+	"github.com/dropship-dev/craftgo/internal/lexer"
 	"github.com/dropship-dev/craftgo/internal/parser"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
@@ -98,56 +100,128 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
-	pkg, diags := semantic.Analyze(files)
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
+		SecuritySchemes: securitySchemeNames(cfg),
+		BasePath:        cfg.OpenAPI.BasePath,
+		DesignRoot:      designDir,
+	})
 	if len(diags) > 0 {
 		var sb strings.Builder
 		sb.WriteString("semantic errors:\n")
 		for _, d := range diags {
+			if d.Severity == lexer.SeverityWarning || d.Severity == lexer.SeverityInfo || d.Severity == lexer.SeverityHint {
+				continue
+			}
 			sb.WriteString("  ")
 			sb.WriteString(d.Pos.String())
 			sb.WriteString(": ")
 			sb.WriteString(d.Msg)
 			sb.WriteString("\n")
 		}
-		return fmt.Errorf("%s", sb.String())
-	}
-	// `@security(name)` references are validated against the manifest's
-	// declared securitySchemes map. The check is a no-op when no schemes
-	// are declared (legacy auto-bearer behaviour kicks in then).
-	if errs := codegen.ValidateSecurityRefs(pkg, cfg); len(errs) > 0 {
-		var sb strings.Builder
-		sb.WriteString("security scheme errors:\n")
-		for _, e := range errs {
-			sb.WriteString("  ")
-			sb.WriteString(e)
-			sb.WriteString("\n")
+		if sb.Len() > len("semantic errors:\n") {
+			return fmt.Errorf("%s", sb.String())
 		}
-		return fmt.Errorf("%s", sb.String())
+	}
+
+	if len(proj.Packages) == 0 {
+		return fmt.Errorf("project has no DSL packages — every project must have at least one .craftgo file declaring `package X`")
 	}
 
 	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
-	steps := []struct {
-		name string
-		fn   func() error
-	}{
-		{"types", func() error { return codegen.GenerateTypes(pkg, typesDir) }},
-		{"enums", func() error { return codegen.GenerateEnums(pkg, typesDir) }},
-		{"errors", func() error { return codegen.GenerateErrors(pkg, typesDir) }},
-		{"validators", func() error { return codegen.GenerateValidators(pkg, typesDir) }},
-		{"middlewares", func() error { return codegen.GenerateMiddlewares(pkg, cfg, projectRoot) }},
-		{"handlers", func() error { return codegen.GenerateHandlers(pkg, cfg, projectRoot) }},
-		{"handler-helpers", func() error { return codegen.GenerateHandlerHelpers(pkg, cfg, projectRoot) }},
-		{"logic", func() error { return codegen.GenerateLogic(pkg, cfg, projectRoot) }},
-		{"routes", func() error { return codegen.GenerateRoutes(pkg, cfg, projectRoot) }},
-		{"main", func() error { return codegen.GenerateMain(pkg, cfg, projectRoot) }},
-		{"openapi", func() error { return codegen.GenerateOpenAPI(pkg, cfg, projectRoot) }},
-	}
-	for _, s := range steps {
-		if err := s.fn(); err != nil {
-			return fmt.Errorf("%s: %w", s.name, err)
+
+	// Per-package types/enums/errors/validators. Each package gets
+	// its own subdirectory under typesDir, with cross-package Go
+	// imports inserted automatically when its DSL files reference
+	// siblings.
+	pkgNames := make([]string, 0, len(proj.Packages))
+	for k := range proj.Packages {
+		if k != "" {
+			pkgNames = append(pkgNames, k)
 		}
 	}
-	fmt.Printf("craftgo: generated %d artefact group(s) under %s\n", len(steps), projectRoot)
+	sort.Strings(pkgNames)
+
+	// Security-scheme validation runs against every package whose
+	// services declare `@security` — multi-package projects can spread
+	// services across packages.
+	for _, name := range pkgNames {
+		p := proj.Packages[name]
+		if p == nil {
+			continue
+		}
+		if errs := codegen.ValidateSecurityRefs(p, cfg); len(errs) > 0 {
+			var sb strings.Builder
+			sb.WriteString("security scheme errors in package " + name + ":\n")
+			for _, e := range errs {
+				sb.WriteString("  ")
+				sb.WriteString(e)
+				sb.WriteString("\n")
+			}
+			return fmt.Errorf("%s", sb.String())
+		}
+	}
+
+	for _, name := range pkgNames {
+		p := proj.Packages[name]
+		cross := codegen.BuildCrossPkg(proj, cfg, name)
+		genSteps := []struct {
+			name string
+			fn   func() error
+		}{
+			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, cross) }},
+			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
+			{"errors(" + name + ")", func() error { return codegen.GenerateErrors(p, typesDir) }},
+			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsPackage(p, typesDir, cross) }},
+		}
+		for _, s := range genSteps {
+			if err := s.fn(); err != nil {
+				return fmt.Errorf("%s: %w", s.name, err)
+			}
+		}
+	}
+
+	// Service-shaped artefacts iterate every package that declares
+	// services. Multiple packages may contribute services; codegen
+	// handlers/routes/logic land in their own subdirectories. main.go
+	// aggregates RegisterRoutes from all of them; openapi merges every
+	// package's schema namespace with conflict-aware naming.
+	for _, name := range pkgNames {
+		p := proj.Packages[name]
+		if len(p.Services) == 0 {
+			continue
+		}
+		cross := codegen.BuildCrossPkg(proj, cfg, name)
+		svcSteps := []struct {
+			label string
+			fn    func() error
+		}{
+			{"middlewares(" + name + ")", func() error { return codegen.GenerateMiddlewares(p, cfg, projectRoot) }},
+			{"handlers(" + name + ")", func() error { return codegen.GenerateHandlersPackage(p, cfg, projectRoot, cross) }},
+			{"handler-helpers(" + name + ")", func() error { return codegen.GenerateHandlerHelpers(p, cfg, projectRoot) }},
+			{"logic(" + name + ")", func() error { return codegen.GenerateLogicPackage(p, cfg, projectRoot, cross) }},
+			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
+		}
+		for _, s := range svcSteps {
+			if err := s.fn(); err != nil {
+				return fmt.Errorf("%s: %w", s.label, err)
+			}
+		}
+	}
+
+	// Project-wide artefacts: routes-umbrella, main.go, openapi.yaml.
+	// These aggregate services + types across every package so they
+	// must run AFTER all per-package gen has produced the upstream
+	// inputs.
+	if err := codegen.GenerateProjectRoutesUmbrella(proj, cfg, projectRoot); err != nil {
+		return fmt.Errorf("routes-umbrella: %w", err)
+	}
+	if err := codegen.GenerateProjectMain(proj, cfg, projectRoot); err != nil {
+		return fmt.Errorf("main: %w", err)
+	}
+	if err := codegen.GenerateProjectOpenAPI(proj, cfg, projectRoot); err != nil {
+		return fmt.Errorf("openapi: %w", err)
+	}
+	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
 	return nil
 }
 
@@ -200,8 +274,8 @@ func runInit(args []string) error {
 			initManifest(pkgPath),
 		},
 		{"design/api.craftgo", initAPICraftgo()},
-		{"design/types/user.craftgo", initTypesCraftgo()},
-		{"design/services/user-service.craftgo", initServiceCraftgo()},
+		{"design/user.craftgo", initTypesCraftgo()},
+		{"design/user-service.craftgo", initServiceCraftgo()},
 	}
 
 	written, skipped := 0, 0
@@ -256,9 +330,6 @@ func initAPICraftgo() string {
 @version("1.0.0")
 @doc("Generated by craftgo init.")
 package design
-
-import "types"
-import "services"
 `
 }
 
@@ -300,6 +371,22 @@ service UserService {
     }
 }
 `
+}
+
+// securitySchemeNames returns the keys of cfg.OpenAPI.SecuritySchemes
+// in deterministic order. Returns nil when no schemes are declared so
+// the semantic analyser can distinguish "no truth source" from "empty
+// allow-list" (the former skips the check; the latter would reject
+// every reference).
+func securitySchemeNames(cfg *config.Config) []string {
+	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(cfg.OpenAPI.SecuritySchemes))
+	for name := range cfg.OpenAPI.SecuritySchemes {
+		out = append(out, name)
+	}
+	return out
 }
 
 // parseDesign walks designDir for `.craftgo` files, parses each one, and

@@ -60,6 +60,52 @@ func TestDiagnosticError(t *testing.T) {
 	}
 }
 
+func TestSeverityString(t *testing.T) {
+	cases := []struct {
+		s    Severity
+		want string
+	}{
+		{SeverityError, "error"},
+		{SeverityWarning, "warning"},
+		{SeverityInfo, "info"},
+		{SeverityHint, "hint"},
+		{Severity(99), "error"}, // unknown falls back to error
+	}
+	for _, c := range cases {
+		if got := c.s.String(); got != c.want {
+			t.Errorf("Severity(%d).String() = %q, want %q", c.s, got, c.want)
+		}
+	}
+}
+
+func TestDiagnosticStructuredFields(t *testing.T) {
+	d := Diagnostic{
+		Pos:      Position{Line: 2, Column: 3},
+		End:      Position{Line: 2, Column: 9},
+		Severity: SeverityWarning,
+		Code:     "decorator/placement",
+		Msg:      "bad place",
+		Related: []Related{
+			{Pos: Position{Line: 1, Column: 1}, Msg: "first occurrence"},
+		},
+	}
+	if d.Severity != SeverityWarning {
+		t.Error("severity")
+	}
+	if d.Code != "decorator/placement" {
+		t.Error("code")
+	}
+	if d.Msg != "bad place" {
+		t.Error("msg")
+	}
+	if d.End.Column != 9 {
+		t.Error("end")
+	}
+	if len(d.Related) != 1 || d.Related[0].Msg != "first occurrence" {
+		t.Error("related")
+	}
+}
+
 // ----- Helpers -----
 
 func first(t *testing.T, src string) Token {

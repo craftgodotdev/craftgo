@@ -1,0 +1,330 @@
+// Package `orders` is the deep-nesting + comprehensive-validator
+// showcase. The marquee `Order` type chains six levels of struct
+// composition (Order → Customer → Address → Geocode → Precision →
+// GpsFix), pulls cross-package references from `users` and `shared`,
+// and exercises every v1 validator decorator in at least one place.
+//
+// Presence-state matrix on each level (matching README §"Field
+// presence semantics"):
+//
+//   bare T              required, present, value must be non-empty
+//   @required T         must be present (explicit form)
+//   T?                  optional — wire field may be missing
+//   T @nullable         must be present, value may be JSON null
+//   T? @nullable        4-state: missing OR null OR value (most permissive)
+//
+// Validator coverage (tag → location):
+//   @required           every level
+//   @length             Order.id, Customer.name, Address.country, ...
+//   @minLength          Address.city
+//   @maxLength          Order.notes, Customer.email
+//   @pattern            Order.id, Customer.phone, Address.postalCode, ...
+//   @format(email)      Customer.email
+//   @format(uuid)       Customer.id
+//   @format(datetime)   Order.createdAt, Geocode.capturedAt, ...
+//   @format(url)        OrderLink.href (helper type)
+//   @min / @max         Order.totalCents, GpsFix.hdop, ...
+//   @range              Geocode.lat/lng, Precision.confidence
+//   @positive           LineItem.quantity, Precision.radiusMeters
+//   @negative           Discount.bonusBelow (semantically "rebate")
+//   @multipleOf         Order.totalCents, Precision.radiusMeters
+//   @minItems / @maxItems Order.items, Order.tags
+//   @uniqueItems        Order.tags
+//   @maxSize            Customer.profilePic
+//   @mimeTypes          Customer.profilePic
+//   @default            Order.currency, LineItem.note
+//
+// Cross-package references:
+//   users.UserRef       Order.auditedBy (required), Order.cosignedBy (optional),
+//                       Customer.referrer (optional)
+//   shared.OkResp       OrderService.DeleteOrder return shape
+package orders
+
+import "users"
+import "shared"
+
+// ---------------------------------------------------------------
+// Level 1 — Order (top of the tree)
+// ---------------------------------------------------------------
+
+// Order is the deeply-nested aggregate root. Demonstrates EVERY
+// presence-state and almost every validator on its 14 fields.
+//
+// `@deprecated` at the type level surfaces in the generated Go as
+// `// Deprecated: ...` so `staticcheck` flags every read of the
+// type — useful for migrating clients off a legacy aggregate while
+// keeping the schema available during the transition window.
+//
+// Scalar types (OrderID, CurrencyCode, ...) are referenced by name
+// — every field of that scalar type inherits the validators from
+// the scalar's declaration, so the field-level decorator chain
+// stays focused on PRESENCE rules (`@required`, `@nullable`).
+@deprecated("rename to PurchaseOrder in v2 — kept for backward compat")
+type Order {
+    // SCALAR REF: `id OrderID` carries the scalar's @length +
+    // @pattern automatically; the field only needs @required.
+    id           OrderID @required
+
+    // Required nested struct (Level 2). Customer carries its own
+    // deep validators; v1 doesn't auto-cascade so logic code calls
+    // `req.Customer.Validate()` when full-tree validation matters.
+    customer     Customer
+
+    // Required slice of nested LineItems with bound. @minItems
+    // forbids "empty order"; @maxItems caps explosion attacks.
+    items        LineItem[] @minItems(1) @maxItems(100)
+
+    // Optional nested struct (`T?`). Wire-level the `payment` key
+    // may be missing entirely; when present its own validators run.
+    payment      Payment?
+
+    // Cross-package required nested ref. The handler imports
+    // `users.UserRef` automatically because the multi-package
+    // codegen resolves the prefix.
+    auditedBy    users.UserRef
+
+    // Cross-package OPTIONAL nested ref. Generated Go:
+    // `*users.UserRef` with `omitempty`.
+    cosignedBy   users.UserRef?
+
+    // SCALAR REF on a numeric type: `Cents` carries @min(0) +
+    // @multipleOf(1). The field-level `@max` adds the per-Order
+    // ceiling (the scalar stays generic; the order-specific cap
+    // is local to this aggregate).
+    totalCents   Cents @required @max(100000000)
+
+    // Required enum. `@required` on enums checks against the
+    // type's zero value (empty string for string-valued enums).
+    status       OrderStatus @required
+
+    // Optional string with maxLength validator. When omitted the
+    // field stays absent on the wire (`omitempty`).
+    notes        string? @maxLength(2000)
+
+    // 4-STATE PRESENCE: optional + nullable. The wire payload may:
+    //   - omit `shippedAt` entirely         (nil pointer, no key)
+    //   - send `"shippedAt": null`          (nil pointer)
+    //   - send `"shippedAt": "2026-01-..."` (validated as datetime)
+    // Validators run only when the value is non-null.
+    shippedAt    string? @nullable @format(datetime)
+
+    // SCALAR REF + @default. CurrencyCode contributes
+    // @length(3,3) + @pattern; the field-level chain only needs
+    // the default value.
+    currency     CurrencyCode @default("USD")
+
+    // Array validators stack: must have ≥1, ≤10, all unique.
+    tags         string[] @minItems(1) @maxItems(10) @uniqueItems
+
+    // Optional map. v1 doesn't yet emit per-value validators for
+    // map types; the decorator placement still validates as
+    // present so future support drops in cleanly.
+    metadata     map<string, string>?
+
+    // Required ISO timestamp at the wrapper level. Top-level
+    // datetime is always required for audit trails.
+    createdAt    string @required @format(datetime)
+}
+
+// ---------------------------------------------------------------
+// Level 2 — Customer (nested inside Order, also used in CreateOrderReq)
+// ---------------------------------------------------------------
+
+// Customer is the level-2 nested type. Pairs cross-package refs
+// (`referrer users.UserRef?`) with file uploads (`profilePic`)
+// and the `@nullable` forced-pointer pattern on `loyaltyPoints`.
+type Customer {
+    // String + format(uuid).
+    id              string @required @format(uuid)
+
+    // SCALAR REF: Email = `string @format(email) @maxLength(254)`.
+    email           Email @required
+
+    // String + length range.
+    name            string @required @length(1, 120)
+
+    // 4-STATE PRESENCE: optional + nullable + pattern. Phone
+    // matches a permissive E.164-ish regex when present.
+    phone           string? @nullable @pattern("^\\+?[0-9 ()-]{6,20}$")
+
+    // Required nested (Level 3).
+    primaryAddress  Address
+
+    // Optional nested — billing may differ from primary or be
+    // omitted entirely.
+    billingAddress  Address?
+
+    // Cross-package OPTIONAL ref to a referring user.
+    referrer        users.UserRef?
+
+    // @nullable on a numeric field forces a pointer in Go so the
+    // wire can carry an explicit `null` (different from "0 points
+    // means a brand-new account"). Without @required, presence is
+    // not enforced — caller may send the key with null OR omit it.
+    loyaltyPoints   int @nullable @min(0) @max(1000000)
+
+    // Optional FILE upload. Demonstrates the file-validator pair
+    // (`@maxSize` + `@mimeTypes`) which the field-type-compat
+    // pass restricts to `file` typed fields.
+    profilePic      file? @maxSize(5MB) @mimeTypes(["image/png", "image/jpeg", "image/webp"])
+}
+
+// ---------------------------------------------------------------
+// Level 3 — Address
+// ---------------------------------------------------------------
+
+// Address is level 3. Demonstrates @minLength as the floor with
+// @maxLength as the ceiling on the same field, plus the strict
+// ISO-3166 country code pattern.
+type Address {
+    street      string  @required @length(1, 200)
+    street2     string? @maxLength(200)
+    city        string  @required @minLength(1) @maxLength(100)
+    region      string? @maxLength(100)
+    postalCode  string      @required @pattern("^[A-Z0-9 -]{3,12}$")
+    // SCALAR REF: CountryCode bundles ISO 3166-1 alpha-2 length
+    // + pattern.
+    country     CountryCode @required
+    // Optional nested (Level 4).
+    geo         Geocode?
+}
+
+// ---------------------------------------------------------------
+// Level 4 — Geocode
+// ---------------------------------------------------------------
+
+// Geocode is level 4. @range pairs (lo,hi) for latitude / longitude
+// — concise alternative to stacking @min + @max.
+type Geocode {
+    // SCALAR REFs Latitude / Longitude — bundle the geographic
+    // bounds @min/@max so the field-level chain is just @required.
+    lat         Latitude  @required
+    lng         Longitude @required
+    altitude    float64?  @range(-500.0, 9000.0)
+    capturedAt  string    @required @format(datetime)
+    // Optional nested (Level 5).
+    precision   Precision?
+}
+
+// ---------------------------------------------------------------
+// Level 5 — Precision
+// ---------------------------------------------------------------
+
+// Precision is level 5. Demonstrates `@positive` plus `@multipleOf`
+// on a float — radii are quantized to half-meters because most GPS
+// hardware doesn't realistically deliver finer granularity.
+type Precision {
+    radiusMeters  float64 @required @positive @max(10000.0) @multipleOf(0.5)
+    source        GeoSource @required
+    // Confidence is a 0-1 ratio. @range pins both sides; the
+    // codegen rejects values outside the closed interval.
+    confidence    float64 @required @min(0.0) @max(1.0)
+    // Optional nested (Level 6 — deepest).
+    gpsFix        GpsFix?
+}
+
+// ---------------------------------------------------------------
+// Level 6 — GpsFix (deepest level)
+// ---------------------------------------------------------------
+
+// GpsFix is the deepest nested type. Demonstrates @range on int,
+// the `T? @nullable` 4-state on a string (`notes`), and a leading
+// pattern on an optional string (`deviceId`).
+type GpsFix {
+    satellites  int    @required @range(1, 64)
+    hdop        float64 @required @min(0.0) @max(50.0)
+    timestamp   string @required @format(datetime)
+    // Optional with pattern — the validator nil-guards before
+    // running the regex.
+    deviceId    string? @pattern("^dev_[A-Z0-9]{8,32}$")
+    // 4-state with maxLength: missing | null | string ≤ 500 chars.
+    notes       string? @nullable @maxLength(500)
+}
+
+// ---------------------------------------------------------------
+// LineItem branch — nested under Order.items, level-2 nesting
+// with its own optional discount sub-tree.
+// ---------------------------------------------------------------
+
+type LineItem {
+    productId    string  @required @length(1, 64)
+    // SCALAR REF: SkuCode bundles the alphanumeric pattern.
+    sku          SkuCode @required
+    quantity     int     @required @positive @max(1000)
+    // SCALAR REF: Cents bundles @min(0) + @multipleOf(1); the
+    // field-level @max adds a per-line ceiling.
+    unitCents    Cents   @required @max(1000000)
+    discount     Discount?
+    // String with default. The handler's pre-fill logic sets the
+    // empty string before JSON decode so a missing `note` key
+    // surfaces as `""` rather than the Go zero value (which IS
+    // "", but the default gives the user a place to override).
+    note         string  @default("")
+}
+
+// Discount is a Level 3 (under Order.items[].discount) optional
+// nested type. Showcases `@negative` on `bonusBelow` — the rebate
+// is modelled as a negative-valued cents adjustment because the
+// downstream pricing engine sums all monetary fields.
+type Discount {
+    code         string  @required @pattern("^[A-Z]{2,16}$")
+    percent      float64 @required @min(0.0) @max(100.0) @multipleOf(0.5)
+    // CROSS-PACKAGE SCALAR: shared.PercentBP carries
+    // @min(0)+@max(10000) automatically. The field-level chain is
+    // empty, demonstrating that scalar validators inherit across
+    // package boundaries.
+    bpsBonus     shared.PercentBP @required
+    // Demonstrates @negative — the field is required to be < 0
+    // when present (rebate model).
+    bonusBelow   float64? @negative
+}
+
+// ---------------------------------------------------------------
+// Payment — optional Level-2 nesting under Order.payment
+// ---------------------------------------------------------------
+
+type Payment {
+    method       PaymentMethod @required
+    // 4-state on a length-strict + pattern-strict field.
+    cardLast4    string? @nullable @length(4, 4) @pattern("^[0-9]{4}$")
+    // CROSS-PACKAGE SCALAR: shared.NonEmptyID inherits
+    // @minLength(1) + @maxLength(128) + @pattern; the field-level
+    // chain reduces to @required.
+    referenceId  shared.NonEmptyID @required
+    authCents    int     @required @positive @multipleOf(1)
+    // CROSS-PACKAGE SCALAR: shared.SafeURL on an optional field —
+    // the @format(url) + @maxLength inherit through the scalar.
+    receiptURL   shared.SafeURL?
+}
+
+// ---------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------
+
+// OrderStatus is a string-valued enum. Codegen emits one Go
+// constant per value (`OrderStatusPending`, ...) and synthesises
+// the type's zero value (empty string) so `@required` semantics
+// reduce to "this field is in the JSON".
+enum OrderStatus {
+    Pending    = "pending"
+    Paid       = "paid"
+    Shipped    = "shipped"
+    Delivered  = "delivered"
+    Cancelled  = "cancelled"
+}
+
+// PaymentMethod controls the Payment.method enum field.
+enum PaymentMethod {
+    Card     = "card"
+    Bank     = "bank"
+    Wallet   = "wallet"
+    Invoice  = "invoice"
+}
+
+// GeoSource tags how the Precision was derived.
+enum GeoSource {
+    GPS   = "gps"
+    Cell  = "cell"
+    WiFi  = "wifi"
+    IP    = "ip"
+}

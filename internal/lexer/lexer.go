@@ -6,15 +6,76 @@ import (
 	"unicode/utf8"
 )
 
-// Diagnostic is a single lexer-level error: a message tied to a source
-// [Position]. The lexer never aborts; it accumulates diagnostics so that the
-// parser, formatter, and LSP server can present them all at once.
-type Diagnostic struct {
+// Severity classifies a [Diagnostic] for IDE rendering. The values mirror
+// the LSP DiagnosticSeverity enum so the LSP server can pass them through
+// without translation. Zero value is [SeverityError] — every diagnostic
+// constructed without an explicit severity is treated as an error.
+type Severity uint8
+
+const (
+	// SeverityError is a hard failure: codegen / runtime would be wrong.
+	SeverityError Severity = iota
+	// SeverityWarning is a soft issue worth surfacing but not blocking.
+	SeverityWarning
+	// SeverityInfo is informational (style hints, redundant constructs).
+	SeverityInfo
+	// SeverityHint is a low-priority suggestion, often paired with a fix.
+	SeverityHint
+)
+
+// String renders the severity as a short label for diagnostic formatting.
+func (s Severity) String() string {
+	switch s {
+	case SeverityWarning:
+		return "warning"
+	case SeverityInfo:
+		return "info"
+	case SeverityHint:
+		return "hint"
+	default:
+		return "error"
+	}
+}
+
+// Related links a [Diagnostic] to a secondary location — typically the
+// "previously declared at" site for a duplicate, or the conflicting
+// decorator for a combination-rule violation. The IDE renders these as
+// clickable secondary markers next to the primary diagnostic.
+type Related struct {
 	Pos Position
 	Msg string
 }
 
-// Error implements the error interface, formatted as `pos: msg`.
+// Diagnostic is a single error/warning tied to a source range. The lexer,
+// parser, and semantic analyser all accumulate Diagnostics so the parser,
+// formatter, and LSP server can present them at once.
+//
+// Pos is the start of the offending token / construct; End is the
+// exclusive end of the same range and is used by the LSP layer to draw the
+// red squiggle. End may equal Pos when only a point location is known
+// (e.g. lexer point errors); callers should treat (Pos == End) as
+// "underline a single column".
+//
+// Code is a stable machine-readable identifier (e.g. `decorator/placement`)
+// that the IDE uses for filtering, "disable next line", and documentation
+// links. It must NOT include the message — keep human text in Msg.
+//
+// Related carries secondary positions referenced by Msg. The IDE shows
+// them as clickable cross-links rather than appending another sentence
+// to Msg.
+type Diagnostic struct {
+	Pos      Position
+	End      Position
+	Severity Severity
+	Code     string
+	Msg      string
+	Related  []Related
+}
+
+// Error implements the error interface, formatted as `pos: msg`. Severity
+// and code are intentionally omitted from the default rendering so the
+// existing CLI output stays stable; the LSP layer reads the structured
+// fields directly.
 func (d Diagnostic) Error() string {
 	return fmt.Sprintf("%s: %s", d.Pos, d.Msg)
 }

@@ -202,7 +202,11 @@ func TestFieldUniquenessError(t *testing.T) {
 
 func TestFieldUniquenessSkipsMixin(t *testing.T) {
 	// Type with a mixin + field — exercises the `if !ok { continue }` branch.
-	pkg := mustClean(t, `type X { Profile  name string }`)
+	// Profile is declared so the mixin pass resolves it cleanly; the
+	// uniqueness pass under test is the `if !ok { continue }` skip on
+	// the embedded reference, independent of mixin resolution.
+	pkg := mustClean(t, `type Profile { id string }
+type X { Profile  name string }`)
 	if pkg.Types["X"] == nil || len(pkg.Types["X"].Body) != 2 {
 		t.Error()
 	}

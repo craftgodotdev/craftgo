@@ -1,0 +1,31 @@
+package users
+
+// Contact is a NESTED VALIDATION SHOWCASE. It demonstrates two
+// type-level constraints stacked on the same struct:
+//
+//   - @requiresOneOf(email, phone): the wire payload must carry
+//     at least one of the listed fields. Useful when a domain
+//     entity is reachable via several modalities and any one is
+//     enough.
+//   - @mutuallyExclusive(work, personal): the caller can label a
+//     contact as work OR personal, never both. The boolean fields
+//     are independently optional, but flipping both `true`
+//     produces a validation error.
+@requiresOneOf(email, phone)
+@mutuallyExclusive(work, personal)
+type Contact {
+    email     string?  @format(email) @maxLength(254)
+    phone     string?  @pattern("^\\+?[0-9 ()-]{6,20}$")
+    work      bool?
+    personal  bool?
+}
+
+// AddContactReq is the body for AddContact below. Composes the
+// path-bound user id with a nested Contact whose own type-level
+// validators (@requiresOneOf / @mutuallyExclusive) cascade —
+// logic code calls `req.Contact.Validate()` to opt into the deep
+// check before persisting.
+type AddContactReq {
+    userId   string  @path @required @length(1, 64)
+    contact  Contact
+}

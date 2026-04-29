@@ -1,19 +1,29 @@
 // Package semantic performs whole-package validation on parsed [ast.File]
 // values and produces a merged, name-indexed [Package] for downstream tools.
 //
-// Responsibilities (current):
-//   - Verify package name is consistent across files.
-//   - Build symbol tables for types, enums, errors, scalars, middlewares.
-//   - Merge primary and `extend service` declarations into a single service.
-//   - Reject duplicate top-level names, fields, enum value names/literals,
-//     service methods, and route collisions.
-//   - Enforce uniform enum value kinds.
+// Responsibilities:
 //
-// Future work (not yet implemented): mixin field expansion, generic
-// instantiation, full decorator compatibility-matrix validation, path
-// resolution against [config.OpenAPI].BasePath. The current set is enough
-// for codegen of plain types/enums/errors and for catching the most common
-// authoring mistakes.
+//   - Package-name consistency across files.
+//   - Symbol tables for types, enums, errors, scalars, middlewares.
+//   - Primary / `extend service` merge.
+//   - Duplicate names (top-level, fields, methods, routes) and
+//     uniform enum value kinds.
+//   - Decorator placement, arity, argument literal types, value-set
+//     enums, cross-references (errors / middlewares / security
+//     schemes / requiresOneOf field idents), and value-range checks.
+//   - Field-type compatibility for validator decorators (string
+//     validators only on strings, etc.).
+//   - Mixin field expansion: cycle, conflict, and generic-arity
+//     detection.
+//   - Generic instantiation: arg arity, non-generic-with-args, and
+//     type-parameter scoping.
+//
+// Future work: cross-package qualified-ref resolution (v1 uses a
+// folder-merge model and rejects qualified names), and richer path
+// resolution against [config.OpenAPI].BasePath. Diagnostics carry
+// stable [lexer.Diagnostic.Code] identifiers (`decorator/arity`,
+// `mixin/conflict`, `generic/arity`, …) so the LSP and docs site can
+// reference each rule individually.
 package semantic
 
 import (
@@ -58,11 +68,64 @@ type ServiceInfo struct {
 	Methods []*ast.Method
 }
 
+// Options configure the analyser's optional cross-reference checks.
+// Pass an empty Options for the default (no truth source for security
+// schemes); the corresponding refs are then silently allowed.
+type Options struct {
+	// SecuritySchemes lists names declared in the OpenAPI manifest
+	// (`craftgo.design.yaml` openapi.securitySchemes). When nil the
+	// `@security(name)` reference check is skipped — there is no
+	// authoritative list to compare against. When non-nil, every
+	// scheme name except the literal `noauth` must appear here or
+	// produce a [CodeDecoratorRef] diagnostic.
+	SecuritySchemes []string
+
+	// BasePath is the project's `openapi.basePath` from the manifest.
+	// Used by the path-resolution pass to compute final routes for
+	// cross-service collision detection and to surface `path/format`
+	// warnings on a malformed value. Empty disables basePath checks
+	// (as if no basePath were declared).
+	BasePath string
+
+	// HealthPaths overrides the default `/healthz`, `/readyz` reserved
+	// path set. Empty slice = default; nil also = default. A
+	// user-declared method matching one of these paths produces a
+	// `path/health-conflict` diagnostic.
+	HealthPaths []string
+
+	// DesignRoot is the absolute filesystem path of the project's
+	// design folder. When non-empty, [AnalyzeProject] splits files by
+	// subdirectory into separate packages and resolves cross-package
+	// qualified refs against each file's `import` declarations. When
+	// empty (or when calling [Analyze] / [AnalyzeWith]) the analyser
+	// behaves as a single-package merge.
+	DesignRoot string
+
+	// skipQualifiedRefCheck disables the in-package
+	// [analyzer.checkQualifiedRefs] pass. Set internally by
+	// [AnalyzeProject] when running per-package analysis — qualified
+	// refs are validated by the project-level cross-package resolver
+	// instead. Not exported: external callers should use
+	// [AnalyzeProject] when they want this behaviour.
+	skipQualifiedRefCheck bool
+}
+
 // Analyze validates the supplied AST files as a single package and returns
 // the merged [Package] together with every diagnostic found. The Package
 // value is always non-nil even when diagnostics were reported, so callers
 // (codegen, LSP) can do best-effort downstream work.
+//
+// Equivalent to AnalyzeWith(files, [Options]{}).
 func Analyze(files []*ast.File) (*Package, []Diagnostic) {
+	return AnalyzeWith(files, Options{})
+}
+
+// AnalyzeWith is the [Analyze] variant that accepts cross-reference
+// truth sources. CLI / codegen invocations supply the project's
+// `craftgo.design.yaml` data here; the LSP either supplies the same
+// (when it has read the manifest) or leaves it empty for syntax-only
+// validation.
+func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	a := &analyzer{
 		pkg: &Package{
 			Types:       map[string]*ast.TypeDecl{},
@@ -72,6 +135,7 @@ func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 			Middlewares: map[string]*ast.MiddlewareDecl{},
 			Services:    map[string]*ServiceInfo{},
 		},
+		opts: opts,
 	}
 	a.checkPackageName(files)
 	a.collectDecls(files)
@@ -80,21 +144,313 @@ func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 	a.checkEnums()
 	a.checkServiceMethods()
 	a.checkDecoratorDuplicates(files)
-	a.checkQualifiedRefs()
+	a.checkDecoratorPlacement(files)
+	a.checkDecoratorArgs(files)
+	a.checkDecoratorRefs(files)
+	a.checkFieldTypeCompat()
+	a.checkRangesAndExtras(files)
+	a.checkMixins()
+	a.checkGenerics()
+	a.checkPathResolution()
+	if !a.opts.skipQualifiedRefCheck {
+		a.checkQualifiedRefs()
+	}
 	a.checkCombinationRules(files)
 	return a.pkg, a.diags
+}
+
+// Diagnostic codes emitted by the semantic analyser. Stable identifiers
+// so the LSP, docs site, and "disable next line" comments can reference
+// individual rules. Group prefix (`decorator/`, `decl/`, `enum/`,
+// `service/`, `field/`, `ref/`, `binding/`) lets the IDE collapse rules
+// by topic; never reuse a string across groups.
+const (
+	// CodeDecoratorUnknown fires when `@name` is not in the registry.
+	// Decorators are a closed set by design (no escape-hatch).
+	CodeDecoratorUnknown = "decorator/unknown"
+	// CodeDecoratorPlacement fires when a known decorator appears at a
+	// site outside its declared [Spec.Levels].
+	CodeDecoratorPlacement = "decorator/placement"
+	// CodeDecoratorDuplicate fires when the same `@name` appears twice
+	// in the same scope. Args do not disambiguate.
+	CodeDecoratorDuplicate = "decorator/duplicate"
+	// CodeDecoratorArity fires when the count of arguments to `@name`
+	// is below ArgMin or above ArgMax.
+	CodeDecoratorArity = "decorator/arity"
+	// CodeDecoratorArgType fires when an argument literal kind does
+	// not match the expected ArgKind for the position.
+	CodeDecoratorArgType = "decorator/argtype"
+	// CodeDecoratorArgValue fires when an argument value falls outside
+	// the allowed enum set (e.g. `@format(garbage)`).
+	CodeDecoratorArgValue = "decorator/argvalue"
+	// CodeDecoratorRange fires when a numeric pair is out of order
+	// (e.g. `@length(20, 5)`) or violates a per-decorator bound.
+	CodeDecoratorRange = "decorator/range"
+	// CodeDecoratorTypeMismatch fires when a validator decorator is
+	// applied to an incompatible field/scalar primitive (e.g.
+	// `@length` on `int`).
+	CodeDecoratorTypeMismatch = "decorator/typemismatch"
+	// CodeDecoratorRef fires when a decorator argument names an entity
+	// (error / middleware / field / security scheme) that does not
+	// exist in scope.
+	CodeDecoratorRef = "decorator/ref"
+	// CodeDecoratorRedundant fires when two decorators say the same
+	// thing redundantly (warning, not error). Example: `@nullable`
+	// on a `T?` field.
+	CodeDecoratorRedundant = "decorator/redundant"
+
+	// CodePackageMismatch fires when files disagree on the `package`
+	// name.
+	CodePackageMismatch = "decl/package-mismatch"
+	// CodeDuplicateDecl fires when two top-level declarations share a
+	// name across the merged package.
+	CodeDuplicateDecl = "decl/duplicate"
+
+	// CodeDuplicateField fires when two fields in the same type / error
+	// body share a name.
+	CodeDuplicateField = "field/duplicate"
+
+	// CodeEnumDuplicateName fires for two enum values with the same
+	// identifier.
+	CodeEnumDuplicateName = "enum/duplicate-name"
+	// CodeEnumMixedTypes fires when an enum mixes bare / int / string
+	// values.
+	CodeEnumMixedTypes = "enum/mixed-types"
+	// CodeEnumDuplicateLiteral fires when two enum values share an
+	// int or string literal.
+	CodeEnumDuplicateLiteral = "enum/duplicate-literal"
+
+	// CodeServiceDuplicate fires for two primary `service` decls of
+	// the same name.
+	CodeServiceDuplicate = "service/duplicate"
+	// CodeServiceExtendOrphan fires when an `extend service` has no
+	// primary declaration in the package.
+	CodeServiceExtendOrphan = "service/extend-orphan"
+	// CodeServiceExtendDecorators fires when an `extend service`
+	// carries service-level decorators (those belong on the primary).
+	CodeServiceExtendDecorators = "service/extend-decorators"
+	// CodeServiceDuplicateMethod fires for two methods sharing a name
+	// inside one service (after extends merge).
+	CodeServiceDuplicateMethod = "service/duplicate-method"
+	// CodeServiceDuplicateRoute fires for two methods sharing the
+	// same VERB+path tuple (after extends merge).
+	CodeServiceDuplicateRoute = "service/duplicate-route"
+
+	// CodeBindingConflict fires when a field has more than one of
+	// `@path / @query / @header / @cookie / @body / @form`.
+	CodeBindingConflict = "binding/conflict"
+	// CodeRequiredOptional fires when `@required` appears on a `T?`
+	// field.
+	CodeRequiredOptional = "binding/required-optional"
+	// CodeRawFormat fires when `@raw` and `@format` are both on the
+	// same method.
+	CodeRawFormat = "method/raw-format"
+
+	// CodeQualifiedRef fires for a `pkg.Type` reference; v1 uses a
+	// folder-merge import model and rejects qualified names.
+	CodeQualifiedRef = "ref/qualified"
+
+	// CodeMixinUnresolved fires when a mixin reference does not name
+	// a type declared in the package.
+	CodeMixinUnresolved = "mixin/unresolved"
+	// CodeMixinNonType fires when a mixin reference resolves to a
+	// non-type entity (enum, error, scalar, middleware).
+	CodeMixinNonType = "mixin/non-type"
+	// CodeMixinCycle fires when expanding a mixin would loop back
+	// onto a type already on the expansion stack.
+	CodeMixinCycle = "mixin/cycle"
+	// CodeMixinConflict fires when expansion produces two fields
+	// with the same name (mixin vs host or mixin vs mixin).
+	CodeMixinConflict = "mixin/conflict"
+	// CodeMixinArity fires when a generic mixin's argument count
+	// disagrees with the target's TypeParams count.
+	CodeMixinArity = "mixin/arity"
+
+	// CodeGenericArity fires when a generic instance's argument count
+	// disagrees with the target decl's TypeParams.
+	CodeGenericArity = "generic/arity"
+	// CodeGenericNonGeneric fires when a non-generic type is referenced
+	// with `<...>` arguments.
+	CodeGenericNonGeneric = "generic/non-generic"
+
+	// CodePathBaseFormat warns when [Options.BasePath] is malformed —
+	// missing leading slash, trailing slash, or contains `//`. Code-
+	// gen normalises these so this is a warning, not an error.
+	CodePathBaseFormat = "path/base-format"
+	// CodePathCollision fires when two methods (across any service)
+	// resolve to the same VERB + final-path tuple.
+	CodePathCollision = "path/collision"
+	// CodePathParamMissing fires when a `{name}` segment in the
+	// resolved route has no corresponding field binding in the
+	// method's request type.
+	CodePathParamMissing = "path/param-missing"
+	// CodePathParamOrphan fires when a request field uses `@path` /
+	// `@path("name")` but the resolved route has no matching
+	// `{name}` segment.
+	CodePathParamOrphan = "path/param-orphan"
+	// CodePathHealthConflict fires when a user-declared method's
+	// resolved route equals one of the runtime-reserved health paths
+	// (`/healthz`, `/readyz` by default).
+	CodePathHealthConflict = "path/health-conflict"
+
+	// CodeImportUnresolved fires when `import "path"` does not
+	// correspond to a folder under the design root.
+	CodeImportUnresolved = "import/unresolved"
+	// CodeImportEscape fires when an import path uses `..` or starts
+	// with `/` to escape the design root.
+	CodeImportEscape = "import/escape"
+	// CodeImportSelf fires when a file imports a folder whose files
+	// share its own `package X` declaration — the import is a no-op
+	// since the analyser already merges them by package name.
+	CodeImportSelf = "import/self"
+	// CodeRefUnknownPackage fires when `pkg.Type` references a
+	// package whose `package X` declaration doesn't appear anywhere
+	// in the project.
+	CodeRefUnknownPackage = "ref/unknown-package"
+	// CodeRefUnknownSymbol fires when the package resolves correctly
+	// but doesn't declare the named type.
+	CodeRefUnknownSymbol = "ref/unknown-symbol"
+)
+
+// related is a tiny helper that builds a single-element [lexer.Related]
+// slice. Most semantic diagnostics link to exactly one prior site (a
+// duplicate's first occurrence, a binding's first decorator, etc.); the
+// helper keeps the call site readable.
+func related(pos lexer.Position, msg string) []lexer.Related {
+	return []lexer.Related{{Pos: pos, Msg: msg}}
+}
+
+// decoratorEnd returns the half-open end position covering `@name`, used
+// as the [Diagnostic.End] for placement / unknown errors. We don't have
+// the exact closing-paren position in the AST, so the range covers just
+// the `@name` token — enough for LSP to underline the offending
+// decorator without spilling into argument literals.
+func decoratorEnd(d *ast.Decorator) lexer.Position {
+	end := d.Pos
+	// +1 for the leading '@', +len(Name) for the identifier itself.
+	w := 1 + len(d.Name)
+	end.Column += w
+	end.Offset += w
+	return end
+}
+
+// checkDecoratorPlacement validates every decorator against the registry
+// and the README compatibility matrix. Two distinct diagnostics fire:
+//
+//   - [CodeDecoratorUnknown] when the name is not registered. craftgo
+//     treats the decorator set as closed; an unknown name is almost
+//     always a typo (`@deprecate` vs `@deprecated`).
+//   - [CodeDecoratorPlacement] when the name is registered but the
+//     current site is not in its allowed [Spec.Levels].
+//
+// The check is independent of duplicate / combination rules above — a
+// decorator that is both duplicate and misplaced gets two separate
+// diagnostics, each with its own Code so the IDE can group them.
+func (a *analyzer) checkDecoratorPlacement(files []*ast.File) {
+	for _, f := range files {
+		a.checkPlacement(LvlFile, "file", f.Decorators)
+		for _, d := range f.Decls {
+			a.checkDeclPlacement(d)
+		}
+	}
+}
+
+// checkDeclPlacement dispatches placement checks for one top-level
+// declaration plus every nested scope it owns.
+func (a *analyzer) checkDeclPlacement(d ast.Decl) {
+	switch dd := d.(type) {
+	case *ast.TypeDecl:
+		a.checkPlacement(LvlType, "type "+dd.Name, dd.Decorators)
+		a.checkFieldPlacement(dd.Name, dd.Body)
+	case *ast.EnumDecl:
+		a.checkPlacement(LvlEnum, "enum "+dd.Name, dd.Decorators)
+		for _, v := range dd.Values {
+			a.checkPlacement(LvlEnumValue, "enum value "+dd.Name+"."+v.Name, v.Decorators)
+		}
+	case *ast.ErrorDecl:
+		a.checkPlacement(LvlError, "error "+dd.Name, dd.Decorators)
+		// Error bodies are field-shaped — same level as type fields so a
+		// validator like @length on `error.message` is rejected
+		// consistently.
+		a.checkFieldPlacement(dd.Name, dd.Body)
+	case *ast.ScalarDecl:
+		a.checkPlacement(LvlScalar, "scalar "+dd.Name, dd.Decorators)
+	case *ast.MiddlewareDecl:
+		a.checkPlacement(LvlMiddleware, "middleware "+dd.Name, dd.Decorators)
+	case *ast.ServiceDecl:
+		// `extend service` cannot carry service-level decorators (rejected
+		// by [mergeServices]); we still walk methods so placement on
+		// extended methods is checked.
+		if !dd.Extend {
+			a.checkPlacement(LvlService, "service "+dd.Name, dd.Decorators)
+		}
+		for _, m := range dd.Methods {
+			a.checkPlacement(LvlMethod, "method "+dd.Name+"."+m.Name, m.Decorators)
+		}
+	}
+}
+
+// checkFieldPlacement applies the placement check to every Field in a
+// type or error body. Mixin members carry no decorators and are skipped.
+func (a *analyzer) checkFieldPlacement(parent string, members []ast.TypeMember) {
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		a.checkPlacement(LvlField, "field "+parent+"."+f.Name, f.Decorators)
+	}
+}
+
+// checkPlacement is the leaf: for every decorator in decs, look up the
+// registry and emit `decorator/unknown` or `decorator/placement` as
+// appropriate. site is the bit for the current declaration site;
+// scopeLabel is a human-readable phrase for the diagnostic message
+// (e.g. "field User.name").
+//
+// Nil entries are tolerated for symmetry with [checkDecoratorScope] —
+// the parser doesn't produce them today but the defensive guard keeps a
+// future regression from crashing the analyser.
+func (a *analyzer) checkPlacement(site Level, scopeLabel string, decs []*ast.Decorator) {
+	for _, d := range decs {
+		if d == nil {
+			continue
+		}
+		spec, known := Lookup(d.Name)
+		if !known {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorUnknown,
+				"unknown decorator @%s on %s (not in the framework registry)", d.Name, scopeLabel)
+			continue
+		}
+		if spec.Levels&site == 0 {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorPlacement,
+				"@%s is not allowed on %s; valid sites: %s", d.Name, scopeLabel, spec.Levels)
+		}
+	}
 }
 
 // analyzer is the per-call state of [Analyze]. Kept private to discourage
 // callers from introspecting partial results.
 type analyzer struct {
 	pkg   *Package
+	opts  Options
 	diags []Diagnostic
 }
 
-// errorf appends a diagnostic at pos.
-func (a *analyzer) errorf(pos lexer.Position, format string, args ...any) {
-	a.diags = append(a.diags, Diagnostic{Pos: pos, Msg: fmt.Sprintf(format, args...)})
+// diag appends a fully-structured diagnostic. End may be equal to pos
+// when only the start point is known — the LSP layer renders that as a
+// single-column underline. The returned pointer aliases the slot inside
+// a.diags so the caller can attach Related links inline; do not retain
+// the pointer past the next a.diag call (slice growth invalidates it).
+func (a *analyzer) diag(pos, end lexer.Position, sev lexer.Severity, code, format string, args ...any) *Diagnostic {
+	a.diags = append(a.diags, Diagnostic{
+		Pos:      pos,
+		End:      end,
+		Severity: sev,
+		Code:     code,
+		Msg:      fmt.Sprintf(format, args...),
+	})
+	return &a.diags[len(a.diags)-1]
 }
 
 // checkPackageName ensures every file with a `package` declaration agrees on
@@ -114,7 +470,10 @@ func (a *analyzer) checkPackageName(files []*ast.File) {
 			continue
 		}
 		if name != f.Package.Name {
-			a.errorf(f.Package.Pos, "package name %q conflicts with %q at %s", f.Package.Name, name, firstPos)
+			d := a.diag(f.Package.Pos, f.Package.Pos, lexer.SeverityError,
+				CodePackageMismatch,
+				"package name %q conflicts with %q", f.Package.Name, name)
+			d.Related = related(firstPos, "first declared here")
 		}
 	}
 	a.pkg.Name = name
@@ -127,7 +486,9 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	seen := map[string]lexer.Position{}
 	register := func(name string, pos lexer.Position) bool {
 		if prev, ok := seen[name]; ok {
-			a.errorf(pos, "duplicate top-level declaration %q (previously at %s)", name, prev)
+			d := a.diag(pos, pos, lexer.SeverityError, CodeDuplicateDecl,
+				"duplicate top-level declaration %q", name)
+			d.Related = related(prev, "first declared here")
 			return false
 		}
 		seen[name] = pos
@@ -165,7 +526,9 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if dd.Extend {
 					si.Extends = append(si.Extends, dd)
 				} else if si.Primary != nil {
-					a.errorf(dd.Pos, "duplicate primary service %q (previously at %s)", dd.Name, si.Primary.Pos)
+					d := a.diag(dd.Pos, dd.Pos, lexer.SeverityError, CodeServiceDuplicate,
+						"duplicate primary service %q", dd.Name)
+					d.Related = related(si.Primary.Pos, "first declared here")
 				} else {
 					si.Primary = dd
 				}
@@ -182,14 +545,17 @@ func (a *analyzer) mergeServices() {
 	for name, si := range a.pkg.Services {
 		if si.Primary == nil {
 			for _, e := range si.Extends {
-				a.errorf(e.Pos, "extend service %q has no primary declaration", name)
+				a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
+					"extend service %q has no primary declaration", name)
 			}
 			continue
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods...)
 		for _, e := range si.Extends {
 			if len(e.Decorators) > 0 {
-				a.errorf(e.Pos, "extend service %q must not have service-level decorators", name)
+				d := a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendDecorators,
+					"extend service %q must not have service-level decorators", name)
+				d.Related = related(si.Primary.Pos, "primary service declared here")
 			}
 			si.Methods = append(si.Methods, e.Methods...)
 		}
@@ -208,7 +574,9 @@ func (a *analyzer) checkFieldUniqueness() {
 				continue
 			}
 			if prev, exists := seen[f.Name]; exists {
-				a.errorf(f.Pos, "duplicate field %q in %q (previously at %s)", f.Name, name, prev)
+				d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateField,
+					"duplicate field %q in %q", f.Name, name)
+				d.Related = related(prev, "first declared here")
 			} else {
 				seen[f.Name] = f.Pos
 			}
@@ -227,33 +595,43 @@ func (a *analyzer) checkFieldUniqueness() {
 // int and string enums.
 func (a *analyzer) checkEnums() {
 	for _, ed := range a.pkg.Enums {
-		seenNames := map[string]bool{}
-		seenInts := map[int64]bool{}
-		seenStrs := map[string]bool{}
+		seenNames := map[string]lexer.Position{}
+		seenInts := map[int64]lexer.Position{}
+		seenStrs := map[string]lexer.Position{}
 		var firstKind ast.EnumValueKind
+		var firstKindPos lexer.Position
 		first := true
 		for _, v := range ed.Values {
-			if seenNames[v.Name] {
-				a.errorf(v.Pos, "duplicate enum value name %q in %q", v.Name, ed.Name)
+			if prev, dup := seenNames[v.Name]; dup {
+				d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateName,
+					"duplicate enum value name %q in %q", v.Name, ed.Name)
+				d.Related = related(prev, "first declared here")
 			}
-			seenNames[v.Name] = true
+			seenNames[v.Name] = v.Pos
 			if first {
 				firstKind = v.Kind
+				firstKindPos = v.Pos
 				first = false
 			} else if v.Kind != firstKind {
-				a.errorf(v.Pos, "enum %q has mixed value types (must be all bare, all int, or all string)", ed.Name)
+				d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumMixedTypes,
+					"enum %q has mixed value types (must be all bare, all int, or all string)", ed.Name)
+				d.Related = related(firstKindPos, "first value declared here")
 			}
 			switch v.Kind {
 			case ast.EnumInt:
-				if seenInts[v.IntValue] {
-					a.errorf(v.Pos, "duplicate int value %d in enum %q", v.IntValue, ed.Name)
+				if prev, dup := seenInts[v.IntValue]; dup {
+					d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateLiteral,
+						"duplicate int value %d in enum %q", v.IntValue, ed.Name)
+					d.Related = related(prev, "first used here")
 				}
-				seenInts[v.IntValue] = true
+				seenInts[v.IntValue] = v.Pos
 			case ast.EnumString:
-				if seenStrs[v.StrValue] {
-					a.errorf(v.Pos, "duplicate string value %q in enum %q", v.StrValue, ed.Name)
+				if prev, dup := seenStrs[v.StrValue]; dup {
+					d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateLiteral,
+						"duplicate string value %q in enum %q", v.StrValue, ed.Name)
+					d.Related = related(prev, "first used here")
 				}
-				seenStrs[v.StrValue] = true
+				seenStrs[v.StrValue] = v.Pos
 			}
 		}
 	}
@@ -267,13 +645,17 @@ func (a *analyzer) checkServiceMethods() {
 		seenRoute := map[string]lexer.Position{}
 		for _, m := range si.Methods {
 			if prev, ok := seenName[m.Name]; ok {
-				a.errorf(m.Pos, "duplicate method %q (previously at %s)", m.Name, prev)
+				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateMethod,
+					"duplicate method %q", m.Name)
+				d.Related = related(prev, "first declared here")
 			} else {
 				seenName[m.Name] = m.Pos
 			}
 			key := m.Verb + " " + PathString(m.Path)
 			if prev, ok := seenRoute[key]; ok {
-				a.errorf(m.Pos, "duplicate route %q (previously at %s)", key, prev)
+				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateRoute,
+					"duplicate route %q", key)
+				d.Related = related(prev, "first declared here")
 			} else {
 				seenRoute[key] = m.Pos
 			}
@@ -343,7 +725,8 @@ func (a *analyzer) checkFieldDecorators(parent string, members []ast.TypeMember)
 
 // checkDecoratorScope is the leaf check: emit a diagnostic for any decorator
 // whose Name appears more than once in decs. The first occurrence is silent;
-// every subsequent one is flagged with a back-reference to the first.
+// every subsequent one is flagged with a Related link to the first so the
+// IDE can render a clickable cross-reference.
 func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 	seen := map[string]lexer.Position{}
 	for _, d := range decs {
@@ -351,7 +734,10 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 			continue
 		}
 		if prev, ok := seen[d.Name]; ok {
-			a.errorf(d.Pos, "duplicate decorator @%s on %s (previously at %s)", d.Name, scope, prev)
+			diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError,
+				CodeDecoratorDuplicate,
+				"duplicate decorator @%s on %s", d.Name, scope)
+			diag.Related = related(prev, "first decorator here")
 			continue
 		}
 		seen[d.Name] = d.Pos
@@ -425,7 +811,9 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 		return
 	}
 	if len(n.Name.Parts) > 1 {
-		a.errorf(n.Pos, "cross-package qualified reference %q in %s is not supported in v1 (folder-merge model); use the unqualified name", n.Name.String(), scope)
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
+			"cross-package qualified reference %q in %s is not supported in v1 (folder-merge model); use the unqualified name",
+			n.Name.String(), scope)
 	}
 	for _, arg := range n.Args {
 		a.walkTypeRef(scope, arg)
@@ -492,7 +880,9 @@ func (a *analyzer) checkRequiredOptional(parent string, f *ast.Field) {
 	}
 	for _, d := range f.Decorators {
 		if d.Name == "required" {
-			a.errorf(d.Pos, "field %s.%s: @required is incompatible with optional type %q (drop one)", parent, f.Name, "T?")
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeRequiredOptional,
+				"field %s.%s: @required is incompatible with optional type %q (drop one)",
+				parent, f.Name, "T?")
 			return
 		}
 	}
@@ -518,7 +908,10 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 			firstPos = d.Pos
 			continue
 		}
-		a.errorf(d.Pos, "field %s.%s: @%s conflicts with @%s at %s (a field must have at most one binding)", parent, f.Name, d.Name, first, firstPos)
+		diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingConflict,
+			"field %s.%s: @%s conflicts with @%s (a field must have at most one binding)",
+			parent, f.Name, d.Name, first)
+		diag.Related = related(firstPos, "first binding here")
 	}
 }
 
@@ -541,7 +934,10 @@ func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	}
 	for _, d := range m.Decorators {
 		if d.Name == "format" {
-			a.errorf(d.Pos, "method %s.%s: @format is incompatible with @raw at %s (raw mode bypasses encoding)", svcName, m.Name, rawPos)
+			diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeRawFormat,
+				"method %s.%s: @format is incompatible with @raw (raw mode bypasses encoding)",
+				svcName, m.Name)
+			diag.Related = related(rawPos, "@raw declared here")
 		}
 	}
 }

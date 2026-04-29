@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/lexer"
 	craftparser "github.com/dropship-dev/craftgo/internal/parser"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
@@ -21,8 +22,17 @@ func analyze(t *testing.T, src string) *semantic.Package {
 		t.Fatalf("parse errors: %v", d)
 	}
 	pkg, diags := semantic.Analyze([]*ast.File{f})
-	if len(diags) > 0 {
-		t.Fatalf("semantic errors: %v", diags)
+	// Treat only error-severity diags as fatal — warnings (e.g. the
+	// @nullable-on-T? hint) shouldn't fail codegen tests because the
+	// generated code is still well-defined.
+	var fatal []semantic.Diagnostic
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityError {
+			fatal = append(fatal, d)
+		}
+	}
+	if len(fatal) > 0 {
+		t.Fatalf("semantic errors: %v", fatal)
 	}
 	return pkg
 }
@@ -105,8 +115,10 @@ type X { blob bytes  raw any  in reader  out writer  upload file }`)
 // than the legacy "OfArg1AndArg2" rename convention.
 func TestGenerateTypesGenericInstance(t *testing.T) {
 	pkg := analyze(t, `package design
-type Page<T> { items T[]  total int }
-type UserPage { p Page<User, Org> }`)
+type User {}
+type Org {}
+type Pair<A, B> { left A  right B }
+type UserOrgPair { p Pair<User, Org> }`)
 	dir := t.TempDir()
 	if err := GenerateTypes(pkg, dir); err != nil {
 		t.Fatal(err)
@@ -115,12 +127,12 @@ type UserPage { p Page<User, Org> }`)
 	src := string(out)
 	mustParseGo(t, src)
 	// Generic decl now lands as a Go generic struct.
-	if !strings.Contains(src, "type Page[T any] struct") {
-		t.Errorf("expected `type Page[T any] struct` in:\n%s", src)
+	if !strings.Contains(src, "type Pair[A any, B any] struct") {
+		t.Errorf("expected `type Pair[A any, B any] struct` in:\n%s", src)
 	}
 	// Instance reference uses Go generic syntax.
-	if !strings.Contains(src, "Page[User, Org]") {
-		t.Errorf("expected `Page[User, Org]` instance reference in:\n%s", src)
+	if !strings.Contains(src, "Pair[User, Org]") {
+		t.Errorf("expected `Pair[User, Org]` instance reference in:\n%s", src)
 	}
 }
 

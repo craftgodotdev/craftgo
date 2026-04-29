@@ -8,15 +8,6 @@ output:
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
 openapi:
-  title:    Bookstore API
+  title:    CraftGo Showcase
   version:  1.0.0
   basePath: /api
-  # securitySchemes is the source of truth for `@security(name)`
-  # references. craftgo gen rejects any DSL reference that does not
-  # appear here — typos surface at build time rather than as broken
-  # OpenAPI output.
-  securitySchemes:
-    AuthRequired:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT

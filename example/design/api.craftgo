@@ -1,17 +1,9 @@
-@title("Bookstore API")
+// File-level metadata for the OpenAPI document. The `package design`
+// declaration anchors this file in the project's "umbrella" namespace
+// — separate from the domain packages (`users`, `projects`, `tasks`,
+// `shared`) which each live in their own subfolder and declare their
+// own `package X`.
+@title("CraftGo Showcase")
 @version("1.0.0")
-@doc("Comprehensive craftgo showcase: validation, imports across folders, per-method middleware, service-level group/prefix/tags, security decorators, custom errors with structured fields, multi-binding requests (path/query/header/cookie/body), multi-extend services, and runtime global middleware via srv.Use.")
+@doc("Multi-package showcase: shared request/response DTOs across services, nested type composition with pointer-optionals, validation cascading through embedded mixins.")
 package design
-
-// Each subfolder owns one slice of the design. The CLI's import
-// resolver merges them into a single `package design` symbol table.
-// Layout reflects HTTP shape: `rest/` for JSON CRUD, `stream/` for
-// SSE / NDJSON / JSON-array, `raw/` for byte passthrough, `file/`
-// for multipart uploads.
-import "errors"
-import "middlewares"
-import "types"
-import "rest"
-import "stream"
-import "raw"
-import "file"

@@ -1,665 +1,377 @@
+// Package main hosts the showcase application's smoke tests. They
+// drive the generated Go directly (no HTTP) to verify three v1
+// guarantees:
+//
+//  1. Cross-package nesting compiles and the generated structs hold
+//     the right field types (Project.Owner is a users.UserRef, not a
+//     stringly-typed id).
+//  2. Validators reject the offending values with the expected error
+//     surfaces, including the optional-pointer-then-nested-call
+//     cascade (User.Avatar carries its own validators that are
+//     invoked via `(*v.Avatar).Validate()`).
+//  3. The shared response envelope (`shared.OkResp`) is the
+//     canonical success shape and decodes from JSON cleanly.
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/example/internal/middleware"
-	"github.com/dropship-dev/craftgo/example/internal/routes"
-	"github.com/dropship-dev/craftgo/example/svccontext"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	ordersapi "github.com/dropship-dev/craftgo/example/internal/types/orders"
+	projectsapi "github.com/dropship-dev/craftgo/example/internal/types/projects"
+	sharedapi "github.com/dropship-dev/craftgo/example/internal/types/shared"
+	tasksapi "github.com/dropship-dev/craftgo/example/internal/types/tasks"
+	usersapi "github.com/dropship-dev/craftgo/example/internal/types/users"
 )
 
-// newTestServer wires the same Server + ServiceContext shape the
-// production main.go uses, then registers all DSL-generated routes. The
-// httptest.Server returned by callers gives end-to-end coverage of the
-// handler chain — bind, validate, dispatch, encode — through real HTTP.
-func newTestServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	svc := svccontext.NewServiceContext()
-	svc.AuthRequired = middleware.NewAuthRequiredMiddleware("Bearer secret-token")
-	svc.RateLimit = middleware.NewRateLimitMiddleware(1000, 0)
-
-	srv := server.New(svc)
-	routes.RegisterAll(srv, svc)
-	return httptest.NewServer(srv.Handler())
-}
-
-// postJSON marshals body as JSON, POSTs to ts.URL+path, and returns
-// (status, decoded-body-text). The helper is the smallest amount of
-// glue that lets the assertions below stay readable.
-func postJSON(t *testing.T, ts *httptest.Server, path string, body any) (int, string) {
-	t.Helper()
-	buf, _ := json.Marshal(body)
-	resp, err := http.Post(ts.URL+path, "application/json", bytes.NewReader(buf))
-	if err != nil {
-		t.Fatalf("POST %s: %v", path, err)
-	}
-	defer resp.Body.Close()
-	out, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, string(out)
-}
-
-// TestValidateCalcHappyPath exercises the @positive / @negative /
-// @multipleOf validators with conforming values — the request must
-// round-trip cleanly.
-func TestValidateCalcHappyPath(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/calc", map[string]any{
-		"quantity": 5,
-		"delta":    -3,
-		"pageSize": 20,
-	})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Errorf("status = %d, body = %s", status, body)
-	}
-}
-
-// TestValidateCalcRejectsNonPositive flips `quantity` to a non-positive
-// value; the @positive validator must respond 400.
-func TestValidateCalcRejectsNonPositive(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/calc", map[string]any{
-		"quantity": -1,
-		"delta":    -3,
-		"pageSize": 20,
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "must be positive") {
-		t.Errorf("expected positive-violation message, got %s", body)
-	}
-}
-
-// TestValidateCalcRejectsNonNegative flips `delta` to a non-negative
-// value; @negative must reject.
-func TestValidateCalcRejectsNonNegative(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/calc", map[string]any{
-		"quantity": 5,
-		"delta":    1,
-		"pageSize": 20,
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "must be negative") {
-		t.Errorf("expected negative-violation message, got %s", body)
-	}
-}
-
-// TestValidateCalcRejectsMultipleOf flips `pageSize` so it isn't a
-// multiple of 10; @multipleOf must reject.
-func TestValidateCalcRejectsMultipleOf(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/calc", map[string]any{
-		"quantity": 5,
-		"delta":    -3,
-		"pageSize": 17,
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "multiple of 10") {
-		t.Errorf("expected multipleOf message, got %s", body)
-	}
-}
-
-// TestValidateTagsRejectsDuplicates exercises @uniqueItems — duplicate
-// elements must produce a 400.
-func TestValidateTagsRejectsDuplicates(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/tags", map[string]any{
-		"tags": []string{"a", "b", "a"},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "unique") {
-		t.Errorf("expected uniqueness message, got %s", body)
-	}
-}
-
-// TestValidateTagsRejectsTooMany covers @maxItems on the same field.
-func TestValidateTagsRejectsTooMany(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	tags := []string{}
-	for i := 0; i < 11; i++ {
-		tags = append(tags, "t"+string(rune('0'+i%10)))
-	}
-	tags[len(tags)-1] = "extra-unique-tag"
-	status, body := postJSON(t, ts, "/api/v1/validate/tags", map[string]any{"tags": tags})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "maxItems") {
-		t.Errorf("expected maxItems message, got %s", body)
-	}
-}
-
-// TestValidateFormatsAcceptsValid submits a fully-conforming request to
-// the format endpoint to prove the regex catalogue accepts realistic
-// inputs end-to-end (datetime, ipv6, hexcolor, etc.).
-func TestValidateFormatsAcceptsValid(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/formats", map[string]any{
-		"ipv6":       "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
-		"happenedAt": "2026-04-28T12:00:00Z",
-		"onDay":      "2026-04-28",
-		"atTime":     "12:30:00",
-		"cidr":       "192.168.1.0/24",
-		"mac":        "01:23:45:67:89:ab",
-		"card":       "4111111111111111",
-		"blob":       "SGVsbG8=",
-		"color":      "#ffaa00",
-		"payload":    `{"k":"v"}`,
-	})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Errorf("expected 2xx, got %d (body=%s)", status, body)
-	}
-}
-
-// TestValidateFormatsRejectsBadIPv6 picks one new format and feeds it
-// garbage to confirm the regex catches it. Optional `string?` fields
-// are nil-guarded by the validator so a missing field passes; sending
-// an explicit bad value triggers the regex.
-func TestValidateFormatsRejectsBadIPv6(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/formats", map[string]any{
-		"ipv6": "not-an-ipv6",
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "ipv6") {
-		t.Errorf("expected ipv6 in message, got %s", body)
-	}
-}
-
-// TestValidateFormatsAllowsMissingOptional confirms the nil-guard: an
-// empty body must NOT trip @format on optional fields.
-func TestValidateFormatsAllowsMissingOptional(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/formats", map[string]any{})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Errorf("expected 2xx, got %d (body=%s)", status, body)
-	}
-}
-
-// TestValidateGenericPageHappyPath sends valid PageItem values inside
-// a generic Page<PageItem>; every item's Validate() should pass via
-// the runtime type-assertion path.
-func TestValidateGenericPageHappyPath(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/page", map[string]any{
-		"page": map[string]any{
-			"items": []map[string]any{
-				{"name": "alpha"},
-				{"name": "beta"},
-			},
-			"total": 2,
+// TestNestedCrossPackageTypes pins the multi-package wire shape:
+// projects.Project owns a users.UserRef, tasks.Task owns
+// projects.ProjectRef + an optional users.UserRef, and tasks.Comment
+// nests another users.UserRef. If the codegen ever stops adding the
+// matching cross-package Go imports this won't compile.
+func TestNestedCrossPackageTypes(t *testing.T) {
+	owner := usersapi.UserRef{ID: "u1", Name: "Alice"}
+	proj := projectsapi.Project{
+		ID:    "p1",
+		Name:  "Atlas",
+		Owner: owner,
+		Members: []usersapi.UserRef{
+			{ID: "u1", Name: "Alice"},
+			{ID: "u2", Name: "Bob"},
 		},
-	})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Errorf("expected 2xx, got %d (body=%s)", status, body)
 	}
-}
+	if err := proj.Validate(); err != nil {
+		t.Fatalf("project should validate: %v", err)
+	}
 
-// TestValidateGenericPageRejectsInnerEmpty proves the runtime
-// type-assertion ACTUALLY invokes the inner item's Validate(): one
-// PageItem has an empty name (violates @required), so the request
-// must 400 with the inner field's error message.
-func TestValidateGenericPageRejectsInnerEmpty(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/page", map[string]any{
-		"page": map[string]any{
-			"items": []map[string]any{
-				{"name": "ok"},
-				{"name": ""},
-			},
-			"total": 2,
+	pref := projectsapi.ProjectRef{ID: "p1", Name: "Atlas"}
+	assignee := usersapi.UserRef{ID: "u2", Name: "Bob"}
+	task := tasksapi.Task{
+		ID:       "t1",
+		Title:    "Ship the showcase",
+		Status:   tasksapi.TaskStatusInProgress,
+		Project:  pref,
+		Assignee: &assignee, // optional — present here.
+		Comments: []tasksapi.Comment{
+			{ID: "c1", Author: assignee, Body: "lgtm", CreatedAt: "2026-04-29T00:00:00Z"},
 		},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
 	}
-	if !strings.Contains(body, "name: required") {
-		t.Errorf("expected inner @required to fire, got %s", body)
+	if err := task.Validate(); err != nil {
+		t.Fatalf("task should validate: %v", err)
+	}
+
+	// Optional pointer absent: assignee omitted from wire.
+	taskNoAssignee := task
+	taskNoAssignee.Assignee = nil
+	out, _ := json.Marshal(&taskNoAssignee)
+	if strings.Contains(string(out), `"assignee"`) {
+		t.Errorf("absent assignee should drop the JSON key, got:\n%s", out)
 	}
 }
 
-// TestValidateEnumHappyPath sends valid Priority + Tier + tags. The
-// auto enum-value switch-case must accept every named constant.
-func TestValidateEnumHappyPath(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/enum", map[string]any{
-		"priority": "High",
-		"tier":     2,
-		"tags":     []string{"Low", "Normal", "Critical"},
-	})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Errorf("expected 2xx, got %d (body=%s)", status, body)
+// TestUserAvatarNestedValidation exercises the optional-pointer-
+// then-recursive-validator cascade. v1's per-field Validate() does
+// NOT auto-recurse into nested struct fields by default, BUT for an
+// optional nested type with its own validators we explicitly emit
+// `if v.Avatar != nil { (*v.Avatar).Validate() }` — this test pins
+// that exact code path.
+func TestUserAvatarNestedValidation(t *testing.T) {
+	u := usersapi.User{
+		ID:    "u1",
+		Email: "alice@example.com",
+		Name:  "Alice",
+	}
+	if err := u.Validate(); err != nil {
+		t.Fatalf("user without avatar should validate: %v", err)
+	}
+
+	bad := &usersapi.Avatar{URL: "not-a-url", SizeBytes: 100}
+	u.Avatar = bad
+	err := u.Validate()
+	if err == nil {
+		t.Fatal("avatar with malformed URL should fail validation")
+	}
+	if !strings.Contains(err.Error(), "url") {
+		t.Errorf("error should mention url, got: %v", err)
+	}
+
+	good := &usersapi.Avatar{URL: "https://example.com/a.png", SizeBytes: 1024}
+	u.Avatar = good
+	if err := u.Validate(); err != nil {
+		t.Fatalf("good avatar should pass: %v", err)
 	}
 }
 
-// TestValidateEnumRejectsUnknownValue feeds a string outside the
-// declared Priority set; the auto-generated switch must reject.
-func TestValidateEnumRejectsUnknownValue(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/enum", map[string]any{
-		"priority": "Bogus",
-		"tier":     2,
-		"tags":     []string{"Low"},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
+// TestUpdateUserReqOptionalFields covers the optional-string-with-
+// validator path (`name string?  @length(1, 80)`). The bug that
+// motivated the codegen fix was a malformed `if v.Name != nil &&
+// l := len(*v.Name); ...` — exercising both nil and present cases
+// asserts the new shape compiles AND validates.
+func TestUpdateUserReqOptionalFields(t *testing.T) {
+	// Nil name → validators short-circuit on the nil guard.
+	req := usersapi.UpdateUserReq{ID: "u1"}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("empty patch should validate: %v", err)
 	}
-	if !strings.Contains(body, "invalid Priority value") {
-		t.Errorf("expected enum-value error, got %s", body)
+
+	// Present but too long → length validator fires through the deref.
+	long := strings.Repeat("x", 81)
+	req.Name = &long
+	if err := req.Validate(); err == nil {
+		t.Errorf("over-long name should fail validation")
+	}
+
+	// Within range → passes.
+	ok := "Alice"
+	req.Name = &ok
+	if err := req.Validate(); err != nil {
+		t.Errorf("good name should pass: %v", err)
 	}
 }
 
-// TestValidateEnumRequiredFiresFirst confirms decorator ordering:
-// @required runs before the auto enum-value check, so an empty string
-// triggers "required" rather than "invalid value".
-func TestValidateEnumRequiredFiresFirst(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/enum", map[string]any{
-		"priority": "",
-		"tier":     2,
-		"tags":     []string{"Low"},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "priority: required") {
-		t.Errorf("expected 'priority: required', got %s", body)
-	}
-}
-
-// TestValidateEnumIntRequiredOnZero proves the int-valued enum's
-// @required compares against the zero literal `0`, not "".
-func TestValidateEnumIntRequiredOnZero(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/enum", map[string]any{
-		"priority": "High",
-		"tier":     0,
-		"tags":     []string{"Low"},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "tier: required") {
-		t.Errorf("expected 'tier: required', got %s", body)
-	}
-}
-
-// TestValidateEnumArrayRejectsBadElement covers Priority[]: every
-// element must be in the enum set; one bad element fails the loop.
-func TestValidateEnumArrayRejectsBadElement(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/enum", map[string]any{
-		"priority": "High",
-		"tier":     2,
-		"tags":     []string{"Low", "NotAValue"},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "tags: invalid Priority value") {
-		t.Errorf("expected tags enum error, got %s", body)
-	}
-}
-
-// TestValidateEnumOptionalAcceptsMissing pins the nil-guard on the
-// optional `fallback` field — if it's not in the body the validator
-// must skip the switch entirely.
-func TestValidateEnumOptionalAcceptsMissing(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/validate/enum", map[string]any{
-		"priority": "High",
-		"tier":     2,
-		"tags":     []string{"Low"},
-		// fallback omitted
-	})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Errorf("expected 2xx, got %d (body=%s)", status, body)
-	}
-}
-
-// TestSearchBooksHappyPath exercises the new /v1/books/search endpoint
-// end-to-end: validate, dispatch to logic (which uses the embedded
-// log.Logger to emit a "search start" / "search complete" pair).
-// Stdout shows the structured JSON lines during `go test -v`.
-func TestSearchBooksHappyPath(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	resp, err := http.Get(ts.URL + "/api/v1/books/search?q=go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		t.Errorf("expected 2xx, got %d", resp.StatusCode)
-	}
-}
-
-// TestSearchBooksRichQuery pins the codegen's auto-bind of every
-// query-parameter shape: string (q), []string (tags), int (limit),
-// []int (years), bool (verbose). The request would 400 if any of
-// the parsers drops a value or chokes on a numeric/bool literal.
-func TestSearchBooksRichQuery(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	url := ts.URL + "/api/v1/books/search?q=go" +
-		"&tags=fiction&tags=ya" +
-		"&limit=10" +
-		"&years=2020&years=2021" +
-		"&verbose=true"
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
-	}
-	var out struct {
-		P struct {
-			Items []map[string]any `json:"items"`
-			Total int              `json:"total"`
-		} `json:"p"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+// TestSharedOkRespRoundTrip decodes the canonical write-success
+// envelope to confirm both the field tag and the cross-package
+// reusability work end-to-end.
+func TestSharedOkRespRoundTrip(t *testing.T) {
+	encoded, _ := json.Marshal(sharedapi.OkResp{Ok: true})
+	var decoded sharedapi.OkResp
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if out.P.Total != len(out.P.Items) {
-		t.Errorf("total %d != items %d", out.P.Total, len(out.P.Items))
+	if !decoded.Ok {
+		t.Errorf("ok flag lost on round trip: %+v", decoded)
 	}
 }
 
-// TestCheckoutOrderEveryBinding exercises the full request/response
-// binding matrix in one shot:
-//
-//   request:
-//     - path     /orders/{id}/checkout
-//     - query    ?dryRun=true
-//     - body     { notes, lines: [...] }
-//     - header   idempotencyKey: <key>
-//     - cookie   sessionId=<sid>
-//
-//   response:
-//     - header   orderId: <id>
-//     - cookie   lastOrderId=<id>
-//     - body     { orderId, lastOrderId, order }
-//
-// Two assertions matter most: the handler must echo every input
-// value back into the response, and the response must carry the
-// header + cookie alongside the JSON body. dryRun=true short-
-// circuits persistence so the test stays free of side-effects.
-func TestCheckoutOrderEveryBinding(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	body, _ := json.Marshal(map[string]any{
-		"notes": "ship gift-wrapped",
-		"lines": []map[string]any{{"bookId": "b1", "quantity": 2}},
-	})
-	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/orders/draft-99/checkout?dryRun=true", bytes.NewReader(body))
-	req.Header.Set("idempotencyKey", "key-abc")
-	req.AddCookie(&http.Cookie{Name: "sessionId", Value: "sess-xyz"})
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
+// TestNestedContactPerFieldValidators pins the per-field validator
+// surface on the Contact nested type. The Contact decl carries
+// @requiresOneOf / @mutuallyExclusive type-level decorators that v1
+// records in the DSL for OpenAPI surfacing but doesn't yet emit Go
+// code for — see the comment in users/contact.craftgo. The
+// per-FIELD validators (`@format(email)`, `@pattern(...)`) DO emit
+// and we verify them here.
+func TestNestedContactPerFieldValidators(t *testing.T) {
+	bad := usersapi.Contact{Email: ptr("not-an-email")}
+	if err := bad.Validate(); err == nil {
+		t.Errorf("malformed email should be rejected by @format(email)")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, raw)
+
+	withEmail := usersapi.Contact{Email: ptr("alice@example.com")}
+	if err := withEmail.Validate(); err != nil {
+		t.Errorf("contact with valid email should validate: %v", err)
 	}
-	if got := resp.Header.Get("orderId"); got != "dry-run" {
-		t.Errorf("response header orderId = %q, want %q", got, "dry-run")
+
+	badPhone := usersapi.Contact{Phone: ptr("xx")}
+	if err := badPhone.Validate(); err == nil {
+		t.Errorf("malformed phone should be rejected by @pattern")
 	}
-	var sawCookie bool
-	for _, c := range resp.Cookies() {
-		if c.Name == "lastOrderId" && c.Value == "dry-run" {
-			sawCookie = true
+}
+
+// ptr is the inline pointer-helper for tests. Spelled out instead of
+// pulled in from a shared util because tests should be transparent.
+func ptr[T any](v T) *T { return &v }
+
+// ----------------------------------------------------------------------
+// Deep-nest + scalars — orders package showcase.
+// ----------------------------------------------------------------------
+
+// TestDeepNestSixLevels constructs a fully-valid Order that
+// chains all six nested levels (Order → Customer → Address →
+// Geocode → Precision → GpsFix), pulls cross-package references
+// (`users.UserRef`), and rides on top of every scalar declared in
+// the package. A clean Validate() pass on the top wrapper plus an
+// explicit (*v.X).Validate() at each layer pins the deep tree.
+func TestDeepNestSixLevels(t *testing.T) {
+	gpsFix := ordersapi.GpsFix{
+		Satellites: 12,
+		Hdop:       0.8,
+		Timestamp:  "2026-04-29T08:00:00Z",
+		DeviceID:   ptr("dev_AB12CDEF"),
+		Notes:      ptr("clear sky"),
+	}
+	prec := ordersapi.Precision{
+		RadiusMeters: 5.5,
+		Source:       ordersapi.GeoSourceGps,
+		Confidence:   0.97,
+		GpsFix:       &gpsFix,
+	}
+	geo := ordersapi.Geocode{
+		Lat:        37.7749,
+		Lng:        -122.4194,
+		CapturedAt: "2026-04-29T08:00:00Z",
+		Precision:  &prec,
+	}
+	addr := ordersapi.Address{
+		Street:     "1 Market St",
+		City:       "San Francisco",
+		PostalCode: "94105",
+		Country:    "US",
+		Geo:        &geo,
+	}
+	cust := ordersapi.Customer{
+		ID:             "550e8400-e29b-41d4-a716-446655440000",
+		Email:          "alice@example.com",
+		Name:           "Alice",
+		PrimaryAddress: addr,
+	}
+	order := ordersapi.Order{
+		ID:         "ord_ABC12345",
+		Customer:   cust,
+		Items:      []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 999}},
+		AuditedBy:  usersapi.UserRef{ID: "u-admin", Name: "Admin"},
+		TotalCents: 999,
+		Status:     ordersapi.OrderStatusPending,
+		Currency:   "USD",
+		Tags:       []string{"web"},
+		CreatedAt:  "2026-04-29T08:00:00Z",
+	}
+	if err := order.Validate(); err != nil {
+		t.Fatalf("happy-path order should validate: %v", err)
+	}
+
+	// Each level's own Validate() is callable independently — that's
+	// how a real client codepath descends the tree to surface the
+	// most-specific failure rather than the wrapper's first.
+	for name, v := range map[string]interface {
+		Validate() error
+	}{
+		"customer": &cust,
+		"address":  &addr,
+		"geocode":  &geo,
+		"precision": &prec,
+		"gpsFix":   &gpsFix,
+	} {
+		if err := v.Validate(); err != nil {
+			t.Errorf("%s should validate: %v", name, err)
 		}
 	}
-	if !sawCookie {
-		t.Errorf("response missing Set-Cookie lastOrderId=dry-run; got %v", resp.Cookies())
+}
+
+// TestScalarFieldsUseAliasedTypes verifies the codegen emits each
+// scalar declaration as a Go type alias, so a field declared
+// `currency CurrencyCode` accepts string literals interchangeably
+// with the alias name. This is the property that lets scalar
+// validators inherit at the wire boundary while logic code stays
+// natural (`order.Currency = "USD"` works without a conversion).
+func TestScalarFieldsUseAliasedTypes(t *testing.T) {
+	// String-backed alias accepts a bare string literal.
+	var country ordersapi.CountryCode = "US"
+	var currency ordersapi.CurrencyCode = "USD"
+	var orderID ordersapi.OrderID = "ord_ABC12345"
+
+	// Aliased numeric scalars accept primitive ints / floats.
+	var cents ordersapi.Cents = 999
+	var lat ordersapi.Latitude = 37.7749
+
+	// Cross-package scalars come through the shared package's
+	// generated alias declarations.
+	var nonEmpty sharedapi.NonEmptyID = "abc-123"
+	var bps sharedapi.PercentBP = 750
+	var url sharedapi.SafeURL = "https://example.com/receipt.pdf"
+
+	// Use them so the compiler doesn't elide the assignments.
+	_ = country
+	_ = currency
+	_ = orderID
+	_ = cents
+	_ = lat
+	_ = nonEmpty
+	_ = bps
+	_ = url
+}
+
+// TestCrossPackageScalarInPaymentField demonstrates a Payment
+// constructed with a cross-package SafeURL value plus an inline
+// shared.NonEmptyID for referenceId. The struct compiles only
+// because both shared/types.go and orders/types.go agree on the
+// alias declaration, with the matching Go import added by codegen.
+func TestCrossPackageScalarInPaymentField(t *testing.T) {
+	pay := ordersapi.Payment{
+		Method:      ordersapi.PaymentMethodCard,
+		ReferenceID: "pay_ABCDEF",
+		AuthCents:   1000,
+		ReceiptURL:  ptr[sharedapi.SafeURL]("https://example.com/r/1"),
 	}
-	rawBody, _ := io.ReadAll(resp.Body)
-	// Response @header / @cookie fields must NOT leak into the JSON body
-	// — the codegen marks them `json:"-"` so the value travels through
-	// exactly one channel.
-	if strings.Contains(string(rawBody), `"orderId"`) {
-		t.Errorf("body must not carry orderId (it's @header-bound):\n%s", rawBody)
+	if pay.AuthCents != 1000 {
+		t.Errorf("AuthCents lost: %+v", pay)
 	}
-	if strings.Contains(string(rawBody), `"lastOrderId"`) {
-		t.Errorf("body must not carry lastOrderId (it's @cookie-bound):\n%s", rawBody)
-	}
-	var out struct {
-		Order struct {
-			ID         string `json:"id"`
-			Items      []any  `json:"items"`
-			TotalCents int    `json:"totalCents"`
-			Status     string `json:"status"`
-		} `json:"order"`
-	}
-	if err := json.Unmarshal(rawBody, &out); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if out.Order.ID != "draft-99" {
-		t.Errorf("body order.id = %q, want %q (path bind broken)", out.Order.ID, "draft-99")
-	}
-	if len(out.Order.Items) != 1 {
-		t.Errorf("body items count = %d, want 1 (body bind broken)", len(out.Order.Items))
-	}
-	if out.Order.Status != "draft" {
-		t.Errorf("body status = %q, want %q (dryRun query bind broken)", out.Order.Status, "draft")
+	if pay.ReceiptURL == nil || *pay.ReceiptURL == "" {
+		t.Errorf("ReceiptURL not set: %+v", pay)
 	}
 }
 
-// TestCheckoutOrderRejectsMissingHeader confirms the @required
-// @header validator fires when the idempotencyKey header is absent.
-func TestCheckoutOrderRejectsMissingHeader(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	body, _ := json.Marshal(map[string]any{
-		"notes": "no header",
-		"lines": []map[string]any{{"bookId": "b1", "quantity": 1}},
-	})
-	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/orders/x/checkout", bytes.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: "sessionId", Value: "sess"})
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
+// TestRequiresOneOfNowEnforced pins the bug fix where the
+// validator emitter for `@requiresOneOf` previously failed to
+// recognise the bare-ident argument shape (`@requiresOneOf(email,
+// phone)`) — only the array-shortcut form
+// (`@requiresOneOf(["email", "phone"])`) was wired through. The
+// example's Contact type uses the bare-ident form deliberately so
+// this test catches a regression on either side.
+func TestRequiresOneOfNowEnforced(t *testing.T) {
+	empty := usersapi.Contact{}
+	if err := empty.Validate(); err == nil {
+		t.Errorf("@requiresOneOf(email, phone) should reject empty Contact")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for missing idempotencyKey header, got %d", resp.StatusCode)
+
+	withEmail := usersapi.Contact{Email: ptr("alice@example.com")}
+	if err := withEmail.Validate(); err != nil {
+		t.Errorf("Contact with email should pass: %v", err)
 	}
 }
 
-// TestSearchBooksRejectsBadInt confirms the strconv.ParseInt path
-// in the generated handler reports 400 on garbage numeric input —
-// proving the parser actually runs (and isn't silently dropping
-// the value).
-func TestSearchBooksRejectsBadInt(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	resp, err := http.Get(ts.URL + "/api/v1/books/search?q=go&limit=notanint")
-	if err != nil {
-		t.Fatal(err)
+// TestMutuallyExclusiveNowEnforced exercises the second type-level
+// validator that was previously dead due to the same arg-parsing
+// bug. The Contact type marks `work` and `personal` as mutually
+// exclusive — flipping both should be rejected.
+func TestMutuallyExclusiveNowEnforced(t *testing.T) {
+	both := usersapi.Contact{
+		Email:    ptr("alice@example.com"),
+		Work:     ptr(true),
+		Personal: ptr(true),
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for non-int limit, got %d", resp.StatusCode)
+	if err := both.Validate(); err == nil {
+		t.Errorf("@mutuallyExclusive(work, personal) should reject when both are true")
+	}
+
+	onlyWork := usersapi.Contact{
+		Email: ptr("alice@example.com"),
+		Work:  ptr(true),
+	}
+	if err := onlyWork.Validate(); err != nil {
+		t.Errorf("only work=true should validate: %v", err)
 	}
 }
 
-// TestSearchBooksValidatesQuery pins the request validators (@required
-// + @minLength) — empty `q` rejects.
-func TestSearchBooksValidatesQuery(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	resp, err := http.Get(ts.URL + "/api/v1/books/search")
-	if err != nil {
-		t.Fatal(err)
+// TestNumericPointerValidatorsCompile pins the numeric-validator
+// codegen fix that handles pointer fields (T? / @nullable). Before
+// the fix, `loyaltyPoints int @nullable @min(0)` produced
+// `if v.LoyaltyPoints < 0` — invalid because *int can't be
+// compared to an untyped int. The fix injects the nil-guard +
+// deref so the comparison succeeds.
+func TestNumericPointerValidatorsCompile(t *testing.T) {
+	// Nil pointer → validators skip silently.
+	customer := ordersapi.Customer{
+		ID:             "550e8400-e29b-41d4-a716-446655440000",
+		Email:          "alice@example.com",
+		Name:           "Alice",
+		PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"},
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for missing q, got %d", resp.StatusCode)
+	if err := customer.Validate(); err != nil {
+		t.Fatalf("customer with nil loyaltyPoints should validate: %v", err)
 	}
-}
 
-// TestDeprecatedFieldInOpenAPI confirms the field-level @deprecated
-// on `Book.priceLegacy` flows into `docs/openapi.yaml`. The runtime
-// behaviour is unchanged (field still bound from JSON), but the spec
-// and Go field carry the migration hint.
-func TestDeprecatedFieldInOpenAPI(t *testing.T) {
-	body, err := os.ReadFile("docs/openapi.yaml")
-	if err != nil {
-		t.Skipf("openapi.yaml missing — run `craftgo gen` first: %v", err)
+	// Out-of-range value → @max kicks in via deref.
+	bad := 9_999_999
+	customer.LoyaltyPoints = &bad
+	if err := customer.Validate(); err == nil {
+		t.Errorf("loyaltyPoints=%d should be rejected by @max(1000000)", bad)
 	}
-	src := string(body)
-	if !strings.Contains(src, "priceLegacy:") {
-		t.Fatalf("expected priceLegacy field in spec:\n%s", src)
-	}
-	idx := strings.Index(src, "priceLegacy:")
-	end := idx + 200
-	if end > len(src) {
-		end = len(src)
-	}
-	window := src[idx:end]
-	if !strings.Contains(window, "deprecated: true") {
-		t.Errorf("expected priceLegacy.deprecated: true:\n%s", window)
-	}
-	if !strings.Contains(window, "use priceCents instead") {
-		t.Errorf("expected migration hint in description:\n%s", window)
-	}
-}
 
-// TestDeprecatedMethodInOpenAPI confirms the method-level @deprecated
-// on LegacyListBooks lands as `deprecated: true` on the operation.
-func TestDeprecatedMethodInOpenAPI(t *testing.T) {
-	body, err := os.ReadFile("docs/openapi.yaml")
-	if err != nil {
-		t.Skipf("openapi.yaml missing — run `craftgo gen` first: %v", err)
-	}
-	src := string(body)
-	idx := strings.Index(src, "/v1/books-v0:")
-	if idx < 0 {
-		t.Fatalf("expected /v1/books-v0 path in spec")
-	}
-	end := idx + 600
-	if end > len(src) {
-		end = len(src)
-	}
-	window := src[idx:end]
-	if !strings.Contains(window, "deprecated: true") {
-		t.Errorf("expected operation-level deprecated:\n%s", window)
-	}
-	if !strings.Contains(window, "use GET /books instead") {
-		t.Errorf("expected migration hint in description:\n%s", window)
-	}
-}
-
-// TestDeprecatedMethodStillRoutes pins that `@deprecated` is purely
-// metadata — the route is still registered and reachable. (We give it
-// a logic stub that returns nil so the empty response works without
-// scaffolding ceremony.)
-func TestDeprecatedMethodStillRoutes(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	resp, err := http.Get(ts.URL + "/api/v1/books-v0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 500 {
-		t.Errorf("unexpected 5xx on deprecated endpoint: %d", resp.StatusCode)
-	}
-}
-
-// TestFeedbackHappyPath exercises the JSON REST endpoint
-// `POST /api/v1/feedback` end-to-end: validate, dispatch to logic,
-// echo back the stored Feedback record.
-func TestFeedbackHappyPath(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/feedback", map[string]any{
-		"homepage": "https://example.com",
-		"phone":    "+84-901-234-567",
-		"apiToken": "supersecrettoken",
-	})
-	if status != http.StatusOK && status != http.StatusNoContent {
-		t.Fatalf("expected 2xx, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, `"id":"fb-001"`) {
-		t.Errorf("expected echoed id in response, got:\n%s", body)
-	}
-}
-
-// TestFeedbackValidatesApiToken pins that the @length validator on the
-// request side fires (a 4-char token is below @length(8, 100)).
-func TestFeedbackValidatesApiToken(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	status, body := postJSON(t, ts, "/api/v1/feedback", map[string]any{
-		"homepage": "https://example.com",
-		"apiToken": "tiny",
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "apiToken: length out of range") {
-		t.Errorf("expected length error, got %s", body)
-	}
-}
-
-// TestValidateGenericPageRejectsLength tests the OTHER inner validator
-// (@length on PageItem.name) — proves the type-assertion path runs the
-// full inner Validate(), not just one decorator.
-func TestValidateGenericPageRejectsLength(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-	tooLong := strings.Repeat("x", 80) // @length(1, 50) on PageItem.name
-	status, body := postJSON(t, ts, "/api/v1/validate/page", map[string]any{
-		"page": map[string]any{
-			"items": []map[string]any{{"name": tooLong}},
-			"total": 1,
-		},
-	})
-	if status != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d (body=%s)", status, body)
-	}
-	if !strings.Contains(body, "length out of range") {
-		t.Errorf("expected length message, got %s", body)
+	// In-range → passes.
+	good := 500
+	customer.LoyaltyPoints = &good
+	if err := customer.Validate(); err != nil {
+		t.Errorf("loyaltyPoints=500 should pass: %v", err)
 	}
 }

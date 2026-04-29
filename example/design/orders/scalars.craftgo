@@ -1,0 +1,40 @@
+// Scalar showcase. A `scalar` declaration is a NAMED PRIMITIVE
+// type with its own validators baked in — using `OrderID` instead
+// of bare `string @length(8, 64) @pattern(...)` everywhere keeps
+// the validation contract centralised, exactly the way Go's
+// `time.Duration` re-uses `int64` with extra meaning.
+//
+// Scalars demonstrate validators at the TYPE LEVEL rather than the
+// FIELD LEVEL: every field whose type is a scalar inherits the
+// scalar's validators automatically — no per-field re-declaration.
+package orders
+
+// OrderID is the canonical id shape used across order-related
+// types. Centralising the pattern means a future change (longer
+// prefix, alternate alphabet) only touches one declaration.
+scalar OrderID string @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
+
+// Email re-uses the format validator that Customer.email needs in
+// every place an email-typed field appears. A future "verified
+// email" wrapper can layer extra logic on top without touching
+// each call site.
+scalar Email string @format(email) @maxLength(254)
+
+// SkuCode is the alphanumeric SKU pattern referenced by LineItem.
+scalar SkuCode string @pattern("^[A-Z0-9-]{4,32}$")
+
+// CountryCode is ISO 3166-1 alpha-2.
+scalar CountryCode string @length(2, 2) @pattern("^[A-Z]{2}$")
+
+// CurrencyCode is ISO 4217.
+scalar CurrencyCode string @length(3, 3) @pattern("^[A-Z]{3}$")
+
+// Cents is the canonical money type — non-negative integer, no
+// fractional currency units allowed at the wire boundary.
+scalar Cents int @min(0) @multipleOf(1)
+
+// Latitude / Longitude carry the geographic-bound validators so a
+// Geocode field's per-field constraints reduce to just the
+// scalar reference.
+scalar Latitude  float64 @min(-90)  @max(90)
+scalar Longitude float64 @min(-180) @max(180)

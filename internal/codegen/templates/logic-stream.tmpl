@@ -8,6 +8,9 @@ import (
 
 	types "{{.TypesImport}}"
 {{- end}}
+{{- range .ExtraTypesImports}}
+	{{.Alias}} "{{.Path}}"
+{{- end}}
 
 	"github.com/dropship-dev/craftgo/pkg/log"
 	"github.com/dropship-dev/craftgo/pkg/server"
@@ -50,7 +53,7 @@ func New{{.LogicName}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 //	        if err := stream.Send(ev); err != nil { return err }
 //	    }
 //	}
-func (l *{{.LogicName}}) {{.Method}}({{if .HasRequest}}req *types.{{.RequestType}}, {{end}}stream *server.{{.StreamCtor}}Stream) error {
+func (l *{{.LogicName}}) {{.Method}}({{if .HasRequest}}req *{{.RequestPkgAlias}}.{{.RequestType}}, {{end}}stream *server.{{.StreamCtor}}Stream) error {
 	// TODO: implement
 	_ = stream
 	return nil

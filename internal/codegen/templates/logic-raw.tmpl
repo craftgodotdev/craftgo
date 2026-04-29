@@ -10,6 +10,9 @@ import (
 
 	types "{{.TypesImport}}"
 {{- end}}
+{{- range .ExtraTypesImports}}
+	{{.Alias}} "{{.Path}}"
+{{- end}}
 
 	"github.com/dropship-dev/craftgo/pkg/log"
 	"{{.SvccontextImport}}"
@@ -40,7 +43,7 @@ func New{{.LogicName}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 // `body` parameter carries the raw request payload — read it as you
 // would any io.Reader. Return an io.Reader (or io.ReadCloser, which
 // the handler closes after copying) carrying the response payload.
-func (l *{{.LogicName}}) {{.Method}}({{if .HasRequest}}req *types.{{.RequestType}}, {{end}}body io.Reader) (io.Reader, error) {
+func (l *{{.LogicName}}) {{.Method}}({{if .HasRequest}}req *{{.RequestPkgAlias}}.{{.RequestType}}, {{end}}body io.Reader) (io.Reader, error) {
 	// TODO: implement
 	_ = body
 	return bytes.NewReader(nil), nil

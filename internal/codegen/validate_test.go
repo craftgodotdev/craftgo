@@ -5,6 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dropship-dev/craftgo/internal/ast"
+	craftparser "github.com/dropship-dev/craftgo/internal/parser"
+	"github.com/dropship-dev/craftgo/internal/semantic"
 )
 
 // runValidateGen returns the rendered validate.go source for `src`. The
@@ -329,11 +333,23 @@ type Upload { avatar file @maxSize(1024) }`)
 }
 
 func TestValidateMaxSizeRejectsNonFile(t *testing.T) {
-	// @maxSize on a string field is a no-op (silently skipped).
-	src := runValidateGen(t, `package design
+	// @maxSize on a non-file field is rejected by the semantic
+	// analyser (decorator/typemismatch). This used to be a silent
+	// codegen-time skip; v1.x elevates it to a hard error so the IDE
+	// can surface it before the user runs `craftgo gen`.
+	p := craftparser.New("test.craftgo", `package design
 type X { name string @maxSize(1024) }`)
-	if strings.Contains(src, ".Size") {
-		t.Errorf("@maxSize on non-file should be skipped:\n%s", src)
+	f := p.Parse()
+	_, diags := semantic.Analyze([]*ast.File{f})
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "@maxSize applies to file") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected typemismatch diag, got %v", diags)
 	}
 }
 

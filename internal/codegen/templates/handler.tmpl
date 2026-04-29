@@ -15,6 +15,9 @@ import (
 {{- if .NeedsTypes}}
 	types "{{.TypesImport}}"
 {{- end}}
+{{- range .ExtraTypesImports}}
+	{{.Alias}} "{{.Path}}"
+{{- end}}
 	"{{.SvccontextImport}}"
 )
 
@@ -26,7 +29,7 @@ import (
 func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 {{- if .HasRequest}}
-		var req types.{{.RequestType}}
+		var req {{.RequestPkgAlias}}.{{.RequestType}}
 {{- range .Defaults}}
 		req.{{.GoName}} = {{.Literal}}
 {{- end}}

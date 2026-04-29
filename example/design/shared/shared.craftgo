@@ -1,0 +1,62 @@
+// Package `shared` collects DTOs reused across multiple services.
+// Pulling them into their own subpackage avoids the "shared types
+// drift between services" smell — every consumer references the
+// canonical version via `shared.<Name>`.
+package shared
+
+// Pagination is the canonical input shape for every list endpoint
+// in the project. Re-using one DTO across services means cursor +
+// limit semantics stay identical: handlers and clients agree on the
+// wire format without per-service re-derivation.
+//
+// Validators are declared once here; consumers inherit them by
+// referencing this type, so a `?limit=999` query is rejected the
+// same way regardless of which service receives it.
+type Pagination {
+    // cursor is an opaque continuation token returned by the
+    // previous page. Empty / absent on the first request.
+    cursor string?
+    // limit caps the page size. Logic treats 0 as "use the default"
+    // (the v1 query binder doesn't support optional ints, so 0
+    // serves as the "absent" sentinel); the upper bound is
+    // enforced here so a hostile client can't request 1M rows.
+    limit int @min(0) @max(100)
+}
+
+// OkResp is the conventional response shape for write endpoints
+// that don't return a domain entity. Reusing it across services
+// keeps the wire vocabulary tight: clients learn ONE success
+// envelope, not one per service.
+type OkResp {
+    ok bool
+}
+
+// ---------------------------------------------------------------
+// Cross-package scalar showcase. These named primitives carry
+// validators that other packages inherit by referencing the type:
+//
+//     // in users/types.craftgo
+//     type X { id shared.NonEmptyID @required }
+//
+// The rendered Go field type is `string` (the underlying primitive)
+// but every place that field touches the wire boundary runs
+// shared.NonEmptyID's @minLength + @pattern validators.
+// ---------------------------------------------------------------
+
+// NonEmptyID is the conventional opaque-id shape: any non-empty
+// string up to 128 chars matching a permissive `[A-Za-z0-9_-]+`
+// pattern. Generic enough for ids in any package; cross-package
+// references gain the validator inheritance for free.
+scalar NonEmptyID string @minLength(1) @maxLength(128) @pattern("^[A-Za-z0-9_-]+$")
+
+// PercentBP is "basis points" — an integer in 0..10000 representing
+// a percentage with two decimal places of precision (1bp = 0.01%).
+// Used by anything that wants to express "x% of something" without
+// floating-point representation woes.
+scalar PercentBP int @min(0) @max(10000)
+
+// SafeURL caps URL length and validates the format. Any cross-
+// package field carrying a public-facing URL should reference this
+// scalar so the length cap stays uniform.
+scalar SafeURL string @format(url) @maxLength(2048)
+

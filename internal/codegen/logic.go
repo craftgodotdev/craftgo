@@ -12,12 +12,18 @@ import (
 
 // logicData is the template input for `logic.tmpl`.
 type logicData struct {
-	Package          string
-	Service          string
-	Method           string
-	LogicName        string
+	Package   string
+	Service   string
+	Method    string
+	LogicName string
+	// RequestType / RequestPkgAlias rendered together by the
+	// template as `*<alias>.<Type>`. Local types use alias `types`;
+	// cross-package types use the target package's name and pull
+	// the matching Go import in via [ExtraTypesImports].
 	RequestType      string
+	RequestPkgAlias  string
 	ResponseType     string
+	ResponsePkgAlias string
 	Doc              []string
 	HasRequest       bool
 	HasResponse      bool
@@ -27,19 +33,32 @@ type logicData struct {
 	IsRaw            bool
 	TypesImport      string
 	SvccontextImport string
+	// ExtraTypesImports lists Go imports for cross-package request
+	// or response types. Empty when both live in the service's own
+	// package.
+	ExtraTypesImports []extraImport
 }
 
 // GenerateLogic scaffolds one `<method>_logic.go` per method per service
 // under `<output.logic>/<servicePackage>/`. Unlike the other generators
 // this one runs in **scaffold** mode: existing files are left untouched so
 // user-written business logic is never overwritten.
+//
+// Equivalent to [GenerateLogicPackage] with a nil [CrossPkg] context.
 func GenerateLogic(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+	return GenerateLogicPackage(pkg, cfg, projectRoot, nil)
+}
+
+// GenerateLogicPackage is the multi-package variant of [GenerateLogic].
+// crossPkg lets the scaffold render `*foo.Cred` for a cross-package
+// request/response type rather than the legacy `*types.Cred`.
+func GenerateLogicPackage(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
-		if err := generateLogicFor(svcName, svc, pkg, cfg, projectRoot); err != nil {
+		if err := generateLogicFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {
 			return err
 		}
 	}
@@ -48,7 +67,7 @@ func GenerateLogic(pkg *semantic.Package, cfg *config.Config, projectRoot string
 
 // generateLogicFor emits all per-method logic scaffold files for a single
 // service, skipping any that already exist on disk.
-func generateLogicFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+func generateLogicFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
 	imps := importPathsFor(cfg, pkg, svcName)
 	dir := filepath.Join(projectRoot, cfg.Output.Logic, ServiceDir(svcName))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -64,7 +83,7 @@ func generateLogicFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.P
 		if _, err := os.Stat(fullPath); err == nil {
 			continue
 		}
-		data := buildLogicData(svcName, m, imps)
+		data := buildLogicData(svcName, m, imps, crossPkg)
 		t := jsonTpl
 		switch {
 		case data.IsRaw && data.IsStream:
@@ -86,7 +105,7 @@ func generateLogicFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.P
 }
 
 // buildLogicData populates the logicData struct for one DSL method.
-func buildLogicData(svcName string, m *ast.Method, imps importPaths) logicData {
+func buildLogicData(svcName string, m *ast.Method, imps importPaths, crossPkg CrossPkg) logicData {
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	d := logicData{
@@ -101,11 +120,39 @@ func buildLogicData(svcName string, m *ast.Method, imps importPaths) logicData {
 		TypesImport:      imps.Types,
 		SvccontextImport: imps.Svccontext,
 	}
+	// Track which Go imports we've already pinned via [TypesImport]
+	// or an extra entry — duplicates would surface as "duplicate
+	// import" Go errors otherwise.
+	extraSeen := map[string]bool{}
+	addExtra := func(extra extraImport) {
+		if extra.Path == "" || extraSeen[extra.Path] {
+			return
+		}
+		extraSeen[extra.Path] = true
+		d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
+	}
 	if hasReq {
-		d.RequestType = m.Request.Name.String()
+		alias, bare, extra := resolveTypeRef(m.Request, crossPkg)
+		d.RequestPkgAlias = alias
+		d.RequestType = bare
+		addExtra(extra)
 	}
 	if hasResp {
-		d.ResponseType = m.Response.Type.Name.String()
+		alias, bare, extra := resolveTypeRef(m.Response.Type, crossPkg)
+		d.ResponsePkgAlias = alias
+		d.ResponseType = bare
+		addExtra(extra)
+	}
+	// When BOTH request and response live in cross-pkg packages, the
+	// canonical `types` import becomes unused. Drop it so the scaffold
+	// compiles. Single-cross-pkg + local-other still keeps the canonical
+	// types import for the local one.
+	if hasReq && hasResp && d.RequestPkgAlias != "types" && d.ResponsePkgAlias != "types" {
+		d.NeedsTypes = false
+	} else if hasReq && !hasResp && d.RequestPkgAlias != "types" {
+		d.NeedsTypes = false
+	} else if !hasReq && hasResp && d.ResponsePkgAlias != "types" {
+		d.NeedsTypes = false
 	}
 	if (m.Response != nil && m.Response.Stream) || hasStreamDecorator(m.Decorators) {
 		d.IsStream = true
@@ -121,7 +168,7 @@ func buildLogicData(svcName string, m *ast.Method, imps importPaths) logicData {
 	// delete, so trim it back to "imports types only when there is a
 	// request to bind".
 	if d.IsStream || d.IsRaw {
-		d.NeedsTypes = hasReq
+		d.NeedsTypes = hasReq && d.RequestPkgAlias == "types"
 	}
 	return d
 }

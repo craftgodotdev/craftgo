@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -187,7 +188,23 @@ type routesData struct {
 // the one-call wire-up consumed by main.go. Both layers are
 // regenerated on every gen because they're derived purely from the
 // DSL service set.
+//
+// Single-package callers should keep using this entry point. Multi-
+// package projects call [GeneratePerServiceRoutes] per package and
+// [GenerateProjectRoutesUmbrella] once for the project so the
+// umbrella aggregates services from every package.
 func GenerateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+	if err := GeneratePerServiceRoutes(pkg, cfg, projectRoot); err != nil {
+		return err
+	}
+	return generateRoutesAll(pkg, cfg, projectRoot)
+}
+
+// GeneratePerServiceRoutes emits only the per-service `routes.go`
+// files; the umbrella is left to a project-level pass. Used by the
+// multi-package CLI flow so each package's services contribute to a
+// single shared umbrella rather than overwriting each other.
+func GeneratePerServiceRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -197,7 +214,53 @@ func GenerateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot strin
 			return err
 		}
 	}
-	return generateRoutesAll(pkg, cfg, projectRoot)
+	return nil
+}
+
+// GenerateProjectRoutesUmbrella emits the top-level
+// `<output.routes>/routes.go` that exposes `RegisterAll(srv, svcCtx)`,
+// aggregating every service from every DSL package in the project.
+// When no package declares a service the file is skipped — calling
+// `RegisterAll` from main.go would also be a no-op.
+func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+	type svcEntry struct {
+		name    string
+		pkgName string
+	}
+	var entries []svcEntry
+	for pkgName, p := range proj.Packages {
+		if pkgName == "" || p == nil {
+			continue
+		}
+		for _, svcName := range sortedServices(p) {
+			entries = append(entries, svcEntry{name: svcName, pkgName: pkgName})
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	// Stable iteration order: by service name (services have unique
+	// names within a project after merging).
+	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+
+	dir := filepath.Join(projectRoot, cfg.Output.Routes)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	data := routesAllData{
+		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+	}
+	for _, e := range entries {
+		data.Imports = append(data.Imports, routesAllImport{
+			Alias: ServicePackage(e.name) + "routes",
+			Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + ServiceDir(e.name),
+		})
+	}
+	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
+	if err != nil {
+		return fmt.Errorf("render routes-all: %w", err)
+	}
+	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
 }
 
 // routesAllImport is one row in the umbrella routes.go's import

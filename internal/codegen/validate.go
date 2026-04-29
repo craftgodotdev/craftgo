@@ -48,7 +48,19 @@ type validatorType struct {
 // adds a `Validate() error` method to every concrete TypeDecl. Types
 // without any constraints get an empty stub so handlers can call
 // `req.Validate()` uniformly.
+//
+// Equivalent to [GenerateValidatorsPackage] with a nil [CrossPkg]
+// context — kept for backward compatibility with single-package
+// callers and tests.
 func GenerateValidators(pkg *semantic.Package, outDir string) error {
+	return GenerateValidatorsPackage(pkg, outDir, nil)
+}
+
+// GenerateValidatorsPackage is the multi-package variant of
+// [GenerateValidators]. crossPkg adds Go imports for every cross-
+// package alias used in pkg's field types so `req.User.Validate()`
+// can dispatch to the sibling package's validator.
+func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -56,7 +68,7 @@ func GenerateValidators(pkg *semantic.Package, outDir string) error {
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	data := buildValidateData(pkg)
+	data := buildValidateData(pkg, crossPkg)
 	formatted, err := renderGo(tmpl("validate.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render validate.go: %w", err)
@@ -68,7 +80,14 @@ func GenerateValidators(pkg *semantic.Package, outDir string) error {
 // list, and folds the resulting imports into a single sorted set. Both
 // concrete and generic decls produce a Validate(); generics emit with a
 // parametric receiver (see [validatorType.TypeParams]).
-func buildValidateData(pkg *semantic.Package) validateData {
+//
+// crossPkg is intentionally not consulted here. validate.go calls
+// `req.Field.Validate()` on cross-package fields — Go resolves the
+// method via the field's declared type, which is already imported by
+// types.go. Emitting an unused Go import in validate.go would fail
+// `go vet` (`imported and not used`).
+func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg) validateData {
+	_ = crossPkg
 	names := make([]string, 0, len(pkg.Types))
 	for n := range pkg.Types {
 		names = append(names, n)
@@ -168,21 +187,56 @@ func crossFieldChecks(td *ast.TypeDecl, uses map[string]bool) []string {
 	return out
 }
 
-// stringArrayDecoratorArg returns the string-array argument of a
-// type-level decorator, or nil when the first arg isn't an
-// `[ "a", "b" ]` literal.
+// stringArrayDecoratorArg returns the field-name list passed to a
+// type-level decorator like `@requiresOneOf` / `@mutuallyExclusive`.
+// Three argument shapes are accepted, matching the syntax the
+// semantic argument-shape validator allows:
+//
+//   - Variadic bare idents:    @requiresOneOf(email, phone)
+//   - Variadic string literals: @requiresOneOf("email", "phone")
+//   - Array shortcut:           @requiresOneOf(["email", "phone"])
+//
+// Returns nil when the decorator has no arguments at all.
 func stringArrayDecoratorArg(d *ast.Decorator) []string {
 	if len(d.Args) == 0 {
 		return nil
 	}
-	arr, ok := d.Args[0].Value.(*ast.ArrayLit)
-	if !ok {
-		return nil
+	// Array shortcut: single positional that's an [ ... ] literal.
+	if arr, ok := d.Args[0].Value.(*ast.ArrayLit); ok && len(d.Args) == 1 {
+		return collectStringOrIdent(arr.Elements)
 	}
-	out := make([]string, 0, len(arr.Elements))
-	for _, e := range arr.Elements {
-		if s, ok := e.(*ast.StringLit); ok {
-			out = append(out, s.Value)
+	// Variadic positional: each arg is its own ident or string lit.
+	out := make([]string, 0, len(d.Args))
+	for _, ag := range d.Args {
+		if ag.Named || ag.Object != nil || ag.Nested != nil {
+			continue
+		}
+		switch v := ag.Value.(type) {
+		case *ast.StringLit:
+			out = append(out, v.Value)
+		case *ast.IdentExpr:
+			if v.Name != nil {
+				out = append(out, v.Name.String())
+			}
+		}
+	}
+	return out
+}
+
+// collectStringOrIdent extracts every string-lit / ident-expr value
+// from an [ast.ArrayLit] elements slice, skipping anything else
+// silently. Other shapes are caught upstream by the
+// argument-shape validator.
+func collectStringOrIdent(elems []ast.Expr) []string {
+	out := make([]string, 0, len(elems))
+	for _, e := range elems {
+		switch v := e.(type) {
+		case *ast.StringLit:
+			out = append(out, v.Value)
+		case *ast.IdentExpr:
+			if v.Name != nil {
+				out = append(out, v.Name.String())
+			}
 		}
 	}
 	return out

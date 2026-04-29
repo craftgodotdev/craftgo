@@ -13,6 +13,9 @@ import (
 
 	logic "{{.LogicImport}}"
 	types "{{.TypesImport}}"
+{{- range .ExtraTypesImports}}
+	{{.Alias}} "{{.Path}}"
+{{- end}}
 	"{{.SvccontextImport}}"
 )
 
@@ -30,7 +33,7 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 			return
 		}
-		var req types.{{.RequestType}}
+		var req {{.RequestPkgAlias}}.{{.RequestType}}
 {{- range .Defaults}}
 		req.{{.GoName}} = {{.Literal}}
 {{- end}}

@@ -1,9 +1,0 @@
-package design
-
-// AuthRequired is the bearer-token gate used by admin endpoints. Wired
-// in main.go via `svc.AuthRequired = middleware.NewAuthRequiredMiddleware(...)`.
-middleware AuthRequired
-
-// RateLimit is the per-IP throttle used on POST endpoints. Wired in
-// main.go alongside AuthRequired.
-middleware RateLimit

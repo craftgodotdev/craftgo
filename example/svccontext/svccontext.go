@@ -1,7 +1,7 @@
 // Package svccontext is the user-owned dependency container for the
-// Bookstore showcase. The embedded Middlewares struct (codegen-owned,
-// next to this file) declares the typed middleware fields; main.go
-// assigns each one to a concrete impl from the middleware package.
+// CraftGo showcase. The example uses an in-memory store keyed by id —
+// real projects swap these maps for a database handle, a cache, an
+// OTel tracer, etc.
 package svccontext
 
 import (
@@ -10,74 +10,90 @@ import (
 )
 
 // ServiceContext aggregates everything a logic / middleware function
-// might want at request time. Real projects park database handles,
-// secret stores, and the OTel tracer here.
+// might need at request time. The showcase keeps three stores —
+// users, projects, tasks — to back the three services declared in
+// the DSL.
 type ServiceContext struct {
-	Middlewares
+	mu sync.Mutex
 
-	mu     sync.Mutex
-	Books  map[string]Book
-	Orders map[string]Order
+	Users    map[string]User
+	Projects map[string]Project
+	Tasks    map[string]Task
 
-	bookCounter  atomic.Int64
-	orderCounter atomic.Int64
+	userCounter    atomic.Int64
+	projectCounter atomic.Int64
+	taskCounter    atomic.Int64
+	commentCounter atomic.Int64
 }
 
-// Book is the in-memory shape stored under svc.Books. Wire-level Book
-// (in the generated types package) maps 1:1.
-type Book struct {
+// User is the in-memory shape stored under svc.Users. Only the
+// fields the example logic touches are modelled here; the wire
+// shape (in `internal/types/users/types.go`) carries the full
+// validator-laden contract.
+type User struct {
+	ID    string
+	Email string
+	Name  string
+	Bio   string
+}
+
+// Project is the in-memory shape stored under svc.Projects.
+// Members are id-only here; logic populates the wire-level
+// UserRef structures from the matching Users entry at response time.
+type Project struct {
+	ID          string
+	Name        string
+	Description string
+	OwnerID     string
+	MemberIDs   []string
+}
+
+// Task is the in-memory shape stored under svc.Tasks.
+type Task struct {
 	ID         string
 	Title      string
-	Author     string
-	ISBN       string
-	PriceCents int
-	Stock      int
+	Status     string
+	ProjectID  string
+	AssigneeID string
+	Comments   []Comment
 }
 
-// Order is the in-memory shape stored under svc.Orders. The wire
-// version lives in `internal/types/design/types.go`.
-type Order struct {
-	ID            string
-	CustomerEmail string
-	Lines         []OrderLine
-	TotalCents    int
-	Status        string
+// Comment is one entry in Task.Comments.
+type Comment struct {
+	ID        string
+	AuthorID  string
+	Body      string
+	CreatedAt string
 }
 
-// OrderLine is one row in an Order.
-type OrderLine struct {
-	BookID    string
-	Quantity  int
-	UnitPrice int
-}
-
-// NewServiceContext returns a fresh, empty ServiceContext. The caller
-// is expected to assign the embedded middleware fields before the
-// generated routes register against the server.
+// NewServiceContext returns a fresh, empty ServiceContext.
 func NewServiceContext() *ServiceContext {
 	return &ServiceContext{
-		Books:  map[string]Book{},
-		Orders: map[string]Order{},
+		Users:    map[string]User{},
+		Projects: map[string]Project{},
+		Tasks:    map[string]Task{},
 	}
 }
 
 // Lock / Unlock expose the embedded mutex so logic files can keep
-// their per-request mutations atomic.
+// per-request mutations atomic across the showcase's three stores.
 func (s *ServiceContext) Lock()   { s.mu.Lock() }
 func (s *ServiceContext) Unlock() { s.mu.Unlock() }
 
-// NextBookID returns a stable, monotonically-increasing book id.
-func (s *ServiceContext) NextBookID() string {
-	return "b" + itoa(int(s.bookCounter.Add(1)))
-}
+// NextUserID returns a fresh, monotonically-increasing user id.
+func (s *ServiceContext) NextUserID() string { return "u" + itoa(int(s.userCounter.Add(1))) }
 
-// NextOrderID returns a stable, monotonically-increasing order id.
-func (s *ServiceContext) NextOrderID() string {
-	return "o" + itoa(int(s.orderCounter.Add(1)))
-}
+// NextProjectID returns a fresh project id.
+func (s *ServiceContext) NextProjectID() string { return "p" + itoa(int(s.projectCounter.Add(1))) }
 
-// itoa is a small inline integer→string helper so this file doesn't
-// pull in `strconv` just for two callers.
+// NextTaskID returns a fresh task id.
+func (s *ServiceContext) NextTaskID() string { return "t" + itoa(int(s.taskCounter.Add(1))) }
+
+// NextCommentID returns a fresh comment id.
+func (s *ServiceContext) NextCommentID() string { return "c" + itoa(int(s.commentCounter.Add(1))) }
+
+// itoa is the inline integer→string helper so this file doesn't
+// pull in `strconv` just for four counter formatters.
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

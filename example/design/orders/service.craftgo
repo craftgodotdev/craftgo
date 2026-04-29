@@ -1,0 +1,69 @@
+package orders
+
+import "shared"
+
+// OrderService exposes a small surface — Get / Create / Delete /
+// List — so the deep-nest type system has a real generated
+// handler to drive. The interesting validators live on the types,
+// not the routes; this file is mostly to wire them up.
+@prefix("/orders")
+@tags(orders)
+service OrderService {
+    @doc("Fetch one order by id.")
+    get GetOrder /{id} {
+        request   GetOrderReq
+        response  Order
+    }
+
+    @doc("List orders with cursor pagination.")
+    get ListOrders / {
+        request   ListOrdersReq
+        response  OrderList
+    }
+
+    @doc("Create a new order. The server fills id, status, totalCents, auditedBy, and createdAt; the client supplies customer + items + optional payment metadata.")
+    post CreateOrder / {
+        request   CreateOrderReq
+        response  Order
+    }
+
+    @doc("Delete an order. Returns shared.OkResp regardless of prior state — idempotent.")
+    delete DeleteOrder /{id} {
+        request   GetOrderReq
+        response  shared.OkResp
+    }
+}
+
+// GetOrderReq mirrors the GetUserReq / GetProjectReq pattern: a
+// single path-bound id reused by GetOrder + DeleteOrder.
+type GetOrderReq {
+    id string @path @required @length(1, 64)
+}
+
+// ListOrdersReq mirrors shared.Pagination's field set locally
+// because v1's query binder doesn't auto-resolve cross-package
+// request types — see users.ListUsersReq for the full rationale.
+type ListOrdersReq {
+    cursor string?
+    limit  int    @min(0) @max(100)
+}
+
+// CreateOrderReq is the POST body. Note the deeply-nested
+// `customer` field — this single struct gates ALL of Customer →
+// Address → Geocode → Precision → GpsFix at validate time.
+type CreateOrderReq {
+    customer  Customer
+    items     LineItem[] @minItems(1) @maxItems(100)
+    notes     string? @maxLength(2000)
+    currency  string  @default("USD") @length(3, 3) @pattern("^[A-Z]{3}$")
+    metadata  map<string, string>?
+    tags      string[] @minItems(1) @maxItems(10) @uniqueItems
+}
+
+// OrderList is the ListOrders response — same envelope contract
+// as UserList / ProjectList / TaskList.
+type OrderList {
+    items   Order[]
+    cursor  string?
+    total   int?
+}

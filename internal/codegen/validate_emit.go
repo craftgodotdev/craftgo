@@ -32,7 +32,12 @@ func shape(f *ast.Field, access string, body func(elem string) string) string {
 	case f.Type != nil && f.Type.Array:
 		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
 	case f.Type != nil && f.Type.Optional:
-		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body("*"+access))
+		// Parenthesise the dereferenced access so callers can prefix
+		// it with operators (`len(...)` / `&` / method calls) without
+		// running into Go's precedence rules. `(*v.Avatar).Validate()`
+		// works; `*v.Avatar.Validate()` parses as `*(v.Avatar.Validate())`
+		// and tries to deref the returned `error`.
+		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body("(*"+access+")"))
 	default:
 		return body(access)
 	}
@@ -114,7 +119,16 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	uses["fmt"] = true
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%sl := len(%s); l < %d || l > %d", guard, val, lo, hi)
+	// Avoid the `if X != nil && l := len(*X); ...` form — Go forbids
+	// `:=` inside an `&&` expression. Inline `len(...)` twice instead;
+	// the second call is constant-folded by the compiler when the
+	// argument is a simple deref.
+	var cond string
+	if guard == "" {
+		cond = fmt.Sprintf("l := len(%s); l < %d || l > %d", val, lo, hi)
+	} else {
+		cond = fmt.Sprintf("%s(len(%s) < %d || len(%s) > %d)", guard, val, lo, val, hi)
+	}
 	msg := fmt.Sprintf(`"%s: length out of range [%d, %d]"`, f.Name, lo, hi)
 	return ifReturnf(cond, msg)
 }
@@ -220,6 +234,19 @@ var formatPatterns = map[string]string{
 
 // ----- numeric -----------------------------------------------------------
 
+// numericValueExpr is the numeric counterpart to [stringValueExpr]:
+// for a pointer-typed numeric field (T? or `T @nullable`) it
+// derefs once so callers can drop it straight into a `<` / `>` /
+// `%` comparison; plain value fields pass through untouched. The
+// returned expression is always paired with [optionalGuard] so the
+// deref is gated by a nil-check.
+func numericValueExpr(f *ast.Field, access string) string {
+	if goFieldIsPointer(f) {
+		return "*" + access
+	}
+	return access
+}
+
 // numericBoundCheck handles `@min(n)` / `@max(n)`.
 func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
 	if !isNumericField(f) || len(d.Args) != 1 {
@@ -234,12 +261,16 @@ func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label 
 		flip = ">"
 	}
 	uses["fmt"] = true
-	cond := fmt.Sprintf("%s %s %d", access, flip, n)
+	val := numericValueExpr(f, access)
+	guard := optionalGuard(f, access)
+	cond := fmt.Sprintf("%s%s %s %d", guard, val, flip, n)
 	msg := fmt.Sprintf(`"%s: %s %d"`, f.Name, label, n)
 	return ifReturnf(cond, msg)
 }
 
 // rangeCheck combines @min and @max into one bounded comparison.
+// Pointer fields (T? / `T @nullable`) get the same nil-guard +
+// deref treatment as [numericBoundCheck].
 func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
 	if !isNumericField(f) || len(d.Args) != 2 {
 		return ""
@@ -250,7 +281,17 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]b
 		return ""
 	}
 	uses["fmt"] = true
-	cond := fmt.Sprintf("%s < %d || %s > %d", access, lo, access, hi)
+	val := numericValueExpr(f, access)
+	guard := optionalGuard(f, access)
+	var cond string
+	if guard == "" {
+		cond = fmt.Sprintf("%s < %d || %s > %d", val, lo, val, hi)
+	} else {
+		// Same pattern as the optional-string `lengthCheck`: avoid
+		// `init; cond` syntax inside `&&` by inlining the bounds
+		// twice. Compiler folds the duplicate deref.
+		cond = fmt.Sprintf("%s(%s < %d || %s > %d)", guard, val, lo, val, hi)
+	}
 	msg := fmt.Sprintf(`"%s: out of range [%d, %d]"`, f.Name, lo, hi)
 	return ifReturnf(cond, msg)
 }
@@ -268,7 +309,9 @@ func signCheck(f *ast.Field, access, kind string, uses map[string]bool) string {
 	if kind == "negative" {
 		op, label = ">=", "must be negative"
 	}
-	cond := fmt.Sprintf("%s %s 0", access, op)
+	val := numericValueExpr(f, access)
+	guard := optionalGuard(f, access)
+	cond := fmt.Sprintf("%s%s %s 0", guard, val, op)
 	msg := fmt.Sprintf(`"%s: %s"`, f.Name, label)
 	return ifReturnf(cond, msg)
 }
@@ -286,7 +329,9 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, uses map[str
 		return ""
 	}
 	uses["fmt"] = true
-	cond := fmt.Sprintf("%s%%%d != 0", access, n)
+	val := numericValueExpr(f, access)
+	guard := optionalGuard(f, access)
+	cond := fmt.Sprintf("%s%s%%%d != 0", guard, val, n)
 	msg := fmt.Sprintf(`"%s: must be a multiple of %d"`, f.Name, n)
 	return ifReturnf(cond, msg)
 }
@@ -457,9 +502,16 @@ return err
 
 // nestedValidateCall emits a recursive `field.Validate()` call when a
 // field's declared type is another user-defined struct (or a generic
-// instance, since those now carry Validate too). Maps are skipped: map
-// values need range traversal that v1 doesn't generate.
+// instance, since those now carry Validate too). Maps are skipped:
+// map values need range traversal that v1 doesn't generate.
+//
+// We bypass the generic [shape] helper for optional fields so the
+// emitted call reads `v.Avatar.Validate()` rather than the noisier
+// `(*v.Avatar).Validate()` — Go's method-set rules dispatch through
+// the pointer-receiver Validate either way, and the cleaner form is
+// what a human would write by hand.
 func nestedValidateCall(f *ast.Field, pkg *semantic.Package, uses map[string]bool) string {
+	_ = uses
 	if pkg == nil || f.Type == nil || f.Type.Map != nil || f.Type.Named == nil {
 		return ""
 	}
@@ -467,9 +519,19 @@ func nestedValidateCall(f *ast.Field, pkg *semantic.Package, uses map[string]boo
 		return ""
 	}
 	access := "v." + GoFieldName(f.Name)
-	return shape(f, access, func(elem string) string {
+	body := func(elem string) string {
 		return fmt.Sprintf(`if err := %s.Validate(); err != nil {
 return err
 }`, elem)
-	})
+	}
+	switch {
+	case f.Type.Array:
+		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
+	case f.Type.Optional:
+		// access is already `*Type`. Method dispatch auto-resolves
+		// through the pointer; no explicit deref needed.
+		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body(access))
+	default:
+		return body(access)
+	}
 }

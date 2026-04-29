@@ -16,27 +16,37 @@ import (
 // handlerData is the template input for `handler.tmpl`. One value is built
 // per (service, method) pair.
 type handlerData struct {
-	Package          string
-	Method           string
-	Verb             string
-	RequestType      string
-	Doc              []string
-	HasRequest       bool
-	HasResponse      bool
-	BodyVerb         bool
-	BodyDecode       bool
-	NeedsTypes       bool
-	IsStream         bool
-	StreamFormat     string // "sse" / "ndjson" / "" when not a stream method
-	StreamCtor       string // "SSE" / "NDJSON" — matches the runtime constructor name
-	IsRaw            bool
-	IsMultipart      bool
-	PathParams       []paramBinding
-	QueryParams      []paramBinding
-	HeaderParams     []paramBinding
-	CookieParams     []paramBinding
-	FormStrings      []paramBinding
-	FormFiles        []paramBinding
+	Package string
+	Method  string
+	Verb    string
+	// RequestType is the bare DSL identifier of the request type
+	// (`Login`), without any package prefix. The template combines
+	// it with [RequestPkgAlias] when emitting `var req X.Y`.
+	RequestType string
+	// RequestPkgAlias is the Go-side alias under which the request
+	// type's package is imported. For a local request type the
+	// alias is `types` (matching the canonical [TypesImport]
+	// import); for a cross-package request the alias is the target
+	// package's name (e.g. `shared`) and the matching import lives
+	// in [ExtraTypesImports].
+	RequestPkgAlias string
+	Doc             []string
+	HasRequest      bool
+	HasResponse     bool
+	BodyVerb        bool
+	BodyDecode      bool
+	NeedsTypes      bool
+	IsStream        bool
+	StreamFormat    string // "sse" / "ndjson" / "" when not a stream method
+	StreamCtor      string // "SSE" / "NDJSON" — matches the runtime constructor name
+	IsRaw           bool
+	IsMultipart     bool
+	PathParams      []paramBinding
+	QueryParams     []paramBinding
+	HeaderParams    []paramBinding
+	CookieParams    []paramBinding
+	FormStrings     []paramBinding
+	FormFiles       []paramBinding
 	// Response-side bindings: fields on the response struct tagged with
 	// `@header` / `@cookie`. The handler emits them onto the writer
 	// before the JSON body is encoded; the matching JSON tag on the
@@ -55,6 +65,19 @@ type handlerData struct {
 	LogicImport      string
 	TypesImport      string
 	SvccontextImport string
+	// ExtraTypesImports lists Go imports for cross-package request
+	// types. Empty for the common case where request lives in the
+	// service's own package.
+	ExtraTypesImports []extraImport
+}
+
+// extraImport is one row in a generated file's "extra Go imports"
+// block. Used by handler / logic templates to pull in cross-package
+// types when a service request or response type references a sibling
+// DSL package.
+type extraImport struct {
+	Alias string
+	Path  string
 }
 
 // defaultBinding is one row of the request struct's pre-fill table.
@@ -89,13 +112,25 @@ type helpersData struct{ Package string }
 //
 // projectRoot is prepended to `cfg.Output.Handler` so the function can be
 // called with paths relative to the manifest's directory.
+//
+// Equivalent to [GenerateHandlersPackage] with a nil [CrossPkg]
+// context — kept so single-package callers / tests stay unchanged.
 func GenerateHandlers(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+	return GenerateHandlersPackage(pkg, cfg, projectRoot, nil)
+}
+
+// GenerateHandlersPackage is the multi-package variant of
+// [GenerateHandlers]. crossPkg supplies the alias→Go-import-path
+// table so a method whose request type lives in a sibling DSL
+// package (`request shared.Cred`) renders the correct Go reference
+// and import statements.
+func GenerateHandlersPackage(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
-		if err := generateHandlersFor(svcName, svc, pkg, cfg, projectRoot); err != nil {
+		if err := generateHandlersFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {
 			return err
 		}
 	}
@@ -115,7 +150,7 @@ func sortedServices(pkg *semantic.Package) []string {
 // generateHandlersFor emits all per-method handler files for a single
 // service. Each method becomes a separate file so that user-friendly diffs
 // are produced when only one endpoint changes.
-func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
 	imps := importPathsFor(cfg, pkg, svcName)
 	dir := filepath.Join(projectRoot, cfg.Output.Handler, ServiceDir(svcName))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -127,7 +162,7 @@ func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semanti
 	rawStreamTpl := tmpl("handler-raw-stream.tmpl")
 	multipartTpl := tmpl("handler-multipart.tmpl")
 	for _, m := range svc.Methods {
-		data, err := buildHandlerData(svcName, m, imps, pkg)
+		data, err := buildHandlerData(svcName, m, imps, pkg, crossPkg)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
@@ -157,7 +192,13 @@ func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semanti
 // buildHandlerData populates the handlerData struct for one DSL method.
 // Returns an error when collectBindings rejects an unsupported binding
 // shape (e.g. `@query` on a struct field).
-func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package) (handlerData, error) {
+//
+// crossPkg drives cross-package request resolution: when a method
+// declares `request foo.Cred` and `foo` lives in another DSL package,
+// the handler's Go file gets an extra import for that package and
+// the generated `var req foo.Cred` line uses the package name as the
+// Go alias.
+func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, crossPkg CrossPkg) (handlerData, error) {
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	d := handlerData{
@@ -178,7 +219,20 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 	// the types import when there's a request type to bind.
 	d.NeedsTypes = hasReq
 	if hasReq {
-		d.RequestType = m.Request.Name.String()
+		// Resolve the Go-side reference to the request type. Local
+		// types render as `types.<X>` (the canonical alias the
+		// template imports); cross-package types render as
+		// `<targetPkg>.<X>` and contribute an extra Go import.
+		alias, bare, extra := resolveTypeRef(m.Request, crossPkg)
+		d.RequestPkgAlias = alias
+		d.RequestType = bare
+		// Cross-package request → drop the canonical types import;
+		// the only types reference in the handler body now resolves
+		// via the cross-pkg alias.
+		if extra.Path != "" {
+			d.NeedsTypes = false
+			d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
+		}
 		var err error
 		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg)
 		if err != nil {
