@@ -351,6 +351,193 @@ func TestValidateEnumOptionalAcceptsMissing(t *testing.T) {
 	}
 }
 
+// TestSearchBooksHappyPath exercises the new /v1/books/search endpoint
+// end-to-end: validate, dispatch to logic (which uses the embedded
+// log.Logger to emit a "search start" / "search complete" pair).
+// Stdout shows the structured JSON lines during `go test -v`.
+func TestSearchBooksHappyPath(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/v1/books/search?q=go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		t.Errorf("expected 2xx, got %d", resp.StatusCode)
+	}
+}
+
+// TestSearchBooksRichQuery pins the codegen's auto-bind of every
+// query-parameter shape: string (q), []string (tags), int (limit),
+// []int (years), bool (verbose). The request would 400 if any of
+// the parsers drops a value or chokes on a numeric/bool literal.
+func TestSearchBooksRichQuery(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	url := ts.URL + "/api/v1/books/search?q=go" +
+		"&tags=fiction&tags=ya" +
+		"&limit=10" +
+		"&years=2020&years=2021" +
+		"&verbose=true"
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	var out struct {
+		P struct {
+			Items []map[string]any `json:"items"`
+			Total int              `json:"total"`
+		} `json:"p"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.P.Total != len(out.P.Items) {
+		t.Errorf("total %d != items %d", out.P.Total, len(out.P.Items))
+	}
+}
+
+// TestCheckoutOrderEveryBinding exercises the full request/response
+// binding matrix in one shot:
+//
+//   request:
+//     - path     /orders/{id}/checkout
+//     - query    ?dryRun=true
+//     - body     { notes, lines: [...] }
+//     - header   idempotencyKey: <key>
+//     - cookie   sessionId=<sid>
+//
+//   response:
+//     - header   orderId: <id>
+//     - cookie   lastOrderId=<id>
+//     - body     { orderId, lastOrderId, order }
+//
+// Two assertions matter most: the handler must echo every input
+// value back into the response, and the response must carry the
+// header + cookie alongside the JSON body. dryRun=true short-
+// circuits persistence so the test stays free of side-effects.
+func TestCheckoutOrderEveryBinding(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	body, _ := json.Marshal(map[string]any{
+		"notes": "ship gift-wrapped",
+		"lines": []map[string]any{{"bookId": "b1", "quantity": 2}},
+	})
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/orders/draft-99/checkout?dryRun=true", bytes.NewReader(body))
+	req.Header.Set("idempotencyKey", "key-abc")
+	req.AddCookie(&http.Cookie{Name: "sessionId", Value: "sess-xyz"})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, raw)
+	}
+	if got := resp.Header.Get("orderId"); got != "dry-run" {
+		t.Errorf("response header orderId = %q, want %q", got, "dry-run")
+	}
+	var sawCookie bool
+	for _, c := range resp.Cookies() {
+		if c.Name == "lastOrderId" && c.Value == "dry-run" {
+			sawCookie = true
+		}
+	}
+	if !sawCookie {
+		t.Errorf("response missing Set-Cookie lastOrderId=dry-run; got %v", resp.Cookies())
+	}
+	rawBody, _ := io.ReadAll(resp.Body)
+	// Response @header / @cookie fields must NOT leak into the JSON body
+	// — the codegen marks them `json:"-"` so the value travels through
+	// exactly one channel.
+	if strings.Contains(string(rawBody), `"orderId"`) {
+		t.Errorf("body must not carry orderId (it's @header-bound):\n%s", rawBody)
+	}
+	if strings.Contains(string(rawBody), `"lastOrderId"`) {
+		t.Errorf("body must not carry lastOrderId (it's @cookie-bound):\n%s", rawBody)
+	}
+	var out struct {
+		Order struct {
+			ID         string `json:"id"`
+			Items      []any  `json:"items"`
+			TotalCents int    `json:"totalCents"`
+			Status     string `json:"status"`
+		} `json:"order"`
+	}
+	if err := json.Unmarshal(rawBody, &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Order.ID != "draft-99" {
+		t.Errorf("body order.id = %q, want %q (path bind broken)", out.Order.ID, "draft-99")
+	}
+	if len(out.Order.Items) != 1 {
+		t.Errorf("body items count = %d, want 1 (body bind broken)", len(out.Order.Items))
+	}
+	if out.Order.Status != "draft" {
+		t.Errorf("body status = %q, want %q (dryRun query bind broken)", out.Order.Status, "draft")
+	}
+}
+
+// TestCheckoutOrderRejectsMissingHeader confirms the @required
+// @header validator fires when the idempotencyKey header is absent.
+func TestCheckoutOrderRejectsMissingHeader(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	body, _ := json.Marshal(map[string]any{
+		"notes": "no header",
+		"lines": []map[string]any{{"bookId": "b1", "quantity": 1}},
+	})
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/orders/x/checkout", bytes.NewReader(body))
+	req.AddCookie(&http.Cookie{Name: "sessionId", Value: "sess"})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing idempotencyKey header, got %d", resp.StatusCode)
+	}
+}
+
+// TestSearchBooksRejectsBadInt confirms the strconv.ParseInt path
+// in the generated handler reports 400 on garbage numeric input —
+// proving the parser actually runs (and isn't silently dropping
+// the value).
+func TestSearchBooksRejectsBadInt(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/v1/books/search?q=go&limit=notanint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-int limit, got %d", resp.StatusCode)
+	}
+}
+
+// TestSearchBooksValidatesQuery pins the request validators (@required
+// + @minLength) — empty `q` rejects.
+func TestSearchBooksValidatesQuery(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/v1/books/search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing q, got %d", resp.StatusCode)
+	}
+}
+
 // TestDeprecatedFieldInOpenAPI confirms the field-level @deprecated
 // on `Book.priceLegacy` flows into `docs/openapi.yaml`. The runtime
 // behaviour is unchanged (field still bound from JSON), but the spec

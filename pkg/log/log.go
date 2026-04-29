@@ -5,6 +5,7 @@ package log
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -87,6 +88,44 @@ func NewConsole() Logger {
 // NewZap wraps an existing `*zap.Logger` so projects that already
 // configured zap can reuse it.
 func NewZap(z *zap.Logger) Logger { return &zapLogger{z: z} }
+
+// defaultLogger is the package-level Logger that callers without an
+// explicit instance reach for via [Default]. The atomic.Value lets
+// runtime swaps (e.g. `Server.SetLogger`) take effect immediately
+// without locks. The initial value — assigned in init() — is a
+// production zap so a fresh import is silently usable.
+var defaultLogger atomic.Value
+
+// SetDefault swaps the package-level Logger. Server.SetLogger calls
+// this so codegen-emitted logic files can read the same instance via
+// [Default] without a constructor parameter or context lookup.
+// Passing nil is a no-op.
+func SetDefault(l Logger) {
+	if l == nil {
+		return
+	}
+	defaultLogger.Store(loggerHolder{l})
+}
+
+// Default returns the current package-level Logger. Generated logic
+// constructors read it (typically chained with `.WithContext(ctx)`)
+// so user code can call `l.Info(...)` directly without juggling
+// context plumbing.
+func Default() Logger {
+	if v := defaultLogger.Load(); v != nil {
+		return v.(loggerHolder).Logger
+	}
+	return New()
+}
+
+// loggerHolder is a tiny value wrapper so atomic.Value sees a
+// consistent concrete type across stores (it forbids storing
+// values of different concrete types).
+type loggerHolder struct{ Logger }
+
+func init() {
+	SetDefault(New())
+}
 
 // zapLogger is the default Logger implementation. It maps Field values
 // onto zap's strongly-typed `zap.Field` constructors.

@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // SingleStringLogic carries the per-request state for the
 // SingleString endpoint of ValidationService.
 type SingleStringLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewSingleStringLogic constructs a fresh logic instance bound to ctx.
 func NewSingleStringLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *SingleStringLogic {
-	return &SingleStringLogic{ctx: ctx, svcCtx: svcCtx}
+	return &SingleStringLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // SingleString is the business-logic entry point. Replace the

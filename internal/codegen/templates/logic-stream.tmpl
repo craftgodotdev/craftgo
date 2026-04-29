@@ -9,20 +9,30 @@ import (
 	types "{{.TypesImport}}"
 {{- end}}
 
+	"github.com/dropship-dev/craftgo/pkg/log"
 	"github.com/dropship-dev/craftgo/pkg/server"
 	"{{.SvccontextImport}}"
 )
 
 // {{.LogicName}} carries the per-request state for the
-// {{.Method}} streaming endpoint of {{.Service}}.
+// {{.Method}} streaming endpoint of {{.Service}}. The embedded
+// log.Logger is pre-bound to the request context so the streaming
+// loop can log progress with trace_id / span_id / request_id riding
+// each line.
 type {{.LogicName}} struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // New{{.LogicName}} constructs a fresh logic instance bound to ctx.
+// Logger is pulled from log.Default() and seeded with WithContext(ctx).
 func New{{.LogicName}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *{{.LogicName}} {
-	return &{{.LogicName}}{ctx: ctx, svcCtx: svcCtx}
+	return &{{.LogicName}}{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 {{range .Doc}}

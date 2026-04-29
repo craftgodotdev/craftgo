@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // GetBookLogic carries the per-request state for the
 // GetBook endpoint of BooksService.
 type GetBookLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewGetBookLogic constructs a fresh logic instance bound to ctx.
 func NewGetBookLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetBookLogic {
-	return &GetBookLogic{ctx: ctx, svcCtx: svcCtx}
+	return &GetBookLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // GetBook returns a single book by id.

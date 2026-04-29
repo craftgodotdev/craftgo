@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // CalcLogic carries the per-request state for the
 // Calc endpoint of ValidationService.
 type CalcLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewCalcLogic constructs a fresh logic instance bound to ctx.
 func NewCalcLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *CalcLogic {
-	return &CalcLogic{ctx: ctx, svcCtx: svcCtx}
+	return &CalcLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Calc is the business-logic entry point. Replace the

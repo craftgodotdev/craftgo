@@ -7,19 +7,25 @@ import (
 	"io"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
 
 // EchoStreamLogic carries the per-request state for the
 // EchoStream raw-streaming endpoint of AdminService.
 type EchoStreamLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewEchoStreamLogic constructs a fresh logic instance bound to ctx.
 func NewEchoStreamLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoStreamLogic {
-	return &EchoStreamLogic{ctx: ctx, svcCtx: svcCtx}
+	return &EchoStreamLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // EchoStream is the @raw @stream combo: logic gets a body

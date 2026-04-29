@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // CrossFieldLogic carries the per-request state for the
 // CrossField endpoint of ValidationService.
 type CrossFieldLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewCrossFieldLogic constructs a fresh logic instance bound to ctx.
 func NewCrossFieldLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *CrossFieldLogic {
-	return &CrossFieldLogic{ctx: ctx, svcCtx: svcCtx}
+	return &CrossFieldLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // CrossField is the business-logic entry point. Replace the

@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // GetOrderLogic carries the per-request state for the
 // GetOrder endpoint of OrdersService.
 type GetOrderLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewGetOrderLogic constructs a fresh logic instance bound to ctx.
 func NewGetOrderLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetOrderLogic {
-	return &GetOrderLogic{ctx: ctx, svcCtx: svcCtx}
+	return &GetOrderLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // GetOrder is path-bound. @errors documents what the OpenAPI doc

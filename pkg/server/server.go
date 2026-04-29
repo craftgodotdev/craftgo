@@ -198,8 +198,15 @@ func (s *Server) SetCORS(opts CORSOptions) *Server {
 // access path.
 func (s *Server) SetJSONCodec(c JSONCodec) *Server { s.codec = c; return s }
 
-// SetLogger replaces the active Logger.
-func (s *Server) SetLogger(l Logger) *Server { s.logger = l; return s }
+// SetLogger replaces the active Logger and mirrors it to the
+// package-level [log.Default] so codegen-emitted logic files reach
+// the same instance via `log.Default().WithContext(ctx)` without
+// receiving a handle through ServiceContext.
+func (s *Server) SetLogger(l Logger) *Server {
+	s.logger = l
+	log.SetDefault(l)
+	return s
+}
 
 // Logger exposes the active logger for handlers and middleware.
 func (s *Server) Logger() Logger { return s.logger }

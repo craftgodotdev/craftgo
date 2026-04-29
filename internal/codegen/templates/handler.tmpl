@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 {{- end}}
 	"net/http"
+{{- if .NeedsStrconv}}
+	"strconv"
+{{- end}}
 
 	logic "{{.LogicImport}}"
 {{- if .NeedsTypes}}
@@ -34,18 +37,16 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 {{- end}}
 {{- range .PathParams}}
-		req.{{.GoName}} = r.PathValue("{{.DSLName}}")
+		{{.Bind}}
 {{- end}}
 {{- range .QueryParams}}
-		req.{{.GoName}} = r.URL.Query().Get("{{.DSLName}}")
+		{{.Bind}}
 {{- end}}
 {{- range .HeaderParams}}
-		req.{{.GoName}} = r.Header.Get("{{.DSLName}}")
+		{{.Bind}}
 {{- end}}
 {{- range .CookieParams}}
-		if c, err := r.Cookie("{{.DSLName}}"); err == nil {
-			req.{{.GoName}} = c.Value
-		}
+		{{.Bind}}
 {{- end}}
 		if err := req.Validate(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

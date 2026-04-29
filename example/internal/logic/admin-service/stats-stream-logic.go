@@ -9,19 +9,25 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
 
 // StatsStreamLogic carries the per-request state for the
 // StatsStream streaming endpoint of AdminService.
 type StatsStreamLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewStatsStreamLogic constructs a fresh logic instance bound to ctx.
 func NewStatsStreamLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *StatsStreamLogic {
-	return &StatsStreamLogic{ctx: ctx, svcCtx: svcCtx}
+	return &StatsStreamLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // StatsStream pushes Stats snapshots over Server-Sent Events.

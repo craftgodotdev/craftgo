@@ -8,18 +8,24 @@ import (
 	"io"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // EchoBlobLogic carries the per-request state for the
 // EchoBlob raw-bytes endpoint of AdminService.
 type EchoBlobLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewEchoBlobLogic constructs a fresh logic instance bound to ctx.
 func NewEchoBlobLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoBlobLogic {
-	return &EchoBlobLogic{ctx: ctx, svcCtx: svcCtx}
+	return &EchoBlobLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // EchoBlob is the raw-bytes demo. `@raw` makes the codegen skip

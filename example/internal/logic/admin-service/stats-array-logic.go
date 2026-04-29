@@ -6,19 +6,25 @@ import (
 	"context"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
 
 // StatsArrayLogic carries the per-request state for the
 // StatsArray streaming endpoint of AdminService.
 type StatsArrayLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewStatsArrayLogic constructs a fresh logic instance bound to ctx.
 func NewStatsArrayLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *StatsArrayLogic {
-	return &StatsArrayLogic{ctx: ctx, svcCtx: svcCtx}
+	return &StatsArrayLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // StatsArray streams a single JSON array, one element per tick.

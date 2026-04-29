@@ -50,3 +50,39 @@ type CancelOrderReq {
     id      string  @path @required
     reason  string  @required @length(3, 500)
 }
+
+// CheckoutOrderReq is the kitchen-sink request: every input-binding
+// kind appears in one type, so the generated handler exercises the
+// full bind matrix end-to-end.
+//
+//   - id              → @path     (URL segment `/orders/{id}`)
+//   - dryRun          → @query    (?dryRun=true; bool parsed via strconv)
+//   - notes           → body      (default for body verbs)
+//   - lines           → body
+//   - idempotencyKey  → @header   (HTTP header)
+//   - sessionId       → @cookie   (HTTP cookie)
+//
+// Pair this with [CheckoutOrderResp] (header + cookie + body) to see
+// the matching response side of the matrix.
+type CheckoutOrderReq {
+    id              string         @path @required
+    dryRun          bool           @query @doc("If true, validate the cart but skip persistence.")
+    notes           string         @length(0, 500) @doc("Free-text note attached to the order.")
+    lines           OrderLineReq[] @required @minItems(1) @maxItems(20)
+    idempotencyKey  string         @header @required @doc("Idempotency-Key header. Replays return the original order.")
+    sessionId       string         @cookie @required @doc("Bound from the `sessionId` cookie.")
+}
+
+// CheckoutOrderResp surfaces the persisted order in the JSON body
+// and pushes two side-channel values out via the headers/cookies:
+//
+//   - orderId      → @header  (response gets `OrderId: <id>`)
+//   - lastOrderId  → @cookie  (response sets `Set-Cookie: lastOrderId=<id>`)
+//   - order        → body
+//
+// These two response decorators round out the "every binding" demo.
+type CheckoutOrderResp {
+    orderId      string  @header
+    lastOrderId  string  @cookie
+    order        Order
+}

@@ -793,3 +793,100 @@ func TestGenerateHandlersMultipartFromFileField(t *testing.T) {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
 	}
 }
+
+// TestGenerateHandlersRejectsBadQueryShapes pins the codegen-time
+// rejection of unsupported query-binding shapes. Before this gate
+// existed, struct/[]struct/map fields on a GET request were silently
+// dropped — the handler omitted the bind line and the field landed
+// at the logic layer zero-valued, with no error to chase.
+//
+// Each case deliberately constructs a request type that exercises one
+// rejection branch:
+//   - Filter Point      → struct on @query
+//   - Tags  []Point     → []struct on @query
+//   - Meta  map<string,string> → map on @query
+//   - Page  Page<Book>  → generic on @query
+//   - id    int @path    → non-string on @path
+//   - auth  int @header  → non-string on @header
+//   - sid   int @cookie  → non-string on @cookie
+//   - opt   int? @query  → optional numeric on @query (no clean v1 idiom)
+func TestGenerateHandlersRejectsBadQueryShapes(t *testing.T) {
+	cases := []struct {
+		label   string
+		dsl     string
+		want    string // substring expected in the error message
+	}{
+		{
+			label: "struct on @query",
+			dsl: `package design
+type Point { x int  y int }
+type SearchReq { filter Point @query }
+service S { get Search /search { request SearchReq } }`,
+			want: "filter",
+		},
+		{
+			label: "[]struct on @query",
+			dsl: `package design
+type Point { x int  y int }
+type SearchReq { tags Point[] @query }
+service S { get Search /search { request SearchReq } }`,
+			want: "tags",
+		},
+		{
+			label: "map on @query",
+			dsl: `package design
+type SearchReq { meta map<string,string> @query }
+service S { get Search /search { request SearchReq } }`,
+			want: "meta",
+		},
+		{
+			label: "generic on @query",
+			dsl: `package design
+type Book { id string }
+type Page<T> { items T[] }
+type SearchReq { page Page<Book> @query }
+service S { get Search /search { request SearchReq } }`,
+			want: "page",
+		},
+		{
+			label: "non-string on @path",
+			dsl: `package design
+type GetReq { id int @path }
+service S { get Get /items/{id} { request GetReq } }`,
+			want: "@path requires",
+		},
+		{
+			label: "non-string on @header",
+			dsl: `package design
+type GetReq { auth int @header }
+service S { get Get /items { request GetReq } }`,
+			want: "@header requires",
+		},
+		{
+			label: "non-string on @cookie",
+			dsl: `package design
+type GetReq { sid int @cookie }
+service S { get Get /items { request GetReq } }`,
+			want: "@cookie requires",
+		},
+		{
+			label: "optional numeric on @query",
+			dsl: `package design
+type SearchReq { opt int? @query }
+service S { get Search /search { request SearchReq } }`,
+			want: "optional",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			pkg := analyzePkg(t, tc.dsl)
+			err := GenerateHandlers(pkg, sampleConfig(), t.TempDir())
+			if err == nil {
+				t.Fatalf("expected rejection, got nil error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q missing %q", err.Error(), tc.want)
+			}
+		})
+	}
+}

@@ -45,3 +45,21 @@ type CreateBookReq {
 type GetBookReq {
     id  string  @path @required
 }
+
+// SearchBooksReq is the query-bound request for GET /books/search.
+// Codegen now defaults to query-binding on non-body verbs; the
+// explicit `@query` tags below are for clarity. The mix of types
+// exercises every parsing path in renderQueryBindLine:
+//
+//   - `q`      string             → direct r.URL.Query().Get("q")
+//   - `tags`   []string            → r.URL.Query()["tags"]
+//   - `limit`  int                 → ParseInt + cast to int
+//   - `years`  int[]               → loop + ParseInt + append
+//   - `verbose` bool               → ParseBool
+type SearchBooksReq {
+    q       string   @required @minLength(1) @maxLength(100) @example("go") @doc("Substring match against title or author.")
+    tags    string[] @doc("Tag filters; repeat the parameter to send multiple values.")
+    limit   int      @doc("Cap the number of results returned. 0 = no cap.")
+    years   int[]    @doc("Filter to publication years; repeat to send multiple.")
+    verbose bool     @doc("Emit additional debug fields in the response.")
+}

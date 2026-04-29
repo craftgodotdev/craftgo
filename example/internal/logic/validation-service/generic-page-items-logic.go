@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // GenericPageItemsLogic carries the per-request state for the
 // GenericPageItems endpoint of ValidationService.
 type GenericPageItemsLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewGenericPageItemsLogic constructs a fresh logic instance bound to ctx.
 func NewGenericPageItemsLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *GenericPageItemsLogic {
-	return &GenericPageItemsLogic{ctx: ctx, svcCtx: svcCtx}
+	return &GenericPageItemsLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // GenericPageItems is the business-logic entry point. Replace the

@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // CreateOrderLogic carries the per-request state for the
 // CreateOrder endpoint of OrdersService.
 type CreateOrderLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewCreateOrderLogic constructs a fresh logic instance bound to ctx.
 func NewCreateOrderLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateOrderLogic {
-	return &CreateOrderLogic{ctx: ctx, svcCtx: svcCtx}
+	return &CreateOrderLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // CreateOrder is rate-limited. The IdempotencyKey header lives on

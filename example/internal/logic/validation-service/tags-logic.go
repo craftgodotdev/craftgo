@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // TagsLogic carries the per-request state for the
 // Tags endpoint of ValidationService.
 type TagsLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewTagsLogic constructs a fresh logic instance bound to ctx.
 func NewTagsLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *TagsLogic {
-	return &TagsLogic{ctx: ctx, svcCtx: svcCtx}
+	return &TagsLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Tags is the business-logic entry point. Replace the

@@ -52,4 +52,16 @@ service BooksService {
     get LegacyListBooks /books-v0 {
         response  BookList
     }
+
+    // SearchBooks demonstrates the embedded log.Logger pattern
+    // end-to-end: the logic layer logs structured events at every
+    // decision point, with trace_id / span_id / request_id riding
+    // each line because the constructor seeds the Logger with
+    // WithContext(ctx).
+    @doc("Search the catalog by query and price ceiling.")
+    @summary("Search books")
+    get SearchBooks /books/search {
+        request   SearchBooksReq
+        response  BookList
+    }
 }

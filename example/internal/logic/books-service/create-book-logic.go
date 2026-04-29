@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // CreateBookLogic carries the per-request state for the
 // CreateBook endpoint of BooksService.
 type CreateBookLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewCreateBookLogic constructs a fresh logic instance bound to ctx.
 func NewCreateBookLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateBookLogic {
-	return &CreateBookLogic{ctx: ctx, svcCtx: svcCtx}
+	return &CreateBookLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // CreateBook is the auth-gated catalog write. The handler chain at

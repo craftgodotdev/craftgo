@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // CancelOrderLogic carries the per-request state for the
 // CancelOrder endpoint of OrdersService.
 type CancelOrderLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewCancelOrderLogic constructs a fresh logic instance bound to ctx.
 func NewCancelOrderLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *CancelOrderLogic {
-	return &CancelOrderLogic{ctx: ctx, svcCtx: svcCtx}
+	return &CancelOrderLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // CancelOrder is auth-gated. The request type combines a path id

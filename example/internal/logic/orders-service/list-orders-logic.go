@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // ListOrdersLogic carries the per-request state for the
 // ListOrders endpoint of OrdersService.
 type ListOrdersLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewListOrdersLogic constructs a fresh logic instance bound to ctx.
 func NewListOrdersLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListOrdersLogic {
-	return &ListOrdersLogic{ctx: ctx, svcCtx: svcCtx}
+	return &ListOrdersLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // ListOrders returns every order. Public for demo simplicity; a

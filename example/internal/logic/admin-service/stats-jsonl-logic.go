@@ -9,19 +9,25 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
 
 // StatsJSONLLogic carries the per-request state for the
 // StatsJSONL streaming endpoint of AdminService.
 type StatsJSONLLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewStatsJSONLLogic constructs a fresh logic instance bound to ctx.
 func NewStatsJSONLLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *StatsJSONLLogic {
-	return &StatsJSONLLogic{ctx: ctx, svcCtx: svcCtx}
+	return &StatsJSONLLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // StatsJSONL pushes the same snapshots as StatsStream framed as

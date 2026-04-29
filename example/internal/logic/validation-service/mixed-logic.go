@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // MixedLogic carries the per-request state for the
 // Mixed endpoint of ValidationService.
 type MixedLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewMixedLogic constructs a fresh logic instance bound to ctx.
 func NewMixedLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *MixedLogic {
-	return &MixedLogic{ctx: ctx, svcCtx: svcCtx}
+	return &MixedLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Mixed is the business-logic entry point. Replace the

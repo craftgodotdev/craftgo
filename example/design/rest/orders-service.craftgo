@@ -32,4 +32,15 @@ service OrdersService {
         request   CreateOrderReq
         response  Order
     }
+
+    // CheckoutOrder is the canonical "every binding kind" demo:
+    // request mixes @path / @query / body / @header / @cookie and
+    // the response carries @header + @cookie alongside the JSON
+    // body. Useful as a regression target for the codegen's
+    // multi-binding matrix.
+    @doc("Checkout an existing draft order. Demos every request and response binding kind.")
+    post CheckoutOrder /orders/{id}/checkout {
+        request   CheckoutOrderReq
+        response  CheckoutOrderResp
+    }
 }

@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // StatsLogic carries the per-request state for the
 // Stats endpoint of AdminService.
 type StatsLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewStatsLogic constructs a fresh logic instance bound to ctx.
 func NewStatsLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *StatsLogic {
-	return &StatsLogic{ctx: ctx, svcCtx: svcCtx}
+	return &StatsLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Stats returns aggregate book/order counts. Path resolves to

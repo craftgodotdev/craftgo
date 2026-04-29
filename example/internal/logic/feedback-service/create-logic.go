@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // CreateLogic carries the per-request state for the
 // Create endpoint of FeedbackService.
 type CreateLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewCreateLogic constructs a fresh logic instance bound to ctx.
 func NewCreateLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateLogic {
-	return &CreateLogic{ctx: ctx, svcCtx: svcCtx}
+	return &CreateLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Create echoes the submitted request back as a Feedback record so

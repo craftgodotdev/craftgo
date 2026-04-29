@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // ListBooksLogic carries the per-request state for the
 // ListBooks endpoint of BooksService.
 type ListBooksLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewListBooksLogic constructs a fresh logic instance bound to ctx.
 func NewListBooksLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListBooksLogic {
-	return &ListBooksLogic{ctx: ctx, svcCtx: svcCtx}
+	return &ListBooksLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // ListBooks returns every book in the catalog.

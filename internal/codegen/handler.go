@@ -49,6 +49,9 @@ type handlerData struct {
 	// JSON decode never zeroes fields it doesn't see, so a pre-filled
 	// default survives unless the client explicitly sends a value.
 	Defaults []defaultBinding
+	// NeedsStrconv tells the template to import "strconv" when at
+	// least one bound field needed string→int/float/bool parsing.
+	NeedsStrconv     bool
 	LogicImport      string
 	TypesImport      string
 	SvccontextImport string
@@ -65,11 +68,15 @@ type defaultBinding struct {
 
 // paramBinding is one row of a handler's parameter-binding table.
 // DSLName is the source-side identifier (e.g. the `{id}` segment, the
-// query/header/cookie key); GoName is the exported field on the request
-// struct that receives the value.
+// query/header/cookie key); GoName is the exported field on the
+// request struct that receives the value. Bind is the pre-rendered Go
+// source the template drops verbatim — the codegen pre-computes it
+// per-field so the template stays declarative and the type-specific
+// parsing (int / float / bool / arrays) lives in one place.
 type paramBinding struct {
 	DSLName string
 	GoName  string
+	Bind    string
 }
 
 // helpersData is the template input for `handler_helpers.tmpl`.
@@ -120,7 +127,10 @@ func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semanti
 	rawStreamTpl := tmpl("handler-raw-stream.tmpl")
 	multipartTpl := tmpl("handler-multipart.tmpl")
 	for _, m := range svc.Methods {
-		data := buildHandlerData(svcName, m, imps, pkg)
+		data, err := buildHandlerData(svcName, m, imps, pkg)
+		if err != nil {
+			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
+		}
 		t := jsonTpl
 		switch {
 		case data.IsRaw && data.IsStream:
@@ -145,7 +155,9 @@ func generateHandlersFor(svcName string, svc *semantic.ServiceInfo, pkg *semanti
 }
 
 // buildHandlerData populates the handlerData struct for one DSL method.
-func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package) handlerData {
+// Returns an error when collectBindings rejects an unsupported binding
+// shape (e.g. `@query` on a struct field).
+func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package) (handlerData, error) {
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	d := handlerData{
@@ -167,7 +179,11 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 	d.NeedsTypes = hasReq
 	if hasReq {
 		d.RequestType = m.Request.Name.String()
-		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams = collectBindings(m, pkg)
+		var err error
+		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg)
+		if err != nil {
+			return handlerData{}, err
+		}
 		// JSON body decode is only needed when at least one field is
 		// body-bound (default for body verbs unless explicitly tagged).
 		d.BodyDecode = hasBodyVerb(m.Verb) && hasUnboundField(m, pkg)
@@ -193,7 +209,7 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 	if hasReq {
 		d.Defaults = collectDefaults(m, pkg)
 	}
-	return d
+	return d, nil
 }
 
 // collectDefaults walks the request type's fields and returns one
@@ -454,12 +470,27 @@ func streamCtor(format string) string {
 }
 
 // collectBindings walks the request type's fields and returns per-kind
-// binding tables. Path / query / header / cookie checks match the
-// runtime contract: only string-typed (non-array, non-optional) fields
-// are bound today; anything else is left for user code in logic. Path
-// matching also accepts implicit `{name}` segment matches when no
-// explicit `@path` decorator is present.
-func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header, cookie []paramBinding) {
+// binding tables (path, query, header, cookie) plus a flag noting
+// whether any emitted block reaches into `strconv`.
+//
+// Resolution order for a field's bucket:
+//  1. Explicit `@path` / `@query` / `@header` / `@cookie` decorator wins.
+//  2. A name match against a `{param}` segment in the method path
+//     promotes the field to `path` (so `id string` on `/users/{id}`
+//     auto-binds without a decorator).
+//  3. For non-body verbs (GET / DELETE / HEAD / OPTIONS) any leftover
+//     unbound field defaults to `query` — the README's "Default
+//     binding theo verb" rule wired up at last.
+//
+// Path / header / cookie still require string-typed fields (URLs and
+// HTTP headers carry strings on the wire). Query supports the full
+// numeric / float / bool / array matrix; the per-field [Bind] is
+// pre-rendered Go that the handler template emits verbatim.
+//
+// Unsupported binding shapes (struct/[]struct/map on @query, non-string
+// on @path/@header/@cookie) return a non-nil error. Silent skips were
+// removed in favour of fail-fast feedback at `craftgo gen` time.
+func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
 		return
 	}
@@ -467,6 +498,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 	if !ok {
 		return
 	}
+	reqName := m.Request.Name.String()
 	pathSegs := map[string]bool{}
 	if m.Path != nil {
 		for _, seg := range m.Path.Segments {
@@ -475,36 +507,264 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 			}
 		}
 	}
+	autoQuery := !hasBodyVerb(m.Verb)
 	for _, member := range td.Body {
 		f, ok := member.(*ast.Field)
 		if !ok {
 			continue
 		}
-		if !isPlainStringField(f) {
-			continue
-		}
 		bind := bindingFromDecorators(f.Decorators)
+		auto := false
 		if bind == "" && pathSegs[f.Name] {
 			bind = "path"
+			auto = true
 		}
-		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
+		if bind == "" && autoQuery {
+			bind = "query"
+			auto = true
+		}
 		switch bind {
 		case "path":
-			path = append(path, entry)
+			if !isPlainStringField(f) {
+				if auto {
+					// Auto-promoted from a path segment match — silently skip
+					// so a body field that happens to share a name with a
+					// segment doesn't break the build. Explicit @path is
+					// strict (handled above by entering this case via the
+					// decorator scan); auto-promotion is permissive.
+					continue
+				}
+				err = fmt.Errorf("%s.%s: @path requires a non-array, non-optional string field — got %s", reqName, f.Name, describeFieldType(f))
+				return
+			}
+			path = append(path, paramBinding{
+				DSLName: f.Name,
+				GoName:  GoFieldName(f.Name),
+				Bind:    fmt.Sprintf("req.%s = r.PathValue(%q)", GoFieldName(f.Name), f.Name),
+			})
 		case "query":
-			query = append(query, entry)
+			line, needs, lerr := renderQueryBindLine(f)
+			if lerr != nil {
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+				return
+			}
+			if needs {
+				needsStrconv = true
+			}
+			query = append(query, paramBinding{
+				DSLName: f.Name,
+				GoName:  GoFieldName(f.Name),
+				Bind:    line,
+			})
 		case "header":
-			header = append(header, entry)
+			if !isPlainStringField(f) {
+				err = fmt.Errorf("%s.%s: @header requires a non-array, non-optional string field — got %s", reqName, f.Name, describeFieldType(f))
+				return
+			}
+			header = append(header, paramBinding{
+				DSLName: f.Name,
+				GoName:  GoFieldName(f.Name),
+				Bind:    fmt.Sprintf("req.%s = r.Header.Get(%q)", GoFieldName(f.Name), f.Name),
+			})
 		case "cookie":
-			cookie = append(cookie, entry)
+			if !isPlainStringField(f) {
+				err = fmt.Errorf("%s.%s: @cookie requires a non-array, non-optional string field — got %s", reqName, f.Name, describeFieldType(f))
+				return
+			}
+			cookie = append(cookie, paramBinding{
+				DSLName: f.Name,
+				GoName:  GoFieldName(f.Name),
+				Bind: fmt.Sprintf(`if c, err := r.Cookie(%q); err == nil {
+	req.%s = c.Value
+}`, f.Name, GoFieldName(f.Name)),
+			})
 		}
 	}
 	return
 }
 
+// pathString re-renders a method's path for error messages
+// (`/books/{id}/cancel`); empty string when m has no path block.
+func pathString(p *ast.Path) string {
+	if p == nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, seg := range p.Segments {
+		sb.WriteByte('/')
+		if seg.Param {
+			sb.WriteByte('{')
+			sb.WriteString(seg.Literal)
+			sb.WriteByte('}')
+		} else {
+			sb.WriteString(seg.Literal)
+		}
+	}
+	return sb.String()
+}
+
+// queryPrim is the per-primitive recipe for parsing a query-string
+// value. Strings short-circuit (no parser); other kinds dispatch to
+// strconv. `bits` is forwarded to ParseInt / ParseUint / ParseFloat;
+// bool ignores it. `goType` is the cast applied to the parsed numeric
+// to land in the target Go field type.
+type queryPrim struct {
+	parser string // strconv.ParseX function or "" for direct string
+	bits   int
+	goType string // cast target ("int", "int8", "float64", ...) or "" for direct
+	label  string // human-readable kind for error messages
+}
+
+var queryPrims = map[string]queryPrim{
+	"string":  {label: "string"},
+	"bool":    {parser: "strconv.ParseBool", label: "bool"},
+	"int":     {parser: "strconv.ParseInt", bits: 64, goType: "int", label: "int"},
+	"int8":    {parser: "strconv.ParseInt", bits: 8, goType: "int8", label: "int"},
+	"int16":   {parser: "strconv.ParseInt", bits: 16, goType: "int16", label: "int"},
+	"int32":   {parser: "strconv.ParseInt", bits: 32, goType: "int32", label: "int"},
+	"int64":   {parser: "strconv.ParseInt", bits: 64, goType: "int64", label: "int"},
+	"uint":    {parser: "strconv.ParseUint", bits: 64, goType: "uint", label: "uint"},
+	"uint8":   {parser: "strconv.ParseUint", bits: 8, goType: "uint8", label: "uint"},
+	"uint16":  {parser: "strconv.ParseUint", bits: 16, goType: "uint16", label: "uint"},
+	"uint32":  {parser: "strconv.ParseUint", bits: 32, goType: "uint32", label: "uint"},
+	"uint64":  {parser: "strconv.ParseUint", bits: 64, goType: "uint64", label: "uint"},
+	"float32": {parser: "strconv.ParseFloat", bits: 32, goType: "float32", label: "float"},
+	"float64": {parser: "strconv.ParseFloat", bits: 64, goType: "float64", label: "float"},
+}
+
+// renderQueryBindLine returns the Go source that binds one field from
+// the URL query string. Shape varies by field type:
+//   - string single → `req.X = r.URL.Query().Get("x")`
+//   - numeric/bool single → `if v := ...; v != "" { parse + cast }`
+//   - []string → `req.X = r.URL.Query()["x"]`
+//   - []numeric/bool → `for ... { parse + append }`
+//
+// Returns a non-nil error for unsupported field shapes (structs,
+// []struct, maps, generics, ...) so the codegen surfaces the
+// mistake at `craftgo gen` time instead of silently producing a
+// handler that leaves the field zero-valued. The second return
+// value is true when the rendered code references "strconv" so
+// the caller can flip the import flag once.
+func renderQueryBindLine(f *ast.Field) (string, bool, error) {
+	if f.Type == nil {
+		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
+	}
+	if f.Type.Map != nil {
+		return "", false, fmt.Errorf("field %q: map types cannot bind to query — only string/bool/int*/uint*/float* and arrays of those", f.Name)
+	}
+	if f.Type.Named == nil {
+		return "", false, fmt.Errorf("field %q: anonymous types cannot bind to query — only string/bool/int*/uint*/float* and arrays of those", f.Name)
+	}
+	if len(f.Type.Named.Args) > 0 {
+		return "", false, fmt.Errorf("field %q: generic type %s<...> cannot bind to query — only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String())
+	}
+	prim, ok := queryPrims[f.Type.Named.Name.String()]
+	if !ok {
+		return "", false, fmt.Errorf("field %q: type %s cannot bind to query — only string/bool/int*/uint*/float* and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f))
+	}
+	dslName := f.Name
+	goName := GoFieldName(f.Name)
+	if f.Type.Array {
+		if prim.parser == "" {
+			// []string — direct slice assignment from query map.
+			return fmt.Sprintf("req.%s = r.URL.Query()[%q]", goName, dslName), false, nil
+		}
+		// []numeric / []bool — loop, parse each, append to slice.
+		return fmt.Sprintf(`for _, _v := range r.URL.Query()[%q] {
+	_n, _err := %s
+	if _err != nil {
+		http.Error(w, %q+": invalid %s value: "+_err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.%s = append(req.%s, %s)
+}`, dslName, parseCall(prim), dslName, prim.label, goName, goName, castExpr(prim, "_n")), true, nil
+	}
+	// Single (non-array). Optional non-string primitives are not
+	// supported in v1 — `*int` from query would need a tri-state
+	// (absent / empty / parsed) we don't have a clean idiom for yet.
+	if f.Type.Optional && prim.parser != "" {
+		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query in v1 — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
+	}
+	if prim.parser == "" {
+		// string single
+		access := "req." + goName
+		if f.Type.Optional {
+			// `*string`: store the queried value via address.
+			return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
+	%s = &_v
+}`, dslName, access), false, nil
+		}
+		return fmt.Sprintf("%s = r.URL.Query().Get(%q)", access, dslName), false, nil
+	}
+	// numeric / bool single, gated by non-empty query value.
+	return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
+	_n, _err := %s
+	if _err != nil {
+		http.Error(w, %q+": invalid %s value: "+_err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.%s = %s
+}`, dslName, parseCall(prim), dslName, prim.label, goName, castExpr(prim, "_n")), true, nil
+}
+
+// describeFieldType renders a short human-readable form of f's type
+// for error messages — `[]Point`, `Page<Book>`, `map<string,int>`,
+// etc. Used by the binding-rejection paths so the user sees the
+// exact shape that violated the binding contract.
+func describeFieldType(f *ast.Field) string {
+	if f == nil || f.Type == nil {
+		return "<unresolved>"
+	}
+	t := f.Type
+	switch {
+	case t.Map != nil:
+		return "map<...>"
+	case t.Named == nil:
+		return "<anonymous>"
+	}
+	name := t.Named.Name.String()
+	if len(t.Named.Args) > 0 {
+		name += "<...>"
+	}
+	if t.Array {
+		name = "[]" + name
+	}
+	if t.Optional {
+		name += "?"
+	}
+	return name
+}
+
+// parseCall renders the strconv.ParseX(_v, ...) expression for a
+// numeric / bool primitive. Bool ignores bits; ParseFloat takes only
+// (s, bits); ParseInt / ParseUint take (s, base, bits).
+func parseCall(p queryPrim) string {
+	switch p.parser {
+	case "strconv.ParseBool":
+		return "strconv.ParseBool(_v)"
+	case "strconv.ParseFloat":
+		return fmt.Sprintf("strconv.ParseFloat(_v, %d)", p.bits)
+	default: // ParseInt / ParseUint
+		return fmt.Sprintf("%s(_v, 10, %d)", p.parser, p.bits)
+	}
+}
+
+// castExpr wraps the parsed value in the target Go type cast when
+// needed. Bool returns the parsed value directly (it's already typed);
+// numeric primitives need a cast from int64/uint64/float64 to the
+// declared field type.
+func castExpr(p queryPrim, varName string) string {
+	if p.goType == "" || p.parser == "strconv.ParseBool" {
+		return varName
+	}
+	return fmt.Sprintf("%s(%s)", p.goType, varName)
+}
+
 // isPlainStringField reports whether f is a non-array, non-optional
-// `string`. The runtime binders for path/query/header/cookie only know
-// how to populate strings in v1; richer types stay untouched.
+// `string`. Path / header / cookie binders still require this shape
+// in v1 — those wire formats carry only strings, and lifting the
+// restriction would just push parsing into every handler. Query is
+// the broad path; see [renderQueryBindLine].
 func isPlainStringField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Optional {
 		return false

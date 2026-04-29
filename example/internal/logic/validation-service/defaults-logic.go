@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // DefaultsLogic carries the per-request state for the
 // Defaults endpoint of ValidationService.
 type DefaultsLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewDefaultsLogic constructs a fresh logic instance bound to ctx.
 func NewDefaultsLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *DefaultsLogic {
-	return &DefaultsLogic{ctx: ctx, svcCtx: svcCtx}
+	return &DefaultsLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Defaults is the business-logic entry point. Replace the

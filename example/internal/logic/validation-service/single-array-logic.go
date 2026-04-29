@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // SingleArrayLogic carries the per-request state for the
 // SingleArray endpoint of ValidationService.
 type SingleArrayLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewSingleArrayLogic constructs a fresh logic instance bound to ctx.
 func NewSingleArrayLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *SingleArrayLogic {
-	return &SingleArrayLogic{ctx: ctx, svcCtx: svcCtx}
+	return &SingleArrayLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // SingleArray is the business-logic entry point. Replace the

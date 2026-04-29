@@ -8,18 +8,24 @@ import (
 	types "github.com/dropship-dev/craftgo/example/internal/types/design"
 
 	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/dropship-dev/craftgo/pkg/log"
 )
 
 // LimitedLogic carries the per-request state for the
 // Limited endpoint of ValidationService.
 type LimitedLogic struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // NewLimitedLogic constructs a fresh logic instance bound to ctx.
 func NewLimitedLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) *LimitedLogic {
-	return &LimitedLogic{ctx: ctx, svcCtx: svcCtx}
+	return &LimitedLogic{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // Demonstrates method-limit decorators: @readTimeout and

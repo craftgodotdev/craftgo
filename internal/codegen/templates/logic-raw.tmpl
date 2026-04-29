@@ -11,19 +11,26 @@ import (
 	types "{{.TypesImport}}"
 {{- end}}
 
+	"github.com/dropship-dev/craftgo/pkg/log"
 	"{{.SvccontextImport}}"
 )
 
 // {{.LogicName}} carries the per-request state for the
-// {{.Method}} raw-bytes endpoint of {{.Service}}.
+// {{.Method}} raw-bytes endpoint of {{.Service}}. The embedded
+// log.Logger is pre-bound to ctx so logging surfaces trace ids.
 type {{.LogicName}} struct {
+	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
 // New{{.LogicName}} constructs a fresh logic instance bound to ctx.
 func New{{.LogicName}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *{{.LogicName}} {
-	return &{{.LogicName}}{ctx: ctx, svcCtx: svcCtx}
+	return &{{.LogicName}}{
+		Logger: log.Default().WithContext(ctx),
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 {{range .Doc}}
