@@ -39,6 +39,11 @@ type Server struct {
 	healthMounted bool
 
 	registeredMW map[string]Middleware
+
+	// notFound is the handler invoked when a request reaches the
+	// mux without matching any registered route. nil means "use the
+	// stdlib default" (`404 page not found` plain-text body).
+	notFound http.Handler
 }
 
 // Logger aliases the public Logger interface so handler-internal code does
@@ -244,7 +249,21 @@ func (s *Server) Handler() http.Handler {
 	logger := s.logger
 	s.mu.Unlock()
 
+	notFound := s.notFound
+
 	var h http.Handler = s.mux
+	if notFound != nil {
+		// Wrap the mux: ask it whether the request matches a route;
+		// when the returned pattern is empty the stdlib default 404
+		// would have fired, so dispatch to the user's handler instead.
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, pattern := s.mux.Handler(r); pattern == "" {
+				notFound.ServeHTTP(w, r)
+				return
+			}
+			s.mux.ServeHTTP(w, r)
+		})
+	}
 	if cors != nil {
 		h = corsMiddleware(*cors)(h)
 	}

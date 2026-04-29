@@ -30,10 +30,21 @@ func runValidateGen(t *testing.T, src string) string {
 }
 
 func TestValidateRequired(t *testing.T) {
+	// `@required` enforces non-null only — empty string is allowed
+	// unless paired with `@length` / `@minLength`. For a non-pointer
+	// `string` the JSON decoder already rejects wire `null`, so the
+	// validator emits NO check on this field.
 	src := runValidateGen(t, `package design
 type X { name string @required }`)
-	if !strings.Contains(src, `v.Name == ""`) {
-		t.Errorf("missing required check:\n%s", src)
+	if strings.Contains(src, `v.Name == ""`) {
+		t.Errorf("@required must not emit an empty-string check on plain string:\n%s", src)
+	}
+	// On `any` the decoder accepts the literal 4-byte `null` slice
+	// silently, so the validator does need to fire.
+	srcAny := runValidateGen(t, `package design
+type X { data any @required }`)
+	if !strings.Contains(srcAny, `string(v.Data) == "null"`) {
+		t.Errorf("@required on any should reject explicit null:\n%s", srcAny)
 	}
 }
 

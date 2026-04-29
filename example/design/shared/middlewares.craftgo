@@ -1,0 +1,55 @@
+// ----------------------------------------------------------------
+// Middlewares — cross-cutting handlers attached to services and
+// methods via `@middlewares(Name, ...)`.
+// ----------------------------------------------------------------
+//
+// Each middleware is a NAMED HANDLER referenced by services and
+// methods. Configuration (rate limits, timeouts, body size caps,
+// allowed origins) lives in `craftgo.design.yaml` and the
+// generated svccontext — the DSL only carries the contract, not
+// the runtime values.
+//
+// Order of evaluation matches the order they appear in
+// `@middlewares(...)`. The framework's built-in Recovery frame
+// always sits at the outermost position so panics in any user
+// middleware still surface as 500 instead of crashing the server.
+package shared
+
+// AuthRequired enforces a Bearer token. Methods marked with this
+// middleware reject requests without a valid `Authorization:
+// Bearer <token>` header by returning 401 before logic runs.
+middleware AuthRequired
+
+// RequestID injects an `X-Request-ID` header on every request
+// (echoes the client's value when present, otherwise allocates a
+// random UUID). Downstream services and structured logs key on
+// this id to correlate a single transaction without coordination
+// from the client.
+middleware RequestID
+
+// RateLimit applies a token-bucket per remote IP. Steady-state
+// rate and burst allowance are configured in svccontext; 429 is
+// returned once the bucket runs dry.
+middleware RateLimit
+
+// CORS adds the standard cross-origin response headers and short-
+// circuits OPTIONS preflight at the framework boundary so logic
+// code never sees the probe. Allowed origins are configured in
+// svccontext.
+middleware CORS
+
+// Compress gzips response bodies above a small threshold. The
+// compression level matches stdlib gzip semantics and is set in
+// the runtime config.
+middleware Compress
+
+// Timeout caps in-flight time per request. Not a connection-level
+// deadline — handlers that exceed the configured budget see
+// ctx.Err() return context.DeadlineExceeded and the framework
+// emits 504.
+middleware Timeout
+
+// BodyLimit rejects requests whose declared `Content-Length` (or
+// streamed body) exceeds the configured threshold, returning 413
+// before any handler logic runs.
+middleware BodyLimit

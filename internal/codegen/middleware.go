@@ -1,6 +1,8 @@
 package codegen
 
 import (
+	"sort"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +44,71 @@ func GenerateMiddlewares(pkg *semantic.Package, cfg *config.Config, projectRoot 
 		return err
 	}
 	return writeMiddlewareImpls(cfg, projectRoot, pkg, names)
+}
+
+// GenerateProjectMiddlewares emits the unified `svccontext/middlewares.go`
+// + per-middleware scaffolds for every package in the project. Middleware
+// names are global (the project resolver enforces uniqueness), so a
+// single Middlewares struct embeds every declaration regardless of which
+// package it lives in. Run ONCE per `craftgo gen` instead of per-package.
+func GenerateProjectMiddlewares(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+	names := projectSortedMiddlewareNames(proj)
+	if err := writeMiddlewareFields(cfg, projectRoot, names); err != nil {
+		return err
+	}
+	return writeProjectMiddlewareImpls(cfg, projectRoot, names)
+}
+
+// projectSortedMiddlewareNames collects middleware decl names from every
+// package in the project, deduplicates, and sorts. Cross-package
+// uniqueness is already enforced at semantic time so no two packages
+// can claim the same name; the dedupe is defensive.
+func projectSortedMiddlewareNames(proj *semantic.Project) []string {
+	seen := map[string]struct{}{}
+	for _, pkg := range proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for name := range pkg.Middlewares {
+			seen[name] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// writeProjectMiddlewareImpls emits scaffold files for every middleware
+// in the project. Existing files survive — the framework only writes
+// missing scaffolds so user edits in the impl body are preserved across
+// `craftgo gen` runs.
+func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	dir := filepath.Join(projectRoot, cfg.Output.Middleware)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tpl := tmpl("middleware.tmpl")
+	for _, name := range names {
+		filename := kebabCase(name) + "-middleware.go"
+		dest := filepath.Join(dir, filename)
+		if _, err := os.Stat(dest); err == nil {
+			continue
+		}
+		formatted, err := renderGo(tpl, middlewareData{Name: name})
+		if err != nil {
+			return fmt.Errorf("render middleware %s: %w", name, err)
+		}
+		if err := os.WriteFile(dest, formatted, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // writeMiddlewareFields emits svccontext/middlewares.go (overwrite). When

@@ -194,6 +194,14 @@ func runGen(args []string) error {
 	// handlers/routes/logic land in their own subdirectories. main.go
 	// aggregates RegisterRoutes from all of them; openapi merges every
 	// package's schema namespace with conflict-aware naming.
+	// Middlewares are project-global (the semantic resolver enforces
+	// uniqueness across packages). Generate the unified Middlewares
+	// struct + scaffolds ONCE up-front so packages without services
+	// — like `shared` — still contribute their declarations to
+	// svccontext.
+	if err := codegen.GenerateProjectMiddlewares(proj, cfg, projectRoot); err != nil {
+		return fmt.Errorf("middlewares: %w", err)
+	}
 	for _, name := range pkgNames {
 		p := proj.Packages[name]
 		if len(p.Services) == 0 {
@@ -204,7 +212,6 @@ func runGen(args []string) error {
 			label string
 			fn    func() error
 		}{
-			{"middlewares(" + name + ")", func() error { return codegen.GenerateMiddlewares(p, cfg, projectRoot) }},
 			{"handlers(" + name + ")", func() error { return codegen.GenerateHandlersPackage(p, cfg, projectRoot, cross) }},
 			{"handler-helpers(" + name + ")", func() error { return codegen.GenerateHandlerHelpers(p, cfg, projectRoot) }},
 			{"logic(" + name + ")", func() error { return codegen.GenerateLogicPackage(p, cfg, projectRoot, cross) }},

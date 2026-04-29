@@ -11,6 +11,8 @@ import (
 	"strconv"
 {{- end}}
 
+	"github.com/dropship-dev/craftgo/pkg/server"
+
 	logic "{{.LogicImport}}"
 {{- if .NeedsTypes}}
 	types "{{.TypesImport}}"
@@ -52,7 +54,7 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		{{.Bind}}
 {{- end}}
 		if err := req.Validate(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			server.WriteValidationError(w, r, err)
 			return
 		}
 {{- end}}

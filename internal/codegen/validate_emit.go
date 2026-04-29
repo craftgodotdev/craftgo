@@ -58,14 +58,26 @@ func ifReturnf(cond, msg string) string {
 // no-op. `@nullable` upgrades the field to a pointer; the nil check
 // covers both "absent from JSON" and "explicit null".
 func requiredKind(f *ast.Field, access string) string {
-	if f.Type == nil || f.Type.Optional || goFieldIsPointer(f) {
+	// `@required` enforces ONLY non-null / non-undefined. Empty
+	// strings, zero numerics, empty arrays / maps are intentionally
+	// allowed — pair with `@length(1, …)` / `@min(1)` / `@minItems(1)`
+	// when the contract needs them.
+	//
+	// For non-pointer scalar types (`string`, `int`, `bool`, …) the
+	// JSON decoder already rejects wire `null` with an unmarshal
+	// error, so no validate-time check is needed; the diagnostic
+	// surfaces at the framework boundary instead. For pointer types
+	// (`T?` / `T @nullable`) and `any` we DO need the check — the
+	// decoder happily accepts `null` and leaves it as a nil pointer
+	// or the literal 4-byte `null` `json.RawMessage`.
+	if f.Type == nil {
+		return ""
+	}
+	if f.Type.Optional || goFieldIsPointer(f) {
 		return access + " == nil"
 	}
-	if f.Type.Array || f.Type.Map != nil {
-		return "len(" + access + ") == 0"
-	}
-	if f.Type.Named != nil && f.Type.Named.Name.String() == "string" {
-		return access + ` == ""`
+	if f.Type.Named != nil && f.Type.Named.Name.String() == "any" {
+		return fmt.Sprintf(`string(%s) == "null"`, access)
 	}
 	return ""
 }
@@ -358,10 +370,18 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 }
 
 // uniqueItemsCheck handles `@uniqueItems` on array fields. The emitted
-// loop scans for duplicates with a map keyed on the element value; that
-// works for any comparable element type — primitives, strings, fixed-size
-// structs. Slices/maps inside the element type are left alone so the
-// generated code stays compile-clean (Go forbids them as map keys).
+// loop scans for duplicates with a map keyed on the element value;
+// that works for any comparable element type — primitives, strings,
+// fixed-size structs.
+//
+// `json.RawMessage` (the Go type for `any`) is a `[]byte` named slice,
+// which is NOT comparable as a map key. We special-case it to use
+// `string(item)` for the key so a `tags any[] @uniqueItems` chain
+// still emits compile-clean dedupe code without pulling extra
+// imports — `string([]byte)` is a built-in conversion.
+//
+// Other slice / map / func element types stay un-checked because the
+// generated code would not compile.
 //
 // A bare block scopes `seen` to this check so multiple @uniqueItems
 // validators on the same struct don't shadow each other; `return` still
@@ -371,6 +391,22 @@ func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool) string 
 		return ""
 	}
 	elem := arrayElemType(f.Type)
+	if elem == "json.RawMessage" {
+		// `string(item)` cast is a built-in conversion; no extra
+		// import required even though the element type's full Go
+		// spelling is `json.RawMessage`.
+		uses["fmt"] = true
+		return fmt.Sprintf(`{
+seen := make(map[string]struct{}, len(%s))
+for _, item := range %s {
+key := string(item)
+if _, dup := seen[key]; dup {
+return fmt.Errorf("%s: items must be unique")
+}
+seen[key] = struct{}{}
+}
+}`, access, access, f.Name)
+	}
 	if !isComparableElem(elem) {
 		return ""
 	}

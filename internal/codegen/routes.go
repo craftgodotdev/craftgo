@@ -142,8 +142,10 @@ func formatDurationGo(d time.Duration) string {
 }
 
 // extractMiddlewareNames pulls the identifier arguments out of every
-// `@middlewares(...)` decorator in ds. Non-identifier args are skipped
-// because the runtime registry is keyed by name.
+// `@middlewares(...)` decorator in ds and returns the BARE name for
+// each — the package prefix in `pkg.Name` is dropped because every
+// middleware lands flat on svccontext (the project resolver already
+// guarantees names are unique across packages).
 func extractMiddlewareNames(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
@@ -152,7 +154,11 @@ func extractMiddlewareNames(ds []*ast.Decorator) []string {
 		}
 		for _, a := range d.Args {
 			if id, ok := a.Value.(*ast.IdentExpr); ok {
-				out = append(out, id.Name.String())
+				parts := id.Name.Parts
+				if len(parts) == 0 {
+					continue
+				}
+				out = append(out, parts[len(parts)-1])
 			}
 		}
 	}

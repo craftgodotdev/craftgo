@@ -91,10 +91,13 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		return proj, diags
 	}
 	groups := groupFilesByPackage(files)
-	// Per-package analysis. The skip flag prevents per-package
-	// checkQualifiedRefs from rejecting valid cross-package refs.
+	// Per-package analysis. The skip flags prevent the per-package
+	// pass from rejecting refs (qualified types, middleware names)
+	// that resolve in OTHER packages — those are validated by the
+	// project-level resolver below.
 	perPkgOpts := opts
 	perPkgOpts.skipQualifiedRefCheck = true
+	perPkgOpts.skipMiddlewareRefCheck = true
 	var diags []Diagnostic
 	for name, group := range groups {
 		pkg, pkgDiags := AnalyzeWith(group, perPkgOpts)
@@ -106,6 +109,8 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	for _, f := range files {
 		r.processFile(f, opts.DesignRoot)
 	}
+	r.checkProjectMiddlewareUniqueness()
+	r.checkProjectMiddlewareRefs(files)
 	return proj, r.diags
 }
 

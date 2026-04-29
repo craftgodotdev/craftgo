@@ -211,17 +211,38 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 // field. README §"Field presence semantics" splits the four states
 // explicitly; the optional marker already conveys nullability so the
 // decorator is noise.
+//
+// The same pass also flags the harder error of pairing `@required`
+// with `@nullable` — the two contradict each other (one says "must
+// not be null", the other says "may be null") and the validate-emit
+// step has no sensible code to generate. Surfacing it as an error
+// pushes the author to pick one.
 func (a *analyzer) checkNullableRedundant(f *ast.Field) {
-	if f.Type == nil || !f.Type.Optional {
+	var nullableDec, requiredDec *ast.Decorator
+	for _, d := range f.Decorators {
+		if d == nil {
+			continue
+		}
+		switch d.Name {
+		case "nullable":
+			nullableDec = d
+		case "required":
+			requiredDec = d
+		}
+	}
+	if nullableDec != nil && requiredDec != nil {
+		diag := a.diag(nullableDec.Pos, decoratorEnd(nullableDec),
+			lexer.SeverityError, CodeDecoratorRedundant,
+			"@nullable conflicts with @required on field %q — `@required` already excludes null",
+			f.Name)
+		diag.Related = related(requiredDec.Pos, "@required declared here")
 		return
 	}
-	for _, d := range f.Decorators {
-		if d != nil && d.Name == "nullable" {
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-				"@nullable is redundant on optional field %q (the `?` already allows null)",
-				f.Name)
-			return
-		}
+	if nullableDec != nil && f.Type != nil && f.Type.Optional {
+		a.diag(nullableDec.Pos, decoratorEnd(nullableDec),
+			lexer.SeverityWarning, CodeDecoratorRedundant,
+			"@nullable is redundant on optional field %q (the `?` already allows null)",
+			f.Name)
 	}
 }
 

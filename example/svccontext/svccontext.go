@@ -15,6 +15,7 @@ import (
 // the DSL.
 type ServiceContext struct {
 	mu sync.Mutex
+	Middlewares
 
 	Users    map[string]User
 	Projects map[string]Project

@@ -8,8 +8,19 @@ import "shared"
 // the project uses. Cross-package request resolution makes this
 // just work — the generated handler imports the shared types
 // package and decodes the canonical pagination shape.
+//
+// Service-level cross-cutting:
+//
+//   - `@middlewares(...)` runs the named middlewares in declared
+//     order on every method. Per-method `@middlewares` (see
+//     `DeleteUser` below) APPENDS additional frames after these.
+//   - `@security(bearer)` advertises a Bearer-token requirement in
+//     the generated OpenAPI; actual enforcement is the
+//     AuthRequired frame in the middleware chain above.
 @prefix("/users")
 @tags(users)
+@middlewares(RequestID, RateLimit, CORS, AuthRequired)
+@security(bearer)
 service UserService {
 	@doc("List users with cursor pagination. The request shape mirrors shared.Pagination — see the comment in shared/shared.craftgo for why the showcase keeps a local copy.")
 	get ListUsers / {
@@ -35,7 +46,14 @@ service UserService {
 		response User
 	}
 
+	// DeleteUser layers on extra middlewares and tightens the
+	// security scope: the service chain runs first (RequestID,
+	// RateLimit, CORS, AuthRequired) then BodyLimit + Timeout, and
+	// the operation requires the `users:write` scope on top of the
+	// bearer token already advertised at service level.
 	@doc("Delete a user. Returns shared.OkResp regardless of prior state — idempotent.")
+	@middlewares(shared.BodyLimit, shared.Timeout)
+	@security(oauth2, scopes: ["users:write"])
 	delete DeleteUser /{id} {
 		request  GetUserReq
 		response shared.OkResp

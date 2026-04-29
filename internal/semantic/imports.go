@@ -182,6 +182,160 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 	}
 }
 
+// checkProjectMiddlewareUniqueness fires whenever the same middleware
+// name is declared in more than one package. Bare cross-package refs
+// (`@middlewares(AuthRequired)`) resolve through the global union, so
+// a collision would silently pick the first match the iterator hands
+// back — the diagnostic forces the author to rename or consolidate.
+//
+// Diagnostics are emitted at every conflicting declaration, with
+// related entries pointing at the other occurrences, so the editor's
+// "go to" actions land on each site.
+func (r *refResolver) checkProjectMiddlewareUniqueness() {
+	type origin struct {
+		pkg  string
+		decl *ast.MiddlewareDecl
+	}
+	groups := map[string][]origin{}
+	for pkgName, pkg := range r.proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for name, m := range pkg.Middlewares {
+			if m == nil {
+				continue
+			}
+			groups[name] = append(groups[name], origin{pkg: pkgName, decl: m})
+		}
+	}
+	for name, occs := range groups {
+		if len(occs) < 2 {
+			continue
+		}
+		for i, o := range occs {
+			diag := Diagnostic{
+				Pos:      o.decl.Pos,
+				End:      o.decl.Pos,
+				Severity: lexer.SeverityError,
+				Code:     CodeMiddlewareCollision,
+				Msg: fmt.Sprintf("middleware %q is declared in multiple packages — names are global; rename or qualify references",
+					name),
+			}
+			for j, other := range occs {
+				if j == i {
+					continue
+				}
+				diag.Related = append(diag.Related, lexer.Related{
+					Pos: other.decl.Pos,
+					Msg: "also declared in package " + other.pkg,
+				})
+			}
+			r.diags = append(r.diags, diag)
+		}
+	}
+}
+
+// checkProjectMiddlewareRefs validates `@middlewares(...)` arguments
+// across the entire project. The per-package analyser skips this check
+// (under [Options.skipMiddlewareRefCheck]) so a name declared in one
+// package can be referenced from another. We accept a name when at
+// least one package in the project declares a `middleware Name`; if
+// no package does, we report [CodeDecoratorRef] at the reference.
+//
+// Cross-package middleware references stay UNQUALIFIED — the DSL has
+// no syntax for `pkg.MiddlewareName` in decorator argument lists, and
+// adding one would force a deeper change to the decorator parser.
+// Name collisions across packages are rare enough in practice that
+// the framework leans on convention (one canonical declaration per
+// name) rather than a strict resolver.
+func (r *refResolver) checkProjectMiddlewareRefs(files []*ast.File) {
+	declared := map[string]bool{}
+	for _, pkg := range r.proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for name := range pkg.Middlewares {
+			declared[name] = true
+		}
+	}
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		for _, d := range f.Decls {
+			s, ok := d.(*ast.ServiceDecl)
+			if !ok {
+				continue
+			}
+			r.checkMiddlewareDecorators(s.Decorators, declared)
+			for _, m := range s.Methods {
+				r.checkMiddlewareDecorators(m.Decorators, declared)
+			}
+		}
+	}
+}
+
+// checkMiddlewareDecorators inspects a decorator slice for any
+// `@middlewares(...)` and emits a diagnostic for each argument whose
+// value names an undeclared middleware. Two reference forms are
+// accepted, in priority order:
+//
+//  1. Qualified `pkg.Name` — the prefix must match a package in the
+//     project AND the trailing segment must be a `middleware Name`
+//     declared in that package. This is the canonical form when
+//     more than one package declares a middleware with the same
+//     bare name (no ambiguity at the call site).
+//  2. Bare `Name` — the trailing segment alone must be unique in
+//     the union of every package's middleware table. Convenient
+//     when names collide-free across packages.
+//
+// Cross-package lookup is intentional: the per-package analyser
+// skips middleware-ref validation under
+// [Options.skipMiddlewareRefCheck] so this resolver is the single
+// authority on which references are valid.
+func (r *refResolver) checkMiddlewareDecorators(decs []*ast.Decorator, declared map[string]bool) {
+	for _, d := range decs {
+		if d == nil || d.Name != "middlewares" {
+			continue
+		}
+		for _, arg := range collectIdentOrStringArgs(d) {
+			if r.middlewareRefResolves(arg.value, declared) {
+				continue
+			}
+			r.diag(arg.pos, lexer.SeverityError, CodeDecoratorRef,
+				"@middlewares: %q is not a declared middleware in any package", arg.value)
+		}
+	}
+}
+
+// middlewareRefResolves returns true when value is recognised as a
+// valid middleware reference under either the qualified or bare form.
+func (r *refResolver) middlewareRefResolves(value string, declared map[string]bool) bool {
+	if dot := lastByte(value, '.'); dot >= 0 {
+		pkgName := value[:dot]
+		bare := value[dot+1:]
+		pkg := r.proj.Packages[pkgName]
+		if pkg == nil {
+			return false
+		}
+		_, ok := pkg.Middlewares[bare]
+		return ok
+	}
+	return declared[value]
+}
+
+// lastByte returns the last occurrence index of b in s, or -1 when
+// s contains no such byte. Mirrors the standard library helper but
+// avoids an import cycle in the test variant of this package.
+func lastByte(s string, b byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
+}
+
 // packageHasSymbol reports whether sym is declared in pkg's symbol
 // tables. We accept any kind (type, enum, error, scalar) — DSL
 // resolution doesn't distinguish at the reference site.

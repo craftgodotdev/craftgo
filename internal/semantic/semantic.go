@@ -108,6 +108,14 @@ type Options struct {
 	// instead. Not exported: external callers should use
 	// [AnalyzeProject] when they want this behaviour.
 	skipQualifiedRefCheck bool
+
+	// skipMiddlewareRefCheck disables the in-package middleware-ref
+	// validation in [analyzer.checkDecoratorRefs]. Set internally by
+	// [AnalyzeProject] so a `@middlewares(AuthRequired)` reference in
+	// one package can resolve to a `middleware AuthRequired`
+	// declaration in a sibling package without the per-package pass
+	// reporting it as unknown first.
+	skipMiddlewareRefCheck bool
 }
 
 // Analyze validates the supplied AST files as a single package and returns
@@ -146,7 +154,9 @@ func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	a.checkDecoratorDuplicates(files)
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
-	a.checkDecoratorRefs(files)
+	if !a.opts.skipMiddlewareRefCheck {
+		a.checkDecoratorRefs(files)
+	}
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
 	a.checkMixins()
@@ -244,6 +254,14 @@ const (
 	// CodeRequiredOptional fires when `@required` appears on a `T?`
 	// field.
 	CodeRequiredOptional = "binding/required-optional"
+	// CodeMiddlewareCollision fires when two packages in the same
+	// project both declare a `middleware` of the same name. Cross-
+	// package middleware references are global by design, so a
+	// collision would make `@middlewares(Name)` ambiguous — the
+	// resolver picks the first match silently. The diagnostic
+	// surfaces every conflicting declaration so the author can
+	// rename or consolidate.
+	CodeMiddlewareCollision = "middleware/collision"
 	// CodeRawType fires when a method tagged `@raw` declares a
 	// request/response whose underlying type is anything other than
 	// the byte-pass primitives (`bytes`, `reader`, `writer`). Raw
