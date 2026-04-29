@@ -200,9 +200,6 @@ func (r *refResolver) checkProjectExtendOrphans() {
 	primaryPkg := map[string]string{}
 	primaryPos := map[string]lexer.Position{}
 	for pkgName, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
 		for name, si := range pkg.Services {
 			if si == nil || si.Primary == nil {
 				continue
@@ -212,9 +209,6 @@ func (r *refResolver) checkProjectExtendOrphans() {
 		}
 	}
 	for _, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
 		for name, si := range pkg.Services {
 			if si == nil || si.Primary != nil {
 				continue
@@ -257,9 +251,6 @@ func (r *refResolver) checkProjectServiceUniqueness() {
 	}
 	groups := map[string][]origin{}
 	for pkgName, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
 		for name, si := range pkg.Services {
 			if si == nil || si.Primary == nil {
 				continue
@@ -310,13 +301,7 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 	}
 	groups := map[string][]origin{}
 	for pkgName, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
 		for name, m := range pkg.Middlewares {
-			if m == nil {
-				continue
-			}
 			groups[name] = append(groups[name], origin{pkg: pkgName, decl: m})
 		}
 	}
@@ -363,17 +348,11 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 func (r *refResolver) checkProjectMiddlewareRefs(files []*ast.File) {
 	declared := map[string]bool{}
 	for _, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
 		for name := range pkg.Middlewares {
 			declared[name] = true
 		}
 	}
 	for _, f := range files {
-		if f == nil {
-			continue
-		}
 		for _, d := range f.Decls {
 			s, ok := d.(*ast.ServiceDecl)
 			if !ok {

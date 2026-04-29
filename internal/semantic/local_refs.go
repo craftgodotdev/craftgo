@@ -38,9 +38,6 @@ func (a *analyzer) checkImports(files []*ast.File) {
 		seenPath := map[string]*ast.Import{}
 		seenAlias := map[string]*ast.Import{}
 		for _, imp := range f.Imports {
-			if imp == nil {
-				continue
-			}
 			if prev, dup := seenPath[imp.Path]; dup {
 				d := a.diag(imp.Pos, imp.Pos, lexer.SeverityError, CodeImportDuplicate,
 					"duplicate import %q in this file", imp.Path)
@@ -51,9 +48,6 @@ func (a *analyzer) checkImports(files []*ast.File) {
 			alias := imp.Alias
 			if alias == "" {
 				alias = importImplicitAlias(imp.Path)
-			}
-			if alias == "" {
-				continue
 			}
 			if prev, dup := seenAlias[alias]; dup {
 				d := a.diag(imp.Pos, imp.Pos, lexer.SeverityError, CodeImportAliasConflict,
@@ -146,9 +140,6 @@ func importAliasSet(imps []*ast.Import) map[string]bool {
 	}
 	out := map[string]bool{}
 	for _, i := range imps {
-		if i == nil {
-			continue
-		}
 		if i.Alias != "" {
 			out[i.Alias] = true
 			continue
@@ -254,10 +245,9 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 // isLocalSymbol reports whether name is declared in the current
 // package's symbol tables. Mirrors [packageHasSymbol] but operates on
 // the analyser's in-progress [Package] rather than a finalised one.
+// [a.pkg] is initialised in [AnalyzeWith] before this method runs, so
+// no nil guard is needed.
 func (a *analyzer) isLocalSymbol(name string) bool {
-	if a.pkg == nil {
-		return false
-	}
 	if _, ok := a.pkg.Types[name]; ok {
 		return true
 	}
