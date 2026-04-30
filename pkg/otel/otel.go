@@ -59,6 +59,17 @@ func IsEnabled() bool { return enabled.Load() }
 // pass-through otherwise. operation is the span name surfaced when the
 // wrapper is active.
 //
+// Once the span is active on the request context, the middleware also
+// injects the W3C trace context onto the response via the configured
+// `OTel TextMapPropagator` (`otelapi.GetTextMapPropagator`). With the
+// default `propagation.TraceContext{}` propagator that lands a standard
+// `traceparent` (and `tracestate` when set) header on the response —
+// the same wire format the spec uses for request propagation, so
+// downstream services / clients can re-attach to the same trace tree
+// without bespoke header handling. Headers are written BEFORE the
+// downstream handler runs, which keeps them in the outbound response
+// regardless of whether the handler streams or writes a single body.
+//
 // Wire it with `srv.Use(otel.HTTPMiddleware("api"))`. Even on a
 // disabled gate the call is cheap — a single atomic load — so it's
 // fine to leave permanently in main.go.
@@ -69,7 +80,16 @@ func HTTPMiddleware(operation string) server.Middleware {
 				next.ServeHTTP(w, r)
 				return
 			}
-			otelhttp.NewHandler(next, operation).ServeHTTP(w, r)
+			// otelhttp creates the span on a NEW request context, then
+			// calls its `next` with that updated request. Inserting an
+			// inner handler here gives us a hook AFTER the span exists
+			// but BEFORE the user's handler writes anything — the only
+			// safe window to inject response headers.
+			withTraceHeaders := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				otelapi.GetTextMapPropagator().Inject(r.Context(), propagation.HeaderCarrier(w.Header()))
+				next.ServeHTTP(w, r)
+			})
+			otelhttp.NewHandler(withTraceHeaders, operation).ServeHTTP(w, r)
 		})
 	}
 }

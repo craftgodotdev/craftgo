@@ -11,13 +11,18 @@ import (
 
 // mainData is the template input for `main.tmpl`. The umbrella
 // routes.RegisterAll keeps the import set tiny — main.go references
-// only `routes`, `middleware`, and `svccontext`.
+// only `routes`, `middleware`, `svccontext`, and `pkg/otel`.
 type mainData struct {
 	RoutesImport     string
 	MiddlewareImport string
 	SvccontextImport string
 	Middlewares      []string
 	HasMiddlewares   bool
+	// OperationName seeds otel.HTTPMiddleware's span name. Defaults to
+	// the project's last package segment (e.g. `example` for
+	// `github.com/dropship-dev/craftgo/example`) so traces self-label
+	// without needing a manual edit.
+	OperationName string
 }
 
 // GenerateMain scaffolds the project's main.go (`output.main`). The file
@@ -108,6 +113,7 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 		RoutesImport:     goImportFromRel(cfg.Package, cfg.Output.Routes),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		OperationName:    operationNameFor(cfg.Package),
 	}
 	seen := map[string]bool{}
 	for _, p := range proj.Packages {
@@ -134,8 +140,26 @@ func buildMainData(pkg *semantic.Package, cfg *config.Config) mainData {
 		RoutesImport:     goImportFromRel(cfg.Package, cfg.Output.Routes),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		OperationName:    operationNameFor(cfg.Package),
 	}
 	d.Middlewares = sortedMiddlewareNames(pkg)
 	d.HasMiddlewares = len(d.Middlewares) > 0
 	return d
+}
+
+// operationNameFor extracts the last segment of a Go module path
+// (`github.com/foo/myapp` → `myapp`) for use as the OTel span name.
+// Falls back to a generic `api` when the input has no segments —
+// keeps the generated main.go compilable even on degenerate
+// configs.
+func operationNameFor(modulePath string) string {
+	for i := len(modulePath) - 1; i >= 0; i-- {
+		if modulePath[i] == '/' {
+			return modulePath[i+1:]
+		}
+	}
+	if modulePath == "" {
+		return "api"
+	}
+	return modulePath
 }

@@ -14,19 +14,16 @@ import (
 )
 
 // Logger is the small structured-logging surface every craftgo middleware
-// depends on. Calls without context use the package's default logger;
-// `Ctx`-suffixed calls carry the request context so trace/span IDs can be
-// auto-injected by tracing middleware.
+// depends on. Callers that have a request context use
+// `logger.WithContext(ctx).Info(...)` to fan trace_id / span_id /
+// request_id into the line; callers without a context call `Info(...)`
+// directly. There is intentionally no `InfoCtx(ctx, ...)` shorthand —
+// the chain reads explicitly and keeps the interface minimal.
 type Logger interface {
 	Debug(msg string, fields ...Field)
 	Info(msg string, fields ...Field)
 	Warn(msg string, fields ...Field)
 	Error(msg string, fields ...Field)
-
-	DebugCtx(ctx context.Context, msg string, fields ...Field)
-	InfoCtx(ctx context.Context, msg string, fields ...Field)
-	WarnCtx(ctx context.Context, msg string, fields ...Field)
-	ErrorCtx(ctx context.Context, msg string, fields ...Field)
 
 	With(fields ...Field) Logger
 	WithContext(ctx context.Context) Logger
@@ -133,6 +130,14 @@ type zapLogger struct{ z *zap.Logger }
 
 // toZap converts a single craftgo Field into a zap.Field. Group fields
 // recurse so nested structures preserve their shape in the output.
+//
+// time.Duration values are rendered through `Duration.String()`
+// ("1.5ms", "250µs", "5s") rather than the default zap behaviour of
+// "fractional seconds" — the human-readable form is the right
+// default for log lines a person actually reads (access logs,
+// op-error breadcrumbs). Code that needs the numeric form for
+// dashboards / alerts should record the duration as a metric (a
+// Histogram on the OTel meter) instead of a log field.
 func toZap(f Field) zap.Field {
 	switch v := f.Value.(type) {
 	case []Field:
@@ -141,6 +146,8 @@ func toZap(f Field) zap.Field {
 			nested = append(nested, toZap(n))
 		}
 		return zap.Object(f.Key, fieldsObject(nested))
+	case time.Duration:
+		return zap.String(f.Key, v.String())
 	case error:
 		if f.Key == "" || f.Key == "error" {
 			return zap.Error(v)
@@ -177,12 +184,6 @@ func (s *zapLogger) Warn(msg string, fs ...Field)  { s.z.Warn(msg, fieldsToZap(f
 func (s *zapLogger) Error(msg string, fs ...Field) { s.z.Error(msg, fieldsToZap(fs)...) }
 
 // Ctx-suffixed methods currently delegate to the non-ctx variants. Once
-// OTel middleware lands, the ctx variants will inject trace fields.
-func (s *zapLogger) DebugCtx(_ context.Context, msg string, fs ...Field) { s.Debug(msg, fs...) }
-func (s *zapLogger) InfoCtx(_ context.Context, msg string, fs ...Field)  { s.Info(msg, fs...) }
-func (s *zapLogger) WarnCtx(_ context.Context, msg string, fs ...Field)  { s.Warn(msg, fs...) }
-func (s *zapLogger) ErrorCtx(_ context.Context, msg string, fs ...Field) { s.Error(msg, fs...) }
-
 func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
 }

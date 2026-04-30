@@ -1,145 +1,222 @@
-// Package metrics exposes a runtime-toggleable HTTP metrics middleware.
-// When enabled, it records per-route request counts grouped by status
-// class (1xx/2xx/3xx/4xx/5xx) and aggregate cumulative duration.
-// Snapshots are cheap and lock-free; full Prometheus integration is
-// out of scope for v1 — projects that need richer metrics should
-// stack [otel.HTTPMiddleware] on top.
+// Package metrics is the OpenTelemetry-backed metrics surface for
+// craftgo runtimes. It owns the project-wide MeterProvider and the
+// Prometheus exporter that the admin server scrapes.
+//
+// The package itself records no metrics directly. The HTTP
+// instruments (`http.server.request.duration` histogram, request /
+// response size histograms, active-request gauge) are emitted by
+// `otelhttp.NewHandler` — wired via [pkg/otel.HTTPMiddleware] —
+// against whatever MeterProvider [Init] (or [InitDefault]) installs
+// on the global slot. Application code that wants its own counters
+// or histograms calls `otel.Meter("...")` directly; this package
+// exists to bootstrap and expose, not to invent a parallel API.
 package metrics
 
 import (
-	"net/http"
-	"sync"
+	"context"
 	"sync/atomic"
-	"time"
 
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+
+	prom "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
-// enabled is the runtime gate. atomic.Bool so toggling is safe from
-// any goroutine.
+// enabled tracks whether [Init] / [InitDefault] has installed a real
+// MeterProvider. The flag is mostly diagnostic — `otelhttp` emits
+// metrics against the global provider regardless of this gate, so
+// a never-Init'd process simply receives a no-op MeterProvider's
+// silent recording.
 var enabled atomic.Bool
 
-// state holds the in-memory counters. Stored at package scope so the
-// snapshot API can read it from anywhere; a mutex protects the maps
-// because reset/snapshot/record may all race.
-var (
-	stateMu sync.Mutex
-	counts  = map[Key]int64{}
-	totalNs = map[Key]int64{}
-)
+// registry is the Prometheus registry the package's exporter writes
+// into. Held at package scope so [SnapshotHandler] (and tests) can
+// scrape without re-discovering the SDK plumbing on every call.
+var registry = prom.NewRegistry()
 
-// Key uniquely identifies a metric series — one row per
-// method+path+status-class combination.
-type Key struct {
-	Method     string
-	Path       string
-	StatusKlas string // "2xx", "4xx", ...
-}
-
-// Snapshot is the read-only view returned to callers that want to
-// expose metrics or verify them in tests.
-type Snapshot struct {
-	Counts    map[Key]int64
-	TotalNs   map[Key]int64
-}
-
-// Init turns metrics ON. Subsequent calls to HTTPMiddleware return a
-// recording wrapper. Idempotent.
-func Init() { enabled.Store(true) }
-
-// Disable returns the middleware to no-op mode without dropping the
-// counters already accumulated.
-func Disable() { enabled.Store(false) }
-
-// IsEnabled reports the current toggle state.
+// IsEnabled reports whether the package has installed a MeterProvider.
+// Returns false until [Init] / [InitDefault] succeeds.
 func IsEnabled() bool { return enabled.Load() }
 
-// Reset clears every counter. Useful for tests.
-func Reset() {
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	counts = map[Key]int64{}
-	totalNs = map[Key]int64{}
+// Registerer exposes the underlying Prometheus registry so application
+// code can attach process / runtime collectors (`prometheus.NewGoCollector`,
+// `prometheus.NewProcessCollector`) on top of the OTel-bridged metrics.
+// The returned interface is the standard `prometheus.Registerer`, so
+// any client_golang-compatible metric surfaces alongside the OTel ones
+// on the same /metrics scrape.
+func Registerer() prom.Registerer { return registry }
+
+// Option configures the MeterProvider built by [Init]. Each option
+// either appends a Reader to the provider (Prometheus pull, OTLP
+// gRPC push, OTLP HTTP push) or attaches metadata. Errors that
+// occur while building exporters are captured on the config; the
+// first error short-circuits the rest and surfaces from [Init].
+type Option func(*config)
+
+// config carries the MeterProvider settings between [Option]
+// closures and [Init]. Held off the package surface — callers only
+// ever see the typed [Option] constructors.
+type config struct {
+	readers []sdkmetric.Reader
+	err     error
 }
 
-// SnapshotCounters returns a copy of the current state. The returned
-// maps are independent of the package storage so callers can iterate
-// without holding any lock.
-func SnapshotCounters() Snapshot {
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	c := make(map[Key]int64, len(counts))
-	for k, v := range counts {
-		c[k] = v
+// WithPrometheusReader adds a Prometheus pull exporter scoped to the
+// package registry. Pair it with [StartAdmin] (or wire
+// [SnapshotHandler] manually) to expose `/metrics` for scrapers.
+//
+// The default when [Init] is called with no options.
+func WithPrometheusReader() Option {
+	return func(c *config) {
+		if c.err != nil {
+			return
+		}
+		exporter, err := otelprom.New(otelprom.WithRegisterer(registry))
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.readers = append(c.readers, exporter)
 	}
-	d := make(map[Key]int64, len(totalNs))
-	for k, v := range totalNs {
-		d[k] = v
+}
+
+// WithOTLPgRPCReader adds a periodic OTLP gRPC push exporter pointed
+// at addr (e.g. `"otel-collector.observability:4317"`). Push interval
+// defaults to 60s — the OTel SDK default; pass
+// `otlpmetricgrpc.WithCompressor("gzip")` and friends through opts
+// for transport tuning. By default the connection is INSECURE
+// (plain-text, no TLS) so collectors on the local k8s network work
+// out of the box; supply `otlpmetricgrpc.WithTLSCredentials(...)` to
+// override for cross-cluster traffic.
+func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc.Option) Option {
+	return func(c *config) {
+		if c.err != nil {
+			return
+		}
+		base := []otlpmetricgrpc.Option{
+			otlpmetricgrpc.WithEndpoint(addr),
+			otlpmetricgrpc.WithInsecure(),
+		}
+		exporter, err := otlpmetricgrpc.New(ctx, append(base, opts...)...)
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.readers = append(c.readers, sdkmetric.NewPeriodicReader(exporter))
 	}
-	return Snapshot{Counts: c, TotalNs: d}
 }
 
-// HTTPMiddleware returns a server.Middleware that records one row per
-// request. When the gate is off the wrapper is a pass-through.
-func HTTPMiddleware() server.Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !enabled.Load() {
-				next.ServeHTTP(w, r)
-				return
-			}
-			start := time.Now()
-			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-			next.ServeHTTP(rec, r)
-			record(r.Method, r.URL.Path, rec.status, time.Since(start))
-		})
+// WithOTLPHTTPReader adds a periodic OTLP HTTP/protobuf push exporter
+// pointed at endpoint (e.g. `"http://collector:4318"` for plain HTTP
+// or `"https://collector.example.com"` for TLS). Same insecure-by-
+// default trade-off as [WithOTLPgRPCReader]; pass
+// `otlpmetrichttp.WithTLSClientConfig(...)` to opt into TLS.
+func WithOTLPHTTPReader(ctx context.Context, endpoint string, opts ...otlpmetrichttp.Option) Option {
+	return func(c *config) {
+		if c.err != nil {
+			return
+		}
+		base := []otlpmetrichttp.Option{
+			otlpmetrichttp.WithEndpoint(endpoint),
+			otlpmetrichttp.WithInsecure(),
+		}
+		exporter, err := otlpmetrichttp.New(ctx, append(base, opts...)...)
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.readers = append(c.readers, sdkmetric.NewPeriodicReader(exporter))
 	}
 }
 
-// record updates the per-key counters under the package mutex.
-func record(method, path string, status int, dur time.Duration) {
-	k := Key{Method: method, Path: path, StatusKlas: classify(status)}
-	stateMu.Lock()
-	counts[k]++
-	totalNs[k] += dur.Nanoseconds()
-	stateMu.Unlock()
-}
-
-// classify reduces a status code to its class string (e.g. 207 → "2xx",
-// 503 → "5xx") so the cardinality of the metric set stays bounded.
-func classify(status int) string {
-	switch status / 100 {
-	case 1:
-		return "1xx"
-	case 2:
-		return "2xx"
-	case 3:
-		return "3xx"
-	case 4:
-		return "4xx"
-	case 5:
-		return "5xx"
+// WithReader is the escape hatch: hand any pre-built `sdkmetric.Reader`
+// to [Init]. Use it when the project needs a custom exporter (in-memory
+// for tests, third-party SaaS, exotic transport) the Prometheus / OTLP
+// helpers don't cover. Stack as many WithReader options as needed —
+// the same MeterProvider fans every metric to all readers.
+func WithReader(r sdkmetric.Reader) Option {
+	return func(c *config) {
+		if c.err != nil {
+			return
+		}
+		c.readers = append(c.readers, r)
 	}
-	return "other"
 }
 
-// statusRecorder wraps http.ResponseWriter to capture the status code
-// the downstream handler eventually wrote.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-// WriteHeader records the status code before delegating.
-func (s *statusRecorder) WriteHeader(c int) {
-	s.status = c
-	s.ResponseWriter.WriteHeader(c)
-}
-
-// Flush forwards to the underlying writer's Flusher so SSE / NDJSON
-// handlers downstream keep their streaming capability.
-func (s *statusRecorder) Flush() {
-	if f, ok := s.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
+// Init wires an OTel MeterProvider with the supplied readers. With
+// zero options it defaults to [WithPrometheusReader] so the dev-mode
+// `/metrics` scrape works without extra plumbing. Production
+// deployments compose the readers they actually need:
+//
+//	// Pull (Prometheus scrape):
+//	metrics.Init(metrics.WithPrometheusReader())
+//
+//	// Push (OTLP gRPC to collector):
+//	metrics.Init(metrics.WithOTLPgRPCReader(ctx, "collector:4317"))
+//
+//	// Both — useful during a migration window:
+//	metrics.Init(
+//	    metrics.WithPrometheusReader(),
+//	    metrics.WithOTLPgRPCReader(ctx, "collector:4317"),
+//	)
+//
+// Returns the configured provider so callers can shut it down via
+// `provider.Shutdown(ctx)` during graceful termination — important
+// for OTLP push so the final batch flushes before the process exits.
+func Init(opts ...Option) (*sdkmetric.MeterProvider, error) {
+	cfg := &config{}
+	for _, o := range opts {
+		o(cfg)
 	}
+	if cfg.err != nil {
+		return nil, cfg.err
+	}
+	if len(cfg.readers) == 0 {
+		WithPrometheusReader()(cfg)
+		if cfg.err != nil {
+			return nil, cfg.err
+		}
+	}
+	sdkOpts := make([]sdkmetric.Option, 0, len(cfg.readers))
+	for _, r := range cfg.readers {
+		sdkOpts = append(sdkOpts, sdkmetric.WithReader(r))
+	}
+	provider := sdkmetric.NewMeterProvider(sdkOpts...)
+	otel.SetMeterProvider(provider)
+	enabled.Store(true)
+	return provider, nil
+}
+
+// InitDefault is the dev-friendly shorthand: it calls [Init] with the
+// Prometheus reader and installs the standard Go runtime / process
+// collectors so the `/metrics` scrape surfaces `go_*` (goroutines,
+// GC, memory) and `process_*` (RSS, CPU, FDs) alongside the HTTP
+// instruments `otelhttp` emits. Production projects pick the more
+// granular [Init] when they want a different reader set.
+//
+// Errors from collector registration are surfaced; the MeterProvider
+// itself is already installed by then, so the HTTP histogram path
+// keeps working even if a runtime collector fails to register (rare
+// but possible if a host strips procfs).
+func InitDefault() (*sdkmetric.MeterProvider, error) {
+	provider, err := Init(WithPrometheusReader())
+	if err != nil {
+		return nil, err
+	}
+	if regErr := registry.Register(collectors.NewGoCollector()); regErr != nil {
+		// AlreadyRegistered is fine on re-init; surface anything else.
+		if _, dup := regErr.(prom.AlreadyRegisteredError); !dup {
+			return provider, regErr
+		}
+	}
+	if regErr := registry.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{})); regErr != nil {
+		if _, dup := regErr.(prom.AlreadyRegisteredError); !dup {
+			return provider, regErr
+		}
+	}
+	return provider, nil
 }

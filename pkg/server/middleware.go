@@ -32,7 +32,7 @@ func Recovery(logger log.Logger) Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					logger.ErrorCtx(r.Context(), "panic recovered",
+					logger.WithContext(r.Context()).Error("panic recovered",
 						log.Any("panic", rec),
 						log.String("stack", string(debug.Stack())),
 					)
@@ -66,18 +66,22 @@ func RequestID() Middleware {
 
 // AccessLog logs one structured line per request after the response has
 // been written, including method, path, status, and elapsed time.
+//
+// Tracing identifiers (`trace_id`, `span_id`, `request_id`) are not
+// added explicitly — `WithContext(ctx)` extracts them from the request
+// context. Wire `otel.HTTPMiddleware(...)` and / or `RequestID()`
+// upstream of AccessLog to populate the context.
 func AccessLog(logger log.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rw, r)
-			logger.InfoCtx(r.Context(), "http access",
+			logger.WithContext(r.Context()).Info("http access",
 				log.String("method", r.Method),
 				log.String("path", r.URL.Path),
 				log.Int("status", rw.status),
 				log.Duration("latency", time.Since(start)),
-				log.String("request_id", RequestIDFromContext(r.Context())),
 			)
 		})
 	}

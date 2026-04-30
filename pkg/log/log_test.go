@@ -30,13 +30,19 @@ func TestZapLoggerEmitsAllLevels(t *testing.T) {
 	}
 }
 
-func TestZapLoggerCtxVariants(t *testing.T) {
+// TestZapLoggerWithContextChain pins the canonical context-aware call
+// shape: callers that have a context use `WithContext(ctx).<level>(...)`
+// instead of a dedicated `InfoCtx(ctx, ...)` shorthand. The interface
+// stays minimal, the chain reads explicitly, and the same code path
+// powers both empty-context and trace-bearing-context flows.
+func TestZapLoggerWithContextChain(t *testing.T) {
 	l, logs := newObserver(t)
 	ctx := context.Background()
-	l.DebugCtx(ctx, "d")
-	l.InfoCtx(ctx, "i")
-	l.WarnCtx(ctx, "w")
-	l.ErrorCtx(ctx, "e")
+	scoped := l.WithContext(ctx)
+	scoped.Debug("d")
+	scoped.Info("i")
+	scoped.Warn("w")
+	scoped.Error("e")
 	if logs.Len() != 4 {
 		t.Fatalf("want 4 entries, got %d", logs.Len())
 	}

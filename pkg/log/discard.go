@@ -13,14 +13,10 @@ func Discard() Logger { return discardLogger{} }
 // further configuration.
 type discardLogger struct{}
 
-func (discardLogger) Debug(string, ...Field)                          {}
-func (discardLogger) Info(string, ...Field)                           {}
-func (discardLogger) Warn(string, ...Field)                           {}
-func (discardLogger) Error(string, ...Field)                          {}
-func (discardLogger) DebugCtx(context.Context, string, ...Field)      {}
-func (discardLogger) InfoCtx(context.Context, string, ...Field)       {}
-func (discardLogger) WarnCtx(context.Context, string, ...Field)       {}
-func (discardLogger) ErrorCtx(context.Context, string, ...Field)      {}
-func (d discardLogger) With(...Field) Logger                          { return d }
-func (d discardLogger) WithContext(context.Context) Logger            { return d }
-func (discardLogger) Enabled(Level) bool                              { return false }
+func (discardLogger) Debug(string, ...Field)               {}
+func (discardLogger) Info(string, ...Field)                {}
+func (discardLogger) Warn(string, ...Field)                {}
+func (discardLogger) Error(string, ...Field)               {}
+func (d discardLogger) With(...Field) Logger               { return d }
+func (d discardLogger) WithContext(context.Context) Logger { return d }
+func (discardLogger) Enabled(Level) bool                   { return false }
