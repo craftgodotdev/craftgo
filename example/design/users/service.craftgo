@@ -23,24 +23,28 @@ import "shared"
 @security(bearer)
 service UserService {
 	@doc("List users with cursor pagination. The request shape mirrors shared.Pagination — see the comment in shared/shared.craftgo for why the showcase keeps a local copy.")
+	@errors(RateLimited, InvalidToken)
 	get ListUsers / {
 		request  ListUsersReq
 		response UserList
 	}
 
 	@doc("Fetch one user by id.")
+	@errors(UserNotFound, UserGone, InvalidToken)
 	get GetUser /{id} {
 		request  GetUserReq
 		response User
 	}
 
-	@doc("Create a new user.")
+	@doc("Create a new user. Surfaces a 409 when the email collides with an existing account, plus the standard auth/validation envelope.")
+	@errors(EmailTaken, ValidationFailed, MalformedRequest, InvalidToken, RateLimited)
 	post CreateUser / {
 		request  CreateUserReq
 		response User
 	}
 
 	@doc("Patch a user. Every field except id is optional.")
+	@errors(UserNotFound, EmailTaken, ValidationFailed, StaleVersion, InvalidToken, InsufficientScope)
 	patch UpdateUser /{id} {
 		request  UpdateUserReq
 		response User
@@ -51,7 +55,12 @@ service UserService {
 	// RateLimit, CORS, AuthRequired) then BodyLimit + Timeout, and
 	// the operation requires the `users:write` scope on top of the
 	// bearer token already advertised at service level.
+	//
+	// `AccountActionDenied` carries an enum reason (showcase: enum
+	// in the error body); `OwnershipConflict` carries a UserRef
+	// (showcase: same-package custom type in the error body).
 	@doc("Delete a user. Returns shared.OkResp regardless of prior state — idempotent.")
+	@errors(InsufficientScope, AccountSuspended, AccountActionDenied, OwnershipConflict, InvalidToken)
 	@middlewares(shared.BodyLimit, shared.Timeout)
 	@security(oauth2, scopes: ["users:write"])
 	delete DeleteUser /{id} {
@@ -60,6 +69,7 @@ service UserService {
 	}
 
 	@doc("Attach a Contact to a user. Demonstrates a nested type whose own type-level validators (@requiresOneOf / @mutuallyExclusive) gate the wire shape.")
+	@errors(UserNotFound, ValidationFailed, MalformedRequest, InvalidToken, shared.MaintenanceWindow)
 	post AddContact /{userId}/contacts {
 		request  AddContactReq
 		response shared.OkResp

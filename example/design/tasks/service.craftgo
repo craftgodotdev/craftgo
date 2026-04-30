@@ -20,12 +20,14 @@ service TaskService {
 	}
 
 	@doc("Fetch one task by id.")
+	@errors(TaskNotFound, shared.AuthRequiredErr, shared.MaintenanceWindow)
 	get GetTask /{id} {
 		request  GetTaskReq
 		response Task
 	}
 
-	@doc("Create a task under a project.")
+	@doc("Create a task under a project. Surfaces a 409 when the assignee already owns the slot — body carries the existing assignee via the cross-package users.UserRef type.")
+	@errors(TaskAssignmentConflict, shared.AuthRequiredErr)
 	post CreateTask / {
 		request  CreateTaskReq
 		response Task

@@ -1,0 +1,18 @@
+package design
+
+@prefix("/v1")
+@tags(users)
+service UserService {
+    // GetUser returns the user identified by {id}.
+    @doc("Look up a user by id.")
+    get GetUser /users/{id} {
+        response  User
+    }
+
+    // CreateUser stores a new user record.
+    @doc("Create a new user.")
+    post CreateUser /users {
+        request   User
+        response  User
+    }
+}

@@ -262,6 +262,14 @@ const (
 	// CodeRequiredOptional fires when `@required` appears on a `T?`
 	// field.
 	CodeRequiredOptional = "binding/required-optional"
+	// CodeBindingType fires when `@path`, `@header`, or `@cookie` is
+	// applied to a field whose type is not a non-array, non-optional
+	// `string`. The wire formats those decorators target carry only
+	// strings (URL segments, header values, cookie values), and the
+	// codegen would otherwise silently skip the field at gen time —
+	// surfacing the mismatch at design time gives the author an
+	// actionable error.
+	CodeBindingType = "binding/type"
 	// CodeServiceCollision fires when two packages in the same
 	// project both declare a primary `service` of the same name.
 	// The generated codegen layout keys output directories by
@@ -408,7 +416,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
 		a.checkPlacement(LvlType, "type "+dd.Name, dd.Decorators)
-		a.checkFieldPlacement(dd.Name, dd.Body)
+		a.checkFieldPlacement(LvlField, dd.Name, dd.Body)
 	case *ast.EnumDecl:
 		a.checkPlacement(LvlEnum, "enum "+dd.Name, dd.Decorators)
 		for _, v := range dd.Values {
@@ -416,10 +424,11 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 		}
 	case *ast.ErrorDecl:
 		a.checkPlacement(LvlError, "error "+dd.Name, dd.Decorators)
-		// Error bodies are field-shaped — same level as type fields so a
-		// validator like @length on `error.message` is rejected
-		// consistently.
-		a.checkFieldPlacement(dd.Name, dd.Body)
+		// Error bodies are server-emitted, so binding decorators
+		// (`@path`, `@query`, ...) and input-validators (`@minLength`,
+		// `@pattern`, ...) are rejected via the narrower
+		// [LvlErrorField] site.
+		a.checkFieldPlacement(LvlErrorField, dd.Name, dd.Body)
 	case *ast.ScalarDecl:
 		a.checkPlacement(LvlScalar, "scalar "+dd.Name, dd.Decorators)
 	case *ast.MiddlewareDecl:
@@ -439,13 +448,16 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 
 // checkFieldPlacement applies the placement check to every Field in a
 // type or error body. Mixin members carry no decorators and are skipped.
-func (a *analyzer) checkFieldPlacement(parent string, members []ast.TypeMember) {
+// site is [LvlField] for type bodies and [LvlErrorField] for error
+// bodies — the latter rejects request-binding and input-validator
+// decorators that don't make sense on server-emitted payloads.
+func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
 		if !ok {
 			continue
 		}
-		a.checkPlacement(LvlField, "field "+parent+"."+f.Name, f.Decorators)
+		a.checkPlacement(site, site.Name()+" "+parent+"."+f.Name, f.Decorators)
 	}
 }
 
@@ -543,28 +555,54 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	}
 	for _, f := range files {
 		for _, d := range f.Decls {
+			// Defensive: the parser is supposed to drop typed-nil
+			// pointers before they reach the AST, but mid-typing
+			// edits in the LSP have surfaced regressions before — a
+			// nil decl here used to crash the entire analyse. Skip
+			// instead.
+			if d == nil {
+				continue
+			}
 			switch dd := d.(type) {
 			case *ast.TypeDecl:
+				if dd == nil {
+					continue
+				}
 				if register(dd.Name, dd.Pos) {
 					a.pkg.Types[dd.Name] = dd
 				}
 			case *ast.EnumDecl:
+				if dd == nil {
+					continue
+				}
 				if register(dd.Name, dd.Pos) {
 					a.pkg.Enums[dd.Name] = dd
 				}
 			case *ast.ErrorDecl:
+				if dd == nil {
+					continue
+				}
 				if register(dd.Name, dd.Pos) {
 					a.pkg.Errors[dd.Name] = dd
 				}
 			case *ast.ScalarDecl:
+				if dd == nil {
+					continue
+				}
 				if register(dd.Name, dd.Pos) {
 					a.pkg.Scalars[dd.Name] = dd
 				}
 			case *ast.MiddlewareDecl:
+				if dd == nil {
+					continue
+				}
 				if register(dd.Name, dd.Pos) {
 					a.pkg.Middlewares[dd.Name] = dd
 				}
 			case *ast.ServiceDecl:
+				if dd == nil {
+					continue
+				}
 				si, ok := a.pkg.Services[dd.Name]
 				if !ok {
 					si = &ServiceInfo{}
@@ -918,7 +956,63 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 		}
 		a.checkRequiredOptional(parent, f)
 		a.checkSingleBinding(parent, f)
+		a.checkBindingFieldType(parent, f)
 	}
+}
+
+// checkBindingFieldType rejects `@path`, `@header`, and `@cookie` on a
+// field whose type is not a non-array, non-optional `string`. Those
+// wire formats carry only strings — the codegen would otherwise
+// silently skip the field, leaving the author with a runtime gap that
+// no diagnostic explains. We raise the error at design time so the
+// fix lands in the DSL where the mistake was made.
+func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
+	if f.Type == nil {
+		return
+	}
+	stringOnly := map[string]bool{"path": true, "header": true, "cookie": true}
+	for _, d := range f.Decorators {
+		if !stringOnly[d.Name] {
+			continue
+		}
+		if isPlainString(f.Type) {
+			continue
+		}
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+			"field %s.%s: @%s requires a non-array, non-optional string field — got %s",
+			parent, f.Name, d.Name, describeTypeRef(f.Type))
+		return
+	}
+}
+
+// isPlainString reports whether t is a non-array, non-optional `string`.
+// Mirrors codegen's `isPlainStringField` so the design-time check and
+// the codegen accept the same shape.
+func isPlainString(t *ast.TypeRef) bool {
+	if t == nil || t.Array || t.Optional {
+		return false
+	}
+	return t.Named != nil && t.Named.Name.String() == "string"
+}
+
+// describeTypeRef renders a short human label for a TypeRef so binding
+// diagnostics can say `got string?` / `got string[]` / `got int`. Kept
+// minimal — the diagnostic only needs to point at the mismatch.
+func describeTypeRef(t *ast.TypeRef) string {
+	if t == nil {
+		return "(none)"
+	}
+	name := "?"
+	if t.Named != nil {
+		name = t.Named.Name.String()
+	}
+	if t.Array {
+		name += "[]"
+	}
+	if t.Optional {
+		name += "?"
+	}
+	return name
 }
 
 // checkRequiredOptional rejects `@required` on a `T?` field. The two

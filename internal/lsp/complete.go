@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -67,6 +68,30 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 		if name == "middlewares" {
 			return s.middlewareNameCompletions(currentURI, currentSrc)
 		}
+		// `@security(<scheme>, scopes: [...])` — arg 1 is a scheme
+		// identifier that must resolve to a key in the project's
+		// `openapi.securitySchemes` map. Suggest the declared keys
+		// only at the arg-1 slot:
+		//
+		//   - cursor right after `(` (mid = LParen, no content yet),
+		//   - or mid-typing the scheme ident (mid = Ident,
+		//     prev = LParen).
+		//
+		// Anywhere past the first comma we are inside `scopes: [...]`
+		// (or further), where the items are application-defined
+		// strings, not scheme names — fall through to the generic
+		// branch instead.
+		atArgOne := false
+		if mid != nil && mid.Kind == lexer.LParen {
+			atArgOne = true
+		} else if prev != nil && prev.Kind == lexer.LParen {
+			atArgOne = true
+		}
+		if name == "security" && atArgOne {
+			if items := s.securitySchemeCompletions(currentURI); items != nil {
+				return items
+			}
+		}
 		if items := decoratorArgCompletions(view, pos, name); items != nil {
 			return items
 		}
@@ -103,6 +128,27 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if mid != nil && mid.Kind == lexer.Ident && prev != nil && prev.Kind == lexer.At {
 		return decoratorCompletions(view, pos, mid.Text)
 	}
+	// `error <Category>` position — fires when the cursor sits right
+	// after the `error` keyword (mid is nil or the in-progress
+	// category identifier). The 19 reserved HTTP categories are a
+	// closed set, so completion is the obvious affordance.
+	if prev != nil && prev.Kind == lexer.KwError && (mid == nil || mid.Kind == lexer.Ident) {
+		return errorCategoryCompletions()
+	}
+	// Just opened a block — cursor right after `{` with no
+	// in-progress identifier. Auto-suggest here is purely noise: the
+	// user has not signalled what they're about to type, and the
+	// project-wide-decls dump shadows whatever they actually wanted.
+	// Return empty so VS Code's popup stays out of the way; users who
+	// invoke completion manually (or start typing a letter) will land
+	// in the regular branches below.
+	//
+	// `mid` may be the matching `}` (when the cursor sits inside an
+	// empty `{}`), nil (cursor on whitespace), or absent. Anything
+	// other than an in-progress identifier counts as "no signal yet".
+	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
+		return nil
+	}
 	// Type position: include builtins + every declared type
 	// (project-wide).
 	if prev != nil && isTypePositionTrigger(*prev) {
@@ -118,17 +164,37 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 // surroundingTokens returns the tokens immediately before and at the
 // cursor. The "mid" token is the one whose span the cursor sits in
 // (typically the identifier being typed); "prev" is the most recent
-// non-trivia token before that.
+// non-trivia token whose span ends at or before the cursor.
+//
+// The position-aware backward scan is important: when the cursor sits
+// on whitespace the lexer has no token there, but the LAST token in
+// the file may be AFTER the cursor (e.g. cursor on the blank line
+// between `{` and `}` of a multi-line block). Falling back to
+// "last token in the slice" would mis-name `prev` as the trailing
+// `}` and break every completion branch that keys off `prev.Kind`.
 func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lexer.Token) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx >= 0 {
 		mid = &view.tokens[idx]
 	}
-	scan := idx
-	if scan < 0 {
-		scan = len(view.tokens) - 1
+	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
+	scanFrom := idx - 1
+	if idx < 0 {
+		scanFrom = -1
+		for i := len(view.tokens) - 1; i >= 0; i-- {
+			t := view.tokens[i]
+			if t.Kind == lexer.EOF {
+				continue
+			}
+			end := t.Pos
+			end.Column += len(t.Text)
+			if posLessEq(end, target) {
+				scanFrom = i
+				break
+			}
+		}
 	}
-	for i := scan - 1; i >= 0; i-- {
+	for i := scanFrom; i >= 0; i-- {
 		t := view.tokens[i]
 		if t.Kind == lexer.EOF {
 			continue
@@ -137,6 +203,15 @@ func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lex
 		break
 	}
 	return prev, mid
+}
+
+// posLessEq reports whether a comes at or before b in source order.
+// Lines win the comparison; columns tie-break within the same line.
+func posLessEq(a, b lexer.Position) bool {
+	if a.Line != b.Line {
+		return a.Line < b.Line
+	}
+	return a.Column <= b.Column
 }
 
 func isTypePositionTrigger(t lexer.Token) bool {
@@ -419,6 +494,53 @@ func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protoco
 				InsertText:    sd.Name,
 			})
 		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out
+}
+
+// securitySchemeCompletions returns one item per scheme declared
+// under `openapi.securitySchemes` in the project's
+// craftgo.design.yaml. Used for `@security(<scheme>, ...)` arg 1.
+// When the manifest is not findable (e.g. the file is open outside
+// any project root) or carries no schemes, the function returns nil
+// and the completion popup falls through to the generic branch —
+// no manifest is a permissive mode the codegen already supports, so
+// we mirror that here.
+//
+// Detail surfaces the OpenAPI scheme `type` (`oauth2`, `http`, ...)
+// so the user can pick by category at a glance; the scheme `Scheme`
+// (`bearer`, `basic`) and `In` (`header`, `query`, `cookie`) hint at
+// the sub-shape when present.
+func (s *Server) securitySchemeCompletions(currentURI string) []protocol.CompletionItem {
+	fsPath := uriToPath(currentURI)
+	if fsPath == "" {
+		return nil
+	}
+	cfg, _, _, err := config.Find(filepath.Dir(fsPath))
+	if err != nil || cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
+		return nil
+	}
+	out := make([]protocol.CompletionItem, 0, len(cfg.OpenAPI.SecuritySchemes))
+	for name, scheme := range cfg.OpenAPI.SecuritySchemes {
+		detail := scheme.Type
+		switch {
+		case scheme.Scheme != "":
+			detail = scheme.Type + " " + scheme.Scheme
+		case scheme.In != "" && scheme.Name != "":
+			detail = scheme.Type + " (" + scheme.In + " " + scheme.Name + ")"
+		}
+		doc := protocol.MarkupContent{
+			Kind:  protocol.Markdown,
+			Value: fmt.Sprintf("**`%s`** — %s security scheme.\n\nDeclared in `craftgo.design.yaml` under `openapi.securitySchemes.%s`.", name, scheme.Type, name),
+		}
+		out = append(out, protocol.CompletionItem{
+			Label:         name,
+			Kind:          protocol.CompletionItemKindEnumMember,
+			Detail:        detail,
+			Documentation: doc,
+			InsertText:    name,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
@@ -770,6 +892,59 @@ func declSymbolKindToCompletion(d ast.Decl) protocol.CompletionItemKind {
 	return protocol.CompletionItemKindClass
 }
 
+// errorCategoryStatus pairs each reserved HTTP error category with the
+// status code emitted by the codegen — exposed on the completion item's
+// Detail line so users see which HTTP code the category resolves to
+// without leaving the editor. Mirrors the readonly table in
+// internal/codegen/errors.go::categoryStatus; keep the two in sync.
+var errorCategoryStatus = []struct {
+	name   string
+	status int
+}{
+	{"BadRequest", 400},
+	{"Unauthorized", 401},
+	{"PaymentRequired", 402},
+	{"Forbidden", 403},
+	{"NotFound", 404},
+	{"MethodNotAllowed", 405},
+	{"NotAcceptable", 406},
+	{"Conflict", 409},
+	{"Gone", 410},
+	{"PreconditionFailed", 412},
+	{"PayloadTooLarge", 413},
+	{"UnsupportedMediaType", 415},
+	{"UnprocessableEntity", 422},
+	{"TooManyRequests", 429},
+	{"Internal", 500},
+	{"NotImplemented", 501},
+	{"BadGateway", 502},
+	{"ServiceUnavailable", 503},
+	{"GatewayTimeout", 504},
+}
+
+// errorCategoryCompletions returns one completion item per reserved
+// HTTP error category. Fired when the cursor sits in the
+// `error <cursor>` position. Each item carries the HTTP status as
+// Detail and a short doc snippet that the LSP client can render in
+// the autocomplete popup.
+func errorCategoryCompletions() []protocol.CompletionItem {
+	out := make([]protocol.CompletionItem, 0, len(errorCategoryStatus))
+	for _, c := range errorCategoryStatus {
+		detail := fmt.Sprintf("HTTP %d", c.status)
+		doc := protocol.MarkupContent{
+			Kind:  protocol.Markdown,
+			Value: fmt.Sprintf("**`%s`** — built-in error category (HTTP %d).\n\nUse as `error %s YourErrorName` to declare an error of this kind.", c.name, c.status, c.name),
+		}
+		out = append(out, protocol.CompletionItem{
+			Label:         c.name,
+			Kind:          protocol.CompletionItemKindEnumMember,
+			Detail:        detail,
+			Documentation: doc,
+		})
+	}
+	return out
+}
+
 // keywordCompletions lists the always-relevant top-level keywords.
 // Verbs intentionally appear too — they are valid identifiers when
 // declaring methods inside a service body, and the LSP client will
@@ -846,7 +1021,7 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 			return semantic.LvlEnumValue
 		case *ast.ErrorDecl:
 			if v.HasBody {
-				return semantic.LvlField
+				return semantic.LvlErrorField
 			}
 		case *ast.ServiceDecl:
 			return semantic.LvlMethod

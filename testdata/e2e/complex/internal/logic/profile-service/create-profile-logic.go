@@ -33,16 +33,24 @@ func (l *CreateProfileLogic) CreateProfile(req *types.CreateProfileReq) (*types.
 	defer l.svcCtx.Unlock()
 
 	// Reserved display names — schema validation cannot encode this so it
-	// becomes a 422 with the offending paths listed.
+	// becomes a 422 with the offending paths listed. `Code` mirrors the
+	// `@default(...)` value declared in the DSL so the wire envelope
+	// always carries the canonical machine-readable code.
 	if isReserved(req.DisplayName) {
-		return nil, types.NewProfileValidationFailedErr([]string{"displayName"})
+		return nil, types.NewProfileValidationFailedErr(types.ProfileValidationFailedBody{
+			Code:   "PROFILE_VALIDATION_FAILED",
+			Fields: []string{"displayName"},
+		})
 	}
 
 	// Email uniqueness — schema validation cannot reach the store.
 	for _, row := range l.svcCtx.Profiles {
 		other := row.(*types.Profile)
 		if strings.EqualFold(other.Contacts.Email, req.Contacts.Email) {
-			return nil, types.NewDuplicateEmailErr(req.Contacts.Email)
+			return nil, types.NewDuplicateEmailErr(types.DuplicateEmailBody{
+				Code:  "DUPLICATE_EMAIL",
+				Email: req.Contacts.Email,
+			})
 		}
 	}
 
@@ -51,7 +59,11 @@ func (l *CreateProfileLogic) CreateProfile(req *types.CreateProfileReq) (*types.
 	l.svcCtx.NextID++
 	if l.svcCtx.NextID%5 == 0 {
 		l.svcCtx.NextID-- // don't burn the id when we reject
-		return nil, types.NewRateLimitedErr(30)
+		return nil, types.NewRateLimitedErr(types.RateLimitedBody{
+			Code:       "RATE_LIMITED",
+			Message:    "Slow down, please",
+			RetryAfter: 30,
+		})
 	}
 
 	id := fmt.Sprintf("p%d", l.svcCtx.NextID)

@@ -329,13 +329,29 @@ error NotFound UserNotFound`)
 		`const ErrCodeUserNotFound = "USER_NOT_FOUND"`,
 		"type UserNotFoundErr struct {",
 		"func NewUserNotFoundErr() *UserNotFoundErr",
-		"Code: ErrCodeUserNotFound",
-		`"Not found"`,
-		"return e.Message",
+		"code: ErrCodeUserNotFound",
+		`message: "Not found"`,
+		"return e.message",
 		"return 404",
 	} {
 		if !strings.Contains(norm, want) {
 			t.Errorf("missing %q in:\n%s", want, src)
+		}
+	}
+	// Internal-only contract: code/message live as unexported struct
+	// fields, never on the wire. No body struct should be emitted for
+	// a body-less error.
+	for _, forbidden := range []string{
+		`Code string`,    // would be exported
+		`Message string`, // would be exported
+		`json:"code"`,
+		`json:"message"`,
+		"WithMessage",
+		"WithCode",
+		"UserNotFoundBody", // no body struct without user fields
+	} {
+		if strings.Contains(norm, forbidden) {
+			t.Errorf("forbidden token %q present:\n%s", forbidden, src)
 		}
 	}
 }
@@ -355,19 +371,27 @@ error BadRequest Validation {
 	// gofmt may align struct fields with extra spaces; collapse whitespace
 	// before substring matching.
 	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, `Fields []string `+"`json:\"fields\"`") {
-		t.Errorf("missing custom field:\n%s", src)
+	// Body struct holds the user-declared field with its JSON tag.
+	if !strings.Contains(norm, "type ValidationBody struct") {
+		t.Errorf("missing body struct:\n%s", src)
 	}
-	if !strings.Contains(src, "func NewValidationErr(fields []string) *ValidationErr") {
-		t.Errorf("constructor signature:\n%s", src)
+	if !strings.Contains(norm, `Fields []string `+"`json:\"fields\"`") {
+		t.Errorf("missing custom field on body struct:\n%s", src)
+	}
+	// Err type embeds the body struct (no per-field params on the ctor).
+	if !strings.Contains(src, "func NewValidationErr(body ValidationBody) *ValidationErr") {
+		t.Errorf("constructor must take a body struct:\n%s", src)
 	}
 }
 
-func TestGenerateErrorsCodeOverride(t *testing.T) {
+func TestGenerateErrorsUserDeclaresCodeAndMessage(t *testing.T) {
+	// User declaring `code` / `message` in the DSL produces exported
+	// wire fields (Go `Code` / `Message`); they coexist with the
+	// framework's unexported metadata fields without conflict.
 	pkg := analyze(t, `package design
 error Internal Boom {
-    code     string  @default("BOOM_500")
-    message  string  @default("kaboom")
+    code     string @default("BOOM_500")
+    message  string @default("kaboom")
 }`)
 	dir := t.TempDir()
 	if err := GenerateErrors(pkg, dir); err != nil {
@@ -376,11 +400,19 @@ error Internal Boom {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	if !strings.Contains(src, `"BOOM_500"`) {
-		t.Errorf("code override:\n%s", src)
+	norm := strings.Join(strings.Fields(src), " ")
+
+	// User wire fields surface on the body struct as exported Go names
+	// with the DSL JSON tag.
+	if !strings.Contains(norm, `Code string `+"`json:\"code\"`") {
+		t.Errorf("user `code` field should appear on body struct as exported Code:\n%s", src)
 	}
-	if !strings.Contains(src, `"kaboom"`) {
-		t.Errorf("message override:\n%s", src)
+	if !strings.Contains(norm, `Message string `+"`json:\"message\"`") {
+		t.Errorf("user `message` field should appear on body struct as exported Message:\n%s", src)
+	}
+	// Internal metadata stays present and unexported on the err type.
+	if !strings.Contains(norm, "code string message string") {
+		t.Errorf("err type must keep unexported code/message metadata:\n%s", src)
 	}
 	if !strings.Contains(src, "return 500") {
 		t.Errorf("status:\n%s", src)
@@ -402,6 +434,67 @@ error BadRequest ValidationErr`)
 	}
 	if strings.Contains(src, "ValidationErrErr") {
 		t.Error("smart suffix should keep ...Err name")
+	}
+}
+
+func TestGenerateErrorsResponseBindings(t *testing.T) {
+	pkg := analyze(t, `package design
+error TooManyRequests RateLimited {
+    retryAfter   string  @header
+    sessionToken string  @cookie
+    bucket       string?
+}`)
+	dir := t.TempDir()
+	if err := GenerateErrors(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	norm := strings.Join(strings.Fields(src), " ")
+
+	// Header / cookie fields must carry json:"-" so they don't double up
+	// in the JSON body alongside the response-header / cookie write.
+	if !strings.Contains(norm, `RetryAfter string `+"`json:\"-\"`") {
+		t.Errorf("retryAfter should have json:\"-\":\n%s", src)
+	}
+	if !strings.Contains(norm, `SessionToken string `+"`json:\"-\"`") {
+		t.Errorf("sessionToken should have json:\"-\":\n%s", src)
+	}
+	// Optional non-bound field keeps its real JSON tag.
+	if !strings.Contains(norm, `Bucket *string `+"`json:\"bucket\"`") {
+		t.Errorf("bucket should keep its DSL JSON tag:\n%s", src)
+	}
+	// WriteResponseHeaders must be emitted with the expected wire writes.
+	for _, want := range []string{
+		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
+		`w.Header().Set("retryAfter", e.RetryAfter)`,
+		`http.SetCookie(w, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
+		`"net/http"`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q:\n%s", want, src)
+		}
+	}
+}
+
+func TestGenerateErrorsNoBindingsNoHTTPImport(t *testing.T) {
+	// Without @header / @cookie fields, errors.go must NOT carry a
+	// `net/http` import or a WriteResponseHeaders method.
+	pkg := analyze(t, `package design
+error NotFound UserNotFound`)
+	dir := t.TempDir()
+	if err := GenerateErrors(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	if strings.Contains(src, `"net/http"`) {
+		t.Errorf("unexpected net/http import for binding-free errors:\n%s", src)
+	}
+	if strings.Contains(src, "WriteResponseHeaders") {
+		t.Errorf("unexpected WriteResponseHeaders method:\n%s", src)
 	}
 }
 

@@ -11,3 +11,21 @@ openapi:
   title:    CraftGo Showcase
   version:  1.0.0
   basePath: /api
+  # Security schemes referenced from `@security(<name>, ...)` in the
+  # DSL. The semantic analyser cross-checks every reference against
+  # this map, so adding a new `@security(foo, ...)` requires a
+  # matching entry here. Keys are arbitrary identifiers — the value
+  # decides which OpenAPI shape to emit.
+  securitySchemes:
+    # Bearer-token JWT — referenced as `@security(bearer)` at the
+    # service level (every method inherits) in users/service.craftgo.
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    # OAuth2 — referenced as `@security(oauth2, scopes: ["users:write"])`
+    # on individual methods that need an extra capability beyond the
+    # bearer token. Scopes are validated as strings, not against a
+    # closed set, because OAuth2 scopes are application-defined.
+    oauth2:
+      type: oauth2

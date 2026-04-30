@@ -35,7 +35,7 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
 		a.checkArgsScope(LvlType, dd.Decorators)
-		a.checkFieldArgs(dd.Body)
+		a.checkFieldArgs(LvlField, dd.Body)
 	case *ast.EnumDecl:
 		a.checkArgsScope(LvlEnum, dd.Decorators)
 		for _, v := range dd.Values {
@@ -43,7 +43,7 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 		}
 	case *ast.ErrorDecl:
 		a.checkArgsScope(LvlError, dd.Decorators)
-		a.checkFieldArgs(dd.Body)
+		a.checkFieldArgs(LvlErrorField, dd.Body)
 	case *ast.ScalarDecl:
 		a.checkArgsScope(LvlScalar, dd.Decorators)
 	case *ast.MiddlewareDecl:
@@ -59,14 +59,15 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 }
 
 // checkFieldArgs walks fields in a type or error body. Mixin members
-// have no decorators and are skipped.
-func (a *analyzer) checkFieldArgs(members []ast.TypeMember) {
+// have no decorators and are skipped. site is [LvlField] for type
+// bodies and [LvlErrorField] for error bodies.
+func (a *analyzer) checkFieldArgs(site Level, members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
 		if !ok {
 			continue
 		}
-		a.checkArgsScope(LvlField, f.Decorators)
+		a.checkArgsScope(site, f.Decorators)
 	}
 }
 

@@ -439,10 +439,13 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 			Description: fmt.Sprintf("%s error response (HTTP %d).",
 				ed.Category, categoryStatus[ed.Category]),
 		}
-		s.Properties["code"] = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
-		s.Properties["message"] = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
-		// Custom user-declared fields (anything other than code /
-		// message) become regular properties on the same schema.
+		// `code` / `message` are reserved DSL slots (design-time
+		// override of the framework defaults via `@default(...)`) and
+		// never appear on the wire — they're internal metadata exposed
+		// through the `Code()` / `Error()` methods. Fields tagged with
+		// `@header` / `@cookie` are also excluded — they ride on the
+		// response writer (see [renderErrorResponseHeadersMethod]).
+		// Anything else becomes a regular property on the schema.
 		for _, m := range ed.Body {
 			f, ok := m.(*ast.Field)
 			if !ok {
@@ -451,9 +454,12 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 			if f.Name == "code" || f.Name == "message" {
 				continue
 			}
+			switch bindingFromDecorators(f.Decorators) {
+			case "header", "cookie":
+				continue
+			}
 			s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
 		}
-		s.Required = []string{"code", "message"}
 		doc.Components.Schemas[typeName] = &openapi3.SchemaRef{Value: s}
 	}
 }

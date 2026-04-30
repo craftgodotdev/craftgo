@@ -400,6 +400,56 @@ func TestCodeOnBindingConflict(t *testing.T) {
 	}
 }
 
+func TestCodeOnBindingType(t *testing.T) {
+	cases := []struct {
+		label string
+		src   string
+		want  string
+	}{
+		{"non-string on @path", `type X { id int @path }`, "@path requires"},
+		{"non-string on @header", `type X { auth int @header }`, "@header requires"},
+		{"non-string on @cookie", `type X { sid int @cookie }`, "@cookie requires"},
+		{"optional string on @path", `type X { id string? @path }`, "@path requires"},
+		{"array string on @header", `type X { trace string[] @header }`, "@header requires"},
+		{"non-string @header on error", `error NotFound E { auth int @header }`, "@header requires"},
+		{"non-string @cookie on error", `error NotFound E { sid int @cookie }`, "@cookie requires"},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			_, diags := Analyze(parseFiles(t, c.src))
+			d := findCode(diags, CodeBindingType)
+			if d == nil {
+				t.Fatalf("want binding/type, got %v", codes(diags))
+			}
+			if !strings.Contains(d.Msg, c.want) {
+				t.Errorf("msg %q missing %q", d.Msg, c.want)
+			}
+		})
+	}
+}
+
+func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
+	// Sanity: the new check must NOT fire for the well-formed shapes
+	// codegen has always accepted.
+	mustClean(t, `type X { id string @path  auth string @header  sid string @cookie }`)
+	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
+}
+
+func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
+	// `code` / `message` are no longer reserved DSL names — they
+	// coexist with the framework's unexported `code` / `message`
+	// metadata via Go's case-sensitive identifier rule (DSL `code` →
+	// exported `Code`, distinct from the lowercase framework field).
+	mustClean(t, `error NotFound E {
+    code     string @default("E_404")
+    message  string @default("Gone")
+}`)
+	mustClean(t, `error TooManyRequests RateLimited {
+    retryAfter int @min(1)
+    bucket     string?
+}`)
+}
+
 func TestCodeOnPassthroughBody(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type Req { name string }

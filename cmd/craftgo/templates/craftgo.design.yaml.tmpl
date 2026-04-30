@@ -1,0 +1,56 @@
+# craftgo.design.yaml — project manifest read by every CLI command.
+# Uncomment optional blocks below as you need them.
+
+# Go module path of the project — every generated file's package
+# import resolves through this.
+package: {{.Package}}
+
+# Output paths are resolved against the project root (the parent of
+# this file's directory). Per-service buckets are created
+# automatically under the directory paths below at gen time.
+output:
+  types:      ./internal/types
+  handler:    ./internal/handler
+  routes:     ./internal/routes
+  logic:      ./internal/logic
+  middleware: ./internal/middleware
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+  # client:   ./internal/client     # generated client SDK output dir
+  # main:     ./cmd/server/main.go  # generated bootstrap main file
+
+# OpenAPI metadata flows into the generated openapi.yaml's info /
+# servers / components blocks.
+openapi:
+  title:    My API
+  version:  1.0.0
+  basePath: /api
+
+  # Security schemes referenced from `@security(<name>, ...)` in
+  # the DSL. The semantic analyser cross-checks every reference
+  # against this map — adding `@security(foo, ...)` requires a
+  # matching entry here. Uncomment + edit when you wire authentication.
+  # securitySchemes:
+  #   # Bearer-token JWT — typical service-level default. Reference
+  #   # via `@security(bearer)` on the service or method.
+  #   bearer:
+  #     type: http
+  #     scheme: bearer
+  #     bearerFormat: JWT
+  #   # OAuth2 with scopes — reference via
+  #   # `@security(oauth2, scopes: ["users:write"])` on the method.
+  #   oauth2:
+  #     type: oauth2
+  #   # API-key in a header / query / cookie — reference via
+  #   # `@security(apiKey)`.
+  #   apiKey:
+  #     type: apiKey
+  #     in: header        # one of: header, query, cookie
+  #     name: X-API-Key
+
+# Project-local template override directory. When set, codegen prefers
+# files in this directory over the framework's bundled templates,
+# letting you tweak generated Go without forking the tool. Uncomment
+# only when you actually have overrides — an empty dir is a no-op.
+# templates:
+#   dir: ./design/templates

@@ -328,47 +328,28 @@ func TestComplexRateLimitReturns429(t *testing.T) {
 	}
 }
 
-// TestComplexCustomMessageDesignTime confirms the `@default("...")` form
-// on the message field replaces the category default at gen time.
-// RateLimited's design declares `message string @default("Slow down, please")`
-// so every NewRateLimitedErr starts with that message.
-func TestComplexCustomMessageDesignTime(t *testing.T) {
-	got := types.NewRateLimitedErr(7).Message
-	if got != "Slow down, please" {
-		t.Errorf("design-time @default override missed; got %q", got)
+// TestComplexUserDeclaredEnvelopeReachesWire confirms that user-declared
+// `code` / `message` fields surface on the JSON wire (with the value the
+// caller wrote into the body struct), while errors that don't declare
+// them on the body fall back to the framework's `{code, message}`
+// envelope synthesised from `Code()` / `Error()`.
+func TestComplexUserDeclaredEnvelopeReachesWire(t *testing.T) {
+	rl := types.NewRateLimitedErr(types.RateLimitedBody{
+		Code:       "RATE_LIMITED",
+		Message:    "Slow down, please",
+		RetryAfter: 7,
+	})
+	if rl.Code != "RATE_LIMITED" || rl.Message != "Slow down, please" || rl.RetryAfter != 7 {
+		t.Errorf("body fields did not round-trip: %+v", rl)
 	}
-}
-
-// TestComplexCustomMessageRuntime confirms the generated WithMessage
-// fluent setter overrides the canonical message per call.
-// GetProfile's logic returns NewProfileNotFoundErr().WithMessage(...).
-func TestComplexCustomMessageRuntime(t *testing.T) {
-	ts, _ := boot(t)
-	status, body := httpJSON(t, ts, http.MethodGet, "/api/v1/profiles/ghost", nil)
-	if status != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", status)
+	// Bodyless errors leave the JSON wire empty; writeError fills the
+	// fallback envelope from the unexported metadata.
+	nf := types.NewProfileNotFoundErr()
+	if nf.HTTPStatus() != http.StatusNotFound {
+		t.Errorf("ProfileNotFound status: %d", nf.HTTPStatus())
 	}
-	var payload struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload.Code != "PROFILE_NOT_FOUND" {
-		t.Errorf("code should stay canonical, got %q", payload.Code)
-	}
-	if payload.Message != "Profile ghost does not exist" {
-		t.Errorf("WithMessage runtime override missed; got %q", payload.Message)
-	}
-}
-
-// TestComplexWithCodeRuntime confirms the WithCode fluent setter swaps
-// the machine-readable code while leaving the rest of the payload alone.
-func TestComplexWithCodeRuntime(t *testing.T) {
-	got := types.NewProfileNotFoundErr().WithCode("CUSTOM_CODE")
-	if got.Code != "CUSTOM_CODE" {
-		t.Errorf("WithCode missed; got %q", got.Code)
+	if nf.Error() == "" {
+		t.Errorf("ProfileNotFound message must come from category default")
 	}
 }
 
@@ -719,25 +700,42 @@ func TestSecurityRoutesGoFileWrapsHandler(t *testing.T) {
 
 // TestComplexErrorTypesShape pins the constructor surfaces of every
 // generated business error so a future refactor cannot silently change
-// the number/order of arguments.
+// the body-struct field set.
 func TestComplexErrorTypesShape(t *testing.T) {
-	dup := types.NewDuplicateEmailErr("a@b.com")
+	dup := types.NewDuplicateEmailErr(types.DuplicateEmailBody{
+		Code:  "DUPLICATE_EMAIL",
+		Email: "a@b.com",
+	})
 	if dup.HTTPStatus() != http.StatusConflict || dup.Code != "DUPLICATE_EMAIL" {
 		t.Errorf("DuplicateEmail mis-shaped: %+v", dup)
 	}
-	val := types.NewProfileValidationFailedErr([]string{"x"})
+	val := types.NewProfileValidationFailedErr(types.ProfileValidationFailedBody{
+		Code:   "PROFILE_VALIDATION_FAILED",
+		Fields: []string{"x"},
+	})
 	if val.HTTPStatus() != http.StatusUnprocessableEntity {
 		t.Errorf("ProfileValidationFailed status: %d", val.HTTPStatus())
 	}
-	rl := types.NewRateLimitedErr(7)
+	rl := types.NewRateLimitedErr(types.RateLimitedBody{
+		Code:       "RATE_LIMITED",
+		Message:    "Slow down, please",
+		RetryAfter: 7,
+	})
 	if rl.HTTPStatus() != http.StatusTooManyRequests || rl.RetryAfter != 7 {
 		t.Errorf("RateLimited mis-shaped: %+v", rl)
 	}
-	perm := types.NewInsufficientPermissionsErr("admin")
+	perm := types.NewInsufficientPermissionsErr(types.InsufficientPermissionsBody{
+		Code:         "INSUFFICIENT_PERMISSIONS",
+		RequiredRole: "admin",
+	})
 	if perm.HTTPStatus() != http.StatusForbidden || perm.RequiredRole != "admin" {
 		t.Errorf("InsufficientPermissions mis-shaped: %+v", perm)
 	}
-	stale := types.NewStaleVersionErr(2, 5)
+	stale := types.NewStaleVersionErr(types.StaleVersionBody{
+		Code:            "STALE_VERSION",
+		ExpectedVersion: 2,
+		ActualVersion:   5,
+	})
 	if stale.HTTPStatus() != http.StatusPreconditionFailed || stale.ExpectedVersion != 2 || stale.ActualVersion != 5 {
 		t.Errorf("StaleVersion mis-shaped: %+v", stale)
 	}

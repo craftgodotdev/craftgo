@@ -355,7 +355,20 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	case lexer.KwService:
 		return p.parseServiceDecl(decs, false)
 	case lexer.KwExtend:
-		return p.parseExtendService(decs)
+		// parseExtendService returns a `*ast.ServiceDecl` (concrete
+		// pointer) and may emit a typed nil on incomplete input
+		// (`extend` with nothing — or anything other than `service`
+		// — after it). Returning that pointer directly would wrap a
+		// typed-nil into the ast.Decl interface, which then passes
+		// the `d != nil` guard at the call site and crashes the
+		// semantic phase on a nil dereference. Convert the typed nil
+		// to an untyped nil-interface here so the caller's guard
+		// works as expected.
+		sd := p.parseExtendService(decs)
+		if sd == nil {
+			return nil
+		}
+		return sd
 	case lexer.EOF:
 		return nil
 	}

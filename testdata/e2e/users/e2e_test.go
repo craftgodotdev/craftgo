@@ -150,8 +150,10 @@ func TestE2EErrorTypeShape(t *testing.T) {
 	if err.HTTPStatus() != http.StatusNotFound {
 		t.Errorf("expected 404 status, got %d", err.HTTPStatus())
 	}
-	if err.Code != "USER_NOT_FOUND" {
-		t.Errorf("expected SCREAMING_SNAKE code, got %q", err.Code)
+	// `code` lives as an unexported framework-internal field; the
+	// canonical code is exposed via the constant for client switching.
+	if types.ErrCodeUserNotFound != "USER_NOT_FOUND" {
+		t.Errorf("expected SCREAMING_SNAKE code constant, got %q", types.ErrCodeUserNotFound)
 	}
 	if err.Error() == "" {
 		t.Error("Error() should not be empty")

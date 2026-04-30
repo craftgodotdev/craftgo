@@ -1,0 +1,34 @@
+// ----------------------------------------------------------------
+// Tasks-domain errors. The interesting case here is
+// `TaskAssignmentConflict`, which embeds a CROSS-PACKAGE custom
+// type (`users.UserRef`) in the body — the codegen resolves the
+// qualified name through the import graph and the OpenAPI schema
+// $refs the canonical UserRef definition rather than inlining it.
+// ----------------------------------------------------------------
+package tasks
+
+import "users"
+
+// TaskNotFound is the canonical 404 when a Task id does not
+// resolve. Bodyless — the URL already carries the offending id, so
+// echoing it would be redundant.
+error NotFound TaskNotFound
+
+// TaskAssignmentConflict is the 409 raised when assignment would
+// clobber a task that another user is already working on. The
+// body carries the existing assignee as a `users.UserRef` so
+// clients can render "currently assigned to <name>" without a
+// follow-up lookup.
+//
+// The cross-package type rides through to:
+//   - the generated Go body struct (typed `users.UserRef` field);
+//   - the OpenAPI schema (`$ref: '#/components/schemas/UserRef'`);
+//   - the @errors(...) reference on whichever method declares it.
+error Conflict TaskAssignmentConflict {
+	code            string        @default("TASK_ASSIGNMENT_CONFLICT")
+	currentAssignee users.UserRef
+	// pendingStatus pins the task state at the moment the conflict
+	// fired so the client doesn't refetch just to learn whether the
+	// task is still open or already in progress.
+	pendingStatus   TaskStatus
+}

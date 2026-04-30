@@ -35,12 +35,23 @@ func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 // documentSymbols walks the top-level declarations and emits one
 // DocumentSymbol each. Type and service declarations carry nested
 // children for their fields and methods respectively.
+//
+// Declarations whose name token has not been parsed yet (typical
+// while the author is mid-typing — e.g. just `service` with no
+// identifier yet) are filtered out entirely: VS Code's
+// `DocumentSymbol` validator rejects a falsy `Name` with
+// "name must not be falsy", which crashes the symbol provider for
+// the whole file. Skipping incomplete decls keeps the outline view
+// usable while typing.
 func documentSymbols(view snapshotView) []protocol.DocumentSymbol {
 	if view.file == nil {
 		return nil
 	}
 	out := make([]protocol.DocumentSymbol, 0, len(view.file.Decls))
 	for _, d := range view.file.Decls {
+		if d.DeclName() == "" {
+			continue
+		}
 		out = append(out, declSymbol(d))
 	}
 	return out
@@ -53,9 +64,11 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 	case *ast.TypeDecl:
 		children := make([]protocol.DocumentSymbol, 0, len(v.Body))
 		for _, m := range v.Body {
-			if f, ok := m.(*ast.Field); ok {
-				children = append(children, fieldSymbol(f))
+			f, ok := m.(*ast.Field)
+			if !ok || f.Name == "" {
+				continue
 			}
+			children = append(children, fieldSymbol(f))
 		}
 		return protocol.DocumentSymbol{
 			Name:           v.Name,
@@ -68,6 +81,9 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 	case *ast.EnumDecl:
 		children := make([]protocol.DocumentSymbol, 0, len(v.Values))
 		for _, ev := range v.Values {
+			if ev.Name == "" {
+				continue
+			}
 			er := rangeOfPosLen(ev.Pos, len(ev.Name))
 			children = append(children, protocol.DocumentSymbol{
 				Name:           ev.Name,
@@ -111,6 +127,9 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 	case *ast.ServiceDecl:
 		children := make([]protocol.DocumentSymbol, 0, len(v.Methods))
 		for _, m := range v.Methods {
+			if m.Name == "" {
+				continue
+			}
 			children = append(children, methodSymbol(m))
 		}
 		return protocol.DocumentSymbol{

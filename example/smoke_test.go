@@ -747,3 +747,135 @@ func TestNumericPointerValidatorsCompile(t *testing.T) {
 		t.Errorf("loyaltyPoints=500 should pass: %v", err)
 	}
 }
+
+// TestUserDomainErrorsConstruct exercises the generated error types
+// in `internal/types/users/errors.go`. Each declared `error <Cat>
+// <Name>` produces a typed Go struct with a `New<Name>Err(...)`
+// constructor and Error() / HTTPStatus() methods, so logic can
+// `return users.NewEmailTakenErr("a@b", nil)` and the error layer
+// surfaces the right wire shape.
+func TestUserDomainErrorsConstruct(t *testing.T) {
+	// 404 — bodyless. The constructor takes no args; the framework's
+	// `code` / `message` metadata is unexported and never on the wire.
+	notFound := usersapi.NewUserNotFoundErr()
+	if notFound.HTTPStatus() != 404 {
+		t.Errorf("UserNotFoundErr.HTTPStatus() = %d, want 404", notFound.HTTPStatus())
+	}
+	if notFound.Error() == "" {
+		t.Errorf("UserNotFoundErr.Error() returned empty string")
+	}
+
+	// 409 with body — EmailTaken carries the offending email and
+	// optionally the existing user id. The constructor takes a single
+	// EmailTakenBody struct; user-declared fields are accessed via the
+	// embedded body.
+	existing := "u_42"
+	taken := usersapi.NewEmailTakenErr(usersapi.EmailTakenBody{
+		Email:      "alice@example.com",
+		ExistingID: &existing,
+	})
+	if taken.HTTPStatus() != 409 {
+		t.Errorf("EmailTakenErr.HTTPStatus() = %d, want 409", taken.HTTPStatus())
+	}
+	if taken.Email != "alice@example.com" {
+		t.Errorf("EmailTakenErr.Email = %q, want alice@example.com", taken.Email)
+	}
+	if taken.ExistingID == nil || *taken.ExistingID != "u_42" {
+		t.Errorf("EmailTakenErr.ExistingID = %v, want pointer to u_42", taken.ExistingID)
+	}
+
+	// 422 ValidationFailed — fields slice + optional hint.
+	vf := usersapi.NewValidationFailedErr(usersapi.ValidationFailedBody{
+		Fields: []string{"/email", "/avatar/url"},
+	})
+	if vf.HTTPStatus() != 422 {
+		t.Errorf("ValidationFailedErr.HTTPStatus() = %d, want 422", vf.HTTPStatus())
+	}
+	if len(vf.Fields) != 2 {
+		t.Errorf("ValidationFailedErr.Fields = %v, want 2 entries", vf.Fields)
+	}
+
+	// 429 RateLimited — body struct carries user-declared wire fields.
+	// User's `message` field is now an exported wire field on the body
+	// struct; if the caller doesn't set it, it stays at the Go zero
+	// value (callers wrap construction with their own helpers when
+	// they want a default value applied automatically).
+	rl := usersapi.NewRateLimitedErr(usersapi.RateLimitedBody{
+		Message:    "Slow down, please",
+		RetryAfter: 30,
+	})
+	if rl.HTTPStatus() != 429 {
+		t.Errorf("RateLimitedErr.HTTPStatus() = %d, want 429", rl.HTTPStatus())
+	}
+	if rl.RetryAfter != 30 {
+		t.Errorf("RateLimitedErr.RetryAfter = %d, want 30", rl.RetryAfter)
+	}
+	if rl.Message != "Slow down, please" {
+		t.Errorf("RateLimitedErr.Message = %q, want \"Slow down, please\"", rl.Message)
+	}
+
+	// 412 StaleVersion — both versions echo back so the client can
+	// reload + diff before retrying.
+	sv := usersapi.NewStaleVersionErr(usersapi.StaleVersionBody{
+		ExpectedVersion: 4,
+		ActualVersion:   7,
+	})
+	if sv.HTTPStatus() != 412 {
+		t.Errorf("StaleVersionErr.HTTPStatus() = %d, want 412", sv.HTTPStatus())
+	}
+	if sv.ExpectedVersion != 4 || sv.ActualVersion != 7 {
+		t.Errorf("StaleVersionErr versions = (%d, %d), want (4, 7)", sv.ExpectedVersion, sv.ActualVersion)
+	}
+}
+
+// TestUserDomainErrorsImplementErrorInterface confirms every
+// generated error type satisfies Go's `error` interface so logic
+// code can `return err` without per-type wrapping. The framework
+// relies on this for the `writeError(w, err)` helper that maps
+// typed errors to their declared HTTP status.
+func TestUserDomainErrorsImplementErrorInterface(t *testing.T) {
+	// Each entry doubles as a smoke check that the generated code
+	// compiles with the right interface — the slice literal forces
+	// every value into an `error` slot.
+	errs := []error{
+		usersapi.NewUserNotFoundErr(),
+		usersapi.NewUserGoneErr(),
+		usersapi.NewInvalidTokenErr(),
+		usersapi.NewInternalError(),
+		usersapi.NewEmailTakenErr(usersapi.EmailTakenBody{Email: "a@b"}),
+		usersapi.NewRateLimitedErr(usersapi.RateLimitedBody{RetryAfter: 1}),
+		usersapi.NewValidationFailedErr(usersapi.ValidationFailedBody{}),
+	}
+	for i, e := range errs {
+		if e.Error() == "" {
+			t.Errorf("errs[%d] Error() returned empty string", i)
+		}
+	}
+}
+
+// TestUserDomainErrorsJSONShape pins the on-the-wire JSON shape under
+// the new design: only user-declared body fields are marshalled — the
+// framework's internal `code` / `message` are unexported and skipped
+// by encoding/json. EmailTaken's body declares only `email` and an
+// optional `existingId`, so the JSON wire echoes those alone. Clients
+// who want the canonical machine-readable code on the wire declare
+// `code string @default("...")` in the DSL (then it surfaces as the
+// exported `Code` body field).
+func TestUserDomainErrorsJSONShape(t *testing.T) {
+	taken := usersapi.NewEmailTakenErr(usersapi.EmailTakenBody{
+		Email: "alice@example.com",
+	})
+	out, err := json.Marshal(taken)
+	if err != nil {
+		t.Fatalf("marshal EmailTakenErr: %v", err)
+	}
+	js := string(out)
+	if !strings.Contains(js, `"email":"alice@example.com"`) {
+		t.Errorf("EmailTakenErr JSON missing email: %s", js)
+	}
+	for _, forbidden := range []string{`"code"`, `"message"`} {
+		if strings.Contains(js, forbidden) {
+			t.Errorf("EmailTakenErr JSON should not contain %s (internal-only): %s", forbidden, js)
+		}
+	}
+}

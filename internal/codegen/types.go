@@ -420,9 +420,9 @@ var commonInitialisms = map[string]bool{
 }
 
 // GoFieldName converts a DSL field name (which is allowed to be lowercase,
-// snake_case, kebab-case, or camelCase) into an exported Go identifier
-// applying the common-initialism rule. The DSL field name is preserved
-// verbatim as the JSON tag — see [jsonTag].
+// snake_case, or camelCase) into an exported Go identifier applying the
+// common-initialism rule. The DSL field name is preserved verbatim as the
+// JSON tag — see [jsonTag].
 func GoFieldName(name string) string {
 	parts := splitFieldName(name)
 	var sb strings.Builder

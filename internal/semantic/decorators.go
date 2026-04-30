@@ -29,7 +29,9 @@ const (
 	LvlFile Level = 1 << iota
 	// LvlType is a `type Name { ... }` declaration.
 	LvlType
-	// LvlField is a field inside a `type` or `error` body.
+	// LvlField is a field inside a `type` body. Fields inside an
+	// `error` body use [LvlErrorField] instead so request-only and
+	// validator decorators are rejected on server-emitted payloads.
 	LvlField
 	// LvlService is a `service Name { ... }` (primary only — `extend
 	// service` rejects service-level decorators upstream).
@@ -46,6 +48,14 @@ const (
 	LvlScalar
 	// LvlMiddleware is a `middleware Name(...)` declaration.
 	LvlMiddleware
+	// LvlErrorField is a field inside an `error` body. Distinct from
+	// [LvlField] because errors are server-emitted, so request-only
+	// decorators (`@path`, `@query`, `@body`, `@form`, `@required`,
+	// `@maxSize`, `@mimeTypes`) are rejected. Schema validators
+	// (`@minLength`, `@pattern`, `@min`, ...) are still accepted
+	// but contribute only to OpenAPI schema constraints — codegen
+	// does not generate a runtime `Validate()` for ErrorDecl types.
+	LvlErrorField
 )
 
 // levelNames pairs each single-bit level with its human label, in stable
@@ -66,6 +76,7 @@ var levelNames = []struct {
 	{LvlError, "error"},
 	{LvlScalar, "scalar"},
 	{LvlMiddleware, "middleware"},
+	{LvlErrorField, "error field"},
 }
 
 // Name returns the label for a single-bit level. It returns "unknown"
@@ -276,19 +287,19 @@ var Registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
 		Name:   "doc",
-		Levels: LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware,
+		Levels: LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlErrorField,
 		Doc:    "Free-form documentation surfaced in OpenAPI and IDE hover.",
 		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 	},
 	"deprecated": {
 		Name:   "deprecated",
-		Levels: LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware,
+		Levels: LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlErrorField,
 		Doc:    "Marks the construct as deprecated; OpenAPI emits the deprecated flag.",
 		Args:   ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}},
 	},
 	"example": {
 		Name:   "example",
-		Levels: LvlType | LvlField | LvlMethod | LvlError,
+		Levels: LvlType | LvlField | LvlMethod | LvlError | LvlErrorField,
 		Doc:    "Single example value rendered in OpenAPI examples block.",
 		// Validated by [analyzer.checkExampleArgs] — the arg may be
 		// a literal OR a {key: value} object. Min/Max enforced in the
@@ -296,7 +307,7 @@ var Registry = map[string]Spec{
 	},
 	"examples": {
 		Name:   "examples",
-		Levels: LvlType | LvlField | LvlMethod | LvlError,
+		Levels: LvlType | LvlField | LvlMethod | LvlError | LvlErrorField,
 		Doc:    "Named map of example values rendered in OpenAPI.",
 		// Validated by [analyzer.checkExamplesArgs].
 	},
@@ -354,33 +365,37 @@ var Registry = map[string]Spec{
 	},
 
 	// ---- Field validation: string ----
+	// On request bodies (LvlField) these emit runtime validators; on
+	// error bodies (LvlErrorField) errors are server-emitted so they
+	// surface only as OpenAPI schema constraints — no runtime check
+	// is generated for ErrorDecl types.
 	"length": {
-		Name: "length", Levels: LvlField | LvlScalar,
+		Name: "length", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Exact or [min,max] length for strings.",
 		Args:      ArgsRule{Min: 1, Max: 2, Kinds: []ArgKind{ArgInt, ArgInt}},
 		AppliesTo: PrimString,
 	},
 	"minLength": {
-		Name: "minLength", Levels: LvlField | LvlScalar,
+		Name: "minLength", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Minimum string length.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
 		AppliesTo: PrimString,
 	},
 	"maxLength": {
-		Name: "maxLength", Levels: LvlField | LvlScalar,
+		Name: "maxLength", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Maximum string length.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
 		AppliesTo: PrimString,
 	},
 	"pattern": {
-		Name: "pattern", Levels: LvlField | LvlScalar,
+		Name: "pattern", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "RE2 regex the value must match.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 		AppliesTo: PrimString,
 	},
 	"format": {
 		Name:   "format",
-		Levels: LvlField | LvlScalar,
+		Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:    "Named format constraint (e.g. email, uuid, datetime).",
 		Args: ArgsRule{
 			Min: 1, Max: 1,
@@ -392,27 +407,27 @@ var Registry = map[string]Spec{
 
 	// ---- Field validation: number ----
 	"min": {
-		Name: "min", Levels: LvlField | LvlScalar,
+		Name: "min", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Minimum numeric value (inclusive).",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
 	"max": {
-		Name: "max", Levels: LvlField | LvlScalar,
+		Name: "max", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Maximum numeric value (inclusive).",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
 	"range": {
-		Name: "range", Levels: LvlField | LvlScalar,
+		Name: "range", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Numeric range (min, max) inclusive.",
 		Args:      ArgsRule{Min: 2, Max: 2, Kinds: []ArgKind{ArgNumber, ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
-	"positive": {Name: "positive", Levels: LvlField | LvlScalar, Doc: "Value must be > 0.", AppliesTo: PrimNumber},
-	"negative": {Name: "negative", Levels: LvlField | LvlScalar, Doc: "Value must be < 0.", AppliesTo: PrimNumber},
+	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber},
+	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber},
 	"multipleOf": {
-		Name: "multipleOf", Levels: LvlField | LvlScalar,
+		Name: "multipleOf", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Value must be a multiple of N.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
@@ -420,18 +435,18 @@ var Registry = map[string]Spec{
 
 	// ---- Field validation: array / map ----
 	"minItems": {
-		Name: "minItems", Levels: LvlField,
+		Name: "minItems", Levels: LvlField | LvlErrorField,
 		Doc:       "Minimum array / map length.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
 		AppliesTo: PrimArray,
 	},
 	"maxItems": {
-		Name: "maxItems", Levels: LvlField,
+		Name: "maxItems", Levels: LvlField | LvlErrorField,
 		Doc:       "Maximum array / map length.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
 		AppliesTo: PrimArray,
 	},
-	"uniqueItems": {Name: "uniqueItems", Levels: LvlField, Doc: "Array elements must be unique.", AppliesTo: PrimArray},
+	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray},
 
 	// ---- Field validation: file ----
 	"maxSize": {
@@ -449,17 +464,17 @@ var Registry = map[string]Spec{
 
 	// ---- Field metadata ----
 	"default": {
-		Name: "default", Levels: LvlField,
+		Name: "default", Levels: LvlField | LvlErrorField,
 		Doc:  "Default value applied when field absent.",
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
-	"nullable": {Name: "nullable", Levels: LvlField, Doc: "Marks the field as accepting an explicit JSON null."},
+	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null."},
 
 	// ---- Field binding ----
 	"path":   {Name: "path", Levels: LvlField, Doc: "Bind from URL path parameter.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"query":  {Name: "query", Levels: LvlField, Doc: "Bind from URL query string.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"header": {Name: "header", Levels: LvlField, Doc: "Bind from HTTP request header.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"cookie": {Name: "cookie", Levels: LvlField, Doc: "Bind from HTTP cookie.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
+	"header": {Name: "header", Levels: LvlField | LvlErrorField, Doc: "Bind from HTTP request header (request fields) or write to response header (error fields).", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
+	"cookie": {Name: "cookie", Levels: LvlField | LvlErrorField, Doc: "Bind from HTTP cookie (request fields) or set a response cookie (error fields).", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"body":   {Name: "body", Levels: LvlField, Doc: "Bind from request body.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"form":   {Name: "form", Levels: LvlField, Doc: "Bind from multipart form field.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 

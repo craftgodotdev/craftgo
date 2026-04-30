@@ -20,15 +20,14 @@ func NewGetProfileLogic(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 
 // GetProfile looks the addressed profile up. A miss surfaces as
 // ProfileNotFound which the framework maps to HTTP 404 automatically.
-// We use `.WithMessage(...)` to inject a per-request friendly message
-// while keeping the canonical Code (`PROFILE_NOT_FOUND`) intact.
+// The error type's metadata is bound to the type — per-request context
+// rides on the wrapping `fmt.Errorf` envelope instead.
 func (l *GetProfileLogic) GetProfile(req *types.GetProfileReq) (*types.Profile, error) {
 	l.svcCtx.Lock()
 	defer l.svcCtx.Unlock()
 	row, ok := l.svcCtx.Profiles[req.ID]
 	if !ok {
-		return nil, types.NewProfileNotFoundErr().
-			WithMessage("Profile " + req.ID + " does not exist")
+		return nil, types.NewProfileNotFoundErr()
 	}
 	return row.(*types.Profile), nil
 }

@@ -275,6 +275,17 @@ func TestGenerateHandlerHelpers(t *testing.T) {
 	if !strings.Contains(string(out), "func writeError") {
 		t.Errorf("expected writeError helper:\n%s", out)
 	}
+	// writeError must dispatch on the WriteResponseHeaders interface so
+	// typed errors with @header / @cookie fields land their wire writes
+	// before the JSON body is encoded.
+	for _, want := range []string{
+		"WriteResponseHeaders(http.ResponseWriter)",
+		"hw.WriteResponseHeaders(w)",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("writeError missing %q:\n%s", want, out)
+		}
+	}
 }
 
 func TestGenerateHandlerHelpersMissingPackageName(t *testing.T) {
@@ -706,15 +717,16 @@ func TestGenerateHandlersMultipartFromFileField(t *testing.T) {
 // dropped — the handler omitted the bind line and the field landed
 // at the logic layer zero-valued, with no error to chase.
 //
+// Non-string `@path` / `@header` / `@cookie` is enforced earlier by
+// the semantic analyser (see `binding/type` diagnostic) so those
+// cases live in semantic tests, not here.
+//
 // Each case deliberately constructs a request type that exercises one
 // rejection branch:
 //   - Filter Point      → struct on @query
 //   - Tags  []Point     → []struct on @query
 //   - Meta  map<string,string> → map on @query
 //   - Page  Page<Book>  → generic on @query
-//   - id    int @path    → non-string on @path
-//   - auth  int @header  → non-string on @header
-//   - sid   int @cookie  → non-string on @cookie
 //   - opt   int? @query  → optional numeric on @query (no clean v1 idiom)
 func TestGenerateHandlersRejectsBadQueryShapes(t *testing.T) {
 	cases := []struct {
@@ -753,27 +765,6 @@ type Page<T> { items T[] }
 type SearchReq { page Page<Book> @query }
 service S { get Search /search { request SearchReq } }`,
 			want: "page",
-		},
-		{
-			label: "non-string on @path",
-			dsl: `package design
-type GetReq { id int @path }
-service S { get Get /items/{id} { request GetReq } }`,
-			want: "@path requires",
-		},
-		{
-			label: "non-string on @header",
-			dsl: `package design
-type GetReq { auth int @header }
-service S { get Get /items { request GetReq } }`,
-			want: "@header requires",
-		},
-		{
-			label: "non-string on @cookie",
-			dsl: `package design
-type GetReq { sid int @cookie }
-service S { get Get /items { request GetReq } }`,
-			want: "@cookie requires",
 		},
 		{
 			label: "optional numeric on @query",
