@@ -935,6 +935,57 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 	}
 }
 
+// checkDecoratorConflicts fires CodeDecoratorConflict for any field
+// that pairs `@sensitive` with a wire-shaping decorator. The conflict
+// table lives next to [Registry] in decorators.go; this function only
+// walks the AST and emits the diagnostic.
+func (a *analyzer) checkDecoratorConflicts(files []*ast.File) {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			switch dd := decl.(type) {
+			case *ast.TypeDecl:
+				a.checkSensitiveConflictsIn(dd.Body)
+			case *ast.ErrorDecl:
+				a.checkSensitiveConflictsIn(dd.Body)
+			}
+		}
+	}
+}
+
+// checkSensitiveConflictsIn walks a type / error body once. For every
+// field that carries `@sensitive`, every other decorator listed in
+// [sensitiveConflicts] becomes a CodeDecoratorConflict diagnostic.
+func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		hasSensitive := false
+		for _, d := range f.Decorators {
+			if d != nil && d.Name == "sensitive" {
+				hasSensitive = true
+				break
+			}
+		}
+		if !hasSensitive {
+			continue
+		}
+		for _, d := range f.Decorators {
+			if d == nil || d.Name == "sensitive" {
+				continue
+			}
+			if !sensitiveConflicts[d.Name] {
+				continue
+			}
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError,
+				CodeDecoratorConflict,
+				"@%s cannot be combined with @sensitive: sensitive fields never cross the wire",
+				d.Name)
+		}
+	}
+}
+
 // checkQualifiedRefs flags any `pkg.Type` reference that the v1 model
 // cannot resolve. CraftGo v1 uses a folder-merge import model: every
 // `.craftgo` file reachable from the design root contributes to a single

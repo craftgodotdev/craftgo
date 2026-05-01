@@ -414,6 +414,247 @@ type Y {}`))
 // requires TWO source files (multi-package fixture); [expectDiag]
 // takes a single string and would lose the file split.
 
+// ---------- @sensitive: standalone is fine ----------
+
+func TestSensitiveAlone(t *testing.T) {
+	mustClean(t, `package design
+type User {
+	id        string
+	internal  string @sensitive
+}`)
+}
+
+func TestSensitiveWithDocAndDeprecatedAllowed(t *testing.T) {
+	// Metadata decorators don't shape wire behaviour so they coexist
+	// fine with @sensitive.
+	mustClean(t, `package design
+type User {
+	id        string
+	internal  string @sensitive @doc("server-only") @deprecated
+}`)
+}
+
+// ---------- @sensitive + validators ----------
+
+func TestSensitiveConflictsRequired(t *testing.T) {
+	d := expectError(t, `package design
+type User { secret string @sensitive @required }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@required cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsLength(t *testing.T) {
+	d := expectError(t, `package design
+type User { secret string @sensitive @length(1, 80) }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@length cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsPattern(t *testing.T) {
+	d := expectError(t, `package design
+type User { secret string @sensitive @pattern("^x") }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@pattern cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsFormat(t *testing.T) {
+	d := expectError(t, `package design
+type User { secret string @sensitive @format(email) }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@format cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsMinMax(t *testing.T) {
+	d := expectError(t, `package design
+type User { age int @sensitive @min(0) }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@min cannot be combined with @sensitive")
+}
+
+// ---------- @sensitive + nullability / default ----------
+
+func TestSensitiveConflictsNullable(t *testing.T) {
+	d := expectError(t, `package design
+type User { secret string @sensitive @nullable }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@nullable cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsDefault(t *testing.T) {
+	d := expectError(t, `package design
+type User { tier string @sensitive @default("free") }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@default cannot be combined with @sensitive")
+}
+
+// ---------- @sensitive + binding decorators ----------
+
+func TestSensitiveConflictsBody(t *testing.T) {
+	d := expectError(t, `package design
+type Req { secret string @sensitive @body }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@body cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsPath(t *testing.T) {
+	d := expectError(t, `package design
+type Req { id string @sensitive @path }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@path cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsQuery(t *testing.T) {
+	d := expectError(t, `package design
+type Req { token string @sensitive @query }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@query cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsHeader(t *testing.T) {
+	d := expectError(t, `package design
+type Req { token string @sensitive @header }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@header cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsCookie(t *testing.T) {
+	d := expectError(t, `package design
+type Req { sid string @sensitive @cookie }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@cookie cannot be combined with @sensitive")
+}
+
+func TestSensitiveConflictsForm(t *testing.T) {
+	d := expectError(t, `package design
+type Req { secret string @sensitive @form }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@form cannot be combined with @sensitive")
+}
+
+// ---------- @sensitive on error fields ----------
+
+func TestSensitiveOnErrorFieldAlone(t *testing.T) {
+	mustClean(t, `package design
+error ServiceUnavailable Maintenance {
+	msg      string
+	internal string @sensitive
+}`)
+}
+
+func TestSensitiveConflictsOnErrorField(t *testing.T) {
+	d := expectError(t, `package design
+error BadRequest Bad {
+	internal string @sensitive @required
+}`, CodeDecoratorConflict)
+	expectMessage(t, d, "@required cannot be combined with @sensitive")
+}
+
+// ---------- @default on enum field ----------
+
+func TestDefaultEnumValueAccepted(t *testing.T) {
+	mustClean(t, `package design
+enum Status { Active  Inactive }
+type User { st Status @default(Active) }`)
+}
+
+func TestDefaultEnumUnknownValueRejected(t *testing.T) {
+	d := expectError(t, `package design
+enum Status { Active  Inactive }
+type User { st Status @default(Bogus) }`, CodeDecoratorArgValue)
+	expectMessage(t, d, "Bogus", "Status", "Active", "Inactive")
+}
+
+func TestDefaultEnumStringLiteralRejected(t *testing.T) {
+	// Even when the enum value's StrValue happens to match, the
+	// canonical form is the bare identifier so the wire stays
+	// stable when codegen renames the underlying value.
+	d := expectError(t, `package design
+enum Status { Active = "active"  Inactive = "inactive" }
+type User { st Status @default("active") }`, CodeDecoratorArgValue)
+	expectMessage(t, d, "enum value by name")
+}
+
+func TestDefaultEnumIntLiteralRejected(t *testing.T) {
+	d := expectError(t, `package design
+enum Tier { Bronze = 1  Silver = 2 }
+type User { tr Tier @default(1) }`, CodeDecoratorArgValue)
+	expectMessage(t, d, "enum value by name")
+}
+
+func TestDefaultStringFieldUnaffected(t *testing.T) {
+	// Non-enum fields skip the enum check; the regular kind rule
+	// (string accepts any string literal) applies.
+	mustClean(t, `package design
+type User { name string @default("alice") }`)
+}
+
+// ---------- @default conflicts ----------
+
+func TestDefaultRequiredConflict(t *testing.T) {
+	d := expectError(t, `package design
+type User { name string @required @default("anon") }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@default cannot be combined with @required")
+}
+
+func TestDefaultMapFieldConflict(t *testing.T) {
+	d := expectError(t, `package design
+type User { meta map<string, string> @default({}) }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@default is not supported")
+}
+
+func TestDefaultStructFieldConflict(t *testing.T) {
+	d := expectError(t, `package design
+type Address { city string }
+type User { addr Address @default("x") }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@default is not supported")
+}
+
+func TestDefaultStructArrayFieldConflict(t *testing.T) {
+	d := expectError(t, `package design
+type Address { city string }
+type User { addrs Address[] @default([]) }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@default is not supported")
+}
+
+// ---------- @default optional + scalar ----------
+
+func TestDefaultOptionalFieldAccepted(t *testing.T) {
+	mustClean(t, `package design
+type User { name string? @default("anon") }`)
+}
+
+func TestDefaultScalarFieldAccepted(t *testing.T) {
+	// Scalar wraps a primitive (string here) so the field counts as
+	// supported by virtue of its underlying primitive.
+	mustClean(t, `package design
+scalar Email string
+type User { addr Email @default("alice@example.com") }`)
+}
+
+// ---------- @default on array of primitives / enums ----------
+
+func TestDefaultEmptyArrayAccepted(t *testing.T) {
+	mustClean(t, `package design
+type User { tags string[] @default([]) }`)
+}
+
+func TestDefaultStringArrayAccepted(t *testing.T) {
+	mustClean(t, `package design
+type User { tags string[] @default(["admin", "ops"]) }`)
+}
+
+func TestDefaultEnumArrayAccepted(t *testing.T) {
+	mustClean(t, `package design
+enum Priority { Low  Normal  High }
+type Task { p Priority[] @default([Low, High]) }`)
+}
+
+func TestDefaultArrayMixedKindRejected(t *testing.T) {
+	d := expectError(t, `package design
+type User { tags string[] @default(["a", 1]) }`, CodeDecoratorArgType)
+	expectMessage(t, d, "string")
+}
+
+func TestDefaultEnumArrayUnknownValueRejected(t *testing.T) {
+	d := expectError(t, `package design
+enum Priority { Low  Normal  High }
+type Task { p Priority[] @default([Low, Bogus]) }`, CodeDecoratorArgValue)
+	expectMessage(t, d, "Bogus", "Priority", "Low", "Normal", "High")
+}
+
+func TestDefaultArrayLiteralOnPrimitiveRejected(t *testing.T) {
+	d := expectError(t, `package design
+type User { name string @default(["x"]) }`, CodeDecoratorArgType)
+	expectMessage(t, d, "@default")
+}
+
 // ---------- helpers ----------
 
 func codes(diags []Diagnostic) []string {

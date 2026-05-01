@@ -208,6 +208,30 @@ func (v *Customer) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on DefaultsShowcaseReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DefaultsShowcaseReq) Validate() error {
+	if l := len(v.Currency); l < 3 || l > 3 {
+		return fmt.Errorf("currency: length out of range [3, 3]")
+	}
+	if !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(v.Currency) {
+		return fmt.Errorf("currency: does not match pattern")
+	}
+	switch v.Status {
+	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
+	default:
+		return fmt.Errorf("status: invalid OrderStatus value")
+	}
+	for i := range v.AllowedMethods {
+		switch v.AllowedMethods[i] {
+		case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
+		default:
+			return fmt.Errorf("allowedMethods: invalid PaymentMethod value")
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Discount.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Discount) Validate() error {

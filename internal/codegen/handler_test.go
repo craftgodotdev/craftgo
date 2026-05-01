@@ -159,6 +159,36 @@ service S {
 	}
 }
 
+// TestGenerateHandlersDefaultEnum pins the enum-aware @default
+// emission: `@default(Active)` on a `Status`-typed field renders as
+// `req.Field = StatusActive` (the Go const buildEnumView produces),
+// not as the bare DSL identifier "Active" which wouldn't compile.
+func TestGenerateHandlersDefaultEnum(t *testing.T) {
+	src := `package design
+enum Status { Active  Inactive  Pending }
+type Req {
+    st     Status @default(Pending)
+    plain  string
+}
+service S {
+    post Make /make { request Req }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateHandlers(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/handler/s/make-handler.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	mustParseGo(t, body)
+	if !strings.Contains(body, "req.St = types.StatusPending") {
+		t.Errorf("expected `req.St = types.StatusPending` (qualified Go const):\n%s", body)
+	}
+}
+
 func TestGenerateHandlersResponseHeaderCookie(t *testing.T) {
 	src := `package design
 type DownloadReq { id string }

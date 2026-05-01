@@ -35,7 +35,14 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		var req {{.RequestPkgAlias}}.{{.RequestType}}
 {{- range .Defaults}}
+{{- if .Ptr}}
+		{
+			__d := {{.Literal}}
+			req.{{.GoName}} = &__d
+		}
+{{- else}}
 		req.{{.GoName}} = {{.Literal}}
+{{- end}}
 {{- end}}
 {{- range .PathParams}}
 		{{.Bind}}

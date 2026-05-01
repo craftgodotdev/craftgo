@@ -294,6 +294,30 @@ func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	return 0
 }
 
+// fieldAtCursor returns the field whose row matches the cursor's line
+// when the cursor is inside a type / error body. Returns nil when the
+// cursor is not on a field row.
+func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
+	if view.file == nil {
+		return nil
+	}
+	line := int(pos.Line) + 1
+	for _, d := range view.file.Decls {
+		body, ok := declBody(d)
+		if !ok {
+			continue
+		}
+		for _, m := range body {
+			f, ok := m.(*ast.Field)
+			if !ok || f.Pos.Line != line {
+				continue
+			}
+			return f
+		}
+	}
+	return nil
+}
+
 // declBody returns a type-body slice for declarations that have one
 // (TypeDecl always; ErrorDecl when HasBody is set). The bool says
 // whether a body exists; nil-body decls return false so callers can

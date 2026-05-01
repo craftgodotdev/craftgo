@@ -32,6 +32,45 @@ service OrderService {
 		request  GetOrderReq
 		response shared.OkResp
 	}
+
+	@doc("Showcase endpoint exercising every supported @default form: primitive, optional, scalar (wrapping primitive), enum, array of primitives, array of enums.")
+	post DefaultsShowcase /defaults {
+		request  DefaultsShowcaseReq
+		response DefaultsShowcaseReq
+	}
+}
+
+// DefaultsShowcaseReq pins every supported @default shape so the
+// codegen + runtime contract stays explicit. Logic just echoes the
+// request back so smoke tests can assert which fields received the
+// pre-fill value.
+type DefaultsShowcaseReq {
+	// Plain primitives.
+	str  string  @default("anon")
+	num  int     @default(20)
+	flag bool    @default(true)
+
+	// Optional primitive — `*string` in Go; pre-fill emits as a
+	// pointer wrap.
+	maybe string? @default("opt-default")
+
+	// Scalar wrapping a primitive (CurrencyCode = string). The
+	// emitted field type is the scalar alias; default literal is a
+	// plain string accepted via the alias.
+	currency CurrencyCode @default("USD")
+
+	// Enum-valued field. Default uses the bare ident and renders as
+	// the matching `<Enum><Value>` Go constant.
+	status OrderStatus @default(Pending)
+
+	// Array of primitive — empty preset is the most common form;
+	// non-empty pin is included to verify literal element rendering.
+	tags    string[] @default([])
+	preset  string[] @default(["standard", "expedited"])
+
+	// Array of enum — values are bare idents resolved to their Go
+	// const counterparts.
+	allowedMethods PaymentMethod[] @default([Card, Bank])
 }
 
 // GetOrderReq mirrors the GetUserReq / GetProjectReq pattern: a

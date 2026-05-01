@@ -35,7 +35,14 @@ func {{.Method}}Handler(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- if .HasRequest}}
 		var req {{.RequestPkgAlias}}.{{.RequestType}}
 {{- range .Defaults}}
+{{- if .Ptr}}
+		{
+			__d := {{.Literal}}
+			req.{{.GoName}} = &__d
+		}
+{{- else}}
 		req.{{.GoName}} = {{.Literal}}
+{{- end}}
 {{- end}}
 {{- if .BodyDecode}}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

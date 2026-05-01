@@ -129,6 +129,34 @@ type Customer struct {
 	ProfilePic *multipart.FileHeader `json:"profilePic,omitempty"`
 }
 
+// DefaultsShowcaseReq pins every supported @default shape so the
+// codegen + runtime contract stays explicit. Logic just echoes the
+// request back so smoke tests can assert which fields received the
+// pre-fill value.
+type DefaultsShowcaseReq struct {
+	// Plain primitives.
+	Str  string `json:"str"`
+	Num  int    `json:"num"`
+	Flag bool   `json:"flag"`
+	// Optional primitive — `*string` in Go; pre-fill emits as a
+	// pointer wrap.
+	Maybe *string `json:"maybe,omitempty"`
+	// Scalar wrapping a primitive (CurrencyCode = string). The
+	// emitted field type is the scalar alias; default literal is a
+	// plain string accepted via the alias.
+	Currency CurrencyCode `json:"currency"`
+	// Enum-valued field. Default uses the bare ident and renders as
+	// the matching `<Enum><Value>` Go constant.
+	Status OrderStatus `json:"status"`
+	// Array of primitive — empty preset is the most common form;
+	// non-empty pin is included to verify literal element rendering.
+	Tags   []string `json:"tags"`
+	Preset []string `json:"preset"`
+	// Array of enum — values are bare idents resolved to their Go
+	// const counterparts.
+	AllowedMethods []PaymentMethod `json:"allowedMethods"`
+}
+
 // Discount is a Level 3 (under Order.items[].discount) optional
 // nested type. Showcases `@negative` on `bonusBelow` — the rebate
 // is modelled as a negative-valued cents adjustment because the

@@ -543,3 +543,41 @@ func Lookup(name string) (Spec, bool) {
 	s, ok := Registry[name]
 	return s, ok
 }
+
+// sensitiveConflicts lists every decorator whose semantics contradict
+// `@sensitive`. Validators are pointless because the field never
+// crosses the wire (nothing to validate, nothing to constrain).
+// Bindings (`@path`, `@query`, `@header`, `@cookie`, `@form`, `@body`)
+// contradict the "server-internal only" intent. `@nullable` and
+// `@default` shape wire behaviour that can't apply.
+//
+// Lives next to [Registry] because it's per-decorator metadata; the
+// check that consumes it lives in semantic.go alongside the other
+// small horizontal decorator checks.
+var sensitiveConflicts = map[string]bool{
+	"required":          true,
+	"length":            true,
+	"minLength":         true,
+	"maxLength":         true,
+	"pattern":           true,
+	"format":            true,
+	"min":               true,
+	"max":               true,
+	"range":             true,
+	"positive":          true,
+	"negative":          true,
+	"multipleOf":        true,
+	"minItems":          true,
+	"maxItems":          true,
+	"uniqueItems":       true,
+	"requiresOneOf":     true,
+	"mutuallyExclusive": true,
+	"nullable":          true,
+	"default":           true,
+	"path":              true,
+	"query":             true,
+	"header":            true,
+	"cookie":            true,
+	"form":              true,
+	"body":              true,
+}

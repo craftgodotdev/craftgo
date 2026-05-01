@@ -160,6 +160,19 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 			return items
 		}
 	}
+	if name == "default" {
+		if items := s.defaultEnumCompletions(view, pos, currentURI, currentSrc); items != nil {
+			return items
+		}
+	}
+	if spec, ok := semantic.Registry[name]; ok && len(spec.Args.Kinds) > 0 {
+		switch spec.Args.Kinds[0] {
+		case semantic.ArgDuration:
+			return durationCompletions(prev, mid)
+		case semantic.ArgSize:
+			return sizeCompletions(prev, mid)
+		}
+	}
 	return decoratorArgCompletions(view, pos, name)
 }
 
@@ -413,6 +426,142 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 		}
 	}
 	return "", false
+}
+
+// defaultEnumCompletions returns the enum's value names when the
+// cursor sits inside `@default(...)` on a field whose declared type
+// (or array-element type) is an enum reachable from the current
+// package. Lookup spans every sibling file in the project so
+// multi-file packages where the enum lives in a separate
+// `*.craftgo` file still surface the values. Returns nil when the
+// field type isn't an enum so the caller falls through.
+func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
+	f := fieldAtCursor(view, pos)
+	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return nil
+	}
+	parts := f.Type.Named.Name.Parts
+	if len(parts) != 1 {
+		return nil
+	}
+	e := s.enumDeclByNameProjectWide(view, currentURI, currentSrc, parts[0])
+	if e == nil {
+		return nil
+	}
+	out := make([]protocol.CompletionItem, 0, len(e.Values))
+	for _, v := range e.Values {
+		out = append(out, protocol.CompletionItem{
+			Label:      v.Name,
+			Kind:       protocol.CompletionItemKindEnumMember,
+			Detail:     "value of enum " + e.Name,
+			InsertText: v.Name,
+		})
+	}
+	return out
+}
+
+// enumDeclByNameProjectWide walks every sibling `*.craftgo` file in
+// the current project and returns the first matching enum decl.
+// Multi-file packages declare enums anywhere - this lookup mirrors
+// the way semantic resolves cross-file refs. Falls back to the
+// current view's parsed file when the project walker yields nothing
+// (typical in unit tests that parse a single in-memory snapshot
+// without a backing filesystem entry).
+func (s *Server) enumDeclByNameProjectWide(view snapshotView, currentURI, currentSrc, name string) *ast.EnumDecl {
+	files, _ := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
+	for _, p := range files {
+		if p.file == nil {
+			continue
+		}
+		for _, d := range p.file.Decls {
+			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
+				return e
+			}
+		}
+	}
+	if view.file != nil {
+		for _, d := range view.file.Decls {
+			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
+				return e
+			}
+		}
+	}
+	return nil
+}
+
+// durationSuffixes / sizeSuffixes mirror the unit set the lexer
+// recognises in [lexer.lexNumber]; keep these in sync if the lexer
+// gains new units.
+var durationSuffixes = []string{"ms", "s", "m", "h"}
+var sizeSuffixes = []string{"B", "KB", "MB", "GB"}
+
+// durationPresets / sizePresets are the values surfaced when the
+// cursor is inside an empty argument slot (just after `(`) so users
+// who don't have a number in mind get a sensible starter list.
+var durationPresets = []string{"100ms", "500ms", "1s", "5s", "10s", "30s", "1m", "5m"}
+var sizePresets = []string{"1KB", "10KB", "100KB", "1MB", "10MB", "100MB"}
+
+// durationCompletions surfaces duration-typed completions for the
+// cursor's slot. When the user has typed a bare digit run (Int token
+// at or just-before cursor), each suffix is paired with that prefix
+// and emitted as a TextEdit replacing the Int. Otherwise a curated
+// preset list is offered.
+func durationCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
+	return unitCompletions(prev, mid, "duration", durationSuffixes, durationPresets)
+}
+
+// sizeCompletions is the byte-size analogue of [durationCompletions].
+func sizeCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
+	return unitCompletions(prev, mid, "size", sizeSuffixes, sizePresets)
+}
+
+// unitCompletions builds the suffix / preset list for both duration
+// and size paths. When mid OR prev is a bare Int token (cursor
+// inside the digits, or right at their trailing edge) the digits
+// become the prefix and TextEdit-bound completions replace the
+// existing Int. Otherwise the preset list flows through.
+func unitCompletions(prev, mid *lexer.Token, detail string, suffixes, presets []string) []protocol.CompletionItem {
+	intTok := pickIntForUnit(prev, mid)
+	if intTok != nil {
+		editRange := rangeOf(*intTok)
+		out := make([]protocol.CompletionItem, 0, len(suffixes))
+		for _, u := range suffixes {
+			value := intTok.Text + u
+			edit := protocol.TextEdit{Range: editRange, NewText: value}
+			out = append(out, protocol.CompletionItem{
+				Label:    value,
+				Kind:     protocol.CompletionItemKindValue,
+				Detail:   detail,
+				TextEdit: &edit,
+			})
+		}
+		return out
+	}
+	out := make([]protocol.CompletionItem, 0, len(presets))
+	for _, p := range presets {
+		out = append(out, protocol.CompletionItem{
+			Label:      p,
+			Kind:       protocol.CompletionItemKindValue,
+			Detail:     detail,
+			InsertText: p,
+		})
+	}
+	return out
+}
+
+// pickIntForUnit returns the Int token the cursor is editing when one
+// of mid / prev is a bare digit literal. tokenAt's inclusive
+// end-column rule can resolve the cursor between an Int and a
+// trailing punctuator (`@timeout(10|)`) onto the punctuator, so
+// `prev` is the secondary anchor.
+func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
+	if mid != nil && mid.Kind == lexer.Int {
+		return mid
+	}
+	if prev != nil && prev.Kind == lexer.Int {
+		return prev
+	}
+	return nil
 }
 
 // decoratorArgCompletions returns enum-value completions for the

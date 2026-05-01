@@ -108,6 +108,123 @@ func TestHoverUserType(t *testing.T) {
 	}
 }
 
+// TestCompletionDefaultOnEnumField pins enum-aware completion: when
+// the cursor sits inside `@default(...)` of a field whose declared
+// type is an enum in scope, only that enum's value names are offered.
+func TestCompletionDefaultOnEnumField(t *testing.T) {
+	src := `package x
+enum Status { Active  Inactive  Pending }
+type T {
+	st Status @default()
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor inside `@default(|)` - column lands between the parens.
+	pos := protocol.Position{Line: 3, Character: 19}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	if len(items) != 3 {
+		t.Fatalf("expected 3 enum-value completions, got %d: %+v", len(items), items)
+	}
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"Active", "Inactive", "Pending"} {
+		if !got[want] {
+			t.Errorf("missing enum-value completion %q", want)
+		}
+	}
+}
+
+// TestCompletionDurationPresets covers the empty-slot case for an
+// ArgDuration decorator: cursor right after `(`, no partial number
+// → preset list (e.g. "5s", "1m", ...).
+func TestCompletionDurationPresets(t *testing.T) {
+	src := `package x
+service S {
+	@timeout()
+	get G /g {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor between the parens of @timeout(|).
+	pos := protocol.Position{Line: 2, Character: 10}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	if len(items) == 0 {
+		t.Fatal("expected duration preset completions")
+	}
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"5s", "1m"} {
+		if !got[want] {
+			t.Errorf("missing duration preset %q", want)
+		}
+	}
+}
+
+// TestCompletionDurationPartialNumber covers the digits-typed case:
+// cursor right after `10` inside `@timeout(...)` → emit suffixed
+// values that REPLACE the Int token (TextEdit-bound completions).
+func TestCompletionDurationPartialNumber(t *testing.T) {
+	src := `package x
+service S {
+	@timeout(10)
+	get G /g {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor right after `10` - column 12 = `@timeout(10|)`.
+	pos := protocol.Position{Line: 2, Character: 12}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	if len(items) == 0 {
+		t.Fatal("expected partial-aware duration completions")
+	}
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+		if it.TextEdit == nil {
+			t.Errorf("partial completion %q must carry a TextEdit so the Int gets replaced", it.Label)
+		}
+	}
+	for _, want := range []string{"10s", "10m", "10h", "10ms"} {
+		if !got[want] {
+			t.Errorf("missing partial-suffix completion %q", want)
+		}
+	}
+}
+
+// TestCompletionSizePartialNumber is the byte-size analogue of the
+// duration-partial test.
+func TestCompletionSizePartialNumber(t *testing.T) {
+	src := `package x
+service S {
+	@maxBodySize(10)
+	get G /g {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	pos := protocol.Position{Line: 2, Character: 16}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	if len(items) == 0 {
+		t.Fatal("expected partial-aware size completions")
+	}
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"10KB", "10MB", "10GB"} {
+		if !got[want] {
+			t.Errorf("missing partial-suffix completion %q", want)
+		}
+	}
+}
+
 // TestCompletionDecoratorAfterAt checks that typing `@` at field level
 // surfaces decorators that are valid on field sites and excludes ones
 // that are not.

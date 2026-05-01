@@ -514,6 +514,77 @@ components:
       - email
       - name
       type: object
+    DefaultsShowcaseReq:
+      description: |-
+        DefaultsShowcaseReq pins every supported @default shape so the
+        codegen + runtime contract stays explicit. Logic just echoes the
+        request back so smoke tests can assert which fields received the
+        pre-fill value.
+      properties:
+        allowedMethods:
+          description: |-
+            Array of enum — values are bare idents resolved to their Go
+            const counterparts.
+          items:
+            $ref: '#/components/schemas/PaymentMethod'
+          type: array
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        flag:
+          type: boolean
+        maybe:
+          description: |-
+            Optional primitive — `*string` in Go; pre-fill emits as a
+            pointer wrap.
+          type: string
+        num:
+          type: integer
+        preset:
+          items:
+            type: string
+          type: array
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        str:
+          description: Plain primitives.
+          type: string
+        tags:
+          description: |-
+            Array of primitive — empty preset is the most common form;
+            non-empty pin is included to verify literal element rendering.
+          items:
+            type: string
+          type: array
+      type: object
+    DefaultsShowcaseReqBody:
+      properties:
+        allowedMethods:
+          items:
+            $ref: '#/components/schemas/PaymentMethod'
+          type: array
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        flag:
+          type: boolean
+        maybe:
+          type: string
+        num:
+          type: integer
+        preset:
+          items:
+            type: string
+          type: array
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        str:
+          type: string
+        tags:
+          items:
+            type: string
+          type: array
+      type: object
+    DefaultsShowcaseRespBody:
+      $ref: '#/components/schemas/DefaultsShowcaseReq'
     DeleteOrderReqPath:
       properties:
         id:
@@ -1546,6 +1617,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetOrderRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - orders
+  /orders/defaults:
+    post:
+      description: 'Showcase endpoint exercising every supported @default form: primitive,
+        optional, scalar (wrapping primitive), enum, array of primitives, array of
+        enums.'
+      operationId: DefaultsShowcase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefaultsShowcaseReqBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultsShowcaseRespBody'
           description: OK
         default:
           description: ""

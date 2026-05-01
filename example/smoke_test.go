@@ -15,14 +15,19 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/dropship-dev/craftgo/example/config"
+	orderservice "github.com/dropship-dev/craftgo/example/internal/handler/order-service"
 	ordersapi "github.com/dropship-dev/craftgo/example/internal/types/orders"
 	projectsapi "github.com/dropship-dev/craftgo/example/internal/types/projects"
 	sharedapi "github.com/dropship-dev/craftgo/example/internal/types/shared"
 	tasksapi "github.com/dropship-dev/craftgo/example/internal/types/tasks"
 	usersapi "github.com/dropship-dev/craftgo/example/internal/types/users"
+	"github.com/dropship-dev/craftgo/example/svccontext"
 )
 
 // TestNestedCrossPackageTypes pins the multi-package wire shape:
@@ -859,6 +864,68 @@ func TestUserDomainErrorsImplementErrorInterface(t *testing.T) {
 // by encoding/json. EmailTaken's body declares only `email` and an
 // optional `existingId`, so the JSON wire echoes those alone. Clients
 // who want the canonical machine-readable code on the wire declare
+// TestDefaultsShowcasePreFill drives the generated DefaultsShowcase
+// handler with an empty body and asserts every supported @default
+// shape lands in the request struct before the logic runs. The
+// handler is invoked directly (no live network) so the test stays
+// hermetic; the logic just echoes the request, so the JSON response
+// reflects what the framework pre-filled.
+func TestDefaultsShowcasePreFill(t *testing.T) {
+	cfg := &config.Config{}
+	svc := svccontext.NewServiceContext(cfg)
+	handler := orderservice.DefaultsShowcaseHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/defaults", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var got ordersapi.DefaultsShowcaseReq
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v body=%s", err, rec.Body.String())
+	}
+
+	// Plain primitives.
+	if got.Str != "anon" {
+		t.Errorf("Str = %q, want anon", got.Str)
+	}
+	if got.Num != 20 {
+		t.Errorf("Num = %d, want 20", got.Num)
+	}
+	if got.Flag != true {
+		t.Errorf("Flag = %v, want true", got.Flag)
+	}
+	// Optional pre-fill: pointer should be non-nil pointing at the default.
+	if got.Maybe == nil || *got.Maybe != "opt-default" {
+		t.Errorf("Maybe = %v, want non-nil &\"opt-default\"", got.Maybe)
+	}
+	// Scalar wrapping primitive.
+	if got.Currency != "USD" {
+		t.Errorf("Currency = %q, want USD", got.Currency)
+	}
+	// Enum value.
+	if got.Status != ordersapi.OrderStatusPending {
+		t.Errorf("Status = %v, want OrderStatusPending", got.Status)
+	}
+	// Empty array preset.
+	if got.Tags == nil || len(got.Tags) != 0 {
+		t.Errorf("Tags = %v, want []string{}", got.Tags)
+	}
+	// Non-empty string array.
+	if len(got.Preset) != 2 || got.Preset[0] != "standard" || got.Preset[1] != "expedited" {
+		t.Errorf("Preset = %v, want [standard expedited]", got.Preset)
+	}
+	// Enum array.
+	if len(got.AllowedMethods) != 2 ||
+		got.AllowedMethods[0] != ordersapi.PaymentMethodCard ||
+		got.AllowedMethods[1] != ordersapi.PaymentMethodBank {
+		t.Errorf("AllowedMethods = %v, want [Card Bank]", got.AllowedMethods)
+	}
+}
+
 // `code string @default("...")` in the DSL (then it surfaces as the
 // exported `Code` body field).
 func TestUserDomainErrorsJSONShape(t *testing.T) {
