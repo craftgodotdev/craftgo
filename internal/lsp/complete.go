@@ -639,6 +639,12 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 // named sibling package, suitable for offering completion on the right
 // side of a qualified reference (`shared.<cursor>` or `x.<cursor>`
 // where `x` is an import alias).
+//
+// `error` declarations are dropped: errors are NOT cross-package
+// referenceable (the `@errors(...)` resolver only looks at the
+// current package's table — see [checkErrorRefs]) and they cannot
+// be used as field types either, so surfacing them under a
+// cross-package qualifier would offer dead-end suggestions.
 func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSrc, pkg string) []protocol.CompletionItem {
 	files, root := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
 	imports := currentImports(view.file)
@@ -671,6 +677,9 @@ func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSr
 			continue
 		}
 		for _, d := range p.file.Decls {
+			if _, isError := d.(*ast.ErrorDecl); isError {
+				continue
+			}
 			out = append(out, protocol.CompletionItem{
 				Label:         d.DeclName(),
 				Kind:          declSymbolKindToCompletion(d),
@@ -684,7 +693,13 @@ func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSr
 
 // typeCompletionsProjectWide is the type-position equivalent of
 // [typeCompletions] but scoped to the entire project rather than just
-// the current file. Built-in primitives are listed alongside.
+// the current file. Built-in primitives are listed alongside, and
+// every project-wide top-level declaration is surfaced EXCEPT
+// `error` declarations: errors are domain-restricted to
+// `@errors(...)` decorator args and do not resolve when used as
+// field types, request bodies, etc. (see [checkLocalNamedRef] in
+// the semantic phase). Surfacing them here would invite the same
+// category mistake the semantic phase rejects.
 func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	for name := range builtinDocs {
@@ -694,8 +709,25 @@ func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, curre
 			Detail: "built-in",
 		})
 	}
-	items = append(items, s.declCompletionsProjectWide(view, currentURI, currentSrc)...)
+	items = append(items, s.declCompletionsFiltered(view, currentURI, currentSrc, declCompletionTypePosition)...)
 	return items
+}
+
+// declCompletionFilter selects which top-level decl kinds appear in a
+// completion list. Today only [declCompletionTypePosition] exists —
+// the indirection stays for future contexts (e.g. error-position
+// inside `@errors(...)`) that need a different filter without
+// duplicating the project-walk loop.
+type declCompletionFilter func(ast.Decl) bool
+
+// declCompletionTypePosition drops error declarations so type-position
+// completions only suggest decls that actually resolve as types.
+// Used as the default for [declCompletionsProjectWide] because errors
+// are never referenceable as a standalone symbol — `@errors(...)`
+// has its own resolution path.
+func declCompletionTypePosition(d ast.Decl) bool {
+	_, isError := d.(*ast.ErrorDecl)
+	return !isError
 }
 
 // declCompletionsProjectWide gathers every top-level declaration across
@@ -711,7 +743,24 @@ func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, curre
 // alias (e.g. `s` for `shared`) surfaces the package itself — picking
 // it lets the user continue with `.SomeType` and reach the qualified
 // completion path.
+// declCompletionsProjectWide is the default project-wide decl
+// suggester. Errors are filtered out unconditionally — they are not
+// usable as standalone references in any user-facing position
+// (`@errors(...)` has its own resolver, and field-type / request /
+// response usage is rejected by the semantic phase). Surfacing them
+// would mislead the user into a guaranteed-to-fail picker.
 func (s *Server) declCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
+	return s.declCompletionsFiltered(view, currentURI, currentSrc, declCompletionTypePosition)
+}
+
+// declCompletionsFiltered is the workhorse behind the project-wide
+// declaration completions. The filter callback decides which decls
+// reach the result list — type-position contexts pass
+// [declCompletionTypePosition] to drop errors; everywhere else
+// passes [declCompletionAll] to keep the legacy behaviour. Import
+// aliases are emitted unconditionally — they are not declarations
+// and the user might want them in any completion context.
+func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentSrc string, keep declCompletionFilter) []protocol.CompletionItem {
 	files := s.projectASTs(uriToPath(currentURI), currentSrc)
 	if len(files) == 0 {
 		return localDeclItems(view)
@@ -730,6 +779,9 @@ func (s *Server) declCompletionsProjectWide(view snapshotView, currentURI, curre
 			pkgName = p.file.Package.Name
 		}
 		for _, d := range p.file.Decls {
+			if !keep(d) {
+				continue
+			}
 			label := d.DeclName()
 			insert := label
 			detail := declSummary(d)
@@ -794,13 +846,18 @@ func importAliasesOf(f *ast.File) []string {
 
 // localDeclItems is the fall-back used when no project root can be
 // found — callers reach here for stand-alone files outside a craftgo
-// design layout.
+// design layout. `error` declarations are dropped here for the same
+// reason [declCompletionsProjectWide] drops them: they're never
+// referenceable as a standalone symbol from user code.
 func localDeclItems(view snapshotView) []protocol.CompletionItem {
 	if view.file == nil {
 		return nil
 	}
 	out := make([]protocol.CompletionItem, 0, len(view.file.Decls))
 	for _, d := range view.file.Decls {
+		if _, isError := d.(*ast.ErrorDecl); isError {
+			continue
+		}
 		out = append(out, protocol.CompletionItem{
 			Label:         d.DeclName(),
 			Kind:          declSymbolKindToCompletion(d),

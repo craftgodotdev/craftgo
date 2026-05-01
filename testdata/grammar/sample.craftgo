@@ -57,7 +57,7 @@ service UserService {
         response  User
     }
 
-    @readTimeout(5s)
+    @timeout(5s)
     @maxBodySize(1MB)
     post UpdateUser /users/{id} {
         request   UpdateUserReq

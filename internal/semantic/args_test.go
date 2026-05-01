@@ -83,7 +83,7 @@ func TestArgTypeIntExpected(t *testing.T) {
 func TestArgTypeDurationAcceptsBareInt(t *testing.T) {
 	// README convention: bare number → seconds for durations, bytes for sizes.
 	mustClean(t, `service S {
-		@readTimeout(5)
+		@timeout(5)
 		get GetUser /u {}
 	}`)
 }

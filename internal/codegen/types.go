@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/idents"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
 
@@ -248,13 +249,22 @@ func renderTypeParams(params []string) string {
 
 // renderTypeBody returns the contents of a struct body — fields and
 // mixin embeds — already indented with one leading tab per line. The
-// caller wraps with the `struct { ... }` braces.
+// caller wraps with the `struct { ... }` braces. When two DSL field
+// names normalise to the same Go identifier (e.g. `user_id` and
+// `userId` both → `UserID`) the dedup pass appends `_2`, `_3`, ...
+// suffixes so the struct compiles. The semantic phase already
+// surfaced a `field/name-collision` warning pointing the user at
+// the duplicate spellings — this is just the silent recovery so
+// the build succeeds.
 func renderTypeBody(members []ast.TypeMember) string {
+	resolved := resolvedGoFieldNames(members)
 	var sb strings.Builder
+	fieldIdx := 0
 	for _, m := range members {
 		switch v := m.(type) {
 		case *ast.Field:
-			sb.WriteString(renderField(v))
+			sb.WriteString(renderField(v, resolved[fieldIdx]))
+			fieldIdx++
 		case *ast.Mixin:
 			sb.WriteString(renderMixin(v))
 		}
@@ -262,20 +272,35 @@ func renderTypeBody(members []ast.TypeMember) string {
 	return sb.String()
 }
 
+// resolvedGoFieldNames returns the struct-emit Go identifier for each
+// [ast.Field] in members, in source order. Mixins are skipped (they
+// don't compete for a Go field name). The dedup is keyed off DSL
+// spellings so generated output stays stable across runs.
+func resolvedGoFieldNames(members []ast.TypeMember) []string {
+	var dslNames []string
+	for _, m := range members {
+		if f, ok := m.(*ast.Field); ok {
+			dslNames = append(dslNames, f.Name)
+		}
+	}
+	resolved, _ := idents.DedupGoFieldNames(dslNames)
+	return resolved
+}
+
 // renderField returns one struct field line (with leading tab). The
-// JSON tag is computed by [jsonTag]; doc comments are emitted by
-// [renderDoc] and prepended. Field-level `@deprecated` adds a
-// `// Deprecated: ...` line to the field's doc block — `staticcheck`
-// flags every read/write of the field as a warning.
+// caller passes the dedup-resolved Go identifier so collision pairs
+// get `_2`, `_3`, ... suffixes; the JSON tag is computed by
+// [jsonTag] from the DSL name verbatim, so the wire shape always
+// reflects what the user typed regardless of any Go-side rename.
 //
 // The Go type comes from [goFieldType] rather than [GoTypeRef]
 // directly because `@nullable` on value types (string, int, struct)
-// requires an extra `*T` wrap so the field can hold nil and JSON-encode
-// to `null` without a custom marshaller.
-func renderField(f *ast.Field) string {
+// requires an extra `*T` wrap so the field can hold nil and
+// JSON-encode to `null` without a custom marshaller.
+func renderField(f *ast.Field, goName string) string {
 	return renderDoc(f.Doc, "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
-		fmt.Sprintf("\t%s %s `json:%s`\n", GoFieldName(f.Name), goFieldType(f), strconv.Quote(jsonTag(f)))
+		fmt.Sprintf("\t%s %s `json:%s`\n", goName, goFieldType(f), strconv.Quote(jsonTag(f)))
 }
 
 // goFieldType returns the final Go type expression for a field with
@@ -404,49 +429,19 @@ func goNamedType(n *ast.NamedTypeRef) string {
 	return name
 }
 
-// commonInitialisms enumerates abbreviations that should be rendered fully
-// upper-cased when they appear as a word inside a Go identifier (matches
-// `golint`/`staticcheck` conventions and mirrors the table documented in
-// the project README).
-var commonInitialisms = map[string]bool{
-	"id": true, "url": true, "uri": true, "api": true, "http": true,
-	"https": true, "json": true, "xml": true, "tcp": true, "udp": true,
-	"dns": true, "db": true, "sql": true, "csv": true, "tls": true,
-	"ssl": true, "sha": true, "md5": true, "cdn": true, "dom": true,
-	"pdf": true, "gif": true, "jpeg": true, "png": true, "xss": true,
-	"csrf": true, "cpu": true, "gpu": true, "ram": true, "os": true,
-	"io": true, "eof": true, "ip": true, "mac": true, "utf8": true,
-	"ascii": true,
-}
-
-// GoFieldName converts a DSL field name (which is allowed to be lowercase,
-// snake_case, or camelCase) into an exported Go identifier applying the
-// common-initialism rule. The DSL field name is preserved verbatim as the
-// JSON tag — see [jsonTag].
+// GoFieldName converts a DSL field name (which is allowed to be
+// lowercase, snake_case, or camelCase) into an exported Go identifier
+// applying the common-initialism rule. The DSL field name is preserved
+// verbatim as the JSON tag — see [jsonTag]. Implementation lives in
+// [internal/idents] so the semantic analyser can detect collisions
+// using the same conversion rule that codegen emits.
 func GoFieldName(name string) string {
-	parts := splitFieldName(name)
-	var sb strings.Builder
-	for _, p := range parts {
-		if p == "" {
-			continue
-		}
-		if commonInitialisms[strings.ToLower(p)] {
-			sb.WriteString(strings.ToUpper(p))
-			continue
-		}
-		sb.WriteString(strings.ToUpper(p[:1]))
-		sb.WriteString(strings.ToLower(p[1:]))
-	}
-	return sb.String()
+	return idents.GoFieldName(name)
 }
 
-// splitFieldName breaks a name into word components on `_`, `-`, and
-// camelCase boundaries. Consecutive uppercase letters are kept together as
-// a single acronym word (so `DBError` → `["DB", "Error"]` and `HTTPRequest`
-// → `["HTTP", "Request"]`); a new word starts whenever an uppercase letter
-// follows a lowercase letter, OR when an uppercase letter sits between two
-// other uppercase letters and is followed by a lowercase letter (the
-// "acronym ends here" boundary).
+// splitFieldName is retained for the local-only unit tests that
+// inspect the word-splitting behaviour. The codegen pipeline goes
+// through [GoFieldName] above, which delegates to [internal/idents].
 func splitFieldName(s string) []string {
 	if s == "" {
 		return nil

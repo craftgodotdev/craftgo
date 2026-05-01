@@ -406,15 +406,15 @@ service AdminService {
 }
 
 // TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for
-// methods declaring `@readTimeout` / `@writeTimeout` / `@maxBodySize`.
-// Routes get wrapped in `server.WithLimits(handler, server.Limits{...})`
-// at the call site; the routes file imports "time" because the
-// emitted literal uses time.Millisecond / time.Second helpers.
+// methods declaring `@timeout` / `@maxBodySize`. Routes get wrapped
+// in `server.WithLimits(handler, server.Limits{...})` at the call
+// site; the routes file imports "time" because the emitted literal
+// uses time.Millisecond / time.Second helpers.
 func TestGenerateRoutesMethodLimits(t *testing.T) {
 	src := `package design
 type Req { x string }
 service S {
-    @readTimeout(500ms)
+    @timeout(500ms)
     @maxBodySize(1024)
     post Make /m { request Req }
 }`
@@ -429,7 +429,7 @@ service S {
 	for _, want := range []string{
 		`"time"`,
 		"server.WithLimits",
-		"ReadTimeout: 500 * time.Millisecond",
+		"Timeout: 500 * time.Millisecond",
 		"MaxBodySize: 1024",
 	} {
 		if !strings.Contains(body, want) {
@@ -438,17 +438,17 @@ service S {
 	}
 }
 
-// TestGenerateRoutesPassthroughSkipsReadTimeout pins the passthrough
-// carve-out: `@readTimeout` and `@writeTimeout` are silently dropped
-// when the method also carries `@passthrough` because the framework
-// hands the writer to logic verbatim and `http.TimeoutHandler` would
-// cut whatever stream logic decides to produce.
-func TestGenerateRoutesPassthroughSkipsReadTimeout(t *testing.T) {
+// TestGenerateRoutesPassthroughSkipsTimeout pins the passthrough
+// carve-out: `@timeout` is silently dropped when the method also
+// carries `@passthrough` because the framework hands the writer to
+// logic verbatim and `http.TimeoutHandler` would cut whatever stream
+// logic decides to produce. `@maxBodySize` still applies (the body
+// cap fires at read time, not response time).
+func TestGenerateRoutesPassthroughSkipsTimeout(t *testing.T) {
 	src := `package design
 service S {
     @passthrough
-    @readTimeout(5s)
-    @writeTimeout(5s)
+    @timeout(5s)
     @maxBodySize(2048)
     get Live /live {}
 }`
@@ -459,8 +459,8 @@ service S {
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
 	src2 := string(body)
-	if strings.Contains(src2, "ReadTimeout:") || strings.Contains(src2, "WriteTimeout:") {
-		t.Errorf("passthrough method should not get ReadTimeout or WriteTimeout:\n%s", src2)
+	if strings.Contains(src2, "Timeout:") {
+		t.Errorf("passthrough method should not get Timeout:\n%s", src2)
 	}
 	if !strings.Contains(src2, "MaxBodySize:") {
 		t.Errorf("MaxBodySize should still apply to passthrough:\n%s", src2)

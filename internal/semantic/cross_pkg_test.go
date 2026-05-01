@@ -430,16 +430,37 @@ type T { name string? @nullable }`))
 	}
 }
 
-func TestLocalSymbolEverySymbolKind(t *testing.T) {
-	// A scalar reference + an enum reference + an error reference
-	// inside a type body all resolve via the local-symbol table.
+// TestLocalSymbolEveryTypePositionKind pins the type-position resolver:
+// scalars and enums declared in the same package resolve as field types
+// without error; an error declaration name is rejected with a dedicated
+// diagnostic pointing the user at `@errors(...)` rather than the generic
+// "unknown type" branch.
+func TestLocalSymbolEveryTypePositionKind(t *testing.T) {
+	// Scalar + enum resolve cleanly.
 	mustClean(t, `package x
 scalar ID string
 enum Color { Red Blue }
+type T {
+    id  ID
+    hue Color
+}`)
+}
+
+// TestErrorNameRejectedAsFieldType pins the bug fix: declaring a field
+// whose type is an `error` name (e.g. `field ref MissingErr` where
+// `error NotFound MissingErr` lives in the same package) MUST raise
+// a diagnostic — errors are reserved for `@errors(...)`.
+func TestErrorNameRejectedAsFieldType(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `package x
 error NotFound MissingErr
 type T {
-    id    ID
-    hue   Color
-    ref   MissingErr
-}`)
+    ref MissingErr
+}`))
+	d := findCode(diags, CodeRefUnknownSymbol)
+	if d == nil {
+		t.Fatalf("expected %s when an error name is used as a field type, got %v", CodeRefUnknownSymbol, codes(diags))
+	}
+	if !strings.Contains(d.Msg, "@errors") {
+		t.Errorf("diagnostic must hint at @errors as the correct usage, got %q", d.Msg)
+	}
 }

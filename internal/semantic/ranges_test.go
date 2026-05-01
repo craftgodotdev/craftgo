@@ -92,7 +92,7 @@ func TestStatusValidOK(t *testing.T) {
 
 func TestZeroDurationRejected(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `service S {
-	@readTimeout(0)
+	@timeout(0)
 	get G /g {}
 }`))
 	if findCode(diags, CodeDecoratorRange) == nil {
@@ -102,7 +102,7 @@ func TestZeroDurationRejected(t *testing.T) {
 
 func TestNegativeDurationRejected(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `service S {
-	@writeTimeout(-1)
+	@timeout(-1)
 	get G /g {}
 }`))
 	if findCode(diags, CodeDecoratorRange) == nil {
@@ -114,7 +114,7 @@ func TestDurationLiteralAcceptedAlways(t *testing.T) {
 	// Duration literals are always OK — only the bare-int form is
 	// range-checked here.
 	mustClean(t, `service S {
-	@readTimeout(5s)
+	@timeout(5s)
 	get G /g {}
 }`)
 }
@@ -261,7 +261,7 @@ func TestRangeHelpersTolerateBadShape(t *testing.T) {
 	a.checkPairArgs(&ast.Decorator{Name: "length"}) // 0 args
 	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf"})
 	a.checkHTTPStatus(&ast.Decorator{Name: "status"})
-	a.checkPositiveDuration(&ast.Decorator{Name: "readTimeout"})
+	a.checkPositiveDuration(&ast.Decorator{Name: "timeout"})
 	a.checkPositiveSize(&ast.Decorator{Name: "maxBodySize"})
 	a.checkNonNegativeInt(&ast.Decorator{Name: "minLength"})
 

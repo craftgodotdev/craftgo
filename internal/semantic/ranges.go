@@ -79,9 +79,9 @@ func (a *analyzer) checkDecoratorRanges(decs []*ast.Decorator) {
 			a.checkMultipleOf(d)
 		case "status":
 			a.checkHTTPStatus(d)
-		case "readTimeout", "writeTimeout":
+		case "timeout":
 			a.checkPositiveDuration(d)
-		case "maxBodySize", "maxHeaderSize", "maxSize":
+		case "maxBodySize", "maxSize":
 			a.checkPositiveSize(d)
 		case "minLength", "maxLength", "minItems", "maxItems":
 			a.checkNonNegativeInt(d)
@@ -144,7 +144,7 @@ func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 	}
 }
 
-// checkPositiveDuration rejects `@readTimeout(0)` etc. Bare-int form
+// checkPositiveDuration rejects `@timeout(0)` etc. Bare-int form
 // (interpreted as seconds) is also checked. Negative values are
 // likewise rejected.
 func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {

@@ -31,8 +31,7 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 // argument to `srv.Handle`. Middlewares are wrapped LEFT-TO-RIGHT so
 // the first name in the slice ends up outermost, matching how readers
 // expect to see the chain ("Auth wraps everything else"). When the
-// method declares any of the limit decorators (@readTimeout,
-// @writeTimeout, @maxBodySize, @maxHeaderSize) the entire chain is
+// method declares `@timeout` or `@maxBodySize` the entire chain is
 // further wrapped in `server.WithLimits(...)` so the limits apply
 // outside any middleware — timeouts include the middleware's own
 // work, not just the handler's.
@@ -49,27 +48,21 @@ func buildHandlerCall(m *ast.Method, mws []string) string {
 
 // methodLimitsLiteral renders a `server.Limits{...}` Go-source struct
 // literal from the method's decorators, or returns ("", false) when
-// none of the limit decorators are present. Passthrough methods opt
-// out of `@readTimeout` and `@writeTimeout` because the framework
-// hands the writer/request to logic verbatim and `http.TimeoutHandler`
-// would cut whatever stream logic decides to produce; @maxBodySize
-// and informational fields still apply.
+// neither `@timeout` nor `@maxBodySize` is present. Passthrough
+// methods opt out of `@timeout` because the framework hands the
+// writer/request to logic verbatim and `http.TimeoutHandler` would
+// cut whatever stream logic decides to produce; `@maxBodySize`
+// still applies (the body cap fires at read time, not response time).
 func methodLimitsLiteral(m *ast.Method) (string, bool) {
 	passthrough := hasPassthroughDecorator(m.Decorators)
 	var fields []string
 	if !passthrough {
-		if d := durationDecoratorArg(m.Decorators, "readTimeout"); d != "" {
-			fields = append(fields, "ReadTimeout: "+d)
-		}
-		if d := durationDecoratorArg(m.Decorators, "writeTimeout"); d != "" {
-			fields = append(fields, "WriteTimeout: "+d)
+		if d := durationDecoratorArg(m.Decorators, "timeout"); d != "" {
+			fields = append(fields, "Timeout: "+d)
 		}
 	}
 	if n := sizeDecoratorArg(m.Decorators, "maxBodySize"); n > 0 {
 		fields = append(fields, fmt.Sprintf("MaxBodySize: %d", n))
-	}
-	if n := sizeDecoratorArg(m.Decorators, "maxHeaderSize"); n > 0 {
-		fields = append(fields, fmt.Sprintf("MaxHeaderSize: %d", n))
 	}
 	if len(fields) == 0 {
 		return "", false
@@ -78,7 +71,7 @@ func methodLimitsLiteral(m *ast.Method) (string, bool) {
 }
 
 // durationDecoratorArg returns the Go-source expression for a
-// duration argument like `@readTimeout(30s)`. Supports both
+// duration argument like `@timeout(30s)`. Supports both
 // DurationLit (preferred) and bare integers (interpreted as seconds
 // per the README's "bare number → seconds" rule). Empty string means
 // the decorator is absent or carries an unsupported literal.

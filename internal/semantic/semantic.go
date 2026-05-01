@@ -155,6 +155,10 @@ func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	}
 	a.checkPackageName(files)
 	a.collectDecls(files)
+	a.checkDeclNameCase(files)
+	a.checkFieldNameCollisions(files)
+	a.checkEnumValueCollisions(files)
+	a.checkDeclGoNameCollisions(files)
 	a.mergeServices()
 	a.checkFieldUniqueness()
 	a.checkEnums()
@@ -225,6 +229,41 @@ const (
 	// CodeDuplicateDecl fires when two top-level declarations share a
 	// name across the merged package.
 	CodeDuplicateDecl = "decl/duplicate"
+	// CodeDeclNameCase fires (severity warning) when a top-level decl
+	// — type / error / enum / service / middleware / scalar — does
+	// not start with an uppercase letter. Lower-case decl names are
+	// emitted verbatim by codegen, producing UNEXPORTED Go types
+	// that cannot be imported across packages.
+	CodeDeclNameCase = "decl/name-case"
+	// CodeFieldNameCollision fires (severity warning) when two field
+	// names in the same type / error body normalise to the same Go
+	// identifier under [internal/idents.GoFieldName] (e.g. `user_id`
+	// and `userId` both → `UserID`). Codegen still emits the struct
+	// using `_2`, `_3`, ... suffixes so the result compiles, but
+	// the JSON wire shape carries both DSL names verbatim — a quiet
+	// schema duplication the user almost certainly did not intend.
+	CodeFieldNameCollision = "field/name-collision"
+	// CodeEnumValueCollision fires (severity warning) when two enum
+	// values in the same enum normalise to the same Go const name
+	// (e.g. `created` and `Created` both → `<Enum>Created`).
+	// Codegen emits the trailing duplicates with `_2`, `_3`, ...
+	// suffixes so the package compiles, but the wire payload
+	// (string or int) of both values stays distinct — a quiet
+	// duplication the user usually did not intend.
+	CodeEnumValueCollision = "enum/value-collision"
+	// CodeDeclGoNameCollision fires (severity ERROR) when two
+	// top-level decls in the same package produce the same Go
+	// identifier under codegen's name-mangling rules. Examples
+	// caught by this rule:
+	//
+	//   - `type FooErr` + `error Foo` — both emit `type FooErr`
+	//   - `type FooBody` + `error Foo { ... }` — both emit `type FooBody`
+	//   - `type FooMiddleware` + `middleware Foo` — same
+	//
+	// Auto-suffixing decls would silently rename a symbol the user
+	// references in their own Go code, so this is a hard error
+	// rather than the soft warning used for FIELD-level dedup.
+	CodeDeclGoNameCollision = "decl/go-name-collision"
 
 	// CodeDuplicateField fires when two fields in the same type / error
 	// body share a name.
@@ -541,16 +580,28 @@ func (a *analyzer) checkPackageName(files []*ast.File) {
 // collectDecls walks every declaration once, populates the Package symbol
 // tables, and reports duplicate top-level names. Services are special-cased:
 // they merge across files via [ServiceInfo] (see [mergeServices]).
+//
+// Namespace separation matches the codegen output packages:
+//
+//   - type / enum / scalar / error → all emit into the types package,
+//     so they share one `seen` map. A duplicate name across kinds is
+//     a hard collision in the generated Go.
+//   - middleware → emits into its own package (svccontext aliases +
+//     middleware impl pkg), independent from types. Uses a separate
+//     `seenMW` map so `middleware Foo` and `type Foo` coexist.
+//   - service → handler / route packages, each namespaced per
+//     service; merge handled by mergeServices.
 func (a *analyzer) collectDecls(files []*ast.File) {
-	seen := map[string]lexer.Position{}
-	register := func(name string, pos lexer.Position) bool {
-		if prev, ok := seen[name]; ok {
+	seen := map[string]lexer.Position{}    // type / enum / scalar / error namespace
+	seenMW := map[string]lexer.Position{} // middleware namespace
+	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position) bool {
+		if prev, ok := table[name]; ok {
 			d := a.diag(pos, pos, lexer.SeverityError, CodeDuplicateDecl,
 				"duplicate top-level declaration %q", name)
 			d.Related = related(prev, "first declared here")
 			return false
 		}
-		seen[name] = pos
+		table[name] = pos
 		return true
 	}
 	for _, f := range files {
@@ -568,35 +619,35 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if dd == nil {
 					continue
 				}
-				if register(dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos) {
 					a.pkg.Types[dd.Name] = dd
 				}
 			case *ast.EnumDecl:
 				if dd == nil {
 					continue
 				}
-				if register(dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos) {
 					a.pkg.Enums[dd.Name] = dd
 				}
 			case *ast.ErrorDecl:
 				if dd == nil {
 					continue
 				}
-				if register(dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos) {
 					a.pkg.Errors[dd.Name] = dd
 				}
 			case *ast.ScalarDecl:
 				if dd == nil {
 					continue
 				}
-				if register(dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos) {
 					a.pkg.Scalars[dd.Name] = dd
 				}
 			case *ast.MiddlewareDecl:
 				if dd == nil {
 					continue
 				}
-				if register(dd.Name, dd.Pos) {
+				if registerIn(seenMW, dd.Name, dd.Pos) {
 					a.pkg.Middlewares[dd.Name] = dd
 				}
 			case *ast.ServiceDecl:

@@ -122,6 +122,28 @@ deps: ## Download/verify modules.
 	$(GO) mod verify
 
 # ---- clean ---------------------------------------------------------------
+# ---- VS Code extension ---------------------------------------------------
+# Glob both legacy (`harry2401.craftgo-*`) and current (`craftgo.craftgo-*`)
+# folder shapes so the target works regardless of which `.vsix` the user
+# installed. The extension folder under ~/.vscode survives publisher
+# renames at the source level — files on disk only get rewritten when
+# the user reinstalls a fresh `.vsix`.
+EXT_SRC      := extensions/vscode
+EXT_INSTALL  := $$HOME/.vscode/extensions
+
+.PHONY: sync-vscode
+sync-vscode: ## Copy syntax / package files into the locally-installed craftgo extension folder so grammar edits show up after a Reload Window.
+	@found=$$(ls -d $(EXT_INSTALL)/*craftgo* 2>/dev/null | head -1); \
+	if [ -z "$$found" ]; then \
+		echo "no installed craftgo extension found under $(EXT_INSTALL)"; \
+		exit 1; \
+	fi; \
+	echo "syncing $(EXT_SRC)/ → $$found"; \
+	cp -R $(EXT_SRC)/syntaxes $$found/; \
+	cp $(EXT_SRC)/language-configuration.json $$found/ 2>/dev/null || true; \
+	cp $(EXT_SRC)/package.json $$found/; \
+	echo "done — VS Code: Cmd+Shift+P → Developer: Reload Window"
+
 .PHONY: clean
 clean: ## Remove build artefacts and coverage files.
 	rm -rf $(BIN_DIR) dist coverage.txt coverage.html $(BENCH_DIR)

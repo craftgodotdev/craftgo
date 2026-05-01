@@ -438,13 +438,22 @@ func (p *Parser) parseTypeBody() []ast.TypeMember {
 // parseTypeMember reads one member of a type body — either a [Field] or a
 // [Mixin]. Disambiguation rules (in priority order):
 //
-//  1. Next token is `.` or `<` → mixin (qualified or generic name).
-//  2. First identifier starts uppercase (PascalCase) → mixin.
-//  3. Otherwise → field (lowercase first letter ⇒ field name).
+//  1. Next token is `.` or `<` → mixin (qualified or generic name,
+//     e.g. `shared.Profile`, `Page<User>`).
+//  2. Next token on the same line is a builtin primitive (`string`,
+//     `int`, ...) or `map` → field. Works for PascalCase names too
+//     (`CreateUser int` is a field with an exported JSON tag).
+//  3. First identifier starts lowercase → field (the canonical form).
+//  4. Otherwise → mixin (PascalCase ident alone, OR followed by a
+//     non-builtin Ident which is the start of the NEXT member in
+//     compact `Profile  name string` form).
 //
-// This soft-enforces the "type names are PascalCase, field names are
-// lowercase-first" convention without losing flexibility for cross-package
-// mixin references like `shared.Profile`.
+// The "Pascal + builtin → field" carve-out lets users name a field
+// anything they want — including PascalCase JSON keys — without
+// breaking the compact mixin+field-on-one-line form that test
+// fixtures rely on. Rule (4) only kicks in when the next token is
+// an Ident that is NOT a builtin (i.e. another field name in the
+// compact form).
 func (p *Parser) parseTypeMember() ast.TypeMember {
 	p.captureDoc()
 	decs := p.parseDecorators()
@@ -454,17 +463,55 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 		return nil
 	}
 	next := p.peekAt(1)
-	mixin := next.Kind == lexer.Dot || next.Kind == lexer.LAngle || isUpperFirst(t.Text)
-	if mixin {
+	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
 		ref := p.parseNamedTypeRef()
 		_ = decs
-		_ = p.takeDoc() // mixins don't carry a doc-comment field yet
+		_ = p.takeDoc()
 		return &ast.Mixin{Pos: t.Pos, Ref: ref}
 	}
-	name := p.advance()
-	tref := p.parseTypeRef()
-	fieldDecs := p.parseDecorators()
-	return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
+	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
+		name := p.advance()
+		tref := p.parseTypeRef()
+		fieldDecs := p.parseDecorators()
+		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
+	}
+	ref := p.parseNamedTypeRef()
+	_ = decs
+	_ = p.takeDoc()
+	return &ast.Mixin{Pos: t.Pos, Ref: ref}
+}
+
+// isFieldFollower reports whether `next` (the token AFTER a leading
+// identifier in a type-body member) is the first token of a TypeRef
+// on the same line — the unambiguous signal that the leading ident
+// is a field NAME and `next` begins its type. Builtin primitives
+// and `map` are the only signals that work without semantic info;
+// arbitrary Idents are ambiguous (could be a custom type, could be
+// the next member's name in compact form) and stay covered by the
+// case-based default.
+func isFieldFollower(next lexer.Token, sameLine int) bool {
+	if next.Pos.Line != sameLine {
+		return false
+	}
+	if next.Kind == lexer.KwMap {
+		return true
+	}
+	if next.Kind != lexer.Ident {
+		return false
+	}
+	return parserBuiltinTypes[next.Text]
+}
+
+// parserBuiltinTypes mirrors the closed set of primitive type names
+// recognised by [internal/semantic]'s [builtinTypes] table. Pinned
+// here as a small standalone copy so the parser can disambiguate
+// "Pascal followed by builtin" without depending on semantic.
+var parserBuiltinTypes = map[string]bool{
+	"string": true, "bool": true,
+	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
+	"uint": true, "uint8": true, "uint16": true, "uint32": true, "uint64": true,
+	"float32": true, "float64": true,
+	"bytes": true, "any": true, "object": true, "file": true,
 }
 
 // peekIs reports whether the current token has kind k.

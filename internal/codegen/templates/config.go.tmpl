@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -42,10 +43,29 @@ type Config struct {
 // ServerConfig configures the public API listener that handles HTTP
 // traffic. The admin / metrics scrape lives on a separate listener
 // (see [MetricsConfig]) so ops can firewall the two independently.
+//
+// Transport-level deadlines (`http.Server.ReadTimeout`,
+// `WriteTimeout`, `IdleTimeout`, `ReadHeaderTimeout`,
+// `MaxHeaderBytes`) are NOT modelled here — those are server-wide
+// stdlib knobs the user sets directly on the http.Server in main.go
+// when the defaults are insufficient. This struct only carries
+// per-handler defaults the framework can enforce uniformly.
 type ServerConfig struct {
 	// Addr is the bind address for the public HTTP server, e.g. ":8080"
 	// or "127.0.0.1:8080" to limit to localhost during development.
 	Addr string `yaml:"addr"`
+
+	// HandlerTimeout is the global default for handler execution.
+	// Applied as `srv.Use(server.Timeout(d))` so every route inherits
+	// the deadline; per-method `@timeout(d)` decorators override
+	// (innermost wrap wins). Zero = no global default.
+	HandlerTimeout time.Duration `yaml:"handlerTimeout"`
+
+	// MaxBodySize is the global default request-body cap in bytes.
+	// Applied as `srv.Use(server.BodyLimit(n))` so every route
+	// inherits the limit; per-method `@maxBodySize(n)` decorators
+	// override. Zero = no global cap.
+	MaxBodySize int64 `yaml:"maxBodySize"`
 }
 
 // OTelConfig drives the OpenTelemetry tracer setup. Disabled = silent
@@ -148,6 +168,16 @@ func Load(cfgPath string) (*Config, error) {
 func (c *Config) applyEnv() {
 	if v := os.Getenv("CRAFTGO_SERVER_ADDR"); v != "" {
 		c.Server.Addr = v
+	}
+	if v := os.Getenv("CRAFTGO_SERVER_HANDLER_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Server.HandlerTimeout = d
+		}
+	}
+	if v := os.Getenv("CRAFTGO_SERVER_MAX_BODY_SIZE"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			c.Server.MaxBodySize = n
+		}
 	}
 
 	if v := os.Getenv("CRAFTGO_OTEL_ENABLED"); v != "" {

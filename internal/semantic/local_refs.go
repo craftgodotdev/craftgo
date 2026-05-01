@@ -199,10 +199,20 @@ func (a *analyzer) checkLocalTypeRef(t *ast.TypeRef, typeParams, imports map[str
 }
 
 // checkLocalNamedRef handles the leaf case: when the qualified name has
-// only one segment, it must be a builtin OR a declared symbol OR (for
-// generic instantiation contexts) a type parameter in scope OR an
-// import alias (the parser's recovery from a half-typed `pkg.` shape
-// leaves a bare single-part `pkg` in the AST).
+// only one segment, it must be a builtin OR a declared TYPE-position
+// symbol OR (for generic instantiation contexts) a type parameter in
+// scope OR an import alias (the parser's recovery from a half-typed
+// `pkg.` shape leaves a bare single-part `pkg` in the AST).
+//
+// Error declarations are deliberately NOT accepted as a type-position
+// match even though they live in the same package. Errors are only
+// valid inside `@errors(...)` decorator args (handled separately by
+// [checkErrorRefs]); allowing them here would let a user write
+// `field someUser UserNotFound` which compiles but produces a
+// generated struct embedding an HTTP error type — a confusing
+// category mistake. The diagnostic that fires when an error name
+// is used as a field type carries an explicit hint pointing the
+// user at `@errors(<name>)`.
 func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports map[string]bool) {
 	if n == nil || n.Name == nil {
 		return
@@ -220,7 +230,13 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 	if typeParams != nil && typeParams[name] {
 		return
 	}
-	if a.isLocalSymbol(name) {
+	if a.isLocalType(name) {
+		return
+	}
+	if _, ok := a.pkg.Errors[name]; ok {
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
+			"%q is an error declaration, not a type — errors are only valid inside `@errors(...)`; declare a separate `type` if you need this shape as a field value",
+			name)
 		return
 	}
 	if imports != nil && imports[name] {
@@ -240,19 +256,16 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 		name, a.pkg.Name)
 }
 
-// isLocalSymbol reports whether name is declared in the current
-// package's symbol tables. Mirrors [packageHasSymbol] but operates on
-// the analyser's in-progress [Package] rather than a finalised one.
-// [a.pkg] is initialised in [AnalyzeWith] before this method runs, so
-// no nil guard is needed.
-func (a *analyzer) isLocalSymbol(name string) bool {
+// isLocalType reports whether name resolves to a TYPE-position symbol
+// in the current package — types, enums, or scalars. Errors are
+// EXCLUDED on purpose: they belong only in `@errors(...)` and are
+// surfaced with a dedicated diagnostic in [checkLocalNamedRef] rather
+// than collapsed into the generic "unknown type" message.
+func (a *analyzer) isLocalType(name string) bool {
 	if _, ok := a.pkg.Types[name]; ok {
 		return true
 	}
 	if _, ok := a.pkg.Enums[name]; ok {
-		return true
-	}
-	if _, ok := a.pkg.Errors[name]; ok {
 		return true
 	}
 	if _, ok := a.pkg.Scalars[name]; ok {

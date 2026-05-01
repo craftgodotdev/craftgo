@@ -199,6 +199,40 @@ func TestTypeMixin(t *testing.T) {
 	}
 }
 
+// TestTypeFieldPascalCaseWithBuiltin pins the "Pascal name + builtin
+// type → field" carve-out: users free to choose any spelling for
+// their JSON wire shape, including PascalCase keys, without the
+// parser interpreting the name as a mixin. Round-trip through the
+// AST confirms it lands as a Field, not a Mixin.
+func TestTypeFieldPascalCaseWithBuiltin(t *testing.T) {
+	f := mustParse(t, `type X { CreateUser int }`)
+	td := f.Decls[0].(*ast.TypeDecl)
+	field, ok := td.Body[0].(*ast.Field)
+	if !ok {
+		t.Fatalf("expected Field, got %T", td.Body[0])
+	}
+	if field.Name != "CreateUser" {
+		t.Errorf("field name = %q, want %q", field.Name, "CreateUser")
+	}
+}
+
+// TestTypeMixinPascalFollowedByNonBuiltinStaysMixin confirms the
+// compact `mixin field` pattern keeps working when the second ident
+// is NOT a builtin: `Profile  name string` parses as mixin Profile
+// then field `name string`. The case-based default takes over here
+// because we cannot tell at parse time whether `name` was meant as
+// the next member's field-name or as a custom type for `Profile`.
+func TestTypeMixinPascalFollowedByNonBuiltinStaysMixin(t *testing.T) {
+	f := mustParse(t, `type X { Profile  name string }`)
+	td := f.Decls[0].(*ast.TypeDecl)
+	if _, ok := td.Body[0].(*ast.Mixin); !ok {
+		t.Errorf("expected first member to be Mixin, got %T", td.Body[0])
+	}
+	if _, ok := td.Body[1].(*ast.Field); !ok {
+		t.Errorf("expected second member to be Field, got %T", td.Body[1])
+	}
+}
+
 func TestTypeMixinQualified(t *testing.T) {
 	f := mustParse(t, `type X { shared.Profile }`)
 	mx := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Mixin)

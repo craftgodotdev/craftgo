@@ -364,6 +364,53 @@ func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	}
 }
 
+// TestCompletionTypePositionExcludesErrors pins the type-position
+// filter: completions in a `field <name> <cursor>` slot must not
+// surface `error` declarations even though they live in the same
+// project. Errors are reserved for `@errors(...)` decorator args
+// and using one as a field type is rejected by the semantic phase
+// (see TestErrorNameRejectedAsFieldType).
+func TestCompletionTypePositionExcludesErrors(t *testing.T) {
+	src := "package x\n\n" +
+		"type RealType { id string }\n" +
+		"error NotFound MissingErr\n" +
+		"type Holder {\n" +
+		"    ref \n" +
+		"}\n"
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor sits right after `ref ` (line index 4, after the four
+	// chars of `    ` + `ref ` = 8). Line numbering is 0-based.
+	pos := protocol.Position{Line: 5, Character: 8}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	for _, it := range items {
+		if it.Label == "MissingErr" {
+			t.Errorf("error declaration leaked into type-position completions: %+v", it)
+		}
+	}
+	// Sanity: a real type IS suggested — the filter must not be over-broad.
+	gotRealType := false
+	for _, it := range items {
+		if it.Label == "RealType" {
+			gotRealType = true
+			break
+		}
+	}
+	if !gotRealType {
+		t.Errorf("expected `RealType` in type-position completions; got labels: %v", labelsOf(items))
+	}
+}
+
+// labelsOf is a tiny test helper used by completion assertions to
+// surface the candidate set in failure messages.
+func labelsOf(items []protocol.CompletionItem) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.Label)
+	}
+	return out
+}
+
 // TestCompletionErrorCategoryAfterKeyword pins the autocompletion that
 // fires right after the `error` keyword: the closed set of 19 reserved
 // HTTP categories must appear with their HTTP status surfaced as the

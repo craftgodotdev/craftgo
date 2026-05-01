@@ -114,6 +114,11 @@ func TestPackageNameMissing(t *testing.T) {
 
 // ---------- duplicate decls ----------
 
+// TestDuplicateDecl pins the type/enum/scalar/error shared namespace —
+// they all emit into the same Go types package, so a DSL-name match
+// across kinds is a hard collision. Middleware lives in its own Go
+// package (svccontext aliases) and uses a separate seen map; see
+// [TestMiddlewareSeparateNamespace] for the parity expectation.
 func TestDuplicateDecl(t *testing.T) {
 	cases := []string{
 		`type X {}
@@ -124,14 +129,30 @@ enum X {}`,
 error NotFound X`,
 		`type X {}
 scalar X string`,
-		`type X {}
-middleware X`,
 	}
 	for _, src := range cases {
 		_, diags := Analyze(parseFiles(t, src))
 		if !diagsContain(diags, "duplicate top-level") {
 			t.Errorf("expected duplicate error: %s", src)
 		}
+	}
+}
+
+// TestMiddlewareSeparateNamespace pins the namespace split: a
+// middleware named the same as a type does NOT clash, because their
+// codegen output lives in different Go packages (types vs svccontext).
+// Middleware-vs-middleware duplicates still error.
+func TestMiddlewareSeparateNamespace(t *testing.T) {
+	// type Foo + middleware Foo — no collision.
+	mustClean(t, `type Foo {}
+middleware Foo`)
+
+	// middleware Foo + middleware Foo — duplicate within the
+	// middleware namespace.
+	_, diags := Analyze(parseFiles(t, `middleware Foo
+middleware Foo`))
+	if !diagsContain(diags, "duplicate top-level") {
+		t.Errorf("expected duplicate within middleware namespace, got %v", codes(diags))
 	}
 }
 

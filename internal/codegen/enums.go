@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/idents"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
 
@@ -63,6 +64,13 @@ func buildEnumsGo(pkg *semantic.Package) string {
 // emitEnum writes one named type and its associated `const` block. The
 // runtime kind (int vs string) is derived from the first value; the
 // semantic phase already enforced that all values share a kind.
+//
+// Const names follow `<EnumName><GoFieldName(value)>`. When two
+// values normalise to the same const name (e.g. `created` and
+// `Created` both → `<Enum>Created`), the duplicates receive `_2`,
+// `_3`, ... suffixes so the package still compiles. The semantic
+// phase already surfaced an `enum/value-collision` warning pointing
+// the user at the duplicate spellings.
 func emitEnum(sb *strings.Builder, ed *ast.EnumDecl) {
 	goBase := "string"
 	if firstEnumKind(ed) == ast.EnumInt {
@@ -70,10 +78,16 @@ func emitEnum(sb *strings.Builder, ed *ast.EnumDecl) {
 	}
 	sb.WriteString("type " + ed.Name + " " + goBase + "\n\n")
 
+	dslNames := make([]string, len(ed.Values))
+	for i, v := range ed.Values {
+		dslNames[i] = v.Name
+	}
+	resolved, _ := idents.DedupGoFieldNames(dslNames)
+
 	sb.WriteString("const (\n")
-	for _, v := range ed.Values {
+	for i, v := range ed.Values {
 		sb.WriteString("\t")
-		sb.WriteString(ed.Name + GoFieldName(v.Name))
+		sb.WriteString(ed.Name + resolved[i])
 		sb.WriteString(" ")
 		sb.WriteString(ed.Name)
 		sb.WriteString(" = ")

@@ -72,6 +72,15 @@ func main() {
 	srv := server.New(svc)
 	srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
 	srv.Use(server.AccessLog(srv.Logger()))
+	// Global per-request guards. Per-method `@timeout` / `@maxBodySize`
+	// decorators wrap inner so they can tighten (never loosen) these
+	// defaults. Zero values from config skip the wrap entirely.
+	if cfg.Server.HandlerTimeout > 0 {
+		srv.Use(server.Timeout(cfg.Server.HandlerTimeout))
+	}
+	if cfg.Server.MaxBodySize > 0 {
+		srv.Use(server.BodyLimit(cfg.Server.MaxBodySize))
+	}
 
 	// One call wires every service. The umbrella RegisterAll is
 	// generated from the DSL service set on every `craftgo gen`.

@@ -523,10 +523,13 @@ var Registry = map[string]Spec{
 	"accepts":     {Name: "accepts", Levels: LvlMethod, Doc: "Restrict allowed request encodings.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method limits ----
-	"readTimeout":   {Name: "readTimeout", Levels: LvlMethod, Doc: "Override server read timeout for this method.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
-	"writeTimeout":  {Name: "writeTimeout", Levels: LvlMethod, Doc: "Override server write timeout for this method.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
-	"maxBodySize":   {Name: "maxBodySize", Levels: LvlMethod, Doc: "Override max request body size.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
-	"maxHeaderSize": {Name: "maxHeaderSize", Levels: LvlMethod, Doc: "Override max request header size.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
+	// `@timeout` caps the full handler lifecycle (decode body → user
+	// logic → encode response) via `http.TimeoutHandler`. Independent
+	// from transport-level deadlines (`http.Server.ReadTimeout` /
+	// `WriteTimeout`) which the user configures on the server itself
+	// when the stdlib defaults are not enough.
+	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time. Returns 503 + cancels context when the deadline elapses.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
+	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Reads past the cap surface as a normal Read error which the JSON decoder maps to 400.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
 }
 
 // Lookup returns the [Spec] for `name` and whether it is registered.
