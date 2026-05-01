@@ -35,6 +35,28 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 // lives under components.schemas. Both string-based and int-based
 // enums are exercised. The full YAML goes through a golden snapshot;
 // regressions surface as a diff hunk pointing at the divergent line.
+// TestGenerateOpenAPISensitiveFieldOmitted asserts that `@sensitive`
+// fields are skipped entirely from the OpenAPI spec - not present in
+// schema.properties, not listed under required, not surfaced as a
+// query / path / header / cookie parameter (sensitive can't combine
+// with binding decorators, but defensive double-check).
+func TestGenerateOpenAPISensitiveFieldOmitted(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Req {
+    id        string  @required
+    internal  string  @sensitive
+}
+service S {
+    post Make /m { request Req }
+}`)
+	if strings.Contains(body, "internal:") {
+		t.Errorf("sensitive field 'internal' must not appear in OpenAPI spec, got:\n%s", body)
+	}
+	if !strings.Contains(body, "id:") {
+		t.Errorf("regular field 'id' should still be present, got:\n%s", body)
+	}
+}
+
 func TestGenerateOpenAPIEnumSchemasEmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 enum Priority { Low  Normal  High }

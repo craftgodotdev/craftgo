@@ -46,6 +46,31 @@ func mustParseGo(t *testing.T, src string) {
 
 // ---------- types ----------
 
+func TestGenerateTypesSensitiveJSONDash(t *testing.T) {
+	// `@sensitive` fields are server-internal: they get json:"-" so
+	// neither the request decoder nor the response encoder touches
+	// them. Logic populates the field directly via Go assignment.
+	pkg := analyze(t, `package design
+type User { id string  internal string @sensitive }`)
+	dir := t.TempDir()
+	if err := GenerateTypes(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	norm := strings.Join(strings.Fields(src), " ")
+	if !strings.Contains(norm, `Internal string `+"`"+`json:"-"`+"`") {
+		t.Errorf("expected Internal string `json:\"-\"`, got:\n%s", src)
+	}
+	if !strings.Contains(norm, `ID string `+"`"+`json:"id"`+"`") {
+		t.Errorf("non-sensitive field should keep its tag, got:\n%s", src)
+	}
+}
+
 func TestGenerateTypesBasic(t *testing.T) {
 	pkg := analyze(t, `package design
 type User { id string  name string  age int? }`)

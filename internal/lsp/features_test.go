@@ -128,16 +128,22 @@ type T {
 	}
 	hasRequired := false
 	hasTitle := false
+	hasSensitive := false
 	for _, it := range items {
 		switch it.Label {
 		case "required":
 			hasRequired = true
 		case "title":
 			hasTitle = true
+		case "sensitive":
+			hasSensitive = true
 		}
 	}
 	if !hasRequired {
 		t.Error("expected @required in field-level completions")
+	}
+	if !hasSensitive {
+		t.Error("expected @sensitive in field-level completions")
 	}
 	if hasTitle {
 		t.Error("@title is file-only and should not appear at field level")

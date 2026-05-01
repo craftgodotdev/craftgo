@@ -193,6 +193,7 @@ func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorDuplicates(files)
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
+	a.checkDecoratorConflicts(files)
 	if !a.opts.skipMiddlewareRefCheck {
 		a.checkDecoratorRefs(files)
 	}
@@ -269,6 +270,11 @@ const (
 	// thing redundantly (warning, not error). Example: `@nullable`
 	// on a `T?` field.
 	CodeDecoratorRedundant = "decorator/redundant"
+	// CodeDecoratorConflict fires when two decorators on the same site
+	// have semantics that contradict. Example: `@sensitive` paired with
+	// `@required` (sensitive fields never cross the wire so requiring
+	// them is meaningless).
+	CodeDecoratorConflict = "decorator/conflict"
 
 	// CodePackageMismatch fires when files disagree on the `package`
 	// name.

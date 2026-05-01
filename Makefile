@@ -29,6 +29,10 @@ build: ## Build the craftgo CLI to bin/craftgo.
 install: ## Install craftgo into $$GOBIN (or $$GOPATH/bin).
 	$(GO) install $(GOFLAGS) ./cmd/craftgo
 
+.PHONY: install-lsp
+install-lsp: ## Install craftgo-lsp into $$GOBIN. Run after editing internal/lsp or internal/semantic, then restart the language server in VS Code.
+	$(GO) install $(GOFLAGS) ./cmd/craftgo-lsp
+
 # ---- test / lint ---------------------------------------------------------
 .PHONY: test
 test: ## Run all unit tests in the root module.

@@ -81,6 +81,12 @@ func main() {
 	if cfg.Server.MaxBodySize > 0 {
 		srv.Use(server.BodyLimit(cfg.Server.MaxBodySize))
 	}
+	if cfg.Server.Compression.Enabled {
+		srv.Use(server.Compress(server.CompressOptions{
+			MinSize: cfg.Server.Compression.MinSize,
+			Level:   cfg.Server.Compression.Level,
+		}))
+	}
 
 	// One call wires every service. The umbrella RegisterAll is
 	// generated from the DSL service set on every `craftgo gen`.

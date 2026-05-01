@@ -447,8 +447,12 @@ func GoFieldName(name string) string {
 // so neither the request decoder nor the response encoder picks them
 // up. `@form` is left in the body tag because the multipart handler
 // binds its own table; the JSON tag is harmless for those types.
+//
+// `@sensitive` likewise renders as `json:"-"` so the field never
+// touches the wire in either direction; the field stays as a Go
+// struct member that server logic can populate / read internally.
 func jsonTag(f *ast.Field) string {
-	if isNonBodyBound(f) {
+	if isNonBodyBound(f) || hasSensitiveDecorator(f.Decorators) {
 		return "-"
 	}
 	for _, d := range f.Decorators {

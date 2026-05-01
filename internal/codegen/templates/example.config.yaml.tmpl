@@ -3,9 +3,9 @@
 # your environment, and commit the example only (the live file
 # typically lives in `.gitignore` or is rendered from secrets/CI).
 #
-# Every field can also be overridden by an environment variable
-# (CRAFTGO_*) so containerised deployments do not need a file at all
-# - see config.go for the env-var → field mapping.
+# This file is the single source of truth: per-environment overrides
+# go in `config.yaml` itself (one file per env, mounted by the
+# deployer). No environment variables are read.
 
 # Public HTTP listener.
 #
@@ -22,6 +22,12 @@ server:
   addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
   handlerTimeout: 0s          # global default handler deadline; 0 = no cap
   maxBodySize: 0              # global default body cap (bytes); 0 = no cap
+  compression:
+    enabled: false            # gzip/deflate negotiated via Accept-Encoding;
+                              # leave false when running behind a compressing
+                              # reverse proxy (nginx/envoy/cloudfront)
+    minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
+    level: 0                  # gzip level 1..9; 0 → DefaultCompression
 
 # Distributed tracing via OpenTelemetry.
 otel:
@@ -41,23 +47,3 @@ metrics:
                               # HTTP example: "http://collector:4318"
   adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
   path: /metrics              # route the scrape is exposed on (prometheus only)
-
-# ---------------------------------------------------------------
-# Environment-variable overrides (each one wins over the file value):
-#
-#   CRAFTGO_CONFIG                - path to this file (default: config/config.yaml)
-#
-#   CRAFTGO_SERVER_ADDR             - server.addr
-#   CRAFTGO_SERVER_HANDLER_TIMEOUT  - server.handlerTimeout (e.g. "5s", "500ms")
-#   CRAFTGO_SERVER_MAX_BODY_SIZE    - server.maxBodySize (bytes)
-#
-#   CRAFTGO_OTEL_ENABLED          - otel.enabled (true/false)
-#   CRAFTGO_OTEL_EXPORTER         - otel.exporter
-#   CRAFTGO_OTEL_ENDPOINT         - otel.endpoint
-#   CRAFTGO_OTEL_SERVICE_NAME     - otel.serviceName
-#
-#   CRAFTGO_METRICS_ENABLED       - metrics.enabled (true/false)
-#   CRAFTGO_METRICS_EXPORTER      - metrics.exporter
-#   CRAFTGO_METRICS_ENDPOINT      - metrics.endpoint
-#   CRAFTGO_METRICS_ADMIN_ADDR    - metrics.adminAddr
-#   CRAFTGO_METRICS_PATH          - metrics.path

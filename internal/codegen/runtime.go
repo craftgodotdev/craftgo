@@ -25,8 +25,8 @@ type runtimeData struct {
 // (`config.go` + `config.yaml` + `example.config.yaml`) under
 // `cfg.Output.Config`. Every file is gen-once: written when missing,
 // left untouched when present. main.go reads `<Config>/config.yaml`
-// (or the path under `CRAFTGO_CONFIG`) at boot and hands the loaded
-// `*config.Config` to `svccontext.NewServiceContext`.
+// at boot and hands the loaded `*config.Config` to
+// `svccontext.NewServiceContext`.
 //
 // Skipped when `cfg.Output.Main == "-"` - projects opting out of the
 // generated main.go (test fixtures, library-style modules) don't need
@@ -47,14 +47,13 @@ func GenerateRuntimeConfig(cfg *config.Config, projectRoot string) error {
 		OperationName: operationNameFor(cfg.Package),
 	}
 	files := []struct {
-		name      string
-		template  string
-		formatGo  bool
-		writeOnly bool
+		name     string
+		template string
+		formatGo bool
 	}{
-		{"config.go", "config.go.tmpl", true, true},
-		{"config.yaml", "config.yaml.tmpl", false, true},
-		{"example.config.yaml", "example.config.yaml.tmpl", false, true},
+		{"config.go", "config.go.tmpl", true},
+		{"config.yaml", "config.yaml.tmpl", false},
+		{"example.config.yaml", "example.config.yaml.tmpl", false},
 	}
 	for _, f := range files {
 		dest := filepath.Join(dir, f.name)

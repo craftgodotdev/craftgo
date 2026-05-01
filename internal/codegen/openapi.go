@@ -454,6 +454,9 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 			if f.Name == "code" || f.Name == "message" {
 				continue
 			}
+			if hasSensitiveDecorator(f.Decorators) {
+				continue
+			}
 			switch bindingFromDecorators(f.Decorators) {
 			case "header", "cookie":
 				continue
@@ -570,6 +573,9 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 		if !ok {
 			continue
 		}
+		if hasSensitiveDecorator(f.Decorators) {
+			continue
+		}
 		ref := schemaForTypeRef(f.Type, pkg)
 		applyFieldMetadata(f, ref)
 		s.Properties[f.Name] = ref
@@ -659,6 +665,19 @@ func literalToAny(e ast.Expr) (any, bool) {
 func hasNullableDecorator(ds []*ast.Decorator) bool {
 	for _, d := range ds {
 		if d.Name == "nullable" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSensitiveDecorator reports whether ds contains the `@sensitive`
+// marker. Sensitive fields are server-only: they get `json:"-"` in
+// the Go struct (so neither the JSON decoder nor the encoder touches
+// them) and are skipped entirely from the OpenAPI spec.
+func hasSensitiveDecorator(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		if d.Name == "sensitive" {
 			return true
 		}
 	}
@@ -793,6 +812,9 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 	for _, m := range decl.Body {
 		f, ok := m.(*ast.Field)
 		if !ok {
+			continue
+		}
+		if hasSensitiveDecorator(f.Decorators) {
 			continue
 		}
 		s.Properties[f.Name] = schemaForTypeRef(substituteTypeRef(f.Type, subst), pkg)
@@ -938,6 +960,9 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 		if !ok {
 			continue
 		}
+		if hasSensitiveDecorator(f.Decorators) {
+			continue
+		}
 		switch bindingFromDecorators(f.Decorators) {
 		case "path":
 			bins.path = append(bins.path, f)
@@ -1010,6 +1035,9 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Sche
 		Properties: openapi3.Schemas{},
 	}
 	for _, f := range fields {
+		if hasSensitiveDecorator(f.Decorators) {
+			continue
+		}
 		s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
 		if hasRequiredDecorator(f.Decorators) {
 			s.Required = append(s.Required, f.Name)
