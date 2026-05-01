@@ -1,9 +1,0 @@
-package design
-
-// User is the canonical example domain entity.
-type User {
-    id        string @required
-    email     string @required @format(email)
-    name      string @required @length(1, 80)
-    createdAt string @format(datetime)
-}

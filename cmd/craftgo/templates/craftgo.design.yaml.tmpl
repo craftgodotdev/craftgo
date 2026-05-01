@@ -1,13 +1,20 @@
 # craftgo.design.yaml — project manifest read by every CLI command.
 # Uncomment optional blocks below as you need them.
+#
+# This file lives at the root of your design folder. The folder name
+# is arbitrary (`design`, `contracts/v1`, `apis`, ...) — every
+# `.craftgo` file in the same directory or a descendant is parsed at
+# gen time. Run `craftgo gen` from the design folder, or pass
+# `-f <design-folder>` from anywhere else.
+#
+# The Go module path is read from go.mod at gen time (walking up
+# from the project root), so the manifest itself does NOT declare
+# `package:`. Make sure `go mod init <module>` has been run before
+# `craftgo gen`.
 
-# Go module path of the project — every generated file's package
-# import resolves through this.
-package: {{.Package}}
-
-# Output paths are resolved against the project root (the parent of
-# this file's directory). Per-service buckets are created
-# automatically under the directory paths below at gen time.
+# Output paths are resolved against the project root. Per-service
+# buckets are created automatically under the directory paths below
+# at gen time.
 output:
   types:      ./internal/types
   handler:    ./internal/handler
@@ -16,8 +23,16 @@ output:
   middleware: ./internal/middleware
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
-  # client:   ./internal/client     # generated client SDK output dir
+  config:     ./config              # runtime config package (config.go +
+                                    # config.yaml + example.config.yaml).
+                                    # main.go reads <config>/config.yaml at
+                                    # boot; svccontext.NewServiceContext
+                                    # takes the loaded *config.Config.
   # main:     ./cmd/server/main.go  # generated bootstrap main file
+  # main:     "-"                   # opt out of main.go scaffolding (also
+                                    # skips config/ and svccontext/, useful
+                                    # for test fixtures that ship their own
+                                    # boot wiring)
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.
@@ -48,9 +63,3 @@ openapi:
   #     in: header        # one of: header, query, cookie
   #     name: X-API-Key
 
-# Project-local template override directory. When set, codegen prefers
-# files in this directory over the framework's bundled templates,
-# letting you tweak generated Go without forking the tool. Uncomment
-# only when you actually have overrides — an empty dir is a no-op.
-# templates:
-#   dir: ./design/templates

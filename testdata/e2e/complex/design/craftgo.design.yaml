@@ -1,4 +1,3 @@
-package: github.com/dropship-dev/craftgo/testdata/e2e/complex
 output:
   types:      ./internal/types
   handler:    ./internal/handler

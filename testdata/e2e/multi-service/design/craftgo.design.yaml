@@ -1,5 +1,3 @@
-package: github.com/dropship-dev/craftgo/testdata/e2e/multi-service
-design: ./design
 output:
   types:      ./internal/types
   handler:    ./internal/handler

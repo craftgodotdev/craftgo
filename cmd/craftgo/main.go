@@ -5,16 +5,19 @@
 // Usage:
 //
 //	craftgo init [path] [-package <module>]
-//	craftgo gen  [path]
+//	craftgo gen  [-f <design-folder>] [-c|--context <project-root>] [path]
 //
-// `init` scaffolds a fresh design folder under <path> (default cwd) with a
-// craftgo.design.yaml, sample type, and sample service. Existing files are
-// never overwritten — re-running on a populated directory is a no-op for
-// any pre-existing artefact.
+// `init` scaffolds a fresh design folder at <path> (default `design`).
+// The path argument IS the design folder — manifest + sample `.craftgo`
+// files land flat inside it. Existing files are never overwritten so
+// re-running on a populated directory fills only the gaps.
 //
-// `gen` searches the current working directory upward (or, when given,
-// <path>) for a craftgo.design.yaml (or a sibling `design/` folder
-// containing one) and runs the full codegen pipeline.
+// `gen` resolves the design folder one of two ways: with `-f` it uses
+// the supplied path directly; without it walks upward from <path> (or
+// cwd) looking for a craftgo.design.yaml, probing direct subdirs of
+// any name at each level. The project root the `output:` paths
+// resolve against is `-c <root>` when given, else cwd in the `-f`
+// flow, else the parent of the manifest folder (legacy compat).
 package main
 
 import (
@@ -75,19 +78,123 @@ func usage() {
 	fmt.Println(`craftgo — design-first Go API framework
 
 Usage:
-  craftgo init [path] [-package <module>]
-                          Scaffold design/ with a sample manifest, type, service
-  craftgo gen [path]      Generate types, handlers, routes, OpenAPI from .craftgo
+  craftgo init [path]
+                          Scaffold a design folder at <path> (default: 'design').
+                          The supplied path IS the design folder — the manifest
+                          (craftgo.design.yaml) lands flat inside it. The Go
+                          module path is read from go.mod at gen time, so init
+                          itself does not need a -package flag.
+
+  craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
+                          Generate types, handlers, routes, OpenAPI from
+                          .craftgo files. Flags:
+                            -f, --folder   path to the folder holding
+                                           craftgo.design.yaml (skips walk-up)
+                            -c, --context  project root the output: paths
+                                           resolve against (defaults to cwd
+                                           when -f is given, otherwise to
+                                           the parent of the manifest dir)
+                          Without -f, walks upward from <path> (or cwd) for
+                          craftgo.design.yaml, probing direct subdirs (any
+                          name) at each level. The Go module path is read
+                          from go.mod, walking up from the project root —
+                          run "go mod init <module>" first if it does not
+                          exist yet.
+
   craftgo fmt [path] [-l] [-w]
                           Canonical-format .craftgo files (default: write back)
   craftgo version         Print the CLI version
   craftgo help            Show this message
 
-For 'gen', path is optional; when omitted craftgo searches the current
-directory upward for a craftgo.design.yaml (or a sibling design/ folder
-containing one). For 'init', path defaults to '.' and -package defaults to
-'github.com/example/app' (which you should edit immediately). For 'fmt',
-path may be a single file or a directory (recursed for *.craftgo).`)
+For 'fmt', path may be a single file or a directory (recursed for *.craftgo).`)
+}
+
+// parseGenArgs extracts the three controls `craftgo gen` honours:
+//
+//   - `-f <folder>`: explicit design folder (where craftgo.design.yaml
+//     lives). Skips the walk-up search.
+//   - `-c|--context <root>`: project root the `output:` paths resolve
+//     against. Defaults to cwd when -f is given, otherwise to the
+//     parent of the manifest folder (legacy).
+//   - positional path: walk-up start (legacy compat). Defaults to
+//     `.` when neither -f nor a positional is given.
+//
+// Returns (manifestFolder, contextRoot, positionalTarget, error).
+// Exactly one of manifestFolder / positionalTarget is meaningful at
+// the call site — the runGen dispatch picks the path based on which
+// is set.
+func parseGenArgs(args []string) (manifest, ctxRoot, positional string, err error) {
+	positional = "."
+	gotPositional := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-f", "--folder":
+			if i+1 >= len(args) {
+				return "", "", "", fmt.Errorf("gen: %s requires a folder argument", args[i])
+			}
+			manifest = args[i+1]
+			i++
+		case "-c", "--context":
+			if i+1 >= len(args) {
+				return "", "", "", fmt.Errorf("gen: %s requires a path argument", args[i])
+			}
+			ctxRoot = args[i+1]
+			i++
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return "", "", "", fmt.Errorf("gen: unknown flag %q", args[i])
+			}
+			if gotPositional {
+				return "", "", "", fmt.Errorf("gen: too many positional arguments")
+			}
+			positional = args[i]
+			gotPositional = true
+		}
+	}
+	return manifest, ctxRoot, positional, nil
+}
+
+// resolveGenPaths picks the design folder and project root from the
+// parsed flags. Two flows:
+//
+//   - `-f <folder>` → design folder is exactly that path. Project
+//     root defaults to cwd (the dir the user ran the command from)
+//     so the monorepo layout — design at contracts/v1, code at repo
+//     root — works without further flags. `-c` overrides.
+//
+//   - no `-f` → walk up from `target` until craftgo.design.yaml is
+//     found (or in any direct subdir along the way). Project root
+//     stays the parent of the manifest dir (legacy convention),
+//     unless `-c` overrides.
+//
+// The cwd default in the `-f` flow and the parent-of-manifest default
+// in the walk-up flow give predictable results for the most common
+// invocations: `craftgo gen` from the project root, `craftgo gen -f`
+// from anywhere.
+func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
+	if manifestFolder != "" {
+		root := contextRoot
+		if root == "" {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return nil, "", "", err
+			}
+			root = cwd
+		}
+		return config.FindAt(manifestFolder, root)
+	}
+	cfg, projectRoot, designDir, err := config.Find(target)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if contextRoot != "" {
+		absRoot, absErr := filepath.Abs(contextRoot)
+		if absErr != nil {
+			return nil, "", "", absErr
+		}
+		projectRoot = absRoot
+	}
+	return cfg, projectRoot, designDir, nil
 }
 
 // runGen wires the full design → codegen pipeline. The implementation is a
@@ -96,14 +203,26 @@ path may be a single file or a directory (recursed for *.craftgo).`)
 // only an outDir) and the order matters: types first so handlers and routes
 // can reference them, then OpenAPI last so it has the final symbol table.
 func runGen(args []string) error {
-	target := "."
-	if len(args) > 0 {
-		target = args[0]
-	}
-	cfg, projectRoot, designDir, err := config.Find(target)
+	manifestFolder, contextRoot, target, err := parseGenArgs(args)
 	if err != nil {
 		return err
 	}
+	cfg, projectRoot, designDir, err := resolveGenPaths(manifestFolder, contextRoot, target)
+	if err != nil {
+		return err
+	}
+	// Resolve the Go module path for the project root. ResolveModulePath
+	// walks up looking for go.mod (so monorepo layouts with one shared
+	// go.mod at the repo root and project root inside a sub-tree work
+	// without further config) and computes the effective import-path
+	// prefix every generated file consumes. We populate cfg.Package
+	// here rather than reading it from the manifest so the manifest
+	// can never drift from go.mod's truth.
+	modulePath, err := config.ResolveModulePath(projectRoot)
+	if err != nil {
+		return err
+	}
+	cfg.Package = modulePath
 	files, err := parseDesign(designDir)
 	if err != nil {
 		return err
@@ -224,12 +343,23 @@ func runGen(args []string) error {
 		}
 	}
 
-	// Project-wide artefacts: routes-umbrella, main.go, openapi.yaml.
-	// These aggregate services + types across every package so they
-	// must run AFTER all per-package gen has produced the upstream
-	// inputs.
+	// Project-wide artefacts: routes-umbrella, runtime config + svccontext
+	// scaffolds, main.go, openapi.yaml. These aggregate services + types
+	// across every package so they must run AFTER all per-package gen
+	// has produced the upstream inputs.
+	//
+	// Runtime scaffolds (config/, svccontext/) are gen-once and run
+	// BEFORE main.go so the generated boot code can rely on the
+	// config package's import path resolving. They self-skip when
+	// `output.main: "-"` opts the project out of the runtime layer.
 	if err := codegen.GenerateProjectRoutesUmbrella(proj, cfg, projectRoot); err != nil {
 		return fmt.Errorf("routes-umbrella: %w", err)
+	}
+	if err := codegen.GenerateRuntimeConfig(cfg, projectRoot); err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	if err := codegen.GenerateSvccontext(cfg, projectRoot); err != nil {
+		return fmt.Errorf("svccontext: %w", err)
 	}
 	if err := codegen.GenerateProjectMain(proj, cfg, projectRoot); err != nil {
 		return fmt.Errorf("main: %w", err)
@@ -241,115 +371,78 @@ func runGen(args []string) error {
 	return nil
 }
 
-// runInit scaffolds a fresh design directory under args[0] (default ".").
-// `-package <module>` overrides the placeholder Go-module path. The
-// command refuses to overwrite any pre-existing file: each artefact is
-// written only when its destination doesn't already exist, so re-running
-// on a partially populated tree fills only the gaps. The intent is that
-// new users can scaffold once, edit the placeholder package path, and
-// then immediately run `craftgo gen`.
+// runInit scaffolds a fresh design folder at args[0]. The path argument
+// IS the design folder — `craftgo init contracts/v1` creates
+// `contracts/v1/craftgo.design.yaml` directly inside that directory;
+// no intermediate `design/` wrapper. When no path is supplied the
+// default is `design` (creates a `design/` subdir of cwd) so a fresh
+// `mkdir myapp && cd myapp && craftgo init` produces the conventional
+// layout.
+//
+// The command refuses to overwrite an existing manifest so re-running
+// on a populated folder is a silent no-op. There is no `-package`
+// flag — the Go module path is read from `go.mod` at gen time, so
+// the only manifest-side configuration is the optional output paths
+// and OpenAPI metadata.
+//
+// init only owns the manifest scaffolding — the runtime artefacts
+// (config/, svccontext/, main.go) are scaffolded by `craftgo gen`
+// using the same gen-once policy so they live in one place
+// (internal/codegen/templates/) and follow the same workflow as
+// every other generated artefact.
 func runInit(args []string) error {
-	pkgPath := "github.com/example/app"
-	target := "."
+	target := "design"
+	gotPositional := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "-package", "--package":
-			if i+1 >= len(args) {
-				return fmt.Errorf("init: -package requires a value")
-			}
-			pkgPath = args[i+1]
-			i++
 		default:
 			if strings.HasPrefix(args[i], "-") {
 				return fmt.Errorf("init: unknown flag %q", args[i])
 			}
+			if gotPositional {
+				return fmt.Errorf("init: too many positional arguments")
+			}
 			target = args[i]
+			gotPositional = true
 		}
 	}
 
-	abs, err := filepath.Abs(target)
+	designDir, err := filepath.Abs(target)
 	if err != nil {
 		return err
 	}
-	designDir := filepath.Join(abs, "design")
-	if err := os.MkdirAll(filepath.Join(designDir, "types"), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(designDir, "services"), 0o755); err != nil {
+	if err := os.MkdirAll(designDir, 0o755); err != nil {
 		return err
 	}
 
-	// (relative-path, content) tuples. Each entry is written only when the
-	// file doesn't already exist so re-runs don't clobber edits.
-	files := []struct {
-		path    string
-		content string
-	}{
-		{
-			"design/craftgo.design.yaml",
-			initManifest(pkgPath),
-		},
-		{"design/api.craftgo", initAPICraftgo()},
-		{"design/user.craftgo", initTypesCraftgo()},
-		{"design/user-service.craftgo", initServiceCraftgo()},
+	// Skip silently when the manifest already exists so re-running
+	// init on a populated folder is a no-op.
+	dest := filepath.Join(designDir, "craftgo.design.yaml")
+	if _, err := os.Stat(dest); err == nil {
+		fmt.Printf("craftgo: %s already exists, nothing to do\n", dest)
+		return nil
 	}
-
-	written, skipped := 0, 0
-	for _, f := range files {
-		dest := filepath.Join(abs, f.path)
-		if _, err := os.Stat(dest); err == nil {
-			skipped++
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(dest, []byte(f.content), 0o644); err != nil {
-			return err
-		}
-		written++
+	if err := os.WriteFile(dest, []byte(initManifest()), 0o644); err != nil {
+		return err
 	}
-	fmt.Printf("craftgo: init wrote %d file(s), skipped %d existing under %s\n", written, skipped, abs)
-	if written > 0 {
-		fmt.Println("next steps:")
-		fmt.Println("  1. edit design/craftgo.design.yaml (especially `package:`)")
-		fmt.Println("  2. run `craftgo gen` to generate types, handlers, routes, openapi")
-	}
+	fmt.Printf("craftgo: wrote %s\n", dest)
+	fmt.Println("next steps:")
+	fmt.Printf("  1. ensure `go.mod` exists at your project root (`go mod init <module>`)\n")
+	fmt.Printf("  2. add at least one .craftgo file in %s declaring `package X` (types, services)\n", target)
+	fmt.Printf("  3. run `craftgo gen -f %s` to generate types, handlers, routes, openapi\n", target)
 	return nil
 }
 
-// initManifest renders the starter craftgo.design.yaml. The package path
-// is the only value that varies per project; everything else is the
-// framework default and can stay as-is for 90% of projects.
+// initManifest renders the starter craftgo.design.yaml. The body has
+// no template variables — every value is either a default that 90%
+// of projects keep or a commented hint at an optional knob. The
+// Go module path is read from go.mod at gen time, so the manifest
+// itself carries no `package:` field.
 //
-// The emitted manifest documents every supported key — required ones
-// active, optional ones commented. Beginners see "this is what's on",
-// power users see "here's where I'd opt-in to the next thing" without
-// having to grep the README. The body lives in
-// `templates/craftgo.design.yaml.tmpl`; edit that file rather than
-// hand-rolling the YAML in Go source.
-func initManifest(pkgPath string) string {
-	return renderInitTemplate("craftgo.design.yaml.tmpl", map[string]string{"Package": pkgPath})
-}
-
-// initAPICraftgo is the file-scope DSL: file-level decorators and the
-// package declaration. Subfolders contribute their own files; the
-// import directives below merge them into one logical package.
-func initAPICraftgo() string {
-	return renderInitTemplate("api.craftgo.tmpl", nil)
-}
-
-// initTypesCraftgo is a tiny but realistic starter type — enough to show
-// validation decorators, optional fields, and JSON-tag conventions.
-func initTypesCraftgo() string {
-	return renderInitTemplate("user.craftgo.tmpl", nil)
-}
-
-// initServiceCraftgo wires one verb of each shape (GET + POST) so a fresh
-// project's first `craftgo gen` produces working JSON handlers out of
-// the box.
-func initServiceCraftgo() string {
-	return renderInitTemplate("user-service.craftgo.tmpl", nil)
+// The body lives in `templates/craftgo.design.yaml.tmpl`; edit that
+// file rather than hand-rolling the YAML in Go source.
+func initManifest() string {
+	return renderInitTemplate("craftgo.design.yaml.tmpl", nil)
 }
 
 // securitySchemeNames returns the keys of cfg.OpenAPI.SecuritySchemes

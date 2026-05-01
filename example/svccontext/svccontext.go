@@ -7,6 +7,8 @@ package svccontext
 import (
 	"sync"
 	"sync/atomic"
+
+	"github.com/dropship-dev/craftgo/example/config"
 )
 
 // ServiceContext aggregates everything a logic / middleware function
@@ -14,6 +16,8 @@ import (
 // users, projects, tasks — to back the three services declared in
 // the DSL.
 type ServiceContext struct {
+	Config *config.Config
+
 	mu sync.Mutex
 	Middlewares
 
@@ -67,9 +71,11 @@ type Comment struct {
 	CreatedAt string
 }
 
-// NewServiceContext returns a fresh, empty ServiceContext.
-func NewServiceContext() *ServiceContext {
+// NewServiceContext returns a fresh, empty ServiceContext seeded with
+// the loaded runtime config. main.go calls this once at startup.
+func NewServiceContext(cfg *config.Config) *ServiceContext {
 	return &ServiceContext{
+		Config:   cfg,
 		Users:    map[string]User{},
 		Projects: map[string]Project{},
 		Tasks:    map[string]Task{},

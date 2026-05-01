@@ -1,0 +1,49 @@
+# Project runtime configuration — read by main.go at boot via
+# config.Load(). Copy this file to `config.yaml`, edit the values for
+# your environment, and commit the example only (the live file
+# typically lives in `.gitignore` or is rendered from secrets/CI).
+#
+# Every field can also be overridden by an environment variable
+# (CRAFTGO_*) so containerised deployments do not need a file at all
+# — see config.go for the env-var → field mapping.
+
+# Public HTTP listener.
+server:
+  addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
+
+# Distributed tracing via OpenTelemetry.
+otel:
+  enabled: true               # false → middleware no-op, no spans, no traceparent header
+  serviceName: {{.OperationName}}      # surfaces in span resource attributes (service.name)
+  exporter: none              # none | stdout | otlp_grpc | otlp_http
+  endpoint: ""                # OTLP collector address; ignored for none/stdout
+                              # gRPC example: "otel-collector.observability:4317"
+                              # HTTP example: "http://collector:4318"
+
+# Metrics: OpenTelemetry meter + admin scrape listener.
+metrics:
+  enabled: true               # false → meter stays no-op; no admin listener
+  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none
+  endpoint: ""                # OTLP collector address; ignored for prometheus/none
+                              # gRPC example: "otel-collector.observability:4317"
+                              # HTTP example: "http://collector:4318"
+  adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
+  path: /metrics              # route the scrape is exposed on (prometheus only)
+
+# ---------------------------------------------------------------
+# Environment-variable overrides (each one wins over the file value):
+#
+#   CRAFTGO_CONFIG                — path to this file (default: config/config.yaml)
+#
+#   CRAFTGO_SERVER_ADDR           — server.addr
+#
+#   CRAFTGO_OTEL_ENABLED          — otel.enabled (true/false)
+#   CRAFTGO_OTEL_EXPORTER         — otel.exporter
+#   CRAFTGO_OTEL_ENDPOINT         — otel.endpoint
+#   CRAFTGO_OTEL_SERVICE_NAME     — otel.serviceName
+#
+#   CRAFTGO_METRICS_ENABLED       — metrics.enabled (true/false)
+#   CRAFTGO_METRICS_EXPORTER      — metrics.exporter
+#   CRAFTGO_METRICS_ENDPOINT      — metrics.endpoint
+#   CRAFTGO_METRICS_ADMIN_ADDR    — metrics.adminAddr
+#   CRAFTGO_METRICS_PATH          — metrics.path

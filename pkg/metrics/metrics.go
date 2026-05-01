@@ -207,16 +207,29 @@ func InitDefault() (*sdkmetric.MeterProvider, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := RegisterRuntimeCollectors(); err != nil {
+		return provider, err
+	}
+	return provider, nil
+}
+
+// RegisterRuntimeCollectors attaches the standard Go runtime and
+// process Prometheus collectors to the package registry. Call it
+// after [Init] when you want `go_*` / `process_*` series alongside
+// the OTel-bridged metrics — the config-driven main.tmpl pipeline
+// uses it for the prometheus exporter path. Idempotent: a duplicate
+// registration is silently swallowed so repeated boots in tests
+// don't break.
+func RegisterRuntimeCollectors() error {
 	if regErr := registry.Register(collectors.NewGoCollector()); regErr != nil {
-		// AlreadyRegistered is fine on re-init; surface anything else.
 		if _, dup := regErr.(prom.AlreadyRegisteredError); !dup {
-			return provider, regErr
+			return regErr
 		}
 	}
 	if regErr := registry.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{})); regErr != nil {
 		if _, dup := regErr.(prom.AlreadyRegisteredError); !dup {
-			return provider, regErr
+			return regErr
 		}
 	}
-	return provider, nil
+	return nil
 }

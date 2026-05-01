@@ -1,11 +1,8 @@
-package: github.com/dropship-dev/craftgo/testdata/e2e/users
-design: ./design
 output:
   types:      ./internal/types
   handler:    ./internal/handler
   routes:     ./internal/routes
   logic:      ./internal/logic
-  client:     ./client
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
   # Skip main.go scaffolding — this fixture loads as `package e2e` from

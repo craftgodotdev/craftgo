@@ -11,8 +11,10 @@ import (
 
 // mainData is the template input for `main.tmpl`. The umbrella
 // routes.RegisterAll keeps the import set tiny — main.go references
-// only `routes`, `middleware`, `svccontext`, and `pkg/otel`.
+// only `config`, `routes`, `middleware`, `svccontext`, and the
+// runtime observability packages.
 type mainData struct {
+	ConfigImport     string
 	RoutesImport     string
 	MiddlewareImport string
 	SvccontextImport string
@@ -110,6 +112,7 @@ func GenerateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot
 // services so the template needs no further per-package wiring.
 func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 	d := mainData{
+		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
 		RoutesImport:     goImportFromRel(cfg.Package, cfg.Output.Routes),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
@@ -137,6 +140,7 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 // `routes.RegisterAll`, so main.go only imports the umbrella.
 func buildMainData(pkg *semantic.Package, cfg *config.Config) mainData {
 	d := mainData{
+		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
 		RoutesImport:     goImportFromRel(cfg.Package, cfg.Output.Routes),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),

@@ -9,9 +9,9 @@ import (
 )
 
 // builtinTemplates embeds every codegen template shipped with the binary.
-// Project-local overrides (`.craftgo/templates/*.tmpl`) and per-user
-// overrides (`~/.craftgo/templates/*.tmpl`) will plug in here once the
-// template-lookup mechanism lands.
+// Templates are looked up exclusively here — there is no project-local
+// override mechanism. Projects that need custom shapes fork the
+// repository and edit the .tmpl files directly.
 //
 //go:embed templates/*.tmpl
 var builtinTemplates embed.FS
