@@ -76,6 +76,8 @@ fmt-check: ## Fail if any Go file isn't gofmt'd.
 lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
 
 # ---- codegen + example --------------------------------------------------
+E2E_DIRS := tests/e2e/users tests/e2e/complex tests/e2e/multi-service
+
 .PHONY: gen
 gen: build ## Regenerate the example project from its design dir.
 	./$(BIN) gen $(DESIGN_DIR)
@@ -84,15 +86,24 @@ gen: build ## Regenerate the example project from its design dir.
 gen-go: ## Regenerate the example without rebuilding the CLI (uses `go run`).
 	$(GO) run ./cmd/craftgo gen $(DESIGN_DIR)
 
+.PHONY: gen-e2e
+gen-e2e: ## Regenerate every tests/e2e/* fixture from its design dir.
+	@for d in $(E2E_DIRS); do \
+		echo "→ gen $$d"; $(GO) run ./cmd/craftgo gen "$$d/design" || exit 1; \
+	done
+
+.PHONY: gen-all
+gen-all: gen-go gen-e2e ## Regenerate the example AND every e2e fixture.
+
 .PHONY: example
 example: ## Run the example server (./example/main.go) on :8080.
 	cd $(EXAMPLE_DIR) && $(GO) run .
 
 .PHONY: gen-diff
-gen-diff: gen-go ## Re-gen and fail if anything changed (drift guard for CI).
-	@if ! git diff --quiet -- $(EXAMPLE_DIR); then \
-		echo "codegen drift detected in $(EXAMPLE_DIR):"; \
-		git --no-pager diff --stat -- $(EXAMPLE_DIR); \
+gen-diff: gen-all ## Re-gen example + e2e and fail if anything changed (drift guard for CI).
+	@if ! git diff --quiet -- $(EXAMPLE_DIR) $(E2E_DIRS); then \
+		echo "codegen drift detected:"; \
+		git --no-pager diff --stat -- $(EXAMPLE_DIR) $(E2E_DIRS); \
 		exit 1; \
 	fi
 
@@ -159,8 +170,11 @@ clean: ## Remove build artefacts and coverage files.
 	@find . -type f \( -name '*.test' -o -name '*.out' -o -name '*.prof' -o -name '*.cov' \) -delete
 
 .PHONY: clean-gen
-clean-gen: ## Remove regenerable artefacts under example/ (handlers, routes, types, docs).
-	rm -rf $(EXAMPLE_DIR)/internal/handler $(EXAMPLE_DIR)/internal/routes $(EXAMPLE_DIR)/internal/types $(EXAMPLE_DIR)/docs
+clean-gen: ## Remove regenerable artefacts under example/ and every e2e fixture (handler, routes, types, docs).
+	@for d in $(EXAMPLE_DIR) $(E2E_DIRS); do \
+		echo "→ clean $$d"; \
+		rm -rf "$$d/internal/handler" "$$d/internal/routes" "$$d/internal/types" "$$d/docs"; \
+	done
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
