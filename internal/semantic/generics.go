@@ -9,8 +9,8 @@ package semantic
 //
 // Diagnostic codes:
 //
-//   - [CodeGenericArity]      — wrong arg count for a generic decl.
-//   - [CodeGenericNonGeneric] — args supplied to a non-generic type.
+//   - [CodeGenericArity]      - wrong arg count for a generic decl.
+//   - [CodeGenericNonGeneric] - args supplied to a non-generic type.
 //
 // References to type-parameter idents inside a generic decl's body
 // (`f T[]` inside `type Page<T> { ... }`) are NOT flagged: T is in
@@ -83,7 +83,7 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 	if n == nil || n.Name == nil {
 		return
 	}
-	// Recurse into args first — even if the outer ref is bogus, we
+	// Recurse into args first - even if the outer ref is bogus, we
 	// still want to flag a malformed nested arg.
 	for _, arg := range n.Args {
 		a.walkTypeRefGenerics(arg, typeParams)
@@ -107,7 +107,7 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 	}
 	td, ok := a.pkg.Types[name]
 	if !ok {
-		// Unknown type — placement / qualified-ref / built-in handling
+		// Unknown type - placement / qualified-ref / built-in handling
 		// covers the diagnostic elsewhere. Bail out to avoid a
 		// confusing "expects 0 args" message.
 		return

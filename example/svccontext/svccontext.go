@@ -1,5 +1,5 @@
 // Package svccontext is the user-owned dependency container for the
-// CraftGo showcase. The example uses an in-memory store keyed by id —
+// CraftGo showcase. The example uses an in-memory store keyed by id -
 // real projects swap these maps for a database handle, a cache, an
 // OTel tracer, etc.
 package svccontext
@@ -12,8 +12,8 @@ import (
 )
 
 // ServiceContext aggregates everything a logic / middleware function
-// might need at request time. The showcase keeps three stores —
-// users, projects, tasks — to back the three services declared in
+// might need at request time. The showcase keeps three stores -
+// users, projects, tasks - to back the three services declared in
 // the DSL.
 type ServiceContext struct {
 	Config *config.Config

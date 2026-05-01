@@ -79,7 +79,7 @@ type X { p Page<User, Org> }`))
 }
 
 func TestGenericMissingArgsOnGenericRef(t *testing.T) {
-	// `Page` (no args) referenced where Page is generic — error.
+	// `Page` (no args) referenced where Page is generic - error.
 	_, diags := Analyze(parseFiles(t, `type Page<T> { items T[] }
 type X { p Page }`))
 	if findCode(diags, CodeGenericArity) == nil {
@@ -103,7 +103,7 @@ type Org {}`))
 }
 
 func TestArgsOnTypeParam(t *testing.T) {
-	// `T<X>` inside `Page<T>` body — type variable can't take args.
+	// `T<X>` inside `Page<T>` body - type variable can't take args.
 	_, diags := Analyze(parseFiles(t, `type Page<T> { item T<X> }
 type X {}`))
 	if findCode(diags, CodeGenericNonGeneric) == nil {
@@ -143,8 +143,8 @@ type B {}`))
 	if mixin != 1 {
 		t.Errorf("expected 1 mixin/arity diag, got %d", mixin)
 	}
-	// The generic pass also walks mixin refs (intentionally — both
-	// codes give context). Either is fine; we just want at least one.
+	// The generic pass also walks mixin refs - either code is fine,
+	// we just want at least one diagnostic.
 	if mixin+generic < 1 {
 		t.Errorf("expected at least one arity diag")
 	}
@@ -153,7 +153,7 @@ type B {}`))
 // ---------- Unknown types silently skip ----------
 
 func TestUnknownTypeRefSkipsArity(t *testing.T) {
-	// Unknown `Foo<X>` — placement / qualified-ref pass owns the
+	// Unknown `Foo<X>` - placement / qualified-ref pass owns the
 	// "name not found" message (or it's a built-in we don't model).
 	// The generics pass should not fire a confusing arity diag.
 	_, diags := Analyze(parseFiles(t, `type X { p Foo<Bar> }`))

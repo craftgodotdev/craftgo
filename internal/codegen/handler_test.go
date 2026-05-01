@@ -297,6 +297,11 @@ func TestGenerateHandlerHelpersMissingPackageName(t *testing.T) {
 
 // ---------- routes ----------
 
+// TestGenerateRoutesPatterns pins the canonical routes-emit shape
+// (verb + path pattern, handler call, RegisterRoutes signature). The
+// snapshot beats listing 6 substring checks: a regression shows the
+// entire diverging hunk inline so the user immediately sees what
+// changed instead of grepping for one missing string.
 func TestGenerateRoutesPatterns(t *testing.T) {
 	pkg := analyzePkg(t, handlerSampleDSL)
 	root := t.TempDir()
@@ -308,20 +313,8 @@ func TestGenerateRoutesPatterns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := string(out)
-	mustParseGo(t, src)
-	for _, want := range []string{
-		`"GET /v1/api/v1/users/{id}"`,
-		`"POST /v1/api/v1/users/{id}"`,
-		`"DELETE /v1/api/v1/users/{id}"`,
-		`handler.GetUserHandler(svcCtx)`,
-		`handler.PingHandler(svcCtx)`,
-		`func RegisterRoutes(srv *server.Server, svcCtx`,
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	mustParseGo(t, string(out))
+	expectGolden(t, "routes-user-service.go", string(out))
 }
 
 func TestGenerateRoutesMissingPackageName(t *testing.T) {
@@ -714,15 +707,14 @@ func TestGenerateHandlersMultipartFromFileField(t *testing.T) {
 // TestGenerateHandlersRejectsBadQueryShapes pins the codegen-time
 // rejection of unsupported query-binding shapes. Before this gate
 // existed, struct/[]struct/map fields on a GET request were silently
-// dropped — the handler omitted the bind line and the field landed
+// dropped - the handler omitted the bind line and the field landed
 // at the logic layer zero-valued, with no error to chase.
 //
 // Non-string `@path` / `@header` / `@cookie` is enforced earlier by
 // the semantic analyser (see `binding/type` diagnostic) so those
 // cases live in semantic tests, not here.
 //
-// Each case deliberately constructs a request type that exercises one
-// rejection branch:
+// Each case constructs a request type that exercises one rejection branch:
 //   - Filter Point      → struct on @query
 //   - Tags  []Point     → []struct on @query
 //   - Meta  map<string,string> → map on @query

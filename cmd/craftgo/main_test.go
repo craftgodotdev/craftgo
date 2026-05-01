@@ -19,7 +19,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	if err := runInit([]string{designFolder}); err != nil {
 		t.Fatalf("runInit: %v", err)
 	}
-	// Init writes ONLY the manifest — sample DSL stays the user's
+	// Init writes ONLY the manifest - sample DSL stays the user's
 	// responsibility so they don't have to delete noise on day one.
 	if _, err := os.Stat(filepath.Join(designFolder, "craftgo.design.yaml")); err != nil {
 		t.Errorf("missing manifest: %v", err)
@@ -54,7 +54,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 }
 
 // TestRunInitIdempotent guarantees that re-running init does not clobber
-// the existing manifest — the user may have edited it (changed the
+// the existing manifest - the user may have edited it (changed the
 // package path, added security schemes, ...) and a second init must
 // preserve those edits.
 func TestRunInitIdempotent(t *testing.T) {
@@ -62,7 +62,7 @@ func TestRunInitIdempotent(t *testing.T) {
 	if err := runInit([]string{dir}); err != nil {
 		t.Fatal(err)
 	}
-	custom := "# USER EDIT — must survive re-init\npackage: github.com/edited/app\n"
+	custom := "# USER EDIT - must survive re-init\npackage: github.com/edited/app\n"
 	dest := filepath.Join(dir, "craftgo.design.yaml")
 	if err := os.WriteFile(dest, []byte(custom), 0o644); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ service ProbeService {
 `
 
 // TestRunInitDefaultPath asserts that with no positional path argument
-// the command creates a `design/` subdir of cwd — the conventional
+// the command creates a `design/` subdir of cwd - the conventional
 // layout for fresh projects. We chdir into a temp dir so the test
 // doesn't pollute the repository.
 func TestRunInitDefaultPath(t *testing.T) {
@@ -143,8 +143,8 @@ func TestRunGenContextOverridesProjectRoot(t *testing.T) {
 }
 
 // TestRunGenWalkUpKeepsLegacyProjectRoot pins the legacy positional
-// flow — `craftgo gen <path>` keeps using parent-of-manifest as the
-// project root so existing fixtures (example/, testdata/e2e/*) keep
+// flow - `craftgo gen <path>` keeps using parent-of-manifest as the
+// project root so existing fixtures (example/, tests/e2e/*) keep
 // working without flag changes.
 func TestRunGenWalkUpKeepsLegacyProjectRoot(t *testing.T) {
 	dir := t.TempDir()
@@ -221,7 +221,7 @@ func TestRunGenMultiPackage(t *testing.T) {
 	// go.mod at the project root supplies the module path the
 	// generated cross-package imports must reference.
 	mustWrite(t, dir, "go.mod", "module github.com/test/multi\n\ngo 1.24\n")
-	// Manifest at the design root. No `package:` field — the module
+	// Manifest at the design root. No `package:` field - the module
 	// path comes from go.mod above.
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 

@@ -12,8 +12,8 @@ import (
 // This file collects every function that produces Go source for a
 // validator. Each per-decorator emitter is paired with a comment
 // explaining (a) what type-shapes it accepts and (b) what generated
-// code it produces. Three cross-cutting helpers — [shape],
-// [ifReturnf], and the enum/typeParam/nested call emitters — are
+// code it produces. Three cross-cutting helpers - [shape],
+// [ifReturnf], and the enum/typeParam/nested call emitters - are
 // shared across multiple validators and live at the top of the file.
 
 // shape returns Go source for a field-level check, picking the right
@@ -59,15 +59,15 @@ func ifReturnf(cond, msg string) string {
 // covers both "absent from JSON" and "explicit null".
 func requiredKind(f *ast.Field, access string) string {
 	// `@required` enforces ONLY non-null / non-undefined. Empty
-	// strings, zero numerics, empty arrays / maps are intentionally
-	// allowed — pair with `@length(1, …)` / `@min(1)` / `@minItems(1)`
-	// when the contract needs them.
+	// strings, zero numerics, empty arrays / maps are allowed; pair
+	// with `@length(1, …)` / `@min(1)` / `@minItems(1)` when the
+	// contract needs them.
 	//
 	// For non-pointer scalar types (`string`, `int`, `bool`, …) the
 	// JSON decoder already rejects wire `null` with an unmarshal
 	// error, so no validate-time check is needed; the diagnostic
 	// surfaces at the framework boundary instead. For pointer types
-	// (`T?` / `T @nullable`) and `any` we DO need the check — the
+	// (`T?` / `T @nullable`) and `any` we DO need the check - the
 	// decoder happily accepts `null` and leaves it as a nil pointer
 	// or the literal 4-byte `null` `json.RawMessage`.
 	if f.Type == nil {
@@ -101,7 +101,7 @@ func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 // enum-typed field's empty value depends on its underlying base:
 // string-valued enums (and bare-value enums, which we render as
 // strings) compare against `""`; int-valued enums compare against `0`.
-// The check is skipped for arrays / maps / pointers — those reuse the
+// The check is skipped for arrays / maps / pointers - those reuse the
 // generic `requiredCheck` path with len/nil semantics.
 func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, uses map[string]bool) string {
 	if f != nil && f.Type != nil && !f.Type.Array && !f.Type.Optional && f.Type.Map == nil && f.Type.Named != nil {
@@ -135,7 +135,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	uses["fmt"] = true
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
-	// Avoid the `if X != nil && l := len(*X); ...` form — Go forbids
+	// Avoid the `if X != nil && l := len(*X); ...` form - Go forbids
 	// `:=` inside an `&&` expression. Inline `len(...)` twice instead;
 	// the second call is constant-folded by the compiler when the
 	// argument is a simple deref.
@@ -150,7 +150,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 }
 
 // minMaxLengthCheck handles `@minLength(n)` and `@maxLength(n)`.
-// Optional string fields are handled the same way as `lengthCheck` —
+// Optional string fields are handled the same way as `lengthCheck` -
 // nil-guard plus pointer deref.
 func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, uses map[string]bool) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
@@ -195,9 +195,9 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 // formatCheck handles `@format(name)` for the catalogue of standard
 // formats listed in the README. Each name maps to a built-in regex
 // evaluated at request time. The argument may be either a quoted string
-// (`@format("email")`) or a bare identifier (`@format(email)`) — both
+// (`@format("email")`) or a bare identifier (`@format(email)`) - both
 // forms appear in the existing fixtures and we accept either to avoid
-// surprising regressions. Unknown names are silently skipped — projects
+// surprising regressions. Unknown names are silently skipped - projects
 // can extend with `@pattern("...")` for niche cases.
 func formatCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
@@ -221,8 +221,8 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 }
 
 // formatPatterns is the regex catalogue referenced by `@format(...)`.
-// Definitions are intentionally pragmatic, not RFC-grade — projects
-// that need stricter parsing should fall back to `@pattern("...")`.
+// Definitions are pragmatic, not RFC-grade; use `@pattern("...")`
+// when stricter parsing is required.
 //
 // `datetime` is RFC 3339 (a strict subset of ISO 8601); `creditcard`
 // uses a length-only check because Luhn validation requires loop logic
@@ -314,7 +314,7 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]b
 
 // signCheck handles `@positive` (value > 0) and `@negative` (value < 0)
 // on numeric fields. Both produce a one-line conditional with no decorator
-// arguments — unlike `@min` they don't carry a bound, so the helper is a
+// arguments - unlike `@min` they don't carry a bound, so the helper is a
 // pure dispatch on the kind string.
 func signCheck(f *ast.Field, access, kind string, uses map[string]bool) string {
 	if !isNumericField(f) {
@@ -375,14 +375,14 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 
 // uniqueItemsCheck handles `@uniqueItems` on array fields. The emitted
 // loop scans for duplicates with a map keyed on the element value;
-// that works for any comparable element type — primitives, strings,
+// that works for any comparable element type - primitives, strings,
 // fixed-size structs.
 //
 // `json.RawMessage` (the Go type for `any`) is a `[]byte` named slice,
 // which is NOT comparable as a map key. We special-case it to use
 // `string(item)` for the key so a `tags any[] @uniqueItems` chain
 // still emits compile-clean dedupe code without pulling extra
-// imports — `string([]byte)` is a built-in conversion.
+// imports - `string([]byte)` is a built-in conversion.
 //
 // Other slice / map / func element types stay un-checked because the
 // generated code would not compile.
@@ -397,7 +397,7 @@ func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool) string 
 	elem := arrayElemType(f.Type)
 	if !isComparableElem(elem) {
 		// `any` (Go: `interface{}`) IS comparable in the
-		// language sense — but only when its dynamic type is
+		// language sense - but only when its dynamic type is
 		// itself comparable. The runtime `==` over interfaces
 		// panics for slices / maps / funcs. Skip the
 		// auto-emitted dedupe loop for those element types and
@@ -537,7 +537,7 @@ return err
 //
 // We bypass the generic [shape] helper for optional fields so the
 // emitted call reads `v.Avatar.Validate()` rather than the noisier
-// `(*v.Avatar).Validate()` — Go's method-set rules dispatch through
+// `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
 // the pointer-receiver Validate either way, and the cleaner form is
 // what a human would write by hand.
 func nestedValidateCall(f *ast.Field, pkg *semantic.Package, uses map[string]bool) string {

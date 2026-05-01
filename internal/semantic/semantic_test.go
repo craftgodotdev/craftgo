@@ -114,7 +114,7 @@ func TestPackageNameMissing(t *testing.T) {
 
 // ---------- duplicate decls ----------
 
-// TestDuplicateDecl pins the type/enum/scalar/error shared namespace —
+// TestDuplicateDecl pins the type/enum/scalar/error shared namespace -
 // they all emit into the same Go types package, so a DSL-name match
 // across kinds is a hard collision. Middleware lives in its own Go
 // package (svccontext aliases) and uses a separate seen map; see
@@ -143,11 +143,11 @@ scalar X string`,
 // codegen output lives in different Go packages (types vs svccontext).
 // Middleware-vs-middleware duplicates still error.
 func TestMiddlewareSeparateNamespace(t *testing.T) {
-	// type Foo + middleware Foo — no collision.
+	// type Foo + middleware Foo - no collision.
 	mustClean(t, `type Foo {}
 middleware Foo`)
 
-	// middleware Foo + middleware Foo — duplicate within the
+	// middleware Foo + middleware Foo - duplicate within the
 	// middleware namespace.
 	_, diags := Analyze(parseFiles(t, `middleware Foo
 middleware Foo`))
@@ -222,7 +222,7 @@ func TestFieldUniquenessError(t *testing.T) {
 }
 
 func TestFieldUniquenessSkipsMixin(t *testing.T) {
-	// Type with a mixin + field — exercises the `if !ok { continue }` branch.
+	// Type with a mixin + field - exercises the `if !ok { continue }` branch.
 	// Profile is declared so the mixin pass resolves it cleanly; the
 	// uniqueness pass under test is the `if !ok { continue }` skip on
 	// the embedded reference, independent of mixin resolution.
@@ -266,7 +266,7 @@ func TestEnumDuplicateString(t *testing.T) {
 // TestCheckDecoratorScopeNilEntry exercises the defensive nil-decorator
 // branch of [analyzer.checkDecoratorScope]. The parser doesn't produce
 // nil entries today, so the only way to reach the branch is via a
-// hand-built decorator slice — kept defensive so a future parser
+// hand-built decorator slice - kept defensive so a future parser
 // regression doesn't crash the analyser.
 func TestCheckDecoratorScopeNilEntry(t *testing.T) {
 	a := &analyzer{pkg: &Package{}}

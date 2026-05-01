@@ -12,7 +12,7 @@ GOFLAGS      ?=
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
-SUBMODULES   := $(EXAMPLE_DIR) testdata/e2e/users testdata/e2e/complex testdata/e2e/multi-service
+SUBMODULES   := $(EXAMPLE_DIR) tests/e2e/users tests/e2e/complex tests/e2e/multi-service
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -45,8 +45,17 @@ cover: ## Run tests with coverage and write coverage.html.
 	@echo "wrote coverage.html"
 
 .PHONY: e2e
-e2e: ## Run the cross-module e2e orchestrator (testdata/e2e/...).
-	$(GO) test $(GOFLAGS) -count=1 ./tests/...
+e2e: ## Run the cross-module e2e orchestrator (tests/e2e/...).
+	$(GO) test $(GOFLAGS) -count=1 ./tests/e2e/...
+
+.PHONY: test-submodules
+test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
+	@for d in $(SUBMODULES); do \
+		echo "→ test $$d"; (cd "$$d" && $(GO) test $(GOFLAGS) -count=1 ./...) || exit 1; \
+	done
+
+.PHONY: test-all
+test-all: test e2e test-submodules ## Run every test suite — root, e2e orchestrator, and each sub-module.
 
 .PHONY: vet
 vet: ## go vet over all root packages.
@@ -155,4 +164,4 @@ clean-gen: ## Remove regenerable artefacts under example/ (handlers, routes, typ
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
-ci: lint test build ## What CI runs: lint, test, build.
+ci: lint test-all build ## What CI runs: lint, every test suite (root + e2e + submodules), build.

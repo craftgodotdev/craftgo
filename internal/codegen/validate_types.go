@@ -14,7 +14,7 @@ import (
 
 // isStringOrOptString accepts both `string` and `string?` (optional).
 // Used by validators that can sensibly skip the check when the value
-// is absent — length / pattern / format. The validators handle the
+// is absent - length / pattern / format. The validators handle the
 // optional case by emitting a nil-guarded prefix.
 func isStringOrOptString(f *ast.Field) bool {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil {
@@ -23,7 +23,7 @@ func isStringOrOptString(f *ast.Field) bool {
 	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
 }
 
-// isNumericField — non-array, non-optional integer or float.
+// isNumericField - non-array, non-optional integer or float.
 func isNumericField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
 		return false
@@ -37,7 +37,7 @@ func isNumericField(f *ast.Field) bool {
 	return false
 }
 
-// isIntegerField — non-array, non-optional integer (signed or unsigned).
+// isIntegerField - non-array, non-optional integer (signed or unsigned).
 // Floats are rejected so `@multipleOf` keeps modular semantics.
 func isIntegerField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
@@ -53,7 +53,7 @@ func isIntegerField(f *ast.Field) bool {
 
 // isFileField reports whether the field's declared type is the DSL
 // `file` builtin (rendered as `*multipart.FileHeader` in Go). Array and
-// optional forms are NOT accepted — the multipart binder writes the
+// optional forms are NOT accepted - the multipart binder writes the
 // pointer directly, never wraps it.
 func isFileField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
@@ -111,7 +111,7 @@ func arrayElemType(t *ast.TypeRef) string {
 
 // optionalGuard returns the leading nil-check expression for any
 // field whose generated Go type is a pointer (`*T`). Plain value
-// fields return the empty string — their access expression is already
+// fields return the empty string - their access expression is already
 // a concrete value. Both `T?` (optional) and `T @nullable` (forced
 // pointer to allow JSON null) end up as Go pointers, so the same
 // guard handles both.

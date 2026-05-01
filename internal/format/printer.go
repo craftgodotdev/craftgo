@@ -4,7 +4,7 @@
 // printer's output produces an AST equal to its input, and a second
 // formatting pass is a no-op (idempotency). Trailing inline comments
 // (`// note` on the same line as a field) are preserved by reading them
-// straight from the source buffer rather than relying on the AST — the
+// straight from the source buffer rather than relying on the AST - the
 // AST's Doc field captures only leading runs of `//`.
 //
 // Two entry points are provided:
@@ -21,7 +21,7 @@
 //   - Tabs for indentation (Go-ecosystem convention; editors render the
 //     visual width via their own settings).
 //   - Field rows inside a type body are column-aligned by name and type
-//     so decorator chains line up — this is the single most-read shape
+//     so decorator chains line up - this is the single most-read shape
 //     in any service definition and aligning it pays for itself.
 //   - The `request` / `response` lines inside a method body share a
 //     two-space alignment so the type column matches.
@@ -40,7 +40,7 @@ import (
 
 // Format parses src (filename used only for diagnostics) and returns the
 // canonical-formatted text alongside any parser diagnostics. The returned
-// text is always non-empty because the parser is error-tolerant — callers
+// text is always non-empty because the parser is error-tolerant - callers
 // that want to reject formatting on errors should check len(diags) == 0.
 func Format(filename, src string) (string, []lexer.Diagnostic) {
 	p := parser.New(filename, src)
@@ -56,7 +56,7 @@ func Format(filename, src string) (string, []lexer.Diagnostic) {
 }
 
 // Print writes a canonical render of f to w. Trailing comments are not
-// recovered via this entry point — callers that want them must use
+// recovered via this entry point - callers that want them must use
 // [Format] instead, which has access to the source buffer.
 func Print(w io.Writer, f *ast.File) error {
 	pr := &Printer{w: w}
@@ -134,7 +134,7 @@ func (p *Printer) File(f *ast.File) {
 }
 
 // declFirstSourceLine returns the 1-indexed source line where this
-// declaration first appears — the line of its first decorator if it has
+// declaration first appears - the line of its first decorator if it has
 // any, otherwise the line of the keyword itself. Used as the anchor key
 // for loose comment lookup so a `// section header` block above a
 // decorated type lands above the decorator chain, not between decorators
@@ -218,7 +218,7 @@ func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 // Mixins are printed un-aligned on their own lines. Doc lines that the
 // parser misattributed (i.e. trailing comments on the previous field's
 // source line) are filtered out and re-emitted as trailing comments on
-// the correct field — this avoids losing them and avoids printing them
+// the correct field - this avoids losing them and avoids printing them
 // in the wrong place.
 func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	maxName, maxType := 0, 0
@@ -283,7 +283,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 // printFieldDoc emits the field's leading doc comments, filtering out
 // any line the lexer actually picked up from the previous field's
 // trailing `//`. The lexer attaches every contiguous `//` block above
-// a token to that token's Doc — so when a field above ends with a
+// a token to that token's Doc - so when a field above ends with a
 // trailing comment AND the field below has its own leading block, the
 // trailing line ends up at the FRONT of the field-below's Doc. Without
 // this filter the trailing would be re-emitted as a leading comment on
@@ -291,7 +291,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 //
 // The previous field's printer pulls trailing text from p.trailing
 // (built in [scanTrailingComments]), so dropping the misattributed
-// entry here does not lose information — it lands on the correct
+// entry here does not lose information - it lands on the correct
 // field below by way of the trailing map.
 func (p *Printer) printFieldDoc(f *ast.Field) {
 	if len(f.Doc) == 0 {
@@ -644,7 +644,7 @@ func (p *Printer) declDecorators(decs []*ast.Decorator) {
 }
 
 // scanLooseComments finds every `//` block in src whose run is followed
-// by a blank line — that is the lexer signal that the block is NOT
+// by a blank line - that is the lexer signal that the block is NOT
 // attached to the next token's Doc and would otherwise be silently
 // dropped. We anchor each loose block to the source line of the next
 // code (the first non-blank, non-`//` line after the trailing blanks);
@@ -653,7 +653,7 @@ func (p *Printer) declDecorators(decs []*ast.Decorator) {
 // survive the round trip.
 //
 // Trailing `//` comments (those that share a line with code) are NOT
-// loose — they are picked up by [scanTrailingComments] separately.
+// loose - they are picked up by [scanTrailingComments] separately.
 func scanLooseComments(src string) map[int][]string {
 	rawLines := strings.Split(src, "\n")
 	out := map[int][]string{}
@@ -684,12 +684,12 @@ func scanLooseComments(src string) map[int][]string {
 			looseEnd = true
 		}
 		if !looseEnd {
-			// Attached — lexer / parser captured it; skip.
+			// Attached - lexer / parser captured it; skip.
 			continue
 		}
 		anchor := nextCodeLine(rawLines, i)
 		if anchor == 0 {
-			// No following code — drop with no anchor (file-trailing
+			// No following code - drop with no anchor (file-trailing
 			// comment, currently not preserved).
 			continue
 		}
@@ -738,7 +738,7 @@ func nextCodeLine(lines []string, fromIdx int) int {
 // scanTrailingComments walks src line by line and records the text of any
 // `// ...` that follows non-whitespace code on that line. Lines that
 // consist entirely of a `//` comment (with optional leading whitespace)
-// are NOT recorded — those reach AST nodes via the parser's Doc field
+// are NOT recorded - those reach AST nodes via the parser's Doc field
 // and are emitted through the normal leading-comment path.
 //
 // String/raw-string literals are tracked across the line so a `//` inside

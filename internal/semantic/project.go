@@ -1,7 +1,7 @@
 package semantic
 
 // Multi-package project analysis. AnalyzeProject groups files by
-// their `package X` declaration — files anywhere under the design
+// their `package X` declaration - files anywhere under the design
 // root that share an X declaration merge into one logical package,
 // while files declaring different package names form separate
 // packages. This matches the README's §"Imports" intent while also
@@ -13,7 +13,7 @@ package semantic
 //
 //   1. Parse every file (caller's responsibility).
 //   2. Group files by their `f.Package.Name`. Files lacking a
-//      package decl land in a default group keyed "" — they belong
+//      package decl land in a default group keyed "" - they belong
 //      to whichever package the others pick (mirrors the
 //      single-package [Analyze] policy).
 //   3. Run [Analyze] on each group with [Options.skipQualifiedRefCheck]
@@ -22,19 +22,19 @@ package semantic
 //      filesystem and record metadata for the LSP.
 //   5. Walk every NamedTypeRef across every file; multi-part names
 //      `pkg.Type` resolve directly to the Package whose pkg.Name ==
-//      `pkg`. The DSL keeps no alias-based indirection — `import
+//      `pkg`. The DSL keeps no alias-based indirection - `import
 //      alias "path"` is parsed but the alias is informational only.
 //
 // Codes specific to this layer:
 //
-//   - [CodeImportUnresolved]      — `import "path"` doesn't exist
+//   - [CodeImportUnresolved]      - `import "path"` doesn't exist
 //     under the design root.
-//   - [CodeImportEscape]          — path uses `..` / leading `/`.
-//   - [CodeImportSelf]            — file imports its own folder
+//   - [CodeImportEscape]          - path uses `..` / leading `/`.
+//   - [CodeImportSelf]            - file imports its own folder
 //     while declaring a package name that already covers it.
-//   - [CodeRefUnknownPackage]     — `pkg.Type` references a package
+//   - [CodeRefUnknownPackage]     - `pkg.Type` references a package
 //     name not declared anywhere in the project.
-//   - [CodeRefUnknownSymbol]      — package resolves but the target
+//   - [CodeRefUnknownSymbol]      - package resolves but the target
 //     doesn't declare the named type.
 
 import (
@@ -50,13 +50,13 @@ import (
 // the package's `package X` declaration name (the value of
 // [Package.Name]), so files in any folder sharing the same name
 // merge into a single entry. FileImports retains the per-file import
-// metadata for LSP "go-to-definition" — at the analysis layer
+// metadata for LSP "go-to-definition" - at the analysis layer
 // resolution uses package names directly, but the IDE benefits from
 // knowing which folder each `import "path"` referred to.
 type Project struct {
 	// Root is the absolute design folder used for filesystem
 	// validation of `import "path"`. Empty when AnalyzeProject was
-	// called without [Options.DesignRoot] — in that case Packages
+	// called without [Options.DesignRoot] - in that case Packages
 	// holds the same single-package result as [Analyze].
 	Root string
 	// Packages maps `package X` name → analysed [Package].
@@ -93,7 +93,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	groups := groupFilesByPackage(files)
 	// Per-package analysis. The skip flags prevent the per-package
 	// pass from rejecting refs (qualified types, middleware names)
-	// that resolve in OTHER packages — those are validated by the
+	// that resolve in OTHER packages - those are validated by the
 	// project-level resolver below.
 	perPkgOpts := opts
 	perPkgOpts.skipQualifiedRefCheck = true
@@ -118,7 +118,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 }
 
 // groupFilesByPackage classifies every file by its `package X`
-// declaration. Files with no decl share the bucket "" — the same
+// declaration. Files with no decl share the bucket "" - the same
 // loose policy [analyzer.checkPackageName] uses for single-package
 // analysis. Each returned group becomes one [Package] in the
 // resulting [Project].
@@ -136,7 +136,7 @@ func groupFilesByPackage(files []*ast.File) map[string][]*ast.File {
 
 // folderExists reports whether path (relative to designRoot) maps to
 // a directory containing at least one .craftgo file. Used to validate
-// `import "path"` directives — the import is informational in the
+// `import "path"` directives - the import is informational in the
 // new package-name-keyed model, but a typo is still worth flagging.
 func folderExists(designRoot, importPath string) bool {
 	if designRoot == "" || importPath == "" {

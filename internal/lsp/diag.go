@@ -20,7 +20,7 @@ import (
 // (and, when the file lives inside a design root, every sibling
 // `.craftgo` file in the same project) so that cross-package qualified
 // references like `users.UserRef` resolve correctly. The returned slice
-// contains only diagnostics whose source position belongs to filename —
+// contains only diagnostics whose source position belongs to filename -
 // sibling errors are folded into the publishDiagnostics for THAT file
 // when it is opened separately.
 //
@@ -143,7 +143,7 @@ func (s *Server) readFile(path, currentPath, currentSrc string) string {
 }
 
 // uriToPath converts an `lsp` document URI string to a filesystem path.
-// Empty when the URI is not a `file://` URL — which currently rules out
+// Empty when the URI is not a `file://` URL - which currently rules out
 // untitled buffers from project-wide analysis.
 func uriToPath(u string) string {
 	if u == "" {
@@ -204,7 +204,7 @@ func intToA(i int) string {
 
 // toLSP converts an internal [lexer.Diagnostic] to the LSP wire shape.
 // The Range degenerates to a zero-length cursor when End is the zero
-// position — every diagnostic still gets a clickable location that way.
+// position - every diagnostic still gets a clickable location that way.
 func toLSP(d lexer.Diagnostic) protocol.Diagnostic {
 	end := d.End
 	if !end.IsValid() {

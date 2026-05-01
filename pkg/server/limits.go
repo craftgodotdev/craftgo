@@ -7,12 +7,12 @@ import (
 
 // Limits bundles the per-method runtime guards the DSL surfaces via
 // `@timeout` and `@maxBodySize`. Zero values mean "no limit" for that
-// dimension — the wrapper only applies a guard when the corresponding
+// dimension - the wrapper only applies a guard when the corresponding
 // field is non-zero.
 //
 // Transport-level deadlines (`http.Server.ReadTimeout`,
 // `WriteTimeout`, `IdleTimeout`, `ReadHeaderTimeout`,
-// `MaxHeaderBytes`) are NOT modelled here — those are server-wide
+// `MaxHeaderBytes`) are NOT modelled here - those are server-wide
 // concerns the user configures on the underlying [http.Server]
 // directly when the stdlib defaults are insufficient. This package
 // only owns guards that can be enforced per-handler.
@@ -21,7 +21,7 @@ type Limits struct {
 	// logic → encode response) via [http.TimeoutHandler]; the
 	// client receives a 503 when the deadline elapses and the
 	// handler context is cancelled. Passthrough endpoints opt out
-	// — `http.TimeoutHandler` would prematurely cut whatever
+	// - `http.TimeoutHandler` would prematurely cut whatever
 	// stream their handler decides to produce.
 	Timeout time.Duration
 
@@ -51,7 +51,7 @@ func WithLimits(h http.Handler, l Limits) http.Handler {
 
 // maxBodySizeHandler returns a middleware that swaps r.Body with a
 // MaxBytesReader so reads past the cap fail loudly. Errors propagate
-// up the stack as a normal Read error — the user's handler decides
+// up the stack as a normal Read error - the user's handler decides
 // whether to translate them into 400 / 413.
 func maxBodySizeHandler(h http.Handler, n int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -5,20 +5,19 @@ package semantic
 // final route by joining (basePath, @prefix, @group, methodPath). The
 // pass surfaces five distinct issues:
 //
-//   - [CodePathBaseFormat]     — basePath malformed (warning).
-//   - [CodePathCollision]      — two methods resolve to the same
+//   - [CodePathBaseFormat]     - basePath malformed (warning).
+//   - [CodePathCollision]      - two methods resolve to the same
 //     VERB + path across services.
-//   - [CodePathParamMissing]   — `{name}` in path but no matching
+//   - [CodePathParamMissing]   - `{name}` in path but no matching
 //     field binding in the request type.
-//   - [CodePathParamOrphan]    — `@path` field with no corresponding
+//   - [CodePathParamOrphan]    - `@path` field with no corresponding
 //     `{name}` segment.
-//   - [CodePathHealthConflict] — declared route equals a reserved
+//   - [CodePathHealthConflict] - declared route equals a reserved
 //     health path.
 //
-// The pass intentionally duplicates a slim copy of `methodFullPath`
-// from codegen rather than importing it — semantic must stay
-// codegen-free so the LSP can reuse this layer without pulling
-// template machinery.
+// A slim copy of `methodFullPath` lives here rather than imported
+// from codegen: semantic stays codegen-free so the LSP can reuse it
+// without pulling template machinery.
 
 import (
 	"strings"
@@ -79,7 +78,7 @@ func (a *analyzer) checkPathResolution() {
 				diag.Related = related(prev.pos, "first declared here")
 				continue
 			}
-			// Same-service duplicates are reported by checkServiceMethods —
+			// Same-service duplicates are reported by checkServiceMethods -
 			// don't double-fire.
 			if _, dup := seen[key]; !dup {
 				seen[key] = routeMeta{pos: m.Pos, service: svcName, method: m.Name}
@@ -114,7 +113,7 @@ func (a *analyzer) checkBasePathFormat() {
 	// position. The IDE renders this as a project-level diagnostic.
 	a.diag(lexer.Position{}, lexer.Position{}, lexer.SeverityWarning,
 		CodePathBaseFormat,
-		"basePath %q is malformed: %s — codegen will normalise but please fix the manifest",
+		"basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
 		bp, bad)
 }
 
@@ -174,6 +173,9 @@ func decoratorString(svc *ast.ServiceDecl, name string) string {
 // semantic doesn't import codegen. PascalCase / camelCase → kebab,
 // preserving common-initialism boundaries (`HTTPStream` →
 // `http-stream`).
+//
+// Hot path: rune-by-rune transform. Builder keeps the per-character
+// append allocation-free.
 func camelToKebab(s string) string {
 	var sb strings.Builder
 	for i, r := range s {
@@ -222,13 +224,13 @@ func needsHyphen(s string, i int) bool {
 //     without `@path`. (`type GetUserReq { id string }` paired with
 //     `/users/{id}` is the canonical example.)
 //
-// Auto-bound fields are NOT subject to the orphan check — only
+// Auto-bound fields are NOT subject to the orphan check - only
 // explicitly-decorated ones, since a bare-named field that happens
 // to not match the path is just a regular query/body field.
 func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route string) {
 	pathParams := extractPathParams(route)
 	// No request type means the user pulls path params via `r.PathValue`
-	// in their logic-side code — codegen permits this, so we don't flag
+	// in their logic-side code - codegen permits this, so we don't flag
 	// missing bindings. We still keep walking when a request DOES exist
 	// so explicit `@path` orphans are reported.
 	if m.Request == nil {
@@ -239,7 +241,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 	}
 	reqFields := a.requestPathFields(m, pathParams)
 	if reqFields == nil {
-		// Unknown / cross-package request type — placement / qualified-ref
+		// Unknown / cross-package request type - placement / qualified-ref
 		// pass owns the diagnostic; we silently skip rather than emit a
 		// confusing missing-field error on a name we couldn't resolve.
 		return
@@ -253,7 +255,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 		}
 	}
 	// Orphan: field claims @path explicitly but route lacks the segment.
-	// Auto-bound fields don't fire orphan — they're just a regular field
+	// Auto-bound fields don't fire orphan - they're just a regular field
 	// that happens not to coincide with any path segment.
 	for _, name := range reqFields.explicit {
 		if !inSet(name, pathParams) {
@@ -285,7 +287,7 @@ func (s *pathParamSet) has(name string) bool {
 // requestPathFields walks the method's request type and classifies
 // fields against pathParams. Mixin members are expanded recursively so
 // `type Req { Base  name string }` exposes Base's fields for path
-// binding — same view the codegen handler binder gets.
+// binding - same view the codegen handler binder gets.
 //
 // Returns nil when the request type can't be resolved (cross-package
 // or unknown name) so the caller can skip path-param checks rather
@@ -341,7 +343,7 @@ func (a *analyzer) walkBodyForPath(td *ast.TypeDecl, paramSet map[string]bool, o
 // pathBindingName returns the path-segment name a field claims via
 // `@path` and whether the field has the decorator at all. The custom
 // override `@path("custom-name")` wins over the field's own identifier
-// — that's the README contract.
+// - that's the README contract.
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
 		if d.Name != "path" {
@@ -358,7 +360,7 @@ func pathBindingName(f *ast.Field) (string, bool) {
 }
 
 // extractPathParams returns every `{name}` segment in route in source
-// order. A malformed `{...` without closing `}` is silently ignored —
+// order. A malformed `{...` without closing `}` is silently ignored -
 // the parser would already have rejected it.
 func extractPathParams(route string) []string {
 	var out []string

@@ -34,7 +34,7 @@ func New{{.LogicName}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 {{- end}}
 // {{.Method}} is the passthrough business-logic entry point. The
 // framework hands you the raw http.ResponseWriter and *http.Request
-// — read path parameters via r.PathValue, write headers/body to w
+// - read path parameters via r.PathValue, write headers/body to w
 // directly, and return any error to surface it through the
 // framework's error writer.
 func (l *{{.LogicName}}) {{.Method}}(w http.ResponseWriter, r *http.Request) error {

@@ -1,90 +1,58 @@
 package semantic
 
-import (
-	"strings"
-	"testing"
+import "testing"
 
-	"github.com/dropship-dev/craftgo/internal/lexer"
-)
-
-// TestDeclCollisionTypeVsErrorErr pins the canonical error case:
-// `type FooErr` competes with the `<Name>Err` struct generated for
-// `error Foo`. Both end up emitting `type FooErr struct{...}` in
-// the same Go package — a hard compile failure that we catch at
-// the design layer instead of letting `go build` discover.
+// TestDeclCollisionTypeVsErrorErr pins the canonical case: `type
+// FooErr` competes with the `<Name>Err` struct that codegen emits
+// for `error Conflict Foo`. Both end up emitting `type FooErr` in
+// the same Go package - a hard compile failure caught at the
+// design layer before `go build` discovers it.
 func TestDeclCollisionTypeVsErrorErr(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
+	d := expectError(t, `package x
 type FooErr { code string }
-error Conflict Foo { reason string }`))
-	d := findCode(diags, CodeDeclGoNameCollision)
-	if d == nil {
-		t.Fatalf("expected %s error, got %v", CodeDeclGoNameCollision, codes(diags))
-	}
-	if d.Severity != lexer.SeverityError {
-		t.Errorf("expected ERROR severity, got %v", d.Severity)
-	}
-	if !strings.Contains(d.Msg, "FooErr") {
-		t.Errorf("message must mention the colliding Go name; got %q", d.Msg)
-	}
+error Conflict Foo { reason string }`, CodeDeclGoNameCollision)
+	expectMessage(t, d, "FooErr")
 }
 
 // TestDeclCollisionTypeVsErrorBody pins the body-side collision:
-// when an error decl carries a body, codegen also emits a
-// `<Name>Body` struct, so `type FooBody` clashes with
-// `error Conflict Foo { reason string }`.
+// when an error decl carries a body, codegen also emits `<Name>Body`,
+// so `type FooBody` clashes with `error Conflict Foo { reason string }`.
 func TestDeclCollisionTypeVsErrorBody(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
+	d := expectError(t, `package x
 type FooBody { extra string }
-error Conflict Foo { reason string }`))
-	d := findCode(diags, CodeDeclGoNameCollision)
-	if d == nil {
-		t.Fatalf("expected %s error, got %v", CodeDeclGoNameCollision, codes(diags))
-	}
-	if !strings.Contains(d.Msg, "FooBody") {
-		t.Errorf("message must mention the colliding Go name; got %q", d.Msg)
-	}
+error Conflict Foo { reason string }`, CodeDeclGoNameCollision)
+	expectMessage(t, d, "FooBody")
 }
 
 // TestDeclCollisionMiddlewareSeparatePackage confirms the namespace
 // split: middleware aliases live in svccontext (not the types
 // package), so `type AuthMiddleware` and `middleware Auth` do NOT
-// collide despite the suffix-mangling. Each lives in a different
-// Go file and resolver namespace.
+// collide despite the suffix-mangling.
 func TestDeclCollisionMiddlewareSeparatePackage(t *testing.T) {
-	mustClean(t, `package x
+	expectClean(t, `package x
 type AuthMiddleware { token string }
 middleware Auth`)
 }
 
 // TestDeclCollisionErrorWithoutBodySkipsBodyEmit confirms the body
-// suffix is only counted when the error actually has a body —
-// `error Foo` (bodyless) emits only `FooErr`, NOT `FooBody`, so a
-// `type FooBody` next to it does NOT collide.
+// suffix is only counted when the error actually has a body -
+// `error Foo` (bodyless) emits only `FooErr`, so `type FooBody`
+// next to it is benign.
 func TestDeclCollisionErrorWithoutBodySkipsBodyEmit(t *testing.T) {
-	mustClean(t, `package x
+	expectClean(t, `package x
 type FooBody { extra string }
 error NotFound Foo`)
 }
 
-// TestDeclCollisionEnumScalarSameName pins that two decls producing
-// the same verbatim Go name from different DSL kinds also collide
-// (enum + type, scalar + type, etc.). The CodeDuplicateDecl pass
-// would actually catch this earlier because the DSL names match
-// too — this test exercises the second guard via different DSL
-// names that still mangle to the same Go name.
-//
-// `type Foo` and `enum Foo` both emit `type Foo …` so the older
-// duplicate-decl rule fires first; we don't need a fresh signal
-// from this pass for that case. The scenario the new rule
-// uniquely catches is the SUFFIX-mangled one (Err / Body /
-// Middleware) where the DSL names diverge.
+// TestDeclCollisionEnumScalarSameName pins that two decls with the
+// same DSL name still error - either via [CodeDuplicateDecl] (the
+// older shared-namespace check) or [CodeDeclGoNameCollision] (the
+// suffix-mangled check). Either signal is acceptable for the user;
+// the contract is just "you cannot declare both".
 func TestDeclCollisionEnumScalarSameName(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type Foo { id string }
 enum Foo { Red Blue }`))
-	// Either CodeDuplicateDecl (DSL-name level) or
-	// CodeDeclGoNameCollision is acceptable here — the contract is
-	// just that the user gets an error.
 	if findCode(diags, CodeDuplicateDecl) == nil && findCode(diags, CodeDeclGoNameCollision) == nil {
 		t.Fatalf("expected duplicate or go-name collision, got %v", codes(diags))
 	}
@@ -93,7 +61,7 @@ enum Foo { Red Blue }`))
 // TestDeclCollisionNoFalsePositive confirms a clean project with
 // distinct names produces no collision diagnostic.
 func TestDeclCollisionNoFalsePositive(t *testing.T) {
-	mustClean(t, `package x
+	expectClean(t, `package x
 type User { id string }
 error NotFound UserMissing { reason string }
 enum Role { Admin User_ }

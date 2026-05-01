@@ -8,7 +8,7 @@ import (
 
 // Severity classifies a [Diagnostic] for IDE rendering. The values mirror
 // the LSP DiagnosticSeverity enum so the LSP server can pass them through
-// without translation. Zero value is [SeverityError] — every diagnostic
+// without translation. Zero value is [SeverityError] - every diagnostic
 // constructed without an explicit severity is treated as an error.
 type Severity uint8
 
@@ -37,7 +37,7 @@ func (s Severity) String() string {
 	}
 }
 
-// Related links a [Diagnostic] to a secondary location — typically the
+// Related links a [Diagnostic] to a secondary location - typically the
 // "previously declared at" site for a duplicate, or the conflicting
 // decorator for a combination-rule violation. The IDE renders these as
 // clickable secondary markers next to the primary diagnostic.
@@ -58,7 +58,7 @@ type Related struct {
 //
 // Code is a stable machine-readable identifier (e.g. `decorator/placement`)
 // that the IDE uses for filtering, "disable next line", and documentation
-// links. It must NOT include the message — keep human text in Msg.
+// links. It must NOT include the message - keep human text in Msg.
 //
 // Related carries secondary positions referenced by Msg. The IDE shows
 // them as clickable cross-links rather than appending another sentence
@@ -73,9 +73,8 @@ type Diagnostic struct {
 }
 
 // Error implements the error interface, formatted as `pos: msg`. Severity
-// and code are intentionally omitted from the default rendering so the
-// existing CLI output stays stable; the LSP layer reads the structured
-// fields directly.
+// and code are omitted from the default rendering; the LSP layer reads the
+// structured fields directly.
 func (d Diagnostic) Error() string {
 	return fmt.Sprintf("%s: %s", d.Pos, d.Msg)
 }
@@ -101,7 +100,7 @@ type Lexer struct {
 	pendingDoc []string
 }
 
-// New constructs a Lexer ready to tokenize src. filename is informational —
+// New constructs a Lexer ready to tokenize src. filename is informational -
 // it appears in [Position.Filename] on every emitted token and in diagnostics.
 // Pass an empty string when there is no associated file.
 func New(filename, src string) *Lexer {
@@ -213,8 +212,7 @@ func (l *Lexer) lexPunct(pos Position, r rune) Token {
 }
 
 // lexIdentOrKeyword reads a maximal `[A-Za-z_][A-Za-z0-9_]*` run and looks
-// the result up in [keywords]. Non-ASCII letters are intentionally rejected
-// to keep the grammar predictable for AI/LLM-generated DSL.
+// the result up in [keywords]. Non-ASCII letters are rejected.
 func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 	start := l.offset
 	for {
@@ -298,12 +296,14 @@ func (l *Lexer) digitFollowsDot() bool {
 // lexString reads a double-quoted string literal, supporting the escape
 // sequences `\n \t \r \" \\` and the Unicode form `\u{HEX}` (1-6 hex digits).
 // Newlines inside the literal and unterminated strings produce [Error] tokens
-// — both are common authoring mistakes worth flagging early.
+// - both are common authoring mistakes worth flagging early.
 //
 // The returned token's Text retains the surrounding quotes and the original
 // escape sequences verbatim; the parser is responsible for unescaping when it
 // builds AST literal nodes (see parser.unquoteString).
 func (l *Lexer) lexString(pos Position) Token {
+	// Hot path: byte-by-byte string-literal scan. Builder keeps the
+	// per-rune append allocation-free.
 	var sb strings.Builder
 	sb.WriteByte('"')
 	l.advance()
@@ -386,10 +386,12 @@ func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
 }
 
 // lexRawString reads a backtick-quoted string. Contents pass through
-// verbatim — escape sequences are NOT interpreted, and embedded newlines are
+// verbatim - escape sequences are NOT interpreted, and embedded newlines are
 // allowed. This is the right form for long `@doc()` text and complex
 // `@pattern()` regular expressions where backslash escapes would be noisy.
 func (l *Lexer) lexRawString(pos Position) Token {
+	// Hot path: byte-by-byte raw-string scan. Builder keeps the
+	// inner append allocation-free.
 	var sb strings.Builder
 	sb.WriteByte('`')
 	l.advance()
@@ -409,10 +411,8 @@ func (l *Lexer) lexRawString(pos Position) Token {
 }
 
 // skipWhitespaceAndComments advances past any sequence of ASCII whitespace
-// (space, tab, CR, LF) and `//` line comments. craftgo intentionally does not
-// support `/* block */` comments — keeping a single comment style avoids
-// design-time bikeshedding and matches the framework's "one way to do each
-// thing" philosophy.
+// (space, tab, CR, LF) and `//` line comments. `/* block */` comments are
+// not supported.
 func (l *Lexer) skipWhitespaceAndComments() {
 	consecutiveNewlines := 0
 	for l.offset < len(l.src) {
@@ -421,7 +421,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 		case r == '\n':
 			consecutiveNewlines++
 			if consecutiveNewlines >= 2 {
-				// Blank line — comments above are detached from the
+				// Blank line - comments above are detached from the
 				// upcoming token; drop the buffer.
 				l.pendingDoc = nil
 			}
@@ -450,7 +450,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 }
 
 // peek returns the rune at the current offset without consuming it. Returns
-// `(0, 0)` at EOF — callers should treat rune 0 as a sentinel and not try to
+// `(0, 0)` at EOF - callers should treat rune 0 as a sentinel and not try to
 // classify it as a valid character (none of the [isLetter] / [isDigit] /
 // [isHex] helpers accept it).
 func (l *Lexer) peek() (rune, int) {
@@ -492,9 +492,7 @@ func (l *Lexer) errorf(pos Position, format string, args ...any) Token {
 	return Token{Kind: Error, Text: msg, Pos: pos}
 }
 
-// isLetter reports whether r is an ASCII letter (a-z or A-Z). Non-ASCII
-// letters are deliberately excluded so identifier spellings stay 1:1 with
-// their Go counterparts.
+// isLetter reports whether r is an ASCII letter (a-z or A-Z).
 func isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }

@@ -8,7 +8,7 @@
 //	craftgo gen  [-f <design-folder>] [-c|--context <project-root>] [path]
 //
 // `init` scaffolds a fresh design folder at <path> (default `design`).
-// The path argument IS the design folder — manifest + sample `.craftgo`
+// The path argument IS the design folder - manifest + sample `.craftgo`
 // files land flat inside it. Existing files are never overwritten so
 // re-running on a populated directory fills only the gaps.
 //
@@ -21,6 +21,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,43 +46,48 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	var err error
 	switch os.Args[1] {
 	case "gen":
-		if err := runGen(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
-			os.Exit(1)
-		}
+		err = runGen(os.Args[2:])
 	case "init":
-		if err := runInit(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
-			os.Exit(1)
-		}
+		err = runInit(os.Args[2:])
 	case "fmt":
-		if err := runFmt(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
-			os.Exit(1)
-		}
+		err = runFmt(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println(version)
+		return
 	case "help", "--help", "-h":
 		usage()
+		return
 	default:
 		fmt.Fprintf(os.Stderr, "craftgo: unknown command %q\n\n", os.Args[1])
 		usage()
 		os.Exit(2)
 	}
+	if err == nil {
+		return
+	}
+	// `-h` / `--help` returns this sentinel - flag package already
+	// printed the per-subcommand usage; exit 0 without piling on
+	// our "craftgo: …" prefix.
+	if errors.Is(err, errHelpRequested) {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
+	os.Exit(1)
 }
 
 // usage prints a short command summary to stdout. Verbose enough to remind
 // returning users of the positional-path convention but not so detailed that
-// it becomes a maintenance burden — full docs live in the README.
+// it becomes a maintenance burden - full docs live in the README.
 func usage() {
-	fmt.Println(`craftgo — design-first Go API framework
+	fmt.Println(`craftgo - design-first Go API framework
 
 Usage:
   craftgo init [path]
                           Scaffold a design folder at <path> (default: 'design').
-                          The supplied path IS the design folder — the manifest
+                          The supplied path IS the design folder - the manifest
                           (craftgo.design.yaml) lands flat inside it. The Go
                           module path is read from go.mod at gen time, so init
                           itself does not need a -package flag.
@@ -97,7 +104,7 @@ Usage:
                           Without -f, walks upward from <path> (or cwd) for
                           craftgo.design.yaml, probing direct subdirs (any
                           name) at each level. The Go module path is read
-                          from go.mod, walking up from the project root —
+                          from go.mod, walking up from the project root -
                           run "go mod init <module>" first if it does not
                           exist yet.
 
@@ -111,56 +118,81 @@ For 'fmt', path may be a single file or a directory (recursed for *.craftgo).`)
 
 // parseGenArgs extracts the three controls `craftgo gen` honours:
 //
-//   - `-f <folder>`: explicit design folder (where craftgo.design.yaml
-//     lives). Skips the walk-up search.
-//   - `-c|--context <root>`: project root the `output:` paths resolve
-//     against. Defaults to cwd when -f is given, otherwise to the
-//     parent of the manifest folder (legacy).
+//   - `-f <folder>` / `--folder`: explicit design folder (where
+//     craftgo.design.yaml lives). Skips the walk-up search.
+//   - `-c <root>` / `--context`: project root the `output:` paths
+//     resolve against. Defaults to cwd when -f is given, otherwise
+//     to the parent of the manifest folder (legacy).
 //   - positional path: walk-up start (legacy compat). Defaults to
 //     `.` when neither -f nor a positional is given.
 //
+// Implementation goes through [flag.NewFlagSet] so users get free
+// `-h` / `--help` text and consistent `--flag=value` parsing -
+// matching how `craftgo fmt` and the rest of the Go CLI ecosystem
+// handle subcommand flags. Both short and long names share the
+// same destination so editors / shell completions surface either
+// spelling.
+//
 // Returns (manifestFolder, contextRoot, positionalTarget, error).
-// Exactly one of manifestFolder / positionalTarget is meaningful at
-// the call site — the runGen dispatch picks the path based on which
-// is set.
+// Exactly one of manifestFolder / positionalTarget is meaningful
+// at the call site - the runGen dispatch picks the path based on
+// which is set.
 func parseGenArgs(args []string) (manifest, ctxRoot, positional string, err error) {
-	positional = "."
-	gotPositional := false
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-f", "--folder":
-			if i+1 >= len(args) {
-				return "", "", "", fmt.Errorf("gen: %s requires a folder argument", args[i])
-			}
-			manifest = args[i+1]
-			i++
-		case "-c", "--context":
-			if i+1 >= len(args) {
-				return "", "", "", fmt.Errorf("gen: %s requires a path argument", args[i])
-			}
-			ctxRoot = args[i+1]
-			i++
-		default:
-			if strings.HasPrefix(args[i], "-") {
-				return "", "", "", fmt.Errorf("gen: unknown flag %q", args[i])
-			}
-			if gotPositional {
-				return "", "", "", fmt.Errorf("gen: too many positional arguments")
-			}
-			positional = args[i]
-			gotPositional = true
-		}
+	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
+	fs.StringVar(&manifest, "f", "", "design folder holding craftgo.design.yaml (skips walk-up)")
+	fs.StringVar(&manifest, "folder", "", "alias for -f")
+	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to cwd when -f is given)")
+	fs.StringVar(&ctxRoot, "context", "", "alias for -c")
+	if perr := fs.Parse(args); perr != nil {
+		// flag.ErrHelp is the explicit user request for `-h`/`--help`;
+		// surface a sentinel error the caller recognises as
+		// "successful early exit, no usage error".
+		return "", "", "", parseFlagError("gen", perr)
+	}
+	rest := fs.Args()
+	switch len(rest) {
+	case 0:
+		positional = "."
+	case 1:
+		positional = rest[0]
+	default:
+		return "", "", "", fmt.Errorf("gen: too many positional arguments (got %d, want at most 1)", len(rest))
 	}
 	return manifest, ctxRoot, positional, nil
 }
+
+// parseFlagError translates a [flag.ContinueOnError] result into the
+// project's error contract: `-h` / `--help` is a clean exit with no
+// noisy "flag: help requested" wrapper, every other parse error is
+// prefixed with the subcommand name so the user sees `init: …`
+// rather than the bare flag-package message.
+func parseFlagError(subcommand string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		// The flag package already printed Usage; signalling
+		// "command exited cleanly" is the right shape for the
+		// caller. Returning nil would silently fall through into
+		// the rest of runGen / runInit, so use a sentinel that
+		// short-circuits the dispatcher in main().
+		return errHelpRequested
+	}
+	return fmt.Errorf("%s: %w", subcommand, err)
+}
+
+// errHelpRequested is the sentinel returned by [parseFlagError] when
+// the user passed `-h`/`--help`. main() recognises it and exits 0
+// without emitting "craftgo: …" prefix noise.
+var errHelpRequested = errors.New("help requested")
 
 // resolveGenPaths picks the design folder and project root from the
 // parsed flags. Two flows:
 //
 //   - `-f <folder>` → design folder is exactly that path. Project
 //     root defaults to cwd (the dir the user ran the command from)
-//     so the monorepo layout — design at contracts/v1, code at repo
-//     root — works without further flags. `-c` overrides.
+//     so the monorepo layout - design at contracts/v1, code at repo
+//     root - works without further flags. `-c` overrides.
 //
 //   - no `-f` → walk up from `target` until craftgo.design.yaml is
 //     found (or in any direct subdir along the way). Project root
@@ -197,11 +229,12 @@ func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config
 	return cfg, projectRoot, designDir, nil
 }
 
-// runGen wires the full design → codegen pipeline. The implementation is a
-// straight-line list rather than a generic dispatcher because each phase
-// has subtly different argument shapes (some need a project root, some take
-// only an outDir) and the order matters: types first so handlers and routes
-// can reference them, then OpenAPI last so it has the final symbol table.
+// runGen wires the full design → codegen pipeline. The body reads as
+// the high-level outline (resolve → analyze → validate → emit per
+// concern → log) so a future reader can navigate phases without
+// chasing nested loops. Each phase function is independently
+// testable and contains the actual codegen calls; runGen itself
+// only sequences them.
 func runGen(args []string) error {
 	manifestFolder, contextRoot, target, err := parseGenArgs(args)
 	if err != nil {
@@ -223,101 +256,120 @@ func runGen(args []string) error {
 		return err
 	}
 	cfg.Package = modulePath
-	files, err := parseDesign(designDir)
+
+	proj, err := analyzeDesign(designDir, cfg)
 	if err != nil {
 		return err
+	}
+	pkgNames := sortedPackageNames(proj)
+
+	if err := validateSecurityRefs(proj, cfg, pkgNames); err != nil {
+		return err
+	}
+	if err := genTypesPerPackage(proj, cfg, projectRoot, pkgNames); err != nil {
+		return err
+	}
+	if err := genServicesPerPackage(proj, cfg, projectRoot, pkgNames); err != nil {
+		return err
+	}
+	if err := genProjectArtefacts(proj, cfg, projectRoot); err != nil {
+		return err
+	}
+	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
+	return nil
+}
+
+// analyzeDesign parses every `.craftgo` under designDir, runs the
+// semantic analyser, and returns the validated [semantic.Project].
+// Diagnostic-level errors collapse into a single multi-line error
+// so callers don't have to thread the diagnostic slice further.
+// A project with zero DSL packages is rejected here - the
+// downstream codegen would silently produce nothing.
+func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, error) {
+	files, err := parseDesign(designDir)
+	if err != nil {
+		return nil, err
 	}
 	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
 		SecuritySchemes: securitySchemeNames(cfg),
 		BasePath:        cfg.OpenAPI.BasePath,
 		DesignRoot:      designDir,
 	})
-	if len(diags) > 0 {
-		var sb strings.Builder
-		sb.WriteString("semantic errors:\n")
-		for _, d := range diags {
-			if d.Severity == lexer.SeverityWarning || d.Severity == lexer.SeverityInfo || d.Severity == lexer.SeverityHint {
-				continue
-			}
-			sb.WriteString("  ")
-			sb.WriteString(d.Pos.String())
-			sb.WriteString(": ")
-			sb.WriteString(d.Msg)
-			sb.WriteString("\n")
-		}
-		if sb.Len() > len("semantic errors:\n") {
-			return fmt.Errorf("%s", sb.String())
-		}
+	if errs := formatSemanticErrors(diags); errs != "" {
+		return nil, fmt.Errorf("%s", errs)
 	}
-
 	if len(proj.Packages) == 0 {
-		return fmt.Errorf("project has no DSL packages — every project must have at least one .craftgo file declaring `package X`")
+		return nil, fmt.Errorf("project has no DSL packages - every project must have at least one .craftgo file declaring `package X`")
 	}
+	return proj, nil
+}
 
-	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
-
-	// Per-package types/enums/errors/validators. Each package gets
-	// its own subdirectory under typesDir, with cross-package Go
-	// imports inserted automatically when its DSL files reference
-	// siblings.
-	pkgNames := make([]string, 0, len(proj.Packages))
+// sortedPackageNames returns the project's non-blank package names in
+// alphabetical order. Used by every per-package gen phase so output
+// files diff cleanly across runs regardless of the underlying map
+// iteration order.
+func sortedPackageNames(proj *semantic.Project) []string {
+	out := make([]string, 0, len(proj.Packages))
 	for k := range proj.Packages {
 		if k != "" {
-			pkgNames = append(pkgNames, k)
+			out = append(out, k)
 		}
 	}
-	sort.Strings(pkgNames)
+	sort.Strings(out)
+	return out
+}
 
-	// Security-scheme validation runs against every package whose
-	// services declare `@security` — multi-package projects can spread
-	// services across packages.
+// validateSecurityRefs walks every package's `@security` references
+// and surfaces any unresolved scheme as a single composite error.
+// Multi-package projects can spread services across packages, so the
+// validator runs over each one independently.
+func validateSecurityRefs(proj *semantic.Project, cfg *config.Config, pkgNames []string) error {
 	for _, name := range pkgNames {
 		p := proj.Packages[name]
 		if p == nil {
 			continue
 		}
 		if errs := codegen.ValidateSecurityRefs(p, cfg); len(errs) > 0 {
-			var sb strings.Builder
-			sb.WriteString("security scheme errors in package " + name + ":\n")
-			for _, e := range errs {
-				sb.WriteString("  ")
-				sb.WriteString(e)
-				sb.WriteString("\n")
-			}
-			return fmt.Errorf("%s", sb.String())
+			return fmt.Errorf("security scheme errors in package %s:\n  %s", name, strings.Join(errs, "\n  "))
 		}
 	}
+	return nil
+}
 
+// genTypesPerPackage emits the four type-shape artefacts (types,
+// enums, errors, validators) into <typesDir>/<pkgName>/ for every
+// package. Cross-package field refs pick up Go imports through the
+// per-call [codegen.BuildCrossPkg] context.
+func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot string, pkgNames []string) error {
+	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
 	for _, name := range pkgNames {
 		p := proj.Packages[name]
 		cross := codegen.BuildCrossPkg(proj, cfg, name)
 		scalars := codegen.BuildScalarTable(proj, name)
-		genSteps := []struct {
-			name string
-			fn   func() error
+		steps := []struct {
+			label string
+			fn    func() error
 		}{
 			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, cross) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
 			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, cross) }},
 			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsWith(p, typesDir, cross, scalars) }},
 		}
-		for _, s := range genSteps {
+		for _, s := range steps {
 			if err := s.fn(); err != nil {
-				return fmt.Errorf("%s: %w", s.name, err)
+				return fmt.Errorf("%s: %w", s.label, err)
 			}
 		}
 	}
+	return nil
+}
 
-	// Service-shaped artefacts iterate every package that declares
-	// services. Multiple packages may contribute services; codegen
-	// handlers/routes/logic land in their own subdirectories. main.go
-	// aggregates RegisterRoutes from all of them; openapi merges every
-	// package's schema namespace with conflict-aware naming.
-	// Middlewares are project-global (the semantic resolver enforces
-	// uniqueness across packages). Generate the unified Middlewares
-	// struct + scaffolds ONCE up-front so packages without services
-	// — like `shared` — still contribute their declarations to
-	// svccontext.
+// genServicesPerPackage emits service-shaped artefacts (handlers,
+// helpers, logic, per-service routes) for every package that
+// declares at least one service. Project-global middleware
+// scaffolds run ONCE up-front so packages without services - like
+// `shared` - still contribute their declarations to svccontext.
+func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot string, pkgNames []string) error {
 	if err := codegen.GenerateProjectMiddlewares(proj, cfg, projectRoot); err != nil {
 		return fmt.Errorf("middlewares: %w", err)
 	}
@@ -327,7 +379,7 @@ func runGen(args []string) error {
 			continue
 		}
 		cross := codegen.BuildCrossPkg(proj, cfg, name)
-		svcSteps := []struct {
+		steps := []struct {
 			label string
 			fn    func() error
 		}{
@@ -336,43 +388,42 @@ func runGen(args []string) error {
 			{"logic(" + name + ")", func() error { return codegen.GenerateLogicPackage(p, cfg, projectRoot, cross) }},
 			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
 		}
-		for _, s := range svcSteps {
+		for _, s := range steps {
 			if err := s.fn(); err != nil {
 				return fmt.Errorf("%s: %w", s.label, err)
 			}
 		}
 	}
+	return nil
+}
 
-	// Project-wide artefacts: routes-umbrella, runtime config + svccontext
-	// scaffolds, main.go, openapi.yaml. These aggregate services + types
-	// across every package so they must run AFTER all per-package gen
-	// has produced the upstream inputs.
-	//
-	// Runtime scaffolds (config/, svccontext/) are gen-once and run
-	// BEFORE main.go so the generated boot code can rely on the
-	// config package's import path resolving. They self-skip when
-	// `output.main: "-"` opts the project out of the runtime layer.
-	if err := codegen.GenerateProjectRoutesUmbrella(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("routes-umbrella: %w", err)
+// genProjectArtefacts emits the project-wide artefacts in dependency
+// order: routes-umbrella aggregates per-service routes, runtime
+// scaffolds (config/, svccontext/) write the boot package, main.go
+// stitches them together, and openapi.yaml is last so it sees the
+// final symbol table. Runtime scaffolds self-skip when
+// `output.main: "-"` opts the project out of the runtime layer.
+func genProjectArtefacts(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+	steps := []struct {
+		label string
+		fn    func() error
+	}{
+		{"routes-umbrella", func() error { return codegen.GenerateProjectRoutesUmbrella(proj, cfg, projectRoot) }},
+		{"config", func() error { return codegen.GenerateRuntimeConfig(cfg, projectRoot) }},
+		{"svccontext", func() error { return codegen.GenerateSvccontext(cfg, projectRoot) }},
+		{"main", func() error { return codegen.GenerateProjectMain(proj, cfg, projectRoot) }},
+		{"openapi", func() error { return codegen.GenerateProjectOpenAPI(proj, cfg, projectRoot) }},
 	}
-	if err := codegen.GenerateRuntimeConfig(cfg, projectRoot); err != nil {
-		return fmt.Errorf("config: %w", err)
+	for _, s := range steps {
+		if err := s.fn(); err != nil {
+			return fmt.Errorf("%s: %w", s.label, err)
+		}
 	}
-	if err := codegen.GenerateSvccontext(cfg, projectRoot); err != nil {
-		return fmt.Errorf("svccontext: %w", err)
-	}
-	if err := codegen.GenerateProjectMain(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("main: %w", err)
-	}
-	if err := codegen.GenerateProjectOpenAPI(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("openapi: %w", err)
-	}
-	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
 	return nil
 }
 
 // runInit scaffolds a fresh design folder at args[0]. The path argument
-// IS the design folder — `craftgo init contracts/v1` creates
+// IS the design folder - `craftgo init contracts/v1` creates
 // `contracts/v1/craftgo.design.yaml` directly inside that directory;
 // no intermediate `design/` wrapper. When no path is supplied the
 // default is `design` (creates a `design/` subdir of cwd) so a fresh
@@ -381,30 +432,29 @@ func runGen(args []string) error {
 //
 // The command refuses to overwrite an existing manifest so re-running
 // on a populated folder is a silent no-op. There is no `-package`
-// flag — the Go module path is read from `go.mod` at gen time, so
+// flag - the Go module path is read from `go.mod` at gen time, so
 // the only manifest-side configuration is the optional output paths
 // and OpenAPI metadata.
 //
-// init only owns the manifest scaffolding — the runtime artefacts
+// init only owns the manifest scaffolding - the runtime artefacts
 // (config/, svccontext/, main.go) are scaffolded by `craftgo gen`
 // using the same gen-once policy so they live in one place
 // (internal/codegen/templates/) and follow the same workflow as
 // every other generated artefact.
 func runInit(args []string) error {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	if perr := fs.Parse(args); perr != nil {
+		return parseFlagError("init", perr)
+	}
+	rest := fs.Args()
 	target := "design"
-	gotPositional := false
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		default:
-			if strings.HasPrefix(args[i], "-") {
-				return fmt.Errorf("init: unknown flag %q", args[i])
-			}
-			if gotPositional {
-				return fmt.Errorf("init: too many positional arguments")
-			}
-			target = args[i]
-			gotPositional = true
-		}
+	switch len(rest) {
+	case 0:
+		// keep default
+	case 1:
+		target = rest[0]
+	default:
+		return fmt.Errorf("init: too many positional arguments (got %d, want at most 1)", len(rest))
 	}
 
 	designDir, err := filepath.Abs(target)
@@ -434,7 +484,7 @@ func runInit(args []string) error {
 }
 
 // initManifest renders the starter craftgo.design.yaml. The body has
-// no template variables — every value is either a default that 90%
+// no template variables - every value is either a default that 90%
 // of projects keep or a commented hint at an optional knob. The
 // Go module path is read from go.mod at gen time, so the manifest
 // itself carries no `package:` field.
@@ -466,7 +516,7 @@ func securitySchemeNames(cfg *config.Config) []string {
 // as a single error so the caller doesn't see a half-parsed package.
 func parseDesign(designDir string) ([]*ast.File, error) {
 	var files []*ast.File
-	var diagBuf strings.Builder
+	var parseDiags []string
 	walkErr := filepath.Walk(designDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -483,14 +533,8 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 		}
 		p := parser.New(path, string(data))
 		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			for _, e := range d {
-				diagBuf.WriteString("  ")
-				diagBuf.WriteString(e.Pos.String())
-				diagBuf.WriteString(": ")
-				diagBuf.WriteString(e.Msg)
-				diagBuf.WriteString("\n")
-			}
+		for _, e := range p.Diagnostics() {
+			parseDiags = append(parseDiags, fmt.Sprintf("  %s: %s", e.Pos.String(), e.Msg))
 		}
 		files = append(files, f)
 		return nil
@@ -498,11 +542,30 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 	if walkErr != nil {
 		return nil, walkErr
 	}
-	if diagBuf.Len() > 0 {
-		return nil, fmt.Errorf("parse errors:\n%s", diagBuf.String())
+	if len(parseDiags) > 0 {
+		return nil, fmt.Errorf("parse errors:\n%s", strings.Join(parseDiags, "\n"))
 	}
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no .craftgo files found under %s", designDir)
 	}
 	return files, nil
+}
+
+// formatSemanticErrors filters severity-error diagnostics out of
+// `diags` and renders them as a single multi-line message suitable
+// for `fmt.Errorf`. Returns "" when nothing surfaces - warnings,
+// info, hints stay silent at this layer because the LSP shows them
+// in the editor and forcing them onto stderr noise out CI logs.
+func formatSemanticErrors(diags []semantic.Diagnostic) string {
+	lines := make([]string, 0, len(diags))
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityWarning || d.Severity == lexer.SeverityInfo || d.Severity == lexer.SeverityHint {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  %s: %s", d.Pos.String(), d.Msg))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "semantic errors:\n" + strings.Join(lines, "\n")
 }

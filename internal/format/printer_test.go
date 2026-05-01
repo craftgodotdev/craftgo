@@ -8,7 +8,7 @@ import (
 )
 
 // TestFormatRoundTrip parses, formats, parses again, and reformats. The two
-// formatted outputs must match — once the source is in canonical form,
+// formatted outputs must match - once the source is in canonical form,
 // re-running the formatter is a no-op (idempotency). It also checks that
 // the formatted text parses without diagnostics.
 func TestFormatRoundTrip(t *testing.T) {

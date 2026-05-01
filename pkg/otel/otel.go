@@ -11,7 +11,7 @@
 //	otel.Init(otel.WithOTLPgRPCExporter(ctx, "collector:4317"))
 //	otel.Init(otel.WithOTLPHTTPExporter(ctx, "http://collector:4318"))
 //
-// Multiple exporter options can be stacked — every span is fanned to
+// Multiple exporter options can be stacked - every span is fanned to
 // each registered processor (canonical migration shape: stdout for
 // debugging while OTLP is being validated).
 package otel
@@ -47,7 +47,7 @@ var enabled atomic.Bool
 type Option func(*config)
 
 // config carries the TracerProvider settings between [Option]
-// closures and [Init]. Held off the package surface — callers only
+// closures and [Init]. Held off the package surface - callers only
 // ever see the typed [Option] constructors.
 type config struct {
 	processors  []sdktrace.SpanProcessor
@@ -68,7 +68,7 @@ func WithServiceName(name string) Option {
 
 // WithStdoutExporter writes every span as a JSON object on stdout.
 // Useful for local debugging where running a full collector is
-// overkill — `tail -f` the program output and you have a span trace.
+// overkill - `tail -f` the program output and you have a span trace.
 func WithStdoutExporter() Option {
 	return func(c *config) {
 		if c.err != nil {
@@ -110,7 +110,7 @@ func WithOTLPgRPCExporter(ctx context.Context, addr string, opts ...otlptracegrp
 // WithOTLPHTTPExporter pushes spans to an OTLP collector via
 // HTTP/protobuf. endpoint is the full URL (`"http://collector:4318"` or
 // `"https://collector.example.com"`). Same insecure-by-default
-// trade-off as [WithOTLPgRPCExporter] — pass
+// trade-off as [WithOTLPgRPCExporter] - pass
 // `otlptracehttp.WithTLSClientConfig(...)` to opt into TLS.
 func WithOTLPHTTPExporter(ctx context.Context, endpoint string, opts ...otlptracehttp.Option) Option {
 	return func(c *config) {
@@ -132,13 +132,13 @@ func WithOTLPHTTPExporter(ctx context.Context, endpoint string, opts ...otlptrac
 
 // Init wires a TracerProvider with the supplied options, installs it
 // on the global slot, and flips the HTTP middleware gate ON. With
-// zero options the provider has no exporter — spans get valid IDs but
+// zero options the provider has no exporter - spans get valid IDs but
 // go nowhere, which is exactly what you want for `go run` sessions
 // where the only observability signal needed is trace_id / span_id
 // flowing into the logs.
 //
 // Returns the configured provider so callers can shut it down via
-// `provider.Shutdown(ctx)` during graceful termination — important
+// `provider.Shutdown(ctx)` during graceful termination - important
 // for OTLP exporters so the final batch flushes before the process
 // exits.
 func Init(opts ...Option) (*sdktrace.TracerProvider, error) {
@@ -198,7 +198,7 @@ func IsEnabled() bool { return enabled.Load() }
 // injects the W3C trace context onto the response via the configured
 // `OTel TextMapPropagator` (`otelapi.GetTextMapPropagator`). With the
 // default `propagation.TraceContext{}` propagator that lands a standard
-// `traceparent` (and `tracestate` when set) header on the response —
+// `traceparent` (and `tracestate` when set) header on the response -
 // the same wire format the spec uses for request propagation, so
 // downstream services / clients can re-attach to the same trace tree
 // without bespoke header handling. Headers are written BEFORE the
@@ -206,7 +206,7 @@ func IsEnabled() bool { return enabled.Load() }
 // regardless of whether the handler streams or writes a single body.
 //
 // Wire it with `srv.Use(otel.HTTPMiddleware("api"))`. Even on a
-// disabled gate the call is cheap — a single atomic load — so it's
+// disabled gate the call is cheap - a single atomic load - so it's
 // fine to leave permanently in main.go.
 func HTTPMiddleware(operation string) server.Middleware {
 	return func(next http.Handler) http.Handler {
@@ -218,7 +218,7 @@ func HTTPMiddleware(operation string) server.Middleware {
 			// otelhttp creates the span on a NEW request context, then
 			// calls its `next` with that updated request. Inserting an
 			// inner handler here gives us a hook AFTER the span exists
-			// but BEFORE the user's handler writes anything — the only
+			// but BEFORE the user's handler writes anything - the only
 			// safe window to inject response headers.
 			withTraceHeaders := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				otelapi.GetTextMapPropagator().Inject(r.Context(), propagation.HeaderCarrier(w.Header()))

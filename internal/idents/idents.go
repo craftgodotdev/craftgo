@@ -1,6 +1,6 @@
 // Package idents holds the Go-identifier conversion helpers used by
 // both the semantic analyser and the codegen pass. Keeping it here
-// — instead of inside codegen — lets semantic detect "user_id and
+// - instead of inside codegen - lets semantic detect "user_id and
 // userId map to the same Go field name" collisions during analysis
 // without pulling in the rest of codegen.
 package idents
@@ -10,11 +10,29 @@ import (
 	"strings"
 )
 
+// BuiltinTypes is the closed set of primitive type spellings the DSL
+// recognises out of the box. The semantic resolver and the parser's
+// disambiguation rules both consult it, so the table lives here in
+// a transport-neutral package - adding a new primitive happens once,
+// every consumer picks it up. `object` is the permissive
+// bag-of-fields used inside `@example({...})`; `file` is the
+// upload-only marker that codegen maps to `*multipart.FileHeader`.
+var BuiltinTypes = map[string]bool{
+	"string": true, "bool": true,
+	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
+	"uint": true, "uint8": true, "uint16": true, "uint32": true, "uint64": true,
+	"float32": true, "float64": true,
+	"bytes":  true,
+	"any":    true,
+	"object": true,
+	"file":   true,
+}
+
 // commonInitialisms enumerates abbreviations that should be rendered
 // fully upper-cased when they appear as a word inside a Go identifier
 // (matches `golint`/`staticcheck` conventions). Adding entries here
 // changes the canonical Go name for any DSL field whose word list
-// includes the new initialism — projects depending on the previous
+// includes the new initialism - projects depending on the previous
 // spelling must be regenerated.
 var commonInitialisms = map[string]bool{
 	"id": true, "url": true, "uri": true, "api": true, "http": true,
@@ -30,8 +48,11 @@ var commonInitialisms = map[string]bool{
 // GoFieldName converts a DSL field name (which is allowed to be
 // lowercase, snake_case, or camelCase) into an exported Go
 // identifier applying the common-initialism rule.
+//
+// Hot path (called per field across codegen + collision detection):
+// Builder keeps the per-part append allocation-free.
 func GoFieldName(name string) string {
-	parts := splitFieldName(name)
+	parts := SplitFieldName(name)
 	var sb strings.Builder
 	for _, p := range parts {
 		if p == "" {
@@ -47,7 +68,7 @@ func GoFieldName(name string) string {
 	return sb.String()
 }
 
-// splitFieldName breaks a name into word components on `_`, `-`, and
+// SplitFieldName breaks a name into word components on `_`, `-`, and
 // camelCase boundaries. Consecutive uppercase letters are kept
 // together as a single acronym word (so `DBError` → `["DB", "Error"]`
 // and `HTTPRequest` → `["HTTP", "Request"]`); a new word starts
@@ -55,7 +76,11 @@ func GoFieldName(name string) string {
 // an uppercase letter sits between two other uppercase letters and
 // is followed by a lowercase letter (the "acronym ends here"
 // boundary).
-func splitFieldName(s string) []string {
+//
+// Exported so callers outside this package (codegen path / error
+// helpers) can derive their own kebab / snake forms without
+// duplicating the boundary logic.
+func SplitFieldName(s string) []string {
 	if s == "" {
 		return nil
 	}
@@ -102,7 +127,7 @@ type Collision struct {
 	// converted to the same canonical Go identifier.
 	DSLNames []string
 	// CanonicalGoName is the Go identifier the first DSL name maps
-	// to — the "winner" that keeps its bare spelling.
+	// to - the "winner" that keeps its bare spelling.
 	CanonicalGoName string
 	// ResolvedGoNames pairs each DSLName index with the Go
 	// identifier emitted in the generated struct: index 0 is the
@@ -121,7 +146,7 @@ type Collision struct {
 //
 // The dedup keeps the first DSL spelling at its bare Go name so a
 // project that adds a colliding alias later does not retroactively
-// rename the original field — generated code stays stable for
+// rename the original field - generated code stays stable for
 // previously-published struct shapes.
 func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Collision) {
 	resolved = make([]string, len(dslNames))

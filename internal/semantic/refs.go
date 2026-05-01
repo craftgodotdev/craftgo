@@ -4,11 +4,11 @@ package semantic
 // arity / type check so we know the argument shape is sound; this pass
 // asserts the *names* inside that shape resolve to real entities:
 //
-//   - `@errors(NotFound, Conflict)` — must exist in pkg.Errors
-//   - `@middlewares(Auth, RateLimit)` — must exist in pkg.Middlewares
-//   - `@requiresOneOf(email, phone)` and `@mutuallyExclusive(...)` —
+//   - `@errors(NotFound, Conflict)` - must exist in pkg.Errors
+//   - `@middlewares(Auth, RateLimit)` - must exist in pkg.Middlewares
+//   - `@requiresOneOf(email, phone)` and `@mutuallyExclusive(...)` -
 //     each ident must be a field name in the enclosing type body
-//   - `@security(scheme[, scopes: [...]])` — scheme must be `noauth` or
+//   - `@security(scheme[, scopes: [...]])` - scheme must be `noauth` or
 //     in [Options.SecuritySchemes] (when non-nil)
 //
 // Every miss surfaces as [CodeDecoratorRef] so the IDE can render the
@@ -21,7 +21,7 @@ import (
 
 // checkDecoratorRefs walks every decorator scope and validates the
 // identifier / string arguments that name an entity elsewhere in the
-// project. Unknown decorators are skipped — placement / args passes
+// project. Unknown decorators are skipped - placement / args passes
 // already flagged them.
 func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 	for _, f := range files {
@@ -154,7 +154,7 @@ func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 // checkSecurityRef validates the scheme name passed to `@security(...)`
 // against [Options.SecuritySchemes]. The literal `noauth` is always
 // accepted (it explicitly marks an endpoint as public). When the
-// options list is nil the check is skipped — the LSP runs without a
+// options list is nil the check is skipped - the LSP runs without a
 // loaded manifest in some contexts and we don't want spurious errors.
 func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	if a.opts.SecuritySchemes == nil {
@@ -191,7 +191,7 @@ type argName struct {
 //   - array literal:       `@errors([A, B])` → [A, B]
 //   - mixed:               array element idents are mixed with bare
 //
-// Non-textual positions (int, etc.) are silently skipped — the args
+// Non-textual positions (int, etc.) are silently skipped - the args
 // pass already flagged them with [CodeDecoratorArgType].
 func collectIdentOrStringArgs(d *ast.Decorator) []argName {
 	var out []argName

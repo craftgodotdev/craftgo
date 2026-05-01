@@ -21,7 +21,7 @@ import (
 // asking for `application/openmetrics-text` get OpenMetrics; the
 // default Prometheus exposition (text/plain; version=0.0.4) is
 // emitted otherwise. When [Init] / [InitDefault] has not been
-// called the registry is empty — the response stays valid (an empty
+// called the registry is empty - the response stays valid (an empty
 // scrape) so health probes and monitor smoke checks still see 200.
 func SnapshotHandler() http.Handler {
 	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{
@@ -66,7 +66,7 @@ func WithPath(p string) AdminOption {
 // StartAdmin spins up a dedicated HTTP listener exposing the metrics
 // snapshot on a separate admin port (Prometheus convention, default
 // `:9090`). Keeping telemetry off the public traffic listener is the
-// idiomatic split — public clients get the typed API on the main
+// idiomatic split - public clients get the typed API on the main
 // port, ops scrape the admin port without being firewalled in.
 //
 // addr controls the listen address (`:9090`, `127.0.0.1:9090`, ...);
@@ -109,7 +109,7 @@ func StartAdmin(addr string, opts ...AdminOption) (*http.Server, <-chan error) {
 	// Overwrite the configured addr with the listener's resolved
 	// address. When the caller passes `:0` to grab a free port the
 	// resolved addr (`127.0.0.1:54321`) is the only way to discover
-	// what the OS picked — without this, callers would have to dive
+	// what the OS picked - without this, callers would have to dive
 	// into the listener via reflection.
 	s.Addr = ln.Addr().String()
 	go func() {
@@ -124,7 +124,7 @@ func StartAdmin(addr string, opts ...AdminOption) (*http.Server, <-chan error) {
 
 // ShutdownAdmin gracefully closes a running admin server with a
 // bounded deadline. Tolerates a nil server so callers don't have to
-// guard the StartAdmin("") sentinel — a no-op when nothing was started.
+// guard the StartAdmin("") sentinel - a no-op when nothing was started.
 func ShutdownAdmin(ctx context.Context, s *http.Server) error {
 	if s == nil {
 		return nil

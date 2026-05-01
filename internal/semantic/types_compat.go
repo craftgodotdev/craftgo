@@ -2,7 +2,7 @@ package semantic
 
 // Field-type compatibility check for validator decorators. A `@length`
 // on an int field, or `@uniqueItems` on a string, is almost always a
-// bug — the README's compatibility matrix groups validators by
+// bug - the README's compatibility matrix groups validators by
 // primitive category, and we surface the mismatch as a clear
 // [CodeDecoratorTypeMismatch] diagnostic rather than letting codegen
 // silently drop the validator.
@@ -11,7 +11,7 @@ package semantic
 //
 //   1. Inspecting the AST [TypeRef] modifiers: `T[]` and `map<K,V>`
 //      collapse to PrimArray.
-//   2. Looking up the named type — built-in primitives map directly;
+//   2. Looking up the named type - built-in primitives map directly;
 //      custom scalars are followed via [Package.Scalars] to their
 //      underlying primitive.
 //
@@ -26,7 +26,7 @@ import (
 
 // checkFieldTypeCompat walks every type / error body and checks each
 // field's decorators against the resolved primitive category. Mixin
-// members are skipped — they have no decorators of their own. Errors
+// members are skipped - they have no decorators of their own. Errors
 // follow the same field shape as types.
 func (a *analyzer) checkFieldTypeCompat() {
 	for _, td := range a.pkg.Types {
@@ -58,7 +58,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 				continue
 			}
 			if actual == 0 {
-				// Unresolved field type — skip to avoid false positives
+				// Unresolved field type - skip to avoid false positives
 				// (e.g. generic parameter, qualified ref).
 				continue
 			}
@@ -107,7 +107,7 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 //   - Named refs that match a scalar in pkg.Scalars are followed; the
 //     scalar's underlying primitive wins.
 //   - Cross-package qualified names (`pkg.Type`) and generic params
-//     return 0 — the qualified-ref pass already flagged them.
+//     return 0 - the qualified-ref pass already flagged them.
 func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 	if t == nil {
 		return 0
@@ -131,7 +131,7 @@ func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 
 // primFromName maps a built-in primitive name to its [Prims] category.
 // Returns 0 for names this layer can't classify (custom types, `any`,
-// `object` — those are handled by the caller).
+// `object` - those are handled by the caller).
 func primFromName(name string) Prims {
 	switch name {
 	case "string", "bytes":

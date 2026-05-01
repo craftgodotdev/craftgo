@@ -2,24 +2,24 @@ package semantic
 
 // Mixin field expansion + conflict detection. Per README §"Mixin", a
 // bare qualified ident inside a type body embeds the referenced type's
-// fields into the host. The DSL is composition-only — there's no
-// `extends` keyword — so the validation here mirrors Go's struct
+// fields into the host. The DSL is composition-only - there's no
+// `extends` keyword - so the validation here mirrors Go's struct
 // embedding rules with one extra constraint: a name collision is a
 // hard error rather than promotion shadowing.
 //
 // Diagnostic codes:
 //
-//   - [CodeMixinUnresolved]    — name doesn't resolve to anything in
+//   - [CodeMixinUnresolved]    - name doesn't resolve to anything in
 //     the package.
-//   - [CodeMixinNonType]       — name resolves to a non-type entity
+//   - [CodeMixinNonType]       - name resolves to a non-type entity
 //     (enum, error, scalar, middleware).
-//   - [CodeMixinCycle]         — A mixes B mixes A.
-//   - [CodeMixinConflict]      — two paths bring in the same field.
-//   - [CodeMixinArity]         — generic mixin args disagree with the
+//   - [CodeMixinCycle]         - A mixes B mixes A.
+//   - [CodeMixinConflict]      - two paths bring in the same field.
+//   - [CodeMixinArity]         - generic mixin args disagree with the
 //     target type's [TypeParams].
 //
 // Generic mixin substitution (`Page<User>` → fields with T replaced by
-// User) is not modelled in detail here — for conflict detection we
+// User) is not modelled in detail here - for conflict detection we
 // only care about field NAMES, which are stable across substitution.
 // Codegen does the actual T→User rewrite per-instance.
 
@@ -84,7 +84,7 @@ func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fiel
 		return
 	}
 	if len(mx.Ref.Name.Parts) != 1 {
-		// Qualified — already flagged by [analyzer.checkQualifiedRefs];
+		// Qualified - already flagged by [analyzer.checkQualifiedRefs];
 		// skipping here avoids a duplicate diagnostic on the same span.
 		return
 	}
@@ -138,7 +138,7 @@ func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, target string) *ast.TypeDec
 // one deep conflict surfaces as one diagnostic at the offending
 // top-level mixin position. visited tracks the expansion stack to
 // catch cycles. Top-level call passes mixinPos as the diagnostic
-// anchor — we underline the host's `MixinName` token, not the
+// anchor - we underline the host's `MixinName` token, not the
 // nested decl that actually contains the colliding field.
 func (a *analyzer) collectMixinFields(
 	name, sourceLabel string,
@@ -163,7 +163,7 @@ func (a *analyzer) collectMixinFields(
 		case *ast.Field:
 			if prev, dup := seen[v.Name]; dup {
 				if prev.from == sourceLabel {
-					// Same mixin path bringing in the same field —
+					// Same mixin path bringing in the same field -
 					// nothing to flag.
 					continue
 				}

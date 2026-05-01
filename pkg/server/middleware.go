@@ -68,7 +68,7 @@ func RequestID() Middleware {
 // been written, including method, path, status, and elapsed time.
 //
 // Tracing identifiers (`trace_id`, `span_id`, `request_id`) are not
-// added explicitly — `WithContext(ctx)` extracts them from the request
+// added explicitly - `WithContext(ctx)` extracts them from the request
 // context. Wire `otel.HTTPMiddleware(...)` and / or `RequestID()`
 // upstream of AccessLog to populate the context.
 func AccessLog(logger log.Logger) Middleware {
@@ -100,7 +100,7 @@ func BodyLimit(maxBytes int64) Middleware {
 }
 
 // Timeout enforces an upper bound on handler execution. Streaming methods
-// should not use this — they need write-side per-message idle limits which
+// should not use this - they need write-side per-message idle limits which
 // belong to the streaming codec, not the request lifecycle.
 func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
@@ -111,7 +111,7 @@ func Timeout(d time.Duration) Middleware {
 // statusRecorder is a tiny ResponseWriter wrapper that captures the
 // status code so AccessLog can log it. Flush() is forwarded explicitly
 // because Go's interface satisfaction does not promote methods from
-// embedded interfaces beyond the interface itself — without this
+// embedded interfaces beyond the interface itself - without this
 // passthrough, SSE / NDJSON / chunked-encoding handlers downstream
 // would lose access to http.Flusher.
 type statusRecorder struct {

@@ -17,7 +17,7 @@ import (
 // service prefix and OpenAPI basePath are baked in. Methods declaring
 // `@middlewares(...)` are wrapped via the corresponding fields on
 // ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required — the values come pre-wired.
+// lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 {{- range .Routes}}
 	srv.Handle("{{.Pattern}}", {{.HandlerCall}})

@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
@@ -18,32 +17,20 @@ service S {
 }
 
 func TestErrorsRefUnknown(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	d := expectDiag(t, `service S {
 	@errors(MysteryError)
 	get GetUser /u {}
-}`))
-	d := findCode(diags, CodeDecoratorRef)
-	if d == nil {
-		t.Fatalf("expected decorator/ref diag, got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "MysteryError") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+}`, CodeDecoratorRef)
+	expectMessage(t, d, "MysteryError")
 }
 
 func TestErrorsRefArrayShortcut(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `error NotFound UserNotFound
+	d := expectDiag(t, `error NotFound UserNotFound
 service S {
 	@errors([UserNotFound, MysteryError])
 	get GetUser /u {}
-}`))
-	d := findCode(diags, CodeDecoratorRef)
-	if d == nil {
-		t.Fatalf("expected ref diag, got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "MysteryError") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+}`, CodeDecoratorRef)
+	expectMessage(t, d, "MysteryError")
 }
 
 // ---------- @middlewares ----------
@@ -55,21 +42,15 @@ service S {}`)
 }
 
 func TestMiddlewareRefUnknown(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@middlewares(Auth)
-service S {}`))
-	if findCode(diags, CodeDecoratorRef) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@middlewares(Auth)
+service S {}`, CodeDecoratorRef)
 }
 
 func TestMiddlewareRefOnMethod(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectDiag(t, `service S {
 	@middlewares(Bogus)
 	get GetUser /u {}
-}`))
-	if findCode(diags, CodeDecoratorRef) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRef)
 }
 
 // ---------- @requiresOneOf / @mutuallyExclusive ----------
@@ -80,23 +61,14 @@ type Contact { email string?  phone string? }`)
 }
 
 func TestRequiresOneOfFieldMissing(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@requiresOneOf(email, fax)
-type Contact { email string? }`))
-	d := findCode(diags, CodeDecoratorRef)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "fax") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `@requiresOneOf(email, fax)
+type Contact { email string? }`, CodeDecoratorRef)
+	expectMessage(t, d, "fax")
 }
 
 func TestMutuallyExclusiveFieldMissing(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@mutuallyExclusive(["a", "missing"])
-type T { a string? }`))
-	if findCode(diags, CodeDecoratorRef) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@mutuallyExclusive(["a", "missing"])
+type T { a string? }`, CodeDecoratorRef)
 }
 
 // ---------- @security with Options ----------
@@ -107,76 +79,75 @@ func TestSecurityRefSkippedWithoutOptions(t *testing.T) {
 service S {}`)
 }
 
-func TestSecurityRefValidatedWithOptions(t *testing.T) {
-	files := parseFiles(t, `@security(unknown)
-service S {}`)
-	_, diags := AnalyzeWith(files, Options{SecuritySchemes: []string{"bearerAuth"}})
+// expectRefWithOptions runs the analyzer with explicit Options and
+// asserts a CodeDecoratorRef diag fires; returns the diagnostic so
+// callers can chain message assertions. Wraps the AnalyzeWith path
+// the security-scheme tests need without rebuilding the boilerplate.
+func expectRefWithOptions(t *testing.T, src string, opts Options) *Diagnostic {
+	t.Helper()
+	_, diags := AnalyzeWith(parseFiles(t, src), opts)
 	d := findCode(diags, CodeDecoratorRef)
 	if d == nil {
-		t.Fatalf("got %v", codes(diags))
+		t.Fatalf("expected %s, got %v", CodeDecoratorRef, codes(diags))
 	}
-	if !strings.Contains(d.Msg, "bearerAuth") {
-		t.Errorf("expected hint to list known schemes, got %q", d.Msg)
+	return d
+}
+
+// expectNoRefWithOptions is the negative twin - checks that no
+// CodeDecoratorRef fires under the supplied Options, so positive
+// security/scheme tests stay similarly compact.
+func expectNoRefWithOptions(t *testing.T, src string, opts Options) {
+	t.Helper()
+	_, diags := AnalyzeWith(parseFiles(t, src), opts)
+	if d := findCode(diags, CodeDecoratorRef); d != nil {
+		t.Fatalf("did not expect %s, got %q", CodeDecoratorRef, d.Msg)
 	}
+}
+
+func TestSecurityRefValidatedWithOptions(t *testing.T) {
+	d := expectRefWithOptions(t, `@security(unknown)
+service S {}`, Options{SecuritySchemes: []string{"bearerAuth"}})
+	expectMessage(t, d, "bearerAuth")
 }
 
 func TestSecurityRefAcceptsKnown(t *testing.T) {
-	files := parseFiles(t, `@security(bearerAuth)
-service S {}`)
-	_, diags := AnalyzeWith(files, Options{SecuritySchemes: []string{"bearerAuth", "apiKey"}})
-	if findCode(diags, CodeDecoratorRef) != nil {
-		t.Fatalf("expected no ref diag, got %v", codes(diags))
-	}
+	expectNoRefWithOptions(t, `@security(bearerAuth)
+service S {}`, Options{SecuritySchemes: []string{"bearerAuth", "apiKey"}})
 }
 
 func TestSecurityRefAcceptsNoauth(t *testing.T) {
-	files := parseFiles(t, `service S {
+	expectNoRefWithOptions(t, `service S {
 	@security(noauth)
 	get Public /p {}
-}`)
-	_, diags := AnalyzeWith(files, Options{SecuritySchemes: []string{"bearerAuth"}})
-	if findCode(diags, CodeDecoratorRef) != nil {
-		t.Fatalf("noauth should be allowed, got %v", codes(diags))
-	}
+}`, Options{SecuritySchemes: []string{"bearerAuth"}})
 }
 
 func TestSecurityRefSkipsNonIdentArg(t *testing.T) {
-	// Args pass already flagged the type — refs pass should silently skip.
-	files := parseFiles(t, `@security(123)
-service S {}`)
-	_, diags := AnalyzeWith(files, Options{SecuritySchemes: []string{"bearerAuth"}})
-	if findCode(diags, CodeDecoratorRef) != nil {
-		t.Errorf("ref pass should not stack on argtype, got %v", codes(diags))
-	}
+	// Args pass already flagged the type - refs pass should silently skip.
+	expectNoRefWithOptions(t, `@security(123)
+service S {}`, Options{SecuritySchemes: []string{"bearerAuth"}})
 }
 
 func TestSecurityRefSkipsZeroArgs(t *testing.T) {
-	// `@security` with no args — args pass diags arity. Refs pass silently
+	// `@security` with no args - args pass diags arity. Refs pass silently
 	// skips because there's no name to resolve.
-	files := parseFiles(t, `@security
-service S {}`)
-	_, diags := AnalyzeWith(files, Options{SecuritySchemes: []string{"bearerAuth"}})
-	if findCode(diags, CodeDecoratorRef) != nil {
-		t.Errorf("ref pass should not stack on arity-zero security, got %v", codes(diags))
-	}
+	expectNoRefWithOptions(t, `@security
+service S {}`, Options{SecuritySchemes: []string{"bearerAuth"}})
 }
 
 // ---------- collect / structure ----------
 
 func TestExtendServiceMiddlewareIsChecked(t *testing.T) {
 	// `extend service` body methods are walked too.
-	_, diags := Analyze(parseFiles(t, `service S {}
+	expectDiag(t, `service S {}
 extend service S {
 	@middlewares(Bogus)
 	get Op /x {}
-}`))
-	if findCode(diags, CodeDecoratorRef) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRef)
 }
 
 func TestRefsNilDecoratorTolerated(t *testing.T) {
-	// Defensive guard — parser doesn't emit nil entries today.
+	// Defensive guard - parser doesn't emit nil entries today.
 	a := &analyzer{pkg: &Package{
 		Errors:      map[string]*ast.ErrorDecl{},
 		Middlewares: map[string]*ast.MiddlewareDecl{},

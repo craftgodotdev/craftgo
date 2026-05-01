@@ -15,7 +15,7 @@ import (
 )
 
 // errorCategories holds the reserved HTTP error category identifiers.
-// The list mirrors the README §Keywords block — keep the two in sync.
+// The list mirrors the README §Keywords block - keep the two in sync.
 var errorCategories = map[string]bool{
 	"BadRequest": true, "Unauthorized": true, "PaymentRequired": true,
 	"Forbidden": true, "NotFound": true, "MethodNotAllowed": true,
@@ -33,23 +33,23 @@ func isErrorCategory(s string) bool { return errorCategories[s] }
 // imperative, formatted markdown, opinionated, and likely to change as
 // docs improve. Keep entries sorted alphabetically.
 var builtinDocs = map[string]string{
-	"any":     "**`any`** — opaque JSON value.\n\nGenerates `any` in Go.",
-	"bool":    "**`bool`** — boolean primitive (`true` / `false`).",
-	"bytes":   "**`bytes`** — raw byte buffer.\n\nGenerates `[]byte` in Go.",
-	"file":    "**`file`** — multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`.",
-	"float32": "**`float32`** — 32-bit IEEE-754 float.",
-	"float64": "**`float64`** — 64-bit IEEE-754 float.",
-	"int":     "**`int`** — platform-sized signed integer.",
-	"int8":    "**`int8`** — 8-bit signed integer.",
-	"int16":   "**`int16`** — 16-bit signed integer.",
-	"int32":   "**`int32`** — 32-bit signed integer.",
-	"int64":   "**`int64`** — 64-bit signed integer.",
-	"string":  "**`string`** — UTF-8 text primitive.",
-	"uint":    "**`uint`** — platform-sized unsigned integer.",
-	"uint8":   "**`uint8`** — 8-bit unsigned integer.",
-	"uint16":  "**`uint16`** — 16-bit unsigned integer.",
-	"uint32":  "**`uint32`** — 32-bit unsigned integer.",
-	"uint64":  "**`uint64`** — 64-bit unsigned integer.",
+	"any":     "**`any`** - opaque JSON value.\n\nGenerates `any` in Go.",
+	"bool":    "**`bool`** - boolean primitive (`true` / `false`).",
+	"bytes":   "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go.",
+	"file":    "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`.",
+	"float32": "**`float32`** - 32-bit IEEE-754 float.",
+	"float64": "**`float64`** - 64-bit IEEE-754 float.",
+	"int":     "**`int`** - platform-sized signed integer.",
+	"int8":    "**`int8`** - 8-bit signed integer.",
+	"int16":   "**`int16`** - 16-bit signed integer.",
+	"int32":   "**`int32`** - 32-bit signed integer.",
+	"int64":   "**`int64`** - 64-bit signed integer.",
+	"string":  "**`string`** - UTF-8 text primitive.",
+	"uint":    "**`uint`** - platform-sized unsigned integer.",
+	"uint8":   "**`uint8`** - 8-bit unsigned integer.",
+	"uint16":  "**`uint16`** - 16-bit unsigned integer.",
+	"uint32":  "**`uint32`** - 32-bit unsigned integer.",
+	"uint64":  "**`uint64`** - 64-bit unsigned integer.",
 }
 
 // onHover answers `textDocument/hover`. It tokenises the buffer, finds
@@ -91,7 +91,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if tok.Kind == lexer.Ident && idx > 0 && view.tokens[idx-1].Kind == lexer.At {
 		return decoratorHover(tok.Text, joinedRange(view.tokens[idx-1], tok))
 	}
-	// Built-in types — only when the token spelling matches AND the
+	// Built-in types - only when the token spelling matches AND the
 	// surrounding context is a type position (right after `request`,
 	// `response`, `:`, a field name, etc.). The cheap heuristic: if it
 	// is a bare Ident and the spelling is a known builtin, render it.
@@ -140,13 +140,13 @@ func decoratorHover(name string, r protocol.Range) *protocol.Hover {
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{
 				Kind:  protocol.Markdown,
-				Value: fmt.Sprintf("**`@%s`** — unknown decorator.\n\nThe craftgo registry has no entry by this name; semantic analysis will report `decorator/unknown`.", name),
+				Value: fmt.Sprintf("**`@%s`** - unknown decorator.\n\nThe craftgo registry has no entry by this name; semantic analysis will report `decorator/unknown`.", name),
 			},
 			Range: rangePtr(r),
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "**`@%s`** — %s\n\n", name, spec.Doc)
+	fmt.Fprintf(&b, "**`@%s`** - %s\n\n", name, spec.Doc)
 	if spec.Levels != 0 {
 		fmt.Fprintf(&b, "_Allowed on:_ %s\n", spec.Levels.String())
 	}
@@ -204,10 +204,10 @@ func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
 }
 
 // errorCategoryHover documents one of the reserved HTTP-status category
-// names (BadRequest, NotFound, ...). The body is short — these are the
+// names (BadRequest, NotFound, ...). The body is short - these are the
 // well-known categories from the README.
 func errorCategoryHover(tok lexer.Token) *protocol.Hover {
-	body := fmt.Sprintf("**`%s`** — built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", tok.Text, tok.Text)
+	body := fmt.Sprintf("**`%s`** - built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", tok.Text, tok.Text)
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: body},
 		Range:    rangePtr(rangeOf(tok)),
@@ -216,7 +216,7 @@ func errorCategoryHover(tok lexer.Token) *protocol.Hover {
 
 // joinedRange returns the LSP range covering the source span from a's
 // first character through b's last character. Both tokens must be on
-// the same line — used for `@name` (At + Ident).
+// the same line - used for `@name` (At + Ident).
 func joinedRange(a, b lexer.Token) protocol.Range {
 	end := b.Pos
 	end.Column += len(b.Text)

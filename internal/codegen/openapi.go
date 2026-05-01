@@ -55,7 +55,7 @@ func GenerateProjectOpenAPI(proj *semantic.Project, cfg *config.Config, projectR
 	}
 	merged := mergeProjectForOpenAPI(proj)
 	if merged.Name == "" {
-		// Fallback for fully-empty projects — title must come from
+		// Fallback for fully-empty projects - title must come from
 		// somewhere so use the manifest or a sensible default.
 		merged.Name = "design"
 	}
@@ -94,7 +94,7 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		out.Name = pkgNames[0]
 	}
 
-	// Phase 1: build name-resolution table — for each (pkgName,
+	// Phase 1: build name-resolution table - for each (pkgName,
 	// origName) tuple, the merged identifier the schema lives under.
 	// Conflicts are detected by membership-counting across all
 	// packages: a name is "shared" when it appears in 2+ packages.
@@ -402,7 +402,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) *openapi3.T {
 
 // addSchemas populates components.schemas from every concrete TypeDecl,
 // every EnumDecl, and every ScalarDecl. Generic type decls are skipped
-// — there's no faithful OpenAPI 3.x representation for a parametric
+// - there's no faithful OpenAPI 3.x representation for a parametric
 // type, so generic INSTANCES are inlined at every reference site
 // instead (see [schemaForTypeRef]).
 //
@@ -441,9 +441,9 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 		}
 		// `code` / `message` are reserved DSL slots (design-time
 		// override of the framework defaults via `@default(...)`) and
-		// never appear on the wire — they're internal metadata exposed
+		// never appear on the wire - they're internal metadata exposed
 		// through the `Code()` / `Error()` methods. Fields tagged with
-		// `@header` / `@cookie` are also excluded — they ride on the
+		// `@header` / `@cookie` are also excluded - they ride on the
 		// response writer (see [renderErrorResponseHeadersMethod]).
 		// Anything else becomes a regular property on the schema.
 		for _, m := range ed.Body {
@@ -504,7 +504,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 				s.Enum = append(s.Enum, v.IntValue)
 			case ast.EnumString:
 				s.Enum = append(s.Enum, v.StrValue)
-			default: // EnumBare — wire value is the source-side name
+			default: // EnumBare - wire value is the source-side name
 				s.Enum = append(s.Enum, v.Name)
 			}
 		}
@@ -513,7 +513,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 }
 
 // addScalarSchemas emits one schema per ScalarDecl. The schema is a
-// thin alias of the underlying primitive — refinements (format /
+// thin alias of the underlying primitive - refinements (format /
 // pattern carried via decorators on the scalar itself) are surfaced
 // here too so OpenAPI consumers see the contract.
 func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
@@ -667,7 +667,7 @@ func hasNullableDecorator(ds []*ast.Decorator) bool {
 
 // applyNullable marks a schema as nullable. We emit the OpenAPI 3.0
 // boolean form (`nullable: true`) even though our doc carries the
-// `openapi: 3.1.0` header — kin-openapi 0.124's validator rejects the
+// `openapi: 3.1.0` header - kin-openapi 0.124's validator rejects the
 // 3.1 canonical `type: [<base>, null]` array (it doesn't recognise
 // "null" as a valid type entry). Once kin-openapi catches up, this
 // helper can switch to appending "null" onto Schema.Type without any
@@ -729,7 +729,7 @@ func appendDescription(existing, note string) string {
 //   - Primitive DSL names (string, bool, int family, float family,
 //     bytes, any, file) collapse to inline schemas.
 //   - Generic instances (`Page<Book>`) are inlined by substituting the
-//     type-param refs in the generic body — OpenAPI 3.x has no
+//     type-param refs in the generic body - OpenAPI 3.x has no
 //     parametric-schema concept, so $ref into the generic decl would
 //     dangle.
 //   - Plain named user types become `$ref` entries.
@@ -777,7 +777,7 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 // instantiateGeneric inlines a generic decl with the supplied type
 // arguments. Each field's TypeRef is rebuilt with type-param names
 // substituted by the matching concrete arg, then converted to a
-// schema. The returned schema has no $ref of its own — the caller
+// schema. The returned schema has no $ref of its own - the caller
 // embeds it directly.
 func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.Package) *openapi3.Schema {
 	subst := map[string]*ast.TypeRef{}
@@ -878,7 +878,7 @@ func primitiveSchema(name string) *openapi3.Schema {
 func addPaths(doc *openapi3.T, pkg *semantic.Package, cfg *config.Config) {
 	// OpenAPI 3.x resolves request URLs as `servers[].url + path`. We've
 	// already pushed `basePath` onto the servers entry above, so the
-	// path keys here MUST be relative — passing the basePath through
+	// path keys here MUST be relative - passing the basePath through
 	// `methodFullPath` would double-stamp the prefix in spec consumers
 	// (e.g. `/api` server + `/api/v1/foo` path → resolved `/api/api/v1/foo`).
 	// Runtime routes still concatenate basePath via the same helper but
@@ -965,7 +965,7 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 // addPerOperationRequestSchemas emits a grouped schema for every
 // non-empty bin (`<Method>ReqBody`, `<Method>ReqQuery`,
 // `<Method>ReqHeader`, `<Method>ReqCookie`, `<Method>ReqPath`). Each
-// schema holds INLINE property definitions — making the per-kind schema
+// schema holds INLINE property definitions - making the per-kind schema
 // the single canonical place where each field's type lives. Parameter
 // `schema:` clauses then `$ref` into these per-kind schemas.
 func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic.Package) {
@@ -1085,7 +1085,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 				}}
 			}
 		}
-		// Parameters keep individual entries — that's the OpenAPI norm —
+		// Parameters keep individual entries - that's the OpenAPI norm -
 		// but each field's `schema:` $refs into the matching
 		// `<Method>Req<Kind>` schema, which holds the canonical
 		// definition. Multipart skips path/query/header params here too
@@ -1155,7 +1155,7 @@ func successStatus(m *ast.Method) string {
 // adds one OpenAPI response entry per declared error type. The status
 // code comes from the error's category (categoryStatus) and the schema
 // $refs the error type's components.schemas entry. Unknown error names
-// are silently skipped — semantic phase doesn't validate the refs yet,
+// are silently skipped - semantic phase doesn't validate the refs yet,
 // so we treat that as best-effort docs rather than fail codegen.
 func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package) {
 	names := errorRefsFromDecorators(m.Decorators)
@@ -1184,7 +1184,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 // errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`
 // chain on the method into a deduplicated list of error declaration
 // names. Both the bare-ident form (`@errors(Foo)`) and the
-// fully-qualified `pkg.Foo` form parse here — qualified refs collapse
+// fully-qualified `pkg.Foo` form parse here - qualified refs collapse
 // to the trailing segment because cross-package resolution is v2.
 func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	seen := map[string]bool{}
@@ -1212,7 +1212,7 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 // passthroughPathParams emits one OpenAPI path-parameter entry per
 // `{name}` segment in the route. Passthrough endpoints have no
 // request type to mine for typed parameters, so the schema is the
-// minimal `string` placeholder — enough to render Swagger UI's
+// minimal `string` placeholder - enough to render Swagger UI's
 // "try it" form without lying about the wire shape.
 func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 	if m.Path == nil {
@@ -1268,7 +1268,7 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 // paramsFromBins flattens the non-body bins into the `parameters[]`
 // slice the OpenAPI spec requires. Path is always required; query /
 // header / cookie required flags follow `@required`. Each parameter's
-// schema is a `$ref` into the matching `<Method>Req<Kind>` schema —
+// schema is a `$ref` into the matching `<Method>Req<Kind>` schema -
 // that schema is the single source of truth for the field's type.
 func paramsFromBins(bins fieldBins, methodName string) openapi3.Parameters {
 	var params openapi3.Parameters
@@ -1295,7 +1295,7 @@ func paramsFromBins(bins fieldBins, methodName string) openapi3.Parameters {
 // bindingFromDecorators returns the OpenAPI `in` string implied by a
 // field-binding decorator, or "" when the field has no explicit binding.
 // `@body` and `@form` are returned verbatim so the caller can recognise
-// and skip them — body-shaped fields land in requestBody, not parameters.
+// and skip them - body-shaped fields land in requestBody, not parameters.
 func bindingFromDecorators(ds []*ast.Decorator) string {
 	for _, d := range ds {
 		switch d.Name {
@@ -1368,7 +1368,7 @@ func operationID(m *ast.Method) string {
 // Service-level `@tags(...)` come first (so they sort before method
 // tags in the resulting spec), then method-level `@tags(...)` are
 // appended. When neither level declares tags the service name is used
-// as a single default — keeping every operation grouped by service for
+// as a single default - keeping every operation grouped by service for
 // tools that don't render an empty tag list well.
 func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
 	seen := map[string]bool{}
@@ -1419,7 +1419,7 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 // securityFromDecorators turns `@security(SchemeA, SchemeB)` declarations
 // on a method or service into the OpenAPI `security` slice. Each
 // decorator argument that is an identifier becomes one entry whose value
-// is an empty scopes list — multi-scheme arguments inside a single
+// is an empty scopes list - multi-scheme arguments inside a single
 // decorator are AND-combined; multiple `@security(...)` decorators are
 // OR-combined per the OpenAPI spec semantics. The special name
 // `noauth` produces an empty Requirement, telling the OpenAPI consumer
@@ -1506,7 +1506,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
 // key in that map; unknown references produce a sorted list of error
 // strings the caller can format.
 //
-// The special name `noauth` is always accepted — it is a marker, not a
+// The special name `noauth` is always accepted - it is a marker, not a
 // scheme reference.
 func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {

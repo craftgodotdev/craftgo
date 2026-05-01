@@ -15,7 +15,7 @@ import (
 // onDefinition answers `textDocument/definition`. The cursor must sit on
 // an identifier that names a top-level declaration; we walk the file's
 // declarations and return the location of the matching name. Cross-file
-// resolution is M3+ — callers receive an empty list for now and the
+// resolution is M3+ - callers receive an empty list for now and the
 // editor falls back to its own lookup.
 func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DefinitionParams
@@ -31,7 +31,7 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 	if idx < 0 || tok.Kind != lexer.Ident {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
-	// In-file lookup first — fast path, avoids walking the project tree
+	// In-file lookup first - fast path, avoids walking the project tree
 	// when the user clicks on a same-file reference.
 	if d := findDecl(view.file, tok.Text); d != nil {
 		return reply(ctx, []protocol.Location{{
@@ -39,7 +39,7 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 			Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
 		}}, nil)
 	}
-	// Cross-file lookup — qualified `pkg.Name` or bare name declared in
+	// Cross-file lookup - qualified `pkg.Name` or bare name declared in
 	// a sibling package. We rebuild the name from the surrounding
 	// tokens so `users.UserRef` resolves whether the cursor was on the
 	// `users` half or the `UserRef` half.
@@ -87,7 +87,7 @@ func qualifiedNameAt(view snapshotView, idx int) string {
 
 // onReferences answers `textDocument/references`. We tokenise the source
 // once and return every token whose text equals the symbol name under the
-// cursor — a straight name match. False positives are possible (a string
+// cursor - a straight name match. False positives are possible (a string
 // literal containing the same word would be skipped because string
 // content lives inside a single token), but the heuristic is good enough
 // for v0.1; a real resolver lands with the workspace-wide pass.

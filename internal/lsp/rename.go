@@ -14,7 +14,7 @@ import (
 // onPrepareRename answers `textDocument/prepareRename`. The editor calls
 // this before showing its rename UI to learn whether the symbol under
 // the cursor is renameable and what range covers it. We accept renames
-// of identifiers that match a top-level declaration in the same file —
+// of identifiers that match a top-level declaration in the same file -
 // every other position returns nil (LSP for "not supported here").
 func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.PrepareRenameParams
@@ -39,7 +39,7 @@ func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, re
 
 // onRename answers `textDocument/rename`. We rewrite every Ident token
 // whose text matches the symbol's old name. The result is one
-// WorkspaceEdit with a single entry under the current document — multi-
+// WorkspaceEdit with a single entry under the current document - multi-
 // file rename will land with the workspace-wide pass.
 func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.RenameParams

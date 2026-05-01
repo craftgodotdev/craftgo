@@ -1,12 +1,12 @@
 package semantic
 
-// Decorator registry — the single source of truth describing every
+// Decorator registry - the single source of truth describing every
 // decorator the semantic analyser, codegen, and LSP know about.
 //
 // The placement check (see [analyzer.checkDecoratorPlacement]) reads
 // [Registry] to decide whether `@name` may appear at a given declaration
 // site. The same data is intended to back LSP completion, hover docs, and
-// the README's compatibility table — so adding a decorator means adding
+// the README's compatibility table - so adding a decorator means adding
 // one entry here, not editing several files.
 //
 // Argument-shape validation (arity, value types, enum sets) lives in a
@@ -19,7 +19,7 @@ import "strings"
 // Level is a bitmask of declaration sites where a decorator may appear.
 // A [Spec] OR-s the levels it accepts; the placement check passes when
 // at least one bit overlaps with the current site. Single-bit values are
-// used for diagnostic rendering — never combine bits when calling
+// used for diagnostic rendering - never combine bits when calling
 // [Level.Name].
 type Level uint16
 
@@ -33,7 +33,7 @@ const (
 	// `error` body use [LvlErrorField] instead so request-only and
 	// validator decorators are rejected on server-emitted payloads.
 	LvlField
-	// LvlService is a `service Name { ... }` (primary only — `extend
+	// LvlService is a `service Name { ... }` (primary only - `extend
 	// service` rejects service-level decorators upstream).
 	LvlService
 	// LvlMethod is a method inside a service body.
@@ -53,7 +53,7 @@ const (
 	// decorators (`@path`, `@query`, `@body`, `@form`, `@required`,
 	// `@maxSize`, `@mimeTypes`) are rejected. Schema validators
 	// (`@minLength`, `@pattern`, `@min`, ...) are still accepted
-	// but contribute only to OpenAPI schema constraints — codegen
+	// but contribute only to OpenAPI schema constraints - codegen
 	// does not generate a runtime `Validate()` for ErrorDecl types.
 	LvlErrorField
 )
@@ -80,7 +80,7 @@ var levelNames = []struct {
 }
 
 // Name returns the label for a single-bit level. It returns "unknown"
-// for the zero value or a multi-bit mask — callers rendering a multi-bit
+// for the zero value or a multi-bit mask - callers rendering a multi-bit
 // mask should use [Level.String] instead.
 func (l Level) Name() string {
 	for _, e := range levelNames {
@@ -114,7 +114,7 @@ func (l Level) String() string {
 type ArgKind uint8
 
 const (
-	// ArgAny accepts any expression. Use sparingly — prefer a tighter
+	// ArgAny accepts any expression. Use sparingly - prefer a tighter
 	// kind so the IDE can give a useful "expected X" hint.
 	ArgAny ArgKind = iota
 	// ArgString matches a [ast.StringLit] (regular or raw).
@@ -138,7 +138,7 @@ const (
 )
 
 // String returns the human label used in `expected X, got Y` messages.
-// Stable across versions — IDE error explainers reference these names.
+// Stable across versions - IDE error explainers reference these names.
 func (k ArgKind) String() string {
 	switch k {
 	case ArgString:
@@ -194,7 +194,7 @@ type ArgsRule struct {
 // Prims is a bitmask of primitive type categories a validator
 // decorator can target. Used by the field-type compatibility check
 // (`@length` only makes sense on strings, `@uniqueItems` only on
-// arrays, etc.). A zero value means "no constraint" — applies to
+// arrays, etc.). A zero value means "no constraint" - applies to
 // anything, used by metadata decorators like `@doc`.
 type Prims uint8
 
@@ -211,7 +211,7 @@ const (
 	PrimArray
 	// PrimFile covers the `file` primitive (multipart upload).
 	PrimFile
-	// PrimAny matches any field type — used by validator-style
+	// PrimAny matches any field type - used by validator-style
 	// decorators that don't care about primitive (e.g. `@example`).
 	PrimAny Prims = 0
 )
@@ -254,7 +254,7 @@ type Spec struct {
 	// Levels is the OR of every site where `@Name` is legal. The
 	// placement check fails when the current site bit is not set.
 	Levels Level
-	// Doc is a one-line description shown in LSP hover. Keep it short —
+	// Doc is a one-line description shown in LSP hover. Keep it short -
 	// the README is the long-form reference.
 	Doc string
 	// Args is the positional argument shape; the zero value means
@@ -262,7 +262,7 @@ type Spec struct {
 	Args ArgsRule
 	// AppliesTo restricts the decorator to fields / scalars whose
 	// primitive type is in the listed categories. Zero (PrimAny)
-	// means no constraint — used by metadata-style decorators. The
+	// means no constraint - used by metadata-style decorators. The
 	// field-type compatibility check reads this when LvlField or
 	// LvlScalar is the current site.
 	AppliesTo Prims
@@ -277,7 +277,7 @@ var formatValues = []string{
 }
 
 // Registry is the closed set of decorators the framework recognises. A
-// `@name` not present here is reported as `decorator/unknown` — there is
+// `@name` not present here is reported as `decorator/unknown` - there is
 // no escape-hatch by design (see README §"Triết lý").
 //
 // Levels mirror the table in README §"Decorator compatibility matrix";
@@ -301,7 +301,7 @@ var Registry = map[string]Spec{
 		Name:   "example",
 		Levels: LvlType | LvlField | LvlMethod | LvlError | LvlErrorField,
 		Doc:    "Single example value rendered in OpenAPI examples block.",
-		// Validated by [analyzer.checkExampleArgs] — the arg may be
+		// Validated by [analyzer.checkExampleArgs] - the arg may be
 		// a literal OR a {key: value} object. Min/Max enforced in the
 		// hook to keep ArgsRule simple.
 	},
@@ -315,14 +315,14 @@ var Registry = map[string]Spec{
 		Name:   "externalDocs",
 		Levels: LvlType | LvlService | LvlMethod,
 		Doc:    "External documentation URL surfaced in OpenAPI externalDocs.",
-		// Validated by [analyzer.checkExternalDocsArgs] — string OR
+		// Validated by [analyzer.checkExternalDocsArgs] - string OR
 		// {url: ..., description: ...} object.
 	},
 
 	// ---- OpenAPI file-header metadata ----
 	// Per ast.File comment, file-level decorators carry top-of-file
 	// OpenAPI metadata when no design-yaml override is supplied. Not in
-	// the README §"Decorator compatibility matrix" table — kept here as
+	// the README §"Decorator compatibility matrix" table - kept here as
 	// the runtime / fixtures rely on them.
 	"title": {
 		Name:   "title",
@@ -367,7 +367,7 @@ var Registry = map[string]Spec{
 	// ---- Field validation: string ----
 	// On request bodies (LvlField) these emit runtime validators; on
 	// error bodies (LvlErrorField) errors are server-emitted so they
-	// surface only as OpenAPI schema constraints — no runtime check
+	// surface only as OpenAPI schema constraints - no runtime check
 	// is generated for ErrorDecl types.
 	"length": {
 		Name: "length", Levels: LvlField | LvlScalar | LvlErrorField,
@@ -505,7 +505,7 @@ var Registry = map[string]Spec{
 		Name:   "security",
 		Levels: LvlService | LvlMethod,
 		Doc:    "Security scheme requirement (OpenAPI metadata, not enforcement).",
-		// Validated by [analyzer.checkSecurityArgs] — first positional
+		// Validated by [analyzer.checkSecurityArgs] - first positional
 		// arg is the scheme ident (or `noauth`), with optional named
 		// `scopes: [...]`.
 	},
@@ -519,7 +519,7 @@ var Registry = map[string]Spec{
 	"produces":    {Name: "produces", Levels: LvlMethod, Doc: "Emitted response content types.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method behavior ----
-	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing — logic receives the raw http.ResponseWriter and *http.Request and writes the response directly."},
+	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly."},
 	"accepts":     {Name: "accepts", Levels: LvlMethod, Doc: "Restrict allowed request encodings.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method limits ----

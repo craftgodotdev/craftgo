@@ -158,7 +158,7 @@ func TestScalarTypeMismatch(t *testing.T) {
 }
 
 func TestScalarUnknownPrimitiveSkipped(t *testing.T) {
-	// Unknown primitive (e.g. typo) — type-compat check skips, so we
+	// Unknown primitive (e.g. typo) - type-compat check skips, so we
 	// only see the upstream "unknown primitive" error eventually. Today
 	// the analyser tolerates unknown primitives silently.
 	mustClean(t, `scalar Weird unknownPrim`)
@@ -197,9 +197,9 @@ func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 		Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
 		Decorators: []*ast.Decorator{
 			nil,
-			// Unknown decorator — placement pass would flag, type-compat skips.
+			// Unknown decorator - placement pass would flag, type-compat skips.
 			{Name: "unknownDecorator"},
-			// Known decorator with AppliesTo == 0 (PrimAny) — no-op.
+			// Known decorator with AppliesTo == 0 (PrimAny) - no-op.
 			{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
 		},
 	}

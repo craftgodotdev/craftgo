@@ -9,7 +9,7 @@ import (
 )
 
 // builtinTemplates embeds every codegen template shipped with the binary.
-// Templates are looked up exclusively here — there is no project-local
+// Templates are looked up exclusively here - there is no project-local
 // override mechanism. Projects that need custom shapes fork the
 // repository and edit the .tmpl files directly.
 //

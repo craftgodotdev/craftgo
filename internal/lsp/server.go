@@ -58,7 +58,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	return nil
 }
 
-// Server holds the server-side state. The zero value is not useful — call
+// Server holds the server-side state. The zero value is not useful - call
 // [Serve] which constructs and wires one for the duration of the session.
 type Server struct {
 	conn jsonrpc2.Conn
@@ -196,7 +196,7 @@ func (s *Server) onDidChange(ctx context.Context, reply jsonrpc2.Replier, req js
 	if len(params.ContentChanges) == 0 {
 		return reply(ctx, nil, nil)
 	}
-	// Full-sync mode — the editor sends one change containing the entire
+	// Full-sync mode - the editor sends one change containing the entire
 	// new buffer. The last change wins if multiple are batched (defensive).
 	text := params.ContentChanges[len(params.ContentChanges)-1].Text
 	s.storeDoc(params.TextDocument.URI, text, params.TextDocument.Version)
@@ -254,7 +254,7 @@ func (s *Server) storeDoc(u uri.URI, text string, version int32) {
 
 // publishDiagnostics parses src and pushes the resulting diagnostics back
 // to the client as a textDocument/publishDiagnostics notification. It does
-// not return an error — diagnostic publishing is best-effort, and a
+// not return an error - diagnostic publishing is best-effort, and a
 // failed notify is logged via the connection's done channel.
 func (s *Server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
 	diags := s.buildDiagnostics(u, src)

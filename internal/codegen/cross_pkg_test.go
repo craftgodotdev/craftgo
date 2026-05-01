@@ -65,7 +65,7 @@ func TestBuildCrossPkgSkipsEmptyAndCurrent(t *testing.T) {
 
 func TestBuildCrossPkgEmptyCurrentReturnsAll(t *testing.T) {
 	// When called without a current package, every non-empty package
-	// should be included — useful for tools that need the full map.
+	// should be included - useful for tools that need the full map.
 	cfg := &config.Config{Package: "x", Output: config.Output{Types: "./types"}}
 	proj := &semantic.Project{
 		Packages: map[string]*semantic.Package{
@@ -90,28 +90,28 @@ func TestWalkCrossPkgImports(t *testing.T) {
 		}}
 	}
 
-	// nil — no-op.
+	// nil - no-op.
 	set := map[string]bool{}
 	walkCrossPkgImports(nil, cross, set)
 	if len(set) != 0 {
 		t.Errorf("nil should not contribute, got %v", set)
 	}
 
-	// Empty crossPkg — no-op even on cross-pkg ref.
+	// Empty crossPkg - no-op even on cross-pkg ref.
 	set = map[string]bool{}
 	walkCrossPkgImports(mkRef("shared", "User"), nil, set)
 	if len(set) != 0 {
 		t.Errorf("empty crossPkg should not contribute, got %v", set)
 	}
 
-	// Single-part ref — no-op.
+	// Single-part ref - no-op.
 	set = map[string]bool{}
 	walkCrossPkgImports(mkRef("User"), cross, set)
 	if len(set) != 0 {
 		t.Errorf("unqualified ref should not contribute, got %v", set)
 	}
 
-	// Multi-part ref — adds import.
+	// Multi-part ref - adds import.
 	set = map[string]bool{}
 	walkCrossPkgImports(mkRef("shared", "User"), cross, set)
 	if !set[cross["shared"]] {

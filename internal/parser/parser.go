@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/idents"
 	"github.com/dropship-dev/craftgo/internal/lexer"
 )
 
@@ -40,7 +41,7 @@ func (p *Parser) takeDoc() []string {
 }
 
 // captureDoc snapshots the doc attached to the current peek token onto
-// the parser's pendingDoc buffer. Safe to call multiple times — it
+// the parser's pendingDoc buffer. Safe to call multiple times - it
 // overwrites any previous buffer because the freshest peek dominates.
 func (p *Parser) captureDoc() {
 	if len(p.peek().Doc) > 0 {
@@ -155,7 +156,7 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 }
 
 // parseDecorator reads a single `@Name [(args...)]`. The name token may be
-// any [lexer.Ident] or any keyword spelling — this lets users name decorators
+// any [lexer.Ident] or any keyword spelling - this lets users name decorators
 // after reserved words (e.g. `@true`) without clashing with keyword usage
 // elsewhere in the grammar.
 func (p *Parser) parseDecorator() *ast.Decorator {
@@ -357,8 +358,8 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	case lexer.KwExtend:
 		// parseExtendService returns a `*ast.ServiceDecl` (concrete
 		// pointer) and may emit a typed nil on incomplete input
-		// (`extend` with nothing — or anything other than `service`
-		// — after it). Returning that pointer directly would wrap a
+		// (`extend` with nothing - or anything other than `service`
+		// - after it). Returning that pointer directly would wrap a
 		// typed-nil into the ast.Decl interface, which then passes
 		// the `d != nil` guard at the call site and crashes the
 		// semantic phase on a nil dereference. Convert the typed nil
@@ -413,7 +414,7 @@ func (p *Parser) parseTypeParams() []string {
 }
 
 // parseTypeBody reads the contents of a `{ ... }` type/error body. Returns
-// nil when there is no opening brace — callers (e.g. [parseTypeDecl]) decide
+// nil when there is no opening brace - callers (e.g. [parseTypeDecl]) decide
 // whether that is an error or a deliberate empty body.
 func (p *Parser) parseTypeBody() []ast.TypeMember {
 	if !p.peekIs(lexer.LBrace) {
@@ -435,7 +436,7 @@ func (p *Parser) parseTypeBody() []ast.TypeMember {
 	return members
 }
 
-// parseTypeMember reads one member of a type body — either a [Field] or a
+// parseTypeMember reads one member of a type body - either a [Field] or a
 // [Mixin]. Disambiguation rules (in priority order):
 //
 //  1. Next token is `.` or `<` → mixin (qualified or generic name,
@@ -449,7 +450,7 @@ func (p *Parser) parseTypeBody() []ast.TypeMember {
 //     compact `Profile  name string` form).
 //
 // The "Pascal + builtin → field" carve-out lets users name a field
-// anything they want — including PascalCase JSON keys — without
+// anything they want - including PascalCase JSON keys - without
 // breaking the compact mixin+field-on-one-line form that test
 // fixtures rely on. Rule (4) only kicks in when the next token is
 // an Ident that is NOT a builtin (i.e. another field name in the
@@ -483,7 +484,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 
 // isFieldFollower reports whether `next` (the token AFTER a leading
 // identifier in a type-body member) is the first token of a TypeRef
-// on the same line — the unambiguous signal that the leading ident
+// on the same line - the unambiguous signal that the leading ident
 // is a field NAME and `next` begins its type. Builtin primitives
 // and `map` are the only signals that work without semantic info;
 // arbitrary Idents are ambiguous (could be a custom type, could be
@@ -502,24 +503,18 @@ func isFieldFollower(next lexer.Token, sameLine int) bool {
 	return parserBuiltinTypes[next.Text]
 }
 
-// parserBuiltinTypes mirrors the closed set of primitive type names
-// recognised by [internal/semantic]'s [builtinTypes] table. Pinned
-// here as a small standalone copy so the parser can disambiguate
-// "Pascal followed by builtin" without depending on semantic.
-var parserBuiltinTypes = map[string]bool{
-	"string": true, "bool": true,
-	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
-	"uint": true, "uint8": true, "uint16": true, "uint32": true, "uint64": true,
-	"float32": true, "float64": true,
-	"bytes": true, "any": true, "object": true, "file": true,
-}
+// parserBuiltinTypes aliases the canonical [idents.BuiltinTypes]
+// table so the parser's disambiguation rules ("Pascal followed by
+// builtin → field") consult the same set as the semantic resolver.
+// Adding a new primitive is a one-line edit in [internal/idents].
+var parserBuiltinTypes = idents.BuiltinTypes
 
 // peekIs reports whether the current token has kind k.
 func (p *Parser) peekIs(k lexer.Kind) bool { return p.peek().Kind == k }
 
 // parseTypeRef parses TypeRef = (MapType | NamedTypeRef) ArrayMod? OptionalMod?
 //
-// Array (`[]`) and Optional (`?`) are independent suffix flags — `T[]?`
+// Array (`[]`) and Optional (`?`) are independent suffix flags - `T[]?`
 // produces a TypeRef with both set.
 func (p *Parser) parseTypeRef() *ast.TypeRef {
 	pos := p.peek().Pos
@@ -744,7 +739,7 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, extend bool) *ast.Servi
 }
 
 // parseExtendService reads `extend service Name { ... }`. Anything other
-// than `service` immediately after `extend` is an error — `extend type` and
+// than `service` immediately after `extend` is an error - `extend type` and
 // friends are NOT supported.
 func (p *Parser) parseExtendService(decs []*ast.Decorator) *ast.ServiceDecl {
 	p.advance()
@@ -801,7 +796,7 @@ func (p *Parser) parsePath() *ast.Path {
 	for p.peek().Kind == lexer.Slash {
 		p.advance()
 		segPos := p.peek().Pos
-		// Path param: `{ident}` — disambiguate from method body `{` by
+		// Path param: `{ident}` - disambiguate from method body `{` by
 		// requiring an Ident immediately after the brace.
 		if p.peek().Kind == lexer.LBrace && p.peekAt(1).Kind == lexer.Ident {
 			p.advance()
@@ -811,6 +806,8 @@ func (p *Parser) parsePath() *ast.Path {
 			continue
 		}
 		if isPathWordToken(p.peek().Kind) {
+			// Hot path: build `word(-word)*` per segment. Builder
+			// keeps the inner concat allocation-free.
 			var sb strings.Builder
 			sb.WriteString(p.advance().Text)
 			for p.peek().Kind == lexer.Dash {
@@ -835,7 +832,7 @@ func (p *Parser) parsePath() *ast.Path {
 
 // isPathWordToken reports whether k is a kind whose textual spelling
 // is a legal path-segment word. Plain identifiers always qualify; so
-// do every keyword and HTTP-verb keyword — when these spellings appear
+// do every keyword and HTTP-verb keyword - when these spellings appear
 // inside a URL path they're literal segments, not language tokens.
 // This is what lets paths like `/echo-stream` or `/users/get` parse.
 func isPathWordToken(k lexer.Kind) bool {
@@ -898,6 +895,8 @@ func unquoteString(s string) string {
 		return s
 	}
 	inner := s[1 : len(s)-1]
+	// Hot path: byte-by-byte escape decoding. Builder is the right
+	// tool - concatenation would allocate on every byte.
 	var sb strings.Builder
 	for i := 0; i < len(inner); i++ {
 		c := inner[i]
@@ -938,7 +937,7 @@ func unquoteString(s string) string {
 }
 
 // unquoteRaw strips the surrounding backticks from a raw string literal.
-// No further processing is performed — that is the whole point of raw
+// No further processing is performed - that is the whole point of raw
 // strings in the DSL.
 func unquoteRaw(s string) string {
 	if len(s) < 2 {

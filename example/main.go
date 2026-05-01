@@ -5,7 +5,7 @@
 // the matching `cfg.<Section>.Enabled` flag and the exporter selection
 // is dispatched at startup so a deployment switches between
 // Prometheus pull / OTLP gRPC push / OTLP HTTP push by editing
-// `config.yaml` (or setting `CRAFTGO_*` environment variables) — no
+// `config.yaml` (or setting `CRAFTGO_*` environment variables) - no
 // code change required.
 
 package main
@@ -67,7 +67,7 @@ func main() {
 	// matters: OTel opens the span first so AccessLog sees the trace
 	// ids on ctx (via `WithContext`), and the same `otelhttp.NewHandler`
 	// invocation records `http.server.duration` / `request.size` /
-	// `response.size` against the configured MeterProvider — no
+	// `response.size` against the configured MeterProvider - no
 	// separate metrics middleware is needed.
 	srv := server.New(svc)
 	srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
@@ -109,7 +109,7 @@ func main() {
 // Disabled returns nil; "otlp_grpc" / "otlp_http" attach the matching
 // OTLP exporter; "stdout" prints spans to stdout for local debugging;
 // any other value (including "none") falls back to an in-process
-// TracerProvider with no exporter — spans get valid IDs (so trace_id
+// TracerProvider with no exporter - spans get valid IDs (so trace_id
 // flows into log lines) but go nowhere.
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
 	if !cfg.OTel.Enabled {
@@ -147,7 +147,7 @@ func initMetrics(ctx context.Context, cfg *config.Config) (*sdkmetric.MeterProvi
 	case "otlp_http":
 		opts = append(opts, metrics.WithOTLPHTTPReader(ctx, cfg.Metrics.Endpoint))
 	case "none":
-		// no readers — meter installed but silent
+		// no readers - meter installed but silent
 	default:
 		// "prometheus" + any unknown value default to scrape so a
 		// typo never silently turns metrics off.
@@ -162,7 +162,7 @@ func initMetrics(ctx context.Context, cfg *config.Config) (*sdkmetric.MeterProvi
 	}
 	if runtimeStats {
 		// Surface go_* / process_* alongside the OTel-bridged
-		// http.server.* histograms — same convenience InitDefault
+		// http.server.* histograms - same convenience InitDefault
 		// gave callers before the config-driven dispatch.
 		_ = metrics.RegisterRuntimeCollectors()
 	}

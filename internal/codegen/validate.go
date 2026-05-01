@@ -1,7 +1,7 @@
 // Validate codegen lives across five files in this package, organised
 // by layer rather than by decorator:
 //
-//   - validate.go          driver — orchestrates Generate / collect / template
+//   - validate.go          driver - orchestrates Generate / collect / template
 //   - validate_registry.go decorator → emit-function dispatch table
 //   - validate_emit.go     per-validator emitters + cross-cutting helpers
 //   - validate_args.go     decorator-argument extractors (intArg, sizeArg, ...)
@@ -10,7 +10,7 @@
 // To add a new validator: write its emit function in validate_emit.go,
 // register it as one row in `validators` (validate_registry.go). Type
 // guards and arg helpers are reusable from validate_types.go /
-// validate_args.go — most new validators won't need new ones.
+// validate_args.go - most new validators won't need new ones.
 
 package codegen
 
@@ -26,7 +26,7 @@ import (
 )
 
 // validateData is the template input for `validate.tmpl`. It is computed
-// up front so the template stays declarative — every conditional is
+// up front so the template stays declarative - every conditional is
 // resolved in Go code where unit tests can pin behaviour.
 type validateData struct {
 	Package string
@@ -35,7 +35,7 @@ type validateData struct {
 }
 
 // validatorType is one Validate() method block in `validate.tmpl`.
-// TypeParams is non-empty for generic decls — the template uses it to
+// TypeParams is non-empty for generic decls - the template uses it to
 // build the receiver suffix `[T any, ...]` so the method is declared on
 // the parametric type itself, e.g. `func (v *Page[T]) Validate() error`.
 type validatorType struct {
@@ -50,7 +50,7 @@ type validatorType struct {
 // `req.Validate()` uniformly.
 //
 // Equivalent to [GenerateValidatorsPackage] with a nil [CrossPkg]
-// context — kept for backward compatibility with single-package
+// context - kept for backward compatibility with single-package
 // callers and tests.
 func GenerateValidators(pkg *semantic.Package, outDir string) error {
 	return GenerateValidatorsPackage(pkg, outDir, nil)
@@ -61,7 +61,7 @@ func GenerateValidators(pkg *semantic.Package, outDir string) error {
 // package alias used in pkg's field types so `req.User.Validate()`
 // can dispatch to the sibling package's validator.
 //
-// Equivalent to [GenerateValidatorsWith] with a nil scalar table —
+// Equivalent to [GenerateValidatorsWith] with a nil scalar table -
 // scalar inheritance is disabled in this entry point so existing
 // single-package callers keep their pre-scalar-inheritance output.
 func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
@@ -98,11 +98,9 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 // concrete and generic decls produce a Validate(); generics emit with a
 // parametric receiver (see [validatorType.TypeParams]).
 //
-// crossPkg is intentionally not consulted here. validate.go calls
-// `req.Field.Validate()` on cross-package fields — Go resolves the
-// method via the field's declared type, which is already imported by
-// types.go. Emitting an unused Go import in validate.go would fail
-// `go vet` (`imported and not used`).
+// crossPkg is not consulted here: cross-package fields validate via
+// the receiver's own Validate() method, resolved by the import
+// already present in types.go.
 //
 // scalars, when non-nil, enables scalar-decorator inheritance: a
 // field whose declared type is a scalar gains the scalar's own
@@ -268,20 +266,20 @@ func collectStringOrIdent(elems []ast.Expr) []string {
 // "all fields are absent" → reject. The natural negation
 // `!(presentA || presentB)` triggers `staticcheck`'s QF1001
 // (De Morgan), so we invert each presence expression up-front and
-// join with `&&` — the generated source is what `staticcheck` would
+// join with `&&` - the generated source is what `staticcheck` would
 // rewrite to anyway.
 func requiresOneOfCheck(td *ast.TypeDecl, names []string, uses map[string]bool) string {
 	uses["fmt"] = true
 	parts := absenceParts(td, names)
 	cond := strings.Join(parts, " && ")
-	msg := fmt.Sprintf(`"%s: requiresOneOf %v — at least one must be set"`, td.Name, names)
+	msg := fmt.Sprintf(`"%s: requiresOneOf %v - at least one must be set"`, td.Name, names)
 	return ifReturnf(cond, msg)
 }
 
 // mutuallyExclusiveCheck emits a counter-based block: count how many
 // of the listed fields are present and reject when > 1. The whole
 // thing is wrapped in a bare `{ ... }` block so the `n` counter
-// scopes locally — multiple @mutuallyExclusive declarations on the
+// scopes locally - multiple @mutuallyExclusive declarations on the
 // same struct don't shadow each other.
 func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, uses map[string]bool) string {
 	uses["fmt"] = true
@@ -294,7 +292,7 @@ func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, uses map[string]bo
 n := 0
 %s
 if n > 1 {
-return fmt.Errorf("%s: mutuallyExclusive %v — at most one may be set")
+return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
 }
 }`, strings.Join(counters, "\n"), td.Name, names)
 }
@@ -302,7 +300,7 @@ return fmt.Errorf("%s: mutuallyExclusive %v — at most one may be set")
 // presenceParts returns one Go boolean expression per name in the
 // list. Unknown names (typoed by the user) become a literal `false`
 // so the generated code compiles even when the decorator references a
-// missing field — the resulting check is a no-op for that slot.
+// missing field - the resulting check is a no-op for that slot.
 func presenceParts(td *ast.TypeDecl, names []string) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {

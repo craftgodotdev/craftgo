@@ -8,14 +8,14 @@ import (
 )
 
 // newTestServer returns an empty Server suitable for unit tests that
-// invoke buildDiagnostics directly. It sidesteps the JSON-RPC wiring —
+// invoke buildDiagnostics directly. It sidesteps the JSON-RPC wiring -
 // the diag pipeline only reads from s.docs and the file system.
 func newTestServer() *Server {
 	return &Server{docs: map[uri.URI]*document{}}
 }
 
 // TestBuildDiagnosticsClean verifies that valid DSL produces no
-// diagnostics — the formatter's roundtrip cases live there too, so this
+// diagnostics - the formatter's roundtrip cases live there too, so this
 // is mostly a smoke check that wiring is alive.
 func TestBuildDiagnosticsClean(t *testing.T) {
 	src := `package design

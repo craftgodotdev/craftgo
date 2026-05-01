@@ -7,9 +7,9 @@ package semantic
 // per-decorator hooks so the registry stays simple for the 90% case.
 //
 // Three diagnostic codes fire here:
-//   - [CodeDecoratorArity]    — wrong number of positional arguments.
-//   - [CodeDecoratorArgType]  — literal kind doesn't match the slot.
-//   - [CodeDecoratorArgValue] — value outside an allowed enum set.
+//   - [CodeDecoratorArity]    - wrong number of positional arguments.
+//   - [CodeDecoratorArgType]  - literal kind doesn't match the slot.
+//   - [CodeDecoratorArgValue] - value outside an allowed enum set.
 
 import (
 	"github.com/dropship-dev/craftgo/internal/ast"
@@ -72,7 +72,7 @@ func (a *analyzer) checkFieldArgs(site Level, members []ast.TypeMember) {
 }
 
 // checkArgsScope is the leaf: validate every decorator's args against
-// its registered [Spec]. Unknown names are silently skipped — they were
+// its registered [Spec]. Unknown names are silently skipped - they were
 // flagged by the placement pass and we don't want duplicate diagnostics
 // for the same source location.
 func (a *analyzer) checkArgsScope(site Level, decs []*ast.Decorator) {
@@ -128,7 +128,7 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 // enum set against [Spec.Args]. The array-shortcut form
 // (`@mimeTypes(["a/b","c/d"])`) is expanded transparently when
 // [ArgsRule.AllowArrayShortcut] is set and the decorator received
-// exactly one array-literal positional arg — element kinds and count
+// exactly one array-literal positional arg - element kinds and count
 // are validated against the variadic rule.
 //
 // Stops on the first arity mismatch because subsequent kind errors
@@ -211,7 +211,7 @@ func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.
 }
 
 // checkEnumOnFirst applies the value-set check on the first positional
-// arg. Bare-int / non-textual args silently skip — the kind check above
+// arg. Bare-int / non-textual args silently skip - the kind check above
 // already flagged them.
 func (a *analyzer) checkEnumOnFirst(site Level, d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
 	_ = site
@@ -240,7 +240,7 @@ func (a *analyzer) checkEnumOnFirst(site Level, d *ast.Decorator, spec Spec, pos
 //   - ArgNumber accepts int and float;
 //   - ArgStringOrIdent accepts string or bare ident.
 //
-// ArgAny matches everything (including nil) — used as a no-op when the
+// ArgAny matches everything (including nil) - used as a no-op when the
 // position is shape-validated by a per-decorator hook instead.
 func exprMatchesKind(e ast.Expr, k ArgKind) bool {
 	if k == ArgAny {
@@ -293,7 +293,7 @@ func exprMatchesKind(e ast.Expr, k ArgKind) bool {
 // exprKindName renders a human label for the actual kind of e. Used in
 // the "expected X, got Y" message so the IDE points the user at the
 // concrete mismatch. Falls back to "value" for any future ast.Expr
-// implementation we forget to add here — the diagnostic stays useful
+// implementation we forget to add here - the diagnostic stays useful
 // rather than empty.
 func exprKindName(e ast.Expr) string {
 	if e == nil {
@@ -339,7 +339,7 @@ func identOrStringValue(e ast.Expr) (string, bool) {
 	return "", false
 }
 
-// inSet reports whether s appears in xs. Linear scan — fine for the
+// inSet reports whether s appears in xs. Linear scan - fine for the
 // short fixed sets we use (≤17 entries for the format value list).
 func inSet(s string, xs []string) bool {
 	for _, x := range xs {
@@ -430,7 +430,7 @@ func (a *analyzer) checkExampleArgs(d *ast.Decorator) {
 	}
 }
 
-// checkExamplesArgs handles `@examples({name1: v1, name2: v2})` —
+// checkExamplesArgs handles `@examples({name1: v1, name2: v2})` -
 // exactly one object-literal arg.
 func (a *analyzer) checkExamplesArgs(d *ast.Decorator) {
 	if len(d.Args) != 1 {

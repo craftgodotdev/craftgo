@@ -84,7 +84,7 @@ func runFmt(args []string) error {
 
 // collectCraftgoFiles returns every `*.craftgo` file under target. If target
 // is itself a file, the slice contains just that file (regardless of
-// extension — callers already opted into formatting it).
+// extension - callers already opted into formatting it).
 func collectCraftgoFiles(target string) ([]string, error) {
 	info, err := os.Stat(target)
 	if err != nil {

@@ -47,65 +47,38 @@ func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req j
 // completionsAt returns the candidate items for a cursor in view.
 func (s *Server) completionsAt(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
 	prev, mid := surroundingTokens(view, pos)
-	// Inside an import string literal (`import "…|"`) — suggest
+	// Inside an import string literal (`import "…|"`) - suggest
 	// available package paths.
 	if isInsideImportString(view, pos) {
 		prefix := importStringPrefix(view, pos)
 		return s.importPathCompletions(currentURI, currentSrc, prefix)
 	}
-	// After `extend service ` — list every primary service name in
+	// After `extend service ` - list every primary service name in
 	// the project so the user can pick which one this block extends.
 	if isExtendServiceContext(view, pos) {
 		return s.serviceNameCompletions(currentURI, currentSrc)
 	}
-	// Inside a decorator argument list `@name(…|…)` — surface the
-	// registered enum values when the spec restricts them, OR the
-	// project's declared middleware names for `@middlewares(...)`.
+	// Inside a decorator argument list `@name(…|…)` - surface the
+	// registered enum values, declared middleware names, or
+	// security-scheme keys depending on the decorator + slot.
 	// Must run before the qualified-ref check because the cursor sits
 	// between `(` and `)` so the surrounding-token analysis would
 	// otherwise route to the type-position branch.
 	if name, ok := decoratorArgContext(view, pos); ok {
-		if name == "middlewares" {
-			return s.middlewareNameCompletions(currentURI, currentSrc)
-		}
-		// `@security(<scheme>, scopes: [...])` — arg 1 is a scheme
-		// identifier that must resolve to a key in the project's
-		// `openapi.securitySchemes` map. Suggest the declared keys
-		// only at the arg-1 slot:
-		//
-		//   - cursor right after `(` (mid = LParen, no content yet),
-		//   - or mid-typing the scheme ident (mid = Ident,
-		//     prev = LParen).
-		//
-		// Anywhere past the first comma we are inside `scopes: [...]`
-		// (or further), where the items are application-defined
-		// strings, not scheme names — fall through to the generic
-		// branch instead.
-		atArgOne := false
-		if mid != nil && mid.Kind == lexer.LParen {
-			atArgOne = true
-		} else if prev != nil && prev.Kind == lexer.LParen {
-			atArgOne = true
-		}
-		if name == "security" && atArgOne {
-			if items := s.securitySchemeCompletions(currentURI); items != nil {
-				return items
-			}
-		}
-		if items := decoratorArgCompletions(view, pos, name); items != nil {
+		if items := s.decoratorArgItems(view, pos, currentURI, currentSrc, name, prev, mid); items != nil {
 			return items
 		}
 	}
-	// Qualified ref `pkg.<cursor>` — list only the named package's
+	// Qualified ref `pkg.<cursor>` - list only the named package's
 	// decls. Two cursor positions both qualify as "just after the
 	// dot":
 	//
-	//   - Cursor on the dot itself (mid = Dot) — happens when the
+	//   - Cursor on the dot itself (mid = Dot) - happens when the
 	//     user has typed `shared.` and the next non-whitespace token
 	//     starts on the next column. tokenAt's inclusive end-column
 	//     check returns the dot.
 	//   - Cursor on the identifier following the dot (mid = Ident,
-	//     prev = Dot) — happens once the user starts typing the
+	//     prev = Dot) - happens once the user starts typing the
 	//     member name.
 	//
 	// Both must come BEFORE the decorator branch so an in-progress
@@ -120,7 +93,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 			return s.packageDeclCompletions(view, currentURI, currentSrc, pkg)
 		}
 	}
-	// Decorator name completion — cursor on (or right after) `@`, or
+	// Decorator name completion - cursor on (or right after) `@`, or
 	// inside an identifier whose preceding token is `@`.
 	if mid != nil && mid.Kind == lexer.At {
 		return decoratorCompletions(view, pos, "")
@@ -128,14 +101,14 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if mid != nil && mid.Kind == lexer.Ident && prev != nil && prev.Kind == lexer.At {
 		return decoratorCompletions(view, pos, mid.Text)
 	}
-	// `error <Category>` position — fires when the cursor sits right
+	// `error <Category>` position - fires when the cursor sits right
 	// after the `error` keyword (mid is nil or the in-progress
 	// category identifier). The 19 reserved HTTP categories are a
 	// closed set, so completion is the obvious affordance.
 	if prev != nil && prev.Kind == lexer.KwError && (mid == nil || mid.Kind == lexer.Ident) {
 		return errorCategoryCompletions()
 	}
-	// Just opened a block — cursor right after `{` with no
+	// Just opened a block - cursor right after `{` with no
 	// in-progress identifier. Auto-suggest here is purely noise: the
 	// user has not signalled what they're about to type, and the
 	// project-wide-decls dump shadows whatever they actually wanted.
@@ -154,11 +127,57 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if prev != nil && isTypePositionTrigger(*prev) {
 		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
 	}
-	// General context — keywords + project-wide declared types so
+	// General context - keywords + project-wide declared types so
 	// users typing identifiers see what they have already defined.
 	items := keywordCompletions()
 	items = append(items, s.declCompletionsProjectWide(view, currentURI, currentSrc)...)
 	return items
+}
+
+// decoratorArgItems dispatches a decorator-argument completion to
+// the right resolver based on which decorator the cursor sits in
+// AND which slot of its argument list. The three special-cased
+// decorators are:
+//
+//   - `@middlewares(...)` → declared middleware names.
+//   - `@security(<scheme>, scopes: [...])` → the project's
+//     `openapi.securitySchemes` keys, but ONLY at the first slot
+//     (cursor right after `(` or mid-typing an ident with prev=`(`).
+//     Past the first comma we're inside `scopes: [...]`, where the
+//     items are application-defined strings, not scheme names -
+//     fall through to the generic enum-value path instead.
+//   - everything else → the registered enum values from the
+//     decorator's [semantic.Spec].
+//
+// Returns nil when none of the slots match - the caller falls back
+// to its general-context branch.
+func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
+	if name == "middlewares" {
+		return s.middlewareNameCompletions(currentURI, currentSrc)
+	}
+	if name == "security" && atFirstDecoratorArg(prev, mid) {
+		if items := s.securitySchemeCompletions(currentURI); items != nil {
+			return items
+		}
+	}
+	return decoratorArgCompletions(view, pos, name)
+}
+
+// atFirstDecoratorArg reports whether the cursor sits at slot 1 of a
+// decorator's argument list - i.e. between the opening `(` and the
+// first comma. Two shapes count:
+//
+//   - mid is `(` itself (cursor on the open paren).
+//   - prev is `(` and mid is anything else (typically an Ident the
+//     user just started typing).
+func atFirstDecoratorArg(prev, mid *lexer.Token) bool {
+	if mid != nil && mid.Kind == lexer.LParen {
+		return true
+	}
+	if prev != nil && prev.Kind == lexer.LParen {
+		return true
+	}
+	return false
 }
 
 // surroundingTokens returns the tokens immediately before and at the
@@ -224,7 +243,7 @@ func isTypePositionTrigger(t lexer.Token) bool {
 }
 
 // isInsideImportString reports whether pos lies inside an `import "…"`
-// string literal — the cursor sits between the two double-quotes that
+// string literal - the cursor sits between the two double-quotes that
 // follow an `import` keyword. We rely on token-level inspection rather
 // than re-lexing the partial line because the editor may send a cursor
 // position that splits a token mid-string.
@@ -322,7 +341,7 @@ func (s *Server) importPathCompletions(currentURI, currentSrc, prefix string) []
 		if err != nil || rel == "." {
 			return nil
 		}
-		// Use forward slashes — the DSL stores import paths in POSIX
+		// Use forward slashes - the DSL stores import paths in POSIX
 		// form regardless of host OS, matching the rest of the toolchain.
 		rel = filepath.ToSlash(rel)
 		if _, dup := seen[rel]; dup {
@@ -351,12 +370,12 @@ func (s *Server) importPathCompletions(currentURI, currentSrc, prefix string) []
 // The walk is purely token-based: we step backwards from the cursor,
 // tracking parenthesis depth, until we land on an opening `(` whose
 // preceding tokens spell `@Ident`. A `)` along the way pops the depth
-// counter — once it goes negative we have left every enclosing
+// counter - once it goes negative we have left every enclosing
 // decorator and the cursor is not in an arg list.
 //
 // Walks include the cursor's own token (`idx`, not `idx-1`) so a
-// cursor sitting exactly on the opening `(` — common right after the
-// user types `@middlewares(` — still resolves cleanly. RParens are
+// cursor sitting exactly on the opening `(` - common right after the
+// user types `@middlewares(` - still resolves cleanly. RParens are
 // only counted when they're STRICTLY before the cursor; that keeps
 // the closing paren of the decorator we're inside from prematurely
 // flipping `depth` negative.
@@ -373,7 +392,7 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 		t := view.tokens[i]
 		switch t.Kind {
 		case lexer.RParen:
-			// Skip the cursor's own RParen — we're INSIDE its
+			// Skip the cursor's own RParen - we're INSIDE its
 			// decorator, not after it.
 			if i == idx {
 				continue
@@ -398,7 +417,7 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 
 // decoratorArgCompletions returns enum-value completions for the
 // decorator at the cursor when the spec restricts them. Returns nil
-// to signal "no enum applies — let the next branch handle this
+// to signal "no enum applies - let the next branch handle this
 // position".
 func decoratorArgCompletions(view snapshotView, pos protocol.Position, name string) []protocol.CompletionItem {
 	spec, ok := semantic.Registry[name]
@@ -439,7 +458,7 @@ func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	if idx < 0 {
 		idx = len(view.tokens)
 	}
-	// Skip a partial ident at the cursor — the user is mid-typing
+	// Skip a partial ident at the cursor - the user is mid-typing
 	// the service name and we still want to fire.
 	if idx >= 0 && idx < len(view.tokens) && view.tokens[idx].Kind == lexer.Ident {
 		idx--
@@ -455,7 +474,7 @@ func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 // serviceNameCompletions enumerates primary `service Name`
 // declarations that are valid extension targets from the cursor's
 // current file. Extends resolve per-package, so cross-package
-// services would always trip `service/extend-orphan` — including
+// services would always trip `service/extend-orphan` - including
 // them in the completion list would mislead the user. The function
 // therefore filters by the current file's package name.
 func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
@@ -504,7 +523,7 @@ func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protoco
 // craftgo.design.yaml. Used for `@security(<scheme>, ...)` arg 1.
 // When the manifest is not findable (e.g. the file is open outside
 // any project root) or carries no schemes, the function returns nil
-// and the completion popup falls through to the generic branch —
+// and the completion popup falls through to the generic branch -
 // no manifest is a permissive mode the codegen already supports, so
 // we mirror that here.
 //
@@ -532,7 +551,7 @@ func (s *Server) securitySchemeCompletions(currentURI string) []protocol.Complet
 		}
 		doc := protocol.MarkupContent{
 			Kind:  protocol.Markdown,
-			Value: fmt.Sprintf("**`%s`** — %s security scheme.\n\nDeclared in `craftgo.design.yaml` under `openapi.securitySchemes.%s`.", name, scheme.Type, name),
+			Value: fmt.Sprintf("**`%s`** - %s security scheme.\n\nDeclared in `craftgo.design.yaml` under `openapi.securitySchemes.%s`.", name, scheme.Type, name),
 		}
 		out = append(out, protocol.CompletionItem{
 			Label:         name,
@@ -551,7 +570,7 @@ func (s *Server) securitySchemeCompletions(currentURI string) []protocol.Complet
 // list shows the same closed set the semantic resolver accepts.
 // Names are emitted as Function-kind items because that is how
 // editors render them with the closest icon to "function pointer
-// the runtime calls" — the closest analogue available in LSP's
+// the runtime calls" - the closest analogue available in LSP's
 // CompletionItemKind set.
 func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	files := s.projectASTs(uriToPath(currentURI), currentSrc)
@@ -592,7 +611,7 @@ func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []prot
 }
 
 // importStringPrefix returns the substring of the `import "…"` literal
-// that lies between the opening quote and the cursor — used as the
+// that lies between the opening quote and the cursor - used as the
 // prefix filter for [importPathCompletions]. Returns an empty string
 // when the cursor is at the very start of the literal.
 func importStringPrefix(view snapshotView, pos protocol.Position) string {
@@ -609,7 +628,7 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 				if start.Line != line {
 					return ""
 				}
-				// Token text includes both surrounding quotes — skip
+				// Token text includes both surrounding quotes - skip
 				// the first.
 				typed := tk.Text
 				if len(typed) > 0 && typed[0] == '"' {
@@ -642,14 +661,14 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 //
 // `error` declarations are dropped: errors are NOT cross-package
 // referenceable (the `@errors(...)` resolver only looks at the
-// current package's table — see [checkErrorRefs]) and they cannot
+// current package's table - see [checkErrorRefs]) and they cannot
 // be used as field types either, so surfacing them under a
 // cross-package qualifier would offer dead-end suggestions.
 func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSrc, pkg string) []protocol.CompletionItem {
 	files, root := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
 	imports := currentImports(view.file)
 
-	// Resolve `pkg` via imports first — it might be an alias rather
+	// Resolve `pkg` via imports first - it might be an alias rather
 	// than a literal package name. Falls back to a Package.Name match.
 	targetDir := ""
 	for _, imp := range imports {
@@ -714,7 +733,7 @@ func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, curre
 }
 
 // declCompletionFilter selects which top-level decl kinds appear in a
-// completion list. Today only [declCompletionTypePosition] exists —
+// completion list. Today only [declCompletionTypePosition] exists -
 // the indirection stays for future contexts (e.g. error-position
 // inside `@errors(...)`) that need a different filter without
 // duplicating the project-walk loop.
@@ -723,7 +742,7 @@ type declCompletionFilter func(ast.Decl) bool
 // declCompletionTypePosition drops error declarations so type-position
 // completions only suggest decls that actually resolve as types.
 // Used as the default for [declCompletionsProjectWide] because errors
-// are never referenceable as a standalone symbol — `@errors(...)`
+// are never referenceable as a standalone symbol - `@errors(...)`
 // has its own resolution path.
 func declCompletionTypePosition(d ast.Decl) bool {
 	_, isError := d.(*ast.ErrorDecl)
@@ -740,11 +759,11 @@ func declCompletionTypePosition(d ast.Decl) bool {
 //
 // In addition to declarations, every imported package alias is
 // emitted as a Module-kind item so that typing the first letter of an
-// alias (e.g. `s` for `shared`) surfaces the package itself — picking
+// alias (e.g. `s` for `shared`) surfaces the package itself - picking
 // it lets the user continue with `.SomeType` and reach the qualified
 // completion path.
 // declCompletionsProjectWide is the default project-wide decl
-// suggester. Errors are filtered out unconditionally — they are not
+// suggester. Errors are filtered out unconditionally - they are not
 // usable as standalone references in any user-facing position
 // (`@errors(...)` has its own resolver, and field-type / request /
 // response usage is rejected by the semantic phase). Surfacing them
@@ -755,10 +774,10 @@ func (s *Server) declCompletionsProjectWide(view snapshotView, currentURI, curre
 
 // declCompletionsFiltered is the workhorse behind the project-wide
 // declaration completions. The filter callback decides which decls
-// reach the result list — type-position contexts pass
+// reach the result list - type-position contexts pass
 // [declCompletionTypePosition] to drop errors; everywhere else
 // passes [declCompletionAll] to keep the legacy behaviour. Import
-// aliases are emitted unconditionally — they are not declarations
+// aliases are emitted unconditionally - they are not declarations
 // and the user might want them in any completion context.
 func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentSrc string, keep declCompletionFilter) []protocol.CompletionItem {
 	files := s.projectASTs(uriToPath(currentURI), currentSrc)
@@ -788,7 +807,7 @@ func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentS
 			if pkgName != "" && pkgName != currentPkg {
 				label = pkgName + "." + d.DeclName()
 				insert = label
-				detail = pkgName + " — " + detail
+				detail = pkgName + " - " + detail
 			}
 			items = append(items, protocol.CompletionItem{
 				Label:         label,
@@ -812,7 +831,7 @@ func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentS
 
 // importAliasesOf returns every alias the file's imports expose at
 // the type-position level. Explicit aliases win; otherwise the
-// trailing path segment becomes the implicit alias — matching the
+// trailing path segment becomes the implicit alias - matching the
 // resolution in [findDeclAcross]. Duplicate aliases are de-duped.
 func importAliasesOf(f *ast.File) []string {
 	if f == nil {
@@ -845,7 +864,7 @@ func importAliasesOf(f *ast.File) []string {
 }
 
 // localDeclItems is the fall-back used when no project root can be
-// found — callers reach here for stand-alone files outside a craftgo
+// found - callers reach here for stand-alone files outside a craftgo
 // design layout. `error` declarations are dropped here for the same
 // reason [declCompletionsProjectWide] drops them: they're never
 // referenceable as a standalone symbol from user code.
@@ -870,7 +889,7 @@ func localDeclItems(view snapshotView) []protocol.CompletionItem {
 
 // decoratorCompletions enumerates the registry, optionally filtered by
 // a declaration-level guess inferred from the cursor's surroundings.
-// `prefix` lets the editor narrow as the user types — in practice the
+// `prefix` lets the editor narrow as the user types - in practice the
 // LSP client also filters, so an empty prefix is fine.
 func decoratorCompletions(view snapshotView, pos protocol.Position, prefix string) []protocol.CompletionItem {
 	level := guessLevel(view, pos)
@@ -894,7 +913,7 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 		// Strict level filter: only surface decorators whose
 		// declared site mask intersects the cursor's level. The
 		// guard against `spec.Levels == 0` is defensive for any
-		// future Registry entry without a Levels declaration —
+		// future Registry entry without a Levels declaration -
 		// treating "no levels" as "not applicable here" keeps the
 		// completion list focused on supported decorators.
 		if spec.Levels == 0 || spec.Levels&level == 0 {
@@ -903,7 +922,7 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 		// Per-primitive filter: at field level, drop validators
 		// whose AppliesTo doesn't intersect the field's resolved
 		// primitive. Decorators with AppliesTo == 0 (PrimAny) pass
-		// through — they apply regardless of type.
+		// through - they apply regardless of type.
 		if fieldPrim != 0 && spec.AppliesTo != 0 && spec.AppliesTo&fieldPrim == 0 {
 			continue
 		}
@@ -950,7 +969,7 @@ func declSymbolKindToCompletion(d ast.Decl) protocol.CompletionItemKind {
 }
 
 // errorCategoryStatus pairs each reserved HTTP error category with the
-// status code emitted by the codegen — exposed on the completion item's
+// status code emitted by the codegen - exposed on the completion item's
 // Detail line so users see which HTTP code the category resolves to
 // without leaving the editor. Mirrors the readonly table in
 // internal/codegen/errors.go::categoryStatus; keep the two in sync.
@@ -990,7 +1009,7 @@ func errorCategoryCompletions() []protocol.CompletionItem {
 		detail := fmt.Sprintf("HTTP %d", c.status)
 		doc := protocol.MarkupContent{
 			Kind:  protocol.Markdown,
-			Value: fmt.Sprintf("**`%s`** — built-in error category (HTTP %d).\n\nUse as `error %s YourErrorName` to declare an error of this kind.", c.name, c.status, c.name),
+			Value: fmt.Sprintf("**`%s`** - built-in error category (HTTP %d).\n\nUse as `error %s YourErrorName` to declare an error of this kind.", c.name, c.status, c.name),
 		}
 		out = append(out, protocol.CompletionItem{
 			Label:         c.name,
@@ -1003,9 +1022,8 @@ func errorCategoryCompletions() []protocol.CompletionItem {
 }
 
 // keywordCompletions lists the always-relevant top-level keywords.
-// Verbs intentionally appear too — they are valid identifiers when
-// declaring methods inside a service body, and the LSP client will
-// filter out anything the user has not started typing.
+// Verbs appear too: they are valid identifiers inside a service
+// body, and the client filters by prefix.
 func keywordCompletions() []protocol.CompletionItem {
 	kw := []string{
 		"package", "import", "type", "enum", "error", "scalar",
@@ -1028,7 +1046,7 @@ func keywordCompletions() []protocol.CompletionItem {
 //
 //  1. Inside a decl body (between `{` and `}`) → field / method /
 //     enum value, depending on the enclosing decl kind.
-//  2. ABOVE a decl (the decorator zone — every `@…` line that
+//  2. ABOVE a decl (the decorator zone - every `@…` line that
 //     precedes a `type` / `service` / `enum` / `error` / `scalar` /
 //     `middleware` keyword) → the level of THAT decl. This is what
 //     the user expects when they hit `@` on a blank line above
@@ -1046,7 +1064,7 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	}
 	line := int(pos.Line) + 1
 	// File-header decorator zone: cursor sits AT or above the
-	// `package` line — anything legal at file scope (`@title`,
+	// `package` line - anything legal at file scope (`@title`,
 	// `@version`, `@doc`) wins. Without this branch the zone above
 	// `package` would be classified by the first decl below it,
 	// which is almost always wrong (you can't put `@required`
@@ -1085,7 +1103,7 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 		}
 	}
 	if nextDecl != nil {
-		// Decorator zone — the cursor is in a blank stretch ABOVE
+		// Decorator zone - the cursor is in a blank stretch ABOVE
 		// nextDecl, where every `@…` line ends up as a decorator
 		// for that decl.
 		return declSiteLevel(nextDecl)
@@ -1099,7 +1117,7 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 // cursorInsideDeclBody walks the token stream from the start of
 // prev until the cursor and tracks brace depth. A positive count
 // means the cursor sits between an opening `{` and its matching
-// `}` — i.e. inside the decl body — which is the only signal we
+// `}` - i.e. inside the decl body - which is the only signal we
 // have without explicit End positions on AST nodes.
 func cursorInsideDeclBody(view snapshotView, pos protocol.Position, prev ast.Decl) bool {
 	if prev == nil {

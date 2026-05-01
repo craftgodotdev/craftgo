@@ -33,7 +33,7 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 // expect to see the chain ("Auth wraps everything else"). When the
 // method declares `@timeout` or `@maxBodySize` the entire chain is
 // further wrapped in `server.WithLimits(...)` so the limits apply
-// outside any middleware — timeouts include the middleware's own
+// outside any middleware - timeouts include the middleware's own
 // work, not just the handler's.
 func buildHandlerCall(m *ast.Method, mws []string) string {
 	core := "handler." + m.Name + "Handler(svcCtx)"
@@ -138,7 +138,7 @@ func formatDurationGo(d time.Duration) string {
 
 // extractMiddlewareNames pulls the identifier arguments out of every
 // `@middlewares(...)` decorator in ds and returns the BARE name for
-// each — the package prefix in `pkg.Name` is dropped because every
+// each - the package prefix in `pkg.Name` is dropped because every
 // middleware lands flat on svccontext (the project resolver already
 // guarantees names are unique across packages).
 func extractMiddlewareNames(ds []*ast.Decorator) []string {
@@ -162,7 +162,7 @@ func extractMiddlewareNames(ds []*ast.Decorator) []string {
 
 // routeEntry is one row in the routes table emitted by `routes.tmpl`.
 // HandlerCall is the fully-formed Go expression the template emits as
-// the second argument to `srv.HandleFunc` — already wrapped in any
+// the second argument to `srv.HandleFunc` - already wrapped in any
 // service- and method-level middlewares declared via `@middlewares`.
 type routeEntry struct {
 	Pattern     string
@@ -185,7 +185,7 @@ type routesData struct {
 
 // GenerateRoutes emits one `routes.go` per service under
 // `<output.routes>/<servicePackage>/` PLUS a top-level
-// `<output.routes>/routes.go` that exposes `RegisterAll(srv, svcCtx)` —
+// `<output.routes>/routes.go` that exposes `RegisterAll(srv, svcCtx)` -
 // the one-call wire-up consumed by main.go. Both layers are
 // regenerated on every gen because they're derived purely from the
 // DSL service set.
@@ -221,7 +221,7 @@ func GeneratePerServiceRoutes(pkg *semantic.Package, cfg *config.Config, project
 // GenerateProjectRoutesUmbrella emits the top-level
 // `<output.routes>/routes.go` that exposes `RegisterAll(srv, svcCtx)`,
 // aggregating every service from every DSL package in the project.
-// When no package declares a service the file is skipped — calling
+// When no package declares a service the file is skipped - calling
 // `RegisterAll` from main.go would also be a no-op.
 func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	type svcEntry struct {
@@ -280,7 +280,7 @@ type routesAllData struct {
 }
 
 // generateRoutesAll emits the top-level umbrella routes file. Skipped
-// when the package declares no services — the umbrella has nothing to
+// when the package declares no services - the umbrella has nothing to
 // wire and an empty `routes` package would shadow `pkg/server.routes`-
 // style identifiers in user code.
 func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {

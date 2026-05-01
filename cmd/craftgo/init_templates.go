@@ -9,7 +9,7 @@ import (
 
 // initTemplatesFS holds the four starter files emitted by `craftgo init`.
 // Keeping the bodies in real `.tmpl` files (instead of multi-line Go
-// string literals) makes them editable without touching Go source —
+// string literals) makes them editable without touching Go source -
 // changing the YAML manifest no longer means rebuilding mental model
 // of escape rules + concatenation in main.go.
 //
@@ -22,7 +22,7 @@ var initTemplatesFS embed.FS
 func renderInitTemplate(name string, data any) string {
 	body, err := initTemplatesFS.ReadFile("templates/" + name)
 	if err != nil {
-		panic(fmt.Sprintf("craftgo init: template %q not embedded — check the //go:embed pattern in init_templates.go: %v", name, err))
+		panic(fmt.Sprintf("craftgo init: template %q not embedded - check the //go:embed pattern in init_templates.go: %v", name, err))
 	}
 	tmpl, err := template.New(name).Parse(string(body))
 	if err != nil {

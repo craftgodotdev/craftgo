@@ -9,8 +9,8 @@ import (
 // AST nodes carry a small but varied set of marker / accessor methods
 // (declNode, typeMember, exprNode for the union tags; DeclName /
 // DeclPos / MemberPos / ExprPos for position introspection;
-// QualifiedIdent.String for printing). The producers — parser and
-// semantic — only ever call them indirectly, so go's branch-coverage
+// QualifiedIdent.String for printing). The producers - parser and
+// semantic - only ever call them indirectly, so go's branch-coverage
 // reports them as 0% even though the rest of the test suite proves the
 // types are wired correctly. This file pins direct, exhaustive calls
 // so the coverage gate stays green and any future shape change to a
@@ -39,7 +39,7 @@ func TestDeclMarkers(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			c.d.declNode() // marker call — pins the method exists
+			c.d.declNode() // marker call - pins the method exists
 			if got := c.d.DeclName(); got != c.want {
 				t.Errorf("DeclName = %q, want %q", got, c.want)
 			}
@@ -100,7 +100,7 @@ func TestExprMarkers(t *testing.T) {
 }
 
 // TestQualifiedIdentString covers the dotted-form renderer for both
-// single-segment and multi-segment names — the latter is the path
+// single-segment and multi-segment names - the latter is the path
 // used by cross-package references like `shared.User`.
 func TestQualifiedIdentString(t *testing.T) {
 	cases := []struct {

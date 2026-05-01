@@ -52,7 +52,7 @@ func TestNestedCrossPackageTypes(t *testing.T) {
 		Title:    "Ship the showcase",
 		Status:   tasksapi.TaskStatusInProgress,
 		Project:  pref,
-		Assignee: &assignee, // optional — present here.
+		Assignee: &assignee, // optional - present here.
 		Comments: []tasksapi.Comment{
 			{ID: "c1", Author: assignee, Body: "lgtm", CreatedAt: "2026-04-29T00:00:00Z"},
 		},
@@ -74,7 +74,7 @@ func TestNestedCrossPackageTypes(t *testing.T) {
 // then-recursive-validator cascade. v1's per-field Validate() does
 // NOT auto-recurse into nested struct fields by default, BUT for an
 // optional nested type with its own validators we explicitly emit
-// `if v.Avatar != nil { (*v.Avatar).Validate() }` — this test pins
+// `if v.Avatar != nil { (*v.Avatar).Validate() }` - this test pins
 // that exact code path.
 func TestUserAvatarNestedValidation(t *testing.T) {
 	u := usersapi.User{
@@ -106,7 +106,7 @@ func TestUserAvatarNestedValidation(t *testing.T) {
 // TestUpdateUserReqOptionalFields covers the optional-string-with-
 // validator path (`name string?  @length(1, 80)`). The bug that
 // motivated the codegen fix was a malformed `if v.Name != nil &&
-// l := len(*v.Name); ...` — exercising both nil and present cases
+// l := len(*v.Name); ...` - exercising both nil and present cases
 // asserts the new shape compiles AND validates.
 func TestUpdateUserReqOptionalFields(t *testing.T) {
 	// Nil name → validators short-circuit on the nil guard.
@@ -148,7 +148,7 @@ func TestSharedOkRespRoundTrip(t *testing.T) {
 // surface on the Contact nested type. The Contact decl carries
 // @requiresOneOf / @mutuallyExclusive type-level decorators that v1
 // records in the DSL for OpenAPI surfacing but doesn't yet emit Go
-// code for — see the comment in users/contact.craftgo. The
+// code for - see the comment in users/contact.craftgo. The
 // per-FIELD validators (`@format(email)`, `@pattern(...)`) DO emit
 // and we verify them here.
 func TestNestedContactPerFieldValidators(t *testing.T) {
@@ -173,7 +173,7 @@ func TestNestedContactPerFieldValidators(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 // ----------------------------------------------------------------------
-// Deep-nest + scalars — orders package showcase.
+// Deep-nest + scalars - orders package showcase.
 // ----------------------------------------------------------------------
 
 // TestDeepNestSixLevels constructs a fully-valid Order that
@@ -218,9 +218,9 @@ func TestDeepNestSixLevels(t *testing.T) {
 	order := ordersapi.Order{
 		ID:         "ord_ABC12345",
 		Customer:   cust,
-		Items:      []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 999}},
+		Items:      []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 998}},
 		AuditedBy:  usersapi.UserRef{ID: "u-admin", Name: "Admin"},
-		TotalCents: 999,
+		TotalCents: 998,
 		Status:     ordersapi.OrderStatusPending,
 		Currency:   "USD",
 		Tags:       []string{"web"},
@@ -230,7 +230,7 @@ func TestDeepNestSixLevels(t *testing.T) {
 		t.Fatalf("happy-path order should validate: %v", err)
 	}
 
-	// Each level's own Validate() is callable independently — that's
+	// Each level's own Validate() is callable independently - that's
 	// how a real client codepath descends the tree to surface the
 	// most-specific failure rather than the wrapper's first.
 	for name, v := range map[string]interface {
@@ -304,10 +304,10 @@ func TestCrossPackageScalarInPaymentField(t *testing.T) {
 // TestRequiresOneOfNowEnforced pins the bug fix where the
 // validator emitter for `@requiresOneOf` previously failed to
 // recognise the bare-ident argument shape (`@requiresOneOf(email,
-// phone)`) — only the array-shortcut form
+// phone)`) - only the array-shortcut form
 // (`@requiresOneOf(["email", "phone"])`) was wired through. The
-// example's Contact type uses the bare-ident form deliberately so
-// this test catches a regression on either side.
+// example's Contact type uses the bare-ident form so this test catches
+// regressions on either side.
 func TestRequiresOneOfNowEnforced(t *testing.T) {
 	empty := usersapi.Contact{}
 	if err := empty.Validate(); err == nil {
@@ -323,7 +323,7 @@ func TestRequiresOneOfNowEnforced(t *testing.T) {
 // TestMutuallyExclusiveNowEnforced exercises the second type-level
 // validator that was previously dead due to the same arg-parsing
 // bug. The Contact type marks `work` and `personal` as mutually
-// exclusive — flipping both should be rejected.
+// exclusive - flipping both should be rejected.
 func TestMutuallyExclusiveNowEnforced(t *testing.T) {
 	both := usersapi.Contact{
 		Email:    ptr("alice@example.com"),
@@ -346,7 +346,7 @@ func TestMutuallyExclusiveNowEnforced(t *testing.T) {
 // TestLocalScalarInheritance verifies a field typed as a LOCAL
 // scalar (`country CountryCode`) actually runs the scalar's
 // validators (@length(2,2) + @pattern("^[A-Z]{2}$")) at the
-// containing type's Validate() — the inheritance must NOT require
+// containing type's Validate() - the inheritance must NOT require
 // the field-level decorator chain to repeat the scalar's checks.
 func TestLocalScalarInheritance(t *testing.T) {
 	good := ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"}
@@ -354,14 +354,14 @@ func TestLocalScalarInheritance(t *testing.T) {
 		t.Fatalf("ISO-2 country US should pass: %v", err)
 	}
 
-	// Pattern violation — lower-case fails the scalar's regex.
+	// Pattern violation - lower-case fails the scalar's regex.
 	bad := good
 	bad.Country = "us"
 	if err := bad.Validate(); err == nil {
 		t.Errorf("country=%q should fail @pattern from CountryCode scalar", bad.Country)
 	}
 
-	// Length violation — three-letter fails the scalar's @length.
+	// Length violation - three-letter fails the scalar's @length.
 	bad2 := good
 	bad2.Country = "USA"
 	if err := bad2.Validate(); err == nil {
@@ -371,7 +371,7 @@ func TestLocalScalarInheritance(t *testing.T) {
 
 // TestCrossPackageScalarInheritance verifies a field typed as a
 // CROSS-PACKAGE scalar (`bpsBonus shared.PercentBP`) inherits the
-// scalar's @min/@max from the sibling package — the validator
+// scalar's @min/@max from the sibling package - the validator
 // codegen looks up shared.PercentBP via the project-level scalar
 // table built by [BuildScalarTable].
 func TestCrossPackageScalarInheritance(t *testing.T) {
@@ -381,14 +381,14 @@ func TestCrossPackageScalarInheritance(t *testing.T) {
 		t.Fatalf("BpsBonus=500 should pass: %v", err)
 	}
 
-	// Below the scalar's @min(0) — must fail.
+	// Below the scalar's @min(0) - must fail.
 	bad := good
 	bad.BpsBonus = -1
 	if err := bad.Validate(); err == nil {
 		t.Errorf("BpsBonus=-1 should fail @min(0) from shared.PercentBP")
 	}
 
-	// Above the scalar's @max(10000) — must fail.
+	// Above the scalar's @max(10000) - must fail.
 	bad2 := good
 	bad2.BpsBonus = 99999
 	if err := bad2.Validate(); err == nil {
@@ -400,7 +400,7 @@ func TestCrossPackageScalarInheritance(t *testing.T) {
 // inheritance respects the field's optional/pointer wrapping.
 // `receiptURL shared.SafeURL?` carries the scalar's @format(url)
 // + @maxLength(2048) but the validator must nil-guard before
-// dereferencing the pointer — exactly the same pattern as plain
+// dereferencing the pointer - exactly the same pattern as plain
 // optional-string validators.
 func TestCrossPackageScalarInheritanceOptional(t *testing.T) {
 	// Nil pointer → validators short-circuit, no error.
@@ -438,9 +438,9 @@ func TestArrayOfScalarInheritance(t *testing.T) {
 		return ordersapi.Order{
 			ID:       "ord_ABC12345",
 			Customer: ordersapi.Customer{ID: "550e8400-e29b-41d4-a716-446655440000", Email: "x@y.com", Name: "X", PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"}},
-			Items:    []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 1}},
+			Items:    []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 2}},
 			AuditedBy: usersapi.UserRef{ID: "u-admin", Name: "Admin"},
-			TotalCents: 1,
+			TotalCents: 2,
 			Status:   ordersapi.OrderStatusPending,
 			Currency: "USD",
 			Tags:     tags,
@@ -448,7 +448,7 @@ func TestArrayOfScalarInheritance(t *testing.T) {
 		}
 	}
 
-	// Happy path — every tag matches Tag's scalar pattern.
+	// Happy path - every tag matches Tag's scalar pattern.
 	good := base([]ordersapi.Tag{"web", "mobile-2"})
 	if err := good.Validate(); err != nil {
 		t.Fatalf("clean tags should pass: %v", err)
@@ -461,13 +461,13 @@ func TestArrayOfScalarInheritance(t *testing.T) {
 		t.Errorf(`"Web" should fail Tag's @pattern via per-element loop`)
 	}
 
-	// Per-element @minLength fires — empty string in a slot.
+	// Per-element @minLength fires - empty string in a slot.
 	withEmpty := base([]ordersapi.Tag{"web", ""})
 	if err := withEmpty.Validate(); err == nil {
 		t.Errorf("empty tag entry should fail Tag's @minLength(1) via per-element loop")
 	}
 
-	// Per-element @maxLength fires — 33-char string.
+	// Per-element @maxLength fires - 33-char string.
 	tooLong := base([]ordersapi.Tag{strings.Repeat("a", 33)})
 	if err := tooLong.Validate(); err == nil {
 		t.Errorf("33-char tag should fail Tag's @maxLength(32) via per-element loop")
@@ -497,9 +497,9 @@ func TestMapScalarInheritance(t *testing.T) {
 		return ordersapi.Order{
 			ID:        "ord_ABC12345",
 			Customer:  ordersapi.Customer{ID: "550e8400-e29b-41d4-a716-446655440000", Email: "x@y.com", Name: "X", PrimaryAddress: ordersapi.Address{Street: "x", City: "x", PostalCode: "94105", Country: "US"}},
-			Items:     []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 1}},
+			Items:     []ordersapi.LineItem{{ProductID: "p1", Sku: "SKU-AAAA", Quantity: 1, UnitCents: 2}},
 			AuditedBy: usersapi.UserRef{ID: "u-admin", Name: "Admin"},
-			TotalCents: 1,
+			TotalCents: 2,
 			Status:    ordersapi.OrderStatusPending,
 			Currency:  "USD",
 			Tags:      []ordersapi.Tag{"web"},
@@ -520,7 +520,7 @@ func TestMapScalarInheritance(t *testing.T) {
 		t.Fatalf("empty metadata should validate: %v", err)
 	}
 
-	// Happy path — keys are kebab-lowercase Tag, values are URLs.
+	// Happy path - keys are kebab-lowercase Tag, values are URLs.
 	good := base(map[ordersapi.Tag]sharedapi.SafeURL{
 		"primary": "https://example.com/a",
 		"backup":  "https://example.com/b",
@@ -576,7 +576,7 @@ func TestMapValueArrayOfScalar(t *testing.T) {
 		t.Fatalf("nil channels should validate: %v", err)
 	}
 
-	// Happy path — every Tag matches the scalar's pattern.
+	// Happy path - every Tag matches the scalar's pattern.
 	good := customer(map[string][]ordersapi.Tag{
 		"email": {"welcome", "newsletter"},
 		"sms":   {"otp"},
@@ -585,7 +585,7 @@ func TestMapValueArrayOfScalar(t *testing.T) {
 		t.Fatalf("clean channels should validate: %v", err)
 	}
 
-	// One bad element inside one slice — outer loop reaches the
+	// One bad element inside one slice - outer loop reaches the
 	// bad bucket, inner loop hits the bad tag, @pattern fails.
 	badInner := customer(map[string][]ordersapi.Tag{
 		"email": {"welcome", "BadTag"}, // uppercase fails Tag's @pattern
@@ -594,7 +594,7 @@ func TestMapValueArrayOfScalar(t *testing.T) {
 		t.Errorf("uppercase tag inside a channel slice should fail Tag's @pattern via nested loop")
 	}
 
-	// Empty string in a different bucket — fails Tag's @minLength
+	// Empty string in a different bucket - fails Tag's @minLength
 	// from inside the inner loop.
 	emptyInner := customer(map[string][]ordersapi.Tag{
 		"sms": {""},
@@ -603,7 +603,7 @@ func TestMapValueArrayOfScalar(t *testing.T) {
 		t.Errorf("empty tag in nested slice should fail Tag's @minLength via inner loop")
 	}
 
-	// 33-char element — fails Tag's @maxLength from the inner loop.
+	// 33-char element - fails Tag's @maxLength from the inner loop.
 	longInner := customer(map[string][]ordersapi.Tag{
 		"email": {strings.Repeat("a", 33)},
 	})
@@ -613,7 +613,7 @@ func TestMapValueArrayOfScalar(t *testing.T) {
 }
 
 // TestNestedMapScalarBothSides drives the recursive scalar walker
-// through `index map<string, map<Tag, shared.SafeURL>>?` —
+// through `index map<string, map<Tag, shared.SafeURL>>?` -
 // validators inherited from BOTH inner sides (Tag on the inner
 // key, shared.SafeURL on the inner value) cascade through a
 // doubly-nested for-range emit. Either side rejecting a single
@@ -630,7 +630,7 @@ func TestNestedMapScalarBothSides(t *testing.T) {
 		}
 	}
 
-	// Happy path — every inner key matches Tag's pattern, every
+	// Happy path - every inner key matches Tag's pattern, every
 	// inner value matches SafeURL's @format(url).
 	good := customer(map[string]map[ordersapi.Tag]sharedapi.SafeURL{
 		"primary": {"alpha": "https://example.com/a", "beta": "https://example.com/b"},
@@ -640,7 +640,7 @@ func TestNestedMapScalarBothSides(t *testing.T) {
 		t.Fatalf("clean nested map should validate: %v", err)
 	}
 
-	// Bad inner KEY — uppercase fails Tag's @pattern, traversed
+	// Bad inner KEY - uppercase fails Tag's @pattern, traversed
 	// via the outer map's value iteration.
 	badKey := customer(map[string]map[ordersapi.Tag]sharedapi.SafeURL{
 		"primary": {"BadKey": "https://example.com"},
@@ -649,7 +649,7 @@ func TestNestedMapScalarBothSides(t *testing.T) {
 		t.Errorf("bad inner key should fail Tag's @pattern through nested map walker")
 	}
 
-	// Bad inner VALUE — non-URL fails SafeURL's @format(url).
+	// Bad inner VALUE - non-URL fails SafeURL's @format(url).
 	badVal := customer(map[string]map[ordersapi.Tag]sharedapi.SafeURL{
 		"primary": {"alpha": "not-a-url"},
 	})
@@ -659,7 +659,7 @@ func TestNestedMapScalarBothSides(t *testing.T) {
 }
 
 // TestMultiArrayScalarInheritance drives the recursive walker
-// through `gridLabels Tag[][]` — a slice-of-slices that the
+// through `gridLabels Tag[][]` - a slice-of-slices that the
 // extended parser/AST now accept. Each scalar decorator on Tag
 // produces ONE doubly-nested for-loop pair, and a single bad
 // element in any inner slice fails the wrapping struct.
@@ -674,7 +674,7 @@ func TestMultiArrayScalarInheritance(t *testing.T) {
 		}
 	}
 
-	// Happy path — every cell matches Tag's pattern.
+	// Happy path - every cell matches Tag's pattern.
 	good := customer([][]ordersapi.Tag{
 		{"row-1", "col-a"},
 		{"row-2", "col-b", "col-c"},
@@ -696,7 +696,7 @@ func TestMultiArrayScalarInheritance(t *testing.T) {
 		t.Fatalf("empty inner slice should validate: %v", err)
 	}
 
-	// Bad cell — uppercase fails Tag's @pattern via the inner
+	// Bad cell - uppercase fails Tag's @pattern via the inner
 	// loop nested inside the outer loop.
 	bad := customer([][]ordersapi.Tag{
 		{"row-1", "BadCell"},
@@ -705,7 +705,7 @@ func TestMultiArrayScalarInheritance(t *testing.T) {
 		t.Errorf("bad cell should fail Tag's @pattern via doubly-nested loop")
 	}
 
-	// Bad cell deeper — second outer slice, first inner element.
+	// Bad cell deeper - second outer slice, first inner element.
 	badDeeper := customer([][]ordersapi.Tag{
 		{"row-1"},
 		{strings.Repeat("a", 33)}, // fails @maxLength
@@ -718,7 +718,7 @@ func TestMultiArrayScalarInheritance(t *testing.T) {
 // TestNumericPointerValidatorsCompile pins the numeric-validator
 // codegen fix that handles pointer fields (T? / @nullable). Before
 // the fix, `loyaltyPoints int @nullable @min(0)` produced
-// `if v.LoyaltyPoints < 0` — invalid because *int can't be
+// `if v.LoyaltyPoints < 0` - invalid because *int can't be
 // compared to an untyped int. The fix injects the nil-guard +
 // deref so the comparison succeeds.
 func TestNumericPointerValidatorsCompile(t *testing.T) {
@@ -755,7 +755,7 @@ func TestNumericPointerValidatorsCompile(t *testing.T) {
 // `return users.NewEmailTakenErr("a@b", nil)` and the error layer
 // surfaces the right wire shape.
 func TestUserDomainErrorsConstruct(t *testing.T) {
-	// 404 — bodyless. The constructor takes no args; the framework's
+	// 404 - bodyless. The constructor takes no args; the framework's
 	// `code` / `message` metadata is unexported and never on the wire.
 	notFound := usersapi.NewUserNotFoundErr()
 	if notFound.HTTPStatus() != 404 {
@@ -765,7 +765,7 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 		t.Errorf("UserNotFoundErr.Error() returned empty string")
 	}
 
-	// 409 with body — EmailTaken carries the offending email and
+	// 409 with body - EmailTaken carries the offending email and
 	// optionally the existing user id. The constructor takes a single
 	// EmailTakenBody struct; user-declared fields are accessed via the
 	// embedded body.
@@ -784,7 +784,7 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 		t.Errorf("EmailTakenErr.ExistingID = %v, want pointer to u_42", taken.ExistingID)
 	}
 
-	// 422 ValidationFailed — fields slice + optional hint.
+	// 422 ValidationFailed - fields slice + optional hint.
 	vf := usersapi.NewValidationFailedErr(usersapi.ValidationFailedBody{
 		Fields: []string{"/email", "/avatar/url"},
 	})
@@ -795,7 +795,7 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 		t.Errorf("ValidationFailedErr.Fields = %v, want 2 entries", vf.Fields)
 	}
 
-	// 429 RateLimited — body struct carries user-declared wire fields.
+	// 429 RateLimited - body struct carries user-declared wire fields.
 	// User's `message` field is now an exported wire field on the body
 	// struct; if the caller doesn't set it, it stays at the Go zero
 	// value (callers wrap construction with their own helpers when
@@ -814,7 +814,7 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 		t.Errorf("RateLimitedErr.Message = %q, want \"Slow down, please\"", rl.Message)
 	}
 
-	// 412 StaleVersion — both versions echo back so the client can
+	// 412 StaleVersion - both versions echo back so the client can
 	// reload + diff before retrying.
 	sv := usersapi.NewStaleVersionErr(usersapi.StaleVersionBody{
 		ExpectedVersion: 4,
@@ -835,7 +835,7 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 // typed errors to their declared HTTP status.
 func TestUserDomainErrorsImplementErrorInterface(t *testing.T) {
 	// Each entry doubles as a smoke check that the generated code
-	// compiles with the right interface — the slice literal forces
+	// compiles with the right interface - the slice literal forces
 	// every value into an `error` slot.
 	errs := []error{
 		usersapi.NewUserNotFoundErr(),
@@ -854,7 +854,7 @@ func TestUserDomainErrorsImplementErrorInterface(t *testing.T) {
 }
 
 // TestUserDomainErrorsJSONShape pins the on-the-wire JSON shape under
-// the new design: only user-declared body fields are marshalled — the
+// the new design: only user-declared body fields are marshalled - the
 // framework's internal `code` / `message` are unexported and skipped
 // by encoding/json. EmailTaken's body declares only `email` and an
 // optional `existingId`, so the JSON wire echoes those alone. Clients

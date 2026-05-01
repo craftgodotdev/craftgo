@@ -21,7 +21,7 @@ import (
 //
 // The codegen pass auto-suffixes duplicates with `_2`, `_3`, ... so
 // the package compiles, but the WIRE payload of the two values
-// (`"okok"` vs `"okok1"`) stays distinct — a quiet duplication the
+// (`"okok"` vs `"okok1"`) stays distinct - a quiet duplication the
 // user almost certainly did not intend. Surfaced as warning so
 // existing projects with intentional aliasing keep building.
 func (a *analyzer) checkEnumValueCollisions(files []*ast.File) {
@@ -73,7 +73,7 @@ func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
 				continue
 			}
 			d := a.diag(anchor.Pos, anchor.Pos, lexer.SeverityWarning, CodeEnumValueCollision,
-				"enum value %q collides with %q in enum %s — both normalise to Go const %q; codegen will emit %q to keep the package compilable, but the wire payloads stay distinct (rename one if this duplication was unintended)",
+				"enum value %q collides with %q in enum %s - both normalise to Go const %q; codegen will emit %q to keep the package compilable, but the wire payloads stay distinct (rename one if this duplication was unintended)",
 				dupeName, firstDSL, ed.Name, ed.Name+c.CanonicalGoName, ed.Name+c.ResolvedGoNames[rank+1])
 			if first != nil {
 				d.Related = related(first.Pos, "first declared here (keeps the canonical const name)")

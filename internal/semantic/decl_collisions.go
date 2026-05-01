@@ -74,7 +74,7 @@ func (a *analyzer) checkDeclGoNameCollisions(files []*ast.File) {
 		first := ps[0]
 		for _, dupe := range ps[1:] {
 			d := a.diag(dupe.pos, dupe.pos, lexer.SeverityError, CodeDeclGoNameCollision,
-				"%s %q would emit Go identifier %q which already comes from %s %q (%s) — codegen cannot disambiguate decl names; rename one to fix",
+				"%s %q would emit Go identifier %q which already comes from %s %q (%s) - codegen cannot disambiguate decl names; rename one to fix",
 				dupe.kind, dupe.dslName, goName, first.kind, first.dslName, describeProducedNames(first))
 			d.Related = related(first.pos, "first emitted here")
 		}
@@ -124,11 +124,9 @@ func goNamesProducedBy(d ast.Decl) []producedName {
 		}
 		return out
 	}
-	// MiddlewareDecl is intentionally excluded — its alias lives in
-	// the svccontext package, NOT the types package, so its
-	// `<Name>Middleware` emit cannot collide with anything checked
-	// here. Middleware-vs-middleware uniqueness is handled via the
-	// dedicated `seenMW` map in [collectDecls].
+	// MiddlewareDecl is excluded: its alias lives in the svccontext
+	// package, not the types package. Middleware-vs-middleware
+	// uniqueness is handled via the `seenMW` map in [collectDecls].
 	return nil
 }
 
@@ -146,6 +144,6 @@ func describeProducedNames(p declProducer) string {
 	return "decl emits its name verbatim"
 }
 
-// (helper rendering kept separate for readability — joined on demand
+// (helper rendering kept separate for readability - joined on demand
 // when the declProducer list becomes a subject of the diagnostic.)
 var _ = strings.Join

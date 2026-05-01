@@ -31,7 +31,7 @@ func TestHTTPMiddlewareDisabledByDefault(t *testing.T) {
 }
 
 // TestHTTPMiddlewareEnabled confirms Init flips the gate. The actual
-// span emission is the contrib package's responsibility — we only
+// span emission is the contrib package's responsibility - we only
 // assert the wrapper now routes through otelhttp (downstream still
 // runs and the response status survives).
 func TestHTTPMiddlewareEnabled(t *testing.T) {
@@ -54,7 +54,7 @@ func TestHTTPMiddlewareEnabled(t *testing.T) {
 // TestHTTPMiddlewareInjectsTraceparent pins the response-header
 // contract: when otel is enabled and a span is active on the request
 // context, the wrapper invokes the configured TextMapPropagator to
-// emit the W3C tracecontext `traceparent` header on the response —
+// emit the W3C tracecontext `traceparent` header on the response -
 // no bespoke header names. The format is the standard
 // `<version>-<trace-id>-<span-id>-<flags>` quad, which clients can
 // re-feed into their own propagator to attach to the same trace tree.
@@ -79,7 +79,7 @@ func TestHTTPMiddlewareInjectsTraceparent(t *testing.T) {
 }
 
 // TestHTTPMiddlewareDisabledOmitsTraceparent pins the negative case:
-// with the gate closed, no trace headers leak — important for test
+// with the gate closed, no trace headers leak - important for test
 // harnesses running under `Disable()` that assert on a deterministic
 // header set.
 func TestHTTPMiddlewareDisabledOmitsTraceparent(t *testing.T) {

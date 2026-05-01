@@ -82,7 +82,7 @@ func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true 
 // number of [Option] values to override.
 //
 // `_` is the project's ServiceContext; it's accepted only to mirror the
-// documented constructor signature — the runtime doesn't introspect it.
+// documented constructor signature - the runtime doesn't introspect it.
 func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
@@ -143,7 +143,7 @@ func (s *Server) Handle(pattern string, h http.Handler) *Server {
 // With looks up every middleware name in the registered table and wraps
 // h in the order given (first name = outermost). Unknown names are
 // skipped silently so a route can declare `@middlewares(Optional)` even
-// when the wiring isn't installed yet — the runtime will pick it up the
+// when the wiring isn't installed yet - the runtime will pick it up the
 // moment RegisterMiddleware adds it.
 func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	if len(names) == 0 {
@@ -186,7 +186,7 @@ func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
 }
 
 // SetDefaultMaxHeaderSize configures the default request header size cap
-// (in kilobytes — Go's http.Server uses a kilobyte unit internally).
+// (in kilobytes - Go's http.Server uses a kilobyte unit internally).
 func (s *Server) SetDefaultMaxHeaderSize(kb int) *Server {
 	s.defaultMaxHeaderKB = kb
 	return s
@@ -234,7 +234,7 @@ func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func
 // Recovery (always outermost). Health endpoints are wired the first
 // time Handler is called unless [WithoutDefaultHealth] was set.
 //
-// This is the entry point both [Server.Start] and tests use — wrap
+// This is the entry point both [Server.Start] and tests use - wrap
 // `httptest.NewServer(srv.Handler())` to exercise the full chain
 // without binding a real listener.
 func (s *Server) Handler() http.Handler {

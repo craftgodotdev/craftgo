@@ -16,7 +16,7 @@ func TestDiscardSwallowsEverything(t *testing.T) {
 	d.Info("i", String("k", "v"))
 	d.Warn("w")
 	d.Error("e", Err(errors.New("boom")))
-	// Context-aware path goes through the WithContext chain — no
+	// Context-aware path goes through the WithContext chain - no
 	// dedicated `*Ctx` shorthand on the interface.
 	d.WithContext(context.Background()).Info("ctx-info")
 	if d.With(String("k", "v")) == nil {

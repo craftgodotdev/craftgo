@@ -2,31 +2,22 @@ package semantic
 
 import (
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/idents"
 	"github.com/dropship-dev/craftgo/internal/lexer"
 )
 
-// builtinTypes is the closed set of primitive type spellings the DSL
-// recognises out of the box. Any single-segment [ast.NamedTypeRef]
-// whose name is not in this set MUST resolve to a declaration in the
-// current package; otherwise the analyser fires
-// [CodeRefUnknownSymbol] so typos like `strg` instead of `string`
-// surface as errors instead of silently passing through to codegen.
-var builtinTypes = map[string]bool{
-	"string": true, "bool": true,
-	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
-	"uint": true, "uint8": true, "uint16": true, "uint32": true, "uint64": true,
-	"float32": true, "float64": true,
-	"bytes":  true,
-	"any":    true,
-	"object": true, // permissive bag-of-fields, used in `@example({...})`
-	"file":   true,
-}
+// builtinTypes aliases the canonical [idents.BuiltinTypes] table so
+// existing local references keep compiling. Lives in [internal/idents]
+// so the parser's disambiguation rules consult the same set without
+// duplicating the entries - adding a primitive is now a one-place
+// edit.
+var builtinTypes = idents.BuiltinTypes
 
 // checkImports validates per-file import sections for redundancy and
 // alias collisions. The two diagnostics are complementary:
 //
-//   - [CodeImportDuplicate]    — same path imported twice in one file.
-//   - [CodeImportAliasConflict] — two imports share the same alias
+//   - [CodeImportDuplicate]    - same path imported twice in one file.
+//   - [CodeImportAliasConflict] - two imports share the same alias
 //     (explicit or implicit), making qualified references ambiguous.
 //
 // Both are file-scoped: a project that imports `shared` from two
@@ -49,7 +40,7 @@ func (a *analyzer) checkImports(files []*ast.File) {
 			}
 			if prev, dup := seenAlias[alias]; dup {
 				d := a.diag(imp.Pos, imp.Pos, lexer.SeverityError, CodeImportAliasConflict,
-					"import alias %q already bound to %q — qualify one of them with an explicit alias",
+					"import alias %q already bound to %q - qualify one of them with an explicit alias",
 					alias, prev.Path)
 				d.Related = related(prev.Pos, "first bound here")
 				continue
@@ -60,7 +51,7 @@ func (a *analyzer) checkImports(files []*ast.File) {
 }
 
 // importImplicitAlias returns the trailing path segment of an import
-// path — the alias the DSL exposes when the user did not write one
+// path - the alias the DSL exposes when the user did not write one
 // explicitly. Mirrors the resolution in [findDeclAcross] (LSP) and
 // [importAliasSet] above.
 func importImplicitAlias(path string) string {
@@ -74,7 +65,7 @@ func importImplicitAlias(path string) string {
 
 // checkLocalTypeRefs walks every NamedTypeRef in fields, mixins,
 // scalar primitives, generic args, method request/response types, and
-// middleware param types — for each single-segment name (no `pkg.`
+// middleware param types - for each single-segment name (no `pkg.`
 // prefix) it verifies the name resolves to either a built-in
 // primitive or a top-level declaration in the current package. The
 // qualified-ref pass in imports.go covers the multi-segment case.
@@ -83,7 +74,7 @@ func importImplicitAlias(path string) string {
 // recognised inside that decl's body so `Page<T> { items T[] }` does
 // not flag `T` as unknown. Single-segment names that match an
 // import alias (or the implicit alias derived from the import path)
-// are also skipped — the parser's recovery for malformed qualified
+// are also skipped - the parser's recovery for malformed qualified
 // refs (`shared.` with no symbol) leaves a single-part `shared` in
 // the AST, and reporting that as an "unknown type" would mislead the
 // user away from the real "expected identifier" defect.
@@ -103,7 +94,7 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 				}
 			case *ast.ScalarDecl:
 				// Scalar primitives are intentionally NOT validated
-				// here — see [TestScalarUnknownPrimitiveSkipped]. The
+				// here - see [TestScalarUnknownPrimitiveSkipped]. The
 				// type-compat pass tolerates unknown spellings on
 				// purpose so future primitive additions don't break
 				// projects that pulled them in via dependencies.
@@ -170,7 +161,7 @@ func paramSet(params []string) map[string]bool {
 	return out
 }
 
-// checkRefsInMember dispatches on the type-body member shape — a
+// checkRefsInMember dispatches on the type-body member shape - a
 // [Field] carries a TypeRef; a [Mixin] is a NamedTypeRef on its own.
 func (a *analyzer) checkRefsInMember(m ast.TypeMember, typeParams, imports map[string]bool) {
 	switch v := m.(type) {
@@ -209,7 +200,7 @@ func (a *analyzer) checkLocalTypeRef(t *ast.TypeRef, typeParams, imports map[str
 // valid inside `@errors(...)` decorator args (handled separately by
 // [checkErrorRefs]); allowing them here would let a user write
 // `field someUser UserNotFound` which compiles but produces a
-// generated struct embedding an HTTP error type — a confusing
+// generated struct embedding an HTTP error type - a confusing
 // category mistake. The diagnostic that fires when an error name
 // is used as a field type carries an explicit hint pointing the
 // user at `@errors(<name>)`.
@@ -235,19 +226,19 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 	}
 	if _, ok := a.pkg.Errors[name]; ok {
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-			"%q is an error declaration, not a type — errors are only valid inside `@errors(...)`; declare a separate `type` if you need this shape as a field value",
+			"%q is an error declaration, not a type - errors are only valid inside `@errors(...)`; declare a separate `type` if you need this shape as a field value",
 			name)
 		return
 	}
 	if imports != nil && imports[name] {
-		// Bare alias used in a type position — almost always a typo
+		// Bare alias used in a type position - almost always a typo
 		// for `alias.SomeType`, sometimes the parser's recovery from
 		// a malformed `alias.` literal (in which case a parse error
 		// already fires at the trailing dot). Either way the right
 		// diagnostic points at the bare name and tells the user they
 		// need a member after it.
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-			"%q is an imported package, not a type — qualify it as %q.<TypeName>",
+			"%q is an imported package, not a type - qualify it as %q.<TypeName>",
 			name, name)
 		return
 	}
@@ -257,7 +248,7 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 }
 
 // isLocalType reports whether name resolves to a TYPE-position symbol
-// in the current package — types, enums, or scalars. Errors are
+// in the current package - types, enums, or scalars. Errors are
 // EXCLUDED on purpose: they belong only in `@errors(...)` and are
 // surfaced with a dedicated diagnostic in [checkLocalNamedRef] rather
 // than collapsed into the generic "unknown type" message.

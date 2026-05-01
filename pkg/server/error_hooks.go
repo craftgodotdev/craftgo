@@ -7,8 +7,8 @@ import (
 
 // ValidationFailedHandler is the function shape every generated
 // handler calls when `req.Validate()` returns a non-nil error. The
-// default implementation mirrors `http.Error` — a 400 with the
-// validator's message — and applications swap it in by calling
+// default implementation mirrors `http.Error` - a 400 with the
+// validator's message - and applications swap it in by calling
 // [SetDefaultValidationFailed] once at startup.
 type ValidationFailedHandler func(w http.ResponseWriter, r *http.Request, err error)
 
@@ -53,7 +53,7 @@ func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 // fall back to the default.
 //
 // Health endpoints, static handlers, and middleware-rejected requests
-// still bypass this handler — only routes that reach the mux without
+// still bypass this handler - only routes that reach the mux without
 // a match trigger it.
 func (s *Server) SetHandleNotFound(h http.Handler) *Server {
 	s.mu.Lock()

@@ -15,7 +15,7 @@ const (
 	EOF Kind = iota
 	// Error wraps a malformed token; the offending source slice is in Text and
 	// a Diagnostic is recorded on the [Lexer]. Parsing should treat this as
-	// "skip and continue" — the diagnostic carries the message for users.
+	// "skip and continue" - the diagnostic carries the message for users.
 	Error
 
 	// Ident is any identifier that is not a reserved keyword.
@@ -151,7 +151,7 @@ var keywords = map[string]Kind{
 //
 // Text holds the literal source slice that produced this token (including
 // surrounding quotes for [String] / [RawString], suffix for [Duration] /
-// [Size]). For keyword tokens, Text is the keyword spelling — useful when
+// [Size]). For keyword tokens, Text is the keyword spelling - useful when
 // echoing source without consulting [kindNames].
 type Token struct {
 	Kind Kind
@@ -160,7 +160,7 @@ type Token struct {
 	// Doc is the contiguous run of `//` line comments immediately
 	// preceding this token, with the leading `//` and a single trailing
 	// space stripped. A blank line between a comment block and the next
-	// token discards the block — only "doc-attached" comments arrive here.
+	// token discards the block - only "doc-attached" comments arrive here.
 	Doc []string
 }
 

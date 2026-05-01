@@ -112,7 +112,7 @@ func buildLogicData(svcName string, m *ast.Method, imps importPaths, crossPkg Cr
 		SvccontextImport: imps.Svccontext,
 	}
 	// Track which Go imports we've already pinned via [TypesImport]
-	// or an extra entry — duplicates would surface as "duplicate
+	// or an extra entry - duplicates would surface as "duplicate
 	// import" Go errors otherwise.
 	extraSeen := map[string]bool{}
 	addExtra := func(extra extraImport) {
@@ -148,7 +148,7 @@ func buildLogicData(svcName string, m *ast.Method, imps importPaths, crossPkg Cr
 	if hasPassthroughDecorator(m.Decorators) {
 		d.IsPassthrough = true
 		// Passthrough scaffolds don't reference `types.<X>` at all
-		// — the entry point takes (w, r) directly — so drop every
+		// - the entry point takes (w, r) directly - so drop every
 		// type-related import to keep the generated file compiling
 		// cleanly without manual edits.
 		d.NeedsTypes = false

@@ -24,7 +24,7 @@ import (
 // GenerateTypes emits a `types.go` file under outDir/<pkg.Name>/ containing
 // Go struct definitions for every concrete (non-generic) [ast.TypeDecl] in
 // pkg. Generic declarations (those with [ast.TypeDecl.TypeParams]) are
-// skipped — their concrete instances are emitted at the call site once
+// skipped - their concrete instances are emitted at the call site once
 // generic instantiation lands.
 //
 // outDir is the configured `output.types` directory; the package name
@@ -40,7 +40,7 @@ func GenerateTypes(pkg *semantic.Package, outDir string) error {
 
 // GenerateTypesPackage is the multi-package variant of [GenerateTypes].
 // crossPkg adds Go imports for every cross-package DSL alias used in
-// pkg's field types or mixin refs — when nil/empty the output is
+// pkg's field types or mixin refs - when nil/empty the output is
 // identical to single-package codegen.
 func GenerateTypesPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
 	if pkg.Name == "" {
@@ -66,7 +66,7 @@ func GenerateTypesPackage(pkg *semantic.Package, outDir string, crossPkg CrossPk
 //
 // Scalars emit as Go type aliases (`type Email = string`) so a field
 // declared `email Email` resolves at the Go layer to its underlying
-// primitive — the alias keeps the field declaration readable in the
+// primitive - the alias keeps the field declaration readable in the
 // DSL (and OpenAPI) without forcing every consumer to convert
 // between custom and built-in types.
 func buildTypesGo(pkg *semantic.Package, crossPkg CrossPkg) string {
@@ -104,26 +104,18 @@ func renderScalars(pkg *semantic.Package) string {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	var sb strings.Builder
-	for _, n := range names {
+	const tmpl = "// %s is a DSL scalar - alias of %s with the validators declared on it inherited by every field of this type.\ntype %s = %s\n\n"
+	parts := make([]string, len(names))
+	for i, n := range names {
 		sd := pkg.Scalars[n]
-		sb.WriteString("// ")
-		sb.WriteString(sd.Name)
-		sb.WriteString(" is a DSL scalar — alias of ")
-		sb.WriteString(sd.Primitive)
-		sb.WriteString(" with the validators declared on it inherited by every field of this type.\n")
-		sb.WriteString("type ")
-		sb.WriteString(sd.Name)
-		sb.WriteString(" = ")
-		sb.WriteString(scalarPrimitiveGo(sd.Primitive))
-		sb.WriteString("\n\n")
+		parts[i] = fmt.Sprintf(tmpl, sd.Name, sd.Primitive, sd.Name, scalarPrimitiveGo(sd.Primitive))
 	}
-	return sb.String()
+	return strings.Join(parts, "")
 }
 
 // scalarPrimitiveGo maps a DSL primitive name (`string`, `int`,
 // `bytes`, ...) to its Go-side counterpart. Non-listed names pass
-// through verbatim — the parser only accepts a closed primitive set
+// through verbatim - the parser only accepts a closed primitive set
 // so the fallback is conservative rather than defensive.
 func scalarPrimitiveGo(name string) string {
 	switch name {
@@ -207,7 +199,7 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 // (with optional `[T any, ...]` generic params), and body.
 //
 // `@deprecated` on the type prepends a `// Deprecated: ...` line to
-// the doc block — the canonical Go convention so `go vet` and
+// the doc block - the canonical Go convention so `go vet` and
 // `staticcheck` warn on every reference to the type.
 func renderType(td *ast.TypeDecl) string {
 	doc := renderDoc(td.Doc, "")
@@ -247,29 +239,29 @@ func renderTypeParams(params []string) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// renderTypeBody returns the contents of a struct body — fields and
-// mixin embeds — already indented with one leading tab per line. The
+// renderTypeBody returns the contents of a struct body - fields and
+// mixin embeds - already indented with one leading tab per line. The
 // caller wraps with the `struct { ... }` braces. When two DSL field
 // names normalise to the same Go identifier (e.g. `user_id` and
 // `userId` both → `UserID`) the dedup pass appends `_2`, `_3`, ...
 // suffixes so the struct compiles. The semantic phase already
 // surfaced a `field/name-collision` warning pointing the user at
-// the duplicate spellings — this is just the silent recovery so
+// the duplicate spellings - this is just the silent recovery so
 // the build succeeds.
 func renderTypeBody(members []ast.TypeMember) string {
 	resolved := resolvedGoFieldNames(members)
-	var sb strings.Builder
+	parts := make([]string, 0, len(members))
 	fieldIdx := 0
 	for _, m := range members {
 		switch v := m.(type) {
 		case *ast.Field:
-			sb.WriteString(renderField(v, resolved[fieldIdx]))
+			parts = append(parts, renderField(v, resolved[fieldIdx]))
 			fieldIdx++
 		case *ast.Mixin:
-			sb.WriteString(renderMixin(v))
+			parts = append(parts, renderMixin(v))
 		}
 	}
-	return sb.String()
+	return strings.Join(parts, "")
 }
 
 // resolvedGoFieldNames returns the struct-emit Go identifier for each
@@ -306,9 +298,9 @@ func renderField(f *ast.Field, goName string) string {
 // goFieldType returns the final Go type expression for a field with
 // `@nullable` taken into account. The DSL semantics are:
 //
-//   - Already-nilable Go types (slice, map, pointer, interface) — no
+//   - Already-nilable Go types (slice, map, pointer, interface) - no
 //     extra wrap; nil naturally encodes to JSON `null`.
-//   - Value types (string, int, struct) — wrap in `*T` so the field
+//   - Value types (string, int, struct) - wrap in `*T` so the field
 //     can hold nil. Combined with [jsonTag] dropping `omitempty`,
 //     the encoder emits `"f": null` for nil and `"f": value` otherwise.
 //
@@ -374,8 +366,8 @@ func GoTypeRef(t *ast.TypeRef) string {
 // the value `nil` directly. Used by [GoTypeRef] to skip a redundant
 // pointer wrap on optional fields whose base type is already nilable.
 //
-// The check is purely syntactic — it inspects the leading characters of
-// the rendered type, plus a small fixed set of builtin/std-lib names —
+// The check is purely syntactic - it inspects the leading characters of
+// the rendered type, plus a small fixed set of builtin/std-lib names -
 // because the codegen never sees a Go reflect.Type. That's enough to
 // catch every shape the DSL currently produces: arrays, maps, the
 // `file` / `any` / `bytes` builtins, and any user-supplied pointer.
@@ -413,7 +405,7 @@ func goNamedType(n *ast.NamedTypeRef) string {
 		// re-encode the value without being coupled to a specific
 		// raw-message type. The previous mapping
 		// (`json.RawMessage`) preserved bytes verbatim but only
-		// worked under JSON — swapping the codec quietly broke
+		// worked under JSON - swapping the codec quietly broke
 		// marshalling.
 		return "any"
 	case "file":
@@ -432,52 +424,13 @@ func goNamedType(n *ast.NamedTypeRef) string {
 // GoFieldName converts a DSL field name (which is allowed to be
 // lowercase, snake_case, or camelCase) into an exported Go identifier
 // applying the common-initialism rule. The DSL field name is preserved
-// verbatim as the JSON tag — see [jsonTag]. Implementation lives in
+// verbatim as the JSON tag - see [jsonTag]. Implementation lives in
 // [internal/idents] so the semantic analyser can detect collisions
 // using the same conversion rule that codegen emits.
 func GoFieldName(name string) string {
 	return idents.GoFieldName(name)
 }
 
-// splitFieldName is retained for the local-only unit tests that
-// inspect the word-splitting behaviour. The codegen pipeline goes
-// through [GoFieldName] above, which delegates to [internal/idents].
-func splitFieldName(s string) []string {
-	if s == "" {
-		return nil
-	}
-	runes := []rune(s)
-	var parts []string
-	var current strings.Builder
-	flush := func() {
-		if current.Len() > 0 {
-			parts = append(parts, current.String())
-			current.Reset()
-		}
-	}
-	isUpper := func(r rune) bool { return r >= 'A' && r <= 'Z' }
-	isLower := func(r rune) bool { return r >= 'a' && r <= 'z' }
-	for i, r := range runes {
-		if r == '_' || r == '-' {
-			flush()
-			continue
-		}
-		if i > 0 {
-			prev := runes[i-1]
-			switch {
-			case isUpper(r) && isLower(prev):
-				// camelCase boundary: lowercase → uppercase.
-				flush()
-			case isUpper(r) && isUpper(prev) && i+1 < len(runes) && isLower(runes[i+1]):
-				// Acronym boundary: ABc → split before A.
-				flush()
-			}
-		}
-		current.WriteRune(r)
-	}
-	flush()
-	return parts
-}
 
 // jsonTag renders the JSON tag for a field. Per the project convention
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is
@@ -505,7 +458,7 @@ func jsonTag(f *ast.Field) string {
 	}
 	// `@nullable` keeps the field always-emitting so a nil value
 	// surfaces as JSON `null` rather than being skipped. The combined
-	// `T? @nullable` form collapses to "always emit, may be null" —
+	// `T? @nullable` form collapses to "always emit, may be null" -
 	// std encoding/json can't distinguish "absent" from "null" with a
 	// single pointer field, and `@nullable` is the more specific intent.
 	if hasNullableDecorator(f.Decorators) {
@@ -520,7 +473,7 @@ func jsonTag(f *ast.Field) string {
 // isNonBodyBound reports whether f carries an explicit binding decorator
 // that places its value outside the JSON body (`@path`, `@query`,
 // `@header`, `@cookie`). Those values are populated from the URL / headers
-// / cookies — never from the body — so the generated struct should hide
+// / cookies - never from the body - so the generated struct should hide
 // them from JSON entirely.
 func isNonBodyBound(f *ast.Field) bool {
 	for _, d := range f.Decorators {

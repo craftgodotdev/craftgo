@@ -4,17 +4,17 @@ package semantic
 // argument-shape pass (kind-correct, count-correct) and codegen, so
 // every numeric pair we observe here is well-formed AST. We catch:
 //
-//   - `@length(min, max)`, `@range(min, max)` — min must be ≤ max.
-//   - `@minLength` paired with `@maxLength` on the same field — same
+//   - `@length(min, max)`, `@range(min, max)` - min must be ≤ max.
+//   - `@minLength` paired with `@maxLength` on the same field - same
 //     ordering rule applied across decorators.
-//   - `@minItems` / `@maxItems` pair — likewise.
-//   - `@min` / `@max` numeric pair — likewise.
-//   - `@multipleOf(0)` — divides nothing; codegen would emit a runtime
+//   - `@minItems` / `@maxItems` pair - likewise.
+//   - `@min` / `@max` numeric pair - likewise.
+//   - `@multipleOf(0)` - divides nothing; codegen would emit a runtime
 //     %0 panic.
-//   - `@status(code)` — must be in 100..599 (HTTP status range).
-//   - Duration / size literals — must be > 0 (timeout 0s is a footgun;
+//   - `@status(code)` - must be in 100..599 (HTTP status range).
+//   - Duration / size literals - must be > 0 (timeout 0s is a footgun;
 //     0-byte cap rejects every request).
-//   - `@nullable` on `T?` field — redundant per README §"Field
+//   - `@nullable` on `T?` field - redundant per README §"Field
 //     presence semantics" (warning, not error).
 
 import (
@@ -111,7 +111,7 @@ func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 	}
 }
 
-// checkMultipleOf rejects `@multipleOf(0)` — division by zero would
+// checkMultipleOf rejects `@multipleOf(0)` - division by zero would
 // panic at runtime; the user almost always meant a positive divisor.
 func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 	pos := positionalArgs(d)
@@ -127,7 +127,7 @@ func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 }
 
 // checkHTTPStatus rejects `@status(code)` outside the 100..599 range.
-// Tightening to a known-status set is intentionally avoided — RFC
+// Tightening to a known-status set is intentionally avoided - RFC
 // allows future additions and we don't want to lag the spec.
 func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 	pos := positionalArgs(d)
@@ -158,7 +158,7 @@ func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	}
 }
 
-// checkPositiveSize rejects `@maxBodySize(0)` — accepts any request
+// checkPositiveSize rejects `@maxBodySize(0)` - accepts any request
 // silently. Negative sizes are nonsensical.
 func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 	pos := positionalArgs(d)
@@ -185,7 +185,7 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 }
 
 // checkPairOrdering enforces "min decorator ≤ max decorator" when both
-// appear on the same field. Missing one of the pair is fine — the
+// appear on the same field. Missing one of the pair is fine - the
 // solo decorator is unconstrained.
 func (a *analyzer) checkPairOrdering(f *ast.Field) {
 	pairs := []struct{ lo, hi string }{
@@ -213,7 +213,7 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 // decorator is noise.
 //
 // The same pass also flags the harder error of pairing `@required`
-// with `@nullable` — the two contradict each other (one says "must
+// with `@nullable` - the two contradict each other (one says "must
 // not be null", the other says "may be null") and the validate-emit
 // step has no sensible code to generate. Surfacing it as an error
 // pushes the author to pick one.
@@ -233,7 +233,7 @@ func (a *analyzer) checkNullableRedundant(f *ast.Field) {
 	if nullableDec != nil && requiredDec != nil {
 		diag := a.diag(nullableDec.Pos, decoratorEnd(nullableDec),
 			lexer.SeverityError, CodeDecoratorRedundant,
-			"@nullable conflicts with @required on field %q — `@required` already excludes null",
+			"@nullable conflicts with @required on field %q - `@required` already excludes null",
 			f.Name)
 		diag.Related = related(requiredDec.Pos, "@required declared here")
 		return

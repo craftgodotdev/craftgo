@@ -73,7 +73,7 @@ middleware AuthRequired`,
 // ---------- middleware refs cross-package ----------
 
 func TestMiddlewareRefBareCrossPackage(t *testing.T) {
-	// Bare reference resolves through the global union — no `import`
+	// Bare reference resolves through the global union - no `import`
 	// is required for middleware refs (unlike type refs).
 	root, files := projectFixture(t, map[string]string{
 		"shared/mw.craftgo": `package shared
@@ -296,13 +296,13 @@ type T { user shared }`))
 
 func TestLocalTypeRefGenericParam(t *testing.T) {
 	// Type parameter `T` inside a generic body must NOT be flagged as
-	// unknown — the analyser recognises it via the params set.
+	// unknown - the analyser recognises it via the params set.
 	mustClean(t, `package x
 type Page<T> { items T[] cursor string? }`)
 }
 
 func TestLocalTypeRefScalarPrimitiveSkipped(t *testing.T) {
-	// Scalar primitives are intentionally permissive — see
+	// Scalar primitives are intentionally permissive - see
 	// [TestScalarUnknownPrimitiveSkipped]. Verifying here that the
 	// new local-ref pass keeps that contract.
 	mustClean(t, `package x
@@ -357,7 +357,7 @@ type T { id string }`)
 }
 
 // TestLocalNamedRefMultiPartSkipped covers the early-return path for
-// qualified `pkg.Name` references — the cross-package resolver owns
+// qualified `pkg.Name` references - the cross-package resolver owns
 // those, the local-ref pass passes through.
 func TestLocalNamedRefMultiPartSkipped(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -384,7 +384,7 @@ type T { kv map<string, mistype> }`))
 }
 
 // TestLocalTypeRefMiddlewareParamType exercises the middleware param
-// branch of [checkLocalTypeRefs] — the param's TypeRef must also be
+// branch of [checkLocalTypeRefs] - the param's TypeRef must also be
 // validated, not just field types.
 func TestLocalTypeRefMiddlewareParamType(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
@@ -449,7 +449,7 @@ type T {
 // TestErrorNameRejectedAsFieldType pins the bug fix: declaring a field
 // whose type is an `error` name (e.g. `field ref MissingErr` where
 // `error NotFound MissingErr` lives in the same package) MUST raise
-// a diagnostic — errors are reserved for `@errors(...)`.
+// a diagnostic - errors are reserved for `@errors(...)`.
 func TestErrorNameRejectedAsFieldType(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 error NotFound MissingErr

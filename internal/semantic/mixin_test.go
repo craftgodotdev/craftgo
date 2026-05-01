@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
@@ -42,98 +41,58 @@ error BadRequest E { Auditable  details string }`)
 // ---------- Unresolved / non-type ----------
 
 func TestMixinUnresolved(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { Mystery  name string }`))
-	d := findCode(diags, CodeMixinUnresolved)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "Mystery") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `type X { Mystery  name string }`, CodeMixinUnresolved)
+	expectMessage(t, d, "Mystery")
 }
 
 func TestMixinOnEnum(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum Status { Active  Inactive }
-type X { Status  name string }`))
-	d := findCode(diags, CodeMixinNonType)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "enum") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `enum Status { Active  Inactive }
+type X { Status  name string }`, CodeMixinNonType)
+	expectMessage(t, d, "enum")
 }
 
 func TestMixinOnError(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `error NotFound UserNotFound
-type X { UserNotFound  name string }`))
-	d := findCode(diags, CodeMixinNonType)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "error") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `error NotFound UserNotFound
+type X { UserNotFound  name string }`, CodeMixinNonType)
+	expectMessage(t, d, "error")
 }
 
 func TestMixinOnScalar(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `scalar Email string
-type X { Email  name string }`))
-	if findCode(diags, CodeMixinNonType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `scalar Email string
+type X { Email  name string }`, CodeMixinNonType)
 }
 
 func TestMixinOnMiddleware(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `middleware Auth
-type X { Auth  name string }`))
-	if findCode(diags, CodeMixinNonType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `middleware Auth
+type X { Auth  name string }`, CodeMixinNonType)
 }
 
 // ---------- Cycle ----------
 
 func TestMixinSelfCycle(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type A { A  name string }`))
-	if findCode(diags, CodeMixinCycle) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type A { A  name string }`, CodeMixinCycle)
 }
 
 func TestMixinIndirectCycle(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type A { B  a string }
-type B { A  b string }`))
-	d := findCode(diags, CodeMixinCycle)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type A { B  a string }
+type B { A  b string }`, CodeMixinCycle)
 }
 
 // ---------- Conflict ----------
 
 func TestMixinConflictHostVsMixin(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type Profile { id string }
-type User { Profile  id int }`))
-	d := findCode(diags, CodeMixinConflict)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, `"id"`) {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `type Profile { id string }
+type User { Profile  id int }`, CodeMixinConflict)
+	expectMessage(t, d, `"id"`)
 	if len(d.Related) != 1 {
 		t.Errorf("expected related to first declaration, got %+v", d.Related)
 	}
 }
 
 func TestMixinConflictMixinVsMixin(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type A { name string }
+	expectDiag(t, `type A { name string }
 type B { name int }
-type X { A  B }`))
-	if findCode(diags, CodeMixinConflict) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+type X { A  B }`, CodeMixinConflict)
 }
 
 func TestMixinNoConflictDifferentNames(t *testing.T) {
@@ -145,33 +104,21 @@ type X { A  B  email string }`)
 // ---------- Generic mixin arity ----------
 
 func TestMixinGenericArityMismatch(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type Page<T> { items T[] }
+	d := expectDiag(t, `type Page<T> { items T[] }
 type UserList { Page<User, Org>  total int }
 type User {}
-type Org {}`))
-	d := findCode(diags, CodeMixinArity)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "expects 1") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+type Org {}`, CodeMixinArity)
+	expectMessage(t, d, "expects 1")
 }
 
 func TestMixinGenericMissingArgs(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type Page<T> { items T[] }
-type UserList { Page  total int }`))
-	if findCode(diags, CodeMixinArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type Page<T> { items T[] }
+type UserList { Page  total int }`, CodeMixinArity)
 }
 
 func TestMixinGenericArgsOnNonGeneric(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type Profile { id string }
-type User { Profile<X>  name string }`))
-	if findCode(diags, CodeMixinArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type Profile { id string }
+type User { Profile<X>  name string }`, CodeMixinArity)
 }
 
 // ---------- Qualified skip ----------
@@ -207,7 +154,7 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 		},
 	}}
 	// Walk Combined as if it were the top-level mixin of an outer host
-	// — sourceLabel stays "Combined" for both nested Base visits.
+	// - sourceLabel stays "Combined" for both nested Base visits.
 	seen := map[string]fieldOrigin{}
 	a.collectMixinFields("Combined", "Combined", lexer.Position{Line: 1},
 		seen, map[string]bool{"Outer": true})
@@ -224,21 +171,18 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 // rather than crashing the walker.
 func TestMixinNestedQualifiedSkipped(t *testing.T) {
 	// Top-level Mixin "Inner" is unqualified, but inside Inner there's
-	// a qualified mixin `shared.Other` — the qualified-ref pass handles
+	// a qualified mixin `shared.Other` - the qualified-ref pass handles
 	// the user-facing report; collectMixinFields skips silently.
 	mustClean(t, `type Inner { shared.Other  id string }
 type X { Inner  name string }`)
 }
 
 func TestMixinQualifiedSkipped(t *testing.T) {
-	// Qualified mixin (`shared.Profile`) — codegen takes the trailing
+	// Qualified mixin (`shared.Profile`) - codegen takes the trailing
 	// segment, so the mixin pass intentionally skips. The qualified-ref
 	// pass also exempts mixins (see [analyzer.checkQualifiedRefs]), so
 	// neither diagnostic fires.
-	_, diags := Analyze(parseFiles(t, `type X { shared.Profile  name string }`))
-	if findCode(diags, CodeMixinUnresolved) != nil {
-		t.Errorf("mixin pass should skip qualified refs, got %v", codes(diags))
-	}
+	expectNoCode(t, `type X { shared.Profile  name string }`, CodeMixinUnresolved)
 }
 
 // TestMixinNilRefTolerated covers the defensive nil-ref / nil-Name

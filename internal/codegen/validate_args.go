@@ -55,7 +55,7 @@ func stringOrIdentArg(a *ast.DecoratorArg) string {
 }
 
 // stringArrayArg pulls a list of strings out of an `@mimeTypes(["a","b"])`
-// argument. The literal must be an ArrayLit of StringLits — anything
+// argument. The literal must be an ArrayLit of StringLits - anything
 // else returns nil,false so the validator skips the check.
 func stringArrayArg(a *ast.DecoratorArg) ([]string, bool) {
 	if a == nil || a.Value == nil {

@@ -8,7 +8,7 @@ import "context"
 func Discard() Logger { return discardLogger{} }
 
 // discardLogger is the no-op Logger implementation. Every method is a
-// nothing — including the With/WithContext/Enabled surface — so the
+// nothing - including the With/WithContext/Enabled surface - so the
 // receiver type can be passed through middleware that expects to chain
 // further configuration.
 type discardLogger struct{}

@@ -118,10 +118,8 @@ service S {
     @externalDocs("https://docs.example.com")
     @passthrough
     @accepts("application/json")
-    @readTimeout(5s)
-    @writeTimeout(5s)
+    @timeout(5s)
     @maxBodySize(1MB)
-    @maxHeaderSize(32KB)
     @responseDoc("ok")
     @responseExample("e")
     @responseHeaders("h")
@@ -153,7 +151,7 @@ middleware RateLimit(rps: int = 100)
 		"prefix", "middlewares", "group", "tags", "externalDocs", "security",
 		"summary", "operationId", "errors", "status",
 		"consumes", "produces", "passthrough", "accepts",
-		"readTimeout", "writeTimeout", "maxBodySize", "maxHeaderSize",
+		"timeout", "maxBodySize",
 		"responseDoc", "responseExample", "responseHeaders",
 	}
 	seen := collectAllDecoratorNames(f)

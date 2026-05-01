@@ -74,7 +74,7 @@ type ServiceInfo struct {
 type Options struct {
 	// SecuritySchemes lists names declared in the OpenAPI manifest
 	// (`craftgo.design.yaml` openapi.securitySchemes). When nil the
-	// `@security(name)` reference check is skipped — there is no
+	// `@security(name)` reference check is skipped - there is no
 	// authoritative list to compare against. When non-nil, every
 	// scheme name except the literal `noauth` must appear here or
 	// produce a [CodeDecoratorRef] diagnostic.
@@ -103,7 +103,7 @@ type Options struct {
 
 	// skipQualifiedRefCheck disables the in-package
 	// [analyzer.checkQualifiedRefs] pass. Set internally by
-	// [AnalyzeProject] when running per-package analysis — qualified
+	// [AnalyzeProject] when running per-package analysis - qualified
 	// refs are validated by the project-level cross-package resolver
 	// instead. Not exported: external callers should use
 	// [AnalyzeProject] when they want this behaviour.
@@ -153,34 +153,81 @@ func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 		},
 		opts: opts,
 	}
+	a.runDeclPhase(files)
+	a.runNamingPhase(files)
+	a.runDecoratorPhase(files)
+	a.runShapePhase(files)
+	a.runRefPhase(files)
+	return a.pkg, a.diags
+}
+
+// runDeclPhase parses the AST into the package symbol tables and
+// merges service primaries with their `extend` blocks. Every later
+// phase reads the resulting tables, so this MUST run first.
+func (a *analyzer) runDeclPhase(files []*ast.File) {
 	a.checkPackageName(files)
 	a.collectDecls(files)
+	a.mergeServices()
+}
+
+// runNamingPhase enforces naming conventions and detects collisions
+// before any decorator / shape pass runs. Lower-case decl names,
+// case-flip field collisions, enum-value collisions, and
+// suffix-mangled cross-decl Go-name collisions all surface here.
+// Order: decl-name case before any field/enum collision so the
+// IDE squiggle highlights the spelling that needs fixing first.
+func (a *analyzer) runNamingPhase(files []*ast.File) {
 	a.checkDeclNameCase(files)
 	a.checkFieldNameCollisions(files)
 	a.checkEnumValueCollisions(files)
 	a.checkDeclGoNameCollisions(files)
-	a.mergeServices()
-	a.checkFieldUniqueness()
-	a.checkEnums()
-	a.checkServiceMethods()
+}
+
+// runDecoratorPhase covers every decorator-level rule: duplicates on
+// the same site, placement against the registry, argument arity /
+// type / value enums, and reference resolution to declared
+// middlewares / errors / fields. Reference resolution is gated by
+// `skipMiddlewareRefCheck` for the format-only LSP path that runs
+// without a fully-resolved project.
+func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorDuplicates(files)
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
 	if !a.opts.skipMiddlewareRefCheck {
 		a.checkDecoratorRefs(files)
 	}
+}
+
+// runShapePhase covers the structural rules - uniqueness, enum
+// shape, service-method shape, field-type compatibility, range
+// ordering, mixin expansion, generic instantiation, path
+// resolution. These rules consume the symbol tables built in
+// [runDeclPhase] and the decorator metadata validated in
+// [runDecoratorPhase], so they run after both.
+func (a *analyzer) runShapePhase(files []*ast.File) {
+	a.checkFieldUniqueness()
+	a.checkEnums()
+	a.checkServiceMethods()
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
 	a.checkMixins()
 	a.checkGenerics()
 	a.checkPathResolution()
+	a.checkCombinationRules(files)
+}
+
+// runRefPhase resolves every type reference - file-local imports,
+// single-segment names against the package's symbol table, and
+// qualified `pkg.Type` shapes against sibling packages.
+// Cross-package qualified-ref validation is gated by
+// `skipQualifiedRefCheck` so single-file LSP analysis (where
+// sibling packages have not been loaded) does not over-report.
+func (a *analyzer) runRefPhase(files []*ast.File) {
 	a.checkImports(files)
 	a.checkLocalTypeRefs(files)
 	if !a.opts.skipQualifiedRefCheck {
 		a.checkQualifiedRefs()
 	}
-	a.checkCombinationRules(files)
-	return a.pkg, a.diags
 }
 
 // Diagnostic codes emitted by the semantic analyser. Stable identifiers
@@ -230,7 +277,7 @@ const (
 	// name across the merged package.
 	CodeDuplicateDecl = "decl/duplicate"
 	// CodeDeclNameCase fires (severity warning) when a top-level decl
-	// — type / error / enum / service / middleware / scalar — does
+	// - type / error / enum / service / middleware / scalar - does
 	// not start with an uppercase letter. Lower-case decl names are
 	// emitted verbatim by codegen, producing UNEXPORTED Go types
 	// that cannot be imported across packages.
@@ -240,7 +287,7 @@ const (
 	// identifier under [internal/idents.GoFieldName] (e.g. `user_id`
 	// and `userId` both → `UserID`). Codegen still emits the struct
 	// using `_2`, `_3`, ... suffixes so the result compiles, but
-	// the JSON wire shape carries both DSL names verbatim — a quiet
+	// the JSON wire shape carries both DSL names verbatim - a quiet
 	// schema duplication the user almost certainly did not intend.
 	CodeFieldNameCollision = "field/name-collision"
 	// CodeEnumValueCollision fires (severity warning) when two enum
@@ -248,7 +295,7 @@ const (
 	// (e.g. `created` and `Created` both → `<Enum>Created`).
 	// Codegen emits the trailing duplicates with `_2`, `_3`, ...
 	// suffixes so the package compiles, but the wire payload
-	// (string or int) of both values stays distinct — a quiet
+	// (string or int) of both values stays distinct - a quiet
 	// duplication the user usually did not intend.
 	CodeEnumValueCollision = "enum/value-collision"
 	// CodeDeclGoNameCollision fires (severity ERROR) when two
@@ -256,9 +303,9 @@ const (
 	// identifier under codegen's name-mangling rules. Examples
 	// caught by this rule:
 	//
-	//   - `type FooErr` + `error Foo` — both emit `type FooErr`
-	//   - `type FooBody` + `error Foo { ... }` — both emit `type FooBody`
-	//   - `type FooMiddleware` + `middleware Foo` — same
+	//   - `type FooErr` + `error Foo` - both emit `type FooErr`
+	//   - `type FooBody` + `error Foo { ... }` - both emit `type FooBody`
+	//   - `type FooMiddleware` + `middleware Foo` - same
 	//
 	// Auto-suffixing decls would silently rename a symbol the user
 	// references in their own Go code, so this is a hard error
@@ -305,7 +352,7 @@ const (
 	// applied to a field whose type is not a non-array, non-optional
 	// `string`. The wire formats those decorators target carry only
 	// strings (URL segments, header values, cookie values), and the
-	// codegen would otherwise silently skip the field at gen time —
+	// codegen would otherwise silently skip the field at gen time -
 	// surfacing the mismatch at design time gives the author an
 	// actionable error.
 	CodeBindingType = "binding/type"
@@ -320,7 +367,7 @@ const (
 	// CodeMiddlewareCollision fires when two packages in the same
 	// project both declare a `middleware` of the same name. Cross-
 	// package middleware references are global by design, so a
-	// collision would make `@middlewares(Name)` ambiguous — the
+	// collision would make `@middlewares(Name)` ambiguous - the
 	// resolver picks the first match silently. The diagnostic
 	// surfaces every conflicting declaration so the author can
 	// rename or consolidate.
@@ -359,7 +406,7 @@ const (
 	// with `<...>` arguments.
 	CodeGenericNonGeneric = "generic/non-generic"
 
-	// CodePathBaseFormat warns when [Options.BasePath] is malformed —
+	// CodePathBaseFormat warns when [Options.BasePath] is malformed -
 	// missing leading slash, trailing slash, or contains `//`. Code-
 	// gen normalises these so this is a warning, not an error.
 	CodePathBaseFormat = "path/base-format"
@@ -386,7 +433,7 @@ const (
 	// with `/` to escape the design root.
 	CodeImportEscape = "import/escape"
 	// CodeImportDuplicate fires when one file imports the same path
-	// twice (with or without matching aliases) — a clear redundancy
+	// twice (with or without matching aliases) - a clear redundancy
 	// the parser cannot detect without per-file context.
 	CodeImportDuplicate = "import/duplicate"
 	// CodeImportAliasConflict fires when two imports in the same
@@ -394,7 +441,7 @@ const (
 	// later qualified references like `alias.Type` ambiguous.
 	CodeImportAliasConflict = "import/alias-conflict"
 	// CodeImportSelf fires when a file imports a folder whose files
-	// share its own `package X` declaration — the import is a no-op
+	// share its own `package X` declaration - the import is a no-op
 	// since the analyser already merges them by package name.
 	CodeImportSelf = "import/self"
 	// CodeRefUnknownPackage fires when `pkg.Type` references a
@@ -417,7 +464,7 @@ func related(pos lexer.Position, msg string) []lexer.Related {
 // decoratorEnd returns the half-open end position covering `@name`, used
 // as the [Diagnostic.End] for placement / unknown errors. We don't have
 // the exact closing-paren position in the AST, so the range covers just
-// the `@name` token — enough for LSP to underline the offending
+// the `@name` token - enough for LSP to underline the offending
 // decorator without spilling into argument literals.
 func decoratorEnd(d *ast.Decorator) lexer.Position {
 	end := d.Pos
@@ -437,7 +484,7 @@ func decoratorEnd(d *ast.Decorator) lexer.Position {
 //   - [CodeDecoratorPlacement] when the name is registered but the
 //     current site is not in its allowed [Spec.Levels].
 //
-// The check is independent of duplicate / combination rules above — a
+// The check is independent of duplicate / combination rules above - a
 // decorator that is both duplicate and misplaced gets two separate
 // diagnostics, each with its own Code so the IDE can group them.
 func (a *analyzer) checkDecoratorPlacement(files []*ast.File) {
@@ -488,7 +535,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 // checkFieldPlacement applies the placement check to every Field in a
 // type or error body. Mixin members carry no decorators and are skipped.
 // site is [LvlField] for type bodies and [LvlErrorField] for error
-// bodies — the latter rejects request-binding and input-validator
+// bodies - the latter rejects request-binding and input-validator
 // decorators that don't make sense on server-emitted payloads.
 func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.TypeMember) {
 	for _, m := range members {
@@ -506,7 +553,7 @@ func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.
 // scopeLabel is a human-readable phrase for the diagnostic message
 // (e.g. "field User.name").
 //
-// Nil entries are tolerated for symmetry with [checkDecoratorScope] —
+// Nil entries are tolerated for symmetry with [checkDecoratorScope] -
 // the parser doesn't produce them today but the defensive guard keeps a
 // future regression from crashing the analyser.
 func (a *analyzer) checkPlacement(site Level, scopeLabel string, decs []*ast.Decorator) {
@@ -536,7 +583,7 @@ type analyzer struct {
 }
 
 // diag appends a fully-structured diagnostic. End may be equal to pos
-// when only the start point is known — the LSP layer renders that as a
+// when only the start point is known - the LSP layer renders that as a
 // single-column underline. The returned pointer aliases the slot inside
 // a.diags so the caller can attach Related links inline; do not retain
 // the pointer past the next a.diag call (slice growth invalidates it).
@@ -608,7 +655,7 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 		for _, d := range f.Decls {
 			// Defensive: the parser is supposed to drop typed-nil
 			// pointers before they reach the AST, but mid-typing
-			// edits in the LSP have surfaced regressions before — a
+			// edits in the LSP have surfaced regressions before - a
 			// nil decl here used to crash the entire analyse. Skip
 			// instead.
 			if d == nil {
@@ -701,7 +748,7 @@ func (a *analyzer) mergeServices() {
 }
 
 // checkFieldUniqueness enforces that no type or error body has two fields
-// with the same name. Mixin members are skipped here — their fields are
+// with the same name. Mixin members are skipped here - their fields are
 // expanded later (when implemented) and clash detection happens then.
 func (a *analyzer) checkFieldUniqueness() {
 	check := func(name string, members []ast.TypeMember) {
@@ -886,8 +933,8 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 // cannot resolve. CraftGo v1 uses a folder-merge import model: every
 // `.craftgo` file reachable from the design root contributes to a single
 // logical package, so type references should be unqualified. A multi-part
-// qualified name (e.g. `shared.User`) parses successfully — the AST keeps it
-// so the v2 cross-package resolver has something to work with — but produces
+// qualified name (e.g. `shared.User`) parses successfully - the AST keeps it
+// so the v2 cross-package resolver has something to work with - but produces
 // a Go compile error downstream because no Go-level import is emitted. We
 // turn that latent failure into a friendly diagnostic up front.
 //
@@ -961,12 +1008,12 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 // checkCombinationRules enforces the decorator-combination contract
 // documented in the README §"Combination rules":
 //
-//   - `@required` cannot coexist with `T?` (an optional type — they
+//   - `@required` cannot coexist with `T?` (an optional type - they
 //     contradict each other).
 //   - At most one of `@path / @query / @header / @cookie / @body / @form`
 //     may appear on a single field; multiple non-body bindings would
 //     compete for the same value at runtime.
-//   - `@passthrough` methods may not declare `request` or `response` —
+//   - `@passthrough` methods may not declare `request` or `response` -
 //     logic handles the wire format directly, so any framework-managed
 //     shape would be silently ignored.
 //
@@ -997,7 +1044,7 @@ func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 }
 
 // checkFieldCombinations applies the per-field combination checks to
-// every Field in a type or error body. Mixin members are skipped — they
+// every Field in a type or error body. Mixin members are skipped - they
 // have no decorators of their own.
 func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMember) {
 	for _, m := range members {
@@ -1013,7 +1060,7 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 
 // checkBindingFieldType rejects `@path`, `@header`, and `@cookie` on a
 // field whose type is not a non-array, non-optional `string`. Those
-// wire formats carry only strings — the codegen would otherwise
+// wire formats carry only strings - the codegen would otherwise
 // silently skip the field, leaving the author with a runtime gap that
 // no diagnostic explains. We raise the error at design time so the
 // fix lands in the DSL where the mistake was made.
@@ -1030,7 +1077,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			continue
 		}
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-			"field %s.%s: @%s requires a non-array, non-optional string field — got %s",
+			"field %s.%s: @%s requires a non-array, non-optional string field - got %s",
 			parent, f.Name, d.Name, describeTypeRef(f.Type))
 		return
 	}
@@ -1048,7 +1095,7 @@ func isPlainString(t *ast.TypeRef) bool {
 
 // describeTypeRef renders a short human label for a TypeRef so binding
 // diagnostics can say `got string?` / `got string[]` / `got int`. Kept
-// minimal — the diagnostic only needs to point at the mismatch.
+// minimal - the diagnostic only needs to point at the mismatch.
 func describeTypeRef(t *ast.TypeRef) string {
 	if t == nil {
 		return "(none)"
@@ -1113,7 +1160,7 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 // checkMethodCombinations enforces method-level rules:
 //
 //   - `@passthrough` methods must not declare a `request` or `response`
-//     block — logic handles the wire format directly, so any framework-
+//     block - logic handles the wire format directly, so any framework-
 //     managed shape would be silently ignored.
 func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	a.checkPassthroughBody(svcName, m)
@@ -1142,7 +1189,7 @@ func (a *analyzer) checkPassthroughBody(svcName string, m *ast.Method) {
 	}
 	if m.Request != nil {
 		diag := a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodePassthroughBody,
-			"method %s.%s: @passthrough method must not declare request or response — logic handles wire format directly",
+			"method %s.%s: @passthrough method must not declare request or response - logic handles wire format directly",
 			svcName, m.Name)
 		diag.Related = related(passPos, "@passthrough declared here")
 	}
@@ -1152,7 +1199,7 @@ func (a *analyzer) checkPassthroughBody(svcName string, m *ast.Method) {
 			pos = m.Response.Type.Pos
 		}
 		diag := a.diag(pos, pos, lexer.SeverityError, CodePassthroughBody,
-			"method %s.%s: @passthrough method must not declare request or response — logic handles wire format directly",
+			"method %s.%s: @passthrough method must not declare request or response - logic handles wire format directly",
 			svcName, m.Name)
 		diag.Related = related(passPos, "@passthrough declared here")
 	}
@@ -1161,6 +1208,9 @@ func (a *analyzer) checkPassthroughBody(svcName string, m *ast.Method) {
 // PathString renders an [ast.Path] as a printable route string, e.g.
 // `/users/{id}/posts`. A nil path renders as the empty string. Used for
 // route-collision detection and diagnostics.
+//
+// Hot path (called per route during collision detection): Builder
+// keeps the per-segment append allocation-free.
 func PathString(p *ast.Path) string {
 	if p == nil {
 		return ""

@@ -65,7 +65,7 @@ service B { get List /users {} }`))
 }
 
 func TestPathCollisionResolvedViaPrefix(t *testing.T) {
-	// /v1/users (service A's @prefix) vs /v1/users (service B inline) — collision.
+	// /v1/users (service A's @prefix) vs /v1/users (service B inline) - collision.
 	_, diags := Analyze(parseFiles(t, `@prefix("/v1")
 service A { get A /users {} }
 service B { get B /v1/users {} }`))
@@ -160,7 +160,7 @@ service S {
 }
 
 func TestPathParamSkippedWithoutRequest(t *testing.T) {
-	// Path with {id} but no request type — codegen permits this
+	// Path with {id} but no request type - codegen permits this
 	// (user pulls via r.PathValue), so no diag.
 	mustClean(t, `service S {
 	get GetUser /users/{id} {}
@@ -168,7 +168,7 @@ func TestPathParamSkippedWithoutRequest(t *testing.T) {
 }
 
 func TestPathParamSkippedForUnknownRequestType(t *testing.T) {
-	// Unknown request type — placement check covers; we silently skip.
+	// Unknown request type - placement check covers; we silently skip.
 	_, diags := Analyze(parseFiles(t, `service S {
 	get GetUser /users/{id} {
 		request   Mystery
@@ -337,7 +337,7 @@ func TestRequestPathFieldsNilGuards(t *testing.T) {
 }
 
 func TestRequestPathFieldsSkipsMixin(t *testing.T) {
-	// Mixin in request body — request walker skips it (mixin pass owns
+	// Mixin in request body - request walker skips it (mixin pass owns
 	// validation), exercising the `if !ok { continue }` branch.
 	mustClean(t, `type Base { id string }
 type Req { Base  name string }
@@ -390,7 +390,7 @@ func TestWalkBodyForPathCyclicMixin(t *testing.T) {
 
 // TestWalkBodyForPathQualifiedNestedMixin covers the qualified-mixin
 // skip inside walkBodyForPath (the recursive mixin walker shouldn't
-// follow `shared.Foo` — qualified-ref pass handles it).
+// follow `shared.Foo` - qualified-ref pass handles it).
 func TestWalkBodyForPathQualifiedNestedMixin(t *testing.T) {
 	a := &analyzer{pkg: &Package{
 		Types: map[string]*ast.TypeDecl{
@@ -425,7 +425,7 @@ func TestPathBindingNameSkipsNonPathDecorator(t *testing.T) {
 }
 
 func TestCheckMethodPathParamsNilName(t *testing.T) {
-	// Defensive: m.Request set but m.Request.Name nil — early-return
+	// Defensive: m.Request set but m.Request.Name nil - early-return
 	// branch in checkMethodPathParams.
 	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
 	a.checkMethodPathParams("S", &ast.Method{

@@ -15,7 +15,7 @@ import (
 
 // snapshot is the shared parse view that every feature handler operates
 // on. Re-tokenising and re-parsing on every request keeps the wire model
-// simple and matches what `craftgo lint` would see — no risk of stale
+// simple and matches what `craftgo lint` would see - no risk of stale
 // AST drift between editor and CLI.
 type snapshotView struct {
 	src    string
@@ -71,7 +71,7 @@ func rangeOfPosLen(p lexer.Position, n int) protocol.Range {
 }
 
 // findDecl returns the first top-level declaration whose declared name
-// matches. Cross-package lookups are not handled here — the caller can
+// matches. Cross-package lookups are not handled here - the caller can
 // inspect the import list separately if needed.
 func findDecl(f *ast.File, name string) ast.Decl {
 	if f == nil {
@@ -98,7 +98,7 @@ type projectAST struct {
 // buffer's text is preferred over its on-disk content so unsaved edits
 // are reflected in cross-file lookups (hover, go-to-def, references).
 //
-// Returns nil when no project root can be found — callers should
+// Returns nil when no project root can be found - callers should
 // fall back to single-file behaviour in that case.
 func (s *Server) projectASTs(currentPath, currentSrc string) []projectAST {
 	files, _ := s.projectFilesWithRoot(currentPath, currentSrc)
@@ -272,7 +272,7 @@ func inDir(path, dir string) bool {
 // validators, not string-side or array-side ones.
 //
 // Returns 0 (PrimAny) when the cursor is not inside a recognised
-// field row — caller treats that as "no AppliesTo filter".
+// field row - caller treats that as "no AppliesTo filter".
 func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	if view.file == nil {
 		return 0
@@ -313,7 +313,7 @@ func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 // primOfTypeRef reduces a TypeRef to its primitive bucket.
 //
 // Array and map fields collapse to [semantic.PrimArray] regardless of
-// their element type — that's the bucket the array-level decorators
+// their element type - that's the bucket the array-level decorators
 // (`@minItems`, `@maxItems`, `@uniqueItems`) check against. Optional
 // (`?`) is transparent: `int?` is still PrimNumber.
 //

@@ -27,9 +27,9 @@ type middlewareFieldsData struct {
 // GenerateMiddlewares emits two artefacts per `middleware Name` block:
 //
 //  1. The IMPLEMENTATION at `<output.middleware>/<kebab-name>-middleware.go`.
-//     Scaffold-only — gen-once; existing files are left alone.
+//     Scaffold-only - gen-once; existing files are left alone.
 //  2. The TYPE declaration list at `<svccontext-dir>/middlewares.go`.
-//     Always overwritten — derived purely from the DSL.
+//     Always overwritten - derived purely from the DSL.
 //
 // Users embed the generated `Middlewares` struct into their own
 // ServiceContext, then assign each field to a concrete impl in main.go.
@@ -82,7 +82,7 @@ func projectSortedMiddlewareNames(proj *semantic.Project) []string {
 }
 
 // writeProjectMiddlewareImpls emits scaffold files for every middleware
-// in the project. Existing files survive — the framework only writes
+// in the project. Existing files survive - the framework only writes
 // missing scaffolds so user edits in the impl body are preserved across
 // `craftgo gen` runs.
 func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, names []string) error {

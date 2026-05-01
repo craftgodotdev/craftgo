@@ -1,11 +1,11 @@
-# Project runtime configuration — read by main.go at boot via
+# Project runtime configuration - read by main.go at boot via
 # config.Load(). Copy this file to `config.yaml`, edit the values for
 # your environment, and commit the example only (the live file
 # typically lives in `.gitignore` or is rendered from secrets/CI).
 #
 # Every field can also be overridden by an environment variable
 # (CRAFTGO_*) so containerised deployments do not need a file at all
-# — see config.go for the env-var → field mapping.
+# - see config.go for the env-var → field mapping.
 
 # Public HTTP listener.
 server:
@@ -33,17 +33,17 @@ metrics:
 # ---------------------------------------------------------------
 # Environment-variable overrides (each one wins over the file value):
 #
-#   CRAFTGO_CONFIG                — path to this file (default: config/config.yaml)
+#   CRAFTGO_CONFIG                - path to this file (default: config/config.yaml)
 #
-#   CRAFTGO_SERVER_ADDR           — server.addr
+#   CRAFTGO_SERVER_ADDR           - server.addr
 #
-#   CRAFTGO_OTEL_ENABLED          — otel.enabled (true/false)
-#   CRAFTGO_OTEL_EXPORTER         — otel.exporter
-#   CRAFTGO_OTEL_ENDPOINT         — otel.endpoint
-#   CRAFTGO_OTEL_SERVICE_NAME     — otel.serviceName
+#   CRAFTGO_OTEL_ENABLED          - otel.enabled (true/false)
+#   CRAFTGO_OTEL_EXPORTER         - otel.exporter
+#   CRAFTGO_OTEL_ENDPOINT         - otel.endpoint
+#   CRAFTGO_OTEL_SERVICE_NAME     - otel.serviceName
 #
-#   CRAFTGO_METRICS_ENABLED       — metrics.enabled (true/false)
-#   CRAFTGO_METRICS_EXPORTER      — metrics.exporter
-#   CRAFTGO_METRICS_ENDPOINT      — metrics.endpoint
-#   CRAFTGO_METRICS_ADMIN_ADDR    — metrics.adminAddr
-#   CRAFTGO_METRICS_PATH          — metrics.path
+#   CRAFTGO_METRICS_ENABLED       - metrics.enabled (true/false)
+#   CRAFTGO_METRICS_EXPORTER      - metrics.exporter
+#   CRAFTGO_METRICS_ENDPOINT      - metrics.endpoint
+#   CRAFTGO_METRICS_ADMIN_ADDR    - metrics.adminAddr
+#   CRAFTGO_METRICS_PATH          - metrics.path

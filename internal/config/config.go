@@ -36,7 +36,7 @@ type Config struct {
 	OpenAPI OpenAPI `yaml:"openapi"`
 
 	// Package is the Go import path prefix every generated file uses
-	// for its imports — the equivalent of <module>/<relPathFromGoMod>
+	// for its imports - the equivalent of <module>/<relPathFromGoMod>
 	// for the project root. NOT loaded from YAML: populated at gen
 	// time by [ResolveModulePath] which walks up from the project
 	// root looking for a go.mod and computes the effective import
@@ -82,10 +82,8 @@ type OpenAPI struct {
 }
 
 // SecurityScheme is the project-side projection of an OpenAPI 3.1
-// security scheme object. We retain only the fields the codegen needs to
-// validate references and (later) emit accurate OpenAPI components; the
-// full OpenAPI shape is intentionally not modelled here so the manifest
-// stays small. Fields marked with `omitempty` allow concise YAML.
+// security scheme object. Only the fields the codegen needs to
+// validate references and emit OpenAPI components are modelled.
 type SecurityScheme struct {
 	// Type is the OpenAPI 3.1 scheme type: "http", "apiKey", "oauth2",
 	// "openIdConnect", or "mutualTLS". Required.
@@ -110,12 +108,12 @@ const Filename = "craftgo.design.yaml"
 
 // Find walks upward from `start` until it locates a [Filename]. At every
 // candidate directory two strategies are tried, in order: the directory
-// itself, then any direct subdirectory containing the manifest — so
+// itself, then any direct subdirectory containing the manifest - so
 // users can invoke `craftgo gen` from either the design folder or its
 // parent regardless of what the design folder is named (`design`,
 // `contracts`, `apis/v1`, ...). When more than one direct subdir
 // holds a manifest the function bails out with an unambiguous error
-// rather than silently picking one — the caller should pass an
+// rather than silently picking one - the caller should pass an
 // explicit folder via [FindAt].
 //
 // On success it returns the loaded [*Config], the absolute path of the
@@ -130,7 +128,7 @@ func Find(start string) (*Config, string, string, error) {
 	}
 	dir := abs
 	for {
-		// Direct hit — manifest sits in dir.
+		// Direct hit - manifest sits in dir.
 		if path := filepath.Join(dir, Filename); fileExists(path) {
 			cfg, err := Load(path)
 			if err != nil {
@@ -168,7 +166,7 @@ func Find(start string) (*Config, string, string, error) {
 // returns it alongside the resolved project root. When `projectRoot`
 // is empty the parent of `designFolder` is used (legacy convention);
 // pass an explicit value (typically the current working directory)
-// when the design folder lives outside the project tree — the
+// when the design folder lives outside the project tree - the
 // monorepo case where contracts/ and services/ are siblings.
 //
 // All paths in the returned tuple are absolute.
@@ -302,7 +300,7 @@ func (c *Config) applyDefaults() {
 // The walk-up handles both the simple single-module project (go.mod
 // at project root) and the monorepo with one shared go.mod at the
 // repo root and project root inside a sub-tree. Errors when no
-// go.mod is found anywhere upward — gen needs the canonical module
+// go.mod is found anywhere upward - gen needs the canonical module
 // path to emit imports the Go compiler can resolve.
 func ResolveModulePath(projectRoot string) (string, error) {
 	abs, err := filepath.Abs(projectRoot)
@@ -337,7 +335,7 @@ func ResolveModulePath(projectRoot string) (string, error) {
 
 // parseModuleLine scans a go.mod body for the first `module <path>`
 // declaration and returns the path. Avoids pulling in
-// `golang.org/x/mod/modfile` for a single line of parsing — go.mod
+// `golang.org/x/mod/modfile` for a single line of parsing - go.mod
 // syntax for the module clause is fixed and trivial to scan.
 func parseModuleLine(data []byte) string {
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -347,7 +345,7 @@ func parseModuleLine(data []byte) string {
 			continue
 		}
 		// Either `module <path>` or `module "<path>"`. Support both
-		// forms — go.mod accepts quoted paths for unusual chars.
+		// forms - go.mod accepts quoted paths for unusual chars.
 		rest := strings.TrimSpace(strings.TrimPrefix(line, "module"))
 		rest = strings.TrimSuffix(strings.TrimPrefix(rest, `"`), `"`)
 		if rest != "" {

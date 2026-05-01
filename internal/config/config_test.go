@@ -17,8 +17,8 @@ func writeFile(t *testing.T, path, content string) {
 
 // TestLoadDefaults pins the empty-manifest behaviour: with no keys set
 // every Output.* path falls back to its framework default. Package is
-// no longer a manifest field — it is resolved from go.mod at gen time
-// — so an empty manifest is now a valid input.
+// no longer a manifest field - it is resolved from go.mod at gen time
+// - so an empty manifest is now a valid input.
 func TestLoadDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, Filename)
@@ -103,7 +103,7 @@ func TestFindManifestInsideDesignFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(designDir, Filename), "")
-	// Walk from a deep sibling — Find should still discover design/ via
+	// Walk from a deep sibling - Find should still discover design/ via
 	// the project root.
 	deep := filepath.Join(root, "internal", "logic", "userservice")
 	if err := os.MkdirAll(deep, 0o755); err != nil {
@@ -238,7 +238,7 @@ func TestResolveModulePathClosestGoMod(t *testing.T) {
 }
 
 // TestResolveModulePathQuotedModuleLine pins the rare but legal form
-// `module "github.com/foo/bar"` — go.mod accepts quoted paths.
+// `module "github.com/foo/bar"` - go.mod accepts quoted paths.
 func TestResolveModulePathQuotedModuleLine(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module \"github.com/foo/bar\"\n")

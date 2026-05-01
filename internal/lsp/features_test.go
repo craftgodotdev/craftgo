@@ -77,7 +77,7 @@ func TestHoverBuiltinType(t *testing.T) {
 // returns the declaration's signature and doc string.
 func TestHoverUserType(t *testing.T) {
 	view := parseSnapshot("test.craftgo", testDSL)
-	// Find the second `Greeter` token — first is the decl, second is
+	// Find the second `Greeter` token - first is the decl, second is
 	// the reference inside the service method.
 	var hits int
 	var pos protocol.Position
@@ -147,8 +147,8 @@ type T {
 // TestSemanticSurvivesPartialEditsViaSnapshot pins the LSP-side
 // resilience contract: while a user is mid-typing (`extend `,
 // `service `, `type `, etc.) the parser may produce decls that are
-// only partially populated. The full pipeline — parser → semantic
-// analyzer → LSP diagnostics — must complete without panicking; a
+// only partially populated. The full pipeline - parser → semantic
+// analyzer → LSP diagnostics - must complete without panicking; a
 // nil-pointer dereference in any stage crashes the whole language
 // server (a previous regression panicked at semantic.collectDecls
 // when the parser passed a typed-nil ServiceDecl through).
@@ -177,7 +177,7 @@ func TestSemanticSurvivesPartialEditsViaSnapshot(t *testing.T) {
 			// Symbol provider must not crash on partial decls.
 			_ = documentSymbols(view)
 			// Single-file diagnostic mode runs semantic.Analyze on
-			// the same AST — exercise that path too. If a typed-nil
+			// the same AST - exercise that path too. If a typed-nil
 			// decl ever leaks back into f.Decls, this is where the
 			// panic surfaces.
 			if view.file != nil {
@@ -192,7 +192,7 @@ func TestSemanticSurvivesPartialEditsViaSnapshot(t *testing.T) {
 // while a user is mid-typing (`service ` with no identifier yet) the
 // parser produces a decl with an empty Name. Emitting that as a
 // DocumentSymbol crashes the entire outline view, so the LSP must
-// silently skip incomplete decls — the partial syntax surfaces via
+// silently skip incomplete decls - the partial syntax surfaces via
 // diagnostics instead.
 func TestDocumentSymbolsSkipUnnamedDecls(t *testing.T) {
 	cases := []struct {
@@ -225,17 +225,17 @@ func TestDocumentSymbolsSkipUnnamedDecls(t *testing.T) {
 }
 
 // TestCompletionSecuritySchemeAtArgOne pins the autocompletion that
-// fires inside `@security(<arg1>, ...)` — the LSP loads the
+// fires inside `@security(<arg1>, ...)` - the LSP loads the
 // project's craftgo.design.yaml and surfaces every key declared
 // under `openapi.securitySchemes` so the user picks from a closed
 // set instead of memorising names. Completion only fires when the
-// cursor sits right after the opening `(` (arg 1 position) — past
+// cursor sits right after the opening `(` (arg 1 position) - past
 // the first comma we are in `scopes: [...]` and want strings, not
 // scheme names.
 func TestCompletionSecuritySchemeAtArgOne(t *testing.T) {
 	t.Helper()
 	// Spin up an isolated project root with a manifest declaring two
-	// security schemes — kept tiny so the test is hermetic.
+	// security schemes - kept tiny so the test is hermetic.
 	root := t.TempDir()
 	yaml := `package: example.com/m
 output:
@@ -267,7 +267,7 @@ openapi:
 	view := parseSnapshot(srcPath, src)
 	srv := &Server{docs: map[uri.URI]*document{}}
 	uri := "file://" + srcPath
-	// Cursor right after `@security(` — line 2 (0-indexed), char 10.
+	// Cursor right after `@security(` - line 2 (0-indexed), char 10.
 	pos := protocol.Position{Line: 2, Character: 10}
 	items := srv.completionsAt(view, pos, uri, src)
 	got := make(map[string]string, len(items))
@@ -289,7 +289,7 @@ openapi:
 
 // TestCompletionSecuritySchemeNoManifest verifies the LSP stays
 // permissive when the project has no craftgo.design.yaml or no
-// `securitySchemes` map — the completion popup must not crash and
+// `securitySchemes` map - the completion popup must not crash and
 // must not hijack the slot with an empty list (the generic
 // fallback should surface instead).
 func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
@@ -320,7 +320,7 @@ func keys(m map[string]string) []string {
 // TestCompletionSuppressedAfterOpenBrace pins the "no auto-suggest
 // right after `{`" rule. The cursor sitting between `{` and `}`
 // without any in-progress identifier was popping the project-wide
-// decl list — noisy and unhelpful since the user hasn't signalled
+// decl list - noisy and unhelpful since the user hasn't signalled
 // what they want yet. Manual invocation or typing a character should
 // still surface relevant items via the other branches.
 func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
@@ -388,7 +388,7 @@ func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 			t.Errorf("error declaration leaked into type-position completions: %+v", it)
 		}
 	}
-	// Sanity: a real type IS suggested — the filter must not be over-broad.
+	// Sanity: a real type IS suggested - the filter must not be over-broad.
 	gotRealType := false
 	for _, it := range items {
 		if it.Label == "RealType" {
@@ -447,7 +447,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 			t.Errorf("category %q detail = %q, want %q", label, got[label], detail)
 		}
 	}
-	// The category branch must be exclusive — no decorator names or
+	// The category branch must be exclusive - no decorator names or
 	// stray keywords should sneak in.
 	for _, it := range items {
 		switch it.Label {
@@ -458,7 +458,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 }
 
 // TestCompletionErrorCategoryWhileTyping confirms the category list
-// also fires when the user has started typing a partial identifier —
+// also fires when the user has started typing a partial identifier -
 // the LSP client filters by prefix on its own, but the server must
 // surface the full set so client-side filtering has anything to match.
 func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
@@ -474,7 +474,7 @@ func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 
 // TestCompletionErrorCategoryNotInOtherPositions makes sure the
 // category branch does NOT fire once a category has already been
-// chosen — a cursor at `error NotFound <here>` is naming the error,
+// chosen - a cursor at `error NotFound <here>` is naming the error,
 // not picking a category.
 func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 	src := "package x\n\nerror NotFound "

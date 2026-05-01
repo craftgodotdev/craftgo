@@ -1,6 +1,6 @@
 # Local runtime configuration. See example.config.yaml for the full
 # field documentation and the matching CRAFTGO_* environment variable
-# overrides. This file typically belongs in .gitignore — commit
+# overrides. This file typically belongs in .gitignore - commit
 # example.config.yaml as the documented reference instead.
 
 server:

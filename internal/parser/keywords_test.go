@@ -94,7 +94,7 @@ service S {
     @doc("get user")
     @errors(UserNotFound)
     @middlewares(RateLimit)
-    @readTimeout(5s)
+    @timeout(5s)
     @maxBodySize(1MB)
     get GetUser /users/{id} {
         request   User

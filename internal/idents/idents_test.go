@@ -62,7 +62,7 @@ func TestDedupUserIdVsUserID(t *testing.T) {
 	}
 }
 
-// TestDedupThreeWayCollision pins the suffix sequencing — second
+// TestDedupThreeWayCollision pins the suffix sequencing - second
 // duplicate gets `_2`, third gets `_3`, etc. The bare canonical is
 // reserved for the first occurrence regardless of which DSL spelling
 // appeared first in source. All three of `user_id`, `userId`, and
@@ -86,7 +86,7 @@ func TestDedupThreeWayCollision(t *testing.T) {
 // TestDedupOrderStability pins the rule that the FIRST occurrence
 // keeps the bare canonical Go name even when the user later adds a
 // duplicate. Generated code remains stable for previously-published
-// struct shapes — adding a colliding alias does not retroactively
+// struct shapes - adding a colliding alias does not retroactively
 // rename the original field.
 func TestDedupOrderStability(t *testing.T) {
 	resolved, _ := DedupGoFieldNames([]string{"userId", "user_id"})

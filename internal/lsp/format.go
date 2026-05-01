@@ -14,7 +14,7 @@ import (
 // onFormatting answers `textDocument/formatting`. We rely on the
 // canonical formatter in internal/format and replace the document text
 // wholesale via a single TextEdit. If the formatter reports parse
-// diagnostics we leave the buffer untouched — formatting a syntactically
+// diagnostics we leave the buffer untouched - formatting a syntactically
 // broken file would mangle it.
 func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentFormattingParams

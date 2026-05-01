@@ -12,7 +12,7 @@ package semantic
 //     keyed by the `package X` declaration name.
 //
 // Aliases (`import alias "path"`) are parsed and recorded but DO NOT
-// drive resolution — qualified refs use the bare package name. The
+// drive resolution - qualified refs use the bare package name. The
 // alias is preserved for IDE tooling that wants to surface "this
 // import is referenced under name X".
 
@@ -24,7 +24,7 @@ import (
 )
 
 // refResolver carries the per-call state for cross-package resolution.
-// Kept private — external callers see only the [Project] result.
+// Kept private - external callers see only the [Project] result.
 type refResolver struct {
 	proj  *Project
 	diags []Diagnostic
@@ -76,7 +76,7 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) map[string]
 			continue
 		}
 		// Self-import: `package X` importing a folder whose only
-		// `.craftgo` files also declare `package X` — the import is
+		// `.craftgo` files also declare `package X` - the import is
 		// pulling files from itself. Detected when the imported
 		// folder's package name matches the current file.
 		if currentPkg != "" && currentPkg == folderPkg(path) {
@@ -88,7 +88,7 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) map[string]
 		if alias == "" {
 			alias = lastSegment(path)
 		}
-		// First-binding-wins for duplicate aliases — IDE may want to
+		// First-binding-wins for duplicate aliases - IDE may want to
 		// surface the conflict but resolution doesn't depend on it.
 		if _, dup := aliases[alias]; !dup {
 			aliases[alias] = path
@@ -147,7 +147,7 @@ func (r *refResolver) walkTypeRef(t *ast.TypeRef, currentPkg string) {
 
 // walkNamedRef applies the qualified-name validation to one named
 // reference and recurses through its generic arguments. Single-part
-// names are out of scope here — the per-package analyser already
+// names are out of scope here - the per-package analyser already
 // resolves them. Multi-part names look up the prefix as a Package
 // name in the project; failures emit [CodeRefUnknownPackage] or
 // [CodeRefUnknownSymbol].
@@ -168,7 +168,7 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 		return
 	}
 	pkgName, sym := parts[0], parts[1]
-	// Self-qualified `currentPkg.Type` is allowed but redundant —
+	// Self-qualified `currentPkg.Type` is allowed but redundant -
 	// resolve it and don't fire any diagnostic.
 	target := r.proj.Packages[pkgName]
 	if target == nil {
@@ -223,7 +223,7 @@ func (r *refResolver) checkProjectExtendOrphans() {
 				}
 				if found {
 					diag.Msg = fmt.Sprintf(
-						"extend service %q: primary lives in package %q — extend declarations are per-package, move this block into that package or rename the service",
+						"extend service %q: primary lives in package %q - extend declarations are per-package, move this block into that package or rename the service",
 						name, otherPkg)
 					diag.Related = []lexer.Related{{
 						Pos: primaryPos[name],
@@ -268,7 +268,7 @@ func (r *refResolver) checkProjectServiceUniqueness() {
 				End:      o.pos,
 				Severity: lexer.SeverityError,
 				Code:     CodeServiceCollision,
-				Msg: fmt.Sprintf("service %q is declared in multiple packages — codegen output directories collide; rename one",
+				Msg: fmt.Sprintf("service %q is declared in multiple packages - codegen output directories collide; rename one",
 					name),
 			}
 			for j, other := range occs {
@@ -289,7 +289,7 @@ func (r *refResolver) checkProjectServiceUniqueness() {
 // name is declared in more than one package. Bare cross-package refs
 // (`@middlewares(AuthRequired)`) resolve through the global union, so
 // a collision would silently pick the first match the iterator hands
-// back — the diagnostic forces the author to rename or consolidate.
+// back - the diagnostic forces the author to rename or consolidate.
 //
 // Diagnostics are emitted at every conflicting declaration, with
 // related entries pointing at the other occurrences, so the editor's
@@ -315,7 +315,7 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 				End:      o.decl.Pos,
 				Severity: lexer.SeverityError,
 				Code:     CodeMiddlewareCollision,
-				Msg: fmt.Sprintf("middleware %q is declared in multiple packages — names are global; rename or qualify references",
+				Msg: fmt.Sprintf("middleware %q is declared in multiple packages - names are global; rename or qualify references",
 					name),
 			}
 			for j, other := range occs {
@@ -339,7 +339,7 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 // least one package in the project declares a `middleware Name`; if
 // no package does, we report [CodeDecoratorRef] at the reference.
 //
-// Cross-package middleware references stay UNQUALIFIED — the DSL has
+// Cross-package middleware references stay UNQUALIFIED - the DSL has
 // no syntax for `pkg.MiddlewareName` in decorator argument lists, and
 // adding one would force a deeper change to the decorator parser.
 // Name collisions across packages are rare enough in practice that
@@ -371,12 +371,12 @@ func (r *refResolver) checkProjectMiddlewareRefs(files []*ast.File) {
 // value names an undeclared middleware. Two reference forms are
 // accepted, in priority order:
 //
-//  1. Qualified `pkg.Name` — the prefix must match a package in the
+//  1. Qualified `pkg.Name` - the prefix must match a package in the
 //     project AND the trailing segment must be a `middleware Name`
 //     declared in that package. This is the canonical form when
 //     more than one package declares a middleware with the same
 //     bare name (no ambiguity at the call site).
-//  2. Bare `Name` — the trailing segment alone must be unique in
+//  2. Bare `Name` - the trailing segment alone must be unique in
 //     the union of every package's middleware table. Convenient
 //     when names collide-free across packages.
 //
@@ -428,7 +428,7 @@ func lastByte(s string, b byte) int {
 }
 
 // packageHasSymbol reports whether sym is declared in pkg's symbol
-// tables. We accept any kind (type, enum, error, scalar) — DSL
+// tables. We accept any kind (type, enum, error, scalar) - DSL
 // resolution doesn't distinguish at the reference site.
 func packageHasSymbol(pkg *Package, sym string) bool {
 	if pkg == nil {
@@ -450,7 +450,7 @@ func packageHasSymbol(pkg *Package, sym string) bool {
 }
 
 // folderPkg returns the conventional `package X` name a folder is
-// expected to declare — by convention, the last path segment. Used
+// expected to declare - by convention, the last path segment. Used
 // for self-import detection without re-parsing the folder's files.
 // A folder whose actual `package X` declaration diverges from this
 // convention will not trip the warning, which is fine: the

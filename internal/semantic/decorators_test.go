@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
@@ -87,14 +86,14 @@ func TestRegistrySpecLevels(t *testing.T) {
 }
 
 func TestRegistrySpecsHaveDocs(t *testing.T) {
-	// A blank Doc would surface as an empty hover tooltip in the LSP —
+	// A blank Doc would surface as an empty hover tooltip in the LSP -
 	// guard against accidental omissions when the registry grows.
 	for name, s := range Registry {
 		if s.Name != name {
 			t.Errorf("registry key %q != Spec.Name %q", name, s.Name)
 		}
 		if s.Levels == 0 {
-			t.Errorf("@%s has no Levels — must be placed somewhere", name)
+			t.Errorf("@%s has no Levels - must be placed somewhere", name)
 		}
 		if s.Doc == "" {
 			t.Errorf("@%s has empty Doc", name)
@@ -105,81 +104,57 @@ func TestRegistrySpecsHaveDocs(t *testing.T) {
 // ---------- Placement: unknown decorator ----------
 
 func TestPlacementUnknownDecorator(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @nope }`))
-	if !diagsContain(diags, "unknown decorator @nope") {
-		t.Errorf("expected unknown decorator diag, got %v", diags)
-	}
-	if !hasCode(diags, CodeDecoratorUnknown) {
-		t.Errorf("expected code %q, got %v", CodeDecoratorUnknown, codes(diags))
-	}
+	d := expectDiag(t, `type X { name string @nope }`, CodeDecoratorUnknown)
+	expectMessage(t, d, "unknown decorator @nope")
 }
 
 // ---------- Placement: misplaced known decorator ----------
 
 func TestPlacementPrefixOnField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @prefix("/x") }`))
-	if !diagsContain(diags, "@prefix is not allowed on field") {
-		t.Errorf("got %v", diags)
-	}
-	if !hasCode(diags, CodeDecoratorPlacement) {
-		t.Errorf("expected placement code, got %v", codes(diags))
-	}
+	d := expectDiag(t, `type X { name string @prefix("/x") }`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@prefix is not allowed on field")
 }
 
 func TestPlacementRequiredOnService(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@required
-service S {}`))
-	if !diagsContain(diags, "@required is not allowed on service S") {
-		t.Errorf("got %v", diags)
-	}
+	d := expectDiag(t, `@required
+service S {}`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@required is not allowed on service S")
 }
 
 func TestPlacementBindingOnMethod(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	d := expectDiag(t, `service S {
 		@path
 		get GetUser /u {}
-	}`))
-	if !diagsContain(diags, "@path is not allowed on method") {
-		t.Errorf("got %v", diags)
-	}
+	}`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@path is not allowed on method")
 }
 
 func TestPlacementSummaryOnType(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@summary("x")
-type X {}`))
-	if !diagsContain(diags, "@summary is not allowed on type X") {
-		t.Errorf("got %v", diags)
-	}
+	d := expectDiag(t, `@summary("x")
+type X {}`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@summary is not allowed on type X")
 }
 
 func TestPlacementPassthroughOnField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { body string @passthrough }`))
-	if !diagsContain(diags, "@passthrough is not allowed on field") {
-		t.Errorf("got %v", diags)
-	}
+	d := expectDiag(t, `type X { body string @passthrough }`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@passthrough is not allowed on field")
 }
 
 func TestPlacementRequiresOneOfOnField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @requiresOneOf(a, b) }`))
-	if !diagsContain(diags, "@requiresOneOf is not allowed on field") {
-		t.Errorf("got %v", diags)
-	}
+	d := expectDiag(t, `type X { name string @requiresOneOf(a, b) }`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@requiresOneOf is not allowed on field")
 }
 
 func TestPlacementMaxBodySizeOnService(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@maxBodySize(1MB)
-service S {}`))
-	if !diagsContain(diags, "@maxBodySize is not allowed on service S") {
-		t.Errorf("got %v", diags)
-	}
+	d := expectDiag(t, `@maxBodySize(1MB)
+service S {}`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@maxBodySize is not allowed on service S")
 }
 
 func TestPlacementValidatorsOnEnum(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@length(1, 5)
-enum E { A B }`))
-	if !diagsContain(diags, "@length is not allowed on enum E") {
-		t.Errorf("got %v", diags)
-	}
+	d := expectDiag(t, `@length(1, 5)
+enum E { A B }`, CodeDecoratorPlacement)
+	expectMessage(t, d, "@length is not allowed on enum E")
 }
 
 // ---------- Placement: happy path ----------
@@ -246,14 +221,8 @@ func TestPlacementEmitsEndPosition(t *testing.T) {
 }
 
 func TestPlacementListsValidSitesInMessage(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @prefix("/x") }`))
-	d := findCode(diags, CodeDecoratorPlacement)
-	if d == nil {
-		t.Fatalf("expected placement diag, got %v", diags)
-	}
-	if !strings.Contains(d.Msg, "service") {
-		t.Errorf("message should hint @prefix is for service, got %q", d.Msg)
-	}
+	d := expectDiag(t, `type X { name string @prefix("/x") }`, CodeDecoratorPlacement)
+	expectMessage(t, d, "service")
 }
 
 // ---------- Placement: nil-decorator defensive guard ----------
@@ -275,7 +244,7 @@ func TestPlacementNilEntry(t *testing.T) {
 
 // Each test below picks one previously-string-only diagnostic and
 // asserts the IDE-facing structured fields are populated. The Msg
-// substring assertions live in semantic_test.go and continue to pass —
+// substring assertions live in semantic_test.go and continue to pass -
 // these tests sit alongside as the contract for LSP consumers.
 
 func TestCodeOnDuplicateDecl(t *testing.T) {
@@ -299,10 +268,7 @@ func TestCodeOnDuplicateField(t *testing.T) {
 }
 
 func TestCodeOnEnumDuplicateName(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A  A }`))
-	if findCode(diags, CodeEnumDuplicateName) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `enum X { A  A }`, CodeEnumDuplicateName)
 }
 
 func TestCodeOnEnumMixedTypes(t *testing.T) {
@@ -317,29 +283,17 @@ func TestCodeOnEnumMixedTypes(t *testing.T) {
 }
 
 func TestCodeOnEnumDuplicateLiteral(t *testing.T) {
-	_, intDiags := Analyze(parseFiles(t, `enum X { A = 1  B = 1 }`))
-	if findCode(intDiags, CodeEnumDuplicateLiteral) == nil {
-		t.Fatalf("int: got %v", codes(intDiags))
-	}
-	_, strDiags := Analyze(parseFiles(t, `enum Y { A = "x"  B = "x" }`))
-	if findCode(strDiags, CodeEnumDuplicateLiteral) == nil {
-		t.Fatalf("string: got %v", codes(strDiags))
-	}
+	expectDiag(t, `enum X { A = 1  B = 1 }`, CodeEnumDuplicateLiteral)
+	expectDiag(t, `enum Y { A = "x"  B = "x" }`, CodeEnumDuplicateLiteral)
 }
 
 func TestCodeOnDuplicateService(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {}
-service S {}`))
-	if findCode(diags, CodeServiceDuplicate) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `service S {}
+service S {}`, CodeServiceDuplicate)
 }
 
 func TestCodeOnExtendOrphan(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `extend service S { get Op /x {} }`))
-	if findCode(diags, CodeServiceExtendOrphan) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
 }
 
 func TestCodeOnExtendDecorators(t *testing.T) {
@@ -356,18 +310,12 @@ extend service S { get Op /x {} }`))
 }
 
 func TestCodeOnDuplicateMethod(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S { get A /a {} }
-extend service S { post A /b {} }`))
-	if findCode(diags, CodeServiceDuplicateMethod) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `service S { get A /a {} }
+extend service S { post A /b {} }`, CodeServiceDuplicateMethod)
 }
 
 func TestCodeOnDuplicateRoute(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S { get A /x {}  get B /x {} }`))
-	if findCode(diags, CodeServiceDuplicateRoute) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `service S { get A /x {}  get B /x {} }`, CodeServiceDuplicateRoute)
 }
 
 func TestCodeOnDuplicateDecorator(t *testing.T) {
@@ -379,17 +327,11 @@ func TestCodeOnDuplicateDecorator(t *testing.T) {
 }
 
 func TestCodeOnQualifiedRef(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { user shared.User }`))
-	if findCode(diags, CodeQualifiedRef) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { user shared.User }`, CodeQualifiedRef)
 }
 
 func TestCodeOnRequiredOptional(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string? @required }`))
-	if findCode(diags, CodeRequiredOptional) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string? @required }`, CodeRequiredOptional)
 }
 
 func TestCodeOnBindingConflict(t *testing.T) {
@@ -416,14 +358,8 @@ func TestCodeOnBindingType(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			_, diags := Analyze(parseFiles(t, c.src))
-			d := findCode(diags, CodeBindingType)
-			if d == nil {
-				t.Fatalf("want binding/type, got %v", codes(diags))
-			}
-			if !strings.Contains(d.Msg, c.want) {
-				t.Errorf("msg %q missing %q", d.Msg, c.want)
-			}
+			d := expectDiag(t, c.src, CodeBindingType)
+			expectMessage(t, d, c.want)
 		})
 	}
 }
@@ -436,7 +372,7 @@ func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
 }
 
 func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
-	// `code` / `message` are no longer reserved DSL names — they
+	// `code` / `message` are no longer reserved DSL names - they
 	// coexist with the framework's unexported `code` / `message`
 	// metadata via Go's case-sensitive identifier rule (DSL `code` →
 	// exported `Code`, distinct from the lowercase framework field).
@@ -474,16 +410,11 @@ type Y {}`))
 	}
 }
 
-// ---------- helpers ----------
+// Note: TestCodeOnPackageMismatch keeps the inline pattern because it
+// requires TWO source files (multi-package fixture); [expectDiag]
+// takes a single string and would lose the file split.
 
-func hasCode(diags []Diagnostic, code string) bool {
-	for _, d := range diags {
-		if d.Code == code {
-			return true
-		}
-	}
-	return false
-}
+// ---------- helpers ----------
 
 func codes(diags []Diagnostic) []string {
 	out := make([]string, 0, len(diags))

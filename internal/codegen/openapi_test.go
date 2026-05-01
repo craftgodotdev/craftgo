@@ -12,13 +12,31 @@ import (
 
 // ---------- enum / scalar schema emission ----------
 
-// TestGenerateOpenAPIEnumSchemasEmitted pins the bug fix: any field
-// referencing an enum type must produce a `$ref` whose target schema
-// exists under components.schemas. Before the fix, refs were emitted
-// but the schemas were missing — kin-openapi (and every spec parser)
-// rejected the document with "key not found in object".
+// generateOpenAPIToString runs the OpenAPI generator on `src` and
+// returns the resulting YAML body as a string. Wraps the boilerplate
+// (analyze → temp dir → ReadFile) so each golden-driven openapi
+// test reads as just `src` + `expectGolden`.
+func generateOpenAPIToString(t *testing.T, src string) string {
+	t.Helper()
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+// TestGenerateOpenAPIEnumSchemasEmitted pins the bug fix: every field
+// referencing an enum type produces a `$ref` whose target schema
+// lives under components.schemas. Both string-based and int-based
+// enums are exercised. The full YAML goes through a golden snapshot;
+// regressions surface as a diff hunk pointing at the divergent line.
 func TestGenerateOpenAPIEnumSchemasEmitted(t *testing.T) {
-	src := `package design
+	body := generateOpenAPIToString(t, `package design
 enum Priority { Low  Normal  High }
 enum Tier { Bronze = 1  Silver = 2 }
 type Req {
@@ -29,49 +47,18 @@ service S {
     post Make /m {
         request   Req
     }
-}`
-	pkg := analyzePkg(t, src)
-	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
-	body := string(out)
-	for _, want := range []string{
-		"Priority:",
-		"Tier:",
-		"- Low",
-		"- Normal",
-		"- High",
-		"type: integer", // Tier is int-based
-		"type: string",  // Priority is string-based
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing %q in openapi:\n%s", want, body)
-		}
-	}
+}`)
+	expectGolden(t, "openapi-enum-schemas.yaml", body)
 }
 
 // TestGenerateOpenAPIScalarSchemasEmitted covers the parallel fix for
 // scalar declarations.
 func TestGenerateOpenAPIScalarSchemasEmitted(t *testing.T) {
-	src := `package design
+	body := generateOpenAPIToString(t, `package design
 scalar Email string @format("email")
 type Req { addr Email @required }
-service S { post Send /m { request Req } }`
-	pkg := analyzePkg(t, src)
-	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
-	body := string(out)
-	if !strings.Contains(body, "Email:") {
-		t.Errorf("expected Email scalar schema:\n%s", body)
-	}
-	if !strings.Contains(body, "format: email") {
-		t.Errorf("expected format on scalar:\n%s", body)
-	}
+service S { post Send /m { request Req } }`)
+	expectGolden(t, "openapi-scalar-schemas.yaml", body)
 }
 
 // TestGenerateOpenAPIErrorsDecorator pins the @errors flow:
@@ -123,7 +110,7 @@ service S {
 // leading `// comment` blocks fall through as descriptions when no
 // `@doc` is supplied.
 func TestGenerateOpenAPIDocSummaryDescription(t *testing.T) {
-	src := `package design
+	body := generateOpenAPIToString(t, `package design
 // Book represents a catalog entry.
 type Book {
     id    string @doc("Stable identifier.")
@@ -133,31 +120,12 @@ service S {
     @doc("Fetch a single book.")
     @summary("Get a book")
     get GetBook /books/{id} { response Book }
-}`
-	pkg := analyzePkg(t, src)
-	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
-		t.Fatal(err)
-	}
-	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
-	src2 := string(body)
-
-	if !strings.Contains(src2, "Book represents a catalog entry.") {
-		t.Errorf("expected type description from leading // comment:\n%s", src2)
-	}
-	if !strings.Contains(src2, "Stable identifier.") {
-		t.Errorf("expected field description from @doc:\n%s", src2)
-	}
-	if !strings.Contains(src2, "Fetch a single book.") {
-		t.Errorf("expected operation description:\n%s", src2)
-	}
-	if !strings.Contains(src2, "summary: Get a book") {
-		t.Errorf("expected operation summary:\n%s", src2)
-	}
+}`)
+	expectGolden(t, "openapi-doc-summary.yaml", body)
 }
 
 // TestGenerateOpenAPIExampleNullable covers the field-side metadata
-// pair (@example/@nullable). Aliases on enum values were removed —
+// pair (@example/@nullable). Aliases on enum values were removed -
 // the API surface insisted on canonical wire vocabulary.
 func TestGenerateOpenAPIExampleNullable(t *testing.T) {
 	src := `package design
@@ -243,7 +211,7 @@ service S {
 
 	// Type-level: LegacyBook schema is deprecated. The marker shows
 	// up directly under the schema name in the YAML, so a small fixed
-	// window is enough — and dodges the pitfall of "next schema"
+	// window is enough - and dodges the pitfall of "next schema"
 	// indentation (4-space property prefix vs 4-space top-level key).
 	legacyIdx := strings.Index(body, "    LegacyBook:")
 	if legacyIdx < 0 {
@@ -386,7 +354,7 @@ service S {
 
 func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
 	// When the manifest declares no schemes the cross-check is a no-op
-	// — projects that haven't migrated continue to work.
+	// - projects that haven't migrated continue to work.
 	pkg := analyzePkg(t, `service S {
     @security(anything)
     get GetUser /u {}
@@ -455,7 +423,7 @@ func TestGenerateOpenAPI(t *testing.T) {
 		}
 	}
 	// Negative: the basePath must NOT appear at the start of any path
-	// key — that's the doubled-prefix bug from before the fix.
+	// key - that's the doubled-prefix bug from before the fix.
 	if strings.Contains(src, "/v1/api/v1/users/{id}") {
 		t.Errorf("path key still has duplicated basePath:\n%s", src)
 	}
@@ -630,7 +598,7 @@ service S {
 		"in: cookie",
 		"name: session",
 		// Parameter schemas $ref into the matching per-kind schema's
-		// property — that's the canonical-source rule.
+		// property - that's the canonical-source rule.
 		"$ref: '#/components/schemas/CallReqHeader/properties/apiKey'",
 		"$ref: '#/components/schemas/CallReqCookie/properties/session'",
 	} {
@@ -709,7 +677,7 @@ service S {
         response R
     }
 
-    // Decorator override — exact verbatim string.
+    // Decorator override - exact verbatim string.
     @operationId("custom-kebab-id")
     get OverrideID /b {
         response R
@@ -730,7 +698,7 @@ service S {
 }
 
 // TestGenerateOpenAPITagsWithSpaces confirms tag values are written
-// verbatim — including spaces. YAML output quotes them automatically
+// verbatim - including spaces. YAML output quotes them automatically
 // when the value contains a space, so consumer tooling reads back the
 // exact original string.
 func TestGenerateOpenAPITagsWithSpaces(t *testing.T) {
@@ -799,7 +767,7 @@ service S {
 	src := string(out)
 	// Passthrough endpoint advertises `*/*` for its response body
 	// because the framework lets logic write whatever wire format it
-	// likes — there is no schema to publish.
+	// likes - there is no schema to publish.
 	for _, want := range []string{
 		"'*/*'",
 		"multipart/form-data",
@@ -810,7 +778,7 @@ service S {
 		}
 	}
 	// Multipart endpoint must NOT advertise application/json for the
-	// request body — file uploads only flow through multipart.
+	// request body - file uploads only flow through multipart.
 	uploadIdx := strings.Index(src, "operationId: Upload")
 	if uploadIdx < 0 {
 		t.Fatalf("Upload operation not found in spec")

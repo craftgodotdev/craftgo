@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/dropship-dev/craftgo/internal/idents"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
 
@@ -163,7 +164,7 @@ func buildErrorsGo(pkg *semantic.Package, crossPkg CrossPkg) string {
 //	type <Name>Err struct {
 //	    code    string         // unexported framework metadata
 //	    message string         // unexported framework metadata
-//	    <Name>Body              // embedded — flattens into wire JSON
+//	    <Name>Body              // embedded - flattens into wire JSON
 //	}
 //
 //	func New<Name>Err([body <Name>Body]) *<Name>Err { ... }
@@ -172,7 +173,7 @@ func buildErrorsGo(pkg *semantic.Package, crossPkg CrossPkg) string {
 //
 // The constructor takes a single body-struct argument when the DSL
 // declares fields, and zero arguments otherwise. The body struct is
-// the user's "shape" — they fill the fields they care about and
+// the user's "shape" - they fill the fields they care about and
 // hand it off; the framework wraps it with metadata. `code` and
 // `message` live on the err type as unexported fields populated by
 // the constructor; `encoding/json` skips them so only the embedded
@@ -211,7 +212,7 @@ const %[1]s = %[3]s
 // %[2]s is the typed %[4]s error generated for `+"`%[5]s`"+`.
 // The unexported `+"`code`"+` and `+"`message`"+` fields hold the type-bound
 // metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload — clients see only
+// json.Marshal omits them from the wire payload - clients see only
 // the embedded body shape (or `+"`{}`"+` when no body was declared).
 type %[2]s struct {
 	code    string
@@ -252,7 +253,7 @@ func (e *%[2]s) HTTPStatus() int { return %[10]d }
 }
 
 // errorCustomFields returns every Field in the error body. `code` and
-// `message` are NOT special-cased — they coexist with the framework's
+// `message` are NOT special-cased - they coexist with the framework's
 // unexported `code` / `message` metadata fields by virtue of Go's
 // case-sensitive identifiers (DSL `code` → exported Go `Code`,
 // distinct from the unexported framework field).
@@ -269,7 +270,7 @@ func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
 }
 
 // renderErrorCustomStructFields returns the indented struct-body lines
-// for every custom field — one `Name Type \`json:"name"\`` per line.
+// for every custom field - one `Name Type \`json:"name"\`` per line.
 // Empty when no custom fields exist; the surrounding template still
 // produces a valid struct because `Code` / `Message` are always present.
 //
@@ -281,22 +282,21 @@ func renderErrorCustomStructFields(fields []*ast.Field) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	var sb strings.Builder
-	for _, f := range fields {
+	lines := make([]string, len(fields))
+	for i, f := range fields {
 		tag := strconv.Quote(f.Name)
 		if isResponseBoundField(f) {
 			tag = `"-"`
 		}
-		sb.WriteString(fmt.Sprintf("\t%s %s `json:%s`\n",
-			GoFieldName(f.Name), GoTypeRef(f.Type), tag))
+		lines[i] = fmt.Sprintf("\t%s %s `json:%s`\n", GoFieldName(f.Name), GoTypeRef(f.Type), tag)
 	}
-	return sb.String()
+	return strings.Join(lines, "")
 }
 
 // errorResponseBindings walks the error body and returns the
 // `@header` / `@cookie` fields whose value should be written onto the
 // response writer instead of the JSON body. Non-plain-string fields
-// (arrays, optionals, non-string types) are skipped silently — same
+// (arrays, optionals, non-string types) are skipped silently - same
 // fail-soft policy as [collectResponseBindings] for normal responses.
 func errorResponseBindings(ed *ast.ErrorDecl) (headers, cookies []paramBinding) {
 	for _, m := range ed.Body {
@@ -322,7 +322,7 @@ func errorResponseBindings(ed *ast.ErrorDecl) (headers, cookies []paramBinding) 
 }
 
 // isResponseBoundField reports whether f carries `@header` or `@cookie`
-// — used to mark the JSON tag as `"-"` so the field does not double
+// - used to mark the JSON tag as `"-"` so the field does not double
 // up in the body alongside the response-header / cookie write.
 func isResponseBoundField(f *ast.Field) bool {
 	switch bindingFromDecorators(f.Decorators) {
@@ -343,12 +343,12 @@ func renderErrorResponseHeadersMethod(typeName string, headers, cookies []paramB
 	if len(headers) == 0 && len(cookies) == 0 {
 		return ""
 	}
-	var body strings.Builder
+	lines := make([]string, 0, len(headers)+len(cookies))
 	for _, h := range headers {
-		body.WriteString(fmt.Sprintf("\tw.Header().Set(%q, e.%s)\n", h.DSLName, h.GoName))
+		lines = append(lines, fmt.Sprintf("\tw.Header().Set(%q, e.%s)\n", h.DSLName, h.GoName))
 	}
 	for _, c := range cookies {
-		body.WriteString(fmt.Sprintf("\thttp.SetCookie(w, &http.Cookie{Name: %q, Value: e.%s})\n", c.DSLName, c.GoName))
+		lines = append(lines, fmt.Sprintf("\thttp.SetCookie(w, &http.Cookie{Name: %q, Value: e.%s})\n", c.DSLName, c.GoName))
 	}
 	return fmt.Sprintf(`
 // WriteResponseHeaders writes the `+"`@header`"+` / `+"`@cookie`"+` fields
@@ -356,11 +356,11 @@ func renderErrorResponseHeadersMethod(typeName string, headers, cookies []paramB
 // JSON body is encoded so values reach the wire in a single response.
 func (e *%[1]s) WriteResponseHeaders(w http.ResponseWriter) {
 %[2]s}
-`, typeName, body.String())
+`, typeName, strings.Join(lines, ""))
 }
 
 // errSuffix appends `Err` to name unless name already ends in `Err` or
-// `Error` — the smart-suffix rule documented in the README.
+// `Error` - the smart-suffix rule documented in the README.
 func errSuffix(name string) string {
 	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
 		return name
@@ -373,7 +373,7 @@ func errSuffix(name string) string {
 // initialisms ("HTTP", "ID") collapse to their upper form, e.g.
 // `UserNotFound` → `USER_NOT_FOUND` and `DBLockedErr` → `DB_LOCKED_ERR`.
 func screamingSnake(s string) string {
-	parts := splitFieldName(s)
+	parts := idents.SplitFieldName(s)
 	for i, p := range parts {
 		parts[i] = strings.ToUpper(p)
 	}

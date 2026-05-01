@@ -1,8 +1,8 @@
-# craftgo.design.yaml — project manifest read by every CLI command.
+# craftgo.design.yaml - project manifest read by every CLI command.
 # Uncomment optional blocks below as you need them.
 #
 # This file lives at the root of your design folder. The folder name
-# is arbitrary (`design`, `contracts/v1`, `apis`, ...) — every
+# is arbitrary (`design`, `contracts/v1`, `apis`, ...) - every
 # `.craftgo` file in the same directory or a descendant is parsed at
 # gen time. Run `craftgo gen` from the design folder, or pass
 # `-f <design-folder>` from anywhere else.
@@ -43,20 +43,20 @@ openapi:
 
   # Security schemes referenced from `@security(<name>, ...)` in
   # the DSL. The semantic analyser cross-checks every reference
-  # against this map — adding `@security(foo, ...)` requires a
+  # against this map - adding `@security(foo, ...)` requires a
   # matching entry here. Uncomment + edit when you wire authentication.
   # securitySchemes:
-  #   # Bearer-token JWT — typical service-level default. Reference
+  #   # Bearer-token JWT - typical service-level default. Reference
   #   # via `@security(bearer)` on the service or method.
   #   bearer:
   #     type: http
   #     scheme: bearer
   #     bearerFormat: JWT
-  #   # OAuth2 with scopes — reference via
+  #   # OAuth2 with scopes - reference via
   #   # `@security(oauth2, scopes: ["users:write"])` on the method.
   #   oauth2:
   #     type: oauth2
-  #   # API-key in a header / query / cookie — reference via
+  #   # API-key in a header / query / cookie - reference via
   #   # `@security(apiKey)`.
   #   apiKey:
   #     type: apiKey

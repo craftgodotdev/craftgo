@@ -28,13 +28,13 @@ type runtimeData struct {
 // (or the path under `CRAFTGO_CONFIG`) at boot and hands the loaded
 // `*config.Config` to `svccontext.NewServiceContext`.
 //
-// Skipped when `cfg.Output.Main == "-"` — projects opting out of the
+// Skipped when `cfg.Output.Main == "-"` - projects opting out of the
 // generated main.go (test fixtures, library-style modules) don't need
 // the runtime config package; emitting it would only add a stray
 // import and force the module to track yaml.v3.
 //
 // The template body lives in `internal/codegen/templates/`. Edit
-// those files to change the shape of the scaffolded artefact —
+// those files to change the shape of the scaffolded artefact -
 // per-project overrides are out of scope here (the runtime config
 // is meant to be edited freely after the first gen).
 func GenerateRuntimeConfig(cfg *config.Config, projectRoot string) error {
@@ -82,11 +82,10 @@ func GenerateRuntimeConfig(cfg *config.Config, projectRoot string) error {
 //
 // Gen-once: existing svccontext.go is left untouched so user-added
 // fields (database handles, caches, ...) survive regeneration. The
-// adjacent `middlewares.go` IS regenerated; the two files are
-// deliberately split so the auto-managed struct doesn't collide
-// with hand-edited code.
+// adjacent `middlewares.go` IS regenerated; splitting the two keeps
+// the auto-managed struct from colliding with hand-edited code.
 //
-// Skipped when `cfg.Output.Main == "-"` — same rationale as
+// Skipped when `cfg.Output.Main == "-"` - same rationale as
 // [GenerateRuntimeConfig]: opting out of main.go means the project
 // doesn't want the framework's runtime scaffolding in its module.
 func GenerateSvccontext(cfg *config.Config, projectRoot string) error {
@@ -114,7 +113,7 @@ func GenerateSvccontext(cfg *config.Config, projectRoot string) error {
 // renderRuntimeTemplate executes the named template against data.
 // When formatGo is true the result is run through `go/format.Source`
 // so the produced .go file is canonically formatted. YAML templates
-// pass through as-is — gofmt would corrupt them.
+// pass through as-is - gofmt would corrupt them.
 func renderRuntimeTemplate(name string, data any, formatGo bool) ([]byte, error) {
 	t, err := template.ParseFS(builtinTemplates, "templates/"+name)
 	if err != nil {

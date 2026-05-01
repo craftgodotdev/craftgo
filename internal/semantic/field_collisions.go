@@ -12,13 +12,13 @@ import (
 //
 //	type User {
 //	    user_id string  // → Go field UserID
-//	    userId  string  // → Go field UserID — same name!
+//	    userId  string  // → Go field UserID - same name!
 //	}
 //
 // Without intervention, codegen would emit two `UserID` fields and
 // the resulting Go file would not compile. The codegen pass in
 // [internal/codegen] disambiguates by appending `_2`, `_3`, ...
-// suffixes — but that's a silent fix that hides a schema-level
+// suffixes - but that's a silent fix that hides a schema-level
 // duplication: BOTH fields keep their DSL spelling on the JSON wire,
 // so the API contract carries two distinct keys for what the user
 // almost certainly meant as one.
@@ -86,7 +86,7 @@ func (a *analyzer) warnFieldCollisions(parent string, members []ast.TypeMember) 
 		}
 		firstDSL := c.DSLNames[0]
 		first := byName[firstDSL]
-		// Emit one diagnostic per DUPLICATE — anchor at each dupe's
+		// Emit one diagnostic per DUPLICATE - anchor at each dupe's
 		// own position so all colliding fields get a squiggle in the
 		// editor, not just the first one in the group. The message
 		// names the canonical "winner" so the user sees which DSL
@@ -98,7 +98,7 @@ func (a *analyzer) warnFieldCollisions(parent string, members []ast.TypeMember) 
 				continue
 			}
 			d := a.diag(anchor.Pos, anchor.Pos, lexer.SeverityWarning, CodeFieldNameCollision,
-				"field name %q collides with %q in %s — both normalise to Go identifier %q; codegen will emit %q to keep the struct compilable, but the JSON wire shape carries BOTH DSL spellings (rename one if this duplication was unintended)",
+				"field name %q collides with %q in %s - both normalise to Go identifier %q; codegen will emit %q to keep the struct compilable, but the JSON wire shape carries BOTH DSL spellings (rename one if this duplication was unintended)",
 				dupeName, firstDSL, parent, c.CanonicalGoName, c.ResolvedGoNames[rank+1])
 			if first != nil {
 				d.Related = related(first.Pos, "first declared here (keeps the canonical Go name)")

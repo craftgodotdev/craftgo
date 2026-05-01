@@ -90,7 +90,7 @@ type defaultBinding struct {
 // DSLName is the source-side identifier (e.g. the `{id}` segment, the
 // query/header/cookie key); GoName is the exported field on the
 // request struct that receives the value. Bind is the pre-rendered Go
-// source the template drops verbatim — the codegen pre-computes it
+// source the template drops verbatim - the codegen pre-computes it
 // per-field so the template stays declarative and the type-specific
 // parsing (int / float / bool / arrays) lives in one place.
 type paramBinding struct {
@@ -111,7 +111,7 @@ type helpersData struct{ Package string }
 // called with paths relative to the manifest's directory.
 //
 // Equivalent to [GenerateHandlersPackage] with a nil [CrossPkg]
-// context — kept so single-package callers / tests stay unchanged.
+// context - kept so single-package callers / tests stay unchanged.
 func GenerateHandlers(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	return GenerateHandlersPackage(pkg, cfg, projectRoot, nil)
 }
@@ -264,7 +264,7 @@ func buildHandlerData(svcName string, m *ast.Method, imps importPaths, pkg *sema
 
 // collectDefaults walks the request type's fields and returns one
 // [defaultBinding] per field that carries `@default(value)`. Only plain
-// (non-array, non-optional, non-map) primitive fields are filled — the
+// (non-array, non-optional, non-map) primitive fields are filled - the
 // pre-fill semantics are uncertain on collections, and pointer-typed
 // optional fields would still get nil-overwritten by the JSON decoder
 // for absent keys. Unknown literal kinds are skipped silently.
@@ -323,7 +323,7 @@ func defaultLiteral(decs []*ast.Decorator) string {
 // collectResponseBindings walks the response type's fields and returns the
 // `@header` / `@cookie` bindings that should be written to the
 // http.ResponseWriter before the JSON body. Both kinds accept plain string
-// fields only — richer types (slices, maps, structs) stay in the body
+// fields only - richer types (slices, maps, structs) stay in the body
 // where the JSON encoder can handle them.
 func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, cookies []paramBinding) {
 	if m.Response == nil || m.Response.Type == nil {
@@ -425,7 +425,7 @@ func resolveDescription(decs []*ast.Decorator, doc []string) string {
 // collectFormBindings returns the per-field form bindings used by the
 // multipart handler. `file`-typed fields land in files; plain string
 // fields without an explicit binding fall back to form-string. Fields
-// already bound to path/query/header/cookie are skipped — those have
+// already bound to path/query/header/cookie are skipped - those have
 // dedicated emission paths in the multipart template.
 func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files []paramBinding) {
 	if m.Request == nil {
@@ -477,7 +477,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 //     promotes the field to `path` (so `id string` on `/users/{id}`
 //     auto-binds without a decorator).
 //  3. For non-body verbs (GET / DELETE / HEAD / OPTIONS) any leftover
-//     unbound field defaults to `query` — the README's "Default
+//     unbound field defaults to `query` - the README's "Default
 //     binding theo verb" rule wired up at last.
 //
 // Path / header / cookie still require string-typed fields (URLs and
@@ -525,14 +525,14 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 		case "path":
 			if !isPlainStringField(f) {
 				if auto {
-					// Auto-promoted from a path segment match — silently skip
+					// Auto-promoted from a path segment match - silently skip
 					// so a body field that happens to share a name with a
 					// segment doesn't break the build. Explicit @path is
 					// strict (handled above by entering this case via the
 					// decorator scan); auto-promotion is permissive.
 					continue
 				}
-				err = fmt.Errorf("%s.%s: @path requires a non-array, non-optional string field — got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @path requires a non-array, non-optional string field - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			path = append(path, paramBinding{
@@ -556,7 +556,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 			})
 		case "header":
 			if !isPlainStringField(f) {
-				err = fmt.Errorf("%s.%s: @header requires a non-array, non-optional string field — got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @header requires a non-array, non-optional string field - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			header = append(header, paramBinding{
@@ -566,7 +566,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 			})
 		case "cookie":
 			if !isPlainStringField(f) {
-				err = fmt.Errorf("%s.%s: @cookie requires a non-array, non-optional string field — got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @cookie requires a non-array, non-optional string field - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			cookie = append(cookie, paramBinding{
@@ -583,6 +583,9 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 
 // pathString re-renders a method's path for error messages
 // (`/books/{id}/cancel`); empty string when m has no path block.
+//
+// Hot path (called per method during routes-go emission): Builder
+// keeps the per-segment append allocation-free.
 func pathString(p *ast.Path) string {
 	if p == nil {
 		return ""
@@ -648,26 +651,26 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
 	}
 	if f.Type.Map != nil {
-		return "", false, fmt.Errorf("field %q: map types cannot bind to query — only string/bool/int*/uint*/float* and arrays of those", f.Name)
+		return "", false, fmt.Errorf("field %q: map types cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name)
 	}
 	if f.Type.Named == nil {
-		return "", false, fmt.Errorf("field %q: anonymous types cannot bind to query — only string/bool/int*/uint*/float* and arrays of those", f.Name)
+		return "", false, fmt.Errorf("field %q: anonymous types cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name)
 	}
 	if len(f.Type.Named.Args) > 0 {
-		return "", false, fmt.Errorf("field %q: generic type %s<...> cannot bind to query — only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String())
+		return "", false, fmt.Errorf("field %q: generic type %s<...> cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String())
 	}
 	prim, ok := queryPrims[f.Type.Named.Name.String()]
 	if !ok {
-		return "", false, fmt.Errorf("field %q: type %s cannot bind to query — only string/bool/int*/uint*/float* and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f))
+		return "", false, fmt.Errorf("field %q: type %s cannot bind to query - only string/bool/int*/uint*/float* and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f))
 	}
 	dslName := f.Name
 	goName := GoFieldName(f.Name)
 	if f.Type.Array {
 		if prim.parser == "" {
-			// []string — direct slice assignment from query map.
+			// []string - direct slice assignment from query map.
 			return fmt.Sprintf("req.%s = r.URL.Query()[%q]", goName, dslName), false, nil
 		}
-		// []numeric / []bool — loop, parse each, append to slice.
+		// []numeric / []bool - loop, parse each, append to slice.
 		return fmt.Sprintf(`for _, _v := range r.URL.Query()[%q] {
 	_n, _err := %s
 	if _err != nil {
@@ -678,10 +681,10 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 }`, dslName, parseCall(prim), dslName, prim.label, goName, goName, castExpr(prim, "_n")), true, nil
 	}
 	// Single (non-array). Optional non-string primitives are not
-	// supported in v1 — `*int` from query would need a tri-state
+	// supported in v1 - `*int` from query would need a tri-state
 	// (absent / empty / parsed) we don't have a clean idiom for yet.
 	if f.Type.Optional && prim.parser != "" {
-		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query in v1 — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
+		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query in v1 - drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
 	}
 	if prim.parser == "" {
 		// string single
@@ -706,7 +709,7 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 }
 
 // describeFieldType renders a short human-readable form of f's type
-// for error messages — `[]Point`, `Page<Book>`, `map<string,int>`,
+// for error messages - `[]Point`, `Page<Book>`, `map<string,int>`,
 // etc. Used by the binding-rejection paths so the user sees the
 // exact shape that violated the binding contract.
 func describeFieldType(f *ast.Field) string {
@@ -760,7 +763,7 @@ func castExpr(p queryPrim, varName string) string {
 
 // isPlainStringField reports whether f is a non-array, non-optional
 // `string`. Path / header / cookie binders still require this shape
-// in v1 — those wire formats carry only strings, and lifting the
+// in v1 - those wire formats carry only strings, and lifting the
 // restriction would just push parsing into every handler. Query is
 // the broad path; see [renderQueryBindLine].
 func isPlainStringField(f *ast.Field) bool {
@@ -803,7 +806,7 @@ func hasUnboundField(m *ast.Method, pkg *semantic.Package) bool {
 		case "body", "form":
 			return true
 		}
-		// Implicit path match short-circuits — that's a path field, not body.
+		// Implicit path match short-circuits - that's a path field, not body.
 		if pathSegs[f.Name] {
 			continue
 		}

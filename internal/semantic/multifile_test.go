@@ -148,9 +148,8 @@ enum Mixed {
 }
 
 func TestSemanticImportsParsedNotResolved(t *testing.T) {
-	// Imports are accepted at the parse level but cross-package resolution
-	// is intentionally future work — this test pins the current behaviour
-	// so future refactors don't silently change it.
+	// Imports are accepted at the parse level; cross-package resolution
+	// is future work. This test pins the current behaviour.
 	files := parseFileMap(t, map[string]string{
 		"a.craftgo": `package design
 import "shared/types"

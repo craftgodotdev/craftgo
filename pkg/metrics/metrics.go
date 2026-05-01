@@ -5,7 +5,7 @@
 // The package itself records no metrics directly. The HTTP
 // instruments (`http.server.request.duration` histogram, request /
 // response size histograms, active-request gauge) are emitted by
-// `otelhttp.NewHandler` — wired via [pkg/otel.HTTPMiddleware] —
+// `otelhttp.NewHandler` - wired via [pkg/otel.HTTPMiddleware] -
 // against whatever MeterProvider [Init] (or [InitDefault]) installs
 // on the global slot. Application code that wants its own counters
 // or histograms calls `otel.Meter("...")` directly; this package
@@ -27,7 +27,7 @@ import (
 )
 
 // enabled tracks whether [Init] / [InitDefault] has installed a real
-// MeterProvider. The flag is mostly diagnostic — `otelhttp` emits
+// MeterProvider. The flag is mostly diagnostic - `otelhttp` emits
 // metrics against the global provider regardless of this gate, so
 // a never-Init'd process simply receives a no-op MeterProvider's
 // silent recording.
@@ -58,7 +58,7 @@ func Registerer() prom.Registerer { return registry }
 type Option func(*config)
 
 // config carries the MeterProvider settings between [Option]
-// closures and [Init]. Held off the package surface — callers only
+// closures and [Init]. Held off the package surface - callers only
 // ever see the typed [Option] constructors.
 type config struct {
 	readers []sdkmetric.Reader
@@ -86,7 +86,7 @@ func WithPrometheusReader() Option {
 
 // WithOTLPgRPCReader adds a periodic OTLP gRPC push exporter pointed
 // at addr (e.g. `"otel-collector.observability:4317"`). Push interval
-// defaults to 60s — the OTel SDK default; pass
+// defaults to 60s - the OTel SDK default; pass
 // `otlpmetricgrpc.WithCompressor("gzip")` and friends through opts
 // for transport tuning. By default the connection is INSECURE
 // (plain-text, no TLS) so collectors on the local k8s network work
@@ -136,7 +136,7 @@ func WithOTLPHTTPReader(ctx context.Context, endpoint string, opts ...otlpmetric
 // WithReader is the escape hatch: hand any pre-built `sdkmetric.Reader`
 // to [Init]. Use it when the project needs a custom exporter (in-memory
 // for tests, third-party SaaS, exotic transport) the Prometheus / OTLP
-// helpers don't cover. Stack as many WithReader options as needed —
+// helpers don't cover. Stack as many WithReader options as needed -
 // the same MeterProvider fans every metric to all readers.
 func WithReader(r sdkmetric.Reader) Option {
 	return func(c *config) {
@@ -158,14 +158,14 @@ func WithReader(r sdkmetric.Reader) Option {
 //	// Push (OTLP gRPC to collector):
 //	metrics.Init(metrics.WithOTLPgRPCReader(ctx, "collector:4317"))
 //
-//	// Both — useful during a migration window:
+//	// Both - useful during a migration window:
 //	metrics.Init(
 //	    metrics.WithPrometheusReader(),
 //	    metrics.WithOTLPgRPCReader(ctx, "collector:4317"),
 //	)
 //
 // Returns the configured provider so callers can shut it down via
-// `provider.Shutdown(ctx)` during graceful termination — important
+// `provider.Shutdown(ctx)` during graceful termination - important
 // for OTLP push so the final batch flushes before the process exits.
 func Init(opts ...Option) (*sdkmetric.MeterProvider, error) {
 	cfg := &config{}
@@ -216,7 +216,7 @@ func InitDefault() (*sdkmetric.MeterProvider, error) {
 // RegisterRuntimeCollectors attaches the standard Go runtime and
 // process Prometheus collectors to the package registry. Call it
 // after [Init] when you want `go_*` / `process_*` series alongside
-// the OTel-bridged metrics — the config-driven main.tmpl pipeline
+// the OTel-bridged metrics - the config-driven main.tmpl pipeline
 // uses it for the prometheus exporter path. Idempotent: a duplicate
 // registration is silently swallowed so repeated boots in tests
 // don't break.

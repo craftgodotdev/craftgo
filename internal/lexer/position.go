@@ -3,7 +3,7 @@
 // The lexer performs a single linear pass over UTF-8 input and produces a flat
 // stream of [Token] values, each tagged with a [Position]. Errors are recorded
 // as [Diagnostic] entries (retrievable via [Lexer.Diagnostics]) and surfaced as
-// tokens of [Kind] [Error] in the stream — the lexer never panics or aborts on
+// tokens of [Kind] [Error] in the stream - the lexer never panics or aborts on
 // malformed input. Downstream phases (parser, semantic, LSP) all consume this
 // same token stream so diagnostics are consistent across CLI and IDE.
 package lexer
@@ -14,7 +14,7 @@ import "fmt"
 //
 // The zero value is invalid (Line == 0). All non-zero positions use 1-indexed
 // Line/Column counts; Offset is a 0-indexed byte offset suitable for slicing
-// into the original source. Filename is optional — when empty, [Position.String]
+// into the original source. Filename is optional - when empty, [Position.String]
 // omits it.
 type Position struct {
 	// Filename is the path or label of the source file (may be empty).

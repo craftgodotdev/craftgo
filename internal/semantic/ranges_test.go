@@ -1,45 +1,31 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
 )
 
 // ---------- @length pair ----------
 
 func TestLengthMinExceedsMax(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @length(20, 5) }`))
-	d := findCode(diags, CodeDecoratorRange)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "min") || !strings.Contains(d.Msg, "max") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `type X { name string @length(20, 5) }`, CodeDecoratorRange)
+	expectMessage(t, d, "min", "max")
 }
 
 func TestLengthNegativeMin(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @length(-1, 5) }`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @length(-1, 5) }`, CodeDecoratorRange)
 }
 
 func TestLengthSingleArgOK(t *testing.T) {
-	// @length(5) is "exact length" — pair check skips.
+	// @length(5) is "exact length" - pair check skips.
 	mustClean(t, `type X { name string @length(5) }`)
 }
 
 // ---------- @range pair ----------
 
 func TestRangeMinExceedsMax(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { score int @range(100, 1) }`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { score int @range(100, 1) }`, CodeDecoratorRange)
 }
 
 func TestRangeOK(t *testing.T) {
@@ -49,10 +35,7 @@ func TestRangeOK(t *testing.T) {
 // ---------- @multipleOf ----------
 
 func TestMultipleOfZeroRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { n int @multipleOf(0) }`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { n int @multipleOf(0) }`, CodeDecoratorRange)
 }
 
 func TestMultipleOfNonZeroOK(t *testing.T) {
@@ -62,23 +45,17 @@ func TestMultipleOfNonZeroOK(t *testing.T) {
 // ---------- @status ----------
 
 func TestStatusOutOfRange(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectDiag(t, `service S {
 	@status(99)
 	get GetUser /u {}
-}`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRange)
 }
 
 func TestStatusTooHigh(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectDiag(t, `service S {
 	@status(600)
 	get GetUser /u {}
-}`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRange)
 }
 
 func TestStatusValidOK(t *testing.T) {
@@ -91,27 +68,21 @@ func TestStatusValidOK(t *testing.T) {
 // ---------- Duration / Size ----------
 
 func TestZeroDurationRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectDiag(t, `service S {
 	@timeout(0)
 	get G /g {}
-}`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRange)
 }
 
 func TestNegativeDurationRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectDiag(t, `service S {
 	@timeout(-1)
 	get G /g {}
-}`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRange)
 }
 
 func TestDurationLiteralAcceptedAlways(t *testing.T) {
-	// Duration literals are always OK — only the bare-int form is
+	// Duration literals are always OK - only the bare-int form is
 	// range-checked here.
 	mustClean(t, `service S {
 	@timeout(5s)
@@ -120,13 +91,10 @@ func TestDurationLiteralAcceptedAlways(t *testing.T) {
 }
 
 func TestZeroSizeRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectDiag(t, `service S {
 	@maxBodySize(0)
 	get G /g {}
-}`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+}`, CodeDecoratorRange)
 }
 
 func TestSizeLiteralAcceptedAlways(t *testing.T) {
@@ -139,41 +107,28 @@ func TestSizeLiteralAcceptedAlways(t *testing.T) {
 // ---------- @minLength / @maxLength etc. negative ----------
 
 func TestMinLengthNegative(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @minLength(-1) }`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @minLength(-1) }`, CodeDecoratorRange)
 }
 
 // ---------- pair ordering across decorators ----------
 
 func TestMinLengthExceedsMaxLength(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @minLength(10) @maxLength(5) }`))
-	d := findCode(diags, CodeDecoratorRange)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	d := expectDiag(t, `type X { name string @minLength(10) @maxLength(5) }`, CodeDecoratorRange)
 	if len(d.Related) != 1 {
 		t.Errorf("expected related to @minLength, got %+v", d.Related)
 	}
 }
 
 func TestMinItemsExceedsMaxItems(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { tags string[] @minItems(10) @maxItems(2) }`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { tags string[] @minItems(10) @maxItems(2) }`, CodeDecoratorRange)
 }
 
 func TestMinExceedsMax(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { score int @min(100) @max(10) }`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { score int @min(100) @max(10) }`, CodeDecoratorRange)
 }
 
 func TestMinMaxOnlyOneSide(t *testing.T) {
-	// Solo decorator is unconstrained — pair ordering only fires when
+	// Solo decorator is unconstrained - pair ordering only fires when
 	// both halves are present.
 	mustClean(t, `type X { score int @min(0) }`)
 	mustClean(t, `type X { name string @maxLength(50) }`)
@@ -182,14 +137,7 @@ func TestMinMaxOnlyOneSide(t *testing.T) {
 // ---------- @nullable on T? warning ----------
 
 func TestNullableOnOptionalIsWarning(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string? @nullable }`))
-	d := findCode(diags, CodeDecoratorRedundant)
-	if d == nil {
-		t.Fatalf("expected redundant warning, got %v", codes(diags))
-	}
-	if d.Severity != lexer.SeverityWarning {
-		t.Errorf("expected severity warning, got %v", d.Severity)
-	}
+	expectWarning(t, `type X { name string? @nullable }`, CodeDecoratorRedundant)
 }
 
 func TestNullableOnNonOptionalOK(t *testing.T) {
@@ -199,10 +147,7 @@ func TestNullableOnNonOptionalOK(t *testing.T) {
 // ---------- Scalar value-range ----------
 
 func TestScalarRangeChecked(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `scalar Score int @range(100, 1)`))
-	if findCode(diags, CodeDecoratorRange) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `scalar Score int @range(100, 1)`, CodeDecoratorRange)
 }
 
 // ---------- Helpers / nil-shape ----------

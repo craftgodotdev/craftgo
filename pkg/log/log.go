@@ -13,12 +13,11 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Logger is the small structured-logging surface every craftgo middleware
-// depends on. Callers that have a request context use
+// Logger is the structured-logging surface every craftgo middleware
+// depends on. Callers with a request context chain
 // `logger.WithContext(ctx).Info(...)` to fan trace_id / span_id /
-// request_id into the line; callers without a context call `Info(...)`
-// directly. There is intentionally no `InfoCtx(ctx, ...)` shorthand —
-// the chain reads explicitly and keeps the interface minimal.
+// request_id into the line; callers without one call `Info(...)`
+// directly.
 type Logger interface {
 	Debug(msg string, fields ...Field)
 	Info(msg string, fields ...Field)
@@ -75,7 +74,7 @@ func New() Logger {
 
 // NewConsole returns a development-configured Logger that emits
 // human-readable, colour-tagged lines to stderr. Same Logger contract
-// as [New] — drop into `srv.SetLogger(log.NewConsole())` for local
+// as [New] - drop into `srv.SetLogger(log.NewConsole())` for local
 // `go run` sessions and switch back to [New] for production.
 func NewConsole() Logger {
 	z, _ := zap.NewDevelopment(zap.AddCallerSkip(1))
@@ -89,7 +88,7 @@ func NewZap(z *zap.Logger) Logger { return &zapLogger{z: z} }
 // defaultLogger is the package-level Logger that callers without an
 // explicit instance reach for via [Default]. The atomic.Value lets
 // runtime swaps (e.g. `Server.SetLogger`) take effect immediately
-// without locks. The initial value — assigned in init() — is a
+// without locks. The initial value - assigned in init() - is a
 // production zap so a fresh import is silently usable.
 var defaultLogger atomic.Value
 
@@ -133,7 +132,7 @@ type zapLogger struct{ z *zap.Logger }
 //
 // time.Duration values are rendered through `Duration.String()`
 // ("1.5ms", "250µs", "5s") rather than the default zap behaviour of
-// "fractional seconds" — the human-readable form is the right
+// "fractional seconds" - the human-readable form is the right
 // default for log lines a person actually reads (access logs,
 // op-error breadcrumbs). Code that needs the numeric form for
 // dashboards / alerts should record the duration as a metric (a
@@ -191,7 +190,7 @@ func (s *zapLogger) With(fs ...Field) Logger {
 // X-Request-Id stored by the RequestID middleware from ctx, then
 // returns a Logger with those fields baked in. Subsequent calls on the
 // returned Logger automatically tag every line with `trace_id`,
-// `span_id`, and `request_id` — the standard observability triple.
+// `span_id`, and `request_id` - the standard observability triple.
 //
 // When ctx carries no trace context (test runs, batch tools) the
 // trace fields are simply omitted from the output.

@@ -43,8 +43,8 @@ func TestInitInstallsMeterProvider(t *testing.T) {
 
 // TestSnapshotHandlerEmitsPromTextFormat pins the wire format. The
 // scrape MUST be Prometheus text exposition (the OpenMetrics-or-Prom
-// negotiation kicks in based on Accept) so any standard scraper —
-// Prometheus, Vector, Grafana Agent — drops in without translation.
+// negotiation kicks in based on Accept) so any standard scraper -
+// Prometheus, Vector, Grafana Agent - drops in without translation.
 func TestSnapshotHandlerEmitsPromTextFormat(t *testing.T) {
 	resetForTest(t)
 	provider, err := InitDefault()
@@ -68,7 +68,7 @@ func TestSnapshotHandlerEmitsPromTextFormat(t *testing.T) {
 		t.Errorf("Content-Type = %q, want a Prom/OpenMetrics text variant", ct)
 	}
 	body := rec.Body.String()
-	// InitDefault wires the runtime collectors — the scrape MUST
+	// InitDefault wires the runtime collectors - the scrape MUST
 	// surface at least `go_goroutines` (Go runtime) and `process_*`
 	// (process collector). Their presence proves the registry is
 	// alive and the handler is reading from it.
@@ -79,7 +79,7 @@ func TestSnapshotHandlerEmitsPromTextFormat(t *testing.T) {
 		}
 	}
 	// Each metric series MUST carry the standard Prom HELP / TYPE
-	// preamble — confirms the exposition format, not arbitrary text.
+	// preamble - confirms the exposition format, not arbitrary text.
 	for _, want := range []string{"# HELP go_goroutines", "# TYPE go_goroutines"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("scrape body missing preamble %q", want)
@@ -115,7 +115,7 @@ func TestStartAdminEmptyAddrIsNoop(t *testing.T) {
 
 // TestStartAdminCustomPath pins the [WithPath] option: overriding the
 // default `/metrics` route surfaces the snapshot under the chosen
-// path and 404s the default — confirming the option actually rewires
+// path and 404s the default - confirming the option actually rewires
 // the mux instead of registering a second handler.
 func TestStartAdminCustomPath(t *testing.T) {
 	resetForTest(t)
@@ -145,7 +145,7 @@ func TestStartAdminCustomPath(t *testing.T) {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
 
-	// Default path should 404 — confirms the option REPLACED the
+	// Default path should 404 - confirms the option REPLACED the
 	// path rather than ADDING one.
 	resp2, err := http.Get("http://" + addr + "/metrics")
 	if err != nil {
@@ -160,7 +160,7 @@ func TestStartAdminCustomPath(t *testing.T) {
 // TestInitWithOTLPgRPCReaderInstallsPushExporter pins the push path:
 // passing the OTLP gRPC option attaches a periodic reader to the
 // provider so otelhttp's recorded histograms get pushed to a
-// collector. We don't run a real collector here — bind failures /
+// collector. We don't run a real collector here - bind failures /
 // unreachable endpoints surface on the next push tick, not at Init
 // time, so the constructor returning success is the right contract.
 func TestInitWithOTLPgRPCReaderInstallsPushExporter(t *testing.T) {
@@ -181,7 +181,7 @@ func TestInitWithOTLPgRPCReaderInstallsPushExporter(t *testing.T) {
 }
 
 // TestInitWithOTLPHTTPReaderInstallsPushExporter pins the same
-// guarantee for the HTTP/protobuf transport — useful for sidecar
+// guarantee for the HTTP/protobuf transport - useful for sidecar
 // setups where the gRPC port is firewalled.
 func TestInitWithOTLPHTTPReaderInstallsPushExporter(t *testing.T) {
 	resetForTest(t)
@@ -220,7 +220,7 @@ func TestInitCombinesPullAndPushReaders(t *testing.T) {
 		defer cancel()
 		_ = provider.Shutdown(sctx)
 	}()
-	// Both readers should be active — the Prometheus side surfaces
+	// Both readers should be active - the Prometheus side surfaces
 	// via SnapshotHandler, the push side via the periodic reader
 	// (verified by Init not erroring; the actual transmission is
 	// the SDK's responsibility).

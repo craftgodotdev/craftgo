@@ -30,7 +30,7 @@ func runValidateGen(t *testing.T, src string) string {
 }
 
 func TestValidateRequired(t *testing.T) {
-	// `@required` enforces non-null only — empty string is allowed
+	// `@required` enforces non-null only - empty string is allowed
 	// unless paired with `@length` / `@minLength`. For a non-pointer
 	// `string` the JSON decoder already rejects wire `null`, so the
 	// validator emits NO check on this field.
@@ -104,7 +104,7 @@ type X { count int @multipleOf(5) }`)
 }
 
 func TestValidateMultipleOfSkipsFloat(t *testing.T) {
-	// Float fields don't get a modulus check — `%` is integer-only.
+	// Float fields don't get a modulus check - `%` is integer-only.
 	src := runValidateGen(t, `package design
 type X { ratio float64 @multipleOf(2) }`)
 	if strings.Contains(src, "%") && strings.Contains(src, "Ratio") {
@@ -174,7 +174,7 @@ type Contact { email string?  phone string? }`)
 	if !strings.Contains(src, "v.Email == nil && v.Phone == nil") {
 		t.Errorf("expected absence-AND check (De Morgan'd):\n%s", src)
 	}
-	// Negative — the original `!(... || ...)` form must NOT leak in.
+	// Negative - the original `!(... || ...)` form must NOT leak in.
 	if strings.Contains(src, "!(v.Email") {
 		t.Errorf("non-De-Morgan'd form leaked:\n%s", src)
 	}
@@ -266,7 +266,7 @@ type Alert { level Sev @required @doc("severity") @deprecated }`)
 	if !strings.Contains(src, "switch v.Level {") {
 		t.Errorf("expected auto enum-value switch:\n%s", src)
 	}
-	// @doc / @deprecated produce no runtime code — the body should
+	// @doc / @deprecated produce no runtime code - the body should
 	// only have the two checks above (plus return nil).
 	count := strings.Count(src, "return fmt.Errorf")
 	if count != 2 {
@@ -290,7 +290,7 @@ type Page<T> { items T[]  total int }`)
 
 func TestValidateGenericPropagatesPrimitiveDecorators(t *testing.T) {
 	// Numeric / array validators on non-generic-param fields should
-	// still emit normally — only the type-param fields use the
+	// still emit normally - only the type-param fields use the
 	// runtime-assertion path.
 	src := runValidateGen(t, `package design
 type Page<T> {

@@ -10,7 +10,7 @@ import (
 )
 
 // mainData is the template input for `main.tmpl`. The umbrella
-// routes.RegisterAll keeps the import set tiny — main.go references
+// routes.RegisterAll keeps the import set tiny - main.go references
 // only `config`, `routes`, `middleware`, `svccontext`, and the
 // runtime observability packages.
 type mainData struct {
@@ -32,11 +32,11 @@ type mainData struct {
 // boot code (extra middlewares, config loading, OTel SDK setup, etc.)
 // survives regeneration.
 //
-// When the project declares no services the function is a no-op —
+// When the project declares no services the function is a no-op -
 // there's no canonical RegisterRoutes target to wire.
 //
 // Setting `output.main: "-"` in the manifest opts the project out of
-// scaffolding entirely — useful for test fixtures that ship their own
+// scaffolding entirely - useful for test fixtures that ship their own
 // httptest server and would collide with a generated `package main`.
 func GenerateMain(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
@@ -80,7 +80,7 @@ func GenerateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot
 	if cfg.Output.Main == "-" {
 		return nil
 	}
-	// Skip when no package declares a service — same policy as the
+	// Skip when no package declares a service - same policy as the
 	// single-package GenerateMain.
 	hasService := false
 	for _, p := range proj.Packages {
@@ -153,7 +153,7 @@ func buildMainData(pkg *semantic.Package, cfg *config.Config) mainData {
 
 // operationNameFor extracts the last segment of a Go module path
 // (`github.com/foo/myapp` → `myapp`) for use as the OTel span name.
-// Falls back to a generic `api` when the input has no segments —
+// Falls back to a generic `api` when the input has no segments -
 // keeps the generated main.go compilable even on degenerate
 // configs.
 func operationNameFor(modulePath string) string {

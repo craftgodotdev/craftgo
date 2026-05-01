@@ -6,6 +6,7 @@ import (
 
 	"github.com/dropship-dev/craftgo/internal/ast"
 	"github.com/dropship-dev/craftgo/internal/config"
+	"github.com/dropship-dev/craftgo/internal/idents"
 	"github.com/dropship-dev/craftgo/internal/semantic"
 )
 
@@ -16,7 +17,7 @@ import (
 func ServicePackage(svcName string) string { return strings.ToLower(svcName) }
 
 // ServiceDir returns the kebab-case directory name for a service. Used
-// for filesystem paths and import segments — `UserService` becomes
+// for filesystem paths and import segments - `UserService` becomes
 // `user-service`. The Go package declaration inside the directory still
 // uses [ServicePackage] (no hyphens) so the source remains compilable.
 func ServiceDir(svcName string) string { return kebabCase(svcName) }
@@ -166,7 +167,7 @@ func hasBodyVerb(verb string) bool {
 // → `http-request`. Used for generated filenames so directory listings
 // stay readable on case-sensitive filesystems.
 func kebabCase(s string) string {
-	parts := splitFieldName(s)
+	parts := idents.SplitFieldName(s)
 	for i, p := range parts {
 		parts[i] = strings.ToLower(p)
 	}
@@ -182,12 +183,9 @@ func renderDoc(doc []string, indent string) string {
 	if len(doc) == 0 {
 		return ""
 	}
-	var sb strings.Builder
-	for _, line := range doc {
-		sb.WriteString(indent)
-		sb.WriteString("// ")
-		sb.WriteString(line)
-		sb.WriteByte('\n')
+	lines := make([]string, len(doc))
+	for i, line := range doc {
+		lines[i] = indent + "// " + line + "\n"
 	}
-	return sb.String()
+	return strings.Join(lines, "")
 }

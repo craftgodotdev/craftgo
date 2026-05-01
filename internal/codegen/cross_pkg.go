@@ -23,7 +23,7 @@ import (
 // DSL refs (`shared.User`) by their first segment to decide which
 // Go import statement to add.
 //
-// A nil or empty CrossPkg indicates no cross-package context — the
+// A nil or empty CrossPkg indicates no cross-package context - the
 // generators emit only the standard-library imports they have always
 // emitted.
 type CrossPkg map[string]string
@@ -37,7 +37,7 @@ type CrossPkg map[string]string
 // inherit into the field's effective validator chain.
 //
 // Empty / nil table disables inheritance and the generated
-// validators only honour the field's own decorator list — the
+// validators only honour the field's own decorator list - the
 // legacy single-package behaviour.
 type ScalarTable map[string]*ast.ScalarDecl
 
@@ -46,7 +46,7 @@ type ScalarTable map[string]*ast.ScalarDecl
 // scalars from other packages are keyed by their qualified DSL
 // form so a field typed `shared.NonEmptyID` resolves cleanly.
 //
-// Returns nil when proj is nil — callers can still pass the result
+// Returns nil when proj is nil - callers can still pass the result
 // straight into [GenerateValidatorsPackage] without a guard.
 func BuildScalarTable(proj *semantic.Project, currentPkgName string) ScalarTable {
 	if proj == nil {
@@ -111,12 +111,12 @@ func crossPkgImportFor(n *ast.NamedTypeRef, crossPkg CrossPkg) string {
 //
 // Three shapes are handled:
 //
-//   - Single-part name (`User`) — alias is the canonical "types"
+//   - Single-part name (`User`) - alias is the canonical "types"
 //     import; no extra import.
 //   - Two-part name (`shared.User`) where the first part is in
-//     [CrossPkg] — alias is the package name, extra import points
+//     [CrossPkg] - alias is the package name, extra import points
 //     at the matching Go path.
-//   - Two-part name with no [CrossPkg] entry — falls back to the
+//   - Two-part name with no [CrossPkg] entry - falls back to the
 //     dotted form via "types"; correctness then depends on the
 //     project's `<module>/internal/types/<pkg>` directory existing,
 //     matching the legacy behaviour for cross-package refs in
@@ -133,7 +133,7 @@ func resolveTypeRef(n *ast.NamedTypeRef, crossPkg CrossPkg) (alias, bare string,
 	if path, ok := crossPkg[pkgName]; ok {
 		return pkgName, sym, extraImport{Alias: pkgName, Path: path}
 	}
-	// Cross-pkg without a CrossPkg entry — fall back to dotted form.
+	// Cross-pkg without a CrossPkg entry - fall back to dotted form.
 	// The single-package legacy generator always rendered this as
 	// `types.<dotted>` and emitted no extra import; preserve that so
 	// existing tests/fixtures still pass.

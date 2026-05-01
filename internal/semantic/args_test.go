@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/dropship-dev/craftgo/internal/ast"
@@ -35,23 +34,14 @@ func TestArgKindString(t *testing.T) {
 // ---------- Arity ----------
 
 func TestArityTooFew(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@doc()
-type X {}`))
-	if findCode(diags, CodeDecoratorArity) == nil {
-		t.Fatalf("expected arity diag, got %v", codes(diags))
-	}
+	expectDiag(t, `@doc()
+type X {}`, CodeDecoratorArity)
 }
 
 func TestArityTooMany(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@doc("a", "b")
-type X {}`))
-	d := findCode(diags, CodeDecoratorArity)
-	if d == nil {
-		t.Fatalf("expected arity diag, got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "at most 1") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `@doc("a", "b")
+type X {}`, CodeDecoratorArity)
+	expectMessage(t, d, "at most 1")
 }
 
 func TestArityZeroOK(t *testing.T) {
@@ -62,22 +52,13 @@ type X { name string @required }`)
 // ---------- Type ----------
 
 func TestArgTypeStringExpected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@doc(123)
-type X {}`))
-	d := findCode(diags, CodeDecoratorArgType)
-	if d == nil {
-		t.Fatalf("expected argtype diag, got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "expected string") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `@doc(123)
+type X {}`, CodeDecoratorArgType)
+	expectMessage(t, d, "expected string")
 }
 
 func TestArgTypeIntExpected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @minLength("3") }`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("expected argtype diag, got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @minLength("3") }`, CodeDecoratorArgType)
 }
 
 func TestArgTypeDurationAcceptsBareInt(t *testing.T) {
@@ -103,7 +84,7 @@ func TestArgTypeNumberAcceptsBoth(t *testing.T) {
 }
 
 func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
-	// `@default(value)` uses ArgAny — every literal kind accepted.
+	// `@default(value)` uses ArgAny - every literal kind accepted.
 	mustClean(t, `type X {
 		s string  @default("a")
 		i int     @default(0)
@@ -130,14 +111,8 @@ func TestArgValueFormatAccepted(t *testing.T) {
 }
 
 func TestArgValueFormatRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { x string @format(garbage) }`))
-	d := findCode(diags, CodeDecoratorArgValue)
-	if d == nil {
-		t.Fatalf("expected argvalue diag, got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "garbage") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `type X { x string @format(garbage) }`, CodeDecoratorArgValue)
+	expectMessage(t, d, "garbage")
 }
 
 func TestArgValueEnumSkipsWhenWrongShape(t *testing.T) {
@@ -145,13 +120,9 @@ func TestArgValueEnumSkipsWhenWrongShape(t *testing.T) {
 	// must skip silently because identOrStringValue returns false on
 	// non-textual literals (we'd otherwise stack two diags on one
 	// arg).
-	_, diags := Analyze(parseFiles(t, `type X { x string @format(123) }`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("expected argtype, got %v", codes(diags))
-	}
-	if findCode(diags, CodeDecoratorArgValue) != nil {
-		t.Errorf("did not expect argvalue diag stacked on argtype, got %v", codes(diags))
-	}
+	src := `type X { x string @format(123) }`
+	expectDiag(t, src, CodeDecoratorArgType)
+	expectNoCode(t, src, CodeDecoratorArgValue)
 }
 
 // ---------- Variadic + array shortcut ----------
@@ -171,15 +142,12 @@ type Contact { email string?  phone string? }`)
 }
 
 func TestArrayShortcutTooFew(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@requiresOneOf([])
-type Contact { email string? }`))
-	if findCode(diags, CodeDecoratorArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@requiresOneOf([])
+type Contact { email string? }`, CodeDecoratorArity)
 }
 
 func TestArrayShortcutTooMany(t *testing.T) {
-	// Synthetic — bound an ArgsRule via a custom Spec test by going through
+	// Synthetic - bound an ArgsRule via a custom Spec test by going through
 	// checkArrayShortcut directly. The real registry has no Max-bounded
 	// variadic decorator, so we exercise the branch with a hand-built
 	// rule.
@@ -210,14 +178,8 @@ func TestArrayShortcutAnyVariadicSkipsKindCheck(t *testing.T) {
 }
 
 func TestArrayShortcutWrongElementKind(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { mime file @mimeTypes([1, 2]) }`))
-	d := findCode(diags, CodeDecoratorArgType)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "array[0]") {
-		t.Errorf("msg should reference array index, got %q", d.Msg)
-	}
+	d := expectDiag(t, `type X { mime file @mimeTypes([1, 2]) }`, CodeDecoratorArgType)
+	expectMessage(t, d, "array[0]")
 }
 
 // ---------- Bindings with optional name ----------
@@ -225,10 +187,7 @@ func TestArrayShortcutWrongElementKind(t *testing.T) {
 func TestBindingArgOptional(t *testing.T) {
 	mustClean(t, `type Q { id string @path }`)
 	mustClean(t, `type Q { id string @path("user-id") }`)
-	_, diags := Analyze(parseFiles(t, `type Q { id string @path(123) }`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type Q { id string @path(123) }`, CodeDecoratorArgType)
 }
 
 // ---------- @security ----------
@@ -239,11 +198,8 @@ service S {}`)
 }
 
 func TestSecurityRejectsString(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@security("bearerAuth")
-service S {}`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@security("bearerAuth")
+service S {}`, CodeDecoratorArgType)
 }
 
 func TestSecurityScopesArrayOfStrings(t *testing.T) {
@@ -252,39 +208,24 @@ service S {}`)
 }
 
 func TestSecurityScopesMustBeStrings(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@security(oauth2, scopes: [foo, 1])
-service S {}`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@security(oauth2, scopes: [foo, 1])
+service S {}`, CodeDecoratorArgType)
 }
 
 func TestSecurityScopesNotArray(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@security(oauth2, scopes: "read:users")
-service S {}`))
-	d := findCode(diags, CodeDecoratorArgType)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "expected array") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `@security(oauth2, scopes: "read:users")
+service S {}`, CodeDecoratorArgType)
+	expectMessage(t, d, "expected array")
 }
 
 func TestSecurityRejectsUnknownNamedArg(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@security(oauth2, mystery: "x")
-service S {}`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@security(oauth2, mystery: "x")
+service S {}`, CodeDecoratorArgType)
 }
 
 func TestSecurityArityZero(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@security
-service S {}`))
-	if findCode(diags, CodeDecoratorArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@security
+service S {}`, CodeDecoratorArity)
 }
 
 // ---------- @example / @examples ----------
@@ -295,31 +236,19 @@ func TestExampleSingleArg(t *testing.T) {
 }
 
 func TestExampleArityWrong(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @example("a", "b") }`))
-	if findCode(diags, CodeDecoratorArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @example("a", "b") }`, CodeDecoratorArity)
 }
 
 func TestExampleRejectsNamedArg(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @example(value: "a") }`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArgType)
 }
 
 func TestExamplesArityZero(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @examples }`))
-	if findCode(diags, CodeDecoratorArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @examples }`, CodeDecoratorArity)
 }
 
 func TestExamplesObjectRequired(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @examples("foo") }`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `type X { name string @examples("foo") }`, CodeDecoratorArgType)
 }
 
 func TestExamplesAccepted(t *testing.T) {
@@ -345,48 +274,29 @@ type X {}`)
 }
 
 func TestExternalDocsRejectsUnknownKey(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@externalDocs(url: "x", mystery: "y")
-type X {}`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@externalDocs(url: "x", mystery: "y")
+type X {}`, CodeDecoratorArgType)
 }
 
 func TestExternalDocsRejectsNonString(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@externalDocs(url: 123)
-type X {}`))
-	if findCode(diags, CodeDecoratorArgType) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@externalDocs(url: 123)
+type X {}`, CodeDecoratorArgType)
 }
 
 func TestExternalDocsPositionalNonString(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@externalDocs(123)
-type X {}`))
-	d := findCode(diags, CodeDecoratorArgType)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@externalDocs(123)
+type X {}`, CodeDecoratorArgType)
 }
 
 func TestExternalDocsTwoPositionalsRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@externalDocs("a", "b")
-type X {}`))
-	d := findCode(diags, CodeDecoratorArity)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if !strings.Contains(d.Msg, "positional form") {
-		t.Errorf("msg = %q", d.Msg)
-	}
+	d := expectDiag(t, `@externalDocs("a", "b")
+type X {}`, CodeDecoratorArity)
+	expectMessage(t, d, "positional form")
 }
 
 func TestExternalDocsZeroArgs(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@externalDocs
-type X {}`))
-	if findCode(diags, CodeDecoratorArity) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
+	expectDiag(t, `@externalDocs
+type X {}`, CodeDecoratorArity)
 }
 
 // ---------- exprKindName / inSet / joinQuoted ----------

@@ -463,7 +463,7 @@ func TestMethodPassthroughEmptyBody(t *testing.T) {
 func TestMethodWithDecorators(t *testing.T) {
 	f := mustParse(t, `service S {
     @doc("x")
-    @readTimeout(5s)
+    @timeout(5s)
     get Op /x {}
 }`)
 	m := f.Decls[0].(*ast.ServiceDecl).Methods[0]
@@ -832,7 +832,7 @@ func TestTypeParamsExpectFails(t *testing.T) {
 }
 
 func TestTypeNoBody(t *testing.T) {
-	// `type X` without body — exercises parseTypeBody early return.
+	// `type X` without body - exercises parseTypeBody early return.
 	f, _ := parseWithErrors(t, `type X
 type Y {}`)
 	if len(f.Decls) < 2 {

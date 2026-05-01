@@ -10,17 +10,14 @@ import (
 // checkDeclNameCase emits a warning for every top-level declaration
 // whose identifier does not start with an uppercase letter. The Go
 // codegen pass copies decl names verbatim into the generated source,
-// so a lower-case DSL name produces an unexported Go type — silently
+// so a lower-case DSL name produces an unexported Go type - silently
 // breaking cross-package imports the moment a sibling package tries
 // to reference the type via `pkg.X`.
 //
-// The check is a warning rather than an error so projects with an
-// established naming convention (e.g. tests that intentionally use
-// lower-case decls to assert the codegen behaviour) keep building.
-// Production code should still surface the warning prominently in
-// IDE squiggles and CI output.
+// The check is a warning rather than an error so tests that use
+// lower-case decls to assert codegen behaviour keep building.
 //
-// Empty names are skipped — they are already flagged as parser
+// Empty names are skipped - they are already flagged as parser
 // recovery artefacts elsewhere and double-reporting only adds noise.
 //
 // Per-spec: type / error / enum / service / middleware / scalar
@@ -37,7 +34,7 @@ func (a *analyzer) checkDeclNameCase(files []*ast.File) {
 
 // checkOneDeclNameCase dispatches per top-level decl shape so the
 // kind label in the diagnostic ("type", "service", ...) matches the
-// keyword the user typed — better than a generic "declaration"
+// keyword the user typed - better than a generic "declaration"
 // because the fix is the same kind-keyword they originally wrote.
 func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 	switch dd := d.(type) {
@@ -52,7 +49,7 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 		// produce a ServiceDecl; only the original carries the canonical
 		// declaration so warning on Extend would double-report against
 		// the same underlying name. Methods added in extend blocks are
-		// new names — always check them.
+		// new names - always check them.
 		if !dd.Extend {
 			a.warnNameCase("service", dd.Name, dd.Pos)
 		}
@@ -71,7 +68,7 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 
 // warnNameCase records the diagnostic when the supplied name starts
 // with anything other than an uppercase letter. Empty names are
-// silently ignored — those are parser recovery artefacts.
+// silently ignored - those are parser recovery artefacts.
 func (a *analyzer) warnNameCase(kind, name string, pos lexer.Position) {
 	if name == "" {
 		return
@@ -81,6 +78,6 @@ func (a *analyzer) warnNameCase(kind, name string, pos lexer.Position) {
 		return
 	}
 	a.diag(pos, pos, lexer.SeverityWarning, CodeDeclNameCase,
-		"%s name %q should start with an uppercase letter — codegen emits decl names verbatim, so lower-case becomes an unexported Go identifier (cross-package imports will fail)",
+		"%s name %q should start with an uppercase letter - codegen emits decl names verbatim, so lower-case becomes an unexported Go identifier (cross-package imports will fail)",
 		kind, name)
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // onDocumentSymbol answers `textDocument/documentSymbol`. The result is
-// a hierarchical outline (DocumentSymbol[]) — types/services nest their
+// a hierarchical outline (DocumentSymbol[]) - types/services nest their
 // fields/methods so the editor's outline view shows structure.
 func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentSymbolParams
@@ -37,7 +37,7 @@ func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 // children for their fields and methods respectively.
 //
 // Declarations whose name token has not been parsed yet (typical
-// while the author is mid-typing — e.g. just `service` with no
+// while the author is mid-typing - e.g. just `service` with no
 // identifier yet) are filtered out entirely: VS Code's
 // `DocumentSymbol` validator rejects a falsy `Name` with
 // "name must not be falsy", which crashes the symbol provider for

@@ -24,7 +24,7 @@ import (
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	// `-stdio` is accepted but ignored. The server only speaks LSP over
-	// stdin/stdout, so the flag is redundant — but vscode-languageclient
+	// stdin/stdout, so the flag is redundant - but vscode-languageclient
 	// (and several other LSP clients) pass it unconditionally to signal
 	// transport choice. Defining the flag here keeps the standard `flag`
 	// package from rejecting the binary with "flag provided but not

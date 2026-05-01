@@ -1,7 +1,7 @@
 // Package ast defines the abstract syntax tree produced by the parser.
 //
 // Every node carries a [Pos] (alias for [lexer.Position]) so diagnostics from
-// later stages — semantic analysis, codegen, formatter, LSP — can map back to
+// later stages - semantic analysis, codegen, formatter, LSP - can map back to
 // the originating source location. The AST is the single shared
 // representation consumed by every downstream tool: keeping it small and
 // strongly-typed lets the parser, semantic analyser, and codegen evolve
@@ -20,7 +20,7 @@ type Pos = lexer.Position
 
 // astMarker is the body of every marker method (`declNode`,
 // `typeMember`, `exprNode`). Marker methods exist only to seal a Go
-// interface — they have no behaviour. An empty body (`{}`) would be
+// interface - they have no behaviour. An empty body (`{}`) would be
 // idiomatic but produces 0 statements, which `go tool cover` reports
 // as 0.0%-covered even when callers exercise the method. Calling a
 // tiny named helper that performs one no-op assignment gives every
@@ -32,7 +32,7 @@ func astMarker() { _ = astMarkerCalled }
 // statement to instrument. The boolean is otherwise unused.
 var astMarkerCalled bool
 
-// File is the root node — one per `.craftgo` source file.
+// File is the root node - one per `.craftgo` source file.
 //
 // Decorators are the file-level decorators that appear BEFORE `package` (e.g.
 // `@title`, `@version`). Decorators that appear without a `package` keyword
@@ -96,7 +96,7 @@ func (*TypeDecl) declNode()          { astMarker() }
 func (d *TypeDecl) DeclName() string { return d.Name }
 func (d *TypeDecl) DeclPos() Pos     { return d.Pos }
 
-// TypeMember is the interface for items inside a `{}` type body —
+// TypeMember is the interface for items inside a `{}` type body -
 // either a [Field] or a [Mixin].
 type TypeMember interface {
 	typeMember()
@@ -146,12 +146,12 @@ func (d *EnumDecl) DeclPos() Pos     { return d.Pos }
 type EnumValueKind int
 
 const (
-	// EnumBare — `Active` (no `=`); rendered as a Go string constant whose
+	// EnumBare - `Active` (no `=`); rendered as a Go string constant whose
 	// value matches the identifier.
 	EnumBare EnumValueKind = iota
-	// EnumInt — `Active = 1`; rendered as an `int` constant.
+	// EnumInt - `Active = 1`; rendered as an `int` constant.
 	EnumInt
-	// EnumString — `Active = "active"`; rendered as a `string` constant.
+	// EnumString - `Active = "active"`; rendered as a `string` constant.
 	EnumString
 )
 
@@ -166,7 +166,7 @@ type EnumValue struct {
 	Decorators []*Decorator
 }
 
-// ErrorDecl is `error <Category> Name [{ Body }]`. Body is optional — the
+// ErrorDecl is `error <Category> Name [{ Body }]`. Body is optional - the
 // shortest form (`error NotFound UserNotFound`) inherits all defaults from
 // the category. HasBody distinguishes "explicit empty body `{}`" from "no
 // body at all" (both produce empty Body slice).
@@ -240,7 +240,7 @@ func (d *ServiceDecl) DeclName() string { return d.Name }
 func (d *ServiceDecl) DeclPos() Pos     { return d.Pos }
 
 // Method is a single `<verb> Name [path] { request? response? }`. Path is nil
-// when the method body had no leading `/segment` — the runtime listens at
+// when the method body had no leading `/segment` - the runtime listens at
 // `basePath + servicePrefix` in that case.
 type Method struct {
 	Pos        Pos
@@ -279,7 +279,7 @@ type PathSegment struct {
 }
 
 // Decorator is `@name[(args...)]`. Args is non-nil only when parentheses
-// are present (so `@deprecated` differs from `@deprecated()` — both produce
+// are present (so `@deprecated` differs from `@deprecated()` - both produce
 // nil Args, distinguishable only by source if needed).
 type Decorator struct {
 	Pos  Pos
@@ -421,7 +421,7 @@ func (q *QualifiedIdent) String() string { return strings.Join(q.Parts, ".") }
 // `ArrayDepth` is the number of trailing `[]` suffixes parsed (0 =
 // not an array). The legacy `Array bool` is kept as a derived
 // convenience for the wide set of call sites that only care
-// whether the field is "any kind of array" — it equals
+// whether the field is "any kind of array" - it equals
 // `ArrayDepth > 0` after every parse.
 type TypeRef struct {
 	Pos      Pos

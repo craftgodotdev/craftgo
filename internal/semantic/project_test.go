@@ -56,7 +56,7 @@ type X { id string }`)
 
 // TestAnalyzeProjectEmptyRootNoPackageDecl covers the fallback when
 // the single-package analysis returns a package without a `package X`
-// keyword — the project keys it under "" instead of by name.
+// keyword - the project keys it under "" instead of by name.
 func TestAnalyzeProjectEmptyRootNoPackageDecl(t *testing.T) {
 	files := parseFiles(t, `type X { id string }`)
 	proj, _ := AnalyzeProject(files, Options{})
@@ -87,7 +87,7 @@ type User { id string }`,
 // ---------- merge: same-package files in different folders ----------
 
 func TestAnalyzeProjectFoldermergeStillWorks(t *testing.T) {
-	// All files declare `package design` — they merge into one
+	// All files declare `package design` - they merge into one
 	// package regardless of folder location, matching the existing
 	// `import = pull files from folder into my package` semantics.
 	root, files := projectFixture(t, map[string]string{
@@ -154,7 +154,7 @@ type X { id string }`,
 }
 
 func TestAnalyzeProjectImportSelfWarning(t *testing.T) {
-	// `package shared` + import "shared" — the import resolves to a
+	// `package shared` + import "shared" - the import resolves to a
 	// folder whose files share this package name, so the import is
 	// a no-op. Surfaced as a warning, not an error.
 	root, files := projectFixture(t, map[string]string{
@@ -461,7 +461,7 @@ func TestWalkDeclRefsCoversErrorAndService(t *testing.T) {
 			Request:  &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}},
 			Response: &ast.MethodResponse{Type: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}}},
 		},
-		// Method with no request/response — both nil branches.
+		// Method with no request/response - both nil branches.
 		{},
 	}}, "")
 	if len(r.diags) != 0 {

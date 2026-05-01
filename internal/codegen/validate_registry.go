@@ -32,7 +32,7 @@ type validatorEntry struct {
 }
 
 // validators is the source-of-truth registry. Order doesn't matter for
-// correctness — names are looked up — but the table is grouped by
+// correctness - names are looked up - but the table is grouped by
 // concern to make scanning easier: presence/strings/numerics/arrays/files.
 var validators = []validatorEntry{
 	// presence
@@ -101,18 +101,18 @@ func validatorByName(name string) *validatorEntry {
 // source for the check.
 //
 // Adding a new decorator-driven validator is a single new entry in
-// `validators` (see [validatorEntry]) — no edits to this dispatcher.
+// `validators` (see [validatorEntry]) - no edits to this dispatcher.
 //
 // Scalar inheritance: when the field's declared type matches a
 // scalar in `scalars`, the scalar's own decorator chain inherits
-// into the field's effective validator list — so a field declared
+// into the field's effective validator list - so a field declared
 // `email Email` (where `scalar Email string @format(email)
 // @maxLength(254)`) gets the @format + @maxLength checks for free.
 // The inherited decorators run BEFORE the field-level chain so
 // the emitted source matches author intent (scalar invariants
 // enforced first, then per-field overrides). For each scalar
 // decorator the emitter sees a synthesised field whose declared
-// type is the scalar's underlying primitive — that lets the
+// type is the scalar's underlying primitive - that lets the
 // existing type predicates (`isStringOrOptString`,
 // `isNumericField`, ...) match without special-casing scalar-typed
 // fields throughout the emitter set.
@@ -123,7 +123,7 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 
 	// Scalar inheritance: walk the field's TypeRef recursively to
 	// find every reachable scalar leaf, then emit one wrapped check
-	// per scalar decorator per leaf. Handles arbitrary depth — flat
+	// per scalar decorator per leaf. Handles arbitrary depth - flat
 	// scalar (`email Email`), array (`tags Tag[]`), map (`m
 	// map<Tag, V>`), nested array (`tags Tag[][]` once the AST is
 	// extended), and nested map (`m map<K, map<Kʹ, Tag>>`) all flow
@@ -190,7 +190,7 @@ func (l *scalarLeaf) emitChecks(f *ast.Field, ctx emitCtx) []string {
 // wrappers. The function is value-side complete: it handles
 // nested-map (`map<K, map<Kʹ, Tag>>`), array-inside-map
 // (`map<K, Tag[]>`), and once the AST supports it, multi-array
-// (`Tag[][]`) — every path is one base case (the Named leaf) plus
+// (`Tag[][]`) - every path is one base case (the Named leaf) plus
 // three recursion arms (Map / Array / Optional).
 //
 //   - baseExpr is the Go expression naming the current node
@@ -211,7 +211,7 @@ func findScalarLeaves(t *ast.TypeRef, baseExpr string, depth int, scalars Scalar
 		// Key side. Walk the Map.Key TypeRef with the key loop
 		// variable as the new base expression. Wrap result with
 		// the outer `for k := range baseExpr` form (no value
-		// binding so unused-variable lint stays quiet — Go's
+		// binding so unused-variable lint stays quiet - Go's
 		// for-range key-only form omits the value automatically).
 		for _, leaf := range findScalarLeaves(t.Map.Key, keyVar, depth+1, scalars) {
 			inner := leaf.wrap
@@ -235,7 +235,7 @@ func findScalarLeaves(t *ast.TypeRef, baseExpr string, depth int, scalars Scalar
 		return out
 	}
 	// Array: peel ONE bracket per recursion layer so multi-array
-	// (`Tag[][]`) builds nested for-loops naturally — the inner
+	// (`Tag[][]`) builds nested for-loops naturally - the inner
 	// recursion sees a TypeRef whose ArrayDepth has been
 	// decremented by one. Each layer wraps the inner emit with
 	// `for iN := range <prev>`.
@@ -244,8 +244,8 @@ func findScalarLeaves(t *ast.TypeRef, baseExpr string, depth int, scalars Scalar
 		elemExpr := baseExpr + "[" + idxVar + "]"
 		inner := *t
 		// Strip one array dimension. Optional on the OUTER slice
-		// (`T[]?`) doesn't propagate to the element — for-range
-		// handles nil slice silently — so we drop it here.
+		// (`T[]?`) doesn't propagate to the element - for-range
+		// handles nil slice silently - so we drop it here.
 		if inner.ArrayDepth > 0 {
 			inner.ArrayDepth--
 		}

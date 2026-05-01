@@ -22,7 +22,7 @@ func analyze(t *testing.T, src string) *semantic.Package {
 		t.Fatalf("parse errors: %v", d)
 	}
 	pkg, diags := semantic.Analyze([]*ast.File{f})
-	// Treat only error-severity diags as fatal — warnings (e.g. the
+	// Treat only error-severity diags as fatal - warnings (e.g. the
 	// @nullable-on-T? hint) shouldn't fail codegen tests because the
 	// generated code is still well-defined.
 	var fatal []semantic.Diagnostic
@@ -221,7 +221,7 @@ type T {
 			t.Errorf("expected %s %s with tag %s in:\n%s", w.ident, w.typ, w.tag, src)
 		}
 	}
-	// `omitempty` must NOT appear anywhere — every field is either
+	// `omitempty` must NOT appear anywhere - every field is either
 	// required (no omitempty) or @nullable (no omitempty).
 	if strings.Contains(src, "omitempty") {
 		t.Errorf("@nullable fields should not carry omitempty:\n%s", src)
@@ -237,57 +237,49 @@ func TestGenerateTypesNoPackageName(t *testing.T) {
 
 // ---------- enums ----------
 
-func TestGenerateEnumsBare(t *testing.T) {
-	pkg := analyze(t, `package design
-enum Color { Red  Green  Blue }`)
-	dir := t.TempDir()
-	if err := GenerateEnums(pkg, dir); err != nil {
-		t.Fatal(err)
+// TestGenerateEnums covers all three enum kinds (bare / int /
+// string) via golden snapshot files. Each case generates the enum
+// and compares against the reference at testdata/golden/enums-<kind>.go;
+// run `go test -update` to refresh after an intentional emit
+// change. The snapshot beats hand-written `strings.Contains`
+// chains because a regression shows the entire offending hunk
+// inline, not a single missing substring.
+func TestGenerateEnums(t *testing.T) {
+	cases := []struct {
+		name   string
+		src    string
+		golden string
+	}{
+		{
+			name:   "bare",
+			src:    `package design` + "\n" + `enum Color { Red  Green  Blue }`,
+			golden: "enums-bare.go",
+		},
+		{
+			name:   "int",
+			src:    `package design` + "\n" + `enum Priority { Low = 1  High = 99 }`,
+			golden: "enums-int.go",
+		},
+		{
+			name:   "string",
+			src:    `package design` + "\n" + `enum Status { Active = "active"  Pending = "pending" }`,
+			golden: "enums-string.go",
+		},
 	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "enums.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	if !strings.Contains(src, "type Color string") {
-		t.Error()
-	}
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, `ColorRed Color = "Red"`) {
-		t.Errorf("missing bare value:\n%s", src)
-	}
-}
-
-func TestGenerateEnumsInt(t *testing.T) {
-	pkg := analyze(t, `package design
-enum Priority { Low = 1  High = 99 }`)
-	dir := t.TempDir()
-	if err := GenerateEnums(pkg, dir); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "enums.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	if !strings.Contains(src, "type Priority int") {
-		t.Error()
-	}
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, "PriorityLow Priority = 1") {
-		t.Errorf("missing int value:\n%s", src)
-	}
-}
-
-func TestGenerateEnumsString(t *testing.T) {
-	pkg := analyze(t, `package design
-enum Status { Active = "active"  Pending = "pending" }`)
-	dir := t.TempDir()
-	if err := GenerateEnums(pkg, dir); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "enums.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, `StatusActive Status = "active"`) {
-		t.Errorf("missing string value:\n%s", src)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			pkg := analyze(t, c.src)
+			dir := t.TempDir()
+			if err := GenerateEnums(pkg, dir); err != nil {
+				t.Fatal(err)
+			}
+			out, err := os.ReadFile(filepath.Join(dir, "design", "enums.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustParseGo(t, string(out))
+			expectGolden(t, c.golden, string(out))
+		})
 	}
 }
 
@@ -568,7 +560,7 @@ type T {
 		{"AnyOpt", "any"},
 		{"ArrayOpt", "[]string"},
 		{"MapOpt", "map[string]int"},
-		// Value-type optionals — pointer is still required.
+		// Value-type optionals - pointer is still required.
 		{"StringOpt", "*string"},
 		{"StructOpt", "*User"},
 	}
@@ -592,7 +584,7 @@ func lineHasField(src, ident, typ string) bool {
 	for _, line := range strings.Split(src, "\n") {
 		if strings.Contains(line, ident) && strings.Contains(line, typ) {
 			// Reject pointer-to-typ accidentally matching the substring.
-			// e.g. "*[]byte" contains "[]byte" — we want only the bare form.
+			// e.g. "*[]byte" contains "[]byte" - we want only the bare form.
 			if strings.Contains(line, "*"+typ) {
 				continue
 			}

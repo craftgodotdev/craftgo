@@ -9,10 +9,10 @@
 // Layout convention:
 //
 //	config/
-//	├── config.go             — this file (Go struct + loader)
-//	├── config.yaml           — local dev values (gitignore in real
+//	├── config.go             - this file (Go struct + loader)
+//	├── config.yaml           - local dev values (gitignore in real
 //	│                           projects; commit only the example)
-//	└── example.config.yaml   — committed reference with every key
+//	└── example.config.yaml   - committed reference with every key
 //	                            documented; copy → config.yaml on a
 //	                            new checkout, then edit
 //
@@ -30,8 +30,8 @@ import (
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
-// maps to one runtime concern — server listener, distributed tracing,
-// metrics — so feature owners can extend their own block without
+// maps to one runtime concern - server listener, distributed tracing,
+// metrics - so feature owners can extend their own block without
 // stepping on each other.
 type Config struct {
 	Server  ServerConfig  `yaml:"server"`
@@ -60,10 +60,10 @@ type OTelConfig struct {
 	// Defaults to the project's last package segment.
 	ServiceName string `yaml:"serviceName"`
 	// Exporter selects the destination for spans. Valid values:
-	//   - "none"     — in-process spans only (default; trace ids in logs)
-	//   - "stdout"   — JSON spans on stdout (debugging)
-	//   - "otlp_grpc" — push to OTLP collector via gRPC
-	//   - "otlp_http" — push to OTLP collector via HTTP/protobuf
+	//   - "none"     - in-process spans only (default; trace ids in logs)
+	//   - "stdout"   - JSON spans on stdout (debugging)
+	//   - "otlp_grpc" - push to OTLP collector via gRPC
+	//   - "otlp_http" - push to OTLP collector via HTTP/protobuf
 	Exporter string `yaml:"exporter"`
 	// Endpoint is the collector address used by OTLP exporters
 	// (e.g. "otel-collector.observability:4317" for gRPC,
@@ -82,10 +82,10 @@ type MetricsConfig struct {
 	// recorder is silent.
 	Enabled bool `yaml:"enabled"`
 	// Exporter selects how metrics leave the process. Valid values:
-	//   - "prometheus" — pull on AdminAddr/Path (default; ops scrape it)
-	//   - "otlp_grpc"  — push to OTLP collector via gRPC
-	//   - "otlp_http"  — push to OTLP collector via HTTP/protobuf
-	//   - "none"       — meter installed but no exporter (rare; testing)
+	//   - "prometheus" - pull on AdminAddr/Path (default; ops scrape it)
+	//   - "otlp_grpc"  - push to OTLP collector via gRPC
+	//   - "otlp_http"  - push to OTLP collector via HTTP/protobuf
+	//   - "none"       - meter installed but no exporter (rare; testing)
 	Exporter string `yaml:"exporter"`
 	// Endpoint is the collector address for OTLP exporters
 	// (e.g. "otel-collector.observability:4317"). Ignored for
@@ -108,7 +108,7 @@ const EnvVar = "CRAFTGO_CONFIG"
 
 // Path returns the configured config-file path. Reads CRAFTGO_CONFIG
 // when set, otherwise falls back to the conventional location. Empty
-// return means "no file" — [Load] then operates on defaults + env only.
+// return means "no file" - [Load] then operates on defaults + env only.
 func Path() string {
 	if p := os.Getenv(EnvVar); p != "" {
 		return p
@@ -142,7 +142,7 @@ func Load(cfgPath string) (*Config, error) {
 }
 
 // applyEnv overlays environment variables on top of file-loaded values.
-// Only the knobs ops typically flip without redeploying are exposed —
+// Only the knobs ops typically flip without redeploying are exposed -
 // addresses, exporter selection, on/off toggles. Add more as the
 // project's ops contract grows.
 func (c *Config) applyEnv() {
