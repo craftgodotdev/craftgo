@@ -285,8 +285,8 @@ service S {
 	cfg := &config.Config{
 		Package: "x/y",
 		Output: config.Output{
-			Types: "./internal/types", Handler: "./internal/handler",
-			Routes: "./internal/routes", Logic: "./internal/logic",
+			Types: "./internal/types", Transport: "./internal/transport",
+			Routes: "./internal/routes", Service: "./internal/service",
 			Svccontext: "./svccontext/svccontext.go",
 			OpenAPI:    "./docs/openapi.yaml",
 		},

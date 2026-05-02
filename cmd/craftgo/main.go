@@ -383,9 +383,9 @@ func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRo
 			label string
 			fn    func() error
 		}{
-			{"handlers(" + name + ")", func() error { return codegen.GenerateHandlersPackage(p, cfg, projectRoot, cross) }},
-			{"handler-helpers(" + name + ")", func() error { return codegen.GenerateHandlerHelpers(p, cfg, projectRoot) }},
-			{"logic(" + name + ")", func() error { return codegen.GenerateLogicPackage(p, cfg, projectRoot, cross) }},
+			{"transport(" + name + ")", func() error { return codegen.GenerateTransportPackage(p, cfg, projectRoot, cross) }},
+			{"transport-helpers(" + name + ")", func() error { return codegen.GenerateTransportHelpers(p, cfg, projectRoot) }},
+			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, cross) }},
 			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
 		}
 		for _, s := range steps {

@@ -46,15 +46,15 @@ type Config struct {
 }
 
 // Output groups every generated-artefact destination. Directory paths
-// (Types, Handler, Routes, Logic, Client) are appended with `/<service>`
+// (Types, Transport, Routes, Service) are appended with `/<service>`
 // per service at codegen time. File paths (Main, Svccontext, OpenAPI) point
 // at the exact file that will be written. All paths are relative to the
 // **project root** (the parent of the design folder).
 type Output struct {
 	Types      string `yaml:"types"`
-	Handler    string `yaml:"handler"`
+	Transport  string `yaml:"transport"`
 	Routes     string `yaml:"routes"`
-	Logic      string `yaml:"logic"`
+	Service    string `yaml:"service"`
 	Main       string `yaml:"main"`
 	Svccontext string `yaml:"svccontext"`
 	OpenAPI    string `yaml:"openapi"`
@@ -259,14 +259,14 @@ func (c *Config) applyDefaults() {
 	if c.Output.Types == "" {
 		c.Output.Types = "./internal/types"
 	}
-	if c.Output.Handler == "" {
-		c.Output.Handler = "./internal/handler"
+	if c.Output.Transport == "" {
+		c.Output.Transport = "./internal/transport"
 	}
 	if c.Output.Routes == "" {
 		c.Output.Routes = "./internal/routes"
 	}
-	if c.Output.Logic == "" {
-		c.Output.Logic = "./internal/logic"
+	if c.Output.Service == "" {
+		c.Output.Service = "./internal/service"
 	}
 	if c.Output.Main == "" {
 		c.Output.Main = "./main.go"

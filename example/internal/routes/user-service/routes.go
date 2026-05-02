@@ -3,7 +3,7 @@
 package userservice
 
 import (
-	handler "github.com/dropship-dev/craftgo/example/internal/handler/user-service"
+	transport "github.com/dropship-dev/craftgo/example/internal/transport/user-service"
 	"github.com/dropship-dev/craftgo/example/svccontext"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
@@ -15,14 +15,14 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/users", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(handler.ListUsersHandler(svcCtx))))))
-	srv.Handle("GET /api/users/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(handler.GetUserHandler(svcCtx))))))
-	srv.Handle("POST /api/users", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(handler.CreateUserHandler(svcCtx))))))
-	srv.Handle("PATCH /api/users/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(handler.UpdateUserHandler(svcCtx))))))
-	srv.Handle("DELETE /api/users/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(handler.DeleteUserHandler(svcCtx))))))))
-	srv.Handle("POST /api/users/{userId}/contacts", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(handler.AddContactHandler(svcCtx))))))
-	srv.Handle("GET /api/users/tail", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(handler.LiveTailHandler(svcCtx))))))
-	srv.Handle("POST /api/users/{id}/suspend", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(handler.SuspendUserHandler(svcCtx))))))))
-	srv.Handle("POST /api/users/{id}/restore", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(handler.RestoreUserHandler(svcCtx))))))))
-	srv.Handle("GET /api/users/suspended", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.Timeout(handler.ListSuspendedUsersHandler(svcCtx)))))))
+	srv.Handle("GET /api/users", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.ListUsers(svcCtx))))))
+	srv.Handle("GET /api/users/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.GetUser(svcCtx))))))
+	srv.Handle("POST /api/users", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.CreateUser(svcCtx))))))
+	srv.Handle("PATCH /api/users/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.UpdateUser(svcCtx))))))
+	srv.Handle("DELETE /api/users/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.DeleteUser(svcCtx))))))))
+	srv.Handle("POST /api/users/{userId}/contacts", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.AddContact(svcCtx))))))
+	srv.Handle("GET /api/users/tail", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.LiveTail(svcCtx))))))
+	srv.Handle("POST /api/users/{id}/suspend", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.SuspendUser(svcCtx))))))))
+	srv.Handle("POST /api/users/{id}/restore", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.RestoreUser(svcCtx))))))))
+	srv.Handle("GET /api/users/suspended", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.Timeout(transport.ListSuspendedUsers(svcCtx)))))))
 }

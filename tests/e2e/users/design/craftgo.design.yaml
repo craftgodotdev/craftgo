@@ -1,8 +1,8 @@
 output:
   types:      ./internal/types
-  handler:    ./internal/handler
+  transport:  ./internal/transport
   routes:     ./internal/routes
-  logic:      ./internal/logic
+  service:    ./internal/service
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
   # Skip main.go scaffolding — this fixture loads as `package e2e` from

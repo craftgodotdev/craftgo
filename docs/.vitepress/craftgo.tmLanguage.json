@@ -1,0 +1,225 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "craftgo",
+  "scopeName": "source.craftgo",
+  "fileTypes": ["craftgo"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#decorators" },
+    { "include": "#enumBody" },
+    { "include": "#declHeaders" },
+    { "include": "#keywords" },
+    { "include": "#verbs" },
+    { "include": "#literals" },
+    { "include": "#types" },
+    { "include": "#errorCategories" },
+    { "include": "#userTypes" },
+    { "include": "#numbers" },
+    { "include": "#pathParams" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.craftgo",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.craftgo",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.craftgo",
+              "match": "\\\\(?:[abfnrtv\\\\'\"]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.other.raw.craftgo",
+          "begin": "`",
+          "end": "`"
+        }
+      ]
+    },
+    "decorators": {
+      "patterns": [
+        {
+          "name": "entity.name.function.decorator.craftgo",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "enumBody": {
+      "comment": "Enum block: highlight the enum name and every value-row identifier inside the braces. The body's idents must be coloured regardless of case (lowercase `created` is just as valid as PascalCase `Created`), so we cannot rely on the project-wide PascalCase userTypes rule.",
+      "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.craftgo" },
+        "2": { "name": "entity.name.type.craftgo" },
+        "3": { "name": "punctuation.section.block.begin.craftgo" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.block.end.craftgo" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#decorators" },
+        { "include": "#numbers" },
+        { "include": "#literals" },
+        {
+          "name": "variable.other.enummember.craftgo",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "keyword.operator.assignment.craftgo",
+          "match": "="
+        }
+      ]
+    },
+    "declHeaders": {
+      "comment": "Highlight the IDENTIFIER right after `type | enum | scalar | service | middleware` so user-chosen names get the type-name colour even when they break the PascalCase convention (e.g. `enum priority`, `type my_thing`). The `error <Category> <Name>` shape captures three groups: keyword, reserved category, then user identifier.",
+      "patterns": [
+        {
+          "match": "\\b(error)\\s+([A-Z][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.craftgo" },
+            "2": { "name": "support.constant.error-category.craftgo" },
+            "3": { "name": "entity.name.type.craftgo" }
+          }
+        },
+        {
+          "match": "\\b(type|enum|scalar|service|middleware)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.craftgo" },
+            "2": { "name": "entity.name.type.craftgo" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.import.craftgo",
+          "match": "\\b(package|import|extend)\\b"
+        },
+        {
+          "name": "keyword.declaration.craftgo",
+          "match": "\\b(type|enum|error|scalar|service|middleware)\\b"
+        },
+        {
+          "name": "keyword.other.craftgo",
+          "match": "\\b(request|response|map)\\b"
+        }
+      ]
+    },
+    "verbs": {
+      "patterns": [
+        {
+          "name": "keyword.control.verb.craftgo",
+          "match": "\\b(get|post|put|patch|delete|head|options)\\b"
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "constant.language.craftgo",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.craftgo",
+          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|file)\\b"
+        }
+      ]
+    },
+    "errorCategories": {
+      "patterns": [
+        {
+          "name": "support.constant.error-category.craftgo",
+          "match": "\\b(BadRequest|Unauthorized|PaymentRequired|Forbidden|NotFound|MethodNotAllowed|NotAcceptable|Conflict|Gone|PreconditionFailed|PayloadTooLarge|UnsupportedMediaType|UnprocessableEntity|TooManyRequests|Internal|NotImplemented|BadGateway|ServiceUnavailable|GatewayTimeout)\\b"
+        }
+      ]
+    },
+    "userTypes": {
+      "patterns": [
+        {
+          "name": "entity.name.type.craftgo",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.duration.craftgo",
+          "match": "\\b\\d+(?:\\.\\d+)?(?:ns|us|µs|ms|s|m|h)\\b"
+        },
+        {
+          "name": "constant.numeric.size.craftgo",
+          "match": "\\b\\d+(?:\\.\\d+)?(?:KB|MB|GB|B)\\b"
+        },
+        {
+          "name": "constant.numeric.float.craftgo",
+          "match": "(?<![A-Za-z_])-?\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.craftgo",
+          "match": "(?<![A-Za-z_])-?\\d+\\b"
+        }
+      ]
+    },
+    "pathParams": {
+      "patterns": [
+        {
+          "name": "variable.parameter.path.craftgo",
+          "match": "\\{[A-Za-z_][A-Za-z0-9_]*\\}"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "storage.modifier.array.craftgo",
+          "match": "\\[\\]"
+        },
+        {
+          "name": "keyword.operator.optional.craftgo",
+          "match": "\\?"
+        },
+        {
+          "name": "keyword.operator.assignment.craftgo",
+          "match": "="
+        },
+        {
+          "name": "punctuation.definition.typeparameters.begin.craftgo",
+          "match": "<"
+        },
+        {
+          "name": "punctuation.definition.typeparameters.end.craftgo",
+          "match": ">"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.craftgo",
+          "match": "[,:.]"
+        }
+      ]
+    }
+  }
+}

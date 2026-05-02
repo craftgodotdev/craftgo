@@ -4,7 +4,7 @@ package ordersservice
 
 import (
 	"github.com/dropship-dev/craftgo/pkg/server"
-	handler "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/handler/orders-service"
+	transport "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/transport/orders-service"
 	"github.com/dropship-dev/craftgo/tests/e2e/multi-service/svccontext"
 )
 
@@ -15,6 +15,6 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/orders/ping", handler.PingHandler(svcCtx))
-	srv.Handle("GET /api/orders/latest", handler.LatestHandler(svcCtx))
+	srv.Handle("GET /api/orders/ping", transport.Ping(svcCtx))
+	srv.Handle("GET /api/orders/latest", transport.Latest(svcCtx))
 }

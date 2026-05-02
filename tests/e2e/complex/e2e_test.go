@@ -507,10 +507,10 @@ func TestCrossFolderAdminPathRoutes(t *testing.T) {
 		`"GET /api/v1/admin/health"`,
 		// Service-level @middlewares wraps every method via embedded
 		// fields on ServiceContext.
-		`svcCtx.AuthRequired(handler.DashboardStatsHandler(svcCtx))`,
-		`svcCtx.AuthRequired(handler.HealthHandler(svcCtx))`,
+		`svcCtx.AuthRequired(transport.DashboardStats(svcCtx))`,
+		`svcCtx.AuthRequired(transport.Health(svcCtx))`,
 		// Method-level @middlewares chain on top of service-level.
-		`svcCtx.AuthRequired(svcCtx.RequestStamp(handler.SnapshotHandler(svcCtx)))`,
+		`svcCtx.AuthRequired(svcCtx.RequestStamp(transport.Snapshot(svcCtx)))`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("expected %q in cross-folder routes.go:\n%s", want, src)
@@ -689,11 +689,11 @@ func TestMiddlewareScaffoldExists(t *testing.T) {
 // wrapper for the protected method.
 func TestSecurityRoutesGoFileWrapsHandler(t *testing.T) {
 	src := readGenerated(t, "internal/routes/profile-service/routes.go")
-	if !strings.Contains(src, `svcCtx.AuthRequired(handler.AdminListProfilesHandler(svcCtx))`) {
+	if !strings.Contains(src, `svcCtx.AuthRequired(transport.AdminListProfiles(svcCtx))`) {
 		t.Errorf("expected svcCtx.AuthRequired wrapper in:\n%s", src)
 	}
 	// Unprotected routes must NOT carry the wrapper.
-	if strings.Contains(src, `svcCtx.AuthRequired(handler.ListProfilesHandler(svcCtx))`) {
+	if strings.Contains(src, `svcCtx.AuthRequired(transport.ListProfiles(svcCtx))`) {
 		t.Errorf("unprotected ListProfiles wrongly wrapped:\n%s", src)
 	}
 }

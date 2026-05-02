@@ -33,6 +33,23 @@ install: ## Install craftgo into $$GOBIN (or $$GOPATH/bin).
 install-lsp: ## Install craftgo-lsp into $$GOBIN. Run after editing internal/lsp or internal/semantic, then restart the language server in VS Code.
 	$(GO) install $(GOFLAGS) ./cmd/craftgo-lsp
 
+# ---- docs ---------------------------------------------------------------
+.PHONY: docs-install
+docs-install: ## Install VitePress dependencies for the docs site.
+	cd docs && npm install
+
+.PHONY: docs-dev
+docs-dev: ## Run the docs site locally on http://localhost:5173.
+	cd docs && npm run dev
+
+.PHONY: docs-build
+docs-build: ## Build the docs site to docs/.vitepress/dist for deployment.
+	cd docs && npm run build
+
+.PHONY: docs-preview
+docs-preview: ## Serve the built docs locally to verify the output.
+	cd docs && npm run preview
+
 # ---- test / lint ---------------------------------------------------------
 .PHONY: test
 test: ## Run all unit tests in the root module.

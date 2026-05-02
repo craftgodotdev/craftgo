@@ -44,7 +44,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	for _, rel := range []string{
 		"main.go",
 		"internal/types/api/types.go",
-		"internal/handler/probe-service/ping-handler.go",
+		"internal/transport/probe-service/ping.go",
 		"docs/openapi.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
@@ -312,8 +312,8 @@ service AuthService {
 
 	// Per-service handler dirs exist for both services.
 	for _, rel := range []string{
-		"internal/handler/probe-service/ping-handler.go",
-		"internal/handler/auth-service/login-handler.go",
+		"internal/transport/probe-service/ping.go",
+		"internal/transport/auth-service/login.go",
 		"internal/types/design/types.go",
 		"internal/types/auth/types.go",
 	} {
@@ -382,7 +382,7 @@ type Token { value string }
 		t.Fatalf("runGen: %v", err)
 	}
 
-	handler, err := os.ReadFile(filepath.Join(dir, "internal/handler/auth/login-handler.go"))
+	handler, err := os.ReadFile(filepath.Join(dir, "internal/transport/auth/login.go"))
 	if err != nil {
 		t.Fatalf("read handler: %v", err)
 	}
@@ -397,7 +397,7 @@ type Token { value string }
 		t.Errorf("handler should not import the canonical types alias when request is cross-pkg:\n%s", hs)
 	}
 
-	logic, err := os.ReadFile(filepath.Join(dir, "internal/logic/auth/login-logic.go"))
+	logic, err := os.ReadFile(filepath.Join(dir, "internal/service/auth/login.go"))
 	if err != nil {
 		t.Fatalf("read logic: %v", err)
 	}

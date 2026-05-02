@@ -3,7 +3,7 @@
 package orderservice
 
 import (
-	handler "github.com/dropship-dev/craftgo/example/internal/handler/order-service"
+	transport "github.com/dropship-dev/craftgo/example/internal/transport/order-service"
 	"github.com/dropship-dev/craftgo/example/svccontext"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/orders/{id}", handler.GetOrderHandler(svcCtx))
-	srv.Handle("GET /api/orders", handler.ListOrdersHandler(svcCtx))
-	srv.Handle("POST /api/orders", handler.CreateOrderHandler(svcCtx))
-	srv.Handle("DELETE /api/orders/{id}", handler.DeleteOrderHandler(svcCtx))
-	srv.Handle("POST /api/orders/defaults", handler.DefaultsShowcaseHandler(svcCtx))
+	srv.Handle("GET /api/orders/{id}", transport.GetOrder(svcCtx))
+	srv.Handle("GET /api/orders", transport.ListOrders(svcCtx))
+	srv.Handle("POST /api/orders", transport.CreateOrder(svcCtx))
+	srv.Handle("DELETE /api/orders/{id}", transport.DeleteOrder(svcCtx))
+	srv.Handle("POST /api/orders/defaults", transport.DefaultsShowcase(svcCtx))
 }

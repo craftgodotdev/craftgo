@@ -266,13 +266,13 @@ func TestE2EDocCommentsPropagate(t *testing.T) {
 			want: []string{},
 		},
 		{
-			path: "internal/handler/user-service/get-user-handler.go",
+			path: "internal/transport/user-service/get-user.go",
 			want: []string{
 				"// GetUser returns the user identified by req.ID.",
 			},
 		},
 		{
-			path: "internal/handler/user-service/ping-handler.go",
+			path: "internal/transport/user-service/ping.go",
 			want: []string{
 				"// Ping is a liveness-style endpoint with no body.",
 			},

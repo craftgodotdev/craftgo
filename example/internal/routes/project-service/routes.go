@@ -3,7 +3,7 @@
 package projectservice
 
 import (
-	handler "github.com/dropship-dev/craftgo/example/internal/handler/project-service"
+	transport "github.com/dropship-dev/craftgo/example/internal/transport/project-service"
 	"github.com/dropship-dev/craftgo/example/svccontext"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/projects", handler.ListProjectsHandler(svcCtx))
-	srv.Handle("GET /api/projects/{id}", handler.GetProjectHandler(svcCtx))
-	srv.Handle("POST /api/projects", handler.CreateProjectHandler(svcCtx))
-	srv.Handle("POST /api/projects/{projectId}/members", handler.AddMemberHandler(svcCtx))
-	srv.Handle("DELETE /api/projects/{id}", handler.DeleteProjectHandler(svcCtx))
+	srv.Handle("GET /api/projects", transport.ListProjects(svcCtx))
+	srv.Handle("GET /api/projects/{id}", transport.GetProject(svcCtx))
+	srv.Handle("POST /api/projects", transport.CreateProject(svcCtx))
+	srv.Handle("POST /api/projects/{projectId}/members", transport.AddMember(svcCtx))
+	srv.Handle("DELETE /api/projects/{id}", transport.DeleteProject(svcCtx))
 }

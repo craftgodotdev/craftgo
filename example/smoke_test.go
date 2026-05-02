@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/dropship-dev/craftgo/example/config"
-	orderservice "github.com/dropship-dev/craftgo/example/internal/handler/order-service"
+	orderservice "github.com/dropship-dev/craftgo/example/internal/transport/order-service"
 	ordersapi "github.com/dropship-dev/craftgo/example/internal/types/orders"
 	projectsapi "github.com/dropship-dev/craftgo/example/internal/types/projects"
 	sharedapi "github.com/dropship-dev/craftgo/example/internal/types/shared"
@@ -873,7 +873,7 @@ func TestUserDomainErrorsImplementErrorInterface(t *testing.T) {
 func TestDefaultsShowcasePreFill(t *testing.T) {
 	cfg := &config.Config{}
 	svc := svccontext.NewServiceContext(cfg)
-	handler := orderservice.DefaultsShowcaseHandler(svc)
+	handler := orderservice.DefaultsShowcase(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/defaults", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")

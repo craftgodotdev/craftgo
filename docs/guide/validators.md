@@ -1,0 +1,234 @@
+# Validators
+
+Validators are decorators that constrain field values. They live in the DSL and run at request time as plain Go code - no reflection, no struct tags, no runtime cost beyond the comparisons themselves.
+
+## At a glance
+
+```craftgo
+type CreateUserReq {
+    name  string @required @length(1, 80)
+    email string @required @format(email)
+    age   int?   @min(0) @max(150)
+}
+```
+
+15+ built-in validators cover strings (length, pattern, format), numbers (min, max, range), arrays (minItems, maxItems, uniqueItems), and cross-field rules (`@requiresOneOf`, `@mutuallyExclusive`).
+
+The handler calls `req.Validate()` after JSON decode and before your business logic. If validation fails, the handler returns a 400 with a structured message. Your service code never runs with bad input.
+
+The rest of this page covers each validator family with examples.
+
+## How it works
+
+You write:
+
+```craftgo
+type CreateUserReq {
+    name  string @required @length(1, 80)
+    email string @required @format(email)
+    age   int?   @min(0) @max(150)
+}
+```
+
+craftgo generates:
+
+```go
+func (v *CreateUserReq) Validate() error {
+    if v.Name == "" {
+        return errors.New("name: is required")
+    }
+    if l := len(v.Name); l < 1 || l > 80 {
+        return fmt.Errorf("name: length must be between 1 and 80, got %d", l)
+    }
+    if v.Email == "" {
+        return errors.New("email: is required")
+    }
+    if !emailRegex.MatchString(v.Email) {
+        return errors.New("email: does not match pattern")
+    }
+    if v.Age != nil {
+        if *v.Age < 0 {
+            return fmt.Errorf("age: must be at least 0, got %d", *v.Age)
+        }
+        if *v.Age > 150 {
+            return fmt.Errorf("age: must be at most 150, got %d", *v.Age)
+        }
+    }
+    return nil
+}
+```
+
+Plain Go. No reflection. No struct tag parsing. The handler calls `req.Validate()` after JSON decode and before your business logic.
+
+## Built-in validators
+
+### Strings
+
+| Decorator                   | Effect                                                |
+| --------------------------- | ----------------------------------------------------- |
+| `@required`                 | Field must be non-empty                               |
+| `@length(min, max)`         | Character count in `[min, max]`                       |
+| `@minLength(n)`             | At least `n` characters                               |
+| `@maxLength(n)`             | At most `n` characters                                |
+| `@pattern("regex")`         | Must match `regexp`                                   |
+| `@format(name)`             | Built-in format check (see below)                     |
+
+Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `hexcolor`, `json`.
+
+```craftgo
+type Profile {
+    email   string @format(email)
+    website string @format(uri)
+    avatar  string @pattern("^https://.*\\.(png|jpg)$")
+}
+```
+
+### Numbers
+
+| Decorator                   | Effect                                |
+| --------------------------- | ------------------------------------- |
+| `@min(n)`                   | Value `>= n`                          |
+| `@max(n)`                   | Value `<= n`                          |
+| `@range(min, max)`          | Both bounds                           |
+| `@positive`                 | `> 0`                                 |
+| `@negative`                 | `< 0`                                 |
+| `@multipleOf(n)`            | Divisible by `n`                      |
+
+```craftgo
+type Order {
+    quantity int   @positive @max(1000)
+    price    int   @min(0) @multipleOf(2)
+    rating   float @range(0.0, 5.0)
+}
+```
+
+### Arrays
+
+| Decorator                   | Effect                                |
+| --------------------------- | ------------------------------------- |
+| `@minItems(n)`              | At least `n` elements                 |
+| `@maxItems(n)`              | At most `n` elements                  |
+| `@uniqueItems`              | All elements distinct                 |
+
+```craftgo
+type Post {
+    tags string[] @minItems(1) @maxItems(10) @uniqueItems
+}
+```
+
+### Cross-field
+
+| Decorator                          | Effect                                              |
+| ---------------------------------- | --------------------------------------------------- |
+| `@requiresOneOf(a, b, c)`          | At least one of named fields must be set            |
+| `@mutuallyExclusive(a, b)`         | At most one of named fields can be set              |
+
+```craftgo
+@requiresOneOf(email, phone)
+@mutuallyExclusive(personal, business)
+type Contact {
+    email     string?
+    phone     string?
+    personal  bool
+    business  bool
+}
+```
+
+These attach to the type, not a field. The validator surfaces a single message.
+
+## Optional fields
+
+A `T?` field becomes `*T` in Go. Validators only fire when the pointer is non-nil:
+
+```craftgo
+type UpdateUser {
+    name string? @length(1, 80)
+}
+```
+
+Sending `{"name": null}` or omitting `name` skips the length check. Sending `{"name": "alice"}` runs it.
+
+## Scalars carry validators
+
+Scalars let you bake validators into a named primitive:
+
+```craftgo
+scalar Email string @format(email) @maxLength(254)
+
+type User { email Email }
+```
+
+`User.Validate()` runs the format and length checks on `email` because the scalar's validators inherit. No need to repeat them on every field.
+
+## File uploads
+
+Multipart fields use `@maxSize` and `@mimeTypes`:
+
+```craftgo
+type AvatarReq {
+    userId string @path
+    file   file   @form @required @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
+}
+```
+
+## Default values
+
+`@default` provides a fallback when the client omits a field. The handler pre-fills the request struct before JSON decode, so omitted fields keep the default; explicit values overwrite.
+
+```craftgo
+type ListUsersReq {
+    page     int     @default(1)
+    pageSize int     @default(20) @min(1) @max(100)
+    sort     string? @default("created_at")
+}
+```
+
+`@default` works on primitives, optional fields, scalars, enums, and arrays of those. It does not combine with `@required` (required fields fail validation before the default applies).
+
+## Error messages
+
+Generated messages follow the shape:
+
+```
+<field>: <reason>
+```
+
+Multiple failures join with `; `:
+
+```
+name: is required; email: does not match pattern; age: must be at most 150, got 200
+```
+
+Customize the response by overriding `server.SetDefaultValidationFailed`:
+
+```go
+server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, err error) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusBadRequest)
+    json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+})
+```
+
+## Validators on response types
+
+`Validate()` exists on every type, including responses. craftgo does not call it on response types automatically - that would charge runtime cost for trusted server output. If you want belt-and-braces, call it yourself before encoding.
+
+## Adding a custom validator
+
+The DSL ships a closed set of validators. To add a project-specific check, validate inside your business logic:
+
+```go
+func (s *Service) CreateUser(ctx context.Context, req *types.CreateUserReq) (*types.User, error) {
+    if err := req.Validate(); err != nil {
+        return nil, err
+    }
+    if !s.svcCtx.AllowList.Contains(req.Email) {
+        return nil, types.NewBadRequestErr(types.BadRequestBody{
+            Message: "email domain not allowed",
+        })
+    }
+    // ...
+}
+```
+
+For checks that should live closer to the schema (uniqueness, foreign keys, business rules), the typed error pattern keeps the response shape clean.

@@ -4,7 +4,7 @@ package adminservice
 
 import (
 	"github.com/dropship-dev/craftgo/pkg/server"
-	handler "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/handler/admin-service"
+	transport "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/transport/admin-service"
 	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
 )
 
@@ -15,7 +15,7 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/v1/admin/dashboard", svcCtx.AuthRequired(handler.DashboardStatsHandler(svcCtx)))
-	srv.Handle("GET /api/v1/admin/health", svcCtx.AuthRequired(handler.HealthHandler(svcCtx)))
-	srv.Handle("GET /api/v1/admin/snapshot", svcCtx.AuthRequired(svcCtx.RequestStamp(handler.SnapshotHandler(svcCtx))))
+	srv.Handle("GET /api/v1/admin/dashboard", svcCtx.AuthRequired(transport.DashboardStats(svcCtx)))
+	srv.Handle("GET /api/v1/admin/health", svcCtx.AuthRequired(transport.Health(svcCtx)))
+	srv.Handle("GET /api/v1/admin/snapshot", svcCtx.AuthRequired(svcCtx.RequestStamp(transport.Snapshot(svcCtx))))
 }

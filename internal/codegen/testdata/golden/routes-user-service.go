@@ -4,7 +4,7 @@ package userservice
 
 import (
 	"github.com/dropship-dev/craftgo/pkg/server"
-	handler "github.com/example/app/internal/handler/user-service"
+	transport "github.com/example/app/internal/transport/user-service"
 	"github.com/example/app/svccontext"
 )
 
@@ -15,8 +15,8 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /v1/api/v1/users/{id}", handler.GetUserHandler(svcCtx))
-	srv.Handle("POST /v1/api/v1/users/{id}", handler.UpdateUserHandler(svcCtx))
-	srv.Handle("DELETE /v1/api/v1/users/{id}", handler.DeleteUserHandler(svcCtx))
-	srv.Handle("GET /v1/api/v1/ping", handler.PingHandler(svcCtx))
+	srv.Handle("GET /v1/api/v1/users/{id}", transport.GetUser(svcCtx))
+	srv.Handle("POST /v1/api/v1/users/{id}", transport.UpdateUser(svcCtx))
+	srv.Handle("DELETE /v1/api/v1/users/{id}", transport.DeleteUser(svcCtx))
+	srv.Handle("GET /v1/api/v1/ping", transport.Ping(svcCtx))
 }

@@ -4,7 +4,7 @@ package profileservice
 
 import (
 	"github.com/dropship-dev/craftgo/pkg/server"
-	handler "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/handler/profile-service"
+	transport "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/transport/profile-service"
 	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
 )
 
@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/v1/profiles/{id}", handler.GetProfileHandler(svcCtx))
-	srv.Handle("GET /api/v1/profiles", handler.ListProfilesHandler(svcCtx))
-	srv.Handle("GET /api/v1/admin/profiles", svcCtx.AuthRequired(handler.AdminListProfilesHandler(svcCtx)))
-	srv.Handle("POST /api/v1/profiles", handler.CreateProfileHandler(svcCtx))
-	srv.Handle("PATCH /api/v1/profiles/{id}", handler.PatchProfileHandler(svcCtx))
+	srv.Handle("GET /api/v1/profiles/{id}", transport.GetProfile(svcCtx))
+	srv.Handle("GET /api/v1/profiles", transport.ListProfiles(svcCtx))
+	srv.Handle("GET /api/v1/admin/profiles", svcCtx.AuthRequired(transport.AdminListProfiles(svcCtx)))
+	srv.Handle("POST /api/v1/profiles", transport.CreateProfile(svcCtx))
+	srv.Handle("PATCH /api/v1/profiles/{id}", transport.PatchProfile(svcCtx))
 }

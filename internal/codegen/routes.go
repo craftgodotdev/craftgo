@@ -36,7 +36,7 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 // outside any middleware - timeouts include the middleware's own
 // work, not just the handler's.
 func buildHandlerCall(m *ast.Method, mws []string) string {
-	core := "handler." + m.Name + "Handler(svcCtx)"
+	core := "transport." + m.Name + "(svcCtx)"
 	for i := len(mws) - 1; i >= 0; i-- {
 		core = "svcCtx." + mws[i] + "(" + core + ")"
 	}
@@ -177,7 +177,7 @@ type routeEntry struct {
 type routesData struct {
 	Package          string
 	Service          string
-	HandlerImport    string
+	TransportImport    string
 	SvccontextImport string
 	Routes           []routeEntry
 	NeedsTime        bool
@@ -318,7 +318,7 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 	data := routesData{
 		Package:          ServicePackage(svcName),
 		Service:          svcName,
-		HandlerImport:    imps.Handler,
+		TransportImport:  imps.Transport,
 		SvccontextImport: imps.Svccontext,
 	}
 	for _, m := range svc.Methods {

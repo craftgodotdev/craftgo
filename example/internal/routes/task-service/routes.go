@@ -3,7 +3,7 @@
 package taskservice
 
 import (
-	handler "github.com/dropship-dev/craftgo/example/internal/handler/task-service"
+	transport "github.com/dropship-dev/craftgo/example/internal/transport/task-service"
 	"github.com/dropship-dev/craftgo/example/svccontext"
 	"github.com/dropship-dev/craftgo/pkg/server"
 )
@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/tasks", handler.ListTasksHandler(svcCtx))
-	srv.Handle("GET /api/tasks/{id}", handler.GetTaskHandler(svcCtx))
-	srv.Handle("POST /api/tasks", handler.CreateTaskHandler(svcCtx))
-	srv.Handle("POST /api/tasks/{taskId}/comments", handler.AddCommentHandler(svcCtx))
-	srv.Handle("DELETE /api/tasks/{id}", handler.DeleteTaskHandler(svcCtx))
+	srv.Handle("GET /api/tasks", transport.ListTasks(svcCtx))
+	srv.Handle("GET /api/tasks/{id}", transport.GetTask(svcCtx))
+	srv.Handle("POST /api/tasks", transport.CreateTask(svcCtx))
+	srv.Handle("POST /api/tasks/{taskId}/comments", transport.AddComment(svcCtx))
+	srv.Handle("DELETE /api/tasks/{id}", transport.DeleteTask(svcCtx))
 }

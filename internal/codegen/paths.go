@@ -127,26 +127,26 @@ func methodFullPath(basePath string, svc *ast.ServiceDecl, m *ast.Method) string
 // `http.ServeMux` patterns ("GET", "POST", ...).
 func httpVerb(verb string) string { return strings.ToUpper(verb) }
 
-// importPaths bundles every Go import path used by the handler/routes/logic
-// generators for a given project + service. Computed once per service.
+// importPaths bundles every Go import path used by the transport / routes /
+// service generators for a given project + service. Computed once per service.
 type importPaths struct {
 	Types      string
-	Handler    string
+	Transport  string
 	Routes     string
-	Logic      string
+	Service    string
 	Svccontext string
 }
 
 // importPathsFor computes the per-service Go import paths for a project.
 // pkg.Name is appended to the types output; the kebab-case service
-// directory name is appended to handler/routes/logic.
+// directory name is appended to transport / routes / service.
 func importPathsFor(cfg *config.Config, pkg *semantic.Package, svcName string) importPaths {
 	svcSeg := ServiceDir(svcName)
 	return importPaths{
 		Types:      goImportFromRel(cfg.Package, cfg.Output.Types) + "/" + pkg.Name,
-		Handler:    goImportFromRel(cfg.Package, cfg.Output.Handler) + "/" + svcSeg,
+		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + svcSeg,
 		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + svcSeg,
-		Logic:      goImportFromRel(cfg.Package, cfg.Output.Logic) + "/" + svcSeg,
+		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + svcSeg,
 		Svccontext: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
 }
