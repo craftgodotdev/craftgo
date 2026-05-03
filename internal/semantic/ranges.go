@@ -44,7 +44,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 	case *ast.ScalarDecl:
 		a.checkDecoratorRanges(dd.Decorators)
 	case *ast.ServiceDecl:
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			a.checkDecoratorRanges(m.Decorators)
 		}
 	}

@@ -38,11 +38,15 @@ func (a *analyzer) checkEnumValueCollisions(files []*ast.File) {
 // and emits one diagnostic per duplicate, anchored at each duplicate's
 // own position so the IDE highlights every offending value.
 func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
-	if ed == nil || len(ed.Values) < 2 {
+	if ed == nil {
 		return
 	}
-	names := make([]string, 0, len(ed.Values))
-	for _, v := range ed.Values {
+	enumVals := ed.EnumValues()
+	if len(enumVals) < 2 {
+		return
+	}
+	names := make([]string, 0, len(enumVals))
+	for _, v := range enumVals {
 		if v == nil || v.Name == "" {
 			continue
 		}
@@ -56,7 +60,7 @@ func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
 		return
 	}
 	byName := map[string]*ast.EnumValue{}
-	for _, v := range ed.Values {
+	for _, v := range enumVals {
 		if v != nil {
 			byName[v.Name] = v
 		}

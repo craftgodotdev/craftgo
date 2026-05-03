@@ -511,7 +511,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 		a.checkFieldPlacement(LvlField, dd.Name, dd.Body)
 	case *ast.EnumDecl:
 		a.checkPlacement(LvlEnum, "enum "+dd.Name, dd.Decorators)
-		for _, v := range dd.Values {
+		for _, v := range dd.EnumValues() {
 			a.checkPlacement(LvlEnumValue, "enum value "+dd.Name+"."+v.Name, v.Decorators)
 		}
 	case *ast.ErrorDecl:
@@ -532,7 +532,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 		if !dd.Extend {
 			a.checkPlacement(LvlService, "service "+dd.Name, dd.Decorators)
 		}
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			a.checkPlacement(LvlMethod, "method "+dd.Name+"."+m.Name, m.Decorators)
 		}
 	}
@@ -741,14 +741,14 @@ func (a *analyzer) mergeServices() {
 			}
 			continue
 		}
-		si.Methods = append(si.Methods, si.Primary.Methods...)
+		si.Methods = append(si.Methods, si.Primary.Methods()...)
 		for _, e := range si.Extends {
 			if len(e.Decorators) > 0 {
 				d := a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendDecorators,
 					"extend service %q must not have service-level decorators", name)
 				d.Related = related(si.Primary.Pos, "primary service declared here")
 			}
-			si.Methods = append(si.Methods, e.Methods...)
+			si.Methods = append(si.Methods, e.Methods()...)
 		}
 	}
 }
@@ -792,7 +792,7 @@ func (a *analyzer) checkEnums() {
 		var firstKind ast.EnumValueKind
 		var firstKindPos lexer.Position
 		first := true
-		for _, v := range ed.Values {
+		for _, v := range ed.EnumValues() {
 			if prev, dup := seenNames[v.Name]; dup {
 				d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateName,
 					"duplicate enum value name %q in %q", v.Name, ed.Name)
@@ -880,7 +880,7 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 		a.checkFieldDecorators(dd.Name, dd.Body)
 	case *ast.EnumDecl:
 		a.checkDecoratorScope("enum "+dd.Name, dd.Decorators)
-		for _, v := range dd.Values {
+		for _, v := range dd.EnumValues() {
 			a.checkDecoratorScope("enum value "+dd.Name+"."+v.Name, v.Decorators)
 		}
 	case *ast.ErrorDecl:
@@ -896,7 +896,7 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 			scope = "extend " + scope
 		}
 		a.checkDecoratorScope(scope, dd.Decorators)
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			a.checkDecoratorScope("method "+dd.Name+"."+m.Name, m.Decorators)
 		}
 	}
@@ -1094,7 +1094,7 @@ func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 	case *ast.ErrorDecl:
 		a.checkFieldCombinations(dd.Name, dd.Body)
 	case *ast.ServiceDecl:
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			a.checkMethodCombinations(dd.Name, m)
 		}
 	}

@@ -276,7 +276,7 @@ func TestEmptyTypeBody(t *testing.T) {
 func TestEnumBare(t *testing.T) {
 	f := mustParse(t, `enum Status { Active  Inactive }`)
 	ed := f.Decls[0].(*ast.EnumDecl)
-	if len(ed.Values) != 2 || ed.Values[0].Kind != ast.EnumBare {
+	if len(ed.EnumValues()) != 2 || ed.EnumValues()[0].Kind != ast.EnumBare {
 		t.Error()
 	}
 }
@@ -284,14 +284,14 @@ func TestEnumBare(t *testing.T) {
 func TestEnumInt(t *testing.T) {
 	f := mustParse(t, `enum P { Low = 1  High = 99 }`)
 	ed := f.Decls[0].(*ast.EnumDecl)
-	if ed.Values[0].Kind != ast.EnumInt || ed.Values[0].IntValue != 1 {
+	if ed.EnumValues()[0].Kind != ast.EnumInt || ed.EnumValues()[0].IntValue != 1 {
 		t.Error()
 	}
 }
 
 func TestEnumString(t *testing.T) {
 	f := mustParse(t, `enum S { A = "alpha" }`)
-	v := f.Decls[0].(*ast.EnumDecl).Values[0]
+	v := f.Decls[0].(*ast.EnumDecl).EnumValues()[0]
 	if v.Kind != ast.EnumString || v.StrValue != "alpha" {
 		t.Error()
 	}
@@ -299,7 +299,7 @@ func TestEnumString(t *testing.T) {
 
 func TestEnumWithDecorator(t *testing.T) {
 	f := mustParse(t, `enum X { A @doc("the A value") }`)
-	v := f.Decls[0].(*ast.EnumDecl).Values[0]
+	v := f.Decls[0].(*ast.EnumDecl).EnumValues()[0]
 	if len(v.Decorators) != 1 {
 		t.Error()
 	}
@@ -388,10 +388,10 @@ func TestServiceMethods(t *testing.T) {
     }
 }`)
 	sd := f.Decls[0].(*ast.ServiceDecl)
-	if len(sd.Methods) != 1 {
+	if len(sd.Methods()) != 1 {
 		t.Fatal()
 	}
-	m := sd.Methods[0]
+	m := sd.Methods()[0]
 	if m.Verb != "get" || m.Name != "GetX" {
 		t.Error()
 	}
@@ -410,7 +410,7 @@ func TestMethodAllVerbs(t *testing.T) {
 	verbs := []string{"get", "post", "put", "patch", "delete", "head", "options"}
 	for _, v := range verbs {
 		f := mustParse(t, "service S { "+v+" Op /x {} }")
-		if f.Decls[0].(*ast.ServiceDecl).Methods[0].Verb != v {
+		if f.Decls[0].(*ast.ServiceDecl).Methods()[0].Verb != v {
 			t.Errorf("%s", v)
 		}
 	}
@@ -418,7 +418,7 @@ func TestMethodAllVerbs(t *testing.T) {
 
 func TestMethodNoPath(t *testing.T) {
 	f := mustParse(t, `service S { get Op { response X } }`)
-	m := f.Decls[0].(*ast.ServiceDecl).Methods[0]
+	m := f.Decls[0].(*ast.ServiceDecl).Methods()[0]
 	if m.Path != nil {
 		t.Error("expected no path")
 	}
@@ -426,7 +426,7 @@ func TestMethodNoPath(t *testing.T) {
 
 func TestMethodPathParam(t *testing.T) {
 	f := mustParse(t, `service S { get Op /users/{id} {} }`)
-	segs := f.Decls[0].(*ast.ServiceDecl).Methods[0].Path.Segments
+	segs := f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path.Segments
 	if len(segs) != 2 {
 		t.Fatal()
 	}
@@ -440,7 +440,7 @@ func TestMethodPathParam(t *testing.T) {
 
 func TestMethodPathHyphenated(t *testing.T) {
 	f := mustParse(t, `service S { get Op /api-v1/users {} }`)
-	seg := f.Decls[0].(*ast.ServiceDecl).Methods[0].Path.Segments[0]
+	seg := f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path.Segments[0]
 	if seg.Literal != "api-v1" {
 		t.Errorf("got %q", seg.Literal)
 	}
@@ -451,7 +451,7 @@ func TestMethodPassthroughEmptyBody(t *testing.T) {
 	@passthrough
 	get Tail /tail {}
 }`)
-	m := f.Decls[0].(*ast.ServiceDecl).Methods[0]
+	m := f.Decls[0].(*ast.ServiceDecl).Methods()[0]
 	if m.Request != nil || m.Response != nil {
 		t.Errorf("@passthrough method must not bind request/response, got req=%v resp=%v", m.Request, m.Response)
 	}
@@ -466,7 +466,7 @@ func TestMethodWithDecorators(t *testing.T) {
     @timeout(5s)
     get Op /x {}
 }`)
-	m := f.Decls[0].(*ast.ServiceDecl).Methods[0]
+	m := f.Decls[0].(*ast.ServiceDecl).Methods()[0]
 	if len(m.Decorators) != 2 {
 		t.Error()
 	}
@@ -793,7 +793,7 @@ func TestMethodMissingRequestType(t *testing.T) {
 
 func TestPathTrailingSlash(t *testing.T) {
 	f := mustParse(t, `service S { get Op /users/ {} }`)
-	segs := f.Decls[0].(*ast.ServiceDecl).Methods[0].Path.Segments
+	segs := f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path.Segments
 	if len(segs) != 2 {
 		t.Errorf("got %d segments", len(segs))
 	}

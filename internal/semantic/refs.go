@@ -47,7 +47,7 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 		if !dd.Extend {
 			a.checkServiceLevelRefs(dd.Decorators)
 		}
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			a.checkMethodLevelRefs(m)
 		}
 	}

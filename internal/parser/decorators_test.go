@@ -189,7 +189,7 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 			}
 		case *ast.EnumDecl:
 			add(v.Decorators)
-			for _, val := range v.Values {
+			for _, val := range v.EnumValues() {
 				add(val.Decorators)
 			}
 		case *ast.ErrorDecl:
@@ -205,7 +205,7 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 			add(v.Decorators)
 		case *ast.ServiceDecl:
 			add(v.Decorators)
-			for _, mtd := range v.Methods {
+			for _, mtd := range v.Methods() {
 				add(mtd.Decorators)
 			}
 		}

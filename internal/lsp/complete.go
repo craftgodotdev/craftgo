@@ -448,8 +448,9 @@ func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position
 	if e == nil {
 		return nil
 	}
-	out := make([]protocol.CompletionItem, 0, len(e.Values))
-	for _, v := range e.Values {
+	enumVals := e.EnumValues()
+	out := make([]protocol.CompletionItem, 0, len(enumVals))
+	for _, v := range enumVals {
 		out = append(out, protocol.CompletionItem{
 			Label:      v.Name,
 			Kind:       protocol.CompletionItemKindEnumMember,

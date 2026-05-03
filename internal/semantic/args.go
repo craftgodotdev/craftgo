@@ -40,7 +40,7 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 		a.checkFieldArgs(LvlField, dd.Body)
 	case *ast.EnumDecl:
 		a.checkArgsScope(LvlEnum, dd.Decorators)
-		for _, v := range dd.Values {
+		for _, v := range dd.EnumValues() {
 			a.checkArgsScope(LvlEnumValue, v.Decorators)
 		}
 	case *ast.ErrorDecl:
@@ -54,7 +54,7 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 		if !dd.Extend {
 			a.checkArgsScope(LvlService, dd.Decorators)
 		}
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			a.checkArgsScope(LvlMethod, m.Decorators)
 		}
 	}
@@ -166,7 +166,7 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 			return
 		}
 		want := ident.Name.Parts[0]
-		for _, ev := range ed.Values {
+		for _, ev := range ed.EnumValues() {
 			if ev.Name == want {
 				return
 			}
@@ -283,8 +283,9 @@ func enumValueList(ed *ast.EnumDecl) string {
 	if ed == nil {
 		return ""
 	}
-	out := make([]string, 0, len(ed.Values))
-	for _, v := range ed.Values {
+	enumVals := ed.EnumValues()
+	out := make([]string, 0, len(enumVals))
+	for _, v := range enumVals {
 		out = append(out, v.Name)
 	}
 	return strings.Join(out, ", ")

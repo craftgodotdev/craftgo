@@ -456,13 +456,13 @@ func TestWalkDeclRefsCoversErrorAndService(t *testing.T) {
 		},
 	}, "")
 	// Service with method req+resp.
-	r.walkDeclRefs(&ast.ServiceDecl{Methods: []*ast.Method{
-		{
+	r.walkDeclRefs(&ast.ServiceDecl{Members: []ast.ServiceMember{
+		&ast.Method{
 			Request:  &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}},
 			Response: &ast.MethodResponse{Type: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}}},
 		},
 		// Method with no request/response - both nil branches.
-		{},
+		&ast.Method{},
 	}}, "")
 	if len(r.diags) != 0 {
 		t.Errorf("happy-path multi-part refs should resolve, got %v", r.diags)

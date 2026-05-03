@@ -106,7 +106,7 @@ func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 	case *ast.ErrorDecl:
 		r.walkBodyRefs(dd.Body, currentPkg)
 	case *ast.ServiceDecl:
-		for _, m := range dd.Methods {
+		for _, m := range dd.Methods() {
 			if m.Request != nil {
 				r.walkNamedRef(m.Request, currentPkg)
 			}
@@ -359,7 +359,7 @@ func (r *refResolver) checkProjectMiddlewareRefs(files []*ast.File) {
 				continue
 			}
 			r.checkMiddlewareDecorators(s.Decorators, declared)
-			for _, m := range s.Methods {
+			for _, m := range s.Methods() {
 				r.checkMiddlewareDecorators(m.Decorators, declared)
 			}
 		}

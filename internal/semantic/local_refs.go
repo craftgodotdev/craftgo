@@ -104,7 +104,7 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 					a.checkLocalTypeRef(p.Type, nil, imports)
 				}
 			case *ast.ServiceDecl:
-				for _, m := range v.Methods {
+				for _, m := range v.Methods() {
 					if m.Request != nil {
 						a.checkLocalNamedRef(m.Request, nil, imports)
 					}

@@ -18,6 +18,14 @@ import (
 // lexer naming and to make node-position fields read clearly.
 type Pos = lexer.Position
 
+// Comment aliases [lexer.Comment] so consumers of the AST (codegen, lint
+// tools, the formatter) can refer to one canonical type without pulling
+// the lexer package into every import block.
+type Comment = lexer.Comment
+
+// CommentKind aliases [lexer.CommentKind] for the same reason.
+type CommentKind = lexer.CommentKind
+
 // astMarker is the body of every marker method (`declNode`,
 // `typeMember`, `exprNode`). Marker methods exist only to seal a Go
 // interface - they have no behaviour. An empty body (`{}`) would be
@@ -51,6 +59,14 @@ type File struct {
 	Package    *PackageDecl
 	Imports    []*Import
 	Decls      []Decl
+	// Comments is the side channel containing every `//` comment in
+	// the source, in source order, with leading/trailing kind. The
+	// parser populates it from the lexer's accumulated set so tools
+	// (formatter, linters, doc generators) can read every comment
+	// without re-scanning the source. Decl-level Doc/TrailingDoc
+	// fields are convenience copies of comments that AST attachment
+	// already captured; this slice is the exhaustive view.
+	Comments []*Comment
 }
 
 // PackageDecl is the `package <name>` line. Optional in single-file projects;
@@ -63,10 +79,16 @@ type PackageDecl struct {
 
 // Import models a single `import [alias] "path"` line. Alias is empty when
 // omitted; semantic phase derives a default alias from the last path segment.
+//
+// Doc captures the run of `//` comments immediately above the `import`
+// keyword. TrailingDoc captures a `// note` on the same line as the path
+// string, e.g. `import "auth"  // for AuthRequired middleware`.
 type Import struct {
-	Pos   Pos
-	Alias string
-	Path  string
+	Pos         Pos
+	Alias       string
+	Path        string
+	Doc         []string
+	TrailingDoc string
 }
 
 // Decl is the interface implemented by every top-level declaration node
@@ -83,13 +105,18 @@ type Decl interface {
 // TypeDecl is `type Name[<TypeParams>] { Body }`. TypeParams is non-empty
 // only for generic declarations (e.g. `Page<T>`); concrete instances are
 // represented inline at the call site via [NamedTypeRef.Args].
+//
+// TrailingDoc captures a `// note` that sits on the same source line as
+// the closing `}` of the body, e.g. `} // end of User`. Empty when no
+// such trailing comment was present.
 type TypeDecl struct {
-	Pos        Pos
-	Decorators []*Decorator
-	Doc        []string
-	Name       string
-	TypeParams []string
-	Body       []TypeMember
+	Pos         Pos
+	Decorators  []*Decorator
+	Doc         []string
+	Name        string
+	TypeParams  []string
+	Body        []TypeMember
+	TrailingDoc []string
 }
 
 func (*TypeDecl) declNode()          { astMarker() }
@@ -128,14 +155,68 @@ type Mixin struct {
 func (*Mixin) typeMember()      { astMarker() }
 func (m *Mixin) MemberPos() Pos { return m.Pos }
 
-// EnumDecl is `enum Name { Values* }`. All values must be of the same kind
-// (all bare, all int, or all string); semantic phase enforces that.
+// FreeComment is a free-floating `//` comment block that appears inside a
+// type / enum / service body and does not attach to any field, value, or
+// method. Common patterns:
+//
+//   - Section dividers immediately after the opening `{`.
+//   - Closing notes (TODO / NOTE) immediately before the `}`.
+//   - Stand-alone blocks separated from surrounding members by a blank line.
+//
+// Text holds one entry per `//` source line, with the leading `// ` (slashes
+// plus optional single space) already stripped — the parser populates this
+// from the lexer's Doc-attached buffer when the buffer is decided to be
+// "free-floating" rather than the next member's leading doc.
+//
+// Implements [TypeMember], [EnumMember], and [ServiceMember] so the same
+// node can sit inside any body kind.
+type FreeComment struct {
+	Pos  Pos
+	Text []string
+}
+
+func (*FreeComment) typeMember()      { astMarker() }
+func (*FreeComment) enumMember()      { astMarker() }
+func (*FreeComment) serviceMember()   { astMarker() }
+func (c *FreeComment) MemberPos() Pos { return c.Pos }
+
+// EnumDecl is `enum Name { Members* }`. Members are a mix of [EnumValue] (the
+// actual enum entries) and [FreeComment] (free-floating section dividers /
+// closing notes). All [EnumValue] entries must share a kind (all bare, all
+// int, or all string); semantic phase enforces that. Use [EnumDecl.EnumValues]
+// to iterate only the typed values when free-floating comments are not relevant.
 type EnumDecl struct {
-	Pos        Pos
-	Decorators []*Decorator
-	Doc        []string
-	Name       string
-	Values     []*EnumValue
+	Pos         Pos
+	Decorators  []*Decorator
+	Doc         []string
+	Name        string
+	Members     []EnumMember
+	TrailingDoc []string // `// note` on the same line as the body's closing `}`
+}
+
+// EnumValues returns only the [*EnumValue] entries from Members, preserving
+// source order. Convenience for callers (semantic, codegen) that want the
+// typed list and treat free-floating comments as cosmetic.
+func (d *EnumDecl) EnumValues() []*EnumValue {
+	if d == nil {
+		return nil
+	}
+	out := make([]*EnumValue, 0, len(d.Members))
+	for _, m := range d.Members {
+		if v, ok := m.(*EnumValue); ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// EnumMember is the interface implemented by anything that can appear inside
+// an `enum` body: [*EnumValue] for typed entries, [*FreeComment] for
+// free-floating notes / section dividers.
+type EnumMember interface {
+	enumMember()
+	// MemberPos returns the position of the member's first token.
+	MemberPos() Pos
 }
 
 func (*EnumDecl) declNode()          { astMarker() }
@@ -166,18 +247,22 @@ type EnumValue struct {
 	Decorators []*Decorator
 }
 
+func (*EnumValue) enumMember()      { astMarker() }
+func (v *EnumValue) MemberPos() Pos { return v.Pos }
+
 // ErrorDecl is `error <Category> Name [{ Body }]`. Body is optional - the
 // shortest form (`error NotFound UserNotFound`) inherits all defaults from
 // the category. HasBody distinguishes "explicit empty body `{}`" from "no
 // body at all" (both produce empty Body slice).
 type ErrorDecl struct {
-	Pos        Pos
-	Decorators []*Decorator
-	Doc        []string
-	Category   string
-	Name       string
-	Body       []TypeMember
-	HasBody    bool
+	Pos         Pos
+	Decorators  []*Decorator
+	Doc         []string
+	Category    string
+	Name        string
+	Body        []TypeMember
+	HasBody     bool
+	TrailingDoc []string // `// note` on the same line as the body's closing `}`
 }
 
 func (*ErrorDecl) declNode()          { astMarker() }
@@ -226,32 +311,69 @@ type MiddlewareParam struct {
 // ServiceDecl is either a primary `service Name { ... }` (Extend == false) or
 // a continuation `extend service Name { ... }` (Extend == true). The
 // semantic phase merges all extends into the primary.
+//
+// Members is a heterogeneous list of [*Method] (the actual endpoints) and
+// [*FreeComment] (free-floating section dividers / closing notes). Use
+// [ServiceDecl.Methods] when only the typed endpoints are needed.
 type ServiceDecl struct {
-	Pos        Pos
-	Decorators []*Decorator
-	Doc        []string
-	Name       string
-	Methods    []*Method
-	Extend     bool
+	Pos         Pos
+	Decorators  []*Decorator
+	Doc         []string
+	Name        string
+	Members     []ServiceMember
+	Extend      bool
+	TrailingDoc []string // `// note` on the same line as the body's closing `}`
 }
 
 func (*ServiceDecl) declNode()          { astMarker() }
 func (d *ServiceDecl) DeclName() string { return d.Name }
 func (d *ServiceDecl) DeclPos() Pos     { return d.Pos }
 
+// Methods returns only the [*Method] entries from Members in source order.
+// Convenience for callers (semantic, codegen) that ignore free-floating
+// comments and want the typed list.
+func (d *ServiceDecl) Methods() []*Method {
+	if d == nil {
+		return nil
+	}
+	out := make([]*Method, 0, len(d.Members))
+	for _, m := range d.Members {
+		if mm, ok := m.(*Method); ok {
+			out = append(out, mm)
+		}
+	}
+	return out
+}
+
+// ServiceMember is the interface implemented by anything that can appear inside
+// a `service` body: [*Method] for typed endpoints, [*FreeComment] for
+// free-floating notes / section dividers.
+type ServiceMember interface {
+	serviceMember()
+	// MemberPos returns the position of the member's first token.
+	MemberPos() Pos
+}
+
 // Method is a single `<verb> Name [path] { request? response? }`. Path is nil
 // when the method body had no leading `/segment` - the runtime listens at
 // `basePath + servicePrefix` in that case.
+//
+// TrailingDoc captures a `// note` on the same line as the closing `}` of
+// the method body, e.g. `} // returns 404 if not found`.
 type Method struct {
-	Pos        Pos
-	Decorators []*Decorator
-	Doc        []string
-	Verb       string
-	Name       string
-	Path       *Path
-	Request    *NamedTypeRef
-	Response   *MethodResponse
+	Pos         Pos
+	Decorators  []*Decorator
+	Doc         []string
+	Verb        string
+	Name        string
+	Path        *Path
+	Request     *NamedTypeRef
+	Response    *MethodResponse
+	TrailingDoc []string
 }
+
+func (*Method) serviceMember()   { astMarker() }
+func (m *Method) MemberPos() Pos { return m.Pos }
 
 // MethodResponse describes the response side of a method. The framework
 // always JSON-encodes the named type; endpoints that want to bypass the
@@ -281,10 +403,17 @@ type PathSegment struct {
 // Decorator is `@name[(args...)]`. Args is non-nil only when parentheses
 // are present (so `@deprecated` differs from `@deprecated()` - both produce
 // nil Args, distinguishable only by source if needed).
+//
+// TrailingDoc captures a `// note` on the same line as the decorator's
+// last token, e.g. `@deprecated  // remove in v2 release`. Leading
+// `//` comments above a decorator chain are folded into the surrounding
+// declaration's Doc by the lexer's first-token-claims-all rule, so
+// Decorator itself does not need a Doc field.
 type Decorator struct {
-	Pos  Pos
-	Name string
-	Args []*DecoratorArg
+	Pos         Pos
+	Name        string
+	Args        []*DecoratorArg
+	TrailingDoc string
 }
 
 // DecoratorArg is one argument inside `@name(...)`. Exactly one of Value,

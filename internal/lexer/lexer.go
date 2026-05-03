@@ -98,6 +98,23 @@ type Lexer struct {
 	// next non-trivia token claims the whole slice as its [Token.Doc] and
 	// the buffer resets.
 	pendingDoc []string
+
+	// allComments holds every `//` comment encountered in the file,
+	// regardless of whether it was claimed as leading [Token.Doc],
+	// trailing [Token.Trailing], or dropped on a blank line. Each entry
+	// records source position and [CommentKind] so the formatter can
+	// re-emit comments at the right site without re-scanning the source.
+	// Retrieved via [Lexer.Comments].
+	allComments []*Comment
+
+	// sawNewlineSinceLastToken is true while the cursor sits on
+	// whitespace / comment trivia AFTER a token has been emitted but
+	// BEFORE any newline has been consumed. A `//` encountered while
+	// this flag is true is a leading comment for the next token; one
+	// encountered while it is false is a trailing comment for the
+	// previous token. Reset to false at the end of every [Lexer.Next]
+	// call.
+	sawNewlineSinceLastToken bool
 }
 
 // New constructs a Lexer ready to tokenize src. filename is informational -
@@ -109,6 +126,9 @@ func New(filename, src string) *Lexer {
 		filename: filename,
 		line:     1,
 		column:   1,
+		// File start is conceptually "after a newline" - any `//` seen
+		// before the first token is leading, never trailing.
+		sawNewlineSinceLastToken: true,
 	}
 }
 
@@ -163,7 +183,65 @@ func (l *Lexer) Next() Token {
 		tok.Doc = l.pendingDoc
 		l.pendingDoc = nil
 	}
+	tok.Trailing = l.consumeTrailingComment(tok.Pos.Line)
+	l.sawNewlineSinceLastToken = false
 	return tok
+}
+
+// consumeTrailingComment scans forward from the current cursor for a
+// `// note` that sits on the same line as the token just emitted (no
+// newline encountered before the `//`). When found, the comment text
+// is returned (with the leading `// ` stripped) and the cursor is
+// advanced past the comment so [skipWhitespaceAndComments] on the
+// next [Lexer.Next] call does not re-process it as a leading-doc
+// candidate. The captured comment is also appended to [allComments]
+// with [CommentTrailing] kind so the [File.Comments] side channel
+// stays exhaustive.
+//
+// When no trailing is found the cursor is restored to its pre-scan
+// position and the empty string is returned.
+//
+// This is the only place in the lexer where we look ahead past the
+// freshly emitted token; without this hook the trailing `// note` would
+// be claimed as the leading doc of whichever non-trivia token came
+// next, which is almost never what the author intended.
+func (l *Lexer) consumeTrailingComment(tokenLine int) string {
+	saveOffset, saveLine, saveCol := l.offset, l.line, l.column
+	// Skip space/tab on the current line (newline ends the search).
+	for l.offset < len(l.src) {
+		r, _ := l.peek()
+		if r != ' ' && r != '\t' {
+			break
+		}
+		l.advance()
+	}
+	// Need at least 2 bytes for `//`.
+	if l.offset+1 >= len(l.src) || l.src[l.offset] != '/' || l.src[l.offset+1] != '/' {
+		l.offset, l.line, l.column = saveOffset, saveLine, saveCol
+		return ""
+	}
+	commentPos := l.pos()
+	l.advance() // first '/'
+	l.advance() // second '/'
+	start := l.offset
+	for l.offset < len(l.src) {
+		r, _ := l.peek()
+		if r == '\n' {
+			break
+		}
+		l.advance()
+	}
+	text := l.src[start:l.offset]
+	if len(text) > 0 && text[0] == ' ' {
+		text = text[1:]
+	}
+	l.allComments = append(l.allComments, &Comment{
+		Pos:  commentPos,
+		Text: text,
+		Kind: CommentTrailing,
+	})
+	_ = tokenLine // currently unused; reserved for future per-line-aware logic
+	return text
 }
 
 // lexPunct produces a single-character punctuation token. Unrecognised runes
@@ -420,15 +498,21 @@ func (l *Lexer) skipWhitespaceAndComments() {
 		switch {
 		case r == '\n':
 			consecutiveNewlines++
+			l.sawNewlineSinceLastToken = true
 			if consecutiveNewlines >= 2 {
-				// Blank line - comments above are detached from the
-				// upcoming token; drop the buffer.
+				// Blank line: comments above are detached from the
+				// upcoming token. Drop the leading buffer so they do
+				// not leak into the next AST node's Doc. They remain
+				// in [allComments] so the formatter can recover them
+				// as free-floating section / closing notes via the
+				// [File.Comments] side channel populated by the parser.
 				l.pendingDoc = nil
 			}
 			l.advance()
 		case r == ' ' || r == '\t' || r == '\r':
 			l.advance()
 		case r == '/' && l.offset+1 < len(l.src) && l.src[l.offset+1] == '/':
+			commentPos := l.pos()
 			start := l.offset + 2 // skip the two slashes
 			for l.offset < len(l.src) {
 				rr, _ := l.peek()
@@ -441,13 +525,31 @@ func (l *Lexer) skipWhitespaceAndComments() {
 			if len(line) > 0 && line[0] == ' ' {
 				line = line[1:]
 			}
-			l.pendingDoc = append(l.pendingDoc, line)
+			kind := CommentLeading
+			if !l.sawNewlineSinceLastToken {
+				kind = CommentTrailing
+			}
+			l.allComments = append(l.allComments, &Comment{
+				Pos:  commentPos,
+				Text: line,
+				Kind: kind,
+			})
+			if kind == CommentLeading {
+				l.pendingDoc = append(l.pendingDoc, line)
+			}
 			consecutiveNewlines = 0
 		default:
 			return
 		}
 	}
 }
+
+// Comments returns every `//` comment encountered in the source so far,
+// in source order, with their position and leading/trailing kind.
+// Callers (parser snapshot, format printer, lint tools) consume this
+// slice instead of re-scanning the source; it is the single source of
+// truth for "every comment in the file".
+func (l *Lexer) Comments() []*Comment { return l.allComments }
 
 // peek returns the rune at the current offset without consuming it. Returns
 // `(0, 0)` at EOF - callers should treat rune 0 as a sentinel and not try to

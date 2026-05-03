@@ -84,14 +84,15 @@ func buildEnumView(ed *ast.EnumDecl) enumView {
 	if firstEnumKind(ed) == ast.EnumInt {
 		goBase = "int"
 	}
-	dslNames := make([]string, len(ed.Values))
-	for i, v := range ed.Values {
+	enumVals := ed.EnumValues()
+	dslNames := make([]string, len(enumVals))
+	for i, v := range enumVals {
 		dslNames[i] = v.Name
 	}
 	resolved, _ := idents.DedupGoFieldNames(dslNames)
 
-	values := make([]enumValueView, len(ed.Values))
-	for i, v := range ed.Values {
+	values := make([]enumValueView, len(enumVals))
+	for i, v := range enumVals {
 		values[i] = enumValueView{
 			ConstName: ed.Name + resolved[i],
 			EnumName:  ed.Name,
@@ -118,8 +119,9 @@ func enumLiteral(v *ast.EnumValue) string {
 // fall back to EnumString so the rendered Go file still compiles
 // even if a parser regression leaves the values slice empty.
 func firstEnumKind(ed *ast.EnumDecl) ast.EnumValueKind {
-	if len(ed.Values) == 0 {
+	values := ed.EnumValues()
+	if len(values) == 0 {
 		return ast.EnumString
 	}
-	return ed.Values[0].Kind
+	return values[0].Kind
 }

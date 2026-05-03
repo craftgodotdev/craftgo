@@ -474,7 +474,7 @@ func enumValueCheck(f *ast.Field, pkg *semantic.Package, uses map[string]bool) s
 		return ""
 	}
 	ed, ok := pkg.Enums[f.Type.Named.Name.String()]
-	if !ok || len(ed.Values) == 0 {
+	if !ok || len(ed.EnumValues()) == 0 {
 		return ""
 	}
 	uses["fmt"] = true
@@ -494,8 +494,9 @@ return fmt.Errorf(%s)
 // constant names matching `<EnumName><PascalCase(ValueName)>`, the same
 // naming convention `enums.go` uses.
 func enumCaseList(ed *ast.EnumDecl) string {
-	parts := make([]string, 0, len(ed.Values))
-	for _, v := range ed.Values {
+	enumVals := ed.EnumValues()
+	parts := make([]string, 0, len(enumVals))
+	for _, v := range enumVals {
 		parts = append(parts, ed.Name+GoFieldName(v.Name))
 	}
 	return strings.Join(parts, ", ")

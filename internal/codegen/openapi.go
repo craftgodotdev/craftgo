@@ -500,8 +500,9 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 		if firstEnumKind(ed) == ast.EnumInt {
 			s.Type = &openapi3.Types{"integer"}
 		}
-		s.Enum = make([]any, 0, len(ed.Values))
-		for _, v := range ed.Values {
+		enumVals := ed.EnumValues()
+		s.Enum = make([]any, 0, len(enumVals))
+		for _, v := range enumVals {
 			switch v.Kind {
 			case ast.EnumInt:
 				s.Enum = append(s.Enum, v.IntValue)

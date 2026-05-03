@@ -2,19 +2,24 @@
 //
 // The printer is round-trip safe for every well-formed input: parsing the
 // printer's output produces an AST equal to its input, and a second
-// formatting pass is a no-op (idempotency). Trailing inline comments
-// (`// note` on the same line as a field) are preserved by reading them
-// straight from the source buffer rather than relying on the AST - the
-// AST's Doc field captures only leading runs of `//`.
+// formatting pass is a no-op (idempotency).
+//
+// Comment recovery is driven entirely from `f.Comments` - the parser
+// snapshots every `//` comment (with position and leading/trailing kind)
+// from the lexer onto that slice. The printer derives its trailing /
+// loose lookup maps from the slice via [buildTrailingFromComments] and
+// [buildLooseFromComments]; no source-bytes scan is needed. As a result
+// [Format] (which has the source) and [Print] (AST only) produce the
+// same output - both rely on the same `f.Comments` data.
 //
 // Two entry points are provided:
 //
 //   - [Format] takes a source buffer, parses it, and returns formatted text
 //     plus any diagnostics. Suitable for `craftgo fmt` and editor integration.
 //   - [Print] takes an [ast.File] and writes formatted text to an [io.Writer].
-//     Suitable for callers that already have an AST in hand. Trailing
-//     comments cannot be recovered through this entry point because there
-//     is no source buffer to scan.
+//     Suitable for callers that already have an AST in hand. Comment
+//     recovery works as long as the file's `Comments` slice was populated
+//     (which the parser always does).
 //
 // Output conventions:
 //
@@ -46,27 +51,37 @@ func Format(filename, src string) (string, []lexer.Diagnostic) {
 	p := parser.New(filename, src)
 	f := p.Parse()
 	var buf bytes.Buffer
-	pr := &Printer{
-		w:        &buf,
-		trailing: scanTrailingComments(src),
-		loose:    scanLooseComments(src),
-	}
+	pr := newPrinter(&buf, f)
 	pr.File(f)
 	return buf.String(), p.Diagnostics()
 }
 
-// Print writes a canonical render of f to w. Trailing comments are not
-// recovered via this entry point - callers that want them must use
-// [Format] instead, which has access to the source buffer.
+// Print writes a canonical render of f to w. Comment recovery is driven
+// from `f.Comments` (populated by the parser) so loose blocks and trailing
+// notes survive even when the caller has no source buffer in hand.
 func Print(w io.Writer, f *ast.File) error {
-	pr := &Printer{w: w}
+	pr := newPrinter(w, f)
 	pr.File(f)
 	return pr.err
 }
 
+// newPrinter builds a Printer with trailing / loose comment lookup maps
+// derived from `f.Comments`. Centralising construction keeps both
+// [Format] and [Print] paths identical so the two entry points produce
+// the same output - the only difference is whether the caller already
+// has an AST in hand.
+func newPrinter(w io.Writer, f *ast.File) *Printer {
+	return &Printer{
+		w:        w,
+		trailing: buildTrailingFromComments(f),
+		loose:    buildLooseFromComments(f),
+	}
+}
+
 // Printer is the internal state for one render pass. The zero value is
-// useful as long as w is set; trailing is optional and only populated when
-// the source buffer was available (i.e. callers that came in via [Format]).
+// useful as long as w is set; the trailing / loose maps are populated by
+// [newPrinter] from the file's `Comments` slice (callers constructing a
+// Printer directly via struct literal will simply lose comment recovery).
 type Printer struct {
 	w     io.Writer
 	err   error
@@ -162,12 +177,17 @@ func declFirstSourceLine(d ast.Decl) int {
 }
 
 func (p *Printer) Import(imp *ast.Import) {
+	p.Doc(imp.Doc)
 	p.write("import ")
 	if imp.Alias != "" {
 		p.write(imp.Alias)
 		p.write(" ")
 	}
 	p.write(strconv.Quote(imp.Path))
+	if imp.TrailingDoc != "" {
+		p.write("  // ")
+		p.write(imp.TrailingDoc)
+	}
 }
 
 // Decl dispatches to the concrete printer for each top-level declaration.
@@ -211,7 +231,21 @@ func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 	p.depth--
 	p.indent()
 	p.write("}")
+	p.writeTrailing(d.TrailingDoc)
 	p.nl()
+}
+
+// writeTrailing emits a `// note` after the just-written close brace
+// when the decl carries a trailing doc captured by the parser. Multiple
+// lines are joined with a space — multi-line trailing comments on a
+// single closing line are rare; the AST exposes []string for symmetry
+// with Doc rather than because we expect more than one entry.
+func (p *Printer) writeTrailing(td []string) {
+	if len(td) == 0 {
+		return
+	}
+	p.write("  // ")
+	p.write(strings.Join(td, " "))
 }
 
 // printTypeBody prints a slice of TypeMember with column-aligned fields.
@@ -243,6 +277,8 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			p.indent()
 			p.NamedTypeRef(v.Ref)
 			p.nl()
+		case *ast.FreeComment:
+			p.printFreeComment(v)
 		}
 	}
 }
@@ -264,6 +300,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 	p.write(f.Name)
 	p.write(strings.Repeat(" ", maxName-len(f.Name)+1))
 	p.write(ts)
+	decoratorCarriesTrailing := false
 	if len(f.Decorators) > 0 {
 		p.write(strings.Repeat(" ", maxType-len(ts)+1))
 		for i, dec := range f.Decorators {
@@ -271,11 +308,19 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 				p.write(" ")
 			}
 			p.Decorator(dec)
+			if dec.TrailingDoc != "" {
+				decoratorCarriesTrailing = true
+			}
 		}
 	}
-	if c, ok := p.trailing[f.Pos.Line]; ok {
-		p.write(" // ")
-		p.write(c)
+	// Skip the source-scan trailing if a decorator's TrailingDoc already
+	// emitted the same comment — otherwise the same `// note` would
+	// appear twice and grow on each format pass.
+	if !decoratorCarriesTrailing {
+		if c, ok := p.trailing[f.Pos.Line]; ok {
+			p.write(" // ")
+			p.write(c)
+		}
 	}
 	p.nl()
 }
@@ -326,18 +371,41 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 	p.nl()
 	p.depth++
 	maxName := 0
-	for _, v := range d.Values {
-		if v.Kind != ast.EnumBare && len(v.Name) > maxName {
-			maxName = len(v.Name)
+	for _, m := range d.Members {
+		if v, ok := m.(*ast.EnumValue); ok {
+			if v.Kind != ast.EnumBare && len(v.Name) > maxName {
+				maxName = len(v.Name)
+			}
 		}
 	}
-	for _, v := range d.Values {
-		p.EnumValue(v, maxName)
+	for _, m := range d.Members {
+		switch v := m.(type) {
+		case *ast.EnumValue:
+			p.EnumValue(v, maxName)
+		case *ast.FreeComment:
+			p.printFreeComment(v)
+		}
 	}
 	p.depth--
 	p.indent()
 	p.write("}")
+	p.writeTrailing(d.TrailingDoc)
 	p.nl()
+}
+
+// printFreeComment renders a free-floating comment block at the current
+// indentation depth. Each line gets the canonical `// ` prefix.
+func (p *Printer) printFreeComment(c *ast.FreeComment) {
+	for _, line := range c.Text {
+		p.indent()
+		if line == "" {
+			p.write("//")
+		} else {
+			p.write("// ")
+			p.write(line)
+		}
+		p.nl()
+	}
 }
 
 func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
@@ -383,6 +451,7 @@ func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
 	p.depth--
 	p.indent()
 	p.write("}")
+	p.writeTrailing(d.TrailingDoc)
 	p.nl()
 }
 
@@ -442,15 +511,27 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	p.write(" {")
 	p.nl()
 	p.depth++
-	for i, m := range d.Methods {
-		if i > 0 {
-			p.nl()
+	first := true
+	for _, member := range d.Members {
+		switch v := member.(type) {
+		case *ast.Method:
+			if !first {
+				p.nl()
+			}
+			p.Method(v)
+			first = false
+		case *ast.FreeComment:
+			if !first {
+				p.nl()
+			}
+			p.printFreeComment(v)
+			first = false
 		}
-		p.Method(m)
 	}
 	p.depth--
 	p.indent()
 	p.write("}")
+	p.writeTrailing(d.TrailingDoc)
 	p.nl()
 }
 
@@ -491,6 +572,7 @@ func (p *Printer) Method(m *ast.Method) {
 	p.depth--
 	p.indent()
 	p.write("}")
+	p.writeTrailing(m.TrailingDoc)
 	p.nl()
 }
 
@@ -551,17 +633,20 @@ func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
 func (p *Printer) Decorator(d *ast.Decorator) {
 	p.write("@")
 	p.write(d.Name)
-	if d.Args == nil {
-		return
-	}
-	p.write("(")
-	for i, a := range d.Args {
-		if i > 0 {
-			p.write(", ")
+	if d.Args != nil {
+		p.write("(")
+		for i, a := range d.Args {
+			if i > 0 {
+				p.write(", ")
+			}
+			p.DecoratorArg(a)
 		}
-		p.DecoratorArg(a)
+		p.write(")")
 	}
-	p.write(")")
+	if d.TrailingDoc != "" {
+		p.write("  // ")
+		p.write(d.TrailingDoc)
+	}
 }
 
 func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
@@ -643,139 +728,229 @@ func (p *Printer) declDecorators(decs []*ast.Decorator) {
 	}
 }
 
-// scanLooseComments finds every `//` block in src whose run is followed
-// by a blank line - that is the lexer signal that the block is NOT
-// attached to the next token's Doc and would otherwise be silently
-// dropped. We anchor each loose block to the source line of the next
-// code (the first non-blank, non-`//` line after the trailing blanks);
-// the formatter looks up that anchor and re-emits the block above the
-// matching declaration so section dividers and stand-alone notes
-// survive the round trip.
+// buildTrailingFromComments walks f.Comments and produces the trailing
+// lookup map keyed by source line number. Replaces the legacy
+// [scanTrailingComments] source-bytes scan now that the parser populates
+// f.Comments with every comment + position + kind.
+func buildTrailingFromComments(f *ast.File) map[int]string {
+	out := map[int]string{}
+	if f == nil {
+		return out
+	}
+	for _, c := range f.Comments {
+		if c == nil || c.Kind != lexer.CommentTrailing {
+			continue
+		}
+		out[c.Pos.Line] = c.Text
+	}
+	return out
+}
+
+// buildLooseFromComments walks f.Comments to find leading-comment blocks
+// separated from the following decl by a blank line - the lexer drops
+// those from any AST node's Doc, so without the loose lookup the
+// formatter would lose them. Equivalent to [scanLooseComments] but
+// driven entirely from the AST so [Print] (which has no source buffer)
+// works the same as [Format].
 //
-// Trailing `//` comments (those that share a line with code) are NOT
-// loose - they are picked up by [scanTrailingComments] separately.
-func scanLooseComments(src string) map[int][]string {
-	rawLines := strings.Split(src, "\n")
+// Comments already promoted to a [*ast.FreeComment] body member by the
+// parser (e.g. closing notes captured from `rbrace.Doc`) are skipped
+// here - otherwise they would also appear above the next anchor decl,
+// double-printing the comment.
+func buildLooseFromComments(f *ast.File) map[int][]string {
 	out := map[int][]string{}
+	if f == nil || len(f.Comments) == 0 {
+		return out
+	}
+	anchors := declAnchorLines(f)
+	if len(anchors) == 0 {
+		return out
+	}
+	claimed := freeCommentLines(f)
 	i := 0
-	for i < len(rawLines) {
-		_, ok := leadingCommentText(rawLines[i])
-		if !ok {
+	for i < len(f.Comments) {
+		c := f.Comments[i]
+		if c == nil || c.Kind != lexer.CommentLeading {
 			i++
 			continue
 		}
-		// Capture the full block.
-		var block []string
-		for i < len(rawLines) {
-			t, ok := leadingCommentText(rawLines[i])
-			if !ok {
+		// Capture the contiguous leading run starting at c.
+		block := []string{c.Text}
+		startLine := c.Pos.Line
+		lastLine := c.Pos.Line
+		j := i + 1
+		for j < len(f.Comments) {
+			n := f.Comments[j]
+			if n == nil || n.Kind != lexer.CommentLeading || n.Pos.Line != lastLine+1 {
 				break
 			}
-			block = append(block, t)
-			i++
+			block = append(block, n.Text)
+			lastLine = n.Pos.Line
+			j++
 		}
-		// `i` now points at the first non-comment line. Determine
-		// whether the block is loose: the next line is blank OR the
-		// block was the last thing in the file.
-		looseEnd := false
-		if i >= len(rawLines) {
-			looseEnd = true
-		} else if strings.TrimSpace(rawLines[i]) == "" {
-			looseEnd = true
-		}
-		if !looseEnd {
-			// Attached - lexer / parser captured it; skip.
+		// Skip the whole block when its first line is already owned by
+		// a body-level FreeComment. Parser promotes `}.Doc` content into
+		// FreeComment members with Pos = the closing brace, but the
+		// comment text itself sits one or more lines above the brace -
+		// the FreeComment Text length tells us the span.
+		if claimed[startLine] {
+			i = j
 			continue
 		}
-		anchor := nextCodeLine(rawLines, i)
-		if anchor == 0 {
-			// No following code - drop with no anchor (file-trailing
-			// comment, currently not preserved).
-			continue
+		// Anchor = first decl line >= lastLine + 1.
+		anchor := nextAnchor(anchors, lastLine+1)
+		if anchor != 0 && anchor > lastLine+1 {
+			// Blank line between block end and anchor → loose.
+			if existing, ok := out[anchor]; ok {
+				out[anchor] = append(append(existing, ""), block...)
+			} else {
+				out[anchor] = block
+			}
 		}
-		if existing, ok := out[anchor]; ok {
-			existing = append(existing, "")
-			existing = append(existing, block...)
-			out[anchor] = existing
-		} else {
-			out[anchor] = block
+		i = j
+	}
+	return out
+}
+
+// freeCommentLines collects every source line covered by a [*ast.FreeComment]
+// body member. The parser sets FreeComment.Pos to the closing `}` of the
+// body and FreeComment.Text to the comment lines that immediately precede
+// it - so the covered span is `Pos.Line - len(Text) .. Pos.Line - 1`.
+// Used by [buildLooseFromComments] to suppress duplicate emission of
+// comments that already live inside a body as FreeComment.
+func freeCommentLines(f *ast.File) map[int]bool {
+	out := map[int]bool{}
+	for _, d := range f.Decls {
+		walkBodyForFreeComments(d, out)
+	}
+	return out
+}
+
+func walkBodyForFreeComments(d ast.Decl, out map[int]bool) {
+	switch v := d.(type) {
+	case *ast.TypeDecl:
+		collectFreeCommentSpans(v.Body, out)
+	case *ast.ErrorDecl:
+		collectFreeCommentSpans(v.Body, out)
+	case *ast.EnumDecl:
+		for _, m := range v.Members {
+			if fc, ok := m.(*ast.FreeComment); ok {
+				markFreeCommentSpan(fc, out)
+			}
+		}
+	case *ast.ServiceDecl:
+		for _, m := range v.Members {
+			if fc, ok := m.(*ast.FreeComment); ok {
+				markFreeCommentSpan(fc, out)
+			}
+		}
+	}
+}
+
+func collectFreeCommentSpans(members []ast.TypeMember, out map[int]bool) {
+	for _, m := range members {
+		if fc, ok := m.(*ast.FreeComment); ok {
+			markFreeCommentSpan(fc, out)
+		}
+	}
+}
+
+func markFreeCommentSpan(fc *ast.FreeComment, out map[int]bool) {
+	if fc == nil || len(fc.Text) == 0 {
+		return
+	}
+	startLine := fc.Pos.Line - len(fc.Text)
+	for ln := startLine; ln < fc.Pos.Line; ln++ {
+		out[ln] = true
+	}
+}
+
+// declAnchorLines returns the source-line anchor of every AST node that
+// can claim a preceding `//` block as its leading Doc. Used by the loose-
+// comment resolver to decide which blocks the lexer flushed on a blank
+// line still have an "owning" code line nearby.
+//
+// Includes:
+//   - imports (Import.Doc captures comments directly above)
+//   - top-level decls (each Decl.Doc — see [declFirstSourceLine] for
+//     the decorator-aware anchor)
+//   - body members that carry leading doc: fields, methods, enum values
+//
+// Excluding any of these would cause the loose resolver to mis-classify
+// a comment as "free-floating" and re-emit it as a section block on the
+// next decl, double-printing the comment.
+func declAnchorLines(f *ast.File) []int {
+	out := make([]int, 0, len(f.Imports)+len(f.Decls)*4)
+	if f.Package != nil {
+		out = append(out, f.Package.Pos.Line)
+	}
+	for _, imp := range f.Imports {
+		out = append(out, imp.Pos.Line)
+	}
+	for _, d := range f.Decls {
+		out = append(out, declFirstSourceLine(d))
+		out = append(out, bodyMemberAnchors(d)...)
+	}
+	return out
+}
+
+// bodyMemberAnchors collects the source-line anchor of every body
+// member inside a top-level decl that can carry leading Doc:
+// fields/mixins inside type/error bodies, methods inside service
+// bodies, and enum values inside enum bodies. FreeComment members
+// are skipped - they ARE the comments we're trying to anchor.
+func bodyMemberAnchors(d ast.Decl) []int {
+	var out []int
+	switch v := d.(type) {
+	case *ast.TypeDecl:
+		for _, m := range v.Body {
+			if pos, ok := memberAnchor(m); ok {
+				out = append(out, pos)
+			}
+		}
+	case *ast.ErrorDecl:
+		for _, m := range v.Body {
+			if pos, ok := memberAnchor(m); ok {
+				out = append(out, pos)
+			}
+		}
+	case *ast.EnumDecl:
+		for _, m := range v.Members {
+			if v, ok := m.(*ast.EnumValue); ok {
+				out = append(out, v.Pos.Line)
+			}
+		}
+	case *ast.ServiceDecl:
+		for _, m := range v.Members {
+			if mm, ok := m.(*ast.Method); ok {
+				out = append(out, mm.Pos.Line)
+			}
 		}
 	}
 	return out
 }
 
-// leadingCommentText reports whether line is a pure (leading) `//`
-// comment line and returns the text after the `// ` marker. Lines
-// where the `//` follows non-whitespace code (trailing comments) are
-// rejected.
-func leadingCommentText(line string) (string, bool) {
-	trimmed := strings.TrimLeft(line, " \t")
-	if !strings.HasPrefix(trimmed, "//") {
-		return "", false
+// memberAnchor returns the source line of a TypeMember when it can
+// claim a preceding leading-doc block. FreeComment is excluded.
+func memberAnchor(m ast.TypeMember) (int, bool) {
+	switch v := m.(type) {
+	case *ast.Field:
+		return v.Pos.Line, true
+	case *ast.Mixin:
+		return v.Pos.Line, true
 	}
-	rest := trimmed[2:]
-	rest = strings.TrimPrefix(rest, " ")
-	return rest, true
+	return 0, false
 }
 
-// nextCodeLine returns the 1-indexed line number of the first line at
-// or after fromIdx (0-indexed) that is neither blank nor a `//` comment.
-// Returns 0 when no such line exists.
-func nextCodeLine(lines []string, fromIdx int) int {
-	for j := fromIdx; j < len(lines); j++ {
-		t := strings.TrimSpace(lines[j])
-		if t == "" {
-			continue
+// nextAnchor returns the smallest entry in anchors that is >= line, or
+// 0 when none. anchors is in source order (which is also numeric order
+// for valid input). Linear scan is fine - top-level decl counts are
+// small (~tens to hundreds, never thousands).
+func nextAnchor(anchors []int, line int) int {
+	for _, a := range anchors {
+		if a >= line {
+			return a
 		}
-		if strings.HasPrefix(t, "//") {
-			continue
-		}
-		return j + 1
 	}
 	return 0
-}
-
-// scanTrailingComments walks src line by line and records the text of any
-// `// ...` that follows non-whitespace code on that line. Lines that
-// consist entirely of a `//` comment (with optional leading whitespace)
-// are NOT recorded - those reach AST nodes via the parser's Doc field
-// and are emitted through the normal leading-comment path.
-//
-// String/raw-string literals are tracked across the line so a `//` inside
-// quotes is not misread as a comment.
-func scanTrailingComments(src string) map[int]string {
-	out := map[int]string{}
-	line := 1
-	start := 0
-	for i := 0; i <= len(src); i++ {
-		if i == len(src) || src[i] == '\n' {
-			scanOneLine(src[start:i], line, out)
-			line++
-			start = i + 1
-		}
-	}
-	return out
-}
-
-func scanOneLine(line string, lineNum int, out map[int]string) {
-	inDouble, inRaw := false, false
-	for i := 0; i < len(line); i++ {
-		ch := line[i]
-		switch {
-		case !inRaw && ch == '\\' && i+1 < len(line):
-			// skip escaped char inside string
-			i++
-		case !inRaw && ch == '"':
-			inDouble = !inDouble
-		case !inDouble && ch == '`':
-			inRaw = !inRaw
-		case !inDouble && !inRaw && ch == '/' && i+1 < len(line) && line[i+1] == '/':
-			prefix := strings.TrimSpace(line[:i])
-			if prefix == "" {
-				return
-			}
-			out[lineNum] = strings.TrimSpace(line[i+2:])
-			return
-		}
-	}
 }

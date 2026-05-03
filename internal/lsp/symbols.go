@@ -79,8 +79,9 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			Children:       children,
 		}
 	case *ast.EnumDecl:
-		children := make([]protocol.DocumentSymbol, 0, len(v.Values))
-		for _, ev := range v.Values {
+		enumVals := v.EnumValues()
+		children := make([]protocol.DocumentSymbol, 0, len(enumVals))
+		for _, ev := range enumVals {
 			if ev.Name == "" {
 				continue
 			}
@@ -125,8 +126,8 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			SelectionRange: r,
 		}
 	case *ast.ServiceDecl:
-		children := make([]protocol.DocumentSymbol, 0, len(v.Methods))
-		for _, m := range v.Methods {
+		children := make([]protocol.DocumentSymbol, 0, len(v.Methods()))
+		for _, m := range v.Methods() {
 			if m.Name == "" {
 				continue
 			}

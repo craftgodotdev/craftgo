@@ -126,7 +126,7 @@ extend service S {
 	for _, d := range f.Decls {
 		if s, ok := d.(*ast.ServiceDecl); ok {
 			svcCount++
-			allMethods += len(s.Methods)
+			allMethods += len(s.Methods())
 		}
 	}
 	if svcCount != 2 {
@@ -195,11 +195,11 @@ service S {
     }
 }`)
 	for _, d := range f.Decls {
-		if s, ok := d.(*ast.ServiceDecl); ok && len(s.Methods) > 0 {
-			if s.Methods[0].Path == nil {
+		if s, ok := d.(*ast.ServiceDecl); ok && len(s.Methods()) > 0 {
+			if s.Methods()[0].Path == nil {
 				t.Fatal("path nil")
 			}
-			path := pathStr(s.Methods[0].Path)
+			path := pathStr(s.Methods()[0].Path)
 			if !strings.Contains(path, "api-v1") || !strings.Contains(path, "users-list") {
 				t.Errorf("hyphenated segments lost: %q", path)
 			}

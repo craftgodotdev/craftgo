@@ -31,10 +31,11 @@ enum MaintenanceWindowReason {
 // wire keeps the rotation roster honest (no magic strings) and
 // lets dashboards group incidents without a string-cleanup pass.
 error ServiceUnavailable MaintenanceWindow {
-	code           string                   @default("MAINTENANCE_WINDOW")
-	message        string                   @default("Platform under maintenance")
+	code           string                  @default("MAINTENANCE_WINDOW")
+	message        string                  @default("Platform under maintenance")
 	reason         MaintenanceWindowReason
-	estimatedEndAt string                   @format(datetime)
+	estimatedEndAt string                  @format(datetime)  // ok
+	// TODO
 }
 
 // AuthRequiredErr is the canonical 401 every service raises when

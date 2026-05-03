@@ -30,6 +30,10 @@ type Parser struct {
 	// snapshots it at known sites and `takeDoc()` clears it after the
 	// AST node has claimed the slice.
 	pendingDoc []string
+	// allComments is the snapshot of every `//` comment seen by the
+	// lexer, kept so the parser can populate `*ast.File.Comments` and
+	// (in body parsing) scan for free-floating section headers.
+	allComments []*lexer.Comment
 }
 
 // takeDoc returns the buffered doc-comment slice and clears it so the
@@ -55,7 +59,11 @@ func (p *Parser) captureDoc() {
 func New(filename, src string) *Parser {
 	l := lexer.New(filename, src)
 	toks := l.Tokenize()
-	return &Parser{tokens: toks, diags: l.Diagnostics()}
+	return &Parser{
+		tokens:      toks,
+		diags:       l.Diagnostics(),
+		allComments: l.Comments(),
+	}
 }
 
 // Diagnostics returns all errors collected during lexing and parsing.
@@ -100,6 +108,7 @@ func (p *Parser) Parse() *ast.File {
 			p.advance()
 		}
 	}
+	f.Comments = p.allComments
 	return f
 }
 
@@ -168,6 +177,11 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	}
 	p.advance()
 	d := &ast.Decorator{Pos: at.Pos, Name: nameTok.Text}
+	// lastTok tracks the decorator's final token so we can capture its
+	// Trailing into d.TrailingDoc. For a bare `@deprecated` the last
+	// token is the name Ident; for `@length(1, 80)` it is the closing
+	// `)`.
+	lastTok := nameTok
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
 		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
@@ -176,8 +190,10 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 				p.advance()
 			}
 		}
-		p.expect(lexer.RParen)
+		rparen, _ := p.expect(lexer.RParen)
+		lastTok = rparen
 	}
+	d.TrailingDoc = lastTok.Trailing
 	return d
 }
 
@@ -321,15 +337,20 @@ func (p *Parser) parsePackage() *ast.PackageDecl {
 // parseImport reads `import [alias] "path"`. Both alias and path are
 // optional from a token-stream perspective; missing path is reported as a
 // diagnostic but not fatal.
+//
+// Captures Doc from the `import` keyword token (the lexer attaches the
+// preceding `//` block there) and TrailingDoc from the path string token
+// (the lexer's [Token.Trailing] holds same-line `// note` comments).
 func (p *Parser) parseImport() *ast.Import {
-	pos := p.advance().Pos
-	imp := &ast.Import{Pos: pos}
+	importTok := p.advance()
+	imp := &ast.Import{Pos: importTok.Pos, Doc: importTok.Doc}
 	if p.peek().Kind == lexer.Ident {
 		imp.Alias = p.advance().Text
 	}
 	str, ok := p.expect(lexer.String)
 	if ok {
 		imp.Path = unquoteString(str.Text)
+		imp.TrailingDoc = str.Trailing
 	}
 	return imp
 }
@@ -385,7 +406,11 @@ func (p *Parser) parseTypeDecl(decs []*ast.Decorator) *ast.TypeDecl {
 	if p.peek().Kind == lexer.LAngle {
 		td.TypeParams = p.parseTypeParams()
 	}
-	td.Body = p.parseTypeBody()
+	body, rbrace := p.parseTypeBody()
+	td.Body = body
+	if rbrace.Trailing != "" {
+		td.TrailingDoc = []string{rbrace.Trailing}
+	}
 	return td
 }
 
@@ -414,11 +439,20 @@ func (p *Parser) parseTypeParams() []string {
 }
 
 // parseTypeBody reads the contents of a `{ ... }` type/error body. Returns
-// nil when there is no opening brace - callers (e.g. [parseTypeDecl]) decide
-// whether that is an error or a deliberate empty body.
-func (p *Parser) parseTypeBody() []ast.TypeMember {
+// the body slice plus the closing `}` token (whose Trailing field carries
+// the `// note` after the brace, captured by the lexer). Callers stash
+// that trailing on the surrounding decl's TrailingDoc so it survives
+// parse → format round-trip.
+//
+// Phase 1 limitation: the body slice contains only [*Field] and [*Mixin]
+// members. The [*FreeComment] member type is defined and the format printer
+// can render it, but the parser does not yet populate FreeComment entries —
+// doing so reliably requires per-comment-line position tracking in the
+// lexer (Phase 4) so we can disambiguate true free-floating comments from
+// trailing comments that the lexer mis-attached to the next non-trivia token.
+func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 	if !p.peekIs(lexer.LBrace) {
-		return nil
+		return nil, lexer.Token{}
 	}
 	p.advance()
 	var members []ast.TypeMember
@@ -432,8 +466,14 @@ func (p *Parser) parseTypeBody() []ast.TypeMember {
 			p.advance()
 		}
 	}
-	p.expect(lexer.RBrace)
-	return members
+	rbrace, _ := p.expect(lexer.RBrace)
+	if len(rbrace.Doc) > 0 {
+		members = append(members, &ast.FreeComment{
+			Pos:  rbrace.Pos,
+			Text: rbrace.Doc,
+		})
+	}
+	return members, rbrace
 }
 
 // parseTypeMember reads one member of a type body - either a [Field] or a
@@ -601,13 +641,22 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 		startPos := p.pos
 		v := p.parseEnumValue()
 		if v != nil {
-			ed.Values = append(ed.Values, v)
+			ed.Members = append(ed.Members, v)
 		}
 		if p.pos == startPos {
 			p.advance()
 		}
 	}
-	p.expect(lexer.RBrace)
+	rbrace, _ := p.expect(lexer.RBrace)
+	if rbrace.Trailing != "" {
+		ed.TrailingDoc = []string{rbrace.Trailing}
+	}
+	if len(rbrace.Doc) > 0 {
+		ed.Members = append(ed.Members, &ast.FreeComment{
+			Pos:  rbrace.Pos,
+			Text: rbrace.Doc,
+		})
+	}
 	return ed
 }
 
@@ -664,7 +713,11 @@ func (p *Parser) parseErrorDecl(decs []*ast.Decorator) *ast.ErrorDecl {
 	ed := &ast.ErrorDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Category: cat.Text, Name: name.Text}
 	if p.peek().Kind == lexer.LBrace {
 		ed.HasBody = true
-		ed.Body = p.parseTypeBody()
+		body, rbrace := p.parseTypeBody()
+		ed.Body = body
+		if rbrace.Trailing != "" {
+			ed.TrailingDoc = []string{rbrace.Trailing}
+		}
 	}
 	return ed
 }
@@ -728,13 +781,22 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, extend bool) *ast.Servi
 		startPos := p.pos
 		m := p.parseMethod()
 		if m != nil {
-			sd.Methods = append(sd.Methods, m)
+			sd.Members = append(sd.Members, m)
 		}
 		if p.pos == startPos {
 			p.advance()
 		}
 	}
-	p.expect(lexer.RBrace)
+	rbrace, _ := p.expect(lexer.RBrace)
+	if rbrace.Trailing != "" {
+		sd.TrailingDoc = []string{rbrace.Trailing}
+	}
+	if len(rbrace.Doc) > 0 {
+		sd.Members = append(sd.Members, &ast.FreeComment{
+			Pos:  rbrace.Pos,
+			Text: rbrace.Doc,
+		})
+	}
 	return sd
 }
 
@@ -782,7 +844,10 @@ func (p *Parser) parseMethod() *ast.Method {
 			p.advance()
 		}
 	}
-	p.expect(lexer.RBrace)
+	rbrace, _ := p.expect(lexer.RBrace)
+	if rbrace.Trailing != "" {
+		m.TrailingDoc = []string{rbrace.Trailing}
+	}
 	return m
 }
 

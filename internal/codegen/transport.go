@@ -429,8 +429,9 @@ func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, v *ast.IdentExpr, p
 	}
 	valueName := v.Name.Parts[0]
 	idx := -1
-	dslNames := make([]string, len(ed.Values))
-	for i, val := range ed.Values {
+	enumVals := ed.EnumValues()
+	dslNames := make([]string, len(enumVals))
+	for i, val := range enumVals {
 		dslNames[i] = val.Name
 		if val.Name == valueName {
 			idx = i
