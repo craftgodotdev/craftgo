@@ -1,9 +1,9 @@
 package semantic
 
 import (
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/idents"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkFieldNameCollisions emits a warning for each type / error body

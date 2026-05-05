@@ -1,4 +1,4 @@
-module github.com/dropship-dev/craftgo
+module github.com/craftgodotdev/craftgo
 
 go 1.24.2
 

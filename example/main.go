@@ -22,14 +22,14 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/dropship-dev/craftgo/pkg/metrics"
-	craftotel "github.com/dropship-dev/craftgo/pkg/otel"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/metrics"
+	craftotel "github.com/craftgodotdev/craftgo/pkg/otel"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/dropship-dev/craftgo/example/config"
-	"github.com/dropship-dev/craftgo/example/internal/middleware"
-	"github.com/dropship-dev/craftgo/example/internal/routes"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/example/config"
+	"github.com/craftgodotdev/craftgo/example/internal/middleware"
+	"github.com/craftgodotdev/craftgo/example/internal/routes"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 func main() {

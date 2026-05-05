@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dropship-dev/craftgo/internal/format"
+	"github.com/craftgodotdev/craftgo/internal/format"
 )
 
 // runFmt is the `craftgo fmt [path] [-l] [-w]` entry point. Behaviour mirrors

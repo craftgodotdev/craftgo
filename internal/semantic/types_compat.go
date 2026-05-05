@@ -20,8 +20,8 @@ package semantic
 // up.
 
 import (
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkFieldTypeCompat walks every type / error body and checks each

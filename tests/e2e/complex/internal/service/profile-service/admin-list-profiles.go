@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"sort"
-	types "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/types/design"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/design"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // AdminListProfilesService carries the per-request state for the AdminListProfiles

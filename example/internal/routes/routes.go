@@ -3,13 +3,13 @@
 package routes
 
 import (
-	orderserviceroutes "github.com/dropship-dev/craftgo/example/internal/routes/order-service"
-	projectserviceroutes "github.com/dropship-dev/craftgo/example/internal/routes/project-service"
-	taskserviceroutes "github.com/dropship-dev/craftgo/example/internal/routes/task-service"
-	userserviceroutes "github.com/dropship-dev/craftgo/example/internal/routes/user-service"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	orderserviceroutes "github.com/craftgodotdev/craftgo/example/internal/routes/order-service"
+	projectserviceroutes "github.com/craftgodotdev/craftgo/example/internal/routes/project-service"
+	taskserviceroutes "github.com/craftgodotdev/craftgo/example/internal/routes/task-service"
+	userserviceroutes "github.com/craftgodotdev/craftgo/example/internal/routes/user-service"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // RegisterAll wires every service's routes onto srv with one call.

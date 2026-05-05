@@ -10,7 +10,7 @@ This page walks through creating a craftgo project, defining one endpoint, and r
 ## Install the CLI
 
 ```bash
-go install github.com/dropship-dev/craftgo/cmd/craftgo@latest
+go install github.com/craftgodotdev/craftgo/cmd/craftgo@latest
 ```
 
 Verify:
@@ -24,7 +24,7 @@ craftgo --help
 ```bash
 mkdir hello && cd hello
 go mod init example.com/hello
-go get github.com/dropship-dev/craftgo
+go get github.com/craftgodotdev/craftgo
 ```
 
 ## Scaffold the design folder
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8080/api/v1/users \
 ```
 
 ```json
-{"id":"u1","name":"alice","email":"alice@example.com"}
+{ "id": "u1", "name": "alice", "email": "alice@example.com" }
 ```
 
 (`/api` comes from `openapi.basePath: /api` in `craftgo.design.yaml`; `/v1` from `@prefix("/v1")` in the DSL.)

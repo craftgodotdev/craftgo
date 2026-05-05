@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
-	craftparser "github.com/dropship-dev/craftgo/internal/parser"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 func analyze(t *testing.T, src string) *semantic.Package {

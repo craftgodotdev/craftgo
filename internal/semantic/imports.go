@@ -19,8 +19,8 @@ package semantic
 import (
 	"fmt"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // refResolver carries the per-call state for cross-package resolution.

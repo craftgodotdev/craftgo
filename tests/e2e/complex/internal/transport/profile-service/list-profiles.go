@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/service/profile-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/service/profile-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // ListProfiles returns every stored profile in id order.

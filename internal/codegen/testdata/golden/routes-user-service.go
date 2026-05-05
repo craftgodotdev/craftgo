@@ -3,7 +3,7 @@
 package userservice
 
 import (
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	transport "github.com/example/app/internal/transport/user-service"
 	"github.com/example/app/svccontext"
 )

@@ -22,8 +22,8 @@ package semantic
 import (
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // defaultHealthPaths is the runtime's auto-registered set, mirrored

@@ -3,8 +3,8 @@ package adminservice
 import (
 	"context"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // HealthService carries the per-request state for the Health

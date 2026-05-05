@@ -4,10 +4,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/config"
-	"github.com/dropship-dev/craftgo/internal/idents"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // ServicePackage returns the Go-identifier package name for a service.

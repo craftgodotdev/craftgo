@@ -1,6 +1,6 @@
 goos: darwin
 goarch: arm64
-pkg: github.com/dropship-dev/craftgo/internal/bench
+pkg: github.com/craftgodotdev/craftgo/internal/bench
 cpu: Apple M1
 BenchmarkParseSimpleCodegen-8     	64523796	        36.96 ns/op	      24 B/op	       1 allocs/op
 BenchmarkParseSimpleCodegen-8     	64628838	        37.44 ns/op	      24 B/op	       1 allocs/op
@@ -18,4 +18,4 @@ BenchmarkParseComplexBodyOnly-8   	 1809002	      1581 ns/op	     720 B/op	     
 BenchmarkParseComplexBodyOnly-8   	 1591808	      1333 ns/op	     720 B/op	      14 allocs/op
 BenchmarkParseComplexBodyOnly-8   	 1852411	      1343 ns/op	     720 B/op	      14 allocs/op
 PASS
-ok  	github.com/dropship-dev/craftgo/internal/bench	49.389s
+ok  	github.com/craftgodotdev/craftgo/internal/bench	49.389s

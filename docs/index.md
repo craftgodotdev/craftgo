@@ -11,7 +11,7 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/dropship-dev/craftgo
+      link: https://github.com/craftgodotdev/craftgo
 
 features:
   - icon: 🎯
@@ -121,4 +121,3 @@ Tasks service with create / list / get / update / delete endpoints.
 Use a Status enum (Pending / InProgress / Done) and validate the
 title with @length(1, 200).
 ```
-

@@ -3,10 +3,10 @@ package orderservice
 import (
 	"context"
 
-	types "github.com/dropship-dev/craftgo/example/internal/types/orders"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/orders"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // DefaultsShowcaseService carries the per-request state for the DefaultsShowcase

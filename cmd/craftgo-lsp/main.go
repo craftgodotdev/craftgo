@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dropship-dev/craftgo/internal/lsp"
+	"github.com/craftgodotdev/craftgo/internal/lsp"
 )
 
 func main() {

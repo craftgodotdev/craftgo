@@ -8,7 +8,7 @@ import (
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
-	"github.com/dropship-dev/craftgo/internal/format"
+	"github.com/craftgodotdev/craftgo/internal/format"
 )
 
 // onFormatting answers `textDocument/formatting`. We rely on the

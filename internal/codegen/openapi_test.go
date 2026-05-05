@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/config"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // ---------- enum / scalar schema emission ----------

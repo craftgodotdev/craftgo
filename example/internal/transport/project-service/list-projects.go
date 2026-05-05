@@ -4,13 +4,13 @@ package projectservice
 
 import (
 	"encoding/json"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
 
-	service "github.com/dropship-dev/craftgo/example/internal/service/project-service"
-	types "github.com/dropship-dev/craftgo/example/internal/types/projects"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	service "github.com/craftgodotdev/craftgo/example/internal/service/project-service"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/projects"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // ListProjects returns the http.HandlerFunc for the

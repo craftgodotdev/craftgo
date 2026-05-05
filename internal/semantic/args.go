@@ -14,8 +14,8 @@ package semantic
 import (
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkDecoratorArgs walks every decorator in every scope and validates

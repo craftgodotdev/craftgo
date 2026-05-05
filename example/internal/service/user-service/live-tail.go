@@ -5,8 +5,8 @@ import (
 
 	"net/http"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // LiveTailService carries the per-request state for the LiveTail

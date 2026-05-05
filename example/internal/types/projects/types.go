@@ -3,7 +3,7 @@
 package projects
 
 import (
-	"github.com/dropship-dev/craftgo/example/internal/types/users"
+	"github.com/craftgodotdev/craftgo/example/internal/types/users"
 )
 
 // AddMemberReq demonstrates MULTI-SEGMENT path binding paired with

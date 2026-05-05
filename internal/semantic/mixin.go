@@ -24,8 +24,8 @@ package semantic
 // Codegen does the actual T→User rewrite per-instance.
 
 import (
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkMixins walks every type and error body, validating mixins and

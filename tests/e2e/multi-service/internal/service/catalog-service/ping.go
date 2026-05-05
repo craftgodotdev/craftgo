@@ -3,10 +3,10 @@ package catalogservice
 import (
 	"context"
 
-	types "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/types/design"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/multi-service/internal/types/design"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/tests/e2e/multi-service/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/tests/e2e/multi-service/svccontext"
 )
 
 // PingService carries the per-request state for the Ping

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // This file collects every function that produces Go source for a

@@ -18,8 +18,8 @@ package semantic
 //     presence semantics" (warning, not error).
 
 import (
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkRangesAndExtras runs every per-decorator value sanity rule plus

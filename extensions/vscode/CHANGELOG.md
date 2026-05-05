@@ -5,7 +5,7 @@
 Phase 2 — full LSP-backed language support.
 
 - **Language server integration** via the bundled `craftgo-lsp` binary
-  (install with `go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest`).
+  (install with `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`).
 - **Live diagnostics** matching `craftgo lint` (parse + semantic).
 - **Hover** for decorators (with allowed levels and arg shape from the
   registry), built-in primitives, declared types, and reserved error

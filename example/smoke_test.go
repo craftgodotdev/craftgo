@@ -20,14 +20,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/example/config"
-	orderservice "github.com/dropship-dev/craftgo/example/internal/transport/order-service"
-	ordersapi "github.com/dropship-dev/craftgo/example/internal/types/orders"
-	projectsapi "github.com/dropship-dev/craftgo/example/internal/types/projects"
-	sharedapi "github.com/dropship-dev/craftgo/example/internal/types/shared"
-	tasksapi "github.com/dropship-dev/craftgo/example/internal/types/tasks"
-	usersapi "github.com/dropship-dev/craftgo/example/internal/types/users"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/example/config"
+	orderservice "github.com/craftgodotdev/craftgo/example/internal/transport/order-service"
+	ordersapi "github.com/craftgodotdev/craftgo/example/internal/types/orders"
+	projectsapi "github.com/craftgodotdev/craftgo/example/internal/types/projects"
+	sharedapi "github.com/craftgodotdev/craftgo/example/internal/types/shared"
+	tasksapi "github.com/craftgodotdev/craftgo/example/internal/types/tasks"
+	usersapi "github.com/craftgodotdev/craftgo/example/internal/types/users"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // TestNestedCrossPackageTypes pins the multi-package wire shape:

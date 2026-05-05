@@ -22,7 +22,7 @@ If you can name a `net/http` concept, the craftgo equivalent uses it directly.
 ## The Server
 
 ```go
-import "github.com/dropship-dev/craftgo/pkg/server"
+import "github.com/craftgodotdev/craftgo/pkg/server"
 
 srv := server.New(svcCtx)
 srv.Use(loggingMiddleware)

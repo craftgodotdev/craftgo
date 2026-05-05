@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/service/catalog-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/multi-service/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/multi-service/internal/service/catalog-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/multi-service/svccontext"
 )
 
 // Ping the catalog service.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 // TestFormatRoundTrip parses, formats, parses again, and reformats. The two

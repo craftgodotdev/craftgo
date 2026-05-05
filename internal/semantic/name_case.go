@@ -3,8 +3,8 @@ package semantic
 import (
 	"unicode"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkDeclNameCase emits a warning for every top-level declaration

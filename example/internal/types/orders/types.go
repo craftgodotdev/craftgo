@@ -3,8 +3,8 @@
 package orders
 
 import (
-	"github.com/dropship-dev/craftgo/example/internal/types/shared"
-	"github.com/dropship-dev/craftgo/example/internal/types/users"
+	"github.com/craftgodotdev/craftgo/example/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/internal/types/users"
 	"mime/multipart"
 )
 

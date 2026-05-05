@@ -2,7 +2,7 @@
 
 package svccontext
 
-import "github.com/dropship-dev/craftgo/pkg/server"
+import "github.com/craftgodotdev/craftgo/pkg/server"
 
 // AuthRequiredMiddleware is the typed alias for the AuthRequired middleware so the
 // field below has a self-documenting name.

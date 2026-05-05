@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/config"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // serviceData is the template input for `service.tmpl` and

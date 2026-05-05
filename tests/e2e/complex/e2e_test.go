@@ -17,13 +17,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/internal/middleware"
-	adminroutes "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/routes/admin-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/internal/routes/profile-service"
-	types "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/types/design"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/middleware"
+	adminroutes "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/admin-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/profile-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/design"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // boot stands up the generated routes against an httptest server.

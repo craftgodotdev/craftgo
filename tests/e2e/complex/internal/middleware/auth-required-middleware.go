@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // NewAuthRequiredMiddleware returns the bearer-token check declared by

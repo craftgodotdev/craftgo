@@ -4,12 +4,12 @@ package profileservice
 
 import (
 	"encoding/json"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/service/profile-service"
-	types "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/types/design"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/service/profile-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/design"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // CreateProfile stores a new profile and assigns its id. The handler

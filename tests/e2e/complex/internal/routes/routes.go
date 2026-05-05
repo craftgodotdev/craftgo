@@ -3,11 +3,11 @@
 package routes
 
 import (
-	"github.com/dropship-dev/craftgo/pkg/server"
-	adminserviceroutes "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/routes/admin-service"
-	profileserviceroutes "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/routes/profile-service"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+	adminserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/admin-service"
+	profileserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/profile-service"
 
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // RegisterAll wires every service's routes onto srv with one call.

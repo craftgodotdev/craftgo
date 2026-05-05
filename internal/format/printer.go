@@ -38,9 +38,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
-	"github.com/dropship-dev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 // Format parses src (filename used only for diagnostics) and returns the

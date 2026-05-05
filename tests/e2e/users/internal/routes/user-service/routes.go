@@ -3,9 +3,9 @@
 package userservice
 
 import (
-	"github.com/dropship-dev/craftgo/pkg/server"
-	transport "github.com/dropship-dev/craftgo/tests/e2e/users/internal/transport/user-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+	transport "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/transport/user-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // RegisterRoutes wires every UserService endpoint onto srv. Patterns

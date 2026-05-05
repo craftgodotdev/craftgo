@@ -28,13 +28,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/dropship-dev/craftgo",
+    "url": "https://github.com/craftgodotdev/craftgo",
     "directory": "extensions/vscode"
   },
   "bugs": {
-    "url": "https://github.com/dropship-dev/craftgo/issues"
+    "url": "https://github.com/craftgodotdev/craftgo/issues"
   },
-  "homepage": "https://github.com/dropship-dev/craftgo/tree/main/extensions/vscode#readme",
+  "homepage": "https://github.com/craftgodotdev/craftgo/tree/main/extensions/vscode#readme",
   "contributes": {
     "languages": [
       {
@@ -79,11 +79,15 @@
         "craftgo.serverPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the craftgo-lsp binary. Leave empty to use whatever 'craftgo-lsp' resolves to on $PATH (default after `go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest`)."
+          "description": "Path to the craftgo-lsp binary. Leave empty to use whatever 'craftgo-lsp' resolves to on $PATH (default after `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`)."
         },
         "craftgo.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Traces the communication between VS Code and the craftgo language server."
         }

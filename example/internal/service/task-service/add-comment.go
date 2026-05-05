@@ -3,10 +3,10 @@ package taskservice
 import (
 	"context"
 
-	types "github.com/dropship-dev/craftgo/example/internal/types/tasks"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/tasks"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // AddCommentService carries the per-request state for the AddComment

@@ -5,8 +5,8 @@ package userservice
 import (
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/users/internal/service/user-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/service/user-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // Ping is a liveness-style endpoint with no body.

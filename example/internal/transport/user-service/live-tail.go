@@ -5,8 +5,8 @@ package userservice
 import (
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/example/internal/service/user-service"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	service "github.com/craftgodotdev/craftgo/example/internal/service/user-service"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // LiveTail streams server logs as Server-Sent Events. The framework

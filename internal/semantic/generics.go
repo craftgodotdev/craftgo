@@ -18,8 +18,8 @@ package semantic
 // TypeParams to make that distinction.
 
 import (
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkGenerics walks every declared type / error body and every

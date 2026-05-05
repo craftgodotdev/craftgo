@@ -1,9 +1,9 @@
-module github.com/dropship-dev/craftgo/example
+module github.com/craftgodotdev/craftgo/example
 
 go 1.24.2
 
 require (
-	github.com/dropship-dev/craftgo v0.0.0
+	github.com/craftgodotdev/craftgo v0.0.0
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go.opentelemetry.io/otel/sdk/metric v1.38.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -47,4 +47,4 @@ require (
 	google.golang.org/protobuf v1.36.8 // indirect
 )
 
-replace github.com/dropship-dev/craftgo => ../
+replace github.com/craftgodotdev/craftgo => ../

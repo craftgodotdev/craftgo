@@ -3,7 +3,7 @@ package ast
 import (
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // AST nodes carry a small but varied set of marker / accessor methods

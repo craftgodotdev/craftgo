@@ -3,10 +3,10 @@ package codegen
 import (
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/config"
-	"github.com/dropship-dev/craftgo/internal/lexer"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // TestBuildCrossPkgResolves verifies the happy path: a project with

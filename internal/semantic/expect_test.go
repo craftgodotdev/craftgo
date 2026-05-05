@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // expect_test.go - focused assertion helpers for the analyser tests.

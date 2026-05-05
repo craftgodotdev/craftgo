@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
 // Server is craftgo's runtime. Methods follow a fluent style so a project

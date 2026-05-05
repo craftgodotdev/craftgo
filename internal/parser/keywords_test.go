@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 // parseSrc is a tiny helper that parses src and fails fast on diagnostics.

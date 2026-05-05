@@ -3,9 +3,9 @@
 package ordersservice
 
 import (
-	"github.com/dropship-dev/craftgo/pkg/server"
-	transport "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/transport/orders-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/multi-service/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+	transport "github.com/craftgodotdev/craftgo/tests/e2e/multi-service/internal/transport/orders-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/multi-service/svccontext"
 )
 
 // RegisterRoutes wires every OrdersService endpoint onto srv. Patterns

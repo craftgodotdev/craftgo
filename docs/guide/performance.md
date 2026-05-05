@@ -22,7 +22,7 @@ The benchmarks live in the craftgo repo at `internal/bench/`. They compare the g
 Reproduce the run:
 
 ```bash
-git clone https://github.com/dropship-dev/craftgo
+git clone https://github.com/craftgodotdev/craftgo
 cd craftgo
 go test -run=^$ -bench=BenchmarkParse -benchmem -benchtime=2s -count=1 ./internal/bench/
 ```

@@ -3,7 +3,7 @@ package codegen
 import (
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 // This file groups the field-shape predicates and small expression

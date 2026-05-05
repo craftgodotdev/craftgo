@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dropship-dev/craftgo/internal/config"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // mainData is the template input for `main.tmpl`. The umbrella
@@ -22,7 +22,7 @@ type mainData struct {
 	HasMiddlewares   bool
 	// OperationName seeds otel.HTTPMiddleware's span name. Defaults to
 	// the project's last package segment (e.g. `example` for
-	// `github.com/dropship-dev/craftgo/example`) so traces self-label
+	// `github.com/craftgodotdev/craftgo/example`) so traces self-label
 	// without needing a manual edit.
 	OperationName string
 }

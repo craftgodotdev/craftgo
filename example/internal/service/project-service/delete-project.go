@@ -3,11 +3,11 @@ package projectservice
 import (
 	"context"
 
-	types "github.com/dropship-dev/craftgo/example/internal/types/projects"
-	shared "github.com/dropship-dev/craftgo/example/internal/types/shared"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/projects"
+	shared "github.com/craftgodotdev/craftgo/example/internal/types/shared"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // DeleteProjectService carries the per-request state for the DeleteProject

@@ -3,8 +3,8 @@ package codegen
 import (
 	"fmt"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // This file holds the decorator → emit-function dispatch table. The

@@ -8,7 +8,7 @@ import (
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // onPrepareRename answers `textDocument/prepareRename`. The editor calls

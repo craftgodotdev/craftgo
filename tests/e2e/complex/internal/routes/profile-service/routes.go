@@ -3,9 +3,9 @@
 package profileservice
 
 import (
-	"github.com/dropship-dev/craftgo/pkg/server"
-	transport "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/transport/profile-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+	transport "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/transport/profile-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // RegisterRoutes wires every ProfileService endpoint onto srv. Patterns

@@ -4,7 +4,7 @@
 // VSCode via vscode-languageclient. The binary path is resolved from the
 // `craftgo.serverPath` setting first, falling back to whatever the user
 // has on $PATH (the canonical install path is `go install
-// github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest`).
+// github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`).
 
 import * as path from "node:path";
 import { ExtensionContext, window, workspace, commands } from "vscode";
@@ -28,9 +28,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { scheme: "file", language: "craftgo" },
-    ],
+    documentSelector: [{ scheme: "file", language: "craftgo" }],
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher("**/*.craftgo"),
     },
@@ -58,7 +56,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     window.showErrorMessage(
       `craftgo: failed to start ${command}. ` +
-        `Install with 'go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest' ` +
+        `Install with 'go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest' ` +
         `and ensure it is on PATH (or set craftgo.serverPath). Details: ${message}`,
     );
   }

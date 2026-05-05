@@ -3,10 +3,10 @@ package userservice
 import (
 	"context"
 
-	types "github.com/dropship-dev/craftgo/tests/e2e/users/internal/types/design"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/types/design"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // DeleteUserService carries the per-request state for the DeleteUser

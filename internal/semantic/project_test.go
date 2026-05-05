@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
-	"github.com/dropship-dev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 // projectFixture writes the supplied src map to a temp dir under

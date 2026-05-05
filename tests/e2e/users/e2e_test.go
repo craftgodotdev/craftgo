@@ -16,11 +16,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/dropship-dev/craftgo/tests/e2e/users/internal/routes/user-service"
-	types "github.com/dropship-dev/craftgo/tests/e2e/users/internal/types/design"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/internal/routes/user-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/types/design"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // boot wires a Server with the generated routes and returns an

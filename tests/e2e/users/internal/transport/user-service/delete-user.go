@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/users/internal/service/user-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/service/user-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // DeleteUser clears the in-memory store. Path id is currently ignored.

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dropship-dev/craftgo/example/config"
+	"github.com/craftgodotdev/craftgo/example/config"
 )
 
 // ServiceContext aggregates everything a logic / middleware function

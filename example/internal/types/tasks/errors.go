@@ -3,7 +3,7 @@
 package tasks
 
 import (
-	"github.com/dropship-dev/craftgo/example/internal/types/users"
+	"github.com/craftgodotdev/craftgo/example/internal/types/users"
 )
 
 // ErrCodeTaskAssignmentConflict is the canonical machine-readable code for TaskAssignmentConflictErr.

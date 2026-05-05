@@ -13,9 +13,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/idents"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // Parser holds the token stream and accumulates diagnostics. Use [New] to

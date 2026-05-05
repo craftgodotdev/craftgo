@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/complex/internal/service/admin-service"
-	"github.com/dropship-dev/craftgo/tests/e2e/complex/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/service/admin-service"
+	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
 // Snapshot stacks an additional method-level middleware on top of

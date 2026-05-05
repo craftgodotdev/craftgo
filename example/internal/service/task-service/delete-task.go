@@ -3,11 +3,11 @@ package taskservice
 import (
 	"context"
 
-	shared "github.com/dropship-dev/craftgo/example/internal/types/shared"
-	types "github.com/dropship-dev/craftgo/example/internal/types/tasks"
+	shared "github.com/craftgodotdev/craftgo/example/internal/types/shared"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/tasks"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // DeleteTaskService carries the per-request state for the DeleteTask

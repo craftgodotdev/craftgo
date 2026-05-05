@@ -4,12 +4,12 @@ package userservice
 
 import (
 	"encoding/json"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
-	service "github.com/dropship-dev/craftgo/tests/e2e/users/internal/service/user-service"
-	types "github.com/dropship-dev/craftgo/tests/e2e/users/internal/types/design"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/service/user-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/types/design"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // CreateUser stores a new user and returns the freshly created entity.

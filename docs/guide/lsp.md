@@ -7,7 +7,7 @@ The only first-party editor integration today is the **VS Code extension**. Othe
 ## Install the LSP
 
 ```bash
-go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest
+go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest
 ```
 
 The binary lands in `$GOBIN` (or `$GOPATH/bin`). Make sure the directory is on your `PATH`.
@@ -33,7 +33,7 @@ The LSP runs as a separate binary; rebuilding craftgo's source does not refresh 
 ## Building the VS Code extension from source
 
 ```bash
-git clone https://github.com/dropship-dev/craftgo
+git clone https://github.com/craftgodotdev/craftgo
 cd craftgo/extensions/vscode
 npm install
 npm run package
@@ -122,7 +122,7 @@ Without the VS Code extension you will not have syntax highlighting; the languag
 Reinstall and restart:
 
 ```bash
-go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest
+go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest
 # in VS Code: Cmd+Shift+P -> craftgo: Restart Language Server
 ```
 

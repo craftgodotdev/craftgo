@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // validateData is the template input for `validate.tmpl`. It is computed

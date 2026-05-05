@@ -3,8 +3,8 @@ package semantic
 import (
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 // parseFileMap parses src as a slice of named files and returns the AST

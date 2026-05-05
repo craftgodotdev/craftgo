@@ -11,7 +11,7 @@ package ast
 import (
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // Pos aliases [lexer.Position] to keep ast/* free of a hard dependency on

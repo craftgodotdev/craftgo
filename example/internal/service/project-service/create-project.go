@@ -3,10 +3,10 @@ package projectservice
 import (
 	"context"
 
-	types "github.com/dropship-dev/craftgo/example/internal/types/projects"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/projects"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // CreateProjectService carries the per-request state for the CreateProject

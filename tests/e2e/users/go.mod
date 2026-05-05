@@ -1,8 +1,8 @@
-module github.com/dropship-dev/craftgo/tests/e2e/users
+module github.com/craftgodotdev/craftgo/tests/e2e/users
 
 go 1.24.2
 
-require github.com/dropship-dev/craftgo v0.0.0
+require github.com/craftgodotdev/craftgo v0.0.0
 
 require (
 	go.opentelemetry.io/otel v1.38.0 // indirect
@@ -11,4 +11,4 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 )
 
-replace github.com/dropship-dev/craftgo => ../../..
+replace github.com/craftgodotdev/craftgo => ../../..

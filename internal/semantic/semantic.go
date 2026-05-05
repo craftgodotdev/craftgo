@@ -30,8 +30,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // Diagnostic re-exports [lexer.Diagnostic] so semantic-layer callers do not

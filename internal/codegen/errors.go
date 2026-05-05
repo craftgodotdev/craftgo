@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/idents"
-	"github.com/dropship-dev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // categoryStatus maps each reserved error category to its HTTP status code.

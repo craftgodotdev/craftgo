@@ -3,7 +3,7 @@ package semantic
 import (
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // TestDeclNameCaseWarnsForLowercase pins the warning shape for every

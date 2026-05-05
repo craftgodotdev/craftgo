@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/dropship-dev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
 // runtimeData is the shared template input for the runtime-scaffold

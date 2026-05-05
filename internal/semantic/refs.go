@@ -15,8 +15,8 @@ package semantic
 // "unresolved name" squiggle and offer a quick-fix list of candidates.
 
 import (
-	"github.com/dropship-dev/craftgo/internal/ast"
-	"github.com/dropship-dev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // checkDecoratorRefs walks every decorator scope and validates the

@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
 // requestIDHeader is the canonical header name read and written by the

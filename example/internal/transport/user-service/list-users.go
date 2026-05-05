@@ -4,13 +4,13 @@ package userservice
 
 import (
 	"encoding/json"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
 
-	service "github.com/dropship-dev/craftgo/example/internal/service/user-service"
-	types "github.com/dropship-dev/craftgo/example/internal/types/users"
-	"github.com/dropship-dev/craftgo/example/svccontext"
+	service "github.com/craftgodotdev/craftgo/example/internal/service/user-service"
+	types "github.com/craftgodotdev/craftgo/example/internal/types/users"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
 )
 
 // ListUsers returns the http.HandlerFunc for the

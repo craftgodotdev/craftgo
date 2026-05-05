@@ -3,8 +3,8 @@
 package tasks
 
 import (
-	"github.com/dropship-dev/craftgo/example/internal/types/projects"
-	"github.com/dropship-dev/craftgo/example/internal/types/users"
+	"github.com/craftgodotdev/craftgo/example/internal/types/projects"
+	"github.com/craftgodotdev/craftgo/example/internal/types/users"
 )
 
 // AddCommentReq pairs a path-bound taskId with a body-bound

@@ -11,12 +11,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	catalogroutes "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/routes/catalog-service"
-	ordersroutes "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/routes/orders-service"
-	types "github.com/dropship-dev/craftgo/tests/e2e/multi-service/internal/types/design"
-	"github.com/dropship-dev/craftgo/tests/e2e/multi-service/svccontext"
+	catalogroutes "github.com/craftgodotdev/craftgo/tests/e2e/multi-service/internal/routes/catalog-service"
+	ordersroutes "github.com/craftgodotdev/craftgo/tests/e2e/multi-service/internal/routes/orders-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/multi-service/internal/types/design"
+	"github.com/craftgodotdev/craftgo/tests/e2e/multi-service/svccontext"
 )
 
 // boot wires both services onto a single Server so each test can issue

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dropship-dev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 // ---------- Prims rendering ----------

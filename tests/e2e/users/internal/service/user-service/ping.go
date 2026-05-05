@@ -3,8 +3,8 @@ package userservice
 import (
 	"context"
 
-	"github.com/dropship-dev/craftgo/pkg/log"
-	"github.com/dropship-dev/craftgo/tests/e2e/users/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
 // PingService carries the per-request state for the Ping

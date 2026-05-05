@@ -5,7 +5,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/dropship-dev/craftgo/pkg/server"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // NewRateLimitMiddleware constructs the RateLimit middleware. Declare

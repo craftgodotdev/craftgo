@@ -43,21 +43,21 @@ Files in the same directory share `package` and see each other's declarations. C
 
 Field syntax: `name TypeRef [@decorator(...) ...]`.
 
-| DSL form         | Go output                | Notes                                  |
-| ---------------- | ------------------------ | -------------------------------------- |
-| `string`         | `string`                 |                                        |
-| `bytes`          | `[]byte`                 | base64-decoded from JSON               |
-| `int`            | `int`                    | platform-sized                         |
-| `int8/16/32/64`  | matching Go              |                                        |
-| `uint`           | `uint`                   |                                        |
-| `uint8/16/32/64` | matching Go              |                                        |
-| `float32/64`     | matching Go              |                                        |
-| `bool`           | `bool`                   |                                        |
-| `file`           | `*multipart.FileHeader`  | only with `@form`                      |
-| `T?`             | `*T` or nilable as-is    | optional                               |
-| `T[]`            | `[]T`                    | array                                  |
-| `map<K, V>`      | `map[K]V`                | K must be primitive                    |
-| `Custom`         | `Custom`                 | references a declared type / scalar / enum |
+| DSL form         | Go output               | Notes                                      |
+| ---------------- | ----------------------- | ------------------------------------------ |
+| `string`         | `string`                |                                            |
+| `bytes`          | `[]byte`                | base64-decoded from JSON                   |
+| `int`            | `int`                   | platform-sized                             |
+| `int8/16/32/64`  | matching Go             |                                            |
+| `uint`           | `uint`                  |                                            |
+| `uint8/16/32/64` | matching Go             |                                            |
+| `float32/64`     | matching Go             |                                            |
+| `bool`           | `bool`                  |                                            |
+| `file`           | `*multipart.FileHeader` | only with `@form`                          |
+| `T?`             | `*T` or nilable as-is   | optional                                   |
+| `T[]`            | `[]T`                   | array                                      |
+| `map<K, V>`      | `map[K]V`               | K must be primitive                        |
+| `Custom`         | `Custom`                | references a declared type / scalar / enum |
 
 ### Mixins
 
@@ -160,19 +160,19 @@ error Conflict EmailTaken {                       // body fields, 409
 
 Categories (drives HTTP status):
 
-| Category              | Status | Category              | Status |
-| --------------------- | ------ | --------------------- | ------ |
-| `BadRequest`          | 400    | `PayloadTooLarge`     | 413    |
-| `Unauthorized`        | 401    | `UnprocessableEntity` | 422    |
-| `PaymentRequired`     | 402    | `Locked`              | 423    |
-| `Forbidden`           | 403    | `TooManyRequests`     | 429    |
-| `NotFound`            | 404    | `Internal`            | 500    |
-| `MethodNotAllowed`    | 405    | `NotImplemented`      | 501    |
-| `NotAcceptable`       | 406    | `BadGateway`          | 502    |
-| `Conflict`            | 409    | `ServiceUnavailable`  | 503    |
-| `Gone`                | 410    | `GatewayTimeout`      | 504    |
-| `LengthRequired`      | 411    |                       |        |
-| `PreconditionFailed`  | 412    |                       |        |
+| Category             | Status | Category              | Status |
+| -------------------- | ------ | --------------------- | ------ |
+| `BadRequest`         | 400    | `PayloadTooLarge`     | 413    |
+| `Unauthorized`       | 401    | `UnprocessableEntity` | 422    |
+| `PaymentRequired`    | 402    | `Locked`              | 423    |
+| `Forbidden`          | 403    | `TooManyRequests`     | 429    |
+| `NotFound`           | 404    | `Internal`            | 500    |
+| `MethodNotAllowed`   | 405    | `NotImplemented`      | 501    |
+| `NotAcceptable`      | 406    | `BadGateway`          | 502    |
+| `Conflict`           | 409    | `ServiceUnavailable`  | 503    |
+| `Gone`               | 410    | `GatewayTimeout`      | 504    |
+| `LengthRequired`     | 411    |                       |        |
+| `PreconditionFailed` | 412    |                       |        |
 
 Constructed via `New<Name>Err()` (no body) or `New<Name>Err(<Name>Body{...})`. Implements `Error() string` and `HTTPStatus() int`.
 
@@ -234,49 +234,49 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 ### File-level
 
-| Decorator                       | Args              | Effect                                            |
-| ------------------------------- | ----------------- | ------------------------------------------------- |
-| `@title("...")`                 | `(string)`        | OpenAPI document title                            |
-| `@version("...")`               | `(string)`        | OpenAPI document version                          |
-| `@deprecated` / `@deprecated("...")` | `()` or `(string)` | Mark file deprecated                          |
-| `@doc("...")`                   | `(string)`        | File description                                  |
-| `@externalDocs("url")` / object | string or object  | OpenAPI externalDocs                              |
+| Decorator                            | Args               | Effect                   |
+| ------------------------------------ | ------------------ | ------------------------ |
+| `@title("...")`                      | `(string)`         | OpenAPI document title   |
+| `@version("...")`                    | `(string)`         | OpenAPI document version |
+| `@deprecated` / `@deprecated("...")` | `()` or `(string)` | Mark file deprecated     |
+| `@doc("...")`                        | `(string)`         | File description         |
+| `@externalDocs("url")` / object      | string or object   | OpenAPI externalDocs     |
 
 ### Type / error / enum / scalar / middleware level
 
-| Decorator                  | Sites                         | Args                          |
-| -------------------------- | ----------------------------- | ----------------------------- |
-| `@doc("...")`              | type, enum, error, scalar, middleware, enumValue, errorField | `(string)` |
-| `@deprecated`              | type, enumValue, errorField, middleware | `()` or `(string)`  |
-| `@example(value)`          | type, field, method, error, errorField | literal or object   |
-| `@examples(name: ..., ...)`| type, field, method, error, errorField | object              |
-| `@externalDocs(...)`       | type, service, method         | string or object              |
-| `@requiresOneOf(a, b, ...)`| type                          | idents (or array literal)     |
-| `@mutuallyExclusive(a, ...)` | type                        | idents (or array literal)     |
+| Decorator                    | Sites                                                        | Args                      |
+| ---------------------------- | ------------------------------------------------------------ | ------------------------- |
+| `@doc("...")`                | type, enum, error, scalar, middleware, enumValue, errorField | `(string)`                |
+| `@deprecated`                | type, enumValue, errorField, middleware                      | `()` or `(string)`        |
+| `@example(value)`            | type, field, method, error, errorField                       | literal or object         |
+| `@examples(name: ..., ...)`  | type, field, method, error, errorField                       | object                    |
+| `@externalDocs(...)`         | type, service, method                                        | string or object          |
+| `@requiresOneOf(a, b, ...)`  | type                                                         | idents (or array literal) |
+| `@mutuallyExclusive(a, ...)` | type                                                         | idents (or array literal) |
 
 ### Field validators
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
-| Decorator                  | AppliesTo  | Args                          | Effect                          |
-| -------------------------- | ---------- | ----------------------------- | ------------------------------- |
-| `@required`                | any        | `()`                          | Field must be present           |
-| `@length(min, max)`        | string     | `(int, int)`                  | Length bounds inclusive         |
-| `@minLength(n)`            | string     | `(int)`                       | Length `>= n`                   |
-| `@maxLength(n)`            | string     | `(int)`                       | Length `<= n`                   |
-| `@pattern("regex")`        | string     | `(string)`                    | RE2 regex match                 |
-| `@format(name)`            | string     | ident or string               | Named format (see list below)   |
-| `@min(n)`                  | number     | `(number)`                    | Value `>= n`                    |
-| `@max(n)`                  | number     | `(number)`                    | Value `<= n`                    |
-| `@range(min, max)`         | number     | `(number, number)`            | Both bounds                     |
-| `@positive`                | number     | `()`                          | Value `> 0`                     |
-| `@negative`                | number     | `()`                          | Value `< 0`                     |
-| `@multipleOf(n)`           | number     | `(number)`                    | Divisible by `n`                |
-| `@minItems(n)`             | array      | `(int)`                       | At least `n` elements           |
-| `@maxItems(n)`             | array      | `(int)`                       | At most `n` elements            |
-| `@uniqueItems`             | array      | `()`                          | All elements distinct           |
-| `@maxSize(N)`              | file       | `(size)`                      | Multipart upload size cap       |
-| `@mimeTypes([...])`        | file       | string array                  | Multipart MIME allow-list       |
+| Decorator           | AppliesTo | Args               | Effect                        |
+| ------------------- | --------- | ------------------ | ----------------------------- |
+| `@required`         | any       | `()`               | Field must be present         |
+| `@length(min, max)` | string    | `(int, int)`       | Length bounds inclusive       |
+| `@minLength(n)`     | string    | `(int)`            | Length `>= n`                 |
+| `@maxLength(n)`     | string    | `(int)`            | Length `<= n`                 |
+| `@pattern("regex")` | string    | `(string)`         | RE2 regex match               |
+| `@format(name)`     | string    | ident or string    | Named format (see list below) |
+| `@min(n)`           | number    | `(number)`         | Value `>= n`                  |
+| `@max(n)`           | number    | `(number)`         | Value `<= n`                  |
+| `@range(min, max)`  | number    | `(number, number)` | Both bounds                   |
+| `@positive`         | number    | `()`               | Value `> 0`                   |
+| `@negative`         | number    | `()`               | Value `< 0`                   |
+| `@multipleOf(n)`    | number    | `(number)`         | Divisible by `n`              |
+| `@minItems(n)`      | array     | `(int)`            | At least `n` elements         |
+| `@maxItems(n)`      | array     | `(int)`            | At most `n` elements          |
+| `@uniqueItems`      | array     | `()`               | All elements distinct         |
+| `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
+| `@mimeTypes([...])` | file      | string array       | Multipart MIME allow-list     |
 
 **`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `hexcolor`, `json`.
 
@@ -284,14 +284,14 @@ Validators on `errorField` are emitted as OpenAPI schema constraints only (no ru
 
 ### Field bindings (mutually exclusive)
 
-| Decorator | Sites             | Args         | Reads from / writes to                            |
-| --------- | ----------------- | ------------ | ------------------------------------------------- |
-| `@body`   | field             | `()` or `(string)` | Request body                                |
-| `@path`   | field             | `()` or `(string)` | URL path parameter `{name}`                 |
-| `@query`  | field             | `()` or `(string)` | URL query string                            |
+| Decorator | Sites             | Args               | Reads from / writes to                     |
+| --------- | ----------------- | ------------------ | ------------------------------------------ |
+| `@body`   | field             | `()` or `(string)` | Request body                               |
+| `@path`   | field             | `()` or `(string)` | URL path parameter `{name}`                |
+| `@query`  | field             | `()` or `(string)` | URL query string                           |
 | `@header` | field, errorField | `()` or `(string)` | Request header / response header on errors |
 | `@cookie` | field, errorField | `()` or `(string)` | Request cookie / response cookie on errors |
-| `@form`   | field             | `()` or `(string)` | Multipart form field                        |
+| `@form`   | field             | `()` or `(string)` | Multipart form field                       |
 
 The optional string is the explicit wire name. Without it, the wire name is the DSL field name verbatim.
 
@@ -299,33 +299,33 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 
 ### Field metadata
 
-| Decorator         | Sites              | Effect                                                                                          |
-| ----------------- | ------------------ | ----------------------------------------------------------------------------------------------- |
-| `@nullable`       | field, errorField  | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)           |
-| `@default(value)` | field, errorField  | Pre-fill before JSON decode. Works on primitive, scalar, enum, optional / array of those.       |
-| `@sensitive`      | field, errorField  | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`.|
+| Decorator         | Sites             | Effect                                                                                           |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
+| `@nullable`       | field, errorField | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)            |
+| `@default(value)` | field, errorField | Pre-fill before JSON decode. Works on primitive, scalar, enum, optional / array of those.        |
+| `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`. |
 
 `@default` cannot combine with `@required` or any binding. For enum fields, the value is the bare ident (`@default(Active)`).
 
 ### Service / method
 
-| Decorator                  | Sites           | Args                                  |
-| -------------------------- | --------------- | ------------------------------------- |
-| `@prefix("/path")`         | service         | `(string)`                            |
-| `@group("name")`           | service         | `(string)`                            |
-| `@middlewares(A, B, ...)`  | service, method | idents (or array literal)             |
-| `@tags(a, b, ...)`         | service, method | idents/strings (or array literal)     |
-| `@security(scheme, ...)`   | service, method | scheme ident, optional `scopes: [...]`|
-| `@summary("...")`          | method          | `(string)`                            |
-| `@operationId("name")`     | method          | `(string)`                            |
-| `@status(code)`            | method          | `(int)`                               |
-| `@errors(E1, E2, ...)`     | method          | error idents (or array literal)       |
-| `@consumes("type", ...)`   | method          | strings (or array literal)            |
-| `@produces("type", ...)`   | method          | strings (or array literal)            |
-| `@accepts("encoding", ...)`| method          | strings                               |
-| `@passthrough`             | method          | `()`                                  |
-| `@timeout(d)`              | method          | `(duration)`                          |
-| `@maxBodySize(n)`          | method          | `(size)`                              |
+| Decorator                   | Sites           | Args                                   |
+| --------------------------- | --------------- | -------------------------------------- |
+| `@prefix("/path")`          | service         | `(string)`                             |
+| `@group("name")`            | service         | `(string)`                             |
+| `@middlewares(A, B, ...)`   | service, method | idents (or array literal)              |
+| `@tags(a, b, ...)`          | service, method | idents/strings (or array literal)      |
+| `@security(scheme, ...)`    | service, method | scheme ident, optional `scopes: [...]` |
+| `@summary("...")`           | method          | `(string)`                             |
+| `@operationId("name")`      | method          | `(string)`                             |
+| `@status(code)`             | method          | `(int)`                                |
+| `@errors(E1, E2, ...)`      | method          | error idents (or array literal)        |
+| `@consumes("type", ...)`    | method          | strings (or array literal)             |
+| `@produces("type", ...)`    | method          | strings (or array literal)             |
+| `@accepts("encoding", ...)` | method          | strings                                |
+| `@passthrough`              | method          | `()`                                   |
+| `@timeout(d)`               | method          | `(duration)`                           |
+| `@maxBodySize(n)`           | method          | `(size)`                               |
 
 `@passthrough` bypasses framework parsing - logic receives raw `http.ResponseWriter` and `*http.Request`.
 
@@ -338,21 +338,21 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 
 ## CLI
 
-| Command                                 | Description                                                       |
-| --------------------------------------- | ----------------------------------------------------------------- |
-| `craftgo init [path]`                   | Scaffold a design folder with starter `craftgo.design.yaml`. Default path `design`. |
-| `craftgo gen [path]`                    | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, then generate. |
-| `craftgo gen -f <design-folder>`        | Skip walk-up; use the manifest at that folder.                    |
-| `craftgo gen -c <project-root>`         | Resolve `output.*` paths against this root.                       |
-| `craftgo fmt [path]`                    | Canonical-format `.craftgo` files. Defaults to writing in place.  |
-| `craftgo fmt -l`                        | List files that would change (no write).                          |
-| `craftgo fmt -w`                        | Write the formatted result back (default).                        |
-| `craftgo version`                       | Print CLI version.                                                |
-| `craftgo help`                          | Show top-level help.                                              |
+| Command                          | Description                                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
+| `craftgo init [path]`            | Scaffold a design folder with starter `craftgo.design.yaml`. Default path `design`. |
+| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, then generate.      |
+| `craftgo gen -f <design-folder>` | Skip walk-up; use the manifest at that folder.                                      |
+| `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root.                                         |
+| `craftgo fmt [path]`             | Canonical-format `.craftgo` files. Defaults to writing in place.                    |
+| `craftgo fmt -l`                 | List files that would change (no write).                                            |
+| `craftgo fmt -w`                 | Write the formatted result back (default).                                          |
+| `craftgo version`                | Print CLI version.                                                                  |
+| `craftgo help`                   | Show top-level help.                                                                |
 
 Exit codes: 0 (success), 1 (generic failure), 2 (semantic errors). The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
 
-`craftgo-lsp` is a separate binary. Install with `go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest`. Officially supported editor integration: VS Code only.
+`craftgo-lsp` is a separate binary. Install with `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`. Officially supported editor integration: VS Code only.
 
 ## `craftgo.design.yaml` (codegen config)
 
@@ -360,19 +360,19 @@ Lives **inside** the design folder. The folder is the design root; its parent is
 
 ```yaml
 output:
-  types:      ./internal/types         # directory
-  transport:    ./internal/transport       # directory
-  routes:     ./internal/routes        # directory
-  service:      ./internal/service         # directory
-  middleware: ./internal/middleware    # directory
-  svccontext: ./svccontext/svccontext.go   # FILE PATH (single file)
-  openapi:    ./docs/openapi.yaml          # FILE PATH (single file)
-  config:     ./config                 # directory
-  main:       ./main.go                # FILE PATH (single file)
+  types: ./internal/types # directory
+  transport: ./internal/transport # directory
+  routes: ./internal/routes # directory
+  service: ./internal/service # directory
+  middleware: ./internal/middleware # directory
+  svccontext: ./svccontext/svccontext.go # FILE PATH (single file)
+  openapi: ./docs/openapi.yaml # FILE PATH (single file)
+  config: ./config # directory
+  main: ./main.go # FILE PATH (single file)
 
 openapi:
-  title:    My API
-  version:  1.0.0
+  title: My API
+  version: 1.0.0
   basePath: /api
   securitySchemes:
     bearer:
@@ -430,12 +430,12 @@ server:
 otel:
   enabled: true
   serviceName: my-app
-  exporter: none              # none | stdout | otlp_grpc | otlp_http
+  exporter: none # none | stdout | otlp_grpc | otlp_http
   endpoint: ""
 
 metrics:
   enabled: true
-  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none
+  exporter: prometheus # prometheus | otlp_grpc | otlp_http | none
   endpoint: ""
   adminAddr: ":9090"
   path: /metrics
@@ -538,7 +538,7 @@ The struct embeds `log.Logger` so logic can call `l.Info(...)` directly. Trace I
 ## Runtime entry points
 
 ```go
-import "github.com/dropship-dev/craftgo/pkg/server"
+import "github.com/craftgodotdev/craftgo/pkg/server"
 
 srv := server.New(svcCtx)
 srv.Use(server.RequestID())
@@ -552,15 +552,15 @@ srv.Start(":8080")
 
 ### Built-in runtime middleware
 
-| Constructor                  | Effect                                                  |
-| ---------------------------- | ------------------------------------------------------- |
-| `server.Recovery(logger)`    | Panic -> 500 + structured log (auto-installed outermost)|
-| `server.RequestID()`         | Extract or generate `X-Request-Id`                      |
-| `server.AccessLog(logger)`   | One log line per request                                |
-| `server.BodyLimit(maxBytes)` | Cap request body size                                   |
-| `server.Timeout(d)`          | Per-handler deadline                                    |
-| `server.CORS(opts)`          | Preflight + CORS headers                                |
-| `server.Compress(opts)`      | gzip / deflate response compression                     |
+| Constructor                  | Effect                                                   |
+| ---------------------------- | -------------------------------------------------------- |
+| `server.Recovery(logger)`    | Panic -> 500 + structured log (auto-installed outermost) |
+| `server.RequestID()`         | Extract or generate `X-Request-Id`                       |
+| `server.AccessLog(logger)`   | One log line per request                                 |
+| `server.BodyLimit(maxBytes)` | Cap request body size                                    |
+| `server.Timeout(d)`          | Per-handler deadline                                     |
+| `server.CORS(opts)`          | Preflight + CORS headers                                 |
+| `server.Compress(opts)`      | gzip / deflate response compression                      |
 
 ## Error response format
 

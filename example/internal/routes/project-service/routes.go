@@ -3,9 +3,9 @@
 package projectservice
 
 import (
-	transport "github.com/dropship-dev/craftgo/example/internal/transport/project-service"
-	"github.com/dropship-dev/craftgo/example/svccontext"
-	"github.com/dropship-dev/craftgo/pkg/server"
+	transport "github.com/craftgodotdev/craftgo/example/internal/transport/project-service"
+	"github.com/craftgodotdev/craftgo/example/svccontext"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every ProjectService endpoint onto srv. Patterns
