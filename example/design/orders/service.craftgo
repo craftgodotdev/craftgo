@@ -38,6 +38,37 @@ service OrderService {
 		request  DefaultsShowcaseReq
 		response DefaultsShowcaseReq
 	}
+
+	@doc("Filter orders by status. Demonstrates enum + scalar in path/query/header/cookie bindings — the wire value is a string but the Go field lands as the typed alias, and req.Validate() rejects values outside the enum / failing the scalar's @format/@pattern.")
+	get FilterOrders /by-status/{status} {
+		request  FilterOrdersReq
+		response OrderList
+	}
+}
+
+// FilterOrdersReq demonstrates the Phase-equivalent enum + scalar
+// binding support across all four wire formats:
+//
+//   - @path takes the OrderStatus enum directly. Codegen emits
+//     `req.Status = orders.OrderStatus(r.PathValue("status"))` and
+//     req.Validate() rejects any value outside the enum's set.
+//   - @query takes Email (string scalar) and PaymentMethod (string
+//     enum). Both validate via the inherited decorators / enum check.
+//   - @header takes OrderID (string scalar) — hooked to the optional
+//     `X-Idempotency-Key` style use case.
+//   - @cookie takes OrderStatus too — round-trip the prior session's
+//     last filter.
+//
+// Note that @query also accepts numeric scalars (PercentBP) and
+// int-backed enums (Priority); the codegen parses the wire string to
+// the underlying primitive and casts up to the alias.
+type FilterOrdersReq {
+	status     OrderStatus   @path @required
+	contact    Email         @query
+	method     PaymentMethod @query
+	limit      Cents         @query
+	idemKey    OrderID       @header
+	lastFilter OrderStatus   @cookie
 }
 
 // DefaultsShowcaseReq pins every supported @default shape so the

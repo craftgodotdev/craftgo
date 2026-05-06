@@ -24,7 +24,7 @@ type UserRef {
 //     it needs the cascade.)
 type Avatar {
 	url       string @required @format(url) @maxLength(2048)
-	sizeBytes int    @required @min(0) @max(5242880) // 5 MiB
+	sizeBytes int    @required @min(0) @max(5242880)  // 5 MiB
 }
 
 // User is the full entity. Notice the @required + @length / @format

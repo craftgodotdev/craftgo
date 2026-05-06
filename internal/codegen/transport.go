@@ -230,7 +230,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
 		}
 		var err error
-		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg)
+		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg, d.RequestPkgAlias)
 		if err != nil {
 			return transportData{}, err
 		}
@@ -616,7 +616,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 // Unsupported binding shapes (struct/[]struct/map on @query, non-string
 // on @path/@header/@cookie) return a non-nil error. Silent skips were
 // removed in favour of fail-fast feedback at `craftgo gen` time.
-func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
+func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
 		return
 	}
@@ -651,7 +651,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 		}
 		switch bind {
 		case "path":
-			if !isPlainStringField(f) {
+			if !stringBindable(f, pkg) {
 				if auto {
 					// Auto-promoted from a path segment match - silently skip
 					// so a body field that happens to share a name with a
@@ -660,16 +660,16 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 					// decorator scan); auto-promotion is permissive.
 					continue
 				}
-				err = fmt.Errorf("%s.%s: @path requires a non-array, non-optional string field - got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @path requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			path = append(path, paramBinding{
 				DSLName: f.Name,
 				GoName:  GoFieldName(f.Name),
-				Bind:    fmt.Sprintf("req.%s = r.PathValue(%q)", GoFieldName(f.Name), f.Name),
+				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.PathValue(%q)", f.Name), pkgAlias)),
 			})
 		case "query":
-			line, needs, lerr := renderQueryBindLine(f)
+			line, needs, lerr := renderQueryBindLine(f, pkg, pkgAlias)
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -683,26 +683,26 @@ func collectBindings(m *ast.Method, pkg *semantic.Package) (path, query, header,
 				Bind:    line,
 			})
 		case "header":
-			if !isPlainStringField(f) {
-				err = fmt.Errorf("%s.%s: @header requires a non-array, non-optional string field - got %s", reqName, f.Name, describeFieldType(f))
+			if !stringBindable(f, pkg) {
+				err = fmt.Errorf("%s.%s: @header requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			header = append(header, paramBinding{
 				DSLName: f.Name,
 				GoName:  GoFieldName(f.Name),
-				Bind:    fmt.Sprintf("req.%s = r.Header.Get(%q)", GoFieldName(f.Name), f.Name),
+				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.Header.Get(%q)", f.Name), pkgAlias)),
 			})
 		case "cookie":
-			if !isPlainStringField(f) {
-				err = fmt.Errorf("%s.%s: @cookie requires a non-array, non-optional string field - got %s", reqName, f.Name, describeFieldType(f))
+			if !stringBindable(f, pkg) {
+				err = fmt.Errorf("%s.%s: @cookie requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			cookie = append(cookie, paramBinding{
 				DSLName: f.Name,
 				GoName:  GoFieldName(f.Name),
 				Bind: fmt.Sprintf(`if c, err := r.Cookie(%q); err == nil {
-	req.%s = c.Value
-}`, f.Name, GoFieldName(f.Name)),
+	req.%s = %s
+}`, f.Name, GoFieldName(f.Name), stringBindCast(f, "c.Value", pkgAlias)),
 			})
 		}
 	}
@@ -767,6 +767,9 @@ var queryPrims = map[string]queryPrim{
 //   - numeric/bool single → `if v := ...; v != "" { parse + cast }`
 //   - []string → `req.X = r.URL.Query()["x"]`
 //   - []numeric/bool → `for ... { parse + append }`
+//   - scalar X / enum X → resolved to underlying primitive then cast
+//     (string-backed scalar/enum: `req.X = X(r.URL.Query().Get("x"))`;
+//     int-backed: parse int then `X(_n)`).
 //
 // Returns a non-nil error for unsupported field shapes (structs,
 // []struct, maps, generics, ...) so the codegen surfaces the
@@ -774,7 +777,7 @@ var queryPrims = map[string]queryPrim{
 // handler that leaves the field zero-valued. The second return
 // value is true when the rendered code references "strconv" so
 // the caller can flip the import flag once.
-func renderQueryBindLine(f *ast.Field) (string, bool, error) {
+func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias string) (string, bool, error) {
 	if f.Type == nil {
 		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
 	}
@@ -787,16 +790,69 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 	if len(f.Type.Named.Args) > 0 {
 		return "", false, fmt.Errorf("field %q: generic type %s<...> cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String())
 	}
-	prim, ok := queryPrims[f.Type.Named.Name.String()]
+	declName := f.Type.Named.Name.String()
+	prim, ok := queryPrims[declName]
+	cast := "" // empty = no cast (plain primitive)
 	if !ok {
-		return "", false, fmt.Errorf("field %q: type %s cannot bind to query - only string/bool/int*/uint*/float* and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f))
+		// Resolve scalar / enum to their underlying primitive and
+		// remember the cast so the parsed value lands as the typed
+		// alias (e.g. `Status` not `string`, `Cents` not `int`).
+		if pkg != nil {
+			if sc, scOk := pkg.Scalars[declName]; scOk && sc != nil {
+				if p2, pOk := queryPrims[sc.Primitive]; pOk {
+					prim = p2
+					ok = true
+					cast = declName
+				}
+			}
+			if !ok {
+				if ed, edOk := pkg.Enums[declName]; edOk && ed != nil {
+					switch firstEnumKind(ed) {
+					case ast.EnumBare, ast.EnumString:
+						prim = queryPrims["string"]
+						ok = true
+						cast = declName
+					case ast.EnumInt:
+						prim = queryPrims["int"]
+						ok = true
+						cast = declName
+					}
+				}
+			}
+		}
+	}
+	if !ok {
+		return "", false, fmt.Errorf("field %q: type %s cannot bind to query - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f))
+	}
+	// `cast` is non-empty when f's declared type is a scalar / enum
+	// alias - the parsed primitive value gets wrapped with `cast(...)`
+	// at every assignment point so the field lands as the typed alias
+	// (e.g. `Status` not `string`, `Cents` not `int`). pkgAlias prefixes
+	// the cast so it resolves through the matching Go import (typically
+	// `types.Status` for local declarations).
+	if cast != "" && pkgAlias != "" {
+		cast = pkgAlias + "." + cast
+	}
+	wrap := func(s string) string {
+		if cast == "" {
+			return s
+		}
+		return cast + "(" + s + ")"
 	}
 	dslName := f.Name
 	goName := GoFieldName(f.Name)
 	if f.Type.Array {
 		if prim.parser == "" {
-			// []string - direct slice assignment from query map.
-			return fmt.Sprintf("req.%s = r.URL.Query()[%q]", goName, dslName), false, nil
+			// []string - direct slice assignment from query map when
+			// no alias cast is needed; otherwise loop + per-element
+			// cast since Go disallows direct slice conversion to a
+			// named string type.
+			if cast == "" {
+				return fmt.Sprintf("req.%s = r.URL.Query()[%q]", goName, dslName), false, nil
+			}
+			return fmt.Sprintf(`for _, _v := range r.URL.Query()[%q] {
+	req.%s = append(req.%s, %s)
+}`, dslName, goName, goName, wrap("_v")), false, nil
 		}
 		// []numeric / []bool - loop, parse each, append to slice.
 		return fmt.Sprintf(`for _, _v := range r.URL.Query()[%q] {
@@ -806,7 +862,7 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 		return
 	}
 	req.%s = append(req.%s, %s)
-}`, dslName, parseCall(prim), dslName, prim.label, goName, goName, castExpr(prim, "_n")), true, nil
+}`, dslName, parseCall(prim), dslName, prim.label, goName, goName, wrap(castExpr(prim, "_n"))), true, nil
 	}
 	// Single (non-array). Optional non-string primitives are not
 	// supported in v1 - `*int` from query would need a tri-state
@@ -823,7 +879,7 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 	%s = &_v
 }`, dslName, access), false, nil
 		}
-		return fmt.Sprintf("%s = r.URL.Query().Get(%q)", access, dslName), false, nil
+		return fmt.Sprintf("%s = %s", access, wrap(fmt.Sprintf("r.URL.Query().Get(%q)", dslName))), false, nil
 	}
 	// numeric / bool single, gated by non-empty query value.
 	return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
@@ -833,7 +889,7 @@ func renderQueryBindLine(f *ast.Field) (string, bool, error) {
 		return
 	}
 	req.%s = %s
-}`, dslName, parseCall(prim), dslName, prim.label, goName, castExpr(prim, "_n")), true, nil
+}`, dslName, parseCall(prim), dslName, prim.label, goName, wrap(castExpr(prim, "_n"))), true, nil
 }
 
 // describeFieldType renders a short human-readable form of f's type
@@ -890,15 +946,70 @@ func castExpr(p queryPrim, varName string) string {
 }
 
 // isPlainStringField reports whether f is a non-array, non-optional
-// `string`. Path / header / cookie binders still require this shape
-// in v1 - those wire formats carry only strings, and lifting the
-// restriction would just push parsing into every handler. Query is
-// the broad path; see [renderQueryBindLine].
+// `string`. Used internally for the auto-promotion safety check (a
+// body field that happens to share a name with a path segment is
+// silently skipped instead of producing a hard error). Path / header /
+// cookie binding goes through [stringBindable] which additionally
+// accepts string scalars and string-backed enums.
 func isPlainStringField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Optional {
 		return false
 	}
 	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
+}
+
+// stringBindable reports whether f's type can ride a path / header /
+// cookie wire (always a string at the protocol level). Matches:
+//   - the bare `string` primitive
+//   - a `scalar X string @...` declared in pkg
+//   - a string-backed enum (kind EnumBare or EnumString) in pkg
+//
+// Mirrors `semantic.isStringBindingType` so design-time and gen-time
+// rejections agree.
+func stringBindable(f *ast.Field, pkg *semantic.Package) bool {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
+		return false
+	}
+	name := f.Type.Named.Name.String()
+	if name == "string" {
+		return true
+	}
+	if pkg == nil {
+		return false
+	}
+	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
+		return true
+	}
+	if ed, ok := pkg.Enums[name]; ok && ed != nil {
+		k := firstEnumKind(ed)
+		return k == ast.EnumBare || k == ast.EnumString
+	}
+	return false
+}
+
+// stringBindCast wraps `src` (a Go expression yielding a string) in
+// the cast required to land in f's declared Go type. Plain `string`
+// returns src unchanged; scalar or enum types wrap as
+// `pkgAlias.TypeName(src)` so the cast resolves to the typed alias
+// the request struct expects. Caller is responsible for confirming
+// [stringBindable] first.
+//
+// pkgAlias is the Go-side import alias the request type lives under
+// (typically "types" for local declarations) - the same alias used to
+// qualify the request struct in the handler. Empty alias falls back
+// to an unqualified `TypeName(...)`.
+func stringBindCast(f *ast.Field, src, pkgAlias string) string {
+	if f == nil || f.Type == nil || f.Type.Named == nil {
+		return src
+	}
+	name := f.Type.Named.Name.String()
+	if name == "string" {
+		return src
+	}
+	if pkgAlias != "" {
+		name = pkgAlias + "." + name
+	}
+	return name + "(" + src + ")"
 }
 
 // hasUnboundField reports whether the request type has at least one

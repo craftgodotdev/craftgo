@@ -174,6 +174,31 @@ type Discount struct {
 	BonusBelow *float64 `json:"bonusBelow,omitempty"`
 }
 
+// FilterOrdersReq demonstrates the Phase-equivalent enum + scalar
+// binding support across all four wire formats:
+//
+//   - @path takes the OrderStatus enum directly. Codegen emits
+//     `req.Status = orders.OrderStatus(r.PathValue("status"))` and
+//     req.Validate() rejects any value outside the enum's set.
+//   - @query takes Email (string scalar) and PaymentMethod (string
+//     enum). Both validate via the inherited decorators / enum check.
+//   - @header takes OrderID (string scalar) — hooked to the optional
+//     `X-Idempotency-Key` style use case.
+//   - @cookie takes OrderStatus too — round-trip the prior session's
+//     last filter.
+//
+// Note that @query also accepts numeric scalars (PercentBP) and
+// int-backed enums (Priority); the codegen parses the wire string to
+// the underlying primitive and casts up to the alias.
+type FilterOrdersReq struct {
+	Status     OrderStatus   `json:"-"`
+	Contact    Email         `json:"-"`
+	Method     PaymentMethod `json:"-"`
+	Limit      Cents         `json:"-"`
+	IdemKey    OrderID       `json:"-"`
+	LastFilter OrderStatus   `json:"-"`
+}
+
 // Geocode is level 4. @range pairs (lo,hi) for latitude / longitude
 // — concise alternative to stacking @min + @max.
 type Geocode struct {

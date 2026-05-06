@@ -663,6 +663,68 @@ components:
         existingId:
           type: string
       type: object
+    FilterOrdersReq:
+      description: |-
+        FilterOrdersReq demonstrates the Phase-equivalent enum + scalar
+        binding support across all four wire formats:
+
+          - @path takes the OrderStatus enum directly. Codegen emits
+            `req.Status = orders.OrderStatus(r.PathValue("status"))` and
+            req.Validate() rejects any value outside the enum's set.
+          - @query takes Email (string scalar) and PaymentMethod (string
+            enum). Both validate via the inherited decorators / enum check.
+          - @header takes OrderID (string scalar) — hooked to the optional
+            `X-Idempotency-Key` style use case.
+          - @cookie takes OrderStatus too — round-trip the prior session's
+            last filter.
+
+        Note that @query also accepts numeric scalars (PercentBP) and
+        int-backed enums (Priority); the codegen parses the wire string to
+        the underlying primitive and casts up to the alias.
+      properties:
+        contact:
+          $ref: '#/components/schemas/Email'
+        idemKey:
+          $ref: '#/components/schemas/OrderID'
+        lastFilter:
+          $ref: '#/components/schemas/OrderStatus'
+        limit:
+          $ref: '#/components/schemas/Cents'
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+      required:
+      - status
+      type: object
+    FilterOrdersReqCookie:
+      properties:
+        lastFilter:
+          $ref: '#/components/schemas/OrderStatus'
+      type: object
+    FilterOrdersReqHeader:
+      properties:
+        idemKey:
+          $ref: '#/components/schemas/OrderID'
+      type: object
+    FilterOrdersReqPath:
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+      required:
+      - status
+      type: object
+    FilterOrdersReqQuery:
+      properties:
+        contact:
+          $ref: '#/components/schemas/Email'
+        limit:
+          $ref: '#/components/schemas/Cents'
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+      type: object
+    FilterOrdersRespBody:
+      $ref: '#/components/schemas/OrderList'
     GeoSource:
       enum:
       - gps
@@ -1617,6 +1679,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetOrderRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - orders
+  /orders/by-status/{status}:
+    get:
+      description: Filter orders by status. Demonstrates enum + scalar in path/query/header/cookie
+        bindings — the wire value is a string but the Go field lands as the typed
+        alias, and req.Validate() rejects values outside the enum / failing the scalar's
+        @format/@pattern.
+      operationId: FilterOrders
+      parameters:
+      - in: path
+        name: status
+        required: true
+        schema:
+          $ref: '#/components/schemas/FilterOrdersReqPath/properties/status'
+      - in: query
+        name: contact
+        schema:
+          $ref: '#/components/schemas/FilterOrdersReqQuery/properties/contact'
+      - in: query
+        name: method
+        schema:
+          $ref: '#/components/schemas/FilterOrdersReqQuery/properties/method'
+      - in: query
+        name: limit
+        schema:
+          $ref: '#/components/schemas/FilterOrdersReqQuery/properties/limit'
+      - in: header
+        name: idemKey
+        schema:
+          $ref: '#/components/schemas/FilterOrdersReqHeader/properties/idemKey'
+      - in: cookie
+        name: lastFilter
+        schema:
+          $ref: '#/components/schemas/FilterOrdersReqCookie/properties/lastFilter'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterOrdersRespBody'
           description: OK
         default:
           description: ""

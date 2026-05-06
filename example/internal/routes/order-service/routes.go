@@ -20,4 +20,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/orders", transport.CreateOrder(svcCtx))
 	srv.Handle("DELETE /api/orders/{id}", transport.DeleteOrder(svcCtx))
 	srv.Handle("POST /api/orders/defaults", transport.DefaultsShowcase(svcCtx))
+	srv.Handle("GET /api/orders/by-status/{status}", transport.FilterOrders(svcCtx))
 }

@@ -1116,11 +1116,18 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 }
 
 // checkBindingFieldType rejects `@path`, `@header`, and `@cookie` on a
-// field whose type is not a non-array, non-optional `string`. Those
-// wire formats carry only strings - the codegen would otherwise
-// silently skip the field, leaving the author with a runtime gap that
-// no diagnostic explains. We raise the error at design time so the
-// fix lands in the DSL where the mistake was made.
+// field whose underlying primitive cannot ride the wire as a string.
+// Accepts:
+//
+//   - the bare `string` primitive
+//   - a [scalar Name string @...] declaration (its decorators inherit
+//     into the field's validator chain)
+//   - a string-backed enum (kind [ast.EnumBare] or [ast.EnumString])
+//
+// Anything else (numeric scalars / int enums / structs / arrays / maps)
+// raises [CodeBindingType] - those flows would silently zero the field
+// at codegen time, leaving the author with a runtime gap that no
+// diagnostic explains.
 func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	if f.Type == nil {
 		return
@@ -1130,24 +1137,46 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 		if !stringOnly[d.Name] {
 			continue
 		}
-		if isPlainString(f.Type) {
+		if isStringBindingType(f.Type, a.pkg) {
 			continue
 		}
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-			"field %s.%s: @%s requires a non-array, non-optional string field - got %s",
+			"field %s.%s: @%s requires a string-backed field (string, string scalar, or string enum) - got %s",
 			parent, f.Name, d.Name, describeTypeRef(f.Type))
 		return
 	}
 }
 
-// isPlainString reports whether t is a non-array, non-optional `string`.
-// Mirrors codegen's `isPlainStringField` so the design-time check and
-// the codegen accept the same shape.
-func isPlainString(t *ast.TypeRef) bool {
-	if t == nil || t.Array || t.Optional {
+// isStringBindingType reports whether t can ride a path / header /
+// cookie wire (always a string at the protocol level). Matches:
+//   - the bare `string` primitive
+//   - a `scalar X string @...` declared in pkg
+//   - a bare or string-valued enum declared in pkg
+//
+// Optional / array shapes are rejected - the codegen has no clean
+// idiom for them on these wire formats in v1.
+func isStringBindingType(t *ast.TypeRef, pkg *Package) bool {
+	if t == nil || t.Array || t.Optional || t.Named == nil {
 		return false
 	}
-	return t.Named != nil && t.Named.Name.String() == "string"
+	name := t.Named.Name.String()
+	if name == "string" {
+		return true
+	}
+	if pkg == nil {
+		return false
+	}
+	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
+		return true
+	}
+	if ed, ok := pkg.Enums[name]; ok && ed != nil {
+		for _, m := range ed.Members {
+			if v, ok := m.(*ast.EnumValue); ok {
+				return v.Kind == ast.EnumBare || v.Kind == ast.EnumString
+			}
+		}
+	}
+	return false
 }
 
 // describeTypeRef renders a short human label for a TypeRef so binding

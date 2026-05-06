@@ -1,14 +1,14 @@
 output:
-  types:      ./internal/types
-  transport:  ./internal/transport
-  routes:     ./internal/routes
-  service:    ./internal/service
+  types: ./internal/types
+  transport: ./internal/transport
+  routes: ./internal/routes
+  service: ./internal/service
   middleware: ./internal/middleware
   svccontext: ./svccontext/svccontext.go
-  openapi:    ./docs/openapi.yaml
+  openapi: ./docs/openapi.yaml
 openapi:
-  title:    CraftGo Showcase
-  version:  1.0.0
+  title: CraftGo Showcase
+  version: 1.0.0
   basePath: /api
   # Security schemes referenced from `@security(<name>, ...)` in the
   # DSL. The semantic analyser cross-checks every reference against

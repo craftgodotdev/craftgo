@@ -159,6 +159,65 @@ service S {
 	}
 }
 
+// TestGenerateTransportEnumScalarBindings pins the path / query /
+// header / cookie binding for fields whose declared type is an
+// enum or a scalar - the generated handler must cast the wire
+// string into the typed alias so the request struct lands as
+// `Status` / `Email` / etc., letting `req.Validate()` pick up the
+// scalar's inherited validators (`@format(email)` ...) and the
+// enum's value-set check.
+func TestGenerateTransportEnumScalarBindings(t *testing.T) {
+	src := `package design
+
+enum Status { Active  Inactive  Pending }
+enum Priority { Low = 1  High = 2 }
+
+scalar Email string @format(email) @maxLength(254)
+scalar Cents int @min(0) @max(1000000)
+
+type ListReq {
+    state    Status   @path
+    priority Priority @query
+    contact  Email    @query
+    cap      Cents    @query
+    sess     string   @cookie
+    role     Status   @header
+}
+
+service S {
+    get List /items/{state} { request ListReq }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/list.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	for _, want := range []string{
+		// path: string-backed enum cast
+		`req.State = types.Status(r.PathValue("state"))`,
+		// query string-backed enum + scalar
+		`req.Contact = types.Email(r.URL.Query().Get("contact"))`,
+		// query int-backed enum: parse + cast through int
+		`types.Priority(int(_n))`,
+		// query numeric scalar: parse + cast
+		`types.Cents(int(_n))`,
+		// cookie cast
+		`req.Sess = c.Value`,
+		// header cast (string-backed enum)
+		`req.Role = types.Status(r.Header.Get("role"))`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in handler:\n%s", want, got)
+		}
+	}
+}
+
 // TestGenerateTransportDefaultEnum pins the enum-aware @default
 // emission: `@default(Active)` on a `Status`-typed field renders as
 // `req.Field = StatusActive` (the Go const buildEnumView produces),

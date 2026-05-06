@@ -253,6 +253,48 @@ func (v *Discount) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on FilterOrdersReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *FilterOrdersReq) Validate() error {
+	if v.Status == "" {
+		return fmt.Errorf("status: required")
+	}
+	switch v.Status {
+	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
+	default:
+		return fmt.Errorf("status: invalid OrderStatus value")
+	}
+	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(v.Contact) {
+		return fmt.Errorf("contact: not a valid email")
+	}
+	if len(v.Contact) > 254 {
+		return fmt.Errorf("contact: length greater than 254")
+	}
+	switch v.Method {
+	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
+	default:
+		return fmt.Errorf("method: invalid PaymentMethod value")
+	}
+	if v.Limit < 0 {
+		return fmt.Errorf("limit: below minimum 0")
+	}
+	if v.Limit%2 != 0 {
+		return fmt.Errorf("limit: must be a multiple of 2")
+	}
+	if l := len(v.IdemKey); l < 8 || l > 64 {
+		return fmt.Errorf("idemKey: length out of range [8, 64]")
+	}
+	if !regexp.MustCompile(`^ord_[A-Z0-9]+$`).MatchString(v.IdemKey) {
+		return fmt.Errorf("idemKey: does not match pattern")
+	}
+	switch v.LastFilter {
+	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
+	default:
+		return fmt.Errorf("lastFilter: invalid OrderStatus value")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Geocode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Geocode) Validate() error {
