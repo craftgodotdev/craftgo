@@ -36,7 +36,7 @@ type OkResp {
 // validators that other packages inherit by referencing the type:
 //
 //     // in users/types.craftgo
-//     type X { id shared.NonEmptyID @required }
+//     type X { id shared.NonEmptyID }
 //
 // The rendered Go field type is `string` (the underlying primitive)
 // but every place that field touches the wire boundary runs

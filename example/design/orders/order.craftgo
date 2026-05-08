@@ -8,13 +8,13 @@
 // presence semantics"):
 //
 //   bare T              required, present, value must be non-empty
-//   @required T         must be present (explicit form)
+//   T         must be present (explicit form)
 //   T?                  optional — wire field may be missing
 //   T @nullable         must be present, value may be JSON null
 //   T? @nullable        4-state: missing OR null OR value (most permissive)
 //
 // Validator coverage (tag → location):
-//   @required           every level
+//             every level
 //   @length             Order.id, Customer.name, Address.country, ...
 //   @minLength          Address.city
 //   @maxLength          Order.notes, Customer.email
@@ -62,8 +62,8 @@ import "shared"
 @deprecated("rename to PurchaseOrder in v2 — kept for backward compat")
 type Order {
 	// SCALAR REF: `id OrderID` carries the scalar's @length +
-	// @pattern automatically; the field only needs @required.
-	id         OrderID                   @required
+	// @pattern automatically; the field only needs.
+	id         OrderID
 	// Required nested struct (Level 2). Customer carries its own
 	// deep validators; v1 doesn't auto-cascade so logic code calls
 	// `req.Customer.Validate()` when full-tree validation matters.
@@ -85,10 +85,10 @@ type Order {
 	// @multipleOf(1). The field-level `@max` adds the per-Order
 	// ceiling (the scalar stays generic; the order-specific cap
 	// is local to this aggregate).
-	totalCents Cents                     @required @max(100000000)
+	totalCents Cents                     @max(100000000)
 	// Required enum. `@required` on enums checks against the
 	// type's zero value (empty string for string-valued enums).
-	status     OrderStatus               @required
+	status     OrderStatus
 	// Optional string with maxLength validator. When omitted the
 	// field stays absent on the wire (`omitempty`).
 	notes      string?                   @maxLength(2000)
@@ -101,7 +101,7 @@ type Order {
 	// SCALAR REF + @default. CurrencyCode contributes
 	// @length(3,3) + @pattern; the field-level chain only needs
 	// the default value.
-	currency   CurrencyCode              @default("USD")
+	currency   CurrencyCode?             @default("USD")
 	// ARRAY OF SCALAR — `tags Tag[]` inherits the Tag scalar's
 	// per-element validators (@minLength, @maxLength, @pattern)
 	// automatically. The field-level chain only carries the
@@ -119,7 +119,7 @@ type Order {
 	metadata   map<Tag, shared.SafeURL>?
 	// Required ISO timestamp at the wrapper level. Top-level
 	// datetime is always required for audit trails.
-	createdAt  string                    @required @format(datetime)
+	createdAt  string                    @format(datetime)
 }
 
 // ---------------------------------------------------------------
@@ -166,11 +166,11 @@ type Customer {
 	// Use case: row-and-column labelling of an analytics grid.
 	gridLabels     Tag[][]
 	// String + format(uuid).
-	id             string                                 @required @format(uuid)
+	id             string                                 @format(uuid)
 	// SCALAR REF: Email = `string @format(email) @maxLength(254)`.
-	email          Email                                  @required
+	email          Email
 	// String + length range.
-	name           string                                 @required @length(1, 120)
+	name           string                                 @length(1, 120)
 	// 4-STATE PRESENCE: optional + nullable + pattern. Phone
 	// matches a permissive E.164-ish regex when present.
 	phone          string?                                @nullable @pattern("^\\+?[0-9 ()-]{6,20}$")
@@ -183,7 +183,7 @@ type Customer {
 	referrer       users.UserRef?
 	// @nullable on a numeric field forces a pointer in Go so the
 	// wire can carry an explicit `null` (different from "0 points
-	// means a brand-new account"). Without @required, presence is
+	// means a brand-new account"). Without, presence is
 	// not enforced — caller may send the key with null OR omit it.
 	loyaltyPoints  int                                    @nullable @min(0) @max(1000000)
 	// Optional FILE upload. Demonstrates the file-validator pair
@@ -200,14 +200,14 @@ type Customer {
 // @maxLength as the ceiling on the same field, plus the strict
 // ISO-3166 country code pattern.
 type Address {
-	street     string      @required @length(1, 200)
+	street     string      @length(1, 200)
 	street2    string?     @maxLength(200)
-	city       string      @required @minLength(1) @maxLength(100)
+	city       string      @minLength(1) @maxLength(100)
 	region     string?     @maxLength(100)
-	postalCode string      @required @pattern("^[A-Z0-9 -]{3,12}$")
+	postalCode string      @pattern("^[A-Z0-9 -]{3,12}$")
 	// SCALAR REF: CountryCode bundles ISO 3166-1 alpha-2 length
 	// + pattern.
-	country    CountryCode @required
+	country    CountryCode
 	// Optional nested (Level 4).
 	geo        Geocode?
 }
@@ -220,11 +220,11 @@ type Address {
 // — concise alternative to stacking @min + @max.
 type Geocode {
 	// SCALAR REFs Latitude / Longitude — bundle the geographic
-	// bounds @min/@max so the field-level chain is just @required.
-	lat        Latitude   @required
-	lng        Longitude  @required
+	// bounds @min/@max so the field-level chain is just.
+	lat        Latitude
+	lng        Longitude
 	altitude   float64?   @range(-500, 9000)
-	capturedAt string     @required @format(datetime)
+	capturedAt string     @format(datetime)
 	// Optional nested (Level 5).
 	precision  Precision?
 }
@@ -237,11 +237,11 @@ type Geocode {
 // on a float — radii are quantized to half-meters because most GPS
 // hardware doesn't realistically deliver finer granularity.
 type Precision {
-	radiusMeters float64   @required @positive @max(10000) @multipleOf(0.5)
-	source       GeoSource @required
+	radiusMeters float64   @positive @max(10000) @multipleOf(0.5)
+	source       GeoSource
 	// Confidence is a 0-1 ratio. @range pins both sides; the
 	// codegen rejects values outside the closed interval.
-	confidence   float64   @required @min(0) @max(1)
+	confidence   float64   @min(0) @max(1)
 	// Optional nested (Level 6 — deepest).
 	gpsFix       GpsFix?
 }
@@ -254,9 +254,9 @@ type Precision {
 // the `T? @nullable` 4-state on a string (`notes`), and a leading
 // pattern on an optional string (`deviceId`).
 type GpsFix {
-	satellites int     @required @range(1, 64)
-	hdop       float64 @required @min(0) @max(50)
-	timestamp  string  @required @format(datetime)
+	satellites int     @range(1, 64)
+	hdop       float64 @min(0) @max(50)
+	timestamp  string  @format(datetime)
 	// Optional with pattern — the validator nil-guards before
 	// running the regex.
 	deviceId   string? @pattern("^dev_[A-Z0-9]{8,32}$")
@@ -270,19 +270,19 @@ type GpsFix {
 // ---------------------------------------------------------------
 
 type LineItem {
-	productId string    @required @length(1, 64)
+	productId string    @length(1, 64)
 	// SCALAR REF: SkuCode bundles the alphanumeric pattern.
-	sku       SkuCode   @required
-	quantity  int       @required @positive @max(1000)
+	sku       SkuCode
+	quantity  int       @positive @max(1000)
 	// SCALAR REF: Cents bundles @min(0) + @multipleOf(1); the
 	// field-level @max adds a per-line ceiling.
-	unitCents Cents     @required @max(1000000)
+	unitCents Cents     @max(1000000)
 	discount  Discount?
 	// String with default. The handler's pre-fill logic sets the
 	// empty string before JSON decode so a missing `note` key
 	// surfaces as `""` rather than the Go zero value (which IS
 	// "", but the default gives the user a place to override).
-	note      string    @default("")
+	note      string?   @default("")
 }
 
 // Discount is a Level 3 (under Order.items[].discount) optional
@@ -290,13 +290,13 @@ type LineItem {
 // is modelled as a negative-valued cents adjustment because the
 // downstream pricing engine sums all monetary fields.
 type Discount {
-	code       string           @required @pattern("^[A-Z]{2,16}$")
-	percent    float64          @required @min(0) @max(100) @multipleOf(0.5)
+	code       string           @pattern("^[A-Z]{2,16}$")
+	percent    float64          @min(0) @max(100) @multipleOf(0.5)
 	// CROSS-PACKAGE SCALAR: shared.PercentBP carries
 	// @min(0)+@max(10000) automatically. The field-level chain is
 	// empty, demonstrating that scalar validators inherit across
 	// package boundaries.
-	bpsBonus   shared.PercentBP @required
+	bpsBonus   shared.PercentBP
 	// Demonstrates @negative — the field is required to be < 0
 	// when present (rebate model).
 	bonusBelow float64?         @negative
@@ -307,14 +307,14 @@ type Discount {
 // ---------------------------------------------------------------
 
 type Payment {
-	method      PaymentMethod     @required
+	method      PaymentMethod
 	// 4-state on a length-strict + pattern-strict field.
 	cardLast4   string?           @nullable @length(4, 4) @pattern("^[0-9]{4}$")
 	// CROSS-PACKAGE SCALAR: shared.NonEmptyID inherits
 	// @minLength(1) + @maxLength(128) + @pattern; the field-level
-	// chain reduces to @required.
-	referenceId shared.NonEmptyID @required
-	authCents   int               @required @positive @multipleOf(1)
+	// chain reduces to.
+	referenceId shared.NonEmptyID
+	authCents   int               @positive @multipleOf(1)
 	// CROSS-PACKAGE SCALAR: shared.SafeURL on an optional field —
 	// the @format(url) + @maxLength inherit through the scalar.
 	receiptURL  shared.SafeURL?

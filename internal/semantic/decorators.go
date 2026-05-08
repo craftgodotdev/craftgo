@@ -273,7 +273,7 @@ type Spec struct {
 var formatValues = []string{
 	"email", "url", "uri", "uuid", "datetime", "date", "time",
 	"phone", "hostname", "ipv4", "ipv6", "cidr", "mac",
-	"creditcard", "base64", "hexcolor", "json",
+	"creditcard", "base64", "base64url", "hexcolor", "json",
 }
 
 // Registry is the closed set of decorators the framework recognises. A
@@ -355,13 +355,6 @@ var Registry = map[string]Spec{
 			Min: 1, Max: -1, Variadic: ArgStringOrIdent,
 			AllowArrayShortcut: true,
 		},
-	},
-
-	// ---- Field validation: presence ----
-	"required": {
-		Name:   "required",
-		Levels: LvlField,
-		Doc:    "Field must be present in the request payload.",
 	},
 
 	// ---- Field validation: string ----
@@ -555,7 +548,6 @@ func Lookup(name string) (Spec, bool) {
 // check that consumes it lives in semantic.go alongside the other
 // small horizontal decorator checks.
 var sensitiveConflicts = map[string]bool{
-	"required":          true,
 	"length":            true,
 	"minLength":         true,
 	"maxLength":         true,

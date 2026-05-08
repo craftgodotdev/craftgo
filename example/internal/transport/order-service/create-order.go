@@ -17,7 +17,10 @@ import (
 func CreateOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateOrderReq
-		req.Currency = "USD"
+		{
+			__d := "USD"
+			req.Currency = &__d
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

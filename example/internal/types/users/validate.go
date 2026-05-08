@@ -4,6 +4,8 @@ package users
 
 import (
 	"fmt"
+	"net/mail"
+	"net/url"
 	"regexp"
 )
 
@@ -22,8 +24,8 @@ func (v *AddContactReq) Validate() error {
 // Validate checks every field-level constraint declared on Avatar.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Avatar) Validate() error {
-	if !regexp.MustCompile(`^https?://[^\s]+$`).MatchString(v.URL) {
-		return fmt.Errorf("url: not a valid url")
+	if _u, _err := url.Parse(v.URL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+		return fmt.Errorf("url: not a valid URL")
 	}
 	if len(v.URL) > 2048 {
 		return fmt.Errorf("url: length greater than 2048")
@@ -40,8 +42,10 @@ func (v *Avatar) Validate() error {
 // Validate checks every field-level constraint declared on Contact.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Contact) Validate() error {
-	if v.Email != nil && !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(*v.Email) {
-		return fmt.Errorf("email: not a valid email")
+	if v.Email != nil {
+		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
+			return fmt.Errorf("email: not a valid email")
+		}
 	}
 	if v.Email != nil && len(*v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
@@ -70,7 +74,7 @@ func (v *Contact) Validate() error {
 // Validate checks every field-level constraint declared on CreateUserReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateUserReq) Validate() error {
-	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(v.Email) {
+	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if len(v.Email) > 254 {
@@ -137,7 +141,7 @@ func (v *User) Validate() error {
 	if l := len(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
-	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(v.Email) {
+	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if len(v.Email) > 254 {

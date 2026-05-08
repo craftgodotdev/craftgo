@@ -28,7 +28,7 @@ import "shared"
 @requiresOneOf("a", "b")
 @mutuallyExclusive("a", "b")
 type T {
-    @required
+   
     @length(1, 100)
     @minLength(1)
     @maxLength(100)
@@ -143,7 +143,7 @@ middleware RateLimit(rps: int = 100)
 	want := []string{
 		"title", "version", "doc", "deprecated",
 		"example", "examples", "requiresOneOf", "mutuallyExclusive",
-		"required", "length", "minLength", "maxLength", "pattern", "format", "enum",
+		"length", "minLength", "maxLength", "pattern", "format", "enum",
 		"min", "max", "range", "positive", "negative", "multipleOf",
 		"minItems", "maxItems", "uniqueItems", "each", "maxSize", "mimeTypes",
 		"default", "nullable",
@@ -220,7 +220,7 @@ func TestParseMultiLineDecoratorChain(t *testing.T) {
 	f := parseSrc(t, `package design
 type T {
     name string
-        @required
+        @doc("the name")
         @length(3, 20)
         @pattern("^[a-z]+$")
 }`)
@@ -233,7 +233,7 @@ type T {
 	for _, d := range field.Decorators {
 		got = append(got, d.Name)
 	}
-	if strings.Join(got, ",") != "required,length,pattern" {
+	if strings.Join(got, ",") != "doc,length,pattern" {
 		t.Errorf("unexpected order: %v", got)
 	}
 }

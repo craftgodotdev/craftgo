@@ -4,7 +4,7 @@ package tasks
 
 import (
 	"fmt"
-	"regexp"
+	"time"
 )
 
 // Validate checks every field-level constraint declared on AddCommentReq.
@@ -31,8 +31,8 @@ func (v *Comment) Validate() error {
 	if l := len(v.Body); l < 1 || l > 4000 {
 		return fmt.Errorf("body: length out of range [1, 4000]")
 	}
-	if !regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$`).MatchString(v.CreatedAt) {
-		return fmt.Errorf("createdAt: not a valid datetime")
+	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
+		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
 	}
 	return nil
 }
@@ -45,6 +45,9 @@ func (v *CreateTaskReq) Validate() error {
 	}
 	if l := len(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status: required")
 	}
 	switch v.Status {
 	case TaskStatusOpen, TaskStatusInProgress, TaskStatusDone, TaskStatusArchived:
@@ -97,6 +100,9 @@ func (v *Task) Validate() error {
 	}
 	if l := len(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status: required")
 	}
 	switch v.Status {
 	case TaskStatusOpen, TaskStatusInProgress, TaskStatusDone, TaskStatusArchived:

@@ -18,10 +18,10 @@ enum TaskStatus {
 // arbitrarily-deep cross-package references resolve cleanly:
 // Task → Comment → users.UserRef.
 type Comment {
-	id        string        @required @length(1, 64)
+	id        string        @length(1, 64)
 	author    users.UserRef
-	body      string        @required @length(1, 4000)
-	createdAt string        @required @format(datetime)
+	body      string        @length(1, 4000)
+	createdAt string        @format(datetime)
 }
 
 // Task is the marquee multi-nested type. It demonstrates:
@@ -39,8 +39,8 @@ type Comment {
 // can be invoked explicitly from logic when deep validation is
 // required (v1 doesn't auto-recurse).
 type Task {
-	id       string              @required @length(1, 64)
-	title    string              @required @length(1, 200)
+	id       string              @length(1, 64)
+	title    string              @length(1, 200)
 	status   TaskStatus
 	project  projects.ProjectRef
 	// OPTIONAL CROSS-PACKAGE NESTED — the showcase pointer case.

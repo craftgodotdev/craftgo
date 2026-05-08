@@ -87,7 +87,7 @@ service UserService {
 // "lookup by id" handle and de-duplicating the type avoids two
 // near-identical structs in the generated code.
 type GetUserReq {
-	id string @path @required @length(1, 64)
+	id string @path @length(1, 64)
 }
 
 // ListUsersReq mirrors shared.Pagination's field set. The v1 query

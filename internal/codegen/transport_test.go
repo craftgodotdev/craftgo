@@ -107,17 +107,17 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 	}
 }
 
-// TestGenerateTransportDefaults pins the @default pre-fill emission. The
+// TestGenerateTransportDefaults pins the? @default pre-fill emission. The
 // handler must assign each declared default BEFORE the JSON decode so
 // fields absent from the body keep the DSL value; explicit fields in
 // the body still overwrite via the standard decoder semantics.
 func TestGenerateTransportDefaults(t *testing.T) {
 	src := `package design
 type Req {
-    name   string  @default("anon")
-    limit  int     @default(20)
-    ratio  float64 @default(0.5)
-    active bool    @default(true)
+    name string?  @default("anon")
+    limit int?     @default(20)
+    ratio float64? @default(0.5)
+    active bool?    @default(true)
     plain  string
 }
 service S {
@@ -136,11 +136,19 @@ service S {
 	}
 	body := string(out)
 	mustParseGo(t, body)
+	// Optional `?` fields with @default emit pointer-wrapped pre-fill:
+	// `__d := value; req.Field = &__d` so the JSON decoder leaves a
+	// nil pointer alone but reports the default through the typed
+	// pointer when the field is absent.
 	for _, want := range []string{
-		`req.Name = "anon"`,
-		"req.Limit = 20",
-		"req.Ratio = 0.5",
-		"req.Active = true",
+		`__d := "anon"`,
+		`req.Name = &__d`,
+		`__d := 20`,
+		`req.Limit = &__d`,
+		`__d := 0.5`,
+		`req.Ratio = &__d`,
+		`__d := true`,
+		`req.Active = &__d`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in handler:\n%s", want, body)
@@ -153,7 +161,7 @@ service S {
 	// Pre-fill must precede JSON decode so absent body fields keep
 	// their default.
 	if dec := strings.Index(body, "json.NewDecoder"); dec >= 0 {
-		if pre := body[:dec]; !strings.Contains(pre, `req.Name = "anon"`) {
+		if pre := body[:dec]; !strings.Contains(pre, `__d := "anon"`) {
 			t.Error("expected default assignments before json.NewDecoder")
 		}
 	}
@@ -226,7 +234,7 @@ func TestGenerateTransportDefaultEnum(t *testing.T) {
 	src := `package design
 enum Status { Active  Inactive  Pending }
 type Req {
-    st     Status @default(Pending)
+    st Status? @default(Pending)
     plain  string
 }
 service S {
@@ -243,8 +251,13 @@ service S {
 	}
 	body := string(out)
 	mustParseGo(t, body)
-	if !strings.Contains(body, "req.St = types.StatusPending") {
-		t.Errorf("expected `req.St = types.StatusPending` (qualified Go const):\n%s", body)
+	for _, want := range []string{
+		"__d := types.StatusPending",
+		"req.St = &__d",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected enum default pre-fill %q:\n%s", want, body)
+		}
 	}
 }
 

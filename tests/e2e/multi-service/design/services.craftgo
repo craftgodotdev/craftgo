@@ -6,26 +6,26 @@ import "shared/contracts"
 
 @prefix("/orders")
 service OrdersService {
-    // Ping the orders service.
-    get Ping {
-        response  Pong
-    }
+	// Ping the orders service.
+	get Ping {
+		response Pong
+	}
 
-    // Latest returns the most recently placed order.
-    get Latest /latest {
-        response  Order
-    }
+	// Latest returns the most recently placed order.
+	get Latest /latest {
+		response Order
+	}
 }
 
 @prefix("/catalog")
 service CatalogService {
-    // Ping the catalog service.
-    get Ping {
-        response  Pong
-    }
+	// Ping the catalog service.
+	get Ping {
+		response Pong
+	}
 
-    // Featured returns the catalog's hero item.
-    get Featured /featured {
-        response  Item
-    }
+	// Featured returns the catalog's hero item.
+	get Featured /featured {
+		response Item
+	}
 }

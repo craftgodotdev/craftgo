@@ -31,7 +31,8 @@ type AuditEntry struct {
 	// tags are free-form labels; `any[]` lets producers attach
 	// strings, ints, or nested objects without per-tag schema.
 	// Array-level decorators still apply.
-	Tags []any `json:"tags"`
+	Tags []any  `json:"tags"`
+	Uuid string `json:"uuid"`
 }
 
 // OkResp is the conventional response shape for write endpoints

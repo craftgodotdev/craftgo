@@ -1,5 +1,1 @@
 package design
-
-// This file used to declare Pong/Order/Item, but they've moved to
-// shared/contracts/types.craftgo. services.craftgo pulls them back in via
-// `import "shared/contracts"`.

@@ -4,7 +4,10 @@ package orders
 
 import (
 	"fmt"
+	"net/mail"
+	"net/url"
 	"regexp"
+	"time"
 )
 
 // Validate checks every field-level constraint declared on Address.
@@ -62,10 +65,10 @@ func (v *CreateOrderReq) Validate() error {
 	if v.Notes != nil && len(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
-	if l := len(v.Currency); l < 3 || l > 3 {
+	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
-	if !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(v.Currency) {
+	if v.Currency != nil && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*v.Currency) {
 		return fmt.Errorf("currency: does not match pattern")
 	}
 	if len(v.Tags) < 1 {
@@ -133,8 +136,8 @@ func (v *Customer) Validate() error {
 	}
 	for _, val0 := range v.Index {
 		for _, val1 := range val0 {
-			if !regexp.MustCompile(`^https?://[^\s]+$`).MatchString(val1) {
-				return fmt.Errorf("index: not a valid url")
+			if _u, _err := url.Parse(val1); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+				return fmt.Errorf("index: not a valid URL")
 			}
 		}
 	}
@@ -167,9 +170,9 @@ func (v *Customer) Validate() error {
 		}
 	}
 	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid uuid")
+		return fmt.Errorf("id: not a valid UUID")
 	}
-	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(v.Email) {
+	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if len(v.Email) > 254 {
@@ -211,16 +214,18 @@ func (v *Customer) Validate() error {
 // Validate checks every field-level constraint declared on DefaultsShowcaseReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsShowcaseReq) Validate() error {
-	if l := len(v.Currency); l < 3 || l > 3 {
+	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
-	if !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(v.Currency) {
+	if v.Currency != nil && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*v.Currency) {
 		return fmt.Errorf("currency: does not match pattern")
 	}
-	switch v.Status {
-	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
-	default:
-		return fmt.Errorf("status: invalid OrderStatus value")
+	if v.Status != nil {
+		switch *v.Status {
+		case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
+		default:
+			return fmt.Errorf("status: invalid OrderStatus value")
+		}
 	}
 	for i := range v.AllowedMethods {
 		switch v.AllowedMethods[i] {
@@ -264,11 +269,14 @@ func (v *FilterOrdersReq) Validate() error {
 	default:
 		return fmt.Errorf("status: invalid OrderStatus value")
 	}
-	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(v.Contact) {
+	if _, _err := mail.ParseAddress(v.Contact); _err != nil {
 		return fmt.Errorf("contact: not a valid email")
 	}
 	if len(v.Contact) > 254 {
 		return fmt.Errorf("contact: length greater than 254")
+	}
+	if v.Method == "" {
+		return fmt.Errorf("method: required")
 	}
 	switch v.Method {
 	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
@@ -286,6 +294,9 @@ func (v *FilterOrdersReq) Validate() error {
 	}
 	if !regexp.MustCompile(`^ord_[A-Z0-9]+$`).MatchString(v.IdemKey) {
 		return fmt.Errorf("idemKey: does not match pattern")
+	}
+	if v.LastFilter == "" {
+		return fmt.Errorf("lastFilter: required")
 	}
 	switch v.LastFilter {
 	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
@@ -310,8 +321,8 @@ func (v *Geocode) Validate() error {
 	if v.Lng > 180 {
 		return fmt.Errorf("lng: above maximum 180")
 	}
-	if !regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$`).MatchString(v.CapturedAt) {
-		return fmt.Errorf("capturedAt: not a valid datetime")
+	if _, _err := time.Parse(time.RFC3339, v.CapturedAt); _err != nil {
+		return fmt.Errorf("capturedAt: not a valid RFC 3339 datetime")
 	}
 	if v.Precision != nil {
 		if err := v.Precision.Validate(); err != nil {
@@ -342,8 +353,8 @@ func (v *GpsFix) Validate() error {
 	if v.Hdop > 50 {
 		return fmt.Errorf("hdop: above maximum 50")
 	}
-	if !regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$`).MatchString(v.Timestamp) {
-		return fmt.Errorf("timestamp: not a valid datetime")
+	if _, _err := time.Parse(time.RFC3339, v.Timestamp); _err != nil {
+		return fmt.Errorf("timestamp: not a valid RFC 3339 datetime")
 	}
 	if v.DeviceID != nil && !regexp.MustCompile(`^dev_[A-Z0-9]{8,32}$`).MatchString(*v.DeviceID) {
 		return fmt.Errorf("deviceId: does not match pattern")
@@ -440,13 +451,15 @@ func (v *Order) Validate() error {
 	if v.Notes != nil && len(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
-	if v.ShippedAt != nil && !regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$`).MatchString(*v.ShippedAt) {
-		return fmt.Errorf("shippedAt: not a valid datetime")
+	if v.ShippedAt != nil {
+		if _, _err := time.Parse(time.RFC3339, *v.ShippedAt); _err != nil {
+			return fmt.Errorf("shippedAt: not a valid RFC 3339 datetime")
+		}
 	}
-	if l := len(v.Currency); l < 3 || l > 3 {
+	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
-	if !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(v.Currency) {
+	if v.Currency != nil && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*v.Currency) {
 		return fmt.Errorf("currency: does not match pattern")
 	}
 	for i0 := range v.Tags {
@@ -495,8 +508,8 @@ func (v *Order) Validate() error {
 		}
 	}
 	for _, val0 := range v.Metadata {
-		if !regexp.MustCompile(`^https?://[^\s]+$`).MatchString(val0) {
-			return fmt.Errorf("metadata: not a valid url")
+		if _u, _err := url.Parse(val0); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+			return fmt.Errorf("metadata: not a valid URL")
 		}
 	}
 	for _, val0 := range v.Metadata {
@@ -504,8 +517,8 @@ func (v *Order) Validate() error {
 			return fmt.Errorf("metadata: length greater than 2048")
 		}
 	}
-	if !regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$`).MatchString(v.CreatedAt) {
-		return fmt.Errorf("createdAt: not a valid datetime")
+	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
+		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
 	}
 	return nil
 }
@@ -553,8 +566,10 @@ func (v *Payment) Validate() error {
 	if v.AuthCents%1 != 0 {
 		return fmt.Errorf("authCents: must be a multiple of 1")
 	}
-	if v.ReceiptURL != nil && !regexp.MustCompile(`^https?://[^\s]+$`).MatchString(*v.ReceiptURL) {
-		return fmt.Errorf("receiptURL: not a valid url")
+	if v.ReceiptURL != nil {
+		if _u, _err := url.Parse(*v.ReceiptURL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+			return fmt.Errorf("receiptURL: not a valid URL")
+		}
 	}
 	if v.ReceiptURL != nil && len(*v.ReceiptURL) > 2048 {
 		return fmt.Errorf("receiptURL: length greater than 2048")

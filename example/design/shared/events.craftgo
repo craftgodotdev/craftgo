@@ -37,14 +37,14 @@ type WebhookEvent {
 	// eventType selects which logic-side struct decodes `data`.
 	// Pattern restricts to `dotted.lower-case` so the dispatch
 	// table stays predictable.
-	eventType  string @required @pattern("^[a-z]+(\\.[a-z]+)+$") @maxLength(64)
+	eventType  string @pattern("^[a-z]+(\\.[a-z]+)+$") @maxLength(64)
 	// deliveryId uniquely identifies the attempt — clients use it
 	// to deduplicate retries.
-	deliveryId string @required @length(1, 128)
+	deliveryId string @length(1, 128)
 	// data is the provider's payload. The framework leaves it as
 	// raw JSON (json.RawMessage in Go); a `@required` here simply
 	// means the field must be present and non-null in the request.
-	data       any    @required @example({orderId: "ord_123", total: 4200})
+	data       any    @example({orderId: "ord_123", total: 4200})
 	// metadata is optional free-form context the producer may
 	// attach; logic side reads it with a type assertion / second
 	// unmarshal when needed. `@nullable` marks "explicit null is
@@ -58,11 +58,11 @@ type WebhookEvent {
 // per-domain schema.
 type AuditEntry {
 	// entityType — which domain the entry belongs to.
-	entityType string @required @length(1, 32)
+	entityType string @length(1, 32)
 	// entityId — opaque id of the entity that changed.
-	entityId   string @required @length(1, 128)
+	entityId   string @length(1, 128)
 	// action — `create` / `update` / `delete` / etc.
-	action     string @required @pattern("^[a-z]+$")
+	action     string @pattern("^[a-z]+$")
 	// before is the entity snapshot taken BEFORE the change.
 	// Optional — `create` actions have no prior state.
 	before     any?
@@ -73,18 +73,19 @@ type AuditEntry {
 	// strings, ints, or nested objects without per-tag schema.
 	// Array-level decorators still apply.
 	tags       any[]  @maxItems(20) @uniqueItems
+	uuid       string @format(uuid)
 }
 
 // PluginConfig is a key/value bag stored for each installed
 // plugin. The value is `any` because each plugin defines its own
 // schema — central craftgo stays plugin-agnostic.
 type PluginConfig {
-	pluginId string @required @length(1, 64)
+	pluginId string @length(1, 64)
 	// settings is a JSON object whose shape is plugin-defined.
 	// `@example` documents one canonical shape in the OpenAPI
 	// doc without committing the framework to it.
-	settings any    @required @example({retries: 3, backoff: "exponential", endpoints: ["primary", "fallback"]})
+	settings any    @example({retries: 3, backoff: "exponential", endpoints: ["primary", "fallback"]})
 	// version pins the schema revision so a plugin can migrate
 	// its settings shape without breaking older entries.
-	version  int    @required @min(1)
+	version  int    @min(1)
 }

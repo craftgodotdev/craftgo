@@ -207,20 +207,6 @@ type T { id string }`))
 	}
 }
 
-// ---------- @required + @nullable conflict ----------
-
-func TestRequiredNullableConflict(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-type T { name string @required @nullable }`))
-	d := findCode(diags, CodeDecoratorRedundant)
-	if d == nil {
-		t.Fatalf("expected %s for @required @nullable combo, got %v", CodeDecoratorRedundant, diags)
-	}
-	if !strings.Contains(d.Msg, "conflicts with @required") {
-		t.Errorf("expected conflict message, got %q", d.Msg)
-	}
-}
-
 // ---------- @passthrough body checks ----------
 
 func TestPassthroughRejectsRequest(t *testing.T) {

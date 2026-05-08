@@ -351,9 +351,11 @@ const (
 	// CodeBindingConflict fires when a field has more than one of
 	// `@path / @query / @header / @cookie / @body / @form`.
 	CodeBindingConflict = "binding/conflict"
-	// CodeRequiredOptional fires when `@required` appears on a `T?`
-	// field.
-	CodeRequiredOptional = "binding/required-optional"
+	// CodeDefaultNeedsOptional fires (severity Warning) when a field
+	// carries `@default(...)` but its type lacks the `?` suffix. The
+	// formatter auto-adds `?` on save, so the warning clears as soon
+	// as the user runs `craftgo fmt` (or format-on-save).
+	CodeDefaultNeedsOptional = "decorator/default-needs-optional"
 	// CodeBindingType fires when `@path`, `@header`, or `@cookie` is
 	// applied to a field whose type is not a non-array, non-optional
 	// `string`. The wire formats those decorators target carry only
@@ -1109,9 +1111,37 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 		if !ok {
 			continue
 		}
-		a.checkRequiredOptional(parent, f)
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f)
+		a.checkDefaultNeedsOptional(parent, f)
+	}
+}
+
+// checkDefaultNeedsOptional warns when a field carries `@default(...)` but
+// its type does not have the `?` (optional) suffix. `@default` only fires
+// when the value is absent from the request payload; in the new
+// "required by default" model a non-optional field is always considered
+// mandatory by OpenAPI consumers, which contradicts the default's intent.
+//
+// The diagnostic is a Warning, not an Error - the runtime contract still
+// works (the default pre-fills the struct so validation passes when the
+// client omits the field) but the OpenAPI schema published to consumers
+// becomes misleading. The fix is to add `?` to the type; the formatter
+// applies that fix automatically when re-emitting the source so saving
+// the file resolves the warning in one round trip.
+func (a *analyzer) checkDefaultNeedsOptional(parent string, f *ast.Field) {
+	if f == nil || f.Type == nil || f.Type.Optional {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != "default" {
+			continue
+		}
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning,
+			CodeDefaultNeedsOptional,
+			"field %s.%s: @default implies optional - add `?` to the type (auto-fixed by `craftgo fmt` / format-on-save)",
+			parent, f.Name)
+		return
 	}
 }
 
@@ -1197,23 +1227,6 @@ func describeTypeRef(t *ast.TypeRef) string {
 		name += "?"
 	}
 	return name
-}
-
-// checkRequiredOptional rejects `@required` on a `T?` field. The two
-// say opposite things ("must be present" vs "may be absent"), and
-// silently ignoring one would let a buggy validator pass.
-func (a *analyzer) checkRequiredOptional(parent string, f *ast.Field) {
-	if f.Type == nil || !f.Type.Optional {
-		return
-	}
-	for _, d := range f.Decorators {
-		if d.Name == "required" {
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeRequiredOptional,
-				"field %s.%s: @required is incompatible with optional type %q (drop one)",
-				parent, f.Name, "T?")
-			return
-		}
-	}
 }
 
 // checkSingleBinding enforces the "at most one binding" rule. The

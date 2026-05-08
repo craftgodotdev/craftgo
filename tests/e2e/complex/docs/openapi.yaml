@@ -44,6 +44,9 @@ components:
           type: number
         lng:
           type: number
+      required:
+      - lat
+      - lng
       type: object
     CreateProfileReq:
       description: |-
@@ -70,6 +73,10 @@ components:
           type: array
       required:
       - displayName
+      - contacts
+      - addresses
+      - tags
+      - meta
       type: object
     CreateProfileReqBody:
       properties:
@@ -93,6 +100,10 @@ components:
           type: array
       required:
       - displayName
+      - contacts
+      - addresses
+      - tags
+      - meta
       type: object
     CreateProfileRespBody:
       $ref: '#/components/schemas/Profile'
@@ -138,6 +149,9 @@ components:
           type: array
         total:
           type: integer
+      required:
+      - items
+      - total
       type: object
     ListProfilesRespBody:
       $ref: '#/components/schemas/ListProfilesResp'
@@ -160,6 +174,9 @@ components:
           type: string
       required:
       - id
+      - dryRun
+      - idempotencyKey
+      - sessionToken
       - displayName
       type: object
     PatchProfileReqBody:
@@ -173,11 +190,15 @@ components:
       properties:
         sessionToken:
           type: string
+      required:
+      - sessionToken
       type: object
     PatchProfileReqHeader:
       properties:
         idempotencyKey:
           type: string
+      required:
+      - idempotencyKey
       type: object
     PatchProfileReqPath:
       properties:
@@ -190,6 +211,8 @@ components:
       properties:
         dryRun:
           type: string
+      required:
+      - dryRun
       type: object
     PatchProfileResp:
       description: |-
@@ -206,6 +229,12 @@ components:
           type: string
         sessionToken:
           type: string
+      required:
+      - id
+      - dryRun
+      - idempotencyKey
+      - sessionToken
+      - displayName
       type: object
     PatchProfileRespBody:
       $ref: '#/components/schemas/PatchProfileResp'
@@ -238,6 +267,10 @@ components:
       required:
       - id
       - displayName
+      - contacts
+      - addresses
+      - tags
+      - meta
       type: object
     ProfileNotFoundErr:
       description: NotFound error response (HTTP 404).
@@ -448,14 +481,17 @@ paths:
           $ref: '#/components/schemas/PatchProfileReqPath/properties/id'
       - in: query
         name: dryRun
+        required: true
         schema:
           $ref: '#/components/schemas/PatchProfileReqQuery/properties/dryRun'
       - in: header
         name: idempotencyKey
+        required: true
         schema:
           $ref: '#/components/schemas/PatchProfileReqHeader/properties/idempotencyKey'
       - in: cookie
         name: sessionToken
+        required: true
         schema:
           $ref: '#/components/schemas/PatchProfileReqCookie/properties/sessionToken'
       requestBody:

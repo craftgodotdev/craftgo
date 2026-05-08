@@ -6,15 +6,15 @@ package design
 // logical service.
 @prefix("/v1")
 service ProfileService {
-    // GetProfile returns the profile with the given id.
-    @errors(ProfileNotFound)
-    get GetProfile /profiles/{id} {
-        request   GetProfileReq
-        response  Profile
-    }
+	// GetProfile returns the profile with the given id.
+	@errors(ProfileNotFound)
+	get GetProfile /profiles/{id} {
+		request  GetProfileReq
+		response Profile
+	}
 
-    // ListProfiles returns every stored profile in id order.
-    get ListProfiles /profiles {
-        response  ListProfilesResp
-    }
+	// ListProfiles returns every stored profile in id order.
+	get ListProfiles /profiles {
+		response ListProfilesResp
+	}
 }

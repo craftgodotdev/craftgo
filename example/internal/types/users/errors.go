@@ -9,7 +9,7 @@ const ErrCodeAccountActionDenied = "ACCOUNT_ACTION_DENIED"
 // User code instantiates this struct and hands it to NewAccountActionDeniedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type AccountActionDeniedBody struct {
-	Code   string                  `json:"code"`
+	Code   *string                 `json:"code"`
 	Reason AccountSuspensionReason `json:"reason"`
 }
 
@@ -310,7 +310,7 @@ const ErrCodeOwnershipConflict = "OWNERSHIP_CONFLICT"
 // User code instantiates this struct and hands it to NewOwnershipConflictErr; the
 // framework wraps it with the type-bound code / message metadata.
 type OwnershipConflictBody struct {
-	Code  string  `json:"code"`
+	Code  *string `json:"code"`
 	Owner UserRef `json:"owner"`
 }
 
@@ -350,7 +350,7 @@ const ErrCodeRateLimited = "RATE_LIMITED"
 // User code instantiates this struct and hands it to NewRateLimitedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type RateLimitedBody struct {
-	Message    string  `json:"message"`
+	Message    *string `json:"message"`
 	RetryAfter int     `json:"retry_after"`
 	Bucket     *string `json:"bucket"`
 }

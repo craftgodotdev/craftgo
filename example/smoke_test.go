@@ -227,7 +227,7 @@ func TestDeepNestSixLevels(t *testing.T) {
 		AuditedBy:  usersapi.UserRef{ID: "u-admin", Name: "Admin"},
 		TotalCents: 998,
 		Status:     ordersapi.OrderStatusPending,
-		Currency:   "USD",
+		Currency:   ptr(ordersapi.CurrencyCode("USD")),
 		Tags:       []string{"web"},
 		CreatedAt:  "2026-04-29T08:00:00Z",
 	}
@@ -447,7 +447,7 @@ func TestArrayOfScalarInheritance(t *testing.T) {
 			AuditedBy: usersapi.UserRef{ID: "u-admin", Name: "Admin"},
 			TotalCents: 2,
 			Status:   ordersapi.OrderStatusPending,
-			Currency: "USD",
+			Currency: ptr(ordersapi.CurrencyCode("USD")),
 			Tags:     tags,
 			CreatedAt: "2026-04-29T08:00:00Z",
 		}
@@ -506,7 +506,7 @@ func TestMapScalarInheritance(t *testing.T) {
 			AuditedBy: usersapi.UserRef{ID: "u-admin", Name: "Admin"},
 			TotalCents: 2,
 			Status:    ordersapi.OrderStatusPending,
-			Currency:  "USD",
+			Currency:  ptr(ordersapi.CurrencyCode("USD")),
 			Tags:      []ordersapi.Tag{"web"},
 			Metadata:  meta,
 			CreatedAt: "2026-04-29T08:00:00Z",
@@ -806,7 +806,7 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 	// value (callers wrap construction with their own helpers when
 	// they want a default value applied automatically).
 	rl := usersapi.NewRateLimitedErr(usersapi.RateLimitedBody{
-		Message:    "Slow down, please",
+		Message:    ptr("Slow down, please"),
 		RetryAfter: 30,
 	})
 	if rl.HTTPStatus() != 429 {
@@ -815,8 +815,8 @@ func TestUserDomainErrorsConstruct(t *testing.T) {
 	if rl.RetryAfter != 30 {
 		t.Errorf("RateLimitedErr.RetryAfter = %d, want 30", rl.RetryAfter)
 	}
-	if rl.Message != "Slow down, please" {
-		t.Errorf("RateLimitedErr.Message = %q, want \"Slow down, please\"", rl.Message)
+	if rl.Message == nil || *rl.Message != "Slow down, please" {
+		t.Errorf("RateLimitedErr.Message = %v, want \"Slow down, please\"", rl.Message)
 	}
 
 	// 412 StaleVersion - both versions echo back so the client can
@@ -888,31 +888,35 @@ func TestDefaultsShowcasePreFill(t *testing.T) {
 		t.Fatalf("decode: %v body=%s", err, rec.Body.String())
 	}
 
-	// Plain primitives.
-	if got.Str != "anon" {
-		t.Errorf("Str = %q, want anon", got.Str)
+	// Plain primitives - all pointers now since fields with @default
+	// are auto-marked optional by the formatter.
+	if got.Str == nil || *got.Str != "anon" {
+		t.Errorf("Str = %v, want non-nil &\"anon\"", got.Str)
 	}
-	if got.Num != 20 {
-		t.Errorf("Num = %d, want 20", got.Num)
+	if got.Num == nil || *got.Num != 20 {
+		t.Errorf("Num = %v, want non-nil &20", got.Num)
 	}
-	if got.Flag != true {
-		t.Errorf("Flag = %v, want true", got.Flag)
+	if got.Flag == nil || *got.Flag != true {
+		t.Errorf("Flag = %v, want non-nil &true", got.Flag)
 	}
 	// Optional pre-fill: pointer should be non-nil pointing at the default.
 	if got.Maybe == nil || *got.Maybe != "opt-default" {
 		t.Errorf("Maybe = %v, want non-nil &\"opt-default\"", got.Maybe)
 	}
 	// Scalar wrapping primitive.
-	if got.Currency != "USD" {
-		t.Errorf("Currency = %q, want USD", got.Currency)
+	if got.Currency == nil || *got.Currency != "USD" {
+		t.Errorf("Currency = %v, want non-nil &\"USD\"", got.Currency)
 	}
 	// Enum value.
-	if got.Status != ordersapi.OrderStatusPending {
-		t.Errorf("Status = %v, want OrderStatusPending", got.Status)
+	if got.Status == nil || *got.Status != ordersapi.OrderStatusPending {
+		t.Errorf("Status = %v, want non-nil &OrderStatusPending", got.Status)
 	}
-	// Empty array preset.
-	if got.Tags == nil || len(got.Tags) != 0 {
-		t.Errorf("Tags = %v, want []string{}", got.Tags)
+	// Empty array preset. omitempty + empty slice round-trips as
+	// JSON absence on the wire, so the decoded struct lands with
+	// nil (not a non-nil empty slice). Both shapes are semantically
+	// "no items" - the test treats them as equivalent.
+	if len(got.Tags) != 0 {
+		t.Errorf("Tags = %v, want empty/nil", got.Tags)
 	}
 	// Non-empty string array.
 	if len(got.Preset) != 2 || got.Preset[0] != "standard" || got.Preset[1] != "expedited" {

@@ -3,6 +3,6 @@ package design
 // ContactInfo carries a primary email and optional phone. The email
 // regex is intentionally permissive (RFC 5322 is too much for a v1 demo).
 type ContactInfo {
-    email  string   @required @pattern("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
-    phone  string?  @minLength(7) @maxLength(20)
+	email string  @pattern("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+	phone string? @minLength(7) @maxLength(20)
 }

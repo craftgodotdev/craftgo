@@ -26,6 +26,6 @@ type Contact {
 // logic code calls `req.Contact.Validate()` to opt into the deep
 // check before persisting.
 type AddContactReq {
-	userId  string  @path @required @length(1, 64)
+	userId  string  @path @length(1, 64)
 	contact Contact
 }

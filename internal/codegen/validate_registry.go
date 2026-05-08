@@ -16,7 +16,7 @@ import (
 // function. `uses` collects standard-library imports that the generated
 // Validate file needs (`fmt`, `regexp`, ...); `pkg` is forwarded for
 // validators that need the symbol table (today only the enum-aware
-// @required path).
+// path).
 type emitCtx struct {
 	pkg  *semantic.Package
 	uses map[string]bool
@@ -33,13 +33,13 @@ type validatorEntry struct {
 
 // validators is the source-of-truth registry. Order doesn't matter for
 // correctness - names are looked up - but the table is grouped by
-// concern to make scanning easier: presence/strings/numerics/arrays/files.
+// concern to make scanning easier: strings/numerics/arrays/files.
+//
+// Presence ("required") is no longer a decorator - craftgo enforces
+// "required by default" and the absence check fires automatically for
+// every non-optional field via [fieldChecksWithScalar]. The opt-out is
+// the type-level `?` suffix.
 var validators = []validatorEntry{
-	// presence
-	{"required", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return requiredCheckEnumAware(f, a, c.pkg, c.uses)
-	}},
-
 	// string
 	{"length", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c.uses) }},
 	{"minLength", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
@@ -120,6 +120,23 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 	access := "v." + GoFieldName(f.Name)
 	ctx := emitCtx{pkg: pkg, uses: uses}
 	var out []string
+
+	// "Required by default": every non-optional field gets the
+	// presence check automatically. Two opt-outs:
+	//
+	//   - the type-level `?` suffix (field is explicitly optional)
+	//   - the `@nullable` decorator (the value may be null on the
+	//     wire, which decodes to a nil pointer and SHOULD be
+	//     accepted - rejecting nil here would defeat the decorator)
+	//
+	// requiredCheckEnumAware returns "" when the field type has no
+	// defined empty value, so primitives the JSON decoder already
+	// rejects-on-null get no validate-time block.
+	if f.Type != nil && !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
+		if s := requiredCheckEnumAware(f, access, pkg, uses); s != "" {
+			out = append(out, s)
+		}
+	}
 
 	// Scalar inheritance: walk the field's TypeRef recursively to
 	// find every reachable scalar leaf, then emit one wrapped check

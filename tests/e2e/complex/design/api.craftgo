@@ -2,26 +2,17 @@
 @version("1.0.0")
 package design
 
-// api.craftgo is the discovery entry point — it carries the file-level
-// metadata and pulls in every other folder. The actual service +
-// type + middleware declarations live alongside their domain in
-// dedicated sub-folders, each merged into one logical package by the
-// CLI's import resolver.
-
 import "geo"
 import "contacts"
 import "profiles"
 import "errs"
-
 // `middlewares` declares AuthRequired + RequestStamp in a separate
 // folder — proves a `middleware` declaration in one place is visible
 // to `@middlewares(...)` decorators in another.
 import "middlewares"
-
 // `profile-service` holds ProfileService split across multiple files
 // (primary + two `extend service` blocks). Demonstrates the per-service
 // folder convention.
 import "profile-service"
-
 // `admin` holds AdminService — a separate service in its own folder.
 import "admin"

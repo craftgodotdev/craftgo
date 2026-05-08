@@ -23,7 +23,7 @@ func TestFormatRoundTrip(t *testing.T) {
 			src: `package design
 
 type User {
-	id string @required
+	id string
 	name string @length(1, 80)
 }
 `,
@@ -69,7 +69,7 @@ enum Bare {
 error NotFound UserNotFound
 
 error BadRequest ValidationFailed {
-	code string @default("VALIDATION_FAILED")
+	code string? @default("VALIDATION_FAILED")
 	message string
 	fields string[]
 }
@@ -180,7 +180,7 @@ func TestFormatPreservesParse(t *testing.T) {
 package design
 
 type Foo {
-	x string @required
+	x string
 }
 `
 	formatted, _ := Format("t.craftgo", src)
@@ -207,7 +207,7 @@ func TestClosingNoteInBody(t *testing.T) {
 	src := `package x
 
 error ServiceUnavailable MaintenanceWindow {
-	code    string @default("X")
+	code string? @default("X")
 	message string
 	// todo: add reason field
 }

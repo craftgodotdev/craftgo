@@ -250,7 +250,7 @@ func TestTypeMixinGeneric(t *testing.T) {
 }
 
 func TestTypeFieldDecorators(t *testing.T) {
-	f := mustParse(t, `type X { name string @required @length(1, 100) }`)
+	f := mustParse(t, `type X { name string @doc("the name") @length(1, 100) }`)
 	field := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Field)
 	if len(field.Decorators) != 2 {
 		t.Errorf("decorators: %d", len(field.Decorators))

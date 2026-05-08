@@ -580,7 +580,7 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 		ref := schemaForTypeRef(f.Type, pkg)
 		applyFieldMetadata(f, ref)
 		s.Properties[f.Name] = ref
-		if hasRequiredDecorator(f.Decorators) {
+		if fieldIsRequired(f) {
 			s.Required = append(s.Required, f.Name)
 		}
 	}
@@ -589,7 +589,8 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 
 // applyFieldMetadata layers the OpenAPI-side decorator effects onto a
 // property schema: doc → description, deprecated → flag + note,
-// nullable → schema.Nullable, example → schema.Example.
+// nullable → schema.Nullable, example → schema.Example,
+// default → schema.Default.
 func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	if ref == nil || ref.Value == nil {
 		return
@@ -609,6 +610,30 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	if ex, ok := exampleValue(f.Decorators); ok {
 		ref.Value.Example = ex
 	}
+	if def, ok := defaultValue(f.Decorators); ok {
+		ref.Value.Default = def
+	}
+}
+
+// defaultValue extracts a `@default(v)` argument as a typed Go value
+// suitable for `openapi3.Schema.Default`. Mirrors [exampleValue] but
+// keyed off the `@default` decorator. Returns (nil, false) when no
+// default decorator is present so the caller leaves the schema
+// untouched. Bare-ident defaults (e.g. `@default(Active)` for an enum)
+// resolve to the ident's spelling - OpenAPI consumers see the wire
+// value the runtime would emit.
+func defaultValue(ds []*ast.Decorator) (any, bool) {
+	for _, d := range ds {
+		if d.Name != "default" || len(d.Args) == 0 {
+			continue
+		}
+		v := d.Args[0].Value
+		if ident, ok := v.(*ast.IdentExpr); ok && ident.Name != nil {
+			return ident.Name.String(), true
+		}
+		return literalToAny(v)
+	}
+	return nil, false
 }
 
 // exampleValue extracts an `@example(v)` argument as a typed Go value
@@ -819,7 +844,7 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 			continue
 		}
 		s.Properties[f.Name] = schemaForTypeRef(substituteTypeRef(f.Type, subst), pkg)
-		if hasRequiredDecorator(f.Decorators) {
+		if fieldIsRequired(f) {
 			s.Required = append(s.Required, f.Name)
 		}
 	}
@@ -1040,7 +1065,7 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Sche
 			continue
 		}
 		s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
-		if hasRequiredDecorator(f.Decorators) {
+		if fieldIsRequired(f) {
 			s.Required = append(s.Required, f.Name)
 		}
 	}
@@ -1303,7 +1328,7 @@ func paramsFromBins(bins fieldBins, methodName string) openapi3.Parameters {
 	var params openapi3.Parameters
 	add := func(in, kind string, fields []*ast.Field, alwaysRequired bool) {
 		for _, f := range fields {
-			required := alwaysRequired || hasRequiredDecorator(f.Decorators)
+			required := alwaysRequired || fieldIsRequired(f)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     f.Name,
 				In:       in,
@@ -1365,14 +1390,13 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	}
 }
 
-// hasRequiredDecorator reports whether `@required` appears in the chain.
-func hasRequiredDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d.Name == "required" {
-			return true
-		}
-	}
-	return false
+// fieldIsRequired reports whether f must be present in the request
+// payload. craftgo's "required by default" model: a field is required
+// unless its type carries the `?` suffix that explicitly marks it
+// optional. The opt-out is the inverse of the old `@required`
+// decorator (which has been removed).
+func fieldIsRequired(f *ast.Field) bool {
+	return f != nil && f.Type != nil && !f.Type.Optional
 }
 
 // operationID returns the OpenAPI operationId for the method. Default

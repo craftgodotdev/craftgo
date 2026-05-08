@@ -263,6 +263,14 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 				maxName = n
 			}
 			ts := p.typeRefString(f.Type)
+			// Auto-fix: a field carrying `@default(...)` is conceptually
+			// optional - the default fires when the value is absent. If
+			// the author hasn't typed `?`, the formatter adds it on save
+			// so the source matches the runtime contract (and the
+			// `decorator/default-needs-optional` warning clears).
+			if f.Type != nil && !f.Type.Optional && fieldHasDefault(f) {
+				ts += "?"
+			}
 			typeStr[f] = ts
 			if n := len(ts); n > maxType {
 				maxType = n
@@ -281,6 +289,22 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			p.printFreeComment(v)
 		}
 	}
+}
+
+// fieldHasDefault reports whether f carries a `@default(...)` decorator.
+// Used by the type-body printer to auto-add `?` to the rendered type
+// when the author hasn't marked the field optional, since `@default`
+// only fires when the value is absent.
+func fieldHasDefault(f *ast.Field) bool {
+	if f == nil {
+		return false
+	}
+	for _, d := range f.Decorators {
+		if d != nil && d.Name == "default" {
+			return true
+		}
+	}
+	return false
 }
 
 // typeRefString renders a TypeRef to a string by reusing the printer.

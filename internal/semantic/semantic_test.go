@@ -312,8 +312,8 @@ func TestCheckNamedRefNilGuards(t *testing.T) {
 // ---------- duplicate decorators ----------
 
 func TestDuplicateDecoratorOnField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @required @required }`))
-	if !diagsContain(diags, "duplicate decorator @required") {
+	_, diags := Analyze(parseFiles(t, `type X { name string @doc("a") @doc("b") }`))
+	if !diagsContain(diags, "duplicate decorator") {
 		t.Errorf("got %v", diags)
 	}
 }
@@ -364,15 +364,15 @@ error NotFound UserNotFound`))
 }
 
 func TestDuplicateDecoratorOnErrorField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `error BadRequest E { code string @required @required }`))
-	if !diagsContain(diags, "duplicate decorator @required on field E.code") {
+	_, diags := Analyze(parseFiles(t, `error BadRequest E { code string @doc("a") @doc("b") }`))
+	if !diagsContain(diags, "duplicate decorator @doc on field E.code") {
 		t.Errorf("got %v", diags)
 	}
 }
 
 func TestDuplicateDecoratorPreservesFirst(t *testing.T) {
 	// First decorator stays in the AST untouched; only the second is reported.
-	_, diags := Analyze(parseFiles(t, `type X { name string @required @required @length(1, 10) }`))
+	_, diags := Analyze(parseFiles(t, `type X { name string @doc("a") @doc("b") @length(1, 10) }`))
 	if len(diags) != 1 {
 		t.Fatalf("want 1 diagnostic, got %d: %v", len(diags), diags)
 	}
@@ -381,7 +381,7 @@ func TestDuplicateDecoratorPreservesFirst(t *testing.T) {
 func TestDecoratorUnique_NoFalsePositive(t *testing.T) {
 	mustClean(t, `@deprecated
 @doc("ok")
-type X { name string @required @length(1, 10) @pattern("^[a-z]+$") }`)
+type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 }
 
 // ---------- qualified refs ----------
@@ -413,13 +413,6 @@ type X { items Page }`)
 }
 
 // ---------- combination rules ----------
-
-func TestCombinationRequiredOnOptional(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string? @required }`))
-	if !diagsContain(diags, "@required is incompatible with optional type") {
-		t.Errorf("got %v", diags)
-	}
-}
 
 func TestCombinationMultipleBindings(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X { id string @path @query }`))

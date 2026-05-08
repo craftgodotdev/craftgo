@@ -17,15 +17,30 @@ import (
 func DefaultsShowcase(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsShowcaseReq
-		req.Str = "anon"
-		req.Num = 20
-		req.Flag = true
+		{
+			__d := "anon"
+			req.Str = &__d
+		}
+		{
+			__d := 20
+			req.Num = &__d
+		}
+		{
+			__d := true
+			req.Flag = &__d
+		}
 		{
 			__d := "opt-default"
 			req.Maybe = &__d
 		}
-		req.Currency = "USD"
-		req.Status = types.OrderStatusPending
+		{
+			__d := "USD"
+			req.Currency = &__d
+		}
+		{
+			__d := types.OrderStatusPending
+			req.Status = &__d
+		}
 		req.Tags = []string{}
 		req.Preset = []string{"standard", "expedited"}
 		req.AllowedMethods = []types.PaymentMethod{types.PaymentMethodCard, types.PaymentMethodBank}

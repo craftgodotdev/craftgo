@@ -13,7 +13,7 @@ const ErrCodeTaskAssignmentConflict = "TASK_ASSIGNMENT_CONFLICT"
 // User code instantiates this struct and hands it to NewTaskAssignmentConflictErr; the
 // framework wraps it with the type-bound code / message metadata.
 type TaskAssignmentConflictBody struct {
-	Code            string        `json:"code"`
+	Code            *string       `json:"code"`
 	CurrentAssignee users.UserRef `json:"currentAssignee"`
 	PendingStatus   TaskStatus    `json:"pendingStatus"`
 }

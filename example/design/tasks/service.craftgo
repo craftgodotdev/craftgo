@@ -63,7 +63,7 @@ type ListTasksReq {
 // GetTaskReq is the path-only DTO — same SHARED pattern as
 // GetUserReq and GetProjectReq.
 type GetTaskReq {
-	id string @path @required @length(1, 64)
+	id string @path @length(1, 64)
 }
 
 // CreateTaskReq demonstrates a NESTED REQUEST: the `comments` slice
@@ -72,8 +72,8 @@ type GetTaskReq {
 // the Comment type defined in types.craftgo), and validation
 // cascades when logic explicitly invokes the nested validator.
 type CreateTaskReq {
-	projectId  string     @required @length(1, 64)
-	title      string     @required @length(1, 200)
+	projectId  string     @length(1, 64)
+	title      string     @length(1, 200)
 	status     TaskStatus
 	// Optional initial assignee — same pattern as Task.assignee.
 	assigneeId string?    @length(1, 64)
@@ -86,7 +86,7 @@ type CreateTaskReq {
 // authorId/body. Demonstrates the conventional path+body shape
 // for nested-resource creation.
 type AddCommentReq {
-	taskId   string @path @required @length(1, 64)
-	authorId string @required @length(1, 64)
-	body     string @required @length(1, 4000)
+	taskId   string @path @length(1, 64)
+	authorId string @length(1, 64)
+	body     string @length(1, 4000)
 }

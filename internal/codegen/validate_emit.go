@@ -193,12 +193,12 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 }
 
 // formatCheck handles `@format(name)` for the catalogue of standard
-// formats listed in the README. Each name maps to a built-in regex
-// evaluated at request time. The argument may be either a quoted string
+// formats. Each entry in [formatValidators] declares the Go imports
+// needed and the emit shape (regex, single-expression Go check, or
+// init-statement check). The argument may be either a quoted string
 // (`@format("email")`) or a bare identifier (`@format(email)`) - both
-// forms appear in the existing fixtures and we accept either to avoid
-// surprising regressions. Unknown names are silently skipped - projects
-// can extend with `@pattern("...")` for niche cases.
+// accepted. Unknown names skip silently; projects can extend with
+// `@pattern("...")` for niche cases.
 func formatCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
@@ -207,45 +207,190 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	if name == "" {
 		return ""
 	}
-	pattern := formatPatterns[name]
-	if pattern == "" {
+	v, ok := formatValidators[name]
+	if !ok {
 		return ""
 	}
+	for _, imp := range v.imports {
+		uses[imp] = true
+	}
 	uses["fmt"] = true
-	uses["regexp"] = true
 	val := stringValueExpr(f, access)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s!regexp.MustCompile(`%s`).MatchString(%s)", guard, pattern, val)
-	msg := fmt.Sprintf(`"%s: not a valid %s"`, f.Name, name)
-	return ifReturnf(cond, msg)
+	msg := fmt.Sprintf(`"%s: not a valid %s"`, f.Name, v.label)
+	if f.Type.Optional {
+		// Pointer field: nest the check inside a nil-guard so the
+		// init-stmt forms (mail.ParseAddress / time.Parse / ...) only
+		// run when a value is present.
+		inner := v.emit(val, msg)
+		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(inner))
+	}
+	return v.emit(val, msg)
 }
 
-// formatPatterns is the regex catalogue referenced by `@format(...)`.
-// Definitions are pragmatic, not RFC-grade; use `@pattern("...")`
-// when stricter parsing is required.
+// indentBlock prefixes every line after the first with a single tab so
+// nested if-blocks render with consistent indentation. Used by the
+// pointer-field nesting in [formatCheck].
+func indentBlock(s string) string {
+	return strings.ReplaceAll(s, "\n", "\n\t")
+}
+
+// formatValidator binds a `@format(name)` to the Go source that
+// validates a value. Two emit shapes are supported:
 //
-// `datetime` is RFC 3339 (a strict subset of ISO 8601); `creditcard`
-// uses a length-only check because Luhn validation requires loop logic
-// that doesn't fit a single regex; `json` accepts any non-empty string
-// and defers structural validation to the JSON decoder.
-var formatPatterns = map[string]string{
-	"email":      `^[^@\s]+@[^@\s]+\.[^@\s]+$`,
-	"url":        `^https?://[^\s]+$`,
-	"uri":        `^[a-zA-Z][a-zA-Z0-9+.-]*:[^\s]+$`,
-	"uuid":       `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
-	"hostname":   `^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`,
-	"ipv4":       `^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$`,
-	"ipv6":       `^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$|^([0-9a-fA-F]{1,4}:){1,7}:$|^:(:[0-9a-fA-F]{1,4}){1,7}$|^([0-9a-fA-F]{1,4}:){1,6}(:[0-9a-fA-F]{1,4}){1}$`,
-	"phone":      `^\+?[0-9 ()-]{6,20}$`,
-	"datetime":   `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$`,
-	"date":       `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`,
-	"time":       `^[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$`,
-	"cidr":       `^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$`,
-	"mac":        `^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$`,
-	"creditcard": `^[0-9]{12,19}$`,
-	"base64":     `^[A-Za-z0-9+/]+={0,2}$`,
-	"hexcolor":   `^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`,
-	"json":       `^.+$`,
+//   - Pure-expression conds (regex, json.Valid, ...): the emitter
+//     returns "if <cond> { return ... }" where <cond> is a single Go
+//     boolean expression true-when-invalid.
+//   - Init-statement conds (net.ParseIP, mail.ParseAddress, ...): the
+//     emitter uses Go's `if init; cond` form where the init declares
+//     a temp + the cond probes it; pointer fields wrap in a nil-guard
+//     to skip the init when the value is absent.
+//
+// imports lists the Go packages used by the check; they're appended to
+// the validate file's import block via [emitCtx.uses].
+type formatValidator struct {
+	label   string
+	imports []string
+	emit    func(val, msg string) string
+}
+
+// exprFormat builds a [formatValidator] from a single Go boolean
+// expression that's true-when-invalid. `condFmt` must contain exactly
+// one `%s` placeholder for the value access.
+func exprFormat(label string, imports []string, condFmt string) formatValidator {
+	return formatValidator{
+		label:   label,
+		imports: imports,
+		emit: func(val, msg string) string {
+			cond := fmt.Sprintf(condFmt, val)
+			return ifReturnf(cond, msg)
+		},
+	}
+}
+
+// stmtFormat builds a [formatValidator] from a Go init-statement +
+// condition pair. `condFmt` must contain `%s` for the value access
+// and produce text like `_, _err := f(%s); _err != nil` - the whole
+// thing slots into Go's `if init; cond` form.
+func stmtFormat(label string, imports []string, condFmt string) formatValidator {
+	return formatValidator{
+		label:   label,
+		imports: imports,
+		emit: func(val, msg string) string {
+			cond := fmt.Sprintf(condFmt, val)
+			return ifReturnf(cond, msg)
+		},
+	}
+}
+
+// regexFormat is shorthand for [exprFormat] with the standard
+// regex-MatchString pattern. Kept for the formats where regex is the
+// pragmatic choice (uuid, hostname, hexcolor, ...).
+func regexFormat(label, pattern string) formatValidator {
+	return exprFormat(label, []string{"regexp"},
+		"!regexp.MustCompile(`"+pattern+"`).MatchString(%s)")
+}
+
+// formatValidators is the canonical catalogue. For RFC compliance the
+// network/time/email checks delegate to the Go standard library; the
+// rest stay regex for shapes where stdlib has no direct equivalent
+// (UUID, hex color, hostname, phone, credit card length).
+var formatValidators = map[string]formatValidator{
+	// RFC 5322 email - net/mail.ParseAddress accepts the full
+	// address-spec grammar (display name + addr-spec); we feed it
+	// the raw string so common forms ("a@b.com", "a+tag@b.co.uk")
+	// pass while obviously-malformed ones are rejected.
+	"email": stmtFormat("email", []string{"net/mail"},
+		`_, _err := mail.ParseAddress(%s); _err != nil`),
+
+	// HTTP/HTTPS URLs - net/url.Parse + scheme guard. The bare
+	// `url.Parse` is permissive (it accepts `mailto:`, `data:`, ...);
+	// we additionally require http/https since the format name
+	// implies a web URL.
+	"url": stmtFormat("URL", []string{"net/url"},
+		`_u, _err := url.Parse(%s); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https")`),
+
+	// RFC 3986 generic URI - any non-empty scheme.
+	"uri": stmtFormat("URI", []string{"net/url"},
+		`_u, _err := url.Parse(%s); _err != nil || _u.Scheme == ""`),
+
+	// RFC 4122 UUID - format-only check (we don't enforce a
+	// specific version digit; consumers can layer @pattern on top
+	// when they want strict v4 etc.).
+	"uuid": regexFormat("UUID",
+		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`),
+
+	// RFC 1123 hostname - alphanumeric labels with optional hyphens
+	// in the middle, separated by dots.
+	"hostname": regexFormat("hostname",
+		`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`),
+
+	// RFC 791 IPv4 - net.ParseIP + To4 disambiguates from the
+	// IPv6 form (which net.ParseIP also accepts).
+	"ipv4": stmtFormat("IPv4", []string{"net"},
+		`_ip := net.ParseIP(%s); _ip == nil || _ip.To4() == nil`),
+
+	// RFC 4291 IPv6 - parse succeeds AND not a v4 address. Handles
+	// `::`, zone IDs, IPv4-mapped (`::ffff:1.2.3.4`), shortened
+	// forms - all the cases the previous regex missed.
+	"ipv6": stmtFormat("IPv6", []string{"net"},
+		`_ip := net.ParseIP(%s); _ip == nil || _ip.To4() != nil`),
+
+	// E.164-ish phone with human-friendly separators. Stricter
+	// users should add `@pattern("^\\+\\d{1,15}$")`.
+	"phone": regexFormat("phone",
+		`^\+?[0-9 ()-]{6,20}$`),
+
+	// RFC 3339 date-time. time.Parse handles fractional seconds,
+	// optional offset, and rejects malformed dates (Feb 30 etc.)
+	// that the regex previously let through.
+	"datetime": stmtFormat("RFC 3339 datetime", []string{"time"},
+		`_, _err := time.Parse(time.RFC3339, %s); _err != nil`),
+
+	// RFC 3339 full-date.
+	"date": stmtFormat("date", []string{"time"},
+		`_, _err := time.Parse(time.DateOnly, %s); _err != nil`),
+
+	// RFC 3339 partial-time. time.TimeOnly is `15:04:05`; offset
+	// is not part of partial-time, so we use the dedicated layout.
+	"time": stmtFormat("time", []string{"time"},
+		`_, _err := time.Parse(time.TimeOnly, %s); _err != nil`),
+
+	// RFC 4632 / RFC 4291 CIDR - net.ParseCIDR handles both v4
+	// and v6 with mask-range validation. The previous regex was
+	// IPv4-only and didn't validate octet bounds.
+	"cidr": stmtFormat("CIDR", []string{"net"},
+		`_, _, _err := net.ParseCIDR(%s); _err != nil`),
+
+	// MAC-48 / EUI-64 / 20-octet InfiniBand - net.ParseMAC accepts
+	// `:`-separated, `-`-separated, and dot-separated forms across
+	// all three lengths.
+	"mac": stmtFormat("MAC address", []string{"net"},
+		`_, _err := net.ParseMAC(%s); _err != nil`),
+
+	// Length-only credit card number sanity. Luhn checksum needs
+	// loop logic (not a single expression); pair with custom logic
+	// when stricter validation matters.
+	"creditcard": regexFormat("credit card number",
+		`^[0-9]{12,19}$`),
+
+	// RFC 4648 §4 standard base64 (with `+/=`). Use `base64url`
+	// for the URL-safe alphabet.
+	"base64": stmtFormat("base64", []string{"encoding/base64"},
+		`_, _err := base64.StdEncoding.DecodeString(%s); _err != nil`),
+
+	// RFC 4648 §5 URL-safe base64 (with `-_=`).
+	"base64url": stmtFormat("base64url", []string{"encoding/base64"},
+		`_, _err := base64.URLEncoding.DecodeString(%s); _err != nil`),
+
+	// CSS hex color (3 or 6 hex digits, optional `#` prefix).
+	"hexcolor": regexFormat("hex color",
+		`^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`),
+
+	// RFC 8259 JSON - json.Valid does the full structural parse so
+	// we catch bad escapes, unbalanced brackets, etc. that the
+	// previous "non-empty" regex passed through.
+	"json": exprFormat("JSON", []string{"encoding/json"},
+		`!json.Valid([]byte(%s))`),
 }
 
 // ----- numeric -----------------------------------------------------------

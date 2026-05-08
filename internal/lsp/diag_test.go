@@ -21,7 +21,7 @@ func TestBuildDiagnosticsClean(t *testing.T) {
 	src := `package design
 
 type User {
-	id   string @required
+	id   string
 	name string @length(1, 80)
 }
 `
@@ -38,7 +38,7 @@ func TestBuildDiagnosticsParseError(t *testing.T) {
 	src := `package design
 
 type User {
-	id string @required
+	id string
 `
 	got := newTestServer().buildDiagnostics(uri.New("file:///test.craftgo"), src)
 	if len(got) == 0 {

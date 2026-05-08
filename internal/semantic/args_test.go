@@ -46,7 +46,7 @@ type X {}`, CodeDecoratorArity)
 
 func TestArityZeroOK(t *testing.T) {
 	mustClean(t, `@deprecated
-type X { name string @required }`)
+type X { name string }`)
 }
 
 // ---------- Type ----------
@@ -86,10 +86,10 @@ func TestArgTypeNumberAcceptsBoth(t *testing.T) {
 func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
 	// `@default(value)` uses ArgAny - every literal kind accepted.
 	mustClean(t, `type X {
-		s string  @default("a")
-		i int     @default(0)
-		f float64 @default(0.5)
-		b bool    @default(true)
+		s string?  @default("a")
+		i int?     @default(0)
+		f float64? @default(0.5)
+		b bool?    @default(true)
 	}`)
 }
 

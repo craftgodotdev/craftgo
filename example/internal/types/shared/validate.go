@@ -19,6 +19,9 @@ func (v *AuditEntry) Validate() error {
 	if !regexp.MustCompile(`^[a-z]+$`).MatchString(v.Action) {
 		return fmt.Errorf("action: does not match pattern")
 	}
+	if v.Tags == nil {
+		return fmt.Errorf("tags: required")
+	}
 	if len(v.Tags) > 20 {
 		return fmt.Errorf("tags: maxItems 20")
 	}
@@ -30,6 +33,9 @@ func (v *AuditEntry) Validate() error {
 			}
 			seen[item] = struct{}{}
 		}
+	}
+	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.Uuid) {
+		return fmt.Errorf("uuid: not a valid UUID")
 	}
 	return nil
 }

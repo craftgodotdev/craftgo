@@ -64,7 +64,6 @@ func TestRegistrySpecLevels(t *testing.T) {
 	}{
 		{"doc", LvlFile | LvlField | LvlScalar | LvlEnumValue},
 		{"deprecated", LvlField | LvlMethod},
-		{"required", LvlField},
 		{"prefix", LvlService},
 		{"summary", LvlMethod},
 		{"requiresOneOf", LvlType},
@@ -115,12 +114,6 @@ func TestPlacementPrefixOnField(t *testing.T) {
 	expectMessage(t, d, "@prefix is not allowed on field")
 }
 
-func TestPlacementRequiredOnService(t *testing.T) {
-	d := expectDiag(t, `@required
-service S {}`, CodeDecoratorPlacement)
-	expectMessage(t, d, "@required is not allowed on service S")
-}
-
 func TestPlacementBindingOnMethod(t *testing.T) {
 	d := expectDiag(t, `service S {
 		@path
@@ -167,7 +160,7 @@ package design
 
 @doc("doc")
 type User {
-	id   string  @required @doc("user id")
+	id   string  @doc("user id")
 	name string  @length(1, 20) @pattern("^[a-z]+$")
 }
 
@@ -319,7 +312,7 @@ func TestCodeOnDuplicateRoute(t *testing.T) {
 }
 
 func TestCodeOnDuplicateDecorator(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @required @required }`))
+	_, diags := Analyze(parseFiles(t, `type X { name string @doc("a") @doc("b") }`))
 	d := findCode(diags, CodeDecoratorDuplicate)
 	if d == nil || len(d.Related) != 1 {
 		t.Fatalf("want decorator/duplicate with related; got %v", diags)
@@ -328,10 +321,6 @@ func TestCodeOnDuplicateDecorator(t *testing.T) {
 
 func TestCodeOnQualifiedRef(t *testing.T) {
 	expectDiag(t, `type X { user shared.User }`, CodeQualifiedRef)
-}
-
-func TestCodeOnRequiredOptional(t *testing.T) {
-	expectDiag(t, `type X { name string? @required }`, CodeRequiredOptional)
 }
 
 func TestCodeOnBindingConflict(t *testing.T) {
@@ -377,8 +366,8 @@ func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
 	// metadata via Go's case-sensitive identifier rule (DSL `code` →
 	// exported `Code`, distinct from the lowercase framework field).
 	mustClean(t, `error NotFound E {
-    code     string @default("E_404")
-    message  string @default("Gone")
+    code string? @default("E_404")
+    message string? @default("Gone")
 }`)
 	mustClean(t, `error TooManyRequests RateLimited {
     retryAfter int @min(1)
@@ -435,12 +424,6 @@ type User {
 }
 
 // ---------- @sensitive + validators ----------
-
-func TestSensitiveConflictsRequired(t *testing.T) {
-	d := expectError(t, `package design
-type User { secret string @sensitive @required }`, CodeDecoratorConflict)
-	expectMessage(t, d, "@required cannot be combined with @sensitive")
-}
 
 func TestSensitiveConflictsLength(t *testing.T) {
 	d := expectError(t, `package design
@@ -531,9 +514,9 @@ error ServiceUnavailable Maintenance {
 func TestSensitiveConflictsOnErrorField(t *testing.T) {
 	d := expectError(t, `package design
 error BadRequest Bad {
-	internal string @sensitive @required
+	internal string @sensitive @length(1, 10)
 }`, CodeDecoratorConflict)
-	expectMessage(t, d, "@required cannot be combined with @sensitive")
+	expectMessage(t, d, "@length cannot be combined with @sensitive")
 }
 
 // ---------- @default on enum field ----------
@@ -541,13 +524,13 @@ error BadRequest Bad {
 func TestDefaultEnumValueAccepted(t *testing.T) {
 	mustClean(t, `package design
 enum Status { Active  Inactive }
-type User { st Status @default(Active) }`)
+type User { st Status? @default(Active) }`)
 }
 
 func TestDefaultEnumUnknownValueRejected(t *testing.T) {
 	d := expectError(t, `package design
 enum Status { Active  Inactive }
-type User { st Status @default(Bogus) }`, CodeDecoratorArgValue)
+type User { st Status? @default(Bogus) }`, CodeDecoratorArgValue)
 	expectMessage(t, d, "Bogus", "Status", "Active", "Inactive")
 }
 
@@ -557,14 +540,14 @@ func TestDefaultEnumStringLiteralRejected(t *testing.T) {
 	// stable when codegen renames the underlying value.
 	d := expectError(t, `package design
 enum Status { Active = "active"  Inactive = "inactive" }
-type User { st Status @default("active") }`, CodeDecoratorArgValue)
+type User { st Status? @default("active") }`, CodeDecoratorArgValue)
 	expectMessage(t, d, "enum value by name")
 }
 
 func TestDefaultEnumIntLiteralRejected(t *testing.T) {
 	d := expectError(t, `package design
 enum Tier { Bronze = 1  Silver = 2 }
-type User { tr Tier @default(1) }`, CodeDecoratorArgValue)
+type User { tr Tier? @default(1) }`, CodeDecoratorArgValue)
 	expectMessage(t, d, "enum value by name")
 }
 
@@ -572,16 +555,10 @@ func TestDefaultStringFieldUnaffected(t *testing.T) {
 	// Non-enum fields skip the enum check; the regular kind rule
 	// (string accepts any string literal) applies.
 	mustClean(t, `package design
-type User { name string @default("alice") }`)
+type User { name string? @default("alice") }`)
 }
 
 // ---------- @default conflicts ----------
-
-func TestDefaultRequiredConflict(t *testing.T) {
-	d := expectError(t, `package design
-type User { name string @required @default("anon") }`, CodeDecoratorConflict)
-	expectMessage(t, d, "@default cannot be combined with @required")
-}
 
 func TestDefaultMapFieldConflict(t *testing.T) {
 	d := expectError(t, `package design
@@ -592,14 +569,14 @@ type User { meta map<string, string> @default({}) }`, CodeDecoratorConflict)
 func TestDefaultStructFieldConflict(t *testing.T) {
 	d := expectError(t, `package design
 type Address { city string }
-type User { addr Address @default("x") }`, CodeDecoratorConflict)
+type User { addr Address? @default("x") }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@default is not supported")
 }
 
 func TestDefaultStructArrayFieldConflict(t *testing.T) {
 	d := expectError(t, `package design
 type Address { city string }
-type User { addrs Address[] @default([]) }`, CodeDecoratorConflict)
+type User { addrs Address[]? @default([]) }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@default is not supported")
 }
 
@@ -615,43 +592,43 @@ func TestDefaultScalarFieldAccepted(t *testing.T) {
 	// supported by virtue of its underlying primitive.
 	mustClean(t, `package design
 scalar Email string
-type User { addr Email @default("alice@example.com") }`)
+type User { addr Email? @default("alice@example.com") }`)
 }
 
 // ---------- @default on array of primitives / enums ----------
 
 func TestDefaultEmptyArrayAccepted(t *testing.T) {
 	mustClean(t, `package design
-type User { tags string[] @default([]) }`)
+type User { tags string[]? @default([]) }`)
 }
 
 func TestDefaultStringArrayAccepted(t *testing.T) {
 	mustClean(t, `package design
-type User { tags string[] @default(["admin", "ops"]) }`)
+type User { tags string[]? @default(["admin", "ops"]) }`)
 }
 
 func TestDefaultEnumArrayAccepted(t *testing.T) {
 	mustClean(t, `package design
 enum Priority { Low  Normal  High }
-type Task { p Priority[] @default([Low, High]) }`)
+type Task { p Priority[]? @default([Low, High]) }`)
 }
 
 func TestDefaultArrayMixedKindRejected(t *testing.T) {
 	d := expectError(t, `package design
-type User { tags string[] @default(["a", 1]) }`, CodeDecoratorArgType)
+type User { tags string[]? @default(["a", 1]) }`, CodeDecoratorArgType)
 	expectMessage(t, d, "string")
 }
 
 func TestDefaultEnumArrayUnknownValueRejected(t *testing.T) {
 	d := expectError(t, `package design
 enum Priority { Low  Normal  High }
-type Task { p Priority[] @default([Low, Bogus]) }`, CodeDecoratorArgValue)
+type Task { p Priority[]? @default([Low, Bogus]) }`, CodeDecoratorArgValue)
 	expectMessage(t, d, "Bogus", "Priority", "Low", "Normal", "High")
 }
 
 func TestDefaultArrayLiteralOnPrimitiveRejected(t *testing.T) {
 	d := expectError(t, `package design
-type User { name string @default(["x"]) }`, CodeDecoratorArgType)
+type User { name string? @default(["x"]) }`, CodeDecoratorArgType)
 	expectMessage(t, d, "@default")
 }
 

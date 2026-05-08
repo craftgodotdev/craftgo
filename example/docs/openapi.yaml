@@ -72,11 +72,14 @@ components:
           type: string
       required:
       - userId
+      - contact
       type: object
     AddContactReqBody:
       properties:
         contact:
           $ref: '#/components/schemas/Contact'
+      required:
+      - contact
       type: object
     AddContactReqPath:
       properties:
@@ -175,10 +178,14 @@ components:
             Array-level decorators still apply.
           items: {}
           type: array
+        uuid:
+          type: string
       required:
       - entityType
       - entityId
       - action
+      - tags
+      - uuid
       type: object
     AuthRequiredErr:
       description: Unauthorized error response (HTTP 401).
@@ -223,6 +230,7 @@ components:
           type: string
       required:
       - id
+      - author
       - body
       - createdAt
       type: object
@@ -258,6 +266,7 @@ components:
         Address → Geocode → Precision → GpsFix at validate time.
       properties:
         currency:
+          default: USD
           type: string
         customer:
           $ref: '#/components/schemas/Customer'
@@ -275,6 +284,10 @@ components:
           items:
             type: string
           type: array
+      required:
+      - customer
+      - items
+      - tags
       type: object
     CreateOrderReqBody:
       properties:
@@ -296,6 +309,10 @@ components:
           items:
             type: string
           type: array
+      required:
+      - customer
+      - items
+      - tags
       type: object
     CreateOrderRespBody:
       $ref: '#/components/schemas/Order'
@@ -357,6 +374,8 @@ components:
       required:
       - projectId
       - title
+      - status
+      - comments
       type: object
     CreateTaskReqBody:
       properties:
@@ -375,6 +394,8 @@ components:
       required:
       - projectId
       - title
+      - status
+      - comments
       type: object
     CreateTaskRespBody:
       $ref: '#/components/schemas/Task'
@@ -485,7 +506,7 @@ components:
           description: |-
             @nullable on a numeric field forces a pointer in Go so the
             wire can carry an explicit `null` (different from "0 points
-            means a brand-new account"). Without @required, presence is
+            means a brand-new account"). Without, presence is
             not enforced — caller may send the key with null OR omit it.
           nullable: true
           type: integer
@@ -510,9 +531,12 @@ components:
         referrer:
           $ref: '#/components/schemas/UserRef'
       required:
+      - gridLabels
       - id
       - email
       - name
+      - primaryAddress
+      - loyaltyPoints
       type: object
     DefaultsShowcaseReq:
       description: |-
@@ -531,24 +555,32 @@ components:
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         flag:
+          default: true
           type: boolean
         maybe:
+          default: opt-default
           description: |-
             Optional primitive — `*string` in Go; pre-fill emits as a
             pointer wrap.
           type: string
         num:
+          default: 20
           type: integer
         preset:
+          default:
+          - standard
+          - expedited
           items:
             type: string
           type: array
         status:
           $ref: '#/components/schemas/OrderStatus'
         str:
+          default: anon
           description: Plain primitives.
           type: string
         tags:
+          default: []
           description: |-
             Array of primitive — empty preset is the most common form;
             non-empty pin is included to verify literal element rendering.
@@ -696,16 +728,25 @@ components:
           $ref: '#/components/schemas/OrderStatus'
       required:
       - status
+      - contact
+      - method
+      - limit
+      - idemKey
+      - lastFilter
       type: object
     FilterOrdersReqCookie:
       properties:
         lastFilter:
           $ref: '#/components/schemas/OrderStatus'
+      required:
+      - lastFilter
       type: object
     FilterOrdersReqHeader:
       properties:
         idemKey:
           $ref: '#/components/schemas/OrderID'
+      required:
+      - idemKey
       type: object
     FilterOrdersReqPath:
       properties:
@@ -722,6 +763,10 @@ components:
           $ref: '#/components/schemas/Cents'
         method:
           $ref: '#/components/schemas/PaymentMethod'
+      required:
+      - contact
+      - method
+      - limit
       type: object
     FilterOrdersRespBody:
       $ref: '#/components/schemas/OrderList'
@@ -879,6 +924,7 @@ components:
         discount:
           $ref: '#/components/schemas/Discount'
         note:
+          default: ""
           description: |-
             String with default. The handler's pre-fill logic sets the
             empty string before JSON decode so a missing `note` key
@@ -909,6 +955,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListOrdersReqQuery:
       properties:
@@ -916,6 +964,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListOrdersRespBody:
       $ref: '#/components/schemas/OrderList'
@@ -928,6 +978,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListProjectsReqQuery:
       properties:
@@ -935,6 +987,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListProjectsRespBody:
       $ref: '#/components/schemas/ProjectList'
@@ -944,6 +998,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListSuspendedUsersRespBody:
       $ref: '#/components/schemas/UserList'
@@ -964,6 +1020,8 @@ components:
           type: integer
         projectId:
           type: string
+      required:
+      - limit
       type: object
     ListTasksReqQuery:
       properties:
@@ -973,6 +1031,8 @@ components:
           type: integer
         projectId:
           type: string
+      required:
+      - limit
       type: object
     ListTasksRespBody:
       $ref: '#/components/schemas/TaskList'
@@ -990,6 +1050,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListUsersReqQuery:
       properties:
@@ -997,6 +1059,8 @@ components:
           type: string
         limit:
           type: integer
+      required:
+      - limit
       type: object
     ListUsersRespBody:
       $ref: '#/components/schemas/UserList'
@@ -1037,6 +1101,8 @@ components:
       properties:
         ok:
           type: boolean
+      required:
+      - ok
       type: object
     Order:
       deprecated: true
@@ -1121,8 +1187,12 @@ components:
           $ref: '#/components/schemas/Cents'
       required:
       - id
+      - customer
+      - items
+      - auditedBy
       - totalCents
       - status
+      - tags
       - createdAt
       type: object
     OrderID:
@@ -1140,6 +1210,8 @@ components:
           type: array
         total:
           type: integer
+      required:
+      - items
       type: object
     OrderStatus:
       enum:
@@ -1178,6 +1250,8 @@ components:
             serves as the "absent" sentinel); the upper bound is
             enforced here so a hostile client can't request 1M rows.
           type: integer
+      required:
+      - limit
       type: object
     Payment:
       properties:
@@ -1282,6 +1356,8 @@ components:
       required:
       - id
       - name
+      - owner
+      - members
       type: object
     ProjectList:
       description: |-
@@ -1297,6 +1373,8 @@ components:
           type: array
         total:
           type: integer
+      required:
+      - items
       type: object
     ProjectRef:
       description: |-
@@ -1392,6 +1470,9 @@ components:
       required:
       - id
       - title
+      - status
+      - project
+      - comments
       type: object
     TaskAssignmentConflictErr:
       description: Conflict error response (HTTP 409).
@@ -1414,6 +1495,8 @@ components:
           type: array
         total:
           type: integer
+      required:
+      - items
       type: object
     TaskNotFoundErr:
       description: NotFound error response (HTTP 404).
@@ -1471,7 +1554,7 @@ components:
       type: object
     User:
       description: |-
-        User is the full entity. Notice the @required + @length / @format
+        User is the full entity. Notice the + @length / @format
         combo on every meaningful field — the generated Validate() rejects
         bad input at the handler boundary so logic code can assume the
         invariant holds.
@@ -1510,6 +1593,8 @@ components:
           type: array
         total:
           type: integer
+      required:
+      - items
       type: object
     UserNotFoundErr:
       description: NotFound error response (HTTP 404).
@@ -1608,6 +1693,7 @@ paths:
           $ref: '#/components/schemas/ListOrdersReqQuery/properties/cursor'
       - in: query
         name: limit
+        required: true
         schema:
           $ref: '#/components/schemas/ListOrdersReqQuery/properties/limit'
       responses:
@@ -1699,22 +1785,27 @@ paths:
           $ref: '#/components/schemas/FilterOrdersReqPath/properties/status'
       - in: query
         name: contact
+        required: true
         schema:
           $ref: '#/components/schemas/FilterOrdersReqQuery/properties/contact'
       - in: query
         name: method
+        required: true
         schema:
           $ref: '#/components/schemas/FilterOrdersReqQuery/properties/method'
       - in: query
         name: limit
+        required: true
         schema:
           $ref: '#/components/schemas/FilterOrdersReqQuery/properties/limit'
       - in: header
         name: idemKey
+        required: true
         schema:
           $ref: '#/components/schemas/FilterOrdersReqHeader/properties/idemKey'
       - in: cookie
         name: lastFilter
+        required: true
         schema:
           $ref: '#/components/schemas/FilterOrdersReqCookie/properties/lastFilter'
       responses:
@@ -1763,6 +1854,7 @@ paths:
           $ref: '#/components/schemas/ListProjectsReqQuery/properties/cursor'
       - in: query
         name: limit
+        required: true
         schema:
           $ref: '#/components/schemas/ListProjectsReqQuery/properties/limit'
       responses:
@@ -1877,6 +1969,7 @@ paths:
           $ref: '#/components/schemas/ListTasksReqQuery/properties/cursor'
       - in: query
         name: limit
+        required: true
         schema:
           $ref: '#/components/schemas/ListTasksReqQuery/properties/limit'
       - in: query
@@ -2028,6 +2121,7 @@ paths:
           $ref: '#/components/schemas/ListUsersReqQuery/properties/cursor'
       - in: query
         name: limit
+        required: true
         schema:
           $ref: '#/components/schemas/ListUsersReqQuery/properties/limit'
       responses:
@@ -2362,6 +2456,7 @@ paths:
           $ref: '#/components/schemas/ListSuspendedUsersReqQuery/properties/cursor'
       - in: query
         name: limit
+        required: true
         schema:
           $ref: '#/components/schemas/ListSuspendedUsersReqQuery/properties/limit'
       responses:

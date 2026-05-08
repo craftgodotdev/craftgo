@@ -25,7 +25,7 @@ error NotFound TaskNotFound
 //   - the OpenAPI schema (`$ref: '#/components/schemas/UserRef'`);
 //   - the @errors(...) reference on whichever method declares it.
 error Conflict TaskAssignmentConflict {
-	code            string        @default("TASK_ASSIGNMENT_CONFLICT")
+	code            string?       @default("TASK_ASSIGNMENT_CONFLICT")
 	currentAssignee users.UserRef
 	// pendingStatus pins the task state at the moment the conflict
 	// fired so the client doesn't refetch just to learn whether the

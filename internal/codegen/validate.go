@@ -326,7 +326,7 @@ func lookupField(td *ast.TypeDecl, name string) *ast.Field {
 }
 
 // presenceExpr returns the Go expression that's true when the field
-// has a meaningful value (matching @required's definition):
+// has a meaningful value (matching's definition):
 //
 //   - optional `T?` (pointer) → `v.X != nil`
 //   - slice / map            → `len(v.X) > 0`

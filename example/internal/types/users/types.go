@@ -89,7 +89,7 @@ type UpdateUserReq struct {
 	Avatar *Avatar `json:"avatar,omitempty"`
 }
 
-// User is the full entity. Notice the @required + @length / @format
+// User is the full entity. Notice the + @length / @format
 // combo on every meaningful field — the generated Validate() rejects
 // bad input at the handler boundary so logic code can assume the
 // invariant holds.

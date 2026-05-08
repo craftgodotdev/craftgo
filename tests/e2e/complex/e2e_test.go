@@ -334,12 +334,14 @@ func TestComplexRateLimitReturns429(t *testing.T) {
 // them on the body fall back to the framework's `{code, message}`
 // envelope synthesised from `Code()` / `Error()`.
 func TestComplexUserDeclaredEnvelopeReachesWire(t *testing.T) {
+	rateCode := "RATE_LIMITED"
+	rateMsg := "Slow down, please"
 	rl := types.NewRateLimitedErr(types.RateLimitedBody{
-		Code:       "RATE_LIMITED",
-		Message:    "Slow down, please",
+		Code:       &rateCode,
+		Message:    &rateMsg,
 		RetryAfter: 7,
 	})
-	if rl.Code != "RATE_LIMITED" || rl.Message != "Slow down, please" || rl.RetryAfter != 7 {
+	if rl.Code == nil || *rl.Code != "RATE_LIMITED" || rl.Message == nil || *rl.Message != "Slow down, please" || rl.RetryAfter != 7 {
 		t.Errorf("body fields did not round-trip: %+v", rl)
 	}
 	// Bodyless errors leave the JSON wire empty; writeError fills the
@@ -702,37 +704,38 @@ func TestSecurityRoutesGoFileWrapsHandler(t *testing.T) {
 // generated business error so a future refactor cannot silently change
 // the body-struct field set.
 func TestComplexErrorTypesShape(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
 	dup := types.NewDuplicateEmailErr(types.DuplicateEmailBody{
-		Code:  "DUPLICATE_EMAIL",
+		Code:  strPtr("DUPLICATE_EMAIL"),
 		Email: "a@b.com",
 	})
-	if dup.HTTPStatus() != http.StatusConflict || dup.Code != "DUPLICATE_EMAIL" {
+	if dup.HTTPStatus() != http.StatusConflict || dup.Code == nil || *dup.Code != "DUPLICATE_EMAIL" {
 		t.Errorf("DuplicateEmail mis-shaped: %+v", dup)
 	}
 	val := types.NewProfileValidationFailedErr(types.ProfileValidationFailedBody{
-		Code:   "PROFILE_VALIDATION_FAILED",
+		Code:   strPtr("PROFILE_VALIDATION_FAILED"),
 		Fields: []string{"x"},
 	})
 	if val.HTTPStatus() != http.StatusUnprocessableEntity {
 		t.Errorf("ProfileValidationFailed status: %d", val.HTTPStatus())
 	}
 	rl := types.NewRateLimitedErr(types.RateLimitedBody{
-		Code:       "RATE_LIMITED",
-		Message:    "Slow down, please",
+		Code:       strPtr("RATE_LIMITED"),
+		Message:    strPtr("Slow down, please"),
 		RetryAfter: 7,
 	})
 	if rl.HTTPStatus() != http.StatusTooManyRequests || rl.RetryAfter != 7 {
 		t.Errorf("RateLimited mis-shaped: %+v", rl)
 	}
 	perm := types.NewInsufficientPermissionsErr(types.InsufficientPermissionsBody{
-		Code:         "INSUFFICIENT_PERMISSIONS",
+		Code:         strPtr("INSUFFICIENT_PERMISSIONS"),
 		RequiredRole: "admin",
 	})
 	if perm.HTTPStatus() != http.StatusForbidden || perm.RequiredRole != "admin" {
 		t.Errorf("InsufficientPermissions mis-shaped: %+v", perm)
 	}
 	stale := types.NewStaleVersionErr(types.StaleVersionBody{
-		Code:            "STALE_VERSION",
+		Code:            strPtr("STALE_VERSION"),
 		ExpectedVersion: 2,
 		ActualVersion:   5,
 	})

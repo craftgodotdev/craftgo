@@ -18,6 +18,8 @@ components:
           type: array
       required:
       - name
+      - tags
+      - meta
       type: object
     CreateUserReqBody:
       properties:
@@ -35,6 +37,8 @@ components:
           type: array
       required:
       - name
+      - tags
+      - meta
       type: object
     CreateUserRespBody:
       $ref: '#/components/schemas/User'
@@ -99,6 +103,8 @@ components:
       required:
       - id
       - name
+      - tags
+      - meta
       type: object
     UpdateUserReqBody:
       properties:
@@ -116,6 +122,8 @@ components:
           type: array
       required:
       - name
+      - tags
+      - meta
       type: object
     UpdateUserReqPath:
       properties:
@@ -143,6 +151,11 @@ components:
           items:
             type: string
           type: array
+      required:
+      - id
+      - name
+      - tags
+      - meta
       type: object
     UserNotFoundErr:
       description: NotFound error response (HTTP 404).

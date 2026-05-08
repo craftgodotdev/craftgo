@@ -218,25 +218,14 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 // step has no sensible code to generate. Surfacing it as an error
 // pushes the author to pick one.
 func (a *analyzer) checkNullableRedundant(f *ast.Field) {
-	var nullableDec, requiredDec *ast.Decorator
+	var nullableDec *ast.Decorator
 	for _, d := range f.Decorators {
 		if d == nil {
 			continue
 		}
-		switch d.Name {
-		case "nullable":
+		if d.Name == "nullable" {
 			nullableDec = d
-		case "required":
-			requiredDec = d
 		}
-	}
-	if nullableDec != nil && requiredDec != nil {
-		diag := a.diag(nullableDec.Pos, decoratorEnd(nullableDec),
-			lexer.SeverityError, CodeDecoratorRedundant,
-			"@nullable conflicts with @required on field %q - `@required` already excludes null",
-			f.Name)
-		diag.Related = related(requiredDec.Pos, "@required declared here")
-		return
 	}
 	if nullableDec != nil && f.Type != nil && f.Type.Optional {
 		a.diag(nullableDec.Pos, decoratorEnd(nullableDec),

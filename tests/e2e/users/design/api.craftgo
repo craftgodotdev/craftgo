@@ -4,16 +4,16 @@ package design
 
 // GetUserReq is the path-bound input for GET /users/{id}.
 type GetUserReq {
-    // id locates the user.
-    id  string  @required
+	// id locates the user.
+	id string
 }
 
 // CreateUserReq is the body for POST /users.
 type CreateUserReq {
-    name  string  @required @length(1, 50)
-    age   int?
-    tags  string[]
-    meta  map<string, string>
+	name string              @length(1, 50)
+	age  int?
+	tags string[]
+	meta map<string, string>
 }
 
 // UpdateUserReq is the request for PUT /users/{id}. The path-bound `id`
@@ -21,75 +21,75 @@ type CreateUserReq {
 // fields mirror CreateUserReq so a JSON body shaped for create works for
 // update too.
 type UpdateUserReq {
-    id    string  @path @required
-    name  string  @required @length(1, 50)
-    age   int?
-    tags  string[]
-    meta  map<string, string>
+	id   string              @path
+	name string              @length(1, 50)
+	age  int?
+	tags string[]
+	meta map<string, string>
 }
 
 // User is the wire-level shape of a stored user.
 type User {
-    id    string
-    name  string
-    age   int?
-    tags  string[]
-    meta  map<string, string>
+	id   string
+	name string
+	age  int?
+	tags string[]
+	meta map<string, string>
 }
 
 // Empty is the zero-payload response for endpoints that succeed without
 // returning data.
-type Empty {}
+type Empty {
+}
 
 // Role enumerates the access tiers a user can hold.
 enum Role {
-    Admin = "admin"
-    User  = "user"
-    Guest = "guest"
+	Admin = "admin"
+	User  = "user"
+	Guest = "guest"
 }
 
 // Priority is a numeric importance level used by clients for sorting.
 enum Priority {
-    Low  = 1
-    Med  = 2
-    High = 3
+	Low  = 1
+	Med  = 2
+	High = 3
 }
 
 // UserNotFound is raised when the addressed user cannot be located.
 error NotFound UserNotFound
 
 error BadRequest ValidationFailed {
-    fields  string[]
+	fields string[]
 }
 
 @prefix("/v1")
 service UserService {
-    // GetUser returns the user identified by req.ID.
-    get GetUser /users/{id} {
-        request   GetUserReq
-        response  User
-    }
+	// GetUser returns the user identified by req.ID.
+	get GetUser /users/{id} {
+		request  GetUserReq
+		response User
+	}
 
-    // CreateUser stores a new user and returns the freshly created entity.
-    post CreateUser /users {
-        request   CreateUserReq
-        response  User
-    }
+	// CreateUser stores a new user and returns the freshly created entity.
+	post CreateUser /users {
+		request  CreateUserReq
+		response User
+	}
 
-    // DeleteUser clears the in-memory store. Path id is currently ignored.
-    delete DeleteUser /users/{id} {
-        response  Empty
-    }
+	// DeleteUser clears the in-memory store. Path id is currently ignored.
+	delete DeleteUser /users/{id} {
+		response Empty
+	}
 
-    // Ping is a liveness-style endpoint with no body.
-    get Ping {
-    }
+	// Ping is a liveness-style endpoint with no body.
+	get Ping {}
 }
 
 extend service UserService {
-    // UpdateUser overwrites an existing user.
-    put UpdateUser /users/{id} {
-        request   UpdateUserReq
-        response  User
-    }
+	// UpdateUser overwrites an existing user.
+	put UpdateUser /users/{id} {
+		request  UpdateUserReq
+		response User
+	}
 }

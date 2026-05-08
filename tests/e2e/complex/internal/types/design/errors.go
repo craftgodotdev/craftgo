@@ -9,8 +9,8 @@ const ErrCodeDuplicateEmail = "DUPLICATE_EMAIL"
 // User code instantiates this struct and hands it to NewDuplicateEmailErr; the
 // framework wraps it with the type-bound code / message metadata.
 type DuplicateEmailBody struct {
-	Code  string `json:"code"`
-	Email string `json:"email"`
+	Code  *string `json:"code"`
+	Email string  `json:"email"`
 }
 
 // DuplicateEmailErr is the typed Conflict error generated for `DuplicateEmail`.
@@ -49,8 +49,8 @@ const ErrCodeInsufficientPermissions = "INSUFFICIENT_PERMISSIONS"
 // User code instantiates this struct and hands it to NewInsufficientPermissionsErr; the
 // framework wraps it with the type-bound code / message metadata.
 type InsufficientPermissionsBody struct {
-	Code         string `json:"code"`
-	RequiredRole string `json:"required_role"`
+	Code         *string `json:"code"`
+	RequiredRole string  `json:"required_role"`
 }
 
 // InsufficientPermissionsErr is the typed Forbidden error generated for `InsufficientPermissions`.
@@ -119,7 +119,7 @@ const ErrCodeProfileValidationFailed = "PROFILE_VALIDATION_FAILED"
 // User code instantiates this struct and hands it to NewProfileValidationFailedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type ProfileValidationFailedBody struct {
-	Code   string   `json:"code"`
+	Code   *string  `json:"code"`
 	Fields []string `json:"fields"`
 }
 
@@ -159,9 +159,9 @@ const ErrCodeRateLimited = "RATE_LIMITED"
 // User code instantiates this struct and hands it to NewRateLimitedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type RateLimitedBody struct {
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-	RetryAfter int    `json:"retry_after"`
+	Code       *string `json:"code"`
+	Message    *string `json:"message"`
+	RetryAfter int     `json:"retry_after"`
 }
 
 // RateLimitedErr is the typed TooManyRequests error generated for `RateLimited`.
@@ -200,9 +200,9 @@ const ErrCodeStaleVersion = "STALE_VERSION"
 // User code instantiates this struct and hands it to NewStaleVersionErr; the
 // framework wraps it with the type-bound code / message metadata.
 type StaleVersionBody struct {
-	Code            string `json:"code"`
-	ExpectedVersion int    `json:"expected_version"`
-	ActualVersion   int    `json:"actual_version"`
+	Code            *string `json:"code"`
+	ExpectedVersion int     `json:"expected_version"`
+	ActualVersion   int     `json:"actual_version"`
 }
 
 // StaleVersionErr is the typed PreconditionFailed error generated for `StaleVersion`.

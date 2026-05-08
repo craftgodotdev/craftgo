@@ -9,7 +9,7 @@ const ErrCodeAuthRequiredErr = "AUTH_REQUIRED_ERR"
 // User code instantiates this struct and hands it to NewAuthRequiredErr; the
 // framework wraps it with the type-bound code / message metadata.
 type AuthRequiredErrBody struct {
-	Code string `json:"code"`
+	Code *string `json:"code"`
 }
 
 // AuthRequiredErr is the typed Unauthorized error generated for `AuthRequiredErr`.
@@ -48,8 +48,8 @@ const ErrCodeMaintenanceWindow = "MAINTENANCE_WINDOW"
 // User code instantiates this struct and hands it to NewMaintenanceWindowErr; the
 // framework wraps it with the type-bound code / message metadata.
 type MaintenanceWindowBody struct {
-	Code           string                  `json:"code"`
-	Message        string                  `json:"message"`
+	Code           *string                 `json:"code"`
+	Message        *string                 `json:"message"`
 	Reason         MaintenanceWindowReason `json:"reason"`
 	EstimatedEndAt string                  `json:"estimatedEndAt"`
 }

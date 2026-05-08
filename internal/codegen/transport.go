@@ -394,12 +394,18 @@ func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, pkgAlias
 // arrayElemTypeRef returns the element TypeRef of an array. Drops
 // the Array marker and decrements ArrayDepth so nested-array
 // elements (rare but legal) collapse one level at a time.
+//
+// The parent's Optional flag is cleared on the element clone: `T[]?`
+// means "the slice may be nil" not "every element is *T". Without
+// this clearance, defaultLiteral / OpenAPI emission would render
+// `[]*T{...}` for `T[]? @default(...)`, which produces invalid Go.
 func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
 	if t == nil {
 		return nil
 	}
 	clone := *t
 	clone.Array = false
+	clone.Optional = false
 	if clone.ArrayDepth > 0 {
 		clone.ArrayDepth--
 	}

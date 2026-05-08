@@ -43,7 +43,7 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 func TestGenerateOpenAPISensitiveFieldOmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Req {
-    id        string  @required
+    id        string 
     internal  string  @sensitive
 }
 service S {
@@ -62,7 +62,7 @@ func TestGenerateOpenAPIEnumSchemasEmitted(t *testing.T) {
 enum Priority { Low  Normal  High }
 enum Tier { Bronze = 1  Silver = 2 }
 type Req {
-    pri Priority @required
+    pri Priority
     tir Tier
 }
 service S {
@@ -78,7 +78,7 @@ service S {
 func TestGenerateOpenAPIScalarSchemasEmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Email string @format("email")
-type Req { addr Email @required }
+type Req { addr Email }
 service S { post Send /m { request Req } }`)
 	expectGolden(t, "openapi-scalar-schemas.yaml", body)
 }
@@ -477,7 +477,7 @@ type Bag {
     items   string[]
     meta    map<string, string>
     age     int?
-    name    string  @required
+    name    string 
 }`)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {

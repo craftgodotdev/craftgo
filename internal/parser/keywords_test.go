@@ -144,7 +144,7 @@ package design
 @doc("type")
 @deprecated
 type T {
-    @required
+   
     @length(1, 100)
     @pattern("^[a-z]+$")
     @format("email")

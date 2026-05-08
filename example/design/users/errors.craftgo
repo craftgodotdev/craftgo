@@ -137,7 +137,7 @@ error PreconditionFailed StaleVersion {
 // has a sensible default so middleware that fires the error
 // without populating fields still produces a legible response.
 error TooManyRequests RateLimited {
-	message     string  @default("Slow down, please")
+	message     string? @default("Slow down, please")
 	retry_after int     @min(1) @max(86400)
 	// bucket identifies which limiter dropped the request (per-IP,
 	// per-token, per-route). Helps clients render targeted help.
@@ -200,7 +200,7 @@ enum AccountSuspensionReason {
 // is locked. The body field is the suspension reason — a typed enum
 // so clients can switch on it rather than string-matching.
 error Forbidden AccountActionDenied {
-	code   string                  @default("ACCOUNT_ACTION_DENIED")
+	code   string?                 @default("ACCOUNT_ACTION_DENIED")
 	reason AccountSuspensionReason
 }
 
@@ -210,6 +210,6 @@ error Forbidden AccountActionDenied {
 // receive a pre-shaped object (id + name) instead of two parallel
 // scalar fields, and the OpenAPI schema $refs the shared definition.
 error Conflict OwnershipConflict {
-	code  string  @default("OWNERSHIP_CONFLICT")
+	code  string? @default("OWNERSHIP_CONFLICT")
 	owner UserRef
 }

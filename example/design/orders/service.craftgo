@@ -63,7 +63,7 @@ service OrderService {
 // int-backed enums (Priority); the codegen parses the wire string to
 // the underlying primitive and casts up to the alias.
 type FilterOrdersReq {
-	status     OrderStatus   @path @required
+	status     OrderStatus   @path
 	contact    Email         @query
 	method     PaymentMethod @query
 	limit      Cents         @query
@@ -77,37 +77,32 @@ type FilterOrdersReq {
 // pre-fill value.
 type DefaultsShowcaseReq {
 	// Plain primitives.
-	str  string  @default("anon")
-	num  int     @default(20)
-	flag bool    @default(true)
-
+	str            string?          @default("anon")
+	num            int?             @default(20)
+	flag           bool?            @default(true)
 	// Optional primitive — `*string` in Go; pre-fill emits as a
 	// pointer wrap.
-	maybe string? @default("opt-default")
-
+	maybe          string?          @default("opt-default")
 	// Scalar wrapping a primitive (CurrencyCode = string). The
 	// emitted field type is the scalar alias; default literal is a
 	// plain string accepted via the alias.
-	currency CurrencyCode @default("USD")
-
+	currency       CurrencyCode?    @default("USD")
 	// Enum-valued field. Default uses the bare ident and renders as
 	// the matching `<Enum><Value>` Go constant.
-	status OrderStatus @default(Pending)
-
+	status         OrderStatus?     @default(Pending)
 	// Array of primitive — empty preset is the most common form;
 	// non-empty pin is included to verify literal element rendering.
-	tags    string[] @default([])
-	preset  string[] @default(["standard", "expedited"])
-
+	tags           string[]?        @default([])
+	preset         string[]?        @default(["standard", "expedited"])
 	// Array of enum — values are bare idents resolved to their Go
 	// const counterparts.
-	allowedMethods PaymentMethod[] @default([Card, Bank])
+	allowedMethods PaymentMethod[]? @default([Card, Bank])
 }
 
 // GetOrderReq mirrors the GetUserReq / GetProjectReq pattern: a
 // single path-bound id reused by GetOrder + DeleteOrder.
 type GetOrderReq {
-	id string @path @required @length(1, 64)
+	id string @path @length(1, 64)
 }
 
 // ListOrdersReq mirrors shared.Pagination's field set locally
@@ -125,7 +120,7 @@ type CreateOrderReq {
 	customer Customer
 	items    LineItem[]           @minItems(1) @maxItems(100)
 	notes    string?              @maxLength(2000)
-	currency string               @default("USD") @length(3, 3) @pattern("^[A-Z]{3}$")
+	currency string?              @default("USD") @length(3, 3) @pattern("^[A-Z]{3}$")
 	metadata map<string, string>?
 	tags     string[]             @minItems(1) @maxItems(10) @uniqueItems
 }

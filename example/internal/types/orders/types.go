@@ -58,7 +58,7 @@ type CreateOrderReq struct {
 	Customer Customer          `json:"customer"`
 	Items    []LineItem        `json:"items"`
 	Notes    *string           `json:"notes,omitempty"`
-	Currency string            `json:"currency"`
+	Currency *string           `json:"currency,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 	Tags     []string          `json:"tags"`
 }
@@ -120,7 +120,7 @@ type Customer struct {
 	Referrer *users.UserRef `json:"referrer,omitempty"`
 	// @nullable on a numeric field forces a pointer in Go so the
 	// wire can carry an explicit `null` (different from "0 points
-	// means a brand-new account"). Without @required, presence is
+	// means a brand-new account"). Without, presence is
 	// not enforced — caller may send the key with null OR omit it.
 	LoyaltyPoints *int `json:"loyaltyPoints"`
 	// Optional FILE upload. Demonstrates the file-validator pair
@@ -135,26 +135,26 @@ type Customer struct {
 // pre-fill value.
 type DefaultsShowcaseReq struct {
 	// Plain primitives.
-	Str  string `json:"str"`
-	Num  int    `json:"num"`
-	Flag bool   `json:"flag"`
+	Str  *string `json:"str,omitempty"`
+	Num  *int    `json:"num,omitempty"`
+	Flag *bool   `json:"flag,omitempty"`
 	// Optional primitive — `*string` in Go; pre-fill emits as a
 	// pointer wrap.
 	Maybe *string `json:"maybe,omitempty"`
 	// Scalar wrapping a primitive (CurrencyCode = string). The
 	// emitted field type is the scalar alias; default literal is a
 	// plain string accepted via the alias.
-	Currency CurrencyCode `json:"currency"`
+	Currency *CurrencyCode `json:"currency,omitempty"`
 	// Enum-valued field. Default uses the bare ident and renders as
 	// the matching `<Enum><Value>` Go constant.
-	Status OrderStatus `json:"status"`
+	Status *OrderStatus `json:"status,omitempty"`
 	// Array of primitive — empty preset is the most common form;
 	// non-empty pin is included to verify literal element rendering.
-	Tags   []string `json:"tags"`
-	Preset []string `json:"preset"`
+	Tags   []string `json:"tags,omitempty"`
+	Preset []string `json:"preset,omitempty"`
 	// Array of enum — values are bare idents resolved to their Go
 	// const counterparts.
-	AllowedMethods []PaymentMethod `json:"allowedMethods"`
+	AllowedMethods []PaymentMethod `json:"allowedMethods,omitempty"`
 }
 
 // Discount is a Level 3 (under Order.items[].discount) optional
@@ -203,7 +203,7 @@ type FilterOrdersReq struct {
 // — concise alternative to stacking @min + @max.
 type Geocode struct {
 	// SCALAR REFs Latitude / Longitude — bundle the geographic
-	// bounds @min/@max so the field-level chain is just @required.
+	// bounds @min/@max so the field-level chain is just.
 	Lat        Latitude  `json:"lat"`
 	Lng        Longitude `json:"lng"`
 	Altitude   *float64  `json:"altitude,omitempty"`
@@ -245,7 +245,7 @@ type LineItem struct {
 	// empty string before JSON decode so a missing `note` key
 	// surfaces as `""` rather than the Go zero value (which IS
 	// "", but the default gives the user a place to override).
-	Note string `json:"note"`
+	Note *string `json:"note,omitempty"`
 }
 
 // ListOrdersReq mirrors shared.Pagination's field set locally
@@ -272,7 +272,7 @@ type ListOrdersReq struct {
 // Deprecated: rename to PurchaseOrder in v2 — kept for backward compat
 type Order struct {
 	// SCALAR REF: `id OrderID` carries the scalar's @length +
-	// @pattern automatically; the field only needs @required.
+	// @pattern automatically; the field only needs.
 	ID OrderID `json:"id"`
 	// Required nested struct (Level 2). Customer carries its own
 	// deep validators; v1 doesn't auto-cascade so logic code calls
@@ -311,7 +311,7 @@ type Order struct {
 	// SCALAR REF + @default. CurrencyCode contributes
 	// @length(3,3) + @pattern; the field-level chain only needs
 	// the default value.
-	Currency CurrencyCode `json:"currency"`
+	Currency *CurrencyCode `json:"currency,omitempty"`
 	// ARRAY OF SCALAR — `tags Tag[]` inherits the Tag scalar's
 	// per-element validators (@minLength, @maxLength, @pattern)
 	// automatically. The field-level chain only carries the
@@ -346,7 +346,7 @@ type Payment struct {
 	CardLast4 *string `json:"cardLast4"`
 	// CROSS-PACKAGE SCALAR: shared.NonEmptyID inherits
 	// @minLength(1) + @maxLength(128) + @pattern; the field-level
-	// chain reduces to @required.
+	// chain reduces to.
 	ReferenceID shared.NonEmptyID `json:"referenceId"`
 	AuthCents   int               `json:"authCents"`
 	// CROSS-PACKAGE SCALAR: shared.SafeURL on an optional field —

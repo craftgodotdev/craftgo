@@ -9,6 +9,7 @@ components:
           $ref: '#/components/schemas/Tier'
       required:
       - pri
+      - tir
       type: object
     Priority:
       enum:
@@ -24,6 +25,7 @@ components:
           $ref: '#/components/schemas/Tier'
       required:
       - pri
+      - tir
       type: object
     Tier:
       enum:

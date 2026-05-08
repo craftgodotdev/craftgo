@@ -17,8 +17,8 @@ const testDSL = `package design
 
 // Greeter is a sample type used by the LSP test fixtures.
 type Greeter {
-	id   string @required @length(1, 80)
-	name string @required
+	id   string @doc("user id") @length(1, 80)
+	name string
 }
 
 enum Status {
@@ -36,21 +36,19 @@ service GreeterService {
 }
 `
 
-// TestHoverDecorator confirms hover on a `@required` decorator returns
+// TestHoverDecorator confirms hover on a `@length` decorator returns
 // markdown referencing both the registry doc and the legal levels.
 func TestHoverDecorator(t *testing.T) {
 	view := parseSnapshot("test.craftgo", testDSL)
-	// Position the cursor on the `@required` of Greeter.id (line index 4
-	// in 0-indexed LSP coords; the decorator starts after `id   string `).
-	pos := findToken(t, view, "required")
+	pos := findToken(t, view, "length")
 	idx, tok := view.tokenAt(pos.Line, pos.Character)
 	hov := hoverForToken(view, idx, tok)
 	if hov == nil {
-		t.Fatal("expected hover for @required")
+		t.Fatal("expected hover for")
 	}
 	v := hov.Contents
-	if !strings.Contains(v.Value, "@required") {
-		t.Errorf("hover should mention @required: %q", v.Value)
+	if !strings.Contains(v.Value, "@length") {
+		t.Errorf("hover should mention: %q", v.Value)
 	}
 	if !strings.Contains(v.Value, "field") {
 		t.Errorf("hover should mention legal level 'field': %q", v.Value)
@@ -115,12 +113,12 @@ func TestCompletionDefaultOnEnumField(t *testing.T) {
 	src := `package x
 enum Status { Active  Inactive  Pending }
 type T {
-	st Status @default()
+	st Status? @default()
 }
 `
 	view := parseSnapshot("t.craftgo", src)
 	// Cursor inside `@default(|)` - column lands between the parens.
-	pos := protocol.Position{Line: 3, Character: 19}
+	pos := protocol.Position{Line: 3, Character: 20}
 	srv := &Server{docs: map[uri.URI]*document{}}
 	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
 	if len(items) != 3 {
@@ -243,21 +241,21 @@ type T {
 	if len(items) == 0 {
 		t.Fatal("expected completion items after @ at field site")
 	}
-	hasRequired := false
+	hasLength := false
 	hasTitle := false
 	hasSensitive := false
 	for _, it := range items {
 		switch it.Label {
-		case "required":
-			hasRequired = true
+		case "length":
+			hasLength = true
 		case "title":
 			hasTitle = true
 		case "sensitive":
 			hasSensitive = true
 		}
 	}
-	if !hasRequired {
-		t.Error("expected @required in field-level completions")
+	if !hasLength {
+		t.Error("expected @length in field-level completions")
 	}
 	if !hasSensitive {
 		t.Error("expected @sensitive in field-level completions")

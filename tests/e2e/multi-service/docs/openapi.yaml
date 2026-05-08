@@ -10,6 +10,9 @@ components:
           type: integer
         sku:
           type: string
+      required:
+      - sku
+      - price
       type: object
     LatestRespBody:
       $ref: '#/components/schemas/Order'
@@ -20,6 +23,9 @@ components:
           type: string
         total:
           type: integer
+      required:
+      - id
+      - total
       type: object
     PingRespBody:
       $ref: '#/components/schemas/Pong'
@@ -28,6 +34,8 @@ components:
       properties:
         name:
           type: string
+      required:
+      - name
       type: object
 info:
   title: Multi-Service E2E

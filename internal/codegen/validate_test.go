@@ -35,14 +35,14 @@ func TestValidateRequired(t *testing.T) {
 	// `string` the JSON decoder already rejects wire `null`, so the
 	// validator emits NO check on this field.
 	src := runValidateGen(t, `package design
-type X { name string @required }`)
+type X { name string }`)
 	if strings.Contains(src, `v.Name == ""`) {
 		t.Errorf("@required must not emit an empty-string check on plain string:\n%s", src)
 	}
 	// On `any` the decoder accepts the literal 4-byte `null` slice
 	// silently, so the validator does need to fire.
 	srcAny := runValidateGen(t, `package design
-type X { data any @required }`)
+type X { data any }`)
 	if !strings.Contains(srcAny, `v.Data == nil`) {
 		t.Errorf("@required on any should reject nil interface:\n%s", srcAny)
 	}
@@ -142,21 +142,33 @@ type X { code string @pattern("^[A-Z]+$") }`)
 }
 
 func TestValidateFormatExpandedPatterns(t *testing.T) {
-	// Each new format name should produce a regex check. We pick one
-	// representative each so the test stays compact while still covering
-	// every newly added catalogue entry.
-	formats := []string{
-		"ipv6", "datetime", "date", "time", "cidr", "mac",
-		"creditcard", "base64", "hexcolor", "json",
+	// Each format name maps to its rendered error label. Some labels
+	// match the @format() spelling (lowercase), others are formatted
+	// for readability ("IPv6", "RFC 3339 datetime", "MAC address").
+	cases := []struct {
+		format string
+		label  string
+	}{
+		{"ipv6", "IPv6"},
+		{"datetime", "RFC 3339 datetime"},
+		{"date", "date"},
+		{"time", "time"},
+		{"cidr", "CIDR"},
+		{"mac", "MAC address"},
+		{"creditcard", "credit card number"},
+		{"base64", "base64"},
+		{"hexcolor", "hex color"},
+		{"json", "JSON"},
 	}
 	var fields []string
-	for i, fmt := range formats {
-		fields = append(fields, "f"+itoaSimple(i)+" string @format("+fmt+")")
+	for i, c := range cases {
+		fields = append(fields, "f"+itoaSimple(i)+" string @format("+c.format+")")
 	}
 	src := runValidateGen(t, "package design\ntype X { "+strings.Join(fields, "  ")+" }")
-	for _, fmt := range formats {
-		if !strings.Contains(src, "not a valid "+fmt) {
-			t.Errorf("missing format %q in generated validators:\n%s", fmt, src)
+	for _, c := range cases {
+		want := "not a valid " + c.label
+		if !strings.Contains(src, want) {
+			t.Errorf("missing format %q (label %q) in generated validators:\n%s", c.format, c.label, src)
 		}
 	}
 }
@@ -210,20 +222,20 @@ type User { status Status }`)
 }
 
 func TestValidateEnumRequiredEnumAware(t *testing.T) {
-	// String-base enum: @required compares against `""`, not `0`.
+	// String-base enum: compares against `""`, not `0`.
 	src := runValidateGen(t, `package design
 enum Color { Red  Green  Blue }
-type Paint { c Color @required }`)
+type Paint { c Color }`)
 	if !strings.Contains(src, `v.C == ""`) {
 		t.Errorf("expected string-empty check on string-base enum:\n%s", src)
 	}
 }
 
 func TestValidateEnumIntRequiredZero(t *testing.T) {
-	// Int-valued enum: @required compares against `0`.
+	// Int-valued enum: compares against `0`.
 	src := runValidateGen(t, `package design
 enum Tier { Bronze = 1  Silver = 2 }
-type Account { tier Tier @required }`)
+type Account { tier Tier }`)
 	if !strings.Contains(src, "v.Tier == 0") {
 		t.Errorf("expected int-zero check on int-base enum:\n%s", src)
 	}
@@ -254,14 +266,14 @@ type T { p Pri? }`)
 }
 
 func TestValidateEnumMultipleDecorators(t *testing.T) {
-	// @required + @doc + @deprecated on the same enum field. Only
-	// @required produces a check; @doc and @deprecated are metadata.
+	// + @doc + @deprecated on the same enum field. Only
+	// produces a check; @doc and @deprecated are metadata.
 	// The auto enum-value check still appears alongside.
 	src := runValidateGen(t, `package design
 enum Sev { Low  High }
-type Alert { level Sev @required @doc("severity") @deprecated }`)
+type Alert { level Sev @doc("severity") @deprecated }`)
 	if !strings.Contains(src, `v.Level == ""`) {
-		t.Errorf("expected @required check:\n%s", src)
+		t.Errorf("expected check:\n%s", src)
 	}
 	if !strings.Contains(src, "switch v.Level {") {
 		t.Errorf("expected auto enum-value switch:\n%s", src)
@@ -313,7 +325,7 @@ func TestValidateGenericInstanceCallsValidate(t *testing.T) {
 	// must call .Validate() on it directly. The generic decl now has a
 	// Validate() method so the call type-checks at the concrete site.
 	src := runValidateGen(t, `package design
-type Book { id string @required }
+type Book { id string }
 type Page<T> { items T[] }
 type BookList { p Page<Book> }`)
 	if !strings.Contains(src, "v.P.Validate()") {

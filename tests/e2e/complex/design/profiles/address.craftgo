@@ -8,9 +8,9 @@ import "geo"
 // Address is a postal address. Country is the ISO 3166-1 alpha-2 code so
 // the length validator pins it to exactly two characters.
 type Address {
-    street   string   @required @length(1, 200)
-    city     string   @required @length(1, 100)
-    country  string   @required @length(2, 2)
-    postal   string?
-    coords   Coords?
+	street  string  @length(1, 200)
+	city    string  @length(1, 100)
+	country string  @length(2, 2)
+	postal  string?
+	coords  Coords?
 }

@@ -50,7 +50,7 @@ service ProjectService {
 // GetProjectReq is shared between GetProject + DeleteProject — same
 // "lookup by id" handle, two different write/read operations.
 type GetProjectReq {
-	id string @path @required @length(1, 64)
+	id string @path @length(1, 64)
 }
 
 // ListProjectsReq mirrors shared.Pagination — see the
@@ -65,9 +65,9 @@ type ListProjectsReq {
 // asks the client for an id; logic resolves it to a User and
 // builds the ProjectRef-shaped owner field of the response.
 type CreateProjectReq {
-	name        string  @required @length(1, 200)
+	name        string  @length(1, 200)
 	description string? @maxLength(2000)
-	ownerId     string  @required @length(1, 64)
+	ownerId     string  @length(1, 64)
 }
 
 // AddMemberReq demonstrates MULTI-SEGMENT path binding paired with
@@ -75,6 +75,6 @@ type CreateProjectReq {
 // body — auto-bind-by-name routes each segment to its matching
 // field without explicit `@path` decorators.
 type AddMemberReq {
-	projectId string @path @required @length(1, 64)
-	userId    string @required @length(1, 64)
+	projectId string @path @length(1, 64)
+	userId    string @length(1, 64)
 }

@@ -101,12 +101,6 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	if dec == nil {
 		return
 	}
-	if hasRequiredDecorator(f.Decorators) {
-		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError,
-			CodeDecoratorConflict,
-			"@default cannot be combined with @required: required fields fail validation before the default applies")
-		return
-	}
 	if !defaultTypeSupported(f.Type, a.pkg) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError,
 			CodeDecoratorConflict,
@@ -264,17 +258,6 @@ func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
 	clone := *t
 	clone.Array = false
 	return &clone
-}
-
-// hasRequiredDecorator reports whether decs carries the `@required`
-// marker. Used by the @default conflict check.
-func hasRequiredDecorator(decs []*ast.Decorator) bool {
-	for _, d := range decs {
-		if d != nil && d.Name == "required" {
-			return true
-		}
-	}
-	return false
 }
 
 // enumValueList renders an enum's value names as a comma-separated

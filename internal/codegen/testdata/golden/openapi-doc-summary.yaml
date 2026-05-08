@@ -9,6 +9,9 @@ components:
           type: string
         title:
           type: string
+      required:
+      - id
+      - title
       type: object
     GetBookRespBody:
       $ref: '#/components/schemas/Book'

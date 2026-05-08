@@ -407,8 +407,8 @@ func TestGenerateErrorsUserDeclaresCodeAndMessage(t *testing.T) {
 	// framework's unexported metadata fields without conflict.
 	pkg := analyze(t, `package design
 error Internal Boom {
-    code     string @default("BOOM_500")
-    message  string @default("kaboom")
+    code string? @default("BOOM_500")
+    message string? @default("kaboom")
 }`)
 	dir := t.TempDir()
 	if err := GenerateErrors(pkg, dir); err != nil {
@@ -421,11 +421,11 @@ error Internal Boom {
 
 	// User wire fields surface on the body struct as exported Go names
 	// with the DSL JSON tag.
-	if !strings.Contains(norm, `Code string `+"`json:\"code\"`") {
-		t.Errorf("user `code` field should appear on body struct as exported Code:\n%s", src)
+	if !strings.Contains(norm, `Code *string `+"`json:\"code\"`") {
+		t.Errorf("user `code?` field should appear on body struct as *Code:\n%s", src)
 	}
-	if !strings.Contains(norm, `Message string `+"`json:\"message\"`") {
-		t.Errorf("user `message` field should appear on body struct as exported Message:\n%s", src)
+	if !strings.Contains(norm, `Message *string `+"`json:\"message\"`") {
+		t.Errorf("user `message?` field should appear on body struct as *Message:\n%s", src)
 	}
 	// Internal metadata stays present and unexported on the err type.
 	if !strings.Contains(norm, "code string message string") {

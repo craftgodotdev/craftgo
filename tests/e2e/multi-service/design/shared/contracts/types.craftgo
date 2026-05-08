@@ -5,17 +5,17 @@ package design
 
 // Pong is the simple response for the ping endpoints.
 type Pong {
-    name  string
+	name string
 }
 
 // Order represents a customer order in the orders service.
 type Order {
-    id     string
-    total  int
+	id    string
+	total int
 }
 
 // Item represents a catalog item in the catalog service.
 type Item {
-    sku    string
-    price  int  @min(0)
+	sku   string
+	price int    @min(0)
 }

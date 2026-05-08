@@ -9,8 +9,8 @@ error NotFound ProfileNotFound
 // client can show a precise message. `code` is declared explicitly so it
 // surfaces on the wire (the framework's internal `code` is unexported).
 error Conflict DuplicateEmail {
-    code   string  @default("DUPLICATE_EMAIL")
-    email  string
+	code  string? @default("DUPLICATE_EMAIL")
+	email string
 }
 
 // ProfileValidationFailed is the 422 we return when business-rule
@@ -18,8 +18,8 @@ error Conflict DuplicateEmail {
 // schema-valid request. The `fields` slice gives the client an actionable
 // list of which paths failed.
 error UnprocessableEntity ProfileValidationFailed {
-    code    string  @default("PROFILE_VALIDATION_FAILED")
-    fields  string[]
+	code   string?  @default("PROFILE_VALIDATION_FAILED")
+	fields string[]
 }
 
 // RateLimited tells the caller how many seconds to wait before retrying.
@@ -27,22 +27,22 @@ error UnprocessableEntity ProfileValidationFailed {
 // `@default` decorator records the canonical value for OpenAPI but logic
 // code still has to set them explicitly when constructing the body.
 error TooManyRequests RateLimited {
-    code         string  @default("RATE_LIMITED")
-    message      string  @default("Slow down, please")
-    retry_after  int
+	code        string? @default("RATE_LIMITED")
+	message     string? @default("Slow down, please")
+	retry_after int
 }
 
 // InsufficientPermissions communicates the role the caller is missing.
 // Maps to 403.
 error Forbidden InsufficientPermissions {
-    code           string  @default("INSUFFICIENT_PERMISSIONS")
-    required_role  string
+	code          string? @default("INSUFFICIENT_PERMISSIONS")
+	required_role string
 }
 
 // StaleVersion is the optimistic-concurrency 412 surfaced when a write
 // arrives with a version older than the stored row.
 error PreconditionFailed StaleVersion {
-    code              string  @default("STALE_VERSION")
-    expected_version  int
-    actual_version    int
+	code             string? @default("STALE_VERSION")
+	expected_version int
+	actual_version   int
 }
