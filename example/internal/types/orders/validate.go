@@ -255,6 +255,9 @@ func (v *Discount) Validate() error {
 	if v.BpsBonus > 10000 {
 		return fmt.Errorf("bpsBonus: above maximum 10000")
 	}
+	if v.BonusBelow != nil && *v.BonusBelow >= 0 {
+		return fmt.Errorf("bonusBelow: must be negative")
+	}
 	return nil
 }
 
@@ -320,6 +323,9 @@ func (v *Geocode) Validate() error {
 	}
 	if v.Lng > 180 {
 		return fmt.Errorf("lng: above maximum 180")
+	}
+	if v.Altitude != nil && (*v.Altitude < -500 || *v.Altitude > 9000) {
+		return fmt.Errorf("altitude: out of range [-500, 9000]")
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CapturedAt); _err != nil {
 		return fmt.Errorf("capturedAt: not a valid RFC 3339 datetime")

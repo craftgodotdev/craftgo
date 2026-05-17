@@ -136,10 +136,12 @@ components:
         postalCode:
           type: string
         region:
+          nullable: true
           type: string
         street:
           type: string
         street2:
+          nullable: true
           type: string
       required:
       - street
@@ -161,10 +163,12 @@ components:
           description: |-
             after is the entity snapshot AFTER the change. Optional —
             `delete` actions leave nothing behind.
+          nullable: true
         before:
           description: |-
             before is the entity snapshot taken BEFORE the change.
             Optional — `create` actions have no prior state.
+          nullable: true
         entityId:
           description: entityId — opaque id of the entity that changed.
           type: string
@@ -249,12 +253,16 @@ components:
             produces a validation error.
       properties:
         email:
+          nullable: true
           type: string
         personal:
+          nullable: true
           type: boolean
         phone:
+          nullable: true
           type: string
         work:
+          nullable: true
           type: boolean
       type: object
     CountryCode:
@@ -267,6 +275,7 @@ components:
       properties:
         currency:
           default: USD
+          nullable: true
           type: string
         customer:
           $ref: '#/components/schemas/Customer'
@@ -277,8 +286,10 @@ components:
         metadata:
           additionalProperties:
             type: string
+          nullable: true
           type: object
         notes:
+          nullable: true
           type: string
         tags:
           items:
@@ -292,6 +303,8 @@ components:
     CreateOrderReqBody:
       properties:
         currency:
+          default: USD
+          nullable: true
           type: string
         customer:
           $ref: '#/components/schemas/Customer'
@@ -302,8 +315,10 @@ components:
         metadata:
           additionalProperties:
             type: string
+          nullable: true
           type: object
         notes:
+          nullable: true
           type: string
         tags:
           items:
@@ -324,6 +339,7 @@ components:
         builds the ProjectRef-shaped owner field of the response.
       properties:
         description:
+          nullable: true
           type: string
         name:
           type: string
@@ -336,6 +352,7 @@ components:
     CreateProjectReqBody:
       properties:
         description:
+          nullable: true
           type: string
         name:
           type: string
@@ -357,6 +374,7 @@ components:
       properties:
         assigneeId:
           description: Optional initial assignee — same pattern as Task.assignee.
+          nullable: true
           type: string
         comments:
           description: |-
@@ -380,8 +398,13 @@ components:
     CreateTaskReqBody:
       properties:
         assigneeId:
+          description: Optional initial assignee — same pattern as Task.assignee.
+          nullable: true
           type: string
         comments:
+          description: |-
+            Pre-seeded comments at creation time. Each entry is fully
+            validated against the Comment type's constraints.
           items:
             $ref: '#/components/schemas/Comment'
           type: array
@@ -409,6 +432,7 @@ components:
         avatar:
           $ref: '#/components/schemas/Avatar'
         bio:
+          nullable: true
           type: string
         email:
           type: string
@@ -423,6 +447,7 @@ components:
         avatar:
           $ref: '#/components/schemas/Avatar'
         bio:
+          nullable: true
           type: string
         email:
           type: string
@@ -461,6 +486,7 @@ components:
 
             Use case: bucketing tag-style labels per channel
             ("email" → ["welcome", "newsletter"], "sms" → [...]).
+          nullable: true
           type: object
         email:
           $ref: '#/components/schemas/Email'
@@ -501,6 +527,7 @@ components:
                   for k1 := range val0 { /* Tag's @pattern on k1 */ }
                   for _, val1 := range val0 { /* SafeURL's @format(url) on val1 */ }
               }
+          nullable: true
           type: object
         loyaltyPoints:
           description: |-
@@ -527,6 +554,7 @@ components:
             (`@maxSize` + `@mimeTypes`) which the field-type-compat
             pass restricts to `file` typed fields.
           format: binary
+          nullable: true
           type: string
         referrer:
           $ref: '#/components/schemas/UserRef'
@@ -551,20 +579,24 @@ components:
             const counterparts.
           items:
             $ref: '#/components/schemas/PaymentMethod'
+          nullable: true
           type: array
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         flag:
           default: true
+          nullable: true
           type: boolean
         maybe:
           default: opt-default
           description: |-
             Optional primitive — `*string` in Go; pre-fill emits as a
             pointer wrap.
+          nullable: true
           type: string
         num:
           default: 20
+          nullable: true
           type: integer
         preset:
           default:
@@ -572,12 +604,14 @@ components:
           - expedited
           items:
             type: string
+          nullable: true
           type: array
         status:
           $ref: '#/components/schemas/OrderStatus'
         str:
           default: anon
           description: Plain primitives.
+          nullable: true
           type: string
         tags:
           default: []
@@ -586,33 +620,59 @@ components:
             non-empty pin is included to verify literal element rendering.
           items:
             type: string
+          nullable: true
           type: array
       type: object
     DefaultsShowcaseReqBody:
       properties:
         allowedMethods:
+          description: |-
+            Array of enum — values are bare idents resolved to their Go
+            const counterparts.
           items:
             $ref: '#/components/schemas/PaymentMethod'
+          nullable: true
           type: array
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         flag:
+          default: true
+          nullable: true
           type: boolean
         maybe:
+          default: opt-default
+          description: |-
+            Optional primitive — `*string` in Go; pre-fill emits as a
+            pointer wrap.
+          nullable: true
           type: string
         num:
+          default: 20
+          nullable: true
           type: integer
         preset:
+          default:
+          - standard
+          - expedited
           items:
             type: string
+          nullable: true
           type: array
         status:
           $ref: '#/components/schemas/OrderStatus'
         str:
+          default: anon
+          description: Plain primitives.
+          nullable: true
           type: string
         tags:
+          default: []
+          description: |-
+            Array of primitive — empty preset is the most common form;
+            non-empty pin is included to verify literal element rendering.
           items:
             type: string
+          nullable: true
           type: array
       type: object
     DefaultsShowcaseRespBody:
@@ -672,6 +732,7 @@ components:
           description: |-
             Demonstrates @negative — the field is required to be < 0
             when present (rebate model).
+          nullable: true
           type: number
         bpsBonus:
           $ref: '#/components/schemas/PercentBP'
@@ -783,6 +844,7 @@ components:
         — concise alternative to stacking @min + @max.
       properties:
         altitude:
+          nullable: true
           type: number
         capturedAt:
           type: string
@@ -885,6 +947,7 @@ components:
           description: |-
             Optional with pattern — the validator nil-guards before
             running the regex.
+          nullable: true
           type: string
         hdop:
           type: number
@@ -930,6 +993,7 @@ components:
             empty string before JSON decode so a missing `note` key
             surfaces as `""` rather than the Go zero value (which IS
             "", but the default gives the user a place to override).
+          nullable: true
           type: string
         productId:
           type: string
@@ -952,6 +1016,7 @@ components:
         request types — see users.ListUsersReq for the full rationale.
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -961,6 +1026,7 @@ components:
     ListOrdersReqQuery:
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -975,6 +1041,7 @@ components:
         users.ListUsersReq comment for the rationale.
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -984,6 +1051,7 @@ components:
     ListProjectsReqQuery:
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -995,6 +1063,7 @@ components:
     ListSuspendedUsersReqQuery:
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -1015,10 +1084,12 @@ components:
         decorator, so codegen auto-binds it as a query parameter.
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
         projectId:
+          nullable: true
           type: string
       required:
       - limit
@@ -1026,10 +1097,12 @@ components:
     ListTasksReqQuery:
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
         projectId:
+          nullable: true
           type: string
       required:
       - limit
@@ -1047,6 +1120,7 @@ components:
         indistinguishable from the shared reference.
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -1056,6 +1130,7 @@ components:
     ListUsersReqQuery:
       properties:
         cursor:
+          nullable: true
           type: string
         limit:
           type: integer
@@ -1155,11 +1230,13 @@ components:
             So the wire shape `{"primary": "https://...", ...}` rejects
             both an upper-case key (fails Tag pattern) and a non-URL
             value (fails SafeURL format) at the validator boundary.
+          nullable: true
           type: object
         notes:
           description: |-
             Optional string with maxLength validator. When omitted the
             field stays absent on the wire (`omitempty`).
+          nullable: true
           type: string
         payment:
           $ref: '#/components/schemas/Payment'
@@ -1203,12 +1280,14 @@ components:
         as UserList / ProjectList / TaskList.
       properties:
         cursor:
+          nullable: true
           type: string
         items:
           items:
             $ref: '#/components/schemas/Order'
           type: array
         total:
+          nullable: true
           type: integer
       required:
       - items
@@ -1242,6 +1321,7 @@ components:
           description: |-
             cursor is an opaque continuation token returned by the
             previous page. Empty / absent on the first request.
+          nullable: true
           type: string
         limit:
           description: |-
@@ -1338,6 +1418,7 @@ components:
             refs. Same import resolution, different cardinality.
       properties:
         description:
+          nullable: true
           type: string
         id:
           type: string
@@ -1366,12 +1447,14 @@ components:
         helpers across resources.
       properties:
         cursor:
+          nullable: true
           type: string
         items:
           items:
             $ref: '#/components/schemas/Project'
           type: array
         total:
+          nullable: true
           type: integer
       required:
       - items
@@ -1488,12 +1571,14 @@ components:
         UserList / ProjectList for consistent client pagination.
       properties:
         cursor:
+          nullable: true
           type: string
         items:
           items:
             $ref: '#/components/schemas/Task'
           type: array
         total:
+          nullable: true
           type: integer
       required:
       - items
@@ -1518,10 +1603,12 @@ components:
         avatar:
           $ref: '#/components/schemas/Avatar'
         bio:
+          nullable: true
           type: string
         id:
           type: string
         name:
+          nullable: true
           type: string
       required:
       - id
@@ -1531,8 +1618,10 @@ components:
         avatar:
           $ref: '#/components/schemas/Avatar'
         bio:
+          nullable: true
           type: string
         name:
+          nullable: true
           type: string
       type: object
     UpdateUserReqPath:
@@ -1562,6 +1651,7 @@ components:
         avatar:
           $ref: '#/components/schemas/Avatar'
         bio:
+          nullable: true
           type: string
         email:
           type: string
@@ -1586,12 +1676,14 @@ components:
         special-casing.
       properties:
         cursor:
+          nullable: true
           type: string
         items:
           items:
             $ref: '#/components/schemas/User'
           type: array
         total:
+          nullable: true
           type: integer
       required:
       - items
@@ -1663,6 +1755,7 @@ components:
             attach; logic side reads it with a type assertion / second
             unmarshal when needed. `@nullable` marks "explicit null is
             OK"; `?` would also let the field be omitted entirely.
+          nullable: true
       required:
       - eventType
       - deliveryId
@@ -1690,12 +1783,13 @@ paths:
       - in: query
         name: cursor
         schema:
-          $ref: '#/components/schemas/ListOrdersReqQuery/properties/cursor'
+          nullable: true
+          type: string
       - in: query
         name: limit
         required: true
         schema:
-          $ref: '#/components/schemas/ListOrdersReqQuery/properties/limit'
+          type: integer
       responses:
         "200":
           content:
@@ -1738,7 +1832,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/DeleteOrderReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -1758,7 +1852,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/GetOrderReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -1782,32 +1876,32 @@ paths:
         name: status
         required: true
         schema:
-          $ref: '#/components/schemas/FilterOrdersReqPath/properties/status'
+          $ref: '#/components/schemas/OrderStatus'
       - in: query
         name: contact
         required: true
         schema:
-          $ref: '#/components/schemas/FilterOrdersReqQuery/properties/contact'
+          $ref: '#/components/schemas/Email'
       - in: query
         name: method
         required: true
         schema:
-          $ref: '#/components/schemas/FilterOrdersReqQuery/properties/method'
+          $ref: '#/components/schemas/PaymentMethod'
       - in: query
         name: limit
         required: true
         schema:
-          $ref: '#/components/schemas/FilterOrdersReqQuery/properties/limit'
+          $ref: '#/components/schemas/Cents'
       - in: header
         name: idemKey
         required: true
         schema:
-          $ref: '#/components/schemas/FilterOrdersReqHeader/properties/idemKey'
+          $ref: '#/components/schemas/OrderID'
       - in: cookie
         name: lastFilter
         required: true
         schema:
-          $ref: '#/components/schemas/FilterOrdersReqCookie/properties/lastFilter'
+          $ref: '#/components/schemas/OrderStatus'
       responses:
         "200":
           content:
@@ -1851,12 +1945,13 @@ paths:
       - in: query
         name: cursor
         schema:
-          $ref: '#/components/schemas/ListProjectsReqQuery/properties/cursor'
+          nullable: true
+          type: string
       - in: query
         name: limit
         required: true
         schema:
-          $ref: '#/components/schemas/ListProjectsReqQuery/properties/limit'
+          type: integer
       responses:
         "200":
           content:
@@ -1898,7 +1993,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/DeleteProjectReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -1918,7 +2013,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/GetProjectReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -1940,7 +2035,7 @@ paths:
         name: projectId
         required: true
         schema:
-          $ref: '#/components/schemas/AddMemberReqPath/properties/projectId'
+          type: string
       requestBody:
         content:
           application/json:
@@ -1966,16 +2061,18 @@ paths:
       - in: query
         name: cursor
         schema:
-          $ref: '#/components/schemas/ListTasksReqQuery/properties/cursor'
+          nullable: true
+          type: string
       - in: query
         name: limit
         required: true
         schema:
-          $ref: '#/components/schemas/ListTasksReqQuery/properties/limit'
+          type: integer
       - in: query
         name: projectId
         schema:
-          $ref: '#/components/schemas/ListTasksReqQuery/properties/projectId'
+          nullable: true
+          type: string
       responses:
         "200":
           content:
@@ -2030,7 +2127,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/DeleteTaskReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -2050,7 +2147,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/GetTaskReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -2090,7 +2187,7 @@ paths:
         name: taskId
         required: true
         schema:
-          $ref: '#/components/schemas/AddCommentReqPath/properties/taskId'
+          type: string
       requestBody:
         content:
           application/json:
@@ -2118,12 +2215,13 @@ paths:
       - in: query
         name: cursor
         schema:
-          $ref: '#/components/schemas/ListUsersReqQuery/properties/cursor'
+          nullable: true
+          type: string
       - in: query
         name: limit
         required: true
         schema:
-          $ref: '#/components/schemas/ListUsersReqQuery/properties/limit'
+          type: integer
       responses:
         "200":
           content:
@@ -2208,7 +2306,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/DeleteUserReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -2248,7 +2346,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/GetUserReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -2286,7 +2384,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/UpdateUserReqPath/properties/id'
+          type: string
       requestBody:
         content:
           application/json:
@@ -2349,7 +2447,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/RestoreUserReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -2372,7 +2470,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/SuspendUserReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -2397,7 +2495,7 @@ paths:
         name: userId
         required: true
         schema:
-          $ref: '#/components/schemas/AddContactReqPath/properties/userId'
+          type: string
       requestBody:
         content:
           application/json:
@@ -2453,12 +2551,13 @@ paths:
       - in: query
         name: cursor
         schema:
-          $ref: '#/components/schemas/ListSuspendedUsersReqQuery/properties/cursor'
+          nullable: true
+          type: string
       - in: query
         name: limit
         required: true
         schema:
-          $ref: '#/components/schemas/ListSuspendedUsersReqQuery/properties/limit'
+          type: integer
       responses:
         "200":
           content:
