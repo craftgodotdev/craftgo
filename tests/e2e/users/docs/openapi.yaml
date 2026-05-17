@@ -5,6 +5,7 @@ components:
       description: CreateUserReq is the body for POST /users.
       properties:
         age:
+          nullable: true
           type: integer
         meta:
           additionalProperties:
@@ -24,6 +25,7 @@ components:
     CreateUserReqBody:
       properties:
         age:
+          nullable: true
           type: integer
         meta:
           additionalProperties:
@@ -61,6 +63,7 @@ components:
     GetUserReqPath:
       properties:
         id:
+          description: id locates the user.
           type: string
       required:
       - id
@@ -87,6 +90,7 @@ components:
         update too.
       properties:
         age:
+          nullable: true
           type: integer
         id:
           type: string
@@ -109,6 +113,7 @@ components:
     UpdateUserReqBody:
       properties:
         age:
+          nullable: true
           type: integer
         meta:
           additionalProperties:
@@ -138,6 +143,7 @@ components:
       description: User is the wire-level shape of a stored user.
       properties:
         age:
+          nullable: true
           type: integer
         id:
           type: string
@@ -228,7 +234,8 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/GetUserReqPath/properties/id'
+          description: id locates the user.
+          type: string
       responses:
         "200":
           content:
@@ -248,7 +255,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/UpdateUserReqPath/properties/id'
+          type: string
       requestBody:
         content:
           application/json:

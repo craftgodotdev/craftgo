@@ -211,12 +211,6 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 // field. README §"Field presence semantics" splits the four states
 // explicitly; the optional marker already conveys nullability so the
 // decorator is noise.
-//
-// The same pass also flags the harder error of pairing `@required`
-// with `@nullable` - the two contradict each other (one says "must
-// not be null", the other says "may be null") and the validate-emit
-// step has no sensible code to generate. Surfacing it as an error
-// pushes the author to pick one.
 func (a *analyzer) checkNullableRedundant(f *ast.Field) {
 	var nullableDec *ast.Decorator
 	for _, d := range f.Decorators {

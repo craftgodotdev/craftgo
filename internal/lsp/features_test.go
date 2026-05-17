@@ -572,7 +572,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	// stray keywords should sneak in.
 	for _, it := range items {
 		switch it.Label {
-		case "required", "doc", "package", "type", "service":
+		case "length", "doc", "package", "type", "service":
 			t.Errorf("unexpected non-category item leaked into category completions: %q", it.Label)
 		}
 	}

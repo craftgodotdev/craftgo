@@ -19,8 +19,8 @@ craftgo collapses the three sources into one. The DSL is the contract. Everythin
 ```craftgo
 type User {
     id    string
-    name  string  @required @length(1, 80)
-    email string  @required @format(email)
+    name  string  @length(1, 80)
+    email string  @format(email)
 }
 
 @prefix("/v1")

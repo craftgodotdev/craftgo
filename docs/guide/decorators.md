@@ -11,7 +11,7 @@ Decorators attach metadata to declarations and fields. Every decorator starts wi
 @version("1.0.0")              // file
 
 type User {                    // type
-    id    string  @required    // field
+    id    string     // field
     name  string  @length(1, 80)
     email string  @format(email)
 }
@@ -84,7 +84,7 @@ type LegacyUserReq { ... }
 
 type User {
     legacyId string @deprecated
-    email    string @required
+    email    string
 }
 ```
 
@@ -173,14 +173,7 @@ type Account {
 
 ## Field validators
 
-### `@required`
-
-Field must be present in the request payload. For strings, also non-empty. For pointers, non-nil.
-
-| Sites | field |
-| -------- | -------- |
-| Applies to | any primitive |
-| Args | `()` |
+> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator — to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
 
 ### Strings
 
@@ -194,7 +187,7 @@ Run on `string` and `bytes` fields, and on scalars whose primitive is one of tho
 | `@pattern("regex")`         | `(string)`            | RE2-flavored regex match            |
 | `@format(name)`             | bare ident or string  | Named format check (see below)      |
 
-**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `hexcolor`, `json`.
+**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. RFC-compliant validators (email, ipv4/ipv6, cidr, mac, datetime/date/time, base64, json) delegate to Go stdlib (`net`, `net/mail`, `net/url`, `time`, `encoding/*`); the remainder use regex.
 
 ```craftgo
 type User {
@@ -253,7 +246,7 @@ Run on `file` fields used with `@form`.
 ```craftgo
 type AvatarReq {
     userId string @path
-    file   file   @form @required @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
+    file   file   @form @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
 }
 ```
 
@@ -290,7 +283,7 @@ Works on:
 - Enums (use the bare value name: `@default(Active)`)
 - Arrays of any of the above (`@default([])`, `@default(["a", "b"])`, `@default([Active, Pending])`)
 
-Conflicts: cannot combine with `@required`, any binding, or be applied to map / struct / generic fields.
+Conflicts: cannot combine with any binding, or be applied to map / struct / generic fields. The formatter auto-adds `?` to the field type on save so OpenAPI marks the field as not-required (consistent with `@default` firing when absent).
 
 ```craftgo
 type ListReq {
@@ -624,7 +617,6 @@ Some decorator combinations are rejected by the semantic analyzer:
 | Decorator      | Conflicts with                                                                              | Why                                                       |
 | -------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `@sensitive`   | All validators, all bindings, `@nullable`, `@default`                                       | Field never crosses the wire - constraints meaningless    |
-| `@default`     | `@required`                                                                                 | Required fields fail validation before the default applies |
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.
 

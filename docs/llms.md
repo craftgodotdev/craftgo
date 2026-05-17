@@ -258,9 +258,10 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
+> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator — append `?` to the type to opt out (`name string?`).
+
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |
-| `@required`         | any       | `()`               | Field must be present         |
 | `@length(min, max)` | string    | `(int, int)`       | Length bounds inclusive       |
 | `@minLength(n)`     | string    | `(int)`            | Length `>= n`                 |
 | `@maxLength(n)`     | string    | `(int)`            | Length `<= n`                 |
@@ -305,7 +306,7 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@default(value)` | field, errorField | Pre-fill before JSON decode. Works on primitive, scalar, enum, optional / array of those.        |
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`. |
 
-`@default` cannot combine with `@required` or any binding. For enum fields, the value is the bare ident (`@default(Active)`).
+`@default` requires the field be optional (`?`). The formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you do. For enum fields, the value is the bare ident (`@default(Active)`).
 
 ### Service / method
 
@@ -332,9 +333,8 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 ### Conflicts
 
 - `@sensitive` + any of: validators, bindings (`@body`/`@path`/`@query`/`@header`/`@cookie`/`@form`), `@nullable`, `@default`
-- `@default` + `@required`
 
-Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.
+Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`. `@default` on a non-optional field fires `decorator/default-needs-optional` (warning; formatter auto-fixes on save).
 
 ## CLI
 
@@ -578,12 +578,12 @@ The default `writeError`:
 
 ```craftgo
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
 }
 
 type GetUserReq {
-    id string @path @required
+    id string @path
 }
 
 type User { id string  name string  email string }
@@ -616,7 +616,7 @@ type ListResp {
 
 ```craftgo
 type UpdateUserReq {
-    id    string  @path @required
+    id    string  @path
     name  string?
     email string? @format(email)
 }
@@ -628,8 +628,8 @@ type UpdateUserReq {
 
 ```craftgo
 type UploadAvatarReq {
-    userId string @path @required
-    file   file   @form @required @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
+    userId string @path
+    file   file   @form @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
 }
 
 @prefix("/v1")

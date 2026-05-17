@@ -176,6 +176,85 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
+// TestGenerateOpenAPIOptionalEmitsNullable pins B3: a `T?` field
+// produces `nullable: true` in OpenAPI so spec consumers accept JSON
+// `null` for the field. The `?` field is also dropped from `required[]`;
+// `@nullable` stays in required. Both forms agree on `nullable: true`.
+func TestGenerateOpenAPIOptionalEmitsNullable(t *testing.T) {
+	src := `package design
+type T {
+    a string?
+    b string  @nullable
+    c string
+}
+service S { post Create /c { request T  response T } }`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	out := string(body)
+
+	// Both `a` (T?) and `b` (@nullable) emit nullable: true. The
+	// per-operation `CreateReqBody` doubles each, so total = 4.
+	if got := strings.Count(out, "nullable: true"); got < 4 {
+		t.Errorf("expected nullable: true for T? and @nullable in BOTH T and CreateReqBody (got %d):\n%s", got, out)
+	}
+	// required[]: c stays (plain), b stays (@nullable), a goes (T?).
+	// CreateReqBody mirrors the same shape, so each marker doubles.
+	if got := strings.Count(out, "- c\n"); got < 2 {
+		t.Errorf("c must remain in required[] for T and CreateReqBody (got %d):\n%s", got, out)
+	}
+	if got := strings.Count(out, "- b\n"); got < 2 {
+		t.Errorf("@nullable field b must remain in required[] (got %d):\n%s", got, out)
+	}
+	if strings.Contains(out, "- a\n") {
+		t.Errorf("T? field a must be dropped from required[]:\n%s", out)
+	}
+}
+
+// TestGenerateOpenAPIPerOperationSchemaMetadata pins B2: the inline
+// `<Method>ReqBody/Query/Path/Header/Cookie` schemas carry the same
+// field-level decorator effects (@default, @example, @nullable, @doc,
+// @deprecated) as the top-level type schemas. Earlier `schemaFromFields`
+// skipped applyFieldMetadata, silently dropping those for per-operation
+// schemas.
+func TestGenerateOpenAPIPerOperationSchemaMetadata(t *testing.T) {
+	src := `package design
+type T {
+    // The display name.
+    name  string @example("alice")
+    age   int?   @default(18)
+    nick  string @nullable
+    old   string @deprecated("use name instead")
+}
+service S { post Create /c { request T  response T } }`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	out := string(body)
+	// Each marker should appear twice: once under the top-level `T`
+	// schema, and once under the per-operation `CreateReqBody`. Before
+	// B2 `schemaFromFields` dropped the metadata, so each marker
+	// appeared exactly once.
+	for _, want := range []string{
+		"example: alice",
+		"default: 18",
+		"nullable: true",
+		"deprecated: true",
+		"The display name",
+	} {
+		got := strings.Count(out, want)
+		if got < 2 {
+			t.Errorf("expected %q in BOTH T and CreateReqBody (got %d occurrences):\n%s", want, got, out)
+		}
+	}
+}
+
 // TestGenerateOpenAPIExternalDocs covers `@externalDocs(url:..., description:...)`
 // on operations and types.
 func TestGenerateOpenAPIExternalDocs(t *testing.T) {
@@ -619,13 +698,25 @@ service S {
 		"name: apiKey",
 		"in: cookie",
 		"name: session",
-		// Parameter schemas $ref into the matching per-kind schema's
-		// property - that's the canonical-source rule.
-		"$ref: '#/components/schemas/CallReqHeader/properties/apiKey'",
-		"$ref: '#/components/schemas/CallReqCookie/properties/session'",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("expected %q in:\n%s", want, src)
+		}
+	}
+	// Parameter schemas are emitted inline (by value) rather than
+	// `$ref`-ing into the wrapper `<Method>Req<Kind>` schema. Nested
+	// `$ref` is technically valid JSON-Pointer but breaks most TS /
+	// Java / Rust client generators (hey-api, openapi-typescript,
+	// openapi-generator < 7) which fail to derive a stable type name
+	// from the property-walk path.
+	for _, badRef := range []string{
+		"$ref: '#/components/schemas/CallReqHeader/properties/",
+		"$ref: '#/components/schemas/CallReqCookie/properties/",
+		"$ref: '#/components/schemas/CallReqQuery/properties/",
+		"$ref: '#/components/schemas/CallReqPath/properties/",
+	} {
+		if strings.Contains(src, badRef) {
+			t.Errorf("unexpected nested $ref %q (breaks TS client generators):\n%s", badRef, src)
 		}
 	}
 }

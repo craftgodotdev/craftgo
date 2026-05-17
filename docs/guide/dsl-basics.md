@@ -16,8 +16,8 @@ Every declaration produces specific generated code. The DSL is the single source
 package design
 
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
 }
 
 @prefix("/v1")
@@ -108,8 +108,8 @@ Decorators attach metadata. They start with `@` and may take arguments.
 
 ```craftgo
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
     age   int?   @min(0) @max(150)
 }
 ```
@@ -147,7 +147,7 @@ Path parameters use `{name}` and bind to fields with `@path`:
 
 ```craftgo
 type GetUserReq {
-    id string @path @required
+    id string @path
 }
 ```
 

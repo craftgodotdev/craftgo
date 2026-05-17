@@ -85,8 +85,8 @@ Declare a request or response struct.
 
 ```craftgo
 type CreateUserReq {
-    name  string @required
-    email string @required @format(email)
+    name  string
+    email string @format(email)
 }
 
 type Page<T any> {              // generic

@@ -114,9 +114,12 @@ components:
 
 Field-level validators map to OpenAPI keywords:
 
-| Decorator                      | OpenAPI                  |
+| Decorator / shape              | OpenAPI                  |
 | ------------------------------ | ------------------------ |
-| `@required`                    | `required: [...]`        |
+| Non-optional field (no `?`)    | listed in `required: [...]` |
+| `name string?`                 | omitted from `required: [...]` |
+| `@nullable`                    | `nullable: true`         |
+| `@default(v)`                  | `default: v`             |
 | `@length(1, 80)`               | `minLength: 1, maxLength: 80` |
 | `@minLength(1)`, `@maxLength(80)` | same as above         |
 | `@pattern("...")`              | `pattern: ...`           |

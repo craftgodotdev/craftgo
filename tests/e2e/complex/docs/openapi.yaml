@@ -13,6 +13,7 @@ components:
         country:
           type: string
         postal:
+          nullable: true
           type: string
         street:
           type: string
@@ -31,6 +32,7 @@ components:
         email:
           type: string
         phone:
+          nullable: true
           type: string
       required:
       - email
@@ -58,6 +60,7 @@ components:
             $ref: '#/components/schemas/Address'
           type: array
         age:
+          nullable: true
           type: integer
         contacts:
           $ref: '#/components/schemas/ContactInfo'
@@ -85,6 +88,7 @@ components:
             $ref: '#/components/schemas/Address'
           type: array
         age:
+          nullable: true
           type: integer
         contacts:
           $ref: '#/components/schemas/ContactInfo'
@@ -249,6 +253,7 @@ components:
             $ref: '#/components/schemas/Address'
           type: array
         age:
+          nullable: true
           type: integer
         contacts:
           $ref: '#/components/schemas/ContactInfo'
@@ -448,7 +453,7 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/GetProfileReqPath/properties/id'
+          type: string
       responses:
         "200":
           content:
@@ -478,22 +483,22 @@ paths:
         name: id
         required: true
         schema:
-          $ref: '#/components/schemas/PatchProfileReqPath/properties/id'
+          type: string
       - in: query
         name: dryRun
         required: true
         schema:
-          $ref: '#/components/schemas/PatchProfileReqQuery/properties/dryRun'
+          type: string
       - in: header
         name: idempotencyKey
         required: true
         schema:
-          $ref: '#/components/schemas/PatchProfileReqHeader/properties/idempotencyKey'
+          type: string
       - in: cookie
         name: sessionToken
         required: true
         schema:
-          $ref: '#/components/schemas/PatchProfileReqCookie/properties/sessionToken'
+          type: string
       requestBody:
         content:
           application/json:

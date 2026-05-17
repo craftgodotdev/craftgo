@@ -74,19 +74,19 @@ func (a *analyzer) checkFieldArgs(site Level, members []ast.TypeMember) {
 	}
 }
 
-// checkFieldDefault validates `@default(...)` on a field. Three layers:
-//   1. Conflict with `@required` - required fields fail validation
-//      before the default branch is reached, so the combo is nonsense.
-//   2. Type support - only primitives, enums, scalars wrapping
+// checkFieldDefault validates `@default(...)` on a field. Two layers:
+//   1. Type support - only primitives, enums, scalars wrapping
 //      primitives, and arrays of those are emit-able. Map / struct
 //      / generic / array-of-struct fields raise decorator/conflict.
-//   3. Value form - the literal must match the resolved type:
+//   2. Value form - the literal must match the resolved type:
 //      enum field → bare ident matching a declared value;
 //      array field → ArrayLit whose elements satisfy the per-element
 //      rule recursively.
 //
 // Primitive / scalar fields pass through unchecked - the kind rule in
-// [checkArgsScope] already pins the literal kind.
+// [checkArgsScope] already pins the literal kind. A separate
+// `checkDefaultNeedsOptional` pass in semantic.go warns when the
+// field type lacks `?`; the formatter then auto-adds it on save.
 func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	if f == nil {
 		return

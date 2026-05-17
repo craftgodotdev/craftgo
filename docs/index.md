@@ -45,8 +45,8 @@ features:
 package design
 
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
     age   int?   @min(0) @max(150)
 }
 

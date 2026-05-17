@@ -1217,8 +1217,8 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	// `package` line - anything legal at file scope (`@title`,
 	// `@version`, `@doc`) wins. Without this branch the zone above
 	// `package` would be classified by the first decl below it,
-	// which is almost always wrong (you can't put `@required`
-	// before `package`).
+	// which is almost always wrong (a field-level decorator like
+	// `@length` would surface as a completion for the file header).
 	if view.file.Package != nil && line <= view.file.Package.Pos.Line {
 		return semantic.LvlFile
 	}

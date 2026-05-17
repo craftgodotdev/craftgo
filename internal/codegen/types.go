@@ -455,11 +455,6 @@ func jsonTag(f *ast.Field) string {
 	if isNonBodyBound(f) || hasSensitiveDecorator(f.Decorators) {
 		return "-"
 	}
-	for _, d := range f.Decorators {
-		if d.Name == "required" {
-			return f.Name
-		}
-	}
 	// `@nullable` keeps the field always-emitting so a nil value
 	// surfaces as JSON `null` rather than being skipped. The combined
 	// `T? @nullable` form collapses to "always emit, may be null" -

@@ -41,8 +41,8 @@ This creates `design/craftgo.design.yaml` with default settings. Now write a `.c
 package design
 
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
 }
 
 type User {

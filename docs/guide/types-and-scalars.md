@@ -6,8 +6,8 @@ Types describe request and response shapes. Scalars are named primitives with bu
 
 ```craftgo
 type CreateUserReq {
-    name  string @required
-    email string @required
+    name  string
+    email string
     age   int?
 }
 ```

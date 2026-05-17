@@ -55,21 +55,21 @@ func ifReturnf(cond, msg string) string {
 // requiredKind picks the right Go conditional for an absent value.
 // The empty-string sentinel signals "this field type has no obvious
 // empty value" so the caller drops the check rather than emitting a
-// no-op. `@nullable` upgrades the field to a pointer; the nil check
-// covers both "absent from JSON" and "explicit null".
+// no-op.
+//
+// craftgo's "required by default" model: every non-optional field
+// gets a presence check automatically. Empty strings / zero numerics
+// / empty arrays / maps are allowed (pair with `@length(1, …)` /
+// `@min(1)` / `@minItems(1)` when stricter shape is required).
+//
+// For non-pointer scalar types (`string`, `int`, `bool`, …) the
+// JSON decoder already rejects wire `null` with an unmarshal error,
+// so no validate-time check is needed; the diagnostic surfaces at
+// the framework boundary instead. For pointer types (`T?` /
+// `T @nullable`) and `any` we DO need the check - the decoder
+// happily accepts `null` and leaves it as a nil pointer or the
+// literal 4-byte `null` `json.RawMessage`.
 func requiredKind(f *ast.Field, access string) string {
-	// `@required` enforces ONLY non-null / non-undefined. Empty
-	// strings, zero numerics, empty arrays / maps are allowed; pair
-	// with `@length(1, …)` / `@min(1)` / `@minItems(1)` when the
-	// contract needs them.
-	//
-	// For non-pointer scalar types (`string`, `int`, `bool`, …) the
-	// JSON decoder already rejects wire `null` with an unmarshal
-	// error, so no validate-time check is needed; the diagnostic
-	// surfaces at the framework boundary instead. For pointer types
-	// (`T?` / `T @nullable`) and `any` we DO need the check - the
-	// decoder happily accepts `null` and leaves it as a nil pointer
-	// or the literal 4-byte `null` `json.RawMessage`.
 	if f.Type == nil {
 		return ""
 	}
@@ -80,14 +80,13 @@ func requiredKind(f *ast.Field, access string) string {
 		// `any` lands on Go's empty interface; the codec leaves it
 		// nil for absent fields and for explicit JSON `null` (the
 		// decoder collapses both into the zero interface value).
-		// `@required` rejects either by checking for nil.
 		return access + " == nil"
 	}
 	return ""
 }
 
-// requiredCheck assembles the `@required` block, or returns "" when the
-// field type doesn't have a defined empty value.
+// requiredCheck assembles the presence-check block, or returns ""
+// when the field type doesn't have a defined empty value.
 func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 	cond := requiredKind(f, access)
 	if cond == "" {
@@ -584,8 +583,8 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 // mimeTypesCheck handles `@mimeTypes(["a/b", "c/d"])` on `file` fields.
 // Emits a switch on the upload's Content-Type header rejecting any value
 // outside the allowlist. The check is nil-guarded so a missing optional
-// upload is allowed by this decorator (combine with `@required` to force
-// presence).
+// upload is allowed by this decorator; drop the `?` suffix on the field
+// type to force presence (required-by-default).
 func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
 	if !isFileField(f) || len(d.Args) != 1 {
 		return ""

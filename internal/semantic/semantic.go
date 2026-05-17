@@ -272,8 +272,8 @@ const (
 	CodeDecoratorRedundant = "decorator/redundant"
 	// CodeDecoratorConflict fires when two decorators on the same site
 	// have semantics that contradict. Example: `@sensitive` paired with
-	// `@required` (sensitive fields never cross the wire so requiring
-	// them is meaningless).
+	// a wire-shaping validator like `@length` (sensitive fields never
+	// cross the wire so wire-level constraints are meaningless).
 	CodeDecoratorConflict = "decorator/conflict"
 
 	// CodePackageMismatch fires when files disagree on the `package`
@@ -1067,14 +1067,15 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 // checkCombinationRules enforces the decorator-combination contract
 // documented in the README §"Combination rules":
 //
-//   - `@required` cannot coexist with `T?` (an optional type - they
-//     contradict each other).
 //   - At most one of `@path / @query / @header / @cookie / @body / @form`
 //     may appear on a single field; multiple non-body bindings would
 //     compete for the same value at runtime.
 //   - `@passthrough` methods may not declare `request` or `response` -
 //     logic handles the wire format directly, so any framework-managed
 //     shape would be silently ignored.
+//   - `@default` on a non-optional field surfaces a warning - the
+//     formatter auto-adds `?` on save so the OpenAPI required[] no
+//     longer contradicts the default's "fires when absent" intent.
 //
 // Diagnostics fire on the second / conflicting decorator so the error
 // points at the offending source location, not the (innocent) first

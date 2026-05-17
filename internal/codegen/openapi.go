@@ -591,6 +591,12 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 // property schema: doc → description, deprecated → flag + note,
 // nullable → schema.Nullable, example → schema.Example,
 // default → schema.Default.
+//
+// Both `T?` (optional) and `@nullable` translate to `nullable: true` in
+// OpenAPI - the runtime decoder accepts JSON `null` for either shape,
+// so the spec must let clients send it. The two forms still differ in
+// `required[]` semantics (handled by [fieldIsRequired]): `?` drops the
+// field from required, `@nullable` keeps it.
 func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	if ref == nil || ref.Value == nil {
 		return
@@ -604,7 +610,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 			ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
 		}
 	}
-	if hasNullableDecorator(f.Decorators) {
+	if hasNullableDecorator(f.Decorators) || (f.Type != nil && f.Type.Optional) {
 		applyNullable(ref.Value)
 	}
 	if ex, ok := exampleValue(f.Decorators); ok {
@@ -1054,7 +1060,12 @@ func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method) {
 }
 
 // schemaFromFields builds an inline object schema covering the supplied
-// fields. Required tracks `@required`; nested types follow schemaForTypeRef.
+// fields. Required[] lists every non-optional field (required-by-default
+// model — the inverse of the `?` suffix); nested types follow
+// schemaForTypeRef. Per-field decorator effects (@default, @example,
+// @nullable, @deprecated, @doc) are applied via [applyFieldMetadata] so
+// per-operation `<Method>Req<Kind>` schemas carry the same metadata
+// the top-level type schemas do.
 func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
@@ -1064,7 +1075,9 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Sche
 		if hasSensitiveDecorator(f.Decorators) {
 			continue
 		}
-		s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
+		ref := schemaForTypeRef(f.Type, pkg)
+		applyFieldMetadata(f, ref)
+		s.Properties[f.Name] = ref
 		if fieldIsRequired(f) {
 			s.Required = append(s.Required, f.Name)
 		}
@@ -1146,9 +1159,9 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 		// since the form-data body covers the regular fields; only true
 		// path/query/header bindings remain (handled in paramsFromBins).
 		if !isMultipart {
-			op.Parameters = paramsFromBins(bins, m.Name)
+			op.Parameters = paramsFromBins(bins, pkg)
 		} else {
-			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, m.Name)
+			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg)
 		}
 	}
 	if isPassthrough {
@@ -1321,28 +1334,35 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 
 // paramsFromBins flattens the non-body bins into the `parameters[]`
 // slice the OpenAPI spec requires. Path is always required; query /
-// header / cookie required flags follow `@required`. Each parameter's
-// schema is a `$ref` into the matching `<Method>Req<Kind>` schema -
-// that schema is the single source of truth for the field's type.
-func paramsFromBins(bins fieldBins, methodName string) openapi3.Parameters {
+// header / cookie required flags follow the field's optionality (the
+// inverse of `?`). Each parameter's schema is emitted inline (by value)
+// rather than `$ref`-ing into the wrapper `<Method>Req<Kind>` schema.
+// Nested `$ref` (into `.../properties/<name>`) is technically valid
+// JSON-Pointer but many TS / Java / Rust client generators (hey-api,
+// openapi-typescript, openapi-generator < 7) fail to derive a stable
+// type name from the property-walk path and emit anonymous placeholders
+// or drop the type entirely. Inlining keeps the spec portable; the
+// wrapper schemas stay in `components.schemas` for tooling that wants
+// to ref the full request shape.
+func paramsFromBins(bins fieldBins, pkg *semantic.Package) openapi3.Parameters {
 	var params openapi3.Parameters
-	add := func(in, kind string, fields []*ast.Field, alwaysRequired bool) {
+	add := func(in string, fields []*ast.Field, alwaysRequired bool) {
 		for _, f := range fields {
 			required := alwaysRequired || fieldIsRequired(f)
+			ref := schemaForTypeRef(f.Type, pkg)
+			applyFieldMetadata(f, ref)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     f.Name,
 				In:       in,
 				Required: required,
-				Schema: &openapi3.SchemaRef{
-					Ref: "#/components/schemas/" + methodName + "Req" + kind + "/properties/" + f.Name,
-				},
+				Schema:   ref,
 			}})
 		}
 	}
-	add("path", "Path", bins.path, true)
-	add("query", "Query", bins.query, false)
-	add("header", "Header", bins.header, false)
-	add("cookie", "Cookie", bins.cookie, false)
+	add("path", bins.path, true)
+	add("query", bins.query, false)
+	add("header", bins.header, false)
+	add("cookie", bins.cookie, false)
 	return params
 }
 
@@ -1393,8 +1413,7 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 // fieldIsRequired reports whether f must be present in the request
 // payload. craftgo's "required by default" model: a field is required
 // unless its type carries the `?` suffix that explicitly marks it
-// optional. The opt-out is the inverse of the old `@required`
-// decorator (which has been removed).
+// optional.
 func fieldIsRequired(f *ast.Field) bool {
 	return f != nil && f.Type != nil && !f.Type.Optional
 }

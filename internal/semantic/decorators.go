@@ -50,11 +50,11 @@ const (
 	LvlMiddleware
 	// LvlErrorField is a field inside an `error` body. Distinct from
 	// [LvlField] because errors are server-emitted, so request-only
-	// decorators (`@path`, `@query`, `@body`, `@form`, `@required`,
-	// `@maxSize`, `@mimeTypes`) are rejected. Schema validators
-	// (`@minLength`, `@pattern`, `@min`, ...) are still accepted
-	// but contribute only to OpenAPI schema constraints - codegen
-	// does not generate a runtime `Validate()` for ErrorDecl types.
+	// decorators (`@path`, `@query`, `@body`, `@form`, `@maxSize`,
+	// `@mimeTypes`) are rejected. Schema validators (`@minLength`,
+	// `@pattern`, `@min`, ...) are still accepted but contribute only
+	// to OpenAPI schema constraints - codegen does not generate a
+	// runtime `Validate()` for ErrorDecl types.
 	LvlErrorField
 )
 
@@ -464,7 +464,7 @@ var Registry = map[string]Spec{
 	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null."},
 	"sensitive": {
 		Name: "sensitive", Levels: LvlField | LvlErrorField,
-		Doc: "Server-only field: tagged `json:\"-\"` so neither the request decoder nor the response encoder touches it, and skipped entirely from OpenAPI. Cannot combine with any wire-shaping decorator: validators (@required / @length / @min / @max / @range / @pattern / @format / @minItems / @maxItems / @multipleOf / @positive / @negative / @uniqueItems / @requiresOneOf / @mutuallyExclusive), nullability / defaults (@nullable / @default), or any binding (@body / @path / @query / @header / @cookie / @form). The field stays as a Go struct member that server logic populates / reads internally.",
+		Doc: "Server-only field: tagged `json:\"-\"` so neither the request decoder nor the response encoder touches it, and skipped entirely from OpenAPI. Cannot combine with any wire-shaping decorator: validators (@length / @min / @max / @range / @pattern / @format / @minItems / @maxItems / @multipleOf / @positive / @negative / @uniqueItems / @requiresOneOf / @mutuallyExclusive), nullability / defaults (@nullable / @default), or any binding (@body / @path / @query / @header / @cookie / @form). The field stays as a Go struct member that server logic populates / reads internally.",
 	},
 
 	// ---- Field binding ----

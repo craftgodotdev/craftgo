@@ -81,7 +81,7 @@ Inside `@timeout(...)` or `@maxBodySize(...)`, common values appear as presets. 
 
 Hover over an identifier to see its declaration and doc comment. Works on:
 
-- Decorators (`@required`, `@length`, ...) - shows purpose, allowed sites, argument shape
+- Decorators (`@length`, `@format`, `@default`, ...) - shows purpose, allowed sites, argument shape
 - Type references inside fields - shows the type's declaration
 - Enum values inside `@default(EnumValue)` - shows the enum value's source
 
@@ -91,7 +91,8 @@ Errors appear inline as you type:
 
 - `decorator/unknown` - `@nope` is not registered
 - `decorator/placement` - decorator appears at the wrong site (`@prefix` on a field)
-- `decorator/conflict` - incompatible decorator pair (`@default` with `@required`)
+- `decorator/conflict` - incompatible decorator pair (`@sensitive` with `@length`)
+- `decorator/default-needs-optional` - `@default` on a non-optional field (warning; format auto-fixes)
 - `decorator/typemismatch` - validator on the wrong primitive (`@length` on `int`)
 - `field/duplicate` - same field name twice
 - `service/path-conflict` - two methods on the same verb + path

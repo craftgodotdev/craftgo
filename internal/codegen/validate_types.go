@@ -23,9 +23,12 @@ func isStringOrOptString(f *ast.Field) bool {
 	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
 }
 
-// isNumericField - non-array, non-optional integer or float.
+// isNumericField - non-array integer or float. Optional (`T?`) and
+// `@nullable` variants are accepted; the per-validator emitters pair
+// [numericValueExpr] with [optionalGuard] so the deref only runs after
+// the nil-check.
 func isNumericField(f *ast.Field) bool {
-	if f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
+	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return false
 	}
 	switch f.Type.Named.Name.String() {
@@ -37,10 +40,12 @@ func isNumericField(f *ast.Field) bool {
 	return false
 }
 
-// isIntegerField - non-array, non-optional integer (signed or unsigned).
-// Floats are rejected so `@multipleOf` keeps modular semantics.
+// isIntegerField - non-array integer (signed or unsigned). Floats are
+// rejected so `@multipleOf` keeps modular semantics. Optional (`T?`) and
+// `@nullable` variants are accepted via the same pointer-aware path as
+// [isNumericField].
 func isIntegerField(f *ast.Field) bool {
-	if f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
+	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return false
 	}
 	switch f.Type.Named.Name.String() {

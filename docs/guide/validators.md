@@ -6,8 +6,8 @@ Validators are decorators that constrain field values. They live in the DSL and 
 
 ```craftgo
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
     age   int?   @min(0) @max(150)
 }
 ```
@@ -24,8 +24,8 @@ You write:
 
 ```craftgo
 type CreateUserReq {
-    name  string @required @length(1, 80)
-    email string @required @format(email)
+    name  string @length(1, 80)
+    email string @format(email)
     age   int?   @min(0) @max(150)
 }
 ```
@@ -62,18 +62,19 @@ Plain Go. No reflection. No struct tag parsing. The handler calls `req.Validate(
 
 ## Built-in validators
 
+> **Required-by-default**: every field gets an automatic presence check unless the type carries `?`. No `@required` decorator — use `?` to opt-out, `@nullable` to keep the field mandatory while allowing JSON `null`, `@default(...)` to pre-fill when absent (auto-marks optional on save).
+
 ### Strings
 
 | Decorator                   | Effect                                                |
 | --------------------------- | ----------------------------------------------------- |
-| `@required`                 | Field must be non-empty                               |
 | `@length(min, max)`         | Character count in `[min, max]`                       |
 | `@minLength(n)`             | At least `n` characters                               |
 | `@maxLength(n)`             | At most `n` characters                                |
 | `@pattern("regex")`         | Must match `regexp`                                   |
 | `@format(name)`             | Built-in format check (see below)                     |
 
-Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `hexcolor`, `json`.
+Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. The RFC-compliant subset (`email`, `ipv4`/`ipv6`, `cidr`, `mac`, `datetime`/`date`/`time`, `base64`, `json`) delegates to the Go standard library; the rest use regex.
 
 ```craftgo
 type Profile {
@@ -167,7 +168,7 @@ Multipart fields use `@maxSize` and `@mimeTypes`:
 ```craftgo
 type AvatarReq {
     userId string @path
-    file   file   @form @required @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
+    file   file   @form @maxSize(2MB) @mimeTypes(["image/png", "image/jpeg"])
 }
 ```
 
@@ -183,7 +184,7 @@ type ListUsersReq {
 }
 ```
 
-`@default` works on primitives, optional fields, scalars, enums, and arrays of those. It does not combine with `@required` (required fields fail validation before the default applies).
+`@default` works on primitives, scalars, enums, and arrays of those. The field must be optional (`?`) for the default to fire — the formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you save.
 
 ## Error messages
 

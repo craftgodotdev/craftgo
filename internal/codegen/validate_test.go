@@ -30,21 +30,22 @@ func runValidateGen(t *testing.T, src string) string {
 }
 
 func TestValidateRequired(t *testing.T) {
-	// `@required` enforces non-null only - empty string is allowed
-	// unless paired with `@length` / `@minLength`. For a non-pointer
-	// `string` the JSON decoder already rejects wire `null`, so the
-	// validator emits NO check on this field.
+	// Required-by-default: a non-optional field enforces non-null
+	// only - empty string is allowed unless paired with `@length` /
+	// `@minLength`. For a non-pointer `string` the JSON decoder
+	// already rejects wire `null`, so the validator emits NO check
+	// on this field.
 	src := runValidateGen(t, `package design
 type X { name string }`)
 	if strings.Contains(src, `v.Name == ""`) {
-		t.Errorf("@required must not emit an empty-string check on plain string:\n%s", src)
+		t.Errorf("required-by-default must not emit an empty-string check on plain string:\n%s", src)
 	}
 	// On `any` the decoder accepts the literal 4-byte `null` slice
 	// silently, so the validator does need to fire.
 	srcAny := runValidateGen(t, `package design
 type X { data any }`)
 	if !strings.Contains(srcAny, `v.Data == nil`) {
-		t.Errorf("@required on any should reject nil interface:\n%s", srcAny)
+		t.Errorf("required-by-default on any should reject nil interface:\n%s", srcAny)
 	}
 }
 
@@ -70,6 +71,31 @@ type X {
     n     int @range(1, 99)
 }`)
 	for _, want := range []string{"v.Age < 0", "v.Score > 100", "v.N < 1 || v.N > 99"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q:\n%s", want, src)
+		}
+	}
+}
+
+func TestValidateNumericBoundsOptional(t *testing.T) {
+	// Regression: `T?` numeric fields must still emit @min/@max/@range/
+	// @positive/@negative/@multipleOf checks, nil-guarded so the deref
+	// runs only when a value is present.
+	src := runValidateGen(t, `package design
+type X {
+    age   int?     @min(0) @max(150)
+    score int?     @range(0, 100)
+    step  int?     @positive @multipleOf(5)
+    delta float64? @negative
+}`)
+	for _, want := range []string{
+		"v.Age != nil && *v.Age < 0",
+		"v.Age != nil && *v.Age > 150",
+		"v.Score != nil && (*v.Score < 0 || *v.Score > 100)",
+		"v.Step != nil && *v.Step <= 0",
+		"v.Step != nil && *v.Step%5 != 0",
+		"v.Delta != nil && *v.Delta >= 0",
+	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("missing %q:\n%s", want, src)
 		}
