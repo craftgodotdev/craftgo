@@ -57,8 +57,8 @@ func (v *CreateOrderReq) Validate() error {
 	if len(v.Items) > 100 {
 		return fmt.Errorf("items: maxItems 100")
 	}
-	for i := range v.Items {
-		if err := v.Items[i].Validate(); err != nil {
+	for i0 := range v.Items {
+		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
 	}
@@ -430,8 +430,8 @@ func (v *Order) Validate() error {
 	if len(v.Items) > 100 {
 		return fmt.Errorf("items: maxItems 100")
 	}
-	for i := range v.Items {
-		if err := v.Items[i].Validate(); err != nil {
+	for i0 := range v.Items {
+		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
 	}
@@ -532,8 +532,8 @@ func (v *Order) Validate() error {
 // Validate checks every field-level constraint declared on OrderList.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *OrderList) Validate() error {
-	for i := range v.Items {
-		if err := v.Items[i].Validate(); err != nil {
+	for i0 := range v.Items {
+		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
 	}

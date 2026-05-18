@@ -151,8 +151,8 @@ type T {
     @example("alice@example.com")
     name  string
 
-    @min(0)
-    @max(150)
+    @gte(0)
+    @lte(150)
     age  int?
 
     @default("default")

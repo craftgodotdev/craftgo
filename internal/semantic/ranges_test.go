@@ -123,14 +123,61 @@ func TestMinItemsExceedsMaxItems(t *testing.T) {
 	expectDiag(t, `type X { tags string[] @minItems(10) @maxItems(2) }`, CodeDecoratorRange)
 }
 
+func TestEmptyRangeStrictPair(t *testing.T) {
+	// Strict + inclusive combos with equal endpoints define an empty
+	// value set — every input fails one of the two checks. Currently a
+	// warning so users can still hand-roll edge cases; codegen would
+	// otherwise emit a silently-broken validator.
+	expectDiag(t, `type X { v int @gt(5) @lt(5) }`, CodeBoundEmptyRange)
+	expectDiag(t, `type X { v int @gte(5) @lt(5) }`, CodeBoundEmptyRange)
+	expectDiag(t, `type X { v int @gt(5) @lte(5) }`, CodeBoundEmptyRange)
+	// Fully-inclusive `@gte(N) @lte(N)` accepts the single value N
+	// — that's a legitimate "exact match" pattern, not an empty set.
+	mustClean(t, `type X { v int @gte(5) @lte(5) }`)
+}
+
+func TestMultipleOfNegativeRejected(t *testing.T) {
+	// `n % -2 == 0` works in Go but the decorator intent is "multiple
+	// of a positive divisor"; accepting negatives silently leads to
+	// confusing validators around the dividend's sign.
+	expectDiag(t, `type X { n int @multipleOf(-2) }`, CodeDecoratorRange)
+}
+
+func TestCrossFieldDuplicateRef(t *testing.T) {
+	// C7: @requiresOneOf(a, a, b) — duplicate field name. Without
+	// dedupe, generated code emits `v.A == nil && v.A == nil` which
+	// go vet flags as a redundant boolean expression.
+	expectDiag(t, `@requiresOneOf(a, a, b)
+type X { a string? b string? }`, CodeDuplicateGroupField)
+}
+
+func TestMutuallyExclusiveSingleField(t *testing.T) {
+	// W-R2.5: @mutuallyExclusive(only) — single field. The counter
+	// `n > 1` is provably unreachable.
+	expectDiag(t, `@mutuallyExclusive(only)
+type X { only string? }`, CodeMutExSingleField)
+}
+
+func TestBoundOverflowInt8(t *testing.T) {
+	// C2: bound literal exceeds field primitive's capacity. Without
+	// the check, codegen emits `if v.X > 300` against int8 → compile
+	// fail (300 overflows int8 = max 127).
+	expectDiag(t, `type X { score int8 @lte(300) }`, CodeBoundOverflow)
+	expectDiag(t, `type X { neg int8 @gte(-200) }`, CodeBoundOverflow)
+	expectDiag(t, `type X { u uint @lt(-1) }`, CodeBoundOverflow)
+	// Within range — OK.
+	mustClean(t, `type X { score int8 @lte(127) @gte(-128) }`)
+	mustClean(t, `type X { u uint8 @range(0, 255) }`)
+}
+
 func TestMinExceedsMax(t *testing.T) {
-	expectDiag(t, `type X { score int @min(100) @max(10) }`, CodeDecoratorRange)
+	expectDiag(t, `type X { score int @gte(100) @lte(10) }`, CodeDecoratorRange)
 }
 
 func TestMinMaxOnlyOneSide(t *testing.T) {
 	// Solo decorator is unconstrained - pair ordering only fires when
 	// both halves are present.
-	mustClean(t, `type X { score int @min(0) }`)
+	mustClean(t, `type X { score int @gte(0) }`)
 	mustClean(t, `type X { name string @maxLength(50) }`)
 }
 

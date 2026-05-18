@@ -66,8 +66,8 @@ type X {
 func TestValidateNumericBounds(t *testing.T) {
 	src := runValidateGen(t, `package design
 type X {
-    age   int @min(0)
-    score int @max(100)
+    age   int @gte(0)
+    score int @lte(100)
     n     int @range(1, 99)
 }`)
 	for _, want := range []string{"v.Age < 0", "v.Score > 100", "v.N < 1 || v.N > 99"} {
@@ -83,7 +83,7 @@ func TestValidateNumericBoundsOptional(t *testing.T) {
 	// runs only when a value is present.
 	src := runValidateGen(t, `package design
 type X {
-    age   int?     @min(0) @max(150)
+    age   int?     @gte(0) @lte(150)
     score int?     @range(0, 100)
     step  int?     @positive @multipleOf(5)
     delta float64? @negative
@@ -95,6 +95,52 @@ type X {
 		"v.Step != nil && *v.Step <= 0",
 		"v.Step != nil && *v.Step%5 != 0",
 		"v.Delta != nil && *v.Delta >= 0",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q:\n%s", want, src)
+		}
+	}
+}
+
+func TestValidateFloatBounds(t *testing.T) {
+	// C1: float bound literals must emit checks (previously dropped
+	// silently because intArg only matched IntLit).
+	src := runValidateGen(t, `package design
+type X {
+    rate  float64 @gte(0.5) @lte(1.5)
+    tax   float32 @range(0.0, 0.99)
+    step  float64 @gt(0.1) @lt(0.9)
+}`)
+	for _, want := range []string{
+		"v.Rate < 0.5",
+		"v.Rate > 1.5",
+		"v.Tax < 0 || v.Tax > 0.99",
+		"v.Step <= 0.1",
+		"v.Step >= 0.9",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q:\n%s", want, src)
+		}
+	}
+}
+
+func TestValidateStrictBounds(t *testing.T) {
+	// Sprint 2 S2: @gt and @lt are strict variants of @gte / @lte.
+	// Validity = `x > N` / `x < N`; codegen emits the inverted form
+	// `x <= N` / `x >= N` as the failure condition.
+	src := runValidateGen(t, `package design
+type X {
+    pos  int @gt(0)
+    bnd  int @lt(100)
+    rng  int @gt(0) @lt(100)
+}`)
+	for _, want := range []string{
+		"v.Pos <= 0",        // @gt(0) fails when x <= 0
+		"v.Bnd >= 100",      // @lt(100) fails when x >= 100
+		"v.Rng <= 0",        // @gt(0) part of strict-both pair
+		"v.Rng >= 100",      // @lt(100) part of strict-both pair
+		"must be greater than 0",
+		"must be less than 100",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("missing %q:\n%s", want, src)
@@ -129,13 +175,48 @@ type X { count int @multipleOf(5) }`)
 	}
 }
 
-func TestValidateMultipleOfSkipsFloat(t *testing.T) {
-	// Float fields don't get a modulus check - `%` is integer-only.
-	src := runValidateGen(t, `package design
+func TestValidateMultipleOfRejectsFloat(t *testing.T) {
+	// Float fields with @multipleOf are rejected at the semantic
+	// layer. Earlier behaviour silently dropped the check at codegen
+	// (Go's `%` operator is integer-only), leaving the runtime
+	// validator inconsistent with the OpenAPI side which still
+	// emitted `multipleOf: 0.5`.
+	src := tryRunValidateGen(t, `package design
 type X { ratio float64 @multipleOf(2) }`)
-	if strings.Contains(src, "%") && strings.Contains(src, "Ratio") {
-		t.Errorf("float multipleOf should be skipped:\n%s", src)
+	if src != "" && strings.Contains(src, "v.Ratio%") {
+		t.Errorf("float @multipleOf should be rejected, codegen emitted:\n%s", src)
 	}
+}
+
+// tryRunValidateGen mirrors [runValidateGen] but returns "" instead
+// of fatal-ing when the analyzer rejects the source. Used by negative
+// tests that pin "this design no longer compiles" without bringing
+// the test process down.
+func tryRunValidateGen(t *testing.T, src string) string {
+	t.Helper()
+	pkg, diags := semantic.Analyze([]*ast.File{mustParse(t, src)})
+	if len(diags) > 0 {
+		return ""
+	}
+	dir := t.TempDir()
+	if err := GenerateValidators(pkg, dir); err != nil {
+		return ""
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+func mustParse(t *testing.T, src string) *ast.File {
+	t.Helper()
+	p := craftparser.New("test.craftgo", src)
+	f := p.Parse()
+	if d := p.Diagnostics(); len(d) > 0 {
+		t.Fatalf("parse failed: %v", d)
+	}
+	return f
 }
 
 func TestValidateUniqueItems(t *testing.T) {
@@ -146,6 +227,133 @@ type X { tags string[] @uniqueItems }`)
 	}
 	if !strings.Contains(src, "items must be unique") {
 		t.Errorf("uniqueItems message missing:\n%s", src)
+	}
+}
+
+func TestValidateEachDecorator(t *testing.T) {
+	// `@each(@inner)` applies a nested validator decorator to every
+	// element of an array. Previously the parser accepted the nested
+	// form but the semantic registry didn't include `@each`, so every
+	// use produced `decorator/unknown` and the validator generator
+	// emitted nothing. Common patterns like
+	// `tags string[] @each(@length(1, 20))` were unusable.
+	src := runValidateGen(t, `package design
+type X {
+    scores int[]    @each(@gte(0))
+    tags   string[] @each(@length(1, 20))
+}`)
+	for _, want := range []string{
+		"for _i := range v.Scores",
+		"v.Scores[_i] < 0",
+		"for _i := range v.Tags",
+		"len(v.Tags[_i])",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("@each codegen missing %q:\n%s", want, src)
+		}
+	}
+	mustParseGo(t, src)
+}
+
+func TestValidateMapStructValueRecurses(t *testing.T) {
+	// Previously every `map<K, V>` short-circuited recursive
+	// validation regardless of V's shape. A `map<string, User>` left
+	// `User.Validate()` uncalled — Email format / length / pattern
+	// checks silently skipped for every map entry. The fix walks
+	// values for user-defined types (including array / optional of
+	// user types).
+	src := runValidateGen(t, `package design
+type User { id string @minLength(1) }
+type Catalog {
+    plain   map<string, User>
+    arrayV  map<string, User[]>
+    optV    map<string, User?>
+}`)
+	for _, want := range []string{
+		// plain: range values, validate each
+		"for _, val := range v.Plain",
+		"val.Validate()",
+		// array value: outer loop + inner loop
+		"for _, val := range v.ArrayV",
+		"for i0 := range val",
+		"val[i0].Validate()",
+		// optional value: range + nil-guard
+		"for _, val := range v.OptV",
+		"if val != nil",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("map value recursion missing %q:\n%s", want, src)
+		}
+	}
+	mustParseGo(t, src)
+}
+
+func TestValidateMixinCascade(t *testing.T) {
+	// Embedded mixins inherit field-promotion in Go but their own
+	// Validate() doesn't fire automatically — without an explicit
+	// call from the host, decorators declared on mixin fields never
+	// validated.
+	src := runValidateGen(t, `package design
+type Audit { createdAt string @format(datetime) }
+type User { Audit  id string }`)
+	if !strings.Contains(src, "v.Audit.Validate()") {
+		t.Errorf("mixin Validate cascade missing:\n%s", src)
+	}
+	mustParseGo(t, src)
+}
+
+func TestValidateErrorBody(t *testing.T) {
+	// Error declarations with custom body fields must carry a
+	// Validate() method just like regular types. Without it the
+	// declared decorators on body fields became Go struct tags with
+	// no runtime enforcement — clients could receive error payloads
+	// that violate the design contract.
+	src := runValidateGen(t, `package design
+error Forbidden AccessDenied {
+    reason   string @minLength(1) @maxLength(200)
+    retryAfter int? @gte(1)
+}
+type X { id string }`)
+	for _, want := range []string{
+		"func (v *AccessDeniedBody) Validate() error",
+		"len(v.Reason)",
+		"v.RetryAfter != nil",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("error body validator missing %q:\n%s", want, src)
+		}
+	}
+	mustParseGo(t, src)
+}
+
+func TestValidateMultiDimNestedArray(t *testing.T) {
+	// C5: Node[][] previously emitted a single `for i := range v.Matrix`
+	// that called Validate() on `v.Matrix[i]` — a []Node, not Node →
+	// compile fail. Now must emit 2 nested loops.
+	src := runValidateGen(t, `package design
+type Node { id string }
+type Catalog { matrix Node[][] }`)
+	// Outer + inner loops, innermost body refs deepest element.
+	for _, want := range []string{
+		"for i0 := range v.Matrix",
+		"for i1 := range v.Matrix[i0]",
+		"v.Matrix[i0][i1].Validate()",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("multi-dim nested validator missing %q:\n%s", want, src)
+		}
+	}
+	mustParseGo(t, src)
+}
+
+func TestValidateMinMaxItemsOptionalArrayNilGuard(t *testing.T) {
+	// C3: optional array (`T[]?`) must skip minItems/maxItems when nil.
+	// `len(nil) == 0` would otherwise fail @minItems(1) even though
+	// the field was marked optional.
+	src := runValidateGen(t, `package design
+type X { tags string[]? @minItems(1) @maxItems(5) }`)
+	if !strings.Contains(src, "if v.Tags != nil {") {
+		t.Errorf("optional array should be wrapped in nil-guard:\n%s", src)
 	}
 }
 
@@ -200,6 +408,21 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 }
 
 // ---------- cross-field validators ----------
+
+func TestValidateRequiresOneOfNullableFields(t *testing.T) {
+	// C4: @nullable forces pointer in Go. Cross-field validators must
+	// emit `v.X == nil` for nullable fields, not value-shape compares
+	// like `v.X == ""` (which fails to compile against `*string`).
+	src := runValidateGen(t, `package design
+@requiresOneOf(left, right)
+type Choice {
+    left  string @nullable
+    right string @nullable
+}`)
+	if !strings.Contains(src, "v.Left == nil && v.Right == nil") {
+		t.Errorf("nullable cross-field absence should be nil-check, got:\n%s", src)
+	}
+}
 
 func TestValidateRequiresOneOf(t *testing.T) {
 	src := runValidateGen(t, `package design
@@ -333,7 +556,7 @@ func TestValidateGenericPropagatesPrimitiveDecorators(t *testing.T) {
 	src := runValidateGen(t, `package design
 type Page<T> {
     items   T[]    @minItems(1) @maxItems(50)
-    total   int    @min(0)
+    total   int    @gte(0)
 }`)
 	for _, want := range []string{
 		"len(v.Items) < 1",

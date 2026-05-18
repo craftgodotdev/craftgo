@@ -1,0 +1,81 @@
+// Service surface for the numbers package. One POST per major case
+// so transport + openapi codegen exercises every numeric shape end-
+// to-end. Each request type wraps the matching showcase type so
+// both directions (decode + validate, encode + serialise) emit.
+package numbers
+
+// CounterReq wraps NumberCounter for the AddCounter POST.
+type CounterReq {
+	body NumberCounter
+}
+
+// UnsignedReq wraps NumberUnsigned.
+type UnsignedReq {
+	body NumberUnsigned
+}
+
+// PriceReq wraps NumberPrice (float surface).
+type PriceReq {
+	body NumberPrice
+}
+
+// OptionalReq wraps NumberOptional (presence axes).
+type OptionalReq {
+	body NumberOptional
+}
+
+// MixedReq wraps NumberMixed (mixed strict/inclusive).
+type MixedReq {
+	body NumberMixed
+}
+
+// ExactReq wraps NumberExact (exact-match shapes).
+type ExactReq {
+	body NumberExact
+}
+
+// BoundaryReq wraps NumberBoundary (type-capacity edges).
+type BoundaryReq {
+	body NumberBoundary
+}
+
+// NumbersService exposes one POST per showcase type. Request and
+// response share the wrapper so the codegen exercises both decode
+// and encode paths against every numeric validator chain.
+@prefix("/numbers")
+service NumbersService {
+	post AddCounter /counter {
+		request  CounterReq
+		response CounterReq
+	}
+
+	post AddUnsigned /unsigned {
+		request  UnsignedReq
+		response UnsignedReq
+	}
+
+	post AddPrice /price {
+		request  PriceReq
+		response PriceReq
+	}
+
+	post AddOptional /optional {
+		request  OptionalReq
+		response OptionalReq
+	}
+
+	post AddMixed /mixed {
+		request  MixedReq
+		response MixedReq
+	}
+
+	post AddExact /exact {
+		request  ExactReq
+		response ExactReq
+	}
+
+	post AddBoundary /boundary {
+		request  BoundaryReq
+		response BoundaryReq
+	}
+}

@@ -161,6 +161,101 @@ type UserOrgPair { p Pair<User, Org> }`)
 	}
 }
 
+func TestResolveTypeRefGenericArgs(t *testing.T) {
+	// Generic instantiation must propagate through resolveTypeRef so
+	// service / handler signatures land as `Page[types.User]` rather
+	// than bare `Page` (which Go rejects with "cannot use generic
+	// type without instantiation"). Coverage:
+	//
+	//   - local generic with local arg → both qualified via `types`
+	//   - local generic with cross-pkg arg → arg keeps its qualifier
+	//   - cross-pkg generic with local arg → arg picks up local alias
+	//   - nested generic (`Page<Envelope<User>>`)
+	//   - multi-arg generic
+	cross := CrossPkg{"shared": "github.com/x/internal/types/shared"}
+	cases := []struct {
+		name     string
+		ref      *ast.NamedTypeRef
+		wantAlias string
+		wantBare  string
+	}{
+		{
+			name:      "local generic local arg",
+			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}},
+			wantAlias: "types",
+			wantBare:  "Page[types.User]",
+		},
+		{
+			name:      "local generic cross-pkg arg",
+			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "User"}}}}}},
+			wantAlias: "types",
+			wantBare:  "Page[shared.User]",
+		},
+		{
+			name:      "cross-pkg generic local arg",
+			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}},
+			wantAlias: "shared",
+			wantBare:  "Page[types.User]",
+		},
+		{
+			name: "nested generic local",
+			ref: &ast.NamedTypeRef{
+				Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
+				Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{
+					Name: &ast.QualifiedIdent{Parts: []string{"Envelope"}},
+					Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}},
+				}}},
+			},
+			wantAlias: "types",
+			wantBare:  "Page[types.Envelope[types.User]]",
+		},
+		{
+			name: "multi-arg generic",
+			ref: &ast.NamedTypeRef{
+				Name: &ast.QualifiedIdent{Parts: []string{"Pair"}},
+				Args: []*ast.TypeRef{
+					{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}},
+					{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Email"}}}},
+				},
+			},
+			wantAlias: "types",
+			wantBare:  "Pair[types.User, shared.Email]",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			alias, bare, _ := resolveTypeRef(c.ref, cross)
+			if alias != c.wantAlias || bare != c.wantBare {
+				t.Errorf("got (alias=%q, bare=%q), want (alias=%q, bare=%q)", alias, bare, c.wantAlias, c.wantBare)
+			}
+		})
+	}
+}
+
+func TestRenderMixinQualifiedRef(t *testing.T) {
+	// Same-package mixin renders as bare ident (Go would refuse a
+	// qualified ref to itself). Cross-package mixin keeps the
+	// qualifier — Go requires `pkg.Type` for an embedded type
+	// declared elsewhere, and the consuming file already carries
+	// the matching import.
+	cases := []struct {
+		name  string
+		parts []string
+		want  string
+	}{
+		{name: "same-package", parts: []string{"Pagination"}, want: "\tPagination\n"},
+		{name: "cross-package", parts: []string{"shared", "Pagination"}, want: "\tshared.Pagination\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := &ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: c.parts}}}
+			if got := renderMixin(m); got != c.want {
+				t.Errorf("renderMixin(%v) = %q, want %q", c.parts, got, c.want)
+			}
+		})
+	}
+}
+
 func TestGenerateTypesMixin(t *testing.T) {
 	pkg := analyze(t, `package design
 type Profile { id string }

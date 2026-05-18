@@ -12,6 +12,8 @@ components:
             type: string
           type: object
         name:
+          maxLength: 50
+          minLength: 1
           type: string
         tags:
           items:
@@ -32,6 +34,8 @@ components:
             type: string
           type: object
         name:
+          maxLength: 50
+          minLength: 1
           type: string
         tags:
           items:
@@ -99,6 +103,8 @@ components:
             type: string
           type: object
         name:
+          maxLength: 50
+          minLength: 1
           type: string
         tags:
           items:
@@ -120,6 +126,8 @@ components:
             type: string
           type: object
         name:
+          maxLength: 50
+          minLength: 1
           type: string
         tags:
           items:

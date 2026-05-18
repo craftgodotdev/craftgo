@@ -99,7 +99,7 @@ type GetUserReq {
 // indistinguishable from the shared reference.
 type ListUsersReq {
 	cursor string?
-	limit  int     @min(0) @max(100)
+	limit  int     @gte(0) @lte(100)
 }
 
 // UserList is the ListUsers response. Each list endpoint in the

@@ -126,8 +126,8 @@ error Forbidden AccountSuspended {
 // both the version the caller sent and the version the server
 // has, so the client can reload + diff before retrying.
 error PreconditionFailed StaleVersion {
-	expected_version int @min(0)
-	actual_version   int @min(0)
+	expected_version int @gte(0)
+	actual_version   int @gte(0)
 }
 
 // ---------- 429 ----------
@@ -138,7 +138,7 @@ error PreconditionFailed StaleVersion {
 // without populating fields still produces a legible response.
 error TooManyRequests RateLimited {
 	message     string? @default("Slow down, please")
-	retry_after int     @min(1) @max(86400)
+	retry_after int     @gte(1) @lte(86400)
 	// bucket identifies which limiter dropped the request (per-IP,
 	// per-token, per-route). Helps clients render targeted help.
 	bucket      string?
@@ -158,7 +158,7 @@ error Internal InternalError
 // hints when the client can retry.
 error ServiceUnavailable DependencyUnavailable {
 	upstream string @minLength(1) @maxLength(40)
-	eta      int?   @min(0) @max(7200)
+	eta      int?   @gte(0) @lte(7200)
 }
 
 // UpstreamTimeout is the 504 raised when an internal call exceeds
@@ -167,7 +167,7 @@ error ServiceUnavailable DependencyUnavailable {
 // apart.
 error GatewayTimeout UpstreamTimeout {
 	upstream  string @minLength(1) @maxLength(40)
-	elapsedMs int    @min(0)
+	elapsedMs int    @gte(0)
 }
 
 // ---------- Showcase: enum + custom-type body fields ----------

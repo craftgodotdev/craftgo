@@ -1,0 +1,87 @@
+// Package `shared` exercises the cross-package contract surface: it
+// owns DTOs (Pagination, Audit, Money), named scalars (ID, Email),
+// a plain enum (Severity), and the two canonical error envelopes
+// (NotFoundErr, ConflictErr) that downstream packages import via
+// `import "shared"` and reference through `shared.<Name>`.
+//
+// Every consumer in `services/` pulls these declarations through a
+// single import edge, so adding a new validator here propagates to
+// every service that touches the relevant type — the
+// "shared validators drift between services" smell is structurally
+// impossible.
+package shared
+
+// Pagination is the canonical cursor/limit envelope every list
+// endpoint embeds. `limit` carries the standard 1..100 cap with a
+// pre-fill of 20 when the caller omits it; `cursor` is the opaque
+// continuation token returned by the previous page; `total` is the
+// optional total-count summary (omitted when the upstream store can
+// not cheaply compute it).
+//
+// Consumers embed this DTO via the implicit mixin form
+// (`type ListUsersReq { shared.Pagination  query string? }`) so the
+// pagination contract stays identical across services without copy-
+// paste.
+type Pagination {
+	limit  int? @gte(1) @lte(100) @default(20)
+	cursor string?
+	total  int?
+}
+
+// Audit captures the create/update bookkeeping every persistent
+// entity carries. Embedded into top-level types via the implicit
+// mixin form so the fields land at the wire root without an extra
+// nesting level.
+type Audit {
+	createdAt string @format(datetime)
+	updatedAt string @format(datetime)
+	createdBy string
+}
+
+// Money is the canonical currency-aware amount: an integer minor-
+// unit value paired with the ISO-4217 currency code. `currency` is
+// fixed at exactly three characters; `amount` is non-negative so
+// the wire type cannot carry a debit (refunds are represented by a
+// separate flow, not by a negative Money).
+type Money {
+	amount   int    @gte(0)
+	currency string @length(3, 3)
+}
+
+// ID is the cross-package opaque identifier shape. Referenced as
+// `shared.ID` from `services/` so every entity-id field inherits
+// the same 1..64 char cap without each consumer repeating the
+// validator stack.
+scalar ID string @length(1, 64)
+
+// Email is the cross-package email shape — capped at the RFC-5321
+// maximum and gated by the @format(email) validator. Referenced as
+// `shared.Email` from anywhere a user-facing email address appears.
+scalar Email string @format(email) @maxLength(254)
+
+// Severity classifies a log/event line. The four levels follow the
+// conventional ordering Info < Warning < Error < Critical so a
+// numeric mapping in logic code can use the enum ordinal directly.
+enum Severity {
+	Info
+	Warning
+	Error
+	Critical
+}
+
+// NotFoundErr is the canonical 404 envelope. Carries the resource
+// kind (`user`, `project`, ...) and the offending id so clients can
+// render a targeted error message ("user X not found") without an
+// extra round-trip.
+error NotFound NotFoundErr {
+	resource string
+	id       ID
+}
+
+// ConflictErr is the canonical 409 envelope. `reason` is a free-
+// form explanation slot — kept as a plain string here because the
+// conflict taxonomy varies per resource and consolidating it into a
+// shared enum would force every new resource to extend the enum.
+error Conflict ConflictErr {
+	reason string
+}

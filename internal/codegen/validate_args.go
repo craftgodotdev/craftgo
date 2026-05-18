@@ -24,6 +24,26 @@ func intArg(a *ast.DecoratorArg) (int64, bool) {
 	return 0, false
 }
 
+// numericArg pulls a numeric value out of a literal DecoratorArg as a
+// formatted Go expression. Returns the rendered text + ok flag. Accepts
+// IntLit (`@gte(0)`) and FloatLit (`@gte(0.5)`) — int renders as `0`,
+// float renders via `strconv.FormatFloat` with 'g' so `0.5` stays `0.5`,
+// `1e3` stays `1000` etc. Used by `@gt/@gte/@lt/@lte/@range/@multipleOf`
+// where the Spec accepts ArgNumber but the older `intArg`-only path
+// silently dropped float literals entirely.
+func numericArg(a *ast.DecoratorArg) (string, bool) {
+	if a == nil || a.Value == nil {
+		return "", false
+	}
+	switch v := a.Value.(type) {
+	case *ast.IntLit:
+		return strconv.FormatInt(v.Value, 10), true
+	case *ast.FloatLit:
+		return strconv.FormatFloat(v.Value, 'g', -1, 64), true
+	}
+	return "", false
+}
+
 // stringArg pulls a string out of a literal DecoratorArg.
 func stringArg(a *ast.DecoratorArg) (string, bool) {
 	if a == nil || a.Value == nil {

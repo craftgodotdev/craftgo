@@ -1,0 +1,45 @@
+// projects.craftgo lives in the SAME `services` package as
+// users.craftgo, so the `UserRef` reference in `Project.owner` is
+// resolved without an `import` — the package's type table is
+// shared across every file in the folder. Contrast with
+// users.craftgo, where `shared.ID` carries the package qualifier
+// because the source declaration lives in another folder.
+//
+// ProjectService keeps the surface minimal: a single `list`
+// endpoint. NOTE: the original task asked for `response Project[]`
+// (bare array). The grammar wires `response` through
+// `parseNamedTypeRef` (NOT `parseTypeRef`), so the `[]` suffix
+// cannot appear — every list endpoint has to wrap the slice in an
+// envelope DTO. The cornercase is recorded in the comment on
+// `ProjectsResp` below.
+package services
+
+import "shared"
+
+// Project carries the cross-package `shared.ID` scalar (Go field
+// type: `string`, validators inherited from the scalar decl) and
+// the SAME-PACKAGE `UserRef` nested type — exercise of both the
+// qualified and the bare type-reference paths in one DTO.
+type Project {
+	id    shared.ID
+	name  string @minLength(1)
+	owner UserRef
+}
+
+// ProjectsResp wraps a slice in an envelope so the response shape
+// stays inside what `parseNamedTypeRef` accepts. The brick wall
+// the original spec hit: `response Project[]` won't parse — the
+// method body's `response` slot is a NamedTypeRef and never sees
+// the array-suffix branch.
+type ProjectsResp {
+	items Project[]
+}
+
+// ProjectService is the minimal list-only surface — no auth, no
+// pagination, just an enveloped Project list so the generator can
+// wire a simple cross-package handler signature.
+service ProjectService {
+	get ListProjects / {
+		response ProjectsResp
+	}
+}

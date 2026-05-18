@@ -78,8 +78,8 @@ func TestArgTypeSizeAcceptsBareInt(t *testing.T) {
 
 func TestArgTypeNumberAcceptsBoth(t *testing.T) {
 	mustClean(t, `type X {
-		score int @min(1) @max(100)
-		ratio float64 @min(0.1) @max(0.9)
+		score int @gte(1) @lte(100)
+		ratio float64 @gte(0.1) @lte(0.9)
 	}`)
 }
 
@@ -107,7 +107,10 @@ func TestArgsScopeNilEntry(t *testing.T) {
 
 func TestArgValueFormatAccepted(t *testing.T) {
 	mustClean(t, `type X { email string @format(email) }`)
-	mustClean(t, `type Y { email string @format("email") }`)
+	// String spelling is still ACCEPTED (semantic value lookup
+	// works), but the analyzer emits a CodeArgPreferIdent warning
+	// nudging the user toward the bare-ident canonical form.
+	expectDiag(t, `type Y { email string @format("email") }`, CodeArgPreferIdent)
 }
 
 func TestArgValueFormatRejected(t *testing.T) {
@@ -228,6 +231,23 @@ func TestSecurityArityZero(t *testing.T) {
 service S {}`, CodeDecoratorArity)
 }
 
+// ---------- Flag decorators (S5) ----------
+
+func TestFlagDecoratorEmptyParensWarn(t *testing.T) {
+	// @positive is a Flag decorator (never takes args). Writing `()`
+	// after it emits a warning; `craftgo fmt` strips it on save.
+	expectDiag(t, `type X { age int @positive() }`, CodeFlagEmptyParens)
+	expectDiag(t, `type X { tag string[] @uniqueItems() }`, CodeFlagEmptyParens)
+	expectDiag(t, `type X { nick string @nullable() }`, CodeFlagEmptyParens)
+}
+
+func TestFlagDecoratorBareForm(t *testing.T) {
+	// Bare form (no parens) is canonical and clean.
+	mustClean(t, `type X { age int @positive }`)
+	mustClean(t, `type X { tag string[] @uniqueItems }`)
+	mustClean(t, `type X { nick string @nullable }`)
+}
+
 // ---------- @example / @examples ----------
 
 func TestExampleSingleArg(t *testing.T) {
@@ -240,7 +260,9 @@ func TestExampleArityWrong(t *testing.T) {
 }
 
 func TestExampleRejectsNamedArg(t *testing.T) {
-	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArgType)
+	// After S1 @example uses generic ArgsRule. A lone named arg is
+	// filtered out of positional → arity (0 vs Min=1) fires.
+	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArity)
 }
 
 func TestExamplesArityZero(t *testing.T) {

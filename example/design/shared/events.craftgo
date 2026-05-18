@@ -87,5 +87,5 @@ type PluginConfig {
 	settings any    @example({retries: 3, backoff: "exponential", endpoints: ["primary", "fallback"]})
 	// version pins the schema revision so a plugin can migrate
 	// its settings shape without breaking older entries.
-	version  int    @min(1)
+	version  int    @gte(1)
 }

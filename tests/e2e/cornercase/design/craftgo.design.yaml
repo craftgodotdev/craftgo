@@ -1,0 +1,12 @@
+output:
+  types:      ./internal/types
+  transport:  ./internal/transport
+  routes:     ./internal/routes
+  service:    ./internal/service
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+  main:       "-"
+openapi:
+  title:    Cornercase API
+  version:  1.0.0
+  basePath: /api

@@ -1,0 +1,80 @@
+package combine
+
+// Color is a string-valued bare enum used by DefaultEnum below. Bare
+// values (no `= "..."` literal) render as the matching Go const name
+// in lower case for the wire form.
+enum Color {
+	Red
+	Green
+	Blue
+}
+
+// PageSize is a numeric scalar — every field of this type inherits
+// the @gte/@lte bounds. Used in DefaultScalar below to verify that the
+// @default literal threads through the scalar alias without losing the
+// inherited validators.
+scalar PageSize int @gte(1) @lte(100)
+
+// DefaultsBoundary parks each default literal AT or near the validator
+// boundary so the pre-fill / validate ordering is visible.
+//
+//   - zero:   @default(0) with @gte(0) — default sits on the closed lo.
+//   - bool:   @default(true) on a plain bool. No validator to clash with.
+//   - negOne: @default(-1) with strict @lt(0) — the default is the
+//     largest value that still satisfies the strict bound.
+type DefaultsBoundary {
+	zero   int?  @default(0)   @gte(0)
+	flag   bool? @default(true)
+	negOne int?  @default(-1)  @lt(0)
+}
+
+// DefaultsConflict pins the case where the default literal WOULD fail
+// the per-field validator if the user accepted the pre-fill. The
+// semantics layer should ideally surface a warning so the user knows
+// the pre-fill yields an immediately-invalid value; if the layer is
+// silent, the generated code emits the default and then rejects it at
+// req.Validate() — a footgun.
+type DefaultsConflict {
+	// Empty string default + @minLength(1). The pre-fill IS the
+	// validator's failure case.
+	empty string? @default("") @minLength(1)
+}
+
+// DefaultsCollection covers the collection / map default shapes.
+//
+//   - arr:  @default([1, 2, 3]) — array literal default on int[]?.
+//     Combined with @minItems(0) the default trivially satisfies the
+//     bound (3 >= 0); the test is that the array literal renders.
+//   - obj:  @default({key: "v"}) on a map<string, string>? — object
+//     literal defaults are NOT in the semantics layer's allow-list
+//     (only primitives / enums / scalars / arrays of those). Expect a
+//     rejection at codegen time.
+//
+// CONFIRMED: codegen rejects `obj` with
+//   `@default is not supported on field "obj": only primitives,
+//    enums, scalars (wrapping primitives), and arrays of those are
+//    allowed`
+// This is the expected design — object-literal defaults aren't in
+// the allow-list. The intended DSL line is commented out below; the
+// active type keeps only the array-literal default so the rest of
+// the combine package proceeds past the semantics gate.
+//
+//   type DefaultsCollection {
+//       arr int[]?               @default([1, 2, 3]) @minItems(0)
+//       obj map<string, string>? @default({key: "v"})
+//   }
+type DefaultsCollection {
+	arr int[]? @default([1, 2, 3]) @minItems(0)
+}
+
+// DefaultsEnum uses an enum default (bare ident → Go const). The enum
+// value reference resolves through the enum decl above.
+type DefaultsEnum {
+	c Color? @default(Red)
+}
+
+// DefaultsScalar uses a numeric-scalar default. The literal is a plain
+// int — the codegen widens it to the scalar alias via cast.
+type DefaultsScalar {
+	size PageSize? @default(20)
+}

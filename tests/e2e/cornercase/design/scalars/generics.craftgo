@@ -1,0 +1,82 @@
+// Generics + mixins. The generic type decl renders Page<T> as a
+// parametric Go struct with a generic Validate() receiver; the
+// concrete instantiation site (`Page<Order>`) substitutes the type
+// argument and the codegen emits a Validate() call against the
+// concrete element type.
+//
+// Mixin: a bare PascalCase identifier inside a type body — NOT the
+// keyword `mixin Name` — embeds the referenced type's fields into
+// the host. The semantic phase flattens fields, detects conflicts,
+// and the validator emitter walks the host's expanded field set.
+package scalars
+
+// Page<T> is the canonical cursor-pagination envelope. T-typed
+// fields use the runtime-Validate path (interface assertion);
+// non-generic fields emit plain numeric / string validators.
+type Page<T> {
+	items  T[]
+	total  int
+	cursor string?
+}
+
+// Envelope<T> wraps a single value plus an optional meta string.
+// Exercises generic decl WITHOUT an array field — codegen still
+// emits a parametric Validate() receiver for it.
+type Envelope<T> {
+	data T
+	meta string?
+}
+
+// Pair<A, B> is the multi-parameter generic. Each field references
+// a distinct type parameter so the codegen substitutes two
+// arguments at the concrete site.
+type Pair<A, B> {
+	left  A
+	right B
+}
+
+// Maybe<T> stacks generic-param with the `?` optional marker. The
+// emitted Go field is `*T` (pointer) with `omitempty`.
+type Maybe<T> {
+	value T?
+}
+
+// OrderPage instantiates Page<Order>. Codegen substitutes T=Order
+// in items's element type and the validator chain calls
+// .Validate() on each element via interface assertion in the
+// generic body's loop.
+type OrderPage {
+	page Page<Order>
+}
+
+// ProductPage instantiates Page<ProductRef> — separate scalar set
+// proves that two concrete instantiations coexist without name
+// clashes in the Validate generator.
+type ProductPage {
+	page Page<ProductRef>
+}
+
+// Wrapped nests two generic instantiations: outer Page<…> over inner
+// Envelope<Order>. Probes whether codegen handles a generic argument
+// that is itself a generic instance.
+type Wrapped {
+	results Page<Envelope<Order>>
+}
+
+// AuditFields is the mixin source — two timestamp fields with
+// @format(datetime). Any host that mixes this in inherits both
+// fields plus their format validators.
+type AuditFields {
+	createdAt string @format(datetime)
+	updatedAt string @format(datetime)
+}
+
+// Audited is the mixin SITE. The bare `AuditFields` identifier on
+// its own line embeds AuditFields's two fields into Audited's body;
+// the generated struct lists `createdAt`, `updatedAt`, AND `id` as
+// peer fields, and the Validate() emitter runs the datetime checks
+// alongside the UUID check.
+type Audited {
+	AuditFields
+	id UUID
+}

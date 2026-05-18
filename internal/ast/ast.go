@@ -414,6 +414,11 @@ type Decorator struct {
 	Name        string
 	Args        []*DecoratorArg
 	TrailingDoc string
+	// HasParens reports whether the source wrote `(...)` after the
+	// decorator name, even when the inside was empty. The parser sets
+	// it so the semantic analyzer can flag `@positive()` (empty parens
+	// on a Flag decorator) and the formatter can normalise it away.
+	HasParens bool
 }
 
 // DecoratorArg is one argument inside `@name(...)`. Exactly one of Value,

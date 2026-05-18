@@ -81,7 +81,7 @@ error BadRequest ValidationFailed {
 
 scalar Email string @format("email") @maxLength(254)
 
-scalar Cents int @min(0) @multipleOf(1)
+scalar Cents int @gte(0) @multipleOf(1)
 `,
 		},
 		{
@@ -194,6 +194,93 @@ type Foo {
 	}
 	if !strings.Contains(formatted, `@title("API")`) {
 		t.Errorf("file decorator missing in output:\n%s", formatted)
+	}
+}
+
+// TestFormatStripsEmptyParens covers S5: empty `()` is canonicalised
+// away — `@positive()` → `@positive`, `@nullable()` → `@nullable`,
+// `@deprecated()` → `@deprecated`. Holds for Flag decorators (which
+// never take args) AND non-Flag decorators authored with no args.
+func TestFormatStripsEmptyParens(t *testing.T) {
+	src := `package design
+
+type X {
+	age int @positive()
+	tags string[] @uniqueItems()
+	nick string @nullable()
+}
+`
+	formatted, _ := Format("t.craftgo", src)
+	for _, bad := range []string{"@positive()", "@uniqueItems()", "@nullable()"} {
+		if strings.Contains(formatted, bad) {
+			t.Errorf("empty parens not stripped: %q remained\nformatted:\n%s", bad, formatted)
+		}
+	}
+	for _, want := range []string{"@positive", "@uniqueItems", "@nullable"} {
+		if !strings.Contains(formatted, want) {
+			t.Errorf("missing canonical form %q:\n%s", want, formatted)
+		}
+	}
+}
+
+// TestFormatMigratesMinMax covers Sprint 2 S2: `@min(N)` is rewritten
+// to `@gte(N)` and `@max(N)` to `@lte(N)` on format. The semantic
+// registry no longer recognises @min/@max — format normalises them so
+// the next lint pass sees the canonical names. Existing @gte/@lte stay
+// intact, idempotently.
+func TestFormatMigratesMinMax(t *testing.T) {
+	src := `package design
+
+type X {
+	age int @min(0) @max(150)
+	bps int @gte(0) @lte(10000)
+}
+`
+	formatted, _ := Format("t.craftgo", src)
+	if !strings.Contains(formatted, "@gte(0)") || !strings.Contains(formatted, "@lte(150)") {
+		t.Errorf("@min/@max not migrated to @gte/@lte:\n%s", formatted)
+	}
+	for _, bad := range []string{"@min(", "@max("} {
+		if strings.Contains(formatted, bad) {
+			t.Errorf("legacy form %q leaked through format:\n%s", bad, formatted)
+		}
+	}
+	// Idempotent.
+	formatted2, _ := Format("t.craftgo", formatted)
+	if formatted != formatted2 {
+		t.Errorf("not idempotent:\n--first--\n%s\n--second--\n%s", formatted, formatted2)
+	}
+}
+
+// TestFormatRewritesFormatStringToIdent covers Sprint 2 S4:
+// `@format("email")` is rewritten to `@format(email)` on save. The
+// rule: when a decorator argument names a registered identifier
+// (format name, security scheme, ...), the canonical form is bare
+// ident. Strings with non-ident characters (hyphens, dots) stay
+// quoted so the rewrite doesn't produce un-parseable output.
+func TestFormatRewritesFormatStringToIdent(t *testing.T) {
+	src := `package design
+
+type X {
+	email string @format("email")
+	url   string @format("url")
+	uid   string @format(uuid)
+}
+`
+	formatted, _ := Format("t.craftgo", src)
+	if !strings.Contains(formatted, "@format(email)") || strings.Contains(formatted, `@format("email")`) {
+		t.Errorf(`@format("email") not rewritten to @format(email):`+"\n%s", formatted)
+	}
+	if !strings.Contains(formatted, "@format(url)") || strings.Contains(formatted, `@format("url")`) {
+		t.Errorf("@format(\"url\") not rewritten:\n%s", formatted)
+	}
+	if !strings.Contains(formatted, "@format(uuid)") {
+		t.Errorf("bare-ident form should stay as-is:\n%s", formatted)
+	}
+	// Idempotent.
+	formatted2, _ := Format("t.craftgo", formatted)
+	if formatted != formatted2 {
+		t.Errorf("not idempotent:\n--first--\n%s\n--second--\n%s", formatted, formatted2)
 	}
 }
 

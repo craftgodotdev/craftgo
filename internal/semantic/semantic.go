@@ -186,14 +186,20 @@ func (a *analyzer) runNamingPhase(files []*ast.File) {
 // runDecoratorPhase covers every decorator-level rule: duplicates on
 // the same site, placement against the registry, argument arity /
 // type / value enums, and reference resolution to declared
-// middlewares / errors / fields. Reference resolution is gated by
-// `skipMiddlewareRefCheck` for the format-only LSP path that runs
-// without a fully-resolved project.
+// middlewares / errors / fields. Project-level cross-package
+// references (middleware / security / errors) are gated by
+// `skipMiddlewareRefCheck` because they need the full project symbol
+// table — those run in [AnalyzeProject] after per-package analysis.
+// LOCAL refs (field-group: `@requiresOneOf` / `@mutuallyExclusive`)
+// always run — their targets are same-type fields, no cross-package
+// resolution required, and skipping them silently allows typos like
+// `@requiresOneOf(emial, phone)` to slip through to codegen.
 func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorDuplicates(files)
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
 	a.checkDecoratorConflicts(files)
+	a.checkLocalDecoratorRefs(files)
 	if !a.opts.skipMiddlewareRefCheck {
 		a.checkDecoratorRefs(files)
 	}
@@ -275,6 +281,36 @@ const (
 	// a wire-shaping validator like `@length` (sensitive fields never
 	// cross the wire so wire-level constraints are meaningless).
 	CodeDecoratorConflict = "decorator/conflict"
+	// CodeFlagEmptyParens fires (severity warning) when a Flag
+	// decorator (one that never takes arguments) is written with empty
+	// parens — `@positive()` instead of `@positive`. Soft migration:
+	// not an error, but `craftgo fmt` strips the parens on save so
+	// canonical form is parens-free.
+	CodeFlagEmptyParens = "decorator/flag-empty-parens"
+	// CodeArgPreferIdent fires (severity warning) when a decorator
+	// argument names a registered identifier (format name, security
+	// scheme, ...) but the source spells it as a quoted string. The
+	// canonical form is bare ident — `@format(email)` not
+	// `@format("email")`. `craftgo fmt` rewrites on save.
+	CodeArgPreferIdent = "decorator/arg-prefer-ident"
+	// CodeBoundOverflow fires when a numeric bound literal exceeds
+	// the field type's capacity. `int8 @lte(300)` — 300 overflows
+	// int8 (max 127). Without this check codegen emits an untyped
+	// integer literal that fails to compile against the typed field.
+	CodeBoundOverflow = "decorator/bound-overflow"
+	// CodeBoundEmptyRange fires when two comparison decorators on the
+	// same field define an empty value set. `@gt(5) @lt(5)`,
+	// `@gte(N) @lt(N)`, and `@gt(N) @lte(N)` all reject every value.
+	CodeBoundEmptyRange = "decorator/empty-range"
+	// CodeMutExSingleField fires when `@mutuallyExclusive` is given
+	// fewer than 2 fields. The runtime check (`n > 1`) is provably
+	// unreachable.
+	CodeMutExSingleField = "decorator/single-field-mutex"
+	// CodeDuplicateGroupField fires when a cross-field validator
+	// (`@requiresOneOf`, `@mutuallyExclusive`) lists the same field
+	// name twice. Codegen would emit `v.A == nil && v.A == nil` which
+	// `go vet` rejects as a redundant boolean expression.
+	CodeDuplicateGroupField = "decorator/duplicate-group-field"
 
 	// CodePackageMismatch fires when files disagree on the `package`
 	// name.

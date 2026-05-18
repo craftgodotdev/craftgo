@@ -321,12 +321,17 @@ func goFieldIsPointer(f *ast.Field) bool {
 	return strings.HasPrefix(goFieldType(f), "*")
 }
 
-// renderMixin returns one Go-level embedded-type line. Qualified mixin
-// references (`pkg.Name`) are rendered using the last segment for now;
-// cross-package resolution will revisit the qualified form.
+// renderMixin returns one Go-level embedded-type line. Qualified
+// references survive verbatim — Go allows `pkg.Name` as an embedded
+// field, and the consuming file already carries the matching import
+// (added by the type-resolver). Stripping the qualifier produced
+// `undefined: Name` compile errors for every cross-package mixin.
+//
+// Same-package mixins land with a single-segment name (`Pagination`)
+// because the analyzer doesn't synthesize a fake qualifier for local
+// refs.
 func renderMixin(m *ast.Mixin) string {
-	parts := strings.Split(m.Ref.Name.String(), ".")
-	return "\t" + parts[len(parts)-1] + "\n"
+	return "\t" + m.Ref.Name.String() + "\n"
 }
 
 // GoTypeRef converts an [ast.TypeRef] into the corresponding Go type

@@ -1,0 +1,84 @@
+// maps.craftgo exercises the map<K, V> corner cases:
+//
+//   - Plain map<string, int> with no validators.
+//   - @minItems / @maxItems applied at the map level — counts the
+//     number of entries (`len(map)` semantics).
+//   - Map values that are themselves typed (User struct, Address
+//     struct, scalar Tag, nested map<string, Tag[]>).
+//   - Map keys that are typed (NonEmptyID scalar) — key-side
+//     validators emit a `for k := range v.M` key-only loop.
+//   - Optional map: `map<K, V>?`.
+//
+// KNOWN GAPS captured here intentionally so the e2e snapshot pins
+// today's behaviour:
+//
+//   - Map values are NOT walked recursively for struct field
+//     validators. `map<string, User>` does NOT emit per-entry
+//     `val.Validate()` calls today — the per-element scalar-leaves
+//     pass DOES catch scalar values, but a struct value's nested
+//     fields are skipped.
+package collections
+
+// Map_Plain is the simplest case — no validators, no scalars, no
+// optionality. The generator should emit NO validator block for this
+// field (presence is implicit; len() > 0 is not enforced).
+type Map_Plain {
+	counts map<string, int>
+}
+
+// Map_Bounds applies @minItems + @maxItems to a plain map. The
+// generator interprets the bounds as "entry count": min entries 1,
+// max entries 100. The emitted code is `if len(v.Counts) < 1 / > 100`.
+type Map_Bounds {
+	counts map<string, int> @minItems(1) @maxItems(100)
+}
+
+// Map_StructValue is the struct-valued map. KNOWN GAP: today's
+// generator does NOT recurse into User to validate its `name` /
+// `email` fields; only field-level validators on the MAP itself fire.
+// The `email` scalar's @format(email) is therefore unenforced inside
+// this map.
+type Map_StructValue {
+	users map<string, User>
+}
+
+// Map_ScalarValue uses a scalar value type (Tag). Unlike the struct
+// case, the scalar-leaves walk DOES descend into the value side here:
+// the generator emits `for _, val0 := range v.Labels` and fires Tag's
+// @minLength + @maxLength + @pattern on `val0`.
+type Map_ScalarValue {
+	labels map<string, Tag>
+}
+
+// Map_ArrayValue stacks an array INSIDE a map value: each value is a
+// `Tag[]`. The scalar-leaves walk should produce a doubly-nested
+// loop: `for _, val0 := range v.Buckets` then
+// `for i1 := range val0` then Tag's three validators on `val0[i1]`.
+type Map_ArrayValue {
+	buckets map<string, Tag[]>
+}
+
+// Map_KeyAndValue puts scalars on BOTH sides — NonEmptyID on the key,
+// Email on the value. Generator should emit TWO loops: one for keys
+// (`for k0 := range v.Index`) and one for values
+// (`for _, val0 := range v.Index`), each running the matching
+// scalar's validators.
+type Map_KeyAndValue {
+	index map<NonEmptyID, Email>
+}
+
+// Map_Optional is the optional-map case. Outer nil-guard wraps any
+// inner iteration. Today's generator treats `map<K, V>?` like the
+// non-optional case for bound checks (len(nil) is 0, so a @minItems
+// on an optional map would falsely reject the nil case — but this
+// fixture has no bounds, so the gap is not exercised here).
+type Map_Optional {
+	counts map<string, int>?
+}
+
+// Map_StructAddress is the second struct-valued map case, with
+// Address as the value. Same KNOWN GAP as Map_StructValue: the
+// per-value `street` / `city` validators stay un-fired today.
+type Map_StructAddress {
+	addresses map<string, Address>
+}

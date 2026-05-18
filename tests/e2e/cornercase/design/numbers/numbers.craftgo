@@ -1,0 +1,163 @@
+// Package numbers is the cornercase showcase for numeric types and
+// bound decorators. Exercises every primitive numeric kind (signed +
+// unsigned int families, float32, float64) against the full Sprint 3
+// bound surface: @gt / @gte / @lt / @lte, @range, @multipleOf, the
+// @positive / @negative flag pair, plus the orthogonal axes of
+// optional / nullable / default presence.
+package numbers
+
+// NumberCounter exercises every standard int* signed type with all
+// three pair flavours: @range (inclusive both), @gte/@lte (inclusive
+// both), @gt/@lt (strict both). Also adds @positive, @negative, and
+// @multipleOf on int to cover the marquee combinations.
+type NumberCounter {
+	// int — defaults to the platform's native word width but the
+	// semantic capacity check treats it as int64 for portability.
+	rangeInt    int   @range(0, 1000)
+	gteLteInt   int   @gte(0) @lte(1000)
+	gtLtInt     int   @gt(0) @lt(1000)
+	// int8 — bound capacity edge (the validator should narrow safely).
+	rangeInt8   int8  @range(-50, 50)
+	gteLteInt8  int8  @gte(-100) @lte(100)
+	gtLtInt8    int8  @gt(-100) @lt(100)
+	// int16
+	rangeInt16  int16 @range(-1000, 1000)
+	gteLteInt16 int16 @gte(-32000) @lte(32000)
+	gtLtInt16   int16 @gt(-32000) @lt(32000)
+	// int32 — tests MaxInt32-ish boundaries.
+	rangeInt32  int32 @range(-2000000000, 2000000000)
+	gteLteInt32 int32 @gte(0) @lte(2147483647)
+	gtLtInt32   int32 @gt(-2147483648) @lt(2147483647)
+	// int64 — the widest signed.
+	rangeInt64  int64 @range(-1000000000, 1000000000)
+	gteLteInt64 int64 @gte(-9000000000000000000) @lte(9000000000000000000)
+	gtLtInt64   int64 @gt(0) @lt(1000000000000)
+	// @positive / @negative — flag decorators (no parens).
+	posInt      int   @positive
+	negInt      int   @negative
+	posInt64    int64 @positive
+	// @multipleOf on int.
+	stepInt     int   @multipleOf(5)
+	stepInt64   int64 @multipleOf(100)
+}
+
+// NumberUnsigned covers the full uint family. Lower bound 0 is
+// implicit at the type level but we still emit @gte(0) explicitly to
+// confirm codegen doesn't emit a dead `v < 0` for unsigned fields.
+type NumberUnsigned {
+	// uint
+	rangeUint    uint   @range(0, 1000)
+	gteLteUint   uint   @gte(0) @lte(1000)
+	gtLtUint     uint   @gt(0) @lt(1000)
+	// uint8 — full capacity test.
+	rangeUint8   uint8  @range(0, 255)
+	gteLteUint8  uint8  @gte(0) @lte(255)
+	gtLtUint8    uint8  @gt(0) @lt(255)
+	// uint16
+	rangeUint16  uint16 @range(0, 65535)
+	gteLteUint16 uint16 @gte(0) @lte(65535)
+	gtLtUint16   uint16 @gt(0) @lt(65535)
+	// uint32 — boundary at MaxUint32.
+	rangeUint32  uint32 @range(0, 4294967295)
+	gteLteUint32 uint32 @gte(0) @lte(4294967295)
+	gtLtUint32   uint32 @gt(0) @lt(4294967295)
+	// uint64 — even bigger.
+	rangeUint64  uint64 @range(0, 1000000000000)
+	gteLteUint64 uint64 @gte(0) @lte(1000000000000)
+	gtLtUint64   uint64 @gt(0) @lt(1000000000000)
+	// @positive on uint — semantically equivalent to @gt(0), but the
+	// unsigned domain makes @negative semantically vacuous (it is
+	// still accepted at the decorator layer, so we don't test that).
+	posUint      uint   @positive
+}
+
+// NumberPrice exercises float32 + float64 with float literal bounds.
+// Sprint 3 specifically called out that @gte(0.5), @range(0.1, 0.9)
+// must round-trip cleanly.
+type NumberPrice {
+	// float32 — narrower precision but same decorator surface.
+	rangeF32  float32 @range(0, 1)
+	gteLteF32 float32 @gte(0.5) @lte(1.5)
+	gtLtF32   float32 @gt(0) @lt(1)
+	// float64 — the wide form. Includes a high-precision bound.
+	rangeF64  float64 @range(0.1, 0.9)
+	gteLteF64 float64 @gte(-1.5) @lte(1.5)
+	gtLtF64   float64 @gt(0.0001) @lt(0.9999)
+	// @positive / @negative on floats.
+	posFloat  float64 @positive
+	negFloat  float64 @negative
+	posF32    float32 @positive
+	// @multipleOf on float is now rejected at semantic time — Go's
+	// modulus operator is integer-only, so the older "silently drop
+	// the check" path was a spec/runtime mismatch.
+	// stepFloat float64 @multipleOf(0.5)
+}
+
+// NumberOptional exercises the optional / nullable / default axes
+// against numeric primitives.
+type NumberOptional {
+	// Bare optional ints/floats with bound — the decoder treats
+	// "missing key" as zero-value, and Validate skips when nil.
+	optInt        int?     @gte(0) @lte(100)
+	optFloat      float64? @gte(0) @lte(1)
+	optUint       uint?    @range(0, 1000)
+	// @nullable on a non-optional numeric — forces a pointer in
+	// codegen so the wire can carry explicit null.
+	nullableInt   int      @nullable @range(0, 100)
+	nullableFloat float64  @nullable @gte(0) @lte(1)
+	// 4-state: optional + nullable. Numbers wire shape: missing key,
+	// null, or a valid value.
+	maybeInt      int?     @nullable @range(0, 100)
+	// Defaults: @default fills in the value when the field is absent.
+	defaultInt    int?     @default(42)
+	defaultFloat  float64? @default(3.14)
+	// Default + range — present and below-default sends 0 which still
+	// passes the @gte(0).
+	defaultStep   int?     @default(10) @gte(0) @lte(100)
+}
+
+// NumberMixed exercises mixed strict/inclusive pair combinations.
+type NumberMixed {
+	// strict-lower + inclusive-upper
+	gtLte      int     @gt(0) @lte(100)
+	// inclusive-lower + strict-upper
+	gteLt      int     @gte(0) @lt(100)
+	// All-negative inclusive range — only negative values accepted.
+	negRange   int     @gte(-100) @lte(-1)
+	// All-negative strict range.
+	negStrict  int     @gt(-100) @lt(-1)
+	// Asymmetric float
+	floatGtLte float64 @gt(0) @lte(1)
+}
+
+// NumberExact is the boundary case where @gte and @lte share the
+// same value — exactly one accepted value. Sprint 3 allows this
+// (only the strict variants on equal endpoints emit empty-range).
+type NumberExact {
+	// Only value = 5 is accepted.
+	exactly5    int     @gte(5) @lte(5)
+	// Only value = 0
+	exactly0    int     @gte(0) @lte(0)
+	// Only value = 0.5
+	exactlyHalf float64 @gte(0.5) @lte(0.5)
+}
+
+// NumberBoundary pins bounds at the exact type-capacity edges. The
+// semantic phase rejects bounds beyond a type's representable range;
+// these must all sit AT the boundary and pass clean.
+type NumberBoundary {
+	// int8 full range
+	int8Full   int8   @gte(-128) @lte(127)
+	int8Range  int8   @range(-128, 127)
+	// int16 full range
+	int16Full  int16  @gte(-32768) @lte(32767)
+	// int32 full range
+	int32Full  int32  @gte(-2147483648) @lte(2147483647)
+	// uint8 full range
+	uint8Range uint8  @range(0, 255)
+	uint8Full  uint8  @gte(0) @lte(255)
+	// uint16 full range
+	uint16Full uint16 @gte(0) @lte(65535)
+	// uint32 full range
+	uint32Full uint32 @gte(0) @lte(4294967295)
+}

@@ -379,11 +379,12 @@ func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRo
 			continue
 		}
 		cross := codegen.BuildCrossPkg(proj, cfg, name)
+		scalars := codegen.BuildScalarTable(proj, name)
 		steps := []struct {
 			label string
 			fn    func() error
 		}{
-			{"transport(" + name + ")", func() error { return codegen.GenerateTransportPackage(p, cfg, projectRoot, cross) }},
+			{"transport(" + name + ")", func() error { return codegen.GenerateTransportWith(p, cfg, projectRoot, cross, scalars) }},
 			{"transport-helpers(" + name + ")", func() error { return codegen.GenerateTransportHelpers(p, cfg, projectRoot) }},
 			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, cross) }},
 			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},

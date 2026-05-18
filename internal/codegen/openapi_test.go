@@ -77,7 +77,7 @@ service S {
 // scalar declarations.
 func TestGenerateOpenAPIScalarSchemasEmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
-scalar Email string @format("email")
+scalar Email string @format(email)
 type Req { addr Email }
 service S { post Send /m { request Req } }`)
 	expectGolden(t, "openapi-scalar-schemas.yaml", body)
@@ -173,6 +173,53 @@ service S { post Create /c { request T  response T } }`
 	}
 	if !strings.Contains(src2, "nullable: true") {
 		t.Errorf("expected nullable: true on field:\n%s", src2)
+	}
+}
+
+// TestGenerateOpenAPIValidatorConstraints pins the mapping from
+// validator decorators onto OpenAPI's numeric / string / array /
+// pattern / format keywords. Earlier the OpenAPI emitter ignored every
+// runtime-validator decorator, so client generators saw fields as
+// unbounded primitives and produced types that didn't match the
+// server's accepted shape.
+func TestGenerateOpenAPIValidatorConstraints(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Order {
+    price     int    @range(0, 1000000)
+    quantity  int    @gte(1) @lte(999)
+    discount  int    @gt(0) @lt(100)
+    ratio     float64 @positive
+    step      int    @multipleOf(5)
+    name      string @length(1, 80)
+    code      string @minLength(3) @maxLength(10) @pattern("^[A-Z]+$")
+    email     string @format(email)
+    tags      string[] @minItems(1) @maxItems(10) @uniqueItems
+}
+service S { post Make /m { request Order  response Order } }`)
+	for _, want := range []string{
+		// numeric
+		"minimum: 0",
+		"maximum: 1000000",
+		"minimum: 1",
+		"maximum: 999",
+		"exclusiveMinimum: true",
+		"exclusiveMaximum: true",
+		"multipleOf: 5",
+		// string
+		"minLength: 1",
+		"maxLength: 80",
+		"minLength: 3",
+		"maxLength: 10",
+		"pattern: ^[A-Z]+$",
+		"format: email",
+		// array
+		"minItems: 1",
+		"maxItems: 10",
+		"uniqueItems: true",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in openapi:\n%s", want, body)
+		}
 	}
 }
 

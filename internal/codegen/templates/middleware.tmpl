@@ -8,17 +8,25 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// New{{.Name}}Middleware constructs the {{.Name}} middleware. Declare
-// whatever params your real implementation needs (token store, logger,
-// rate-limit budget, etc.) - craftgo never overwrites this file after
-// the first generation, so the signature is yours.
+// New{{.Name}}Middleware constructs the {{.Name}} middleware.
+{{- if .DefaultsDoc}}
+//
+// DSL-declared defaults:
+{{- range .DefaultsDoc}}
+//   - {{.}}
+{{- end}}
+{{- end}}
+//
+// craftgo never overwrites this file after the first generation, so
+// add wiring (token store, logger, rate-limit budget, ...) or change
+// the param types freely.
 //
 // Wire it from main.go:
 //
 //	svc := svccontext.NewServiceContext()
-//	svc.{{.Name}} = middleware.New{{.Name}}Middleware(/* your params */)
+//	svc.{{.Name}} = middleware.New{{.Name}}Middleware(/* args */)
 //	routes.RegisterRoutes(srv, svc)
-func New{{.Name}}Middleware() server.Middleware {
+func New{{.Name}}Middleware({{.ParamList}}) server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// TODO: implement

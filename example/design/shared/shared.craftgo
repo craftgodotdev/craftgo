@@ -20,7 +20,7 @@ type Pagination {
 	// (the v1 query binder doesn't support optional ints, so 0
 	// serves as the "absent" sentinel); the upper bound is
 	// enforced here so a hostile client can't request 1M rows.
-	limit  int     @min(0) @max(100)
+	limit  int     @gte(0) @lte(100)
 }
 
 // OkResp is the conventional response shape for write endpoints
@@ -53,7 +53,7 @@ scalar NonEmptyID string @minLength(1) @maxLength(128) @pattern("^[A-Za-z0-9_-]+
 // a percentage with two decimal places of precision (1bp = 0.01%).
 // Used by anything that wants to express "x% of something" without
 // floating-point representation woes.
-scalar PercentBP int @min(0) @max(10000)
+scalar PercentBP int @gte(0) @lte(10000)
 
 // SafeURL caps URL length and validates the format. Any cross-
 // package field carrying a public-facing URL should reference this

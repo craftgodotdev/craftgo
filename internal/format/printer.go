@@ -291,6 +291,27 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	}
 }
 
+// canonicalDecoratorName migrates legacy decorator names to the
+// math-style comparison operators on format:
+//
+//	@min(N) → @gte(N)
+//	@max(N) → @lte(N)
+//
+// The legacy names are no longer in the semantic registry; without
+// this rewrite the analyzer would emit `decorator/unknown` for any
+// design that hasn't been hand-edited. Applying the rename at format
+// time lets `craftgo fmt` heal a stale file transparently — the next
+// lint pass sees only canonical names.
+func canonicalDecoratorName(name string) string {
+	switch name {
+	case "min":
+		return "gte"
+	case "max":
+		return "lte"
+	}
+	return name
+}
+
 // fieldHasDefault reports whether f carries a `@default(...)` decorator.
 // Used by the type-body printer to auto-add `?` to the rendered type
 // when the author hasn't marked the field optional, since `@default`
@@ -656,14 +677,19 @@ func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
 
 func (p *Printer) Decorator(d *ast.Decorator) {
 	p.write("@")
-	p.write(d.Name)
-	if d.Args != nil {
+	name := canonicalDecoratorName(d.Name)
+	p.write(name)
+	// Canonical: emit parens only when there are real args. Empty
+	// `()` is stripped on save — both `@positive()` (Flag decorator
+	// authored with parens) and `@deprecated()` (no-arg form) round-
+	// trip to bare `@positive` / `@deprecated`.
+	if len(d.Args) > 0 {
 		p.write("(")
 		for i, a := range d.Args {
 			if i > 0 {
 				p.write(", ")
 			}
-			p.DecoratorArg(a)
+			p.decoratorArgInContext(name, i, a)
 		}
 		p.write(")")
 	}
@@ -671,6 +697,47 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 		p.write("  // ")
 		p.write(d.TrailingDoc)
 	}
+}
+
+// decoratorArgInContext renders a decorator argument with awareness of
+// the host decorator name + position index. The only context-sensitive
+// rewrite today is the string-to-ident migration for `@format`: when
+// the user authored `@format("email")` (quoted), the formatter emits
+// the canonical bare-ident form `@format(email)`. The rule: when the
+// argument names a registered identifier (format name, security
+// scheme, ...), bare ident is canonical; free-form values (regex,
+// paths) stay quoted. Every other decorator falls through to the
+// generic [Printer.DecoratorArg] path unchanged.
+func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
+	if decoratorName == "format" && idx == 0 && !a.Named {
+		if s, ok := a.Value.(*ast.StringLit); ok && isPlainIdent(s.Value) {
+			p.write(s.Value)
+			return
+		}
+	}
+	p.DecoratorArg(a)
+}
+
+// isPlainIdent reports whether s would parse as a bare identifier in
+// craftgo — leading letter / underscore, followed by letters / digits /
+// underscores. The string→ident format rewrite uses it as a guard so
+// strings with hyphens, dots, or spaces fall back to the quoted form
+// instead of producing an unparseable rewrite.
+func isPlainIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_':
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case i > 0 && r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {

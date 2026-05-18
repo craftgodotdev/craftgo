@@ -1,0 +1,49 @@
+// Domain types that USE the scalars declared in scalars.craftgo.
+// Every scalar-typed field inherits its scalar's validators; the
+// per-field decorator chain reduces to either nothing or presence-
+// and-collection-level rules (@default, @minItems, @maxItems, ...).
+package scalars
+
+// Order is the marquee type: six scalar-typed fields, all of which
+// inherit format / bound / pattern validators from their respective
+// scalar declarations. The Order's generated Validate() should fire
+// the inherited checks WITHOUT any per-field decorator.
+type Order {
+	// SCALAR REF: UUID brings @format(uuid).
+	id      UUID
+	// SCALAR REF: Email brings @format(email) + @maxLength(254).
+	email   Email
+	// SCALAR REF: Cents brings @gte(0) + @lte(1000000000).
+	amount  Cents
+	// SCALAR REF: Percent brings @gte(0) + @lte(1) on float64.
+	rate    Percent
+	// SCALAR REF: Tag brings @minLength(1) + @maxLength(20) + @pattern.
+	tag     Tag
+	// SCALAR REF: ISO3 brings @length(3, 3) + @pattern.
+	country ISO3
+}
+
+// ProductRef exercises NonEmpty + Cents on a smaller surface.
+type ProductRef {
+	// SCALAR REF: NonEmpty enforces @minLength(1).
+	sku   NonEmpty
+	// SCALAR REF: Cents enforces @gte(0) + @lte(1000000000).
+	price Cents
+}
+
+// Bag exercises ARRAY-of-scalar: the per-element validators from Tag
+// fire once per item; the field-level @minItems / @maxItems rules
+// run over the whole slice afterwards.
+type Bag {
+	tags Tag[] @minItems(1) @maxItems(10)
+}
+
+// Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
+// The keywords field is `Tag[]?` so the wire may omit it entirely; when
+// present every element runs Tag's @pattern check. The limit field
+// uses a numeric scalar with @default — the default literal is parsed
+// as the underlying primitive (int) and cast up to Cents.
+type Search {
+	keywords Tag[]?
+	limit    Cents? @default(20)
+}

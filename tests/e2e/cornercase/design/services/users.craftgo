@@ -1,0 +1,121 @@
+// Package `services` exercises the CROSS-PACKAGE consumption side
+// of the import / mixin / scalar / extend matrix. Every interesting
+// edge sits here:
+//
+//   - `import "shared"` — bare-package import; the implicit alias
+//     `shared` is what `shared.<Name>` references resolve through.
+//   - `shared.ID` / `shared.Email` — cross-package scalar refs.
+//     The generated Go field type lands as `string` (the underlying
+//     primitive) but the validator inherits the scalar's @length /
+//     @format constraint stack.
+//   - `shared.Audit` / `shared.Pagination` mixin — cross-package
+//     embedded type. The mixin syntax is implicit (bare qualified
+//     ident inside a `type { ... }` body) so the parser threads
+//     `shared.Audit` through `parseTypeMember`'s mixin branch.
+//   - `@middlewares(shared.AuthRequired)` at service level —
+//     qualified middleware reference from another package.
+//   - `@errors(shared.NotFoundErr, shared.ConflictErr)` on a
+//     per-method decorator — qualified error references.
+//
+// The companion `users_admin.craftgo` adds the `extend service`
+// half of the showcase; `projects.craftgo` covers the same-package
+// reuse path (UserRef declared here is consumed there without a
+// qualifier).
+package services
+
+import "shared"
+
+// UserRef is the lightweight handle: id + email. Used as a BODY
+// request (POST CreateUser, POST BanUser) and as the owner field
+// of services.Project.
+//
+// NOTE: UserRef cannot ride a GET request unchanged. `email
+// shared.Email` is a cross-package scalar; the query-bind path in
+// `collectBindings` looks up scalar declarations in the current
+// package only (`pkg.Scalars[declName]`) and falls through with
+// `type shared.Email cannot bind to query`. The transport
+// generator never resolves the scalar across the import edge —
+// recorded as a bug in the report. The path-only GetUser uses the
+// local-scalar `GetUserReq` below as a workaround.
+type UserRef {
+	id    shared.ID
+	email shared.Email
+}
+
+// GetUserReq is the workaround for the cross-package-scalar bug.
+//
+// Originally `id shared.ID @path`, but `isStringBindingType` /
+// `stringBindable` look up scalar declarations in the CURRENT
+// package only (`pkg.Scalars[name]`). The qualified name
+// `"shared.ID"` misses the map and the check falls through with
+// `@path requires a string-backed field ... - got shared.ID`,
+// even though `shared.ID` IS a `scalar ID string`. So @path /
+// @header / @cookie / @query all refuse cross-package scalars
+// across the entire binding surface.
+//
+// The local-string-with-length workaround replays shared.ID's
+// validator stack manually — the bug is recorded in the report.
+type GetUserReq {
+	id string @path @length(1, 64)
+}
+
+// User is the full entity. Embeds `shared.Audit` via the implicit
+// CROSS-PACKAGE MIXIN form (`shared.Audit` alone on a body line is
+// a mixin reference, not a field) so the createdAt / updatedAt /
+// createdBy bookkeeping lands at the wire root without a nested
+// envelope.
+type User {
+	shared.Audit
+	id    shared.ID
+	email shared.Email
+	name  string @minLength(1)
+}
+
+// ListUsersReq embeds `shared.Pagination` cross-package. The
+// implicit mixin form makes the limit / cursor / total fields land
+// at the request root, and the optional `query` slot adds the free-
+// text filter on top.
+type ListUsersReq {
+	shared.Pagination
+	query string?
+}
+
+// ListUsersResp wraps a page of Users with the canonical pagination
+// envelope. `meta` is a NESTED reference (not a mixin) so the
+// pagination summary lands in its own JSON sub-object — the
+// distinction between "embed at root" (mixin) and "embed as nested
+// object" (field) is captured cleanly across these two consumers.
+type ListUsersResp {
+	items User[]
+	meta  shared.Pagination
+}
+
+// UserService is the canonical CRUD surface. Service-level
+// `@middlewares(shared.AuthRequired)` runs the cross-package
+// AuthRequired frame on every method; the per-method
+// `@errors(shared.NotFoundErr, shared.ConflictErr)` decorator on
+// DeleteUser surfaces the cross-package error envelopes in the
+// generated OpenAPI document.
+@prefix("/users")
+@middlewares(shared.AuthRequired)
+service UserService {
+	get ListUsers / {
+		request  ListUsersReq
+		response ListUsersResp
+	}
+
+	get GetUser /{id} {
+		request  GetUserReq
+		response User
+	}
+
+	post CreateUser / {
+		request  User
+		response User
+	}
+
+	@errors(shared.NotFoundErr, shared.ConflictErr)
+	delete DeleteUser /{id} {
+		response User
+	}
+}

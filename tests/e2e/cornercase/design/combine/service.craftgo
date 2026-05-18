@@ -1,0 +1,84 @@
+package combine
+
+// CombineService wires the cross-decorator combination types into a
+// real handler so the codegen + transport stack has a body-decode +
+// validate path to drive for each cluster:
+//
+//   - Presence:        round-trips the presence-state matrix.
+//   - Pairs/StrPairs:  stacked string decorators (length+format+pattern).
+//   - Pairs/NumPairs:  stacked numeric decorators (range+multipleOf+gt+lte).
+//   - Pairs/ArrPairs:  stacked array decorators (minItems+maxItems+uniqueItems+each).
+//   - Pairs/Contact:   per-field decorators under a type-level @requiresOneOf.
+//   - Pairs/Choice:    overlapping @mutuallyExclusive + @requiresOneOf.
+//   - Defaults:        every supported default shape (boundary, enum, scalar)
+//     plus the deliberate clash (DefaultsConflict) for the
+//     semantics-layer warning path.
+@prefix("/combine")
+@tags(combine)
+service CombineService {
+	@doc("Echo the presence-state matrix. Smoke tests assert that plain is in required[], optional / nullable / bothNullable produce nullable: true, and the default rows surface a default key in OpenAPI.")
+	post EchoPresence /presence {
+		request  PresenceMatrix
+		response PresenceMatrix
+	}
+
+	@doc("Validate stacked string decorators (length + format + pattern). The handler fails any of the three independently.")
+	post ValidateStr /pairs/str {
+		request  PairsStr
+		response PairsStr
+	}
+
+	@doc("Validate stacked numeric decorators (range + multipleOf + gt + lte). All four fire in declaration order.")
+	post ValidateNum /pairs/num {
+		request  PairsNum
+		response PairsNum
+	}
+
+	@doc("Validate stacked array decorators (minItems + maxItems + uniqueItems + each(@length)). Outer bounds plus per-element check.")
+	post ValidateArr /pairs/arr {
+		request  PairsArr
+		response PairsArr
+	}
+
+	@doc("Validate per-field decorators under a type-level @requiresOneOf. Sending neither field fails the cross-field check; sending one passes.")
+	post ValidateContact /pairs/contact {
+		request  PairsContact
+		response PairsContact
+	}
+
+	@doc("Validate orthogonal @mutuallyExclusive + @requiresOneOf. Sending only c is valid; sending a+b fails exclusivity; sending nothing fails the one-of.")
+	post ValidateChoice /pairs/choice {
+		request  PairsChoice
+		response PairsChoice
+	}
+
+	@doc("Echo the boundary-default matrix. Smoke tests assert that the pre-fill happens before req.Validate() so the defaulted values land in the response.")
+	post EchoBoundary /defaults/boundary {
+		request  DefaultsBoundary
+		response DefaultsBoundary
+	}
+
+	@doc("Echo the deliberate default-vs-validator clash. The empty-string default would fail @minLength(1) — if codegen accepts the design, the handler will reject the pre-filled value.")
+	post EchoConflict /defaults/conflict {
+		request  DefaultsConflict
+		response DefaultsConflict
+	}
+
+	@doc("Echo the array / map default shapes. The map<,>?-with-object-default field is expected to be rejected at codegen time.")
+	post EchoCollection /defaults/collection {
+		request  DefaultsCollection
+		response DefaultsCollection
+	}
+
+	@doc("Echo the enum default. Missing c on the wire results in c=Red after pre-fill.")
+	post EchoEnum /defaults/enum {
+		request  DefaultsEnum
+		response DefaultsEnum
+	}
+
+	@doc("Echo the scalar default. Missing size on the wire results in size=20 after pre-fill, and the scalar's @gte/@lte bounds still apply.")
+	post EchoScalar /defaults/scalar {
+		request  DefaultsScalar
+		response DefaultsScalar
+	}
+}

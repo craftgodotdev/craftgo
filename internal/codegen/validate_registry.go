@@ -51,11 +51,20 @@ var validators = []validatorEntry{
 	{"pattern", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c.uses) }},
 	{"format", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c.uses) }},
 
-	// numeric
-	{"min", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
+	// numeric — math-style comparison operators replace the older
+	// @min (= @gte) and @max (= @lte). Strict variants (@gt, @lt)
+	// have no @min/@max equivalent; they fill the gap that previously
+	// forced users to write @positive / @negative or @pattern.
+	{"gt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
+		return numericBoundCheck(f, a, d, ">", "must be greater than", c.uses)
+	}},
+	{"gte", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return numericBoundCheck(f, a, d, ">=", "below minimum", c.uses)
 	}},
-	{"max", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
+	{"lt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
+		return numericBoundCheck(f, a, d, "<", "must be less than", c.uses)
+	}},
+	{"lte", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return numericBoundCheck(f, a, d, "<=", "above maximum", c.uses)
 	}},
 	{"range", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return rangeCheck(f, a, d, c.uses) }},
@@ -129,6 +138,20 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 	//     wire, which decodes to a nil pointer and SHOULD be
 	//     accepted - rejecting nil here would defeat the decorator)
 	//
+	// Note on `@nullable` and JSON-wire presence: the spec model is
+	// "must send key, value may be null", which OpenAPI captures
+	// faithfully (the field stays in `required[]` AND carries
+	// `nullable: true`). Encoding-side though, Go's JSON decoder
+	// produces a nil pointer for both "key missing" and "key set to
+	// null" — the two states are not distinguishable from the
+	// post-decode struct. Enforcing "key must be present" requires a
+	// `json.RawMessage` receiver (or a custom presence tracker),
+	// which would change the field's Go-side type from `*T` to a
+	// raw-bytes shape and break every user-side accessor. We accept
+	// the limitation: OpenAPI carries the contract, generated TS /
+	// Java clients enforce sending the key, and non-conforming
+	// callers are treated as if they sent explicit null.
+	//
 	// requiredCheckEnumAware returns "" when the field type has no
 	// defined empty value, so primitives the JSON decoder already
 	// rejects-on-null get no validate-time block.
@@ -149,8 +172,17 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 		out = append(out, leaf.emitChecks(f, ctx)...)
 	}
 
-	// Field-level decorators run on the original field type.
+	// Field-level decorators run on the original field type. `@each`
+	// is a meta-decorator: its nested decorator applies to every
+	// array element, so we synthesise an element-typed field and
+	// dispatch the inner decorator through the same registry.
 	for _, d := range f.Decorators {
+		if d.Name == "each" {
+			if s := eachCheck(f, d, ctx); s != "" {
+				out = append(out, s)
+			}
+			continue
+		}
 		v := validatorByName(d.Name)
 		if v == nil {
 			continue
@@ -160,6 +192,42 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 		}
 	}
 	return out
+}
+
+// eachCheck emits a per-element validation loop for `@each(@inner)`.
+// The inner decorator is dispatched through the regular registry but
+// against a synthetic field whose type is the array element (no
+// `[]` suffix) and whose access expression is `v.X[i]`. Multi-dim
+// arrays (`int[][]`) are not supported in v1 — `@each(@each(...))`
+// would be the natural sugar but adds nesting we can revisit later.
+func eachCheck(f *ast.Field, d *ast.Decorator, ctx emitCtx) string {
+	if f == nil || f.Type == nil || !f.Type.Array || len(d.Args) != 1 || d.Args[0].Nested == nil {
+		return ""
+	}
+	inner := d.Args[0].Nested
+	v := validatorByName(inner.Name)
+	if v == nil {
+		return ""
+	}
+	// Synthetic element field: drop one array dimension. ArrayDepth
+	// > 1 leaves a residual `[]` so the inner emitter still sees an
+	// array; users wanting per-leaf semantics on a 2-D array should
+	// nest `@each(@each(...))` once that form lands.
+	elem := *f.Type
+	elem.Array = false
+	elem.ArrayDepth = 0
+	if f.Type.ArrayDepth > 1 {
+		elem.Array = true
+		elem.ArrayDepth = f.Type.ArrayDepth - 1
+	}
+	synth := &ast.Field{Name: f.Name, Type: &elem}
+	idx := "_i"
+	access := "v." + GoFieldName(f.Name) + "[" + idx + "]"
+	body := v.emit(synth, access, inner, ctx)
+	if body == "" {
+		return ""
+	}
+	return fmt.Sprintf("for %s := range v.%s {\n%s\n}", idx, GoFieldName(f.Name), body)
 }
 
 // scalarLeaf describes one scalar reached after walking a chain of

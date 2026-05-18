@@ -1,0 +1,51 @@
+// Cross-cutting middlewares declared in the `shared` package so
+// every service in the project references the same set via
+// `@middlewares(shared.<Name>)`. Middleware names are GLOBALLY
+// unique across the project — the project-level resolver enforces
+// uniqueness at semantic time so two packages cannot accidentally
+// claim the same name.
+//
+// The interesting axis here is the THREE FORMS of middleware
+// declaration:
+//
+//   - `middleware Name` — bare, no parameters. AuthRequired is the
+//     canonical example: behaviour is fixed, no caller-supplied
+//     knobs.
+//   - `middleware Name(p: T = default, ...)` — parametric, with
+//     compile-time defaults baked into the contract. RateLimit
+//     declares its steady-state rate and burst allowance here so
+//     callers see the policy without reading the impl.
+//   - `middleware Name(p: int = 500ms)` — parametric with an INT
+//     parameter taking a DURATION-LITERAL default. The semantic
+//     analyser accepts `*ast.DurationLit` AND `*ast.IntLit` for
+//     decorator slots typed `ArgDuration`, but middleware param
+//     TYPES are validated against [BuiltinTypes] only — `duration`
+//     as a spelling is rejected with
+//     `unknown type "duration" (no built-in primitive ...)`.
+//     The least-bad workaround: declare the param as `int` and let
+//     the duration literal land in the default slot. The bug is
+//     recorded in the report — there is no DSL-level path that
+//     types the field as a Go time.Duration.
+package shared
+
+// AuthRequired enforces a Bearer token on every request flowing
+// through it. The canonical no-arg middleware: behaviour is fixed,
+// configuration (token lifetime, issuer, audience) lives in
+// svccontext / config, not in the DSL contract.
+middleware AuthRequired
+
+// RateLimit applies a token-bucket per remote IP. `rps` is the
+// steady-state refill rate (requests per second); `burst` is the
+// bucket size that absorbs short spikes. Defaults match the
+// project's standard "polite client" envelope — services that need
+// a tighter or looser policy override the args at the
+// `@middlewares(RateLimit(rps: 10, burst: 20))` call site.
+middleware RateLimit(rps: int = 100, burst: int = 200)
+
+// Timing emits a structured warn-log entry whenever a handler
+// exceeds `threshold`. The default literal lands as
+// `*ast.DurationLit` in the AST, so codegen still sees the
+// "500ms" spelling — the param type is `int` only because the
+// semantic checker rejects `duration` as a type spelling. See the
+// package header for the rationale.
+middleware Timing(threshold: int = 500ms)

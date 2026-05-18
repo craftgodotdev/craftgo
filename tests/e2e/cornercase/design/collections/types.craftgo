@@ -1,0 +1,45 @@
+// Package `collections` exercises array + map type-shapes and the
+// validator decorators that live on them: @minItems / @maxItems
+// (bounds), @uniqueItems (flag), @each(...) (nested decorator), and
+// the interactions between these and optionality / multi-dim arrays
+// / map<K, V>.
+//
+// Scalar + struct declarations live here so arrays.craftgo and
+// maps.craftgo can both reference them. The scalars carry their own
+// per-element validators (length / pattern / format) which the
+// generator threads through array / map iteration via the
+// scalar-leaves walk.
+package collections
+
+// Tag is the kebab-case label scalar reused across the array and map
+// tests. Per-element validators (@minLength + @maxLength + @pattern)
+// are stacked so each enclosing `for` loop has THREE distinct
+// validators to emit per element.
+scalar Tag string @minLength(1) @maxLength(20) @pattern("^[a-z-]+$")
+
+// Email is the canonical email-format scalar. Used as a map VALUE in
+// maps.craftgo to confirm that scalar @format(email) + @maxLength
+// fire on every value during map iteration.
+scalar Email string @format(email) @maxLength(254)
+
+// NonEmptyID is the canonical id scalar (non-empty, bounded length).
+// Used as a map KEY in maps.craftgo to confirm that key-side scalar
+// decorators emit a key-only iteration loop.
+scalar NonEmptyID string @minLength(1) @maxLength(64)
+
+// Address is a struct used as a map VALUE in maps.craftgo. The two
+// fields carry length validators so we can see whether the generator
+// recurses into struct values when iterating a map.
+type Address {
+	street string @length(1, 200)
+	city   string @length(1, 100)
+}
+
+// User is a struct used as a map VALUE in maps.craftgo. The `email`
+// field is typed as the `Email` scalar above so map iteration would
+// need to recurse through TWO layers (struct field → scalar) to fire
+// the inherited format check.
+type User {
+	name  string @length(1, 80)
+	email Email
+}

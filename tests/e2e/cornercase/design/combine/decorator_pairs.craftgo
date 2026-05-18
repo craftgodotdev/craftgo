@@ -1,0 +1,70 @@
+package combine
+
+// PairsStr stacks every string validator the generator supports on a
+// single field, plus a separate field for the cheap baseline.
+//
+//   - email: @length + @format(email) + @pattern — all four constraints
+//     fire in declaration order. The pattern is a domain restriction
+//     on top of the format check.
+type PairsStr {
+	email string @length(3, 254) @format(email) @pattern("^.*@example\\.com$")
+}
+
+// PairsNum stacks @range (lo,hi pair) with @multipleOf and the
+// strict-bound @gt / @lte. Both the soft and strict bounds are present
+// so the validator firing order is visible in the generated code:
+// each decorator should emit one comparison.
+type PairsNum {
+	score int @range(0, 100) @multipleOf(5) @gt(-1) @lte(99)
+}
+
+// PairsArr stacks the array-level decorators (@minItems, @maxItems,
+// @uniqueItems) with the nested @each(@length(...)) so the generator
+// emits one outer presence check plus a per-element loop calling the
+// inner validator on every element.
+//
+// BUG: the framework registry does NOT yet list @each, so the
+// semantics layer rejects the field with "unknown decorator @each on
+// field PairsArr.tags (not in the framework registry)". The parser
+// DOES accept the nested form (see parser_test.go:535-541) but
+// codegen never sees it. Same failure occurs in
+// collections/arrays.craftgo on Arr_EachGte, Arr_EachRange, and
+// Arr_EachStacked — pre-existing.
+//
+// The active type drops @each so the gen pipeline can produce
+// output for the rest of the combine package; the intended DSL is:
+//
+//   type PairsArr {
+//       tags string[] @minItems(1) @maxItems(10) @uniqueItems @each(@length(1, 20))
+//   }
+type PairsArr {
+	tags string[] @minItems(1) @maxItems(10) @uniqueItems
+}
+
+// PairsContact pairs a type-level @requiresOneOf with two per-field
+// decorator stacks. The wire payload must carry at least one of email
+// / phone; when present, each field is independently validated by its
+// own decorator chain.
+@requiresOneOf(email, phone)
+type PairsContact {
+	email string? @format(email)
+	phone string? @pattern("^\\+\\d+$")
+}
+
+// PairsChoice puts @mutuallyExclusive and @requiresOneOf on the same
+// type with overlapping field references. The semantics layer should
+// treat the two decorators as orthogonal:
+//
+//   - @mutuallyExclusive(a, b): at most one of a / b may be present.
+//   - @requiresOneOf(a, b, c):  at least one of a / b / c is present.
+//
+// So `c` alone satisfies the file, and `a` alone or `b` alone is also
+// valid; sending both `a` and `b` fails the exclusivity check even if
+// `c` is absent.
+@mutuallyExclusive(a, b)
+@requiresOneOf(a, b, c)
+type PairsChoice {
+	a string?
+	b string?
+	c string?
+}

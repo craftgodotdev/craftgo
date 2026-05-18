@@ -1,0 +1,75 @@
+package nested
+
+// NestedService exposes one endpoint per nested-shape category
+// from `nested.craftgo`. Each handler simply echoes the request
+// back; the value of the surface is that codegen has to produce
+// the validate / transport / OpenAPI plumbing for every shape.
+@prefix("/nested")
+@tags(nested)
+service NestedService {
+	@doc("Plain nested - User has an Address. Validates recursively.")
+	post EchoUser /user {
+		request  User
+		response User
+	}
+
+	@doc("Deep chain - Person → Home → Room → Furniture exercises the four-level cascade.")
+	post EchoPerson /person {
+		request  Person
+		response Person
+	}
+
+	@doc("Slice of nested with array-level bounds.")
+	post EchoTeam /team {
+		request  Team
+		response Team
+	}
+
+	@doc("Optional slice of nested.")
+	post EchoOrg /org {
+		request  Org
+		response Org
+	}
+
+	@doc("Map of nested - validates map presence but does NOT recurse into values (v1 limitation).")
+	post EchoCatalog /catalog {
+		request  Catalog
+		response Catalog
+	}
+
+	@doc("2-D slice of nested.")
+	post EchoMatrix /matrix {
+		request  Matrix
+		response Matrix
+	}
+
+	@doc("3-D slice of nested.")
+	post EchoCube /cube {
+		request  Cube
+		response Cube
+	}
+
+	@doc("Recursive tree node.")
+	post EchoNode /node {
+		request  Node
+		response Node
+	}
+
+	@doc("Mutual recursion entry - request A traverses A → B → A → ...")
+	post EchoA /a {
+		request  A
+		response A
+	}
+
+	@doc("Mutual recursion entry - request B traverses B → A → B → ...")
+	post EchoB /b {
+		request  B
+		response B
+	}
+
+	@doc("Generic-instantiation-like page envelope.")
+	post EchoListPage /list-page {
+		request  ListPage
+		response ListPage
+	}
+}

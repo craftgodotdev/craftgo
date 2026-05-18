@@ -125,6 +125,33 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarT
 		})
 	}
 
+	// Errors with a custom body get their own `<Name>Body` Validate()
+	// so per-field decorators (`@minLength`, `@format`, `@gte` ...) on
+	// error-body fields actually fire at runtime. Without this the
+	// declared validators were generated as Go field tags but never
+	// invoked — error responses round-tripped untouched even when
+	// they violated the design constraints.
+	errNames := make([]string, 0, len(pkg.Errors))
+	for n := range pkg.Errors {
+		errNames = append(errNames, n)
+	}
+	sort.Strings(errNames)
+	for _, name := range errNames {
+		ed := pkg.Errors[name]
+		fields := errorCustomFields(ed)
+		if len(fields) == 0 {
+			continue
+		}
+		body := &ast.TypeDecl{Name: name + "Body"}
+		for _, fl := range fields {
+			body.Body = append(body.Body, fl)
+		}
+		types = append(types, validatorType{
+			Name:   body.Name,
+			Checks: collectChecks(body, pkg, scalars, uses),
+		})
+	}
+
 	imps := make([]string, 0, len(uses))
 	for k := range uses {
 		imps = append(imps, k)
@@ -154,22 +181,34 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarT
 func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, uses map[string]bool) []string {
 	var out []string
 	for _, m := range td.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
-		out = append(out, fieldChecksWithScalar(f, pkg, scalars, uses)...)
-		if isTypeParamRef(f.Type, td.TypeParams) {
-			if call := typeParamValidateCall(f); call != "" {
+		switch v := m.(type) {
+		case *ast.Field:
+			out = append(out, fieldChecksWithScalar(v, pkg, scalars, uses)...)
+			if isTypeParamRef(v.Type, td.TypeParams) {
+				if call := typeParamValidateCall(v); call != "" {
+					out = append(out, call)
+				}
+				continue
+			}
+			if call := enumValueCheck(v, pkg, uses); call != "" {
 				out = append(out, call)
 			}
-			continue
-		}
-		if call := enumValueCheck(f, pkg, uses); call != "" {
-			out = append(out, call)
-		}
-		if nested := nestedValidateCall(f, pkg, uses); nested != "" {
-			out = append(out, nested)
+			if nested := nestedValidateCall(v, pkg, uses); nested != "" {
+				out = append(out, nested)
+			}
+		case *ast.Mixin:
+			// Embedded mixin: Go's field-promotion exposes the
+			// embedded fields directly on the host, but the
+			// embedded type's own Validate() method only fires
+			// when the host calls it. Without this dispatch the
+			// host's Validate() silently skipped every check
+			// declared on the mixin's fields, leaving validators
+			// effectively dead. The embedded field's Go name is
+			// the last segment of the mixin reference
+			// (`shared.Audit` embeds as `Audit`).
+			if call := mixinValidateCall(v); call != "" {
+				out = append(out, call)
+			}
 		}
 	}
 	// Type-level cross-field validators (@requiresOneOf,
@@ -178,6 +217,17 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable,
 	// rules then assume each visible value is structurally sound.
 	out = append(out, crossFieldChecks(td, uses)...)
 	return out
+}
+
+// mixinValidateCall emits the recursive Validate() call for an
+// embedded mixin. Returns "" when the mixin reference is malformed
+// (no parts) so the caller silently skips rather than emit broken Go.
+func mixinValidateCall(m *ast.Mixin) string {
+	if m == nil || m.Ref == nil || m.Ref.Name == nil || len(m.Ref.Name.Parts) == 0 {
+		return ""
+	}
+	last := m.Ref.Name.Parts[len(m.Ref.Name.Parts)-1]
+	return fmt.Sprintf("if err := v.%s.Validate(); err != nil {\nreturn err\n}", last)
 }
 
 // crossFieldChecks emits the type-level validators @requiresOneOf and
@@ -195,14 +245,36 @@ func crossFieldChecks(td *ast.TypeDecl, uses map[string]bool) []string {
 	for _, d := range td.Decorators {
 		switch d.Name {
 		case "requiresOneOf":
-			if names := stringArrayDecoratorArg(d); len(names) > 0 {
+			names := dedupeStrings(stringArrayDecoratorArg(d))
+			if len(names) > 0 {
 				out = append(out, requiresOneOfCheck(td, names, uses))
 			}
 		case "mutuallyExclusive":
-			if names := stringArrayDecoratorArg(d); len(names) > 0 {
+			names := dedupeStrings(stringArrayDecoratorArg(d))
+			if len(names) >= 2 {
 				out = append(out, mutuallyExclusiveCheck(td, names, uses))
 			}
 		}
+	}
+	return out
+}
+
+// dedupeStrings drops repeat entries from a name list while preserving
+// first-seen order. Used by cross-field codegen so a typo'd duplicate
+// (`@requiresOneOf(a, a, b)`) doesn't produce `v.A == nil && v.A == nil`
+// which `go vet` flags as a redundant boolean.
+func dedupeStrings(in []string) []string {
+	if len(in) <= 1 {
+		return in
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
 	}
 	return out
 }
@@ -328,17 +400,22 @@ func lookupField(td *ast.TypeDecl, name string) *ast.Field {
 // presenceExpr returns the Go expression that's true when the field
 // has a meaningful value (matching's definition):
 //
-//   - optional `T?` (pointer) → `v.X != nil`
-//   - slice / map            → `len(v.X) > 0`
-//   - string                 → `v.X != ""`
-//   - numeric                → `v.X != 0`
-//   - other                  → fall back to "true" (always present)
+//   - optional `T?` OR `@nullable T` (pointer) → `v.X != nil`
+//   - slice / map           → `len(v.X) > 0`
+//   - string                → `v.X != ""`
+//   - numeric               → `v.X != 0`
+//   - other                 → fall back to "true" (always present)
+//
+// `@nullable` forces the field to a Go pointer even on plain `T`. The
+// pointer check must come BEFORE the value-shape branches so cross-
+// field rules emit a nil-check rather than `v.X == ""` against a
+// `*string` (which fails to compile).
 func presenceExpr(f *ast.Field) string {
 	access := "v." + GoFieldName(f.Name)
 	if f.Type == nil {
 		return "true"
 	}
-	if f.Type.Optional {
+	if goFieldIsPointer(f) {
 		return access + " != nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {
@@ -383,13 +460,15 @@ func absenceParts(td *ast.TypeDecl, names []string) []string {
 // absenceExpr is the inverse of [presenceExpr]. Operators are flipped
 // directly (`!=` ↔ `==`, `> 0` → `== 0`, `bool` → `!bool`) so the
 // generated source is the form `staticcheck` recommends and no extra
-// `!(...)` wrapping leaks into the output.
+// `!(...)` wrapping leaks into the output. Pointer-shape (`T?` or
+// `@nullable T`) is checked first via [goFieldIsPointer] so the emit
+// stays type-safe.
 func absenceExpr(f *ast.Field) string {
 	access := "v." + GoFieldName(f.Name)
 	if f.Type == nil {
 		return "false"
 	}
-	if f.Type.Optional {
+	if goFieldIsPointer(f) {
 		return access + " == nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {

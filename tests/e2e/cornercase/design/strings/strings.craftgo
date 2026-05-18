@@ -1,0 +1,128 @@
+// Package `strings` exercises the corner cases of the string-shaped
+// validators: @length / @minLength / @maxLength bounds, every
+// @format(name) in the catalogue, @pattern with Go regex syntax
+// (anchors, quantifiers, escapes), and the interactions between
+// these decorators and optionality (`?` / @nullable / @default).
+package strings
+
+// Str_Lengths probes the boundary forms of @length / @minLength /
+// @maxLength. The interesting bits:
+//
+//   - zeroLower: @length(0, 100) — the lower bound is zero, so any
+//     `len(x) < 0` check the generator emits would be dead code.
+//   - exact: @length(5, 5) — lo == hi, "exactly 5 chars".
+//   - separate min/max: @minLength(1) and @maxLength(100) on
+//     distinct fields to confirm the single-bound path.
+type Str_Lengths {
+	zeroLower string @length(0, 100)
+	nonEmpty  string @length(1, 100)
+	exact     string @length(5, 5)
+	onlyMin   string @minLength(1)
+	onlyMax   string @maxLength(100)
+}
+
+// Str_Patterns covers @pattern with Go regex syntax. Three flavours:
+//
+//   - Plain anchors + quantifier: ^[A-Z]{2,4}$.
+//   - Escaped plus: ^\+?[0-9]+$ — the leading `\+` is a literal `+`,
+//     not a regex quantifier.
+//   - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
+type Str_Patterns {
+	upper   string @pattern("^[A-Z]{2,4}$")
+	intlNum string @pattern("^\\+?[0-9]+$")
+	phoneUS string @pattern("\\d{3}-\\d{3}-\\d{4}")
+}
+
+// Str_Combos stacks length + pattern + format on a single field so
+// the generator's decorator-ordering / emit-order assumptions get
+// exercised together. Each combo line carries every gate the
+// canonical "email or short identifier" use cases require.
+type Str_Combos {
+	email1 string @length(1, 80)   @pattern("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$") @format(email)
+	email2 string @minLength(3)    @maxLength(254) @format(email)
+	codeID string @length(3, 16)   @pattern("^[A-Z0-9_]+$")
+}
+
+// Str_Optionals exercises the optional + validator combinations.
+// Each field is `string?` so the generator MUST nil-guard before
+// dereferencing. The interesting case is `pattOpt` — pattern against
+// an optional should still emit the nil-guard prefix.
+type Str_Optionals {
+	lenOpt   string? @length(1, 100)
+	mailOpt  string? @format(email)
+	pattOpt  string? @pattern("^[A-Z]{2,4}$")
+	bothOpt  string? @length(1, 80) @format(email)
+}
+
+// Str_Nullable forces a pointer via @nullable on a non-optional
+// field. The wire payload may omit the value (validators must skip)
+// but the Go type lands as `*string`. Length cap still applies when
+// the field is present.
+type Str_Nullable {
+	tag string @nullable @maxLength(50)
+}
+
+// Str_Default covers the @default + @length combination. The DSL
+// grammar requires `?` on the type whenever @default is supplied;
+// the generated Go field is `*string` and the missing-value path
+// substitutes the pre-fill before validation.
+type Str_Default {
+	greeting string? @default("hello") @length(1, 100)
+}
+
+// Str_UTF8 carries @example values containing multi-byte UTF-8
+// content so the OpenAPI emitter has to preserve them through YAML
+// quoting. No runtime validator difference — the test is purely on
+// the docs side.
+type Str_UTF8 {
+	vnName string @length(1, 80) @example("tên người dùng")
+	jaName string @length(1, 80) @example("日本語")
+}
+
+// AllFormats holds one field per supported @format(name). Each
+// field is required + length-capped so the validator emit-order is
+// consistent: length probe first (cheap), format probe second
+// (potentially regex / stdlib call).
+type AllFormats {
+	email      string @format(email)      @maxLength(254)
+	url        string @format(url)        @maxLength(2048)
+	uri        string @format(uri)        @maxLength(2048)
+	uuid       string @format(uuid)       @length(36, 36)
+	datetime   string @format(datetime)   @maxLength(40)
+	date       string @format(date)       @length(10, 10)
+	timeField  string @format(time)       @length(8, 8)
+	phone      string @format(phone)      @maxLength(20)
+	hostname   string @format(hostname)   @maxLength(253)
+	ipv4       string @format(ipv4)       @maxLength(15)
+	ipv6       string @format(ipv6)       @maxLength(45)
+	cidr       string @format(cidr)       @maxLength(43)
+	mac        string @format(mac)        @maxLength(17)
+	creditcard string @format(creditcard) @length(12, 19)
+	base64     string @format(base64)     @maxLength(8192)
+	base64url  string @format(base64url)  @maxLength(8192)
+	hexcolor   string @format(hexcolor)   @maxLength(7)
+	jsonField  string @format(json)       @maxLength(65536)
+}
+
+// Str_EchoReq is the request body for the service's echo endpoint —
+// it bundles a sample of each interesting validator shape so logic
+// code receives a single struct with the full menu of constraints
+// already enforced at the handler boundary.
+type Str_EchoReq {
+	name     string  @length(1, 80)
+	email    string  @format(email) @maxLength(254)
+	code     string  @pattern("^[A-Z]{2,4}$")
+	bio      string? @maxLength(500)
+	greeting string? @default("hello") @length(1, 100)
+}
+
+// Str_EchoResp echoes the request shape back. Identical validators
+// — the response is just the request after a round-trip — so the
+// generated wire contract is symmetric.
+type Str_EchoResp {
+	name     string  @length(1, 80)
+	email    string  @format(email) @maxLength(254)
+	code     string  @pattern("^[A-Z]{2,4}$")
+	bio      string? @maxLength(500)
+	greeting string  @length(1, 100)
+}

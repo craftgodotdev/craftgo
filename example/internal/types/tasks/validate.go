@@ -60,8 +60,8 @@ func (v *CreateTaskReq) Validate() error {
 	if len(v.Comments) > 50 {
 		return fmt.Errorf("comments: maxItems 50")
 	}
-	for i := range v.Comments {
-		if err := v.Comments[i].Validate(); err != nil {
+	for i0 := range v.Comments {
+		if err := v.Comments[i0].Validate(); err != nil {
 			return err
 		}
 	}
@@ -112,8 +112,8 @@ func (v *Task) Validate() error {
 	if len(v.Comments) > 500 {
 		return fmt.Errorf("comments: maxItems 500")
 	}
-	for i := range v.Comments {
-		if err := v.Comments[i].Validate(); err != nil {
+	for i0 := range v.Comments {
+		if err := v.Comments[i0].Validate(); err != nil {
 			return err
 		}
 	}
@@ -123,8 +123,8 @@ func (v *Task) Validate() error {
 // Validate checks every field-level constraint declared on TaskList.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *TaskList) Validate() error {
-	for i := range v.Items {
-		if err := v.Items[i].Validate(); err != nil {
+	for i0 := range v.Items {
+		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
 	}

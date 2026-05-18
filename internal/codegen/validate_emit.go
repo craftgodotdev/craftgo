@@ -407,36 +407,58 @@ func numericValueExpr(f *ast.Field, access string) string {
 	return access
 }
 
-// numericBoundCheck handles `@min(n)` / `@max(n)`.
+// numericBoundCheck handles the 4 comparison decorators
+// `@gt(n)` / `@gte(n)` / `@lt(n)` / `@lte(n)`. `op` is the
+// validity predicate the value must satisfy; the emitted condition is
+// the NEGATION (true when invalid).
+//
+//	@gte(0): valid if x >= 0  → fail if x < 0
+//	@gt(0):  valid if x > 0   → fail if x <= 0
+//	@lte(N): valid if x <= N  → fail if x > N
+//	@lt(N):  valid if x < N   → fail if x >= N
+//
+// Both int and float bound literals are accepted ([numericArg] handles
+// the rendering). Float fields with float bounds (`@gte(0.5)` on
+// float64) work the same as int-on-int.
 func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
 	if !isNumericField(f) || len(d.Args) != 1 {
 		return ""
 	}
-	n, ok := intArg(d.Args[0])
+	n, ok := numericArg(d.Args[0])
 	if !ok {
 		return ""
 	}
-	flip := "<"
-	if op == "<=" {
+	var flip string
+	switch op {
+	case ">=":
+		flip = "<"
+	case ">":
+		flip = "<="
+	case "<=":
 		flip = ">"
+	case "<":
+		flip = ">="
+	default:
+		return ""
 	}
 	uses["fmt"] = true
 	val := numericValueExpr(f, access)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %d", guard, val, flip, n)
-	msg := fmt.Sprintf(`"%s: %s %d"`, f.Name, label, n)
+	cond := fmt.Sprintf("%s%s %s %s", guard, val, flip, n)
+	msg := fmt.Sprintf(`"%s: %s %s"`, f.Name, label, n)
 	return ifReturnf(cond, msg)
 }
 
-// rangeCheck combines @min and @max into one bounded comparison.
+// rangeCheck combines @gte and @lte into one bounded comparison.
 // Pointer fields (T? / `T @nullable`) get the same nil-guard +
-// deref treatment as [numericBoundCheck].
+// deref treatment as [numericBoundCheck]. Both int and float bound
+// literals accepted.
 func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
 	if !isNumericField(f) || len(d.Args) != 2 {
 		return ""
 	}
-	lo, ok1 := intArg(d.Args[0])
-	hi, ok2 := intArg(d.Args[1])
+	lo, ok1 := numericArg(d.Args[0])
+	hi, ok2 := numericArg(d.Args[1])
 	if !ok1 || !ok2 {
 		return ""
 	}
@@ -445,14 +467,14 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]b
 	guard := optionalGuard(f, access)
 	var cond string
 	if guard == "" {
-		cond = fmt.Sprintf("%s < %d || %s > %d", val, lo, val, hi)
+		cond = fmt.Sprintf("%s < %s || %s > %s", val, lo, val, hi)
 	} else {
 		// Same pattern as the optional-string `lengthCheck`: avoid
 		// `init; cond` syntax inside `&&` by inlining the bounds
 		// twice. Compiler folds the duplicate deref.
-		cond = fmt.Sprintf("%s(%s < %d || %s > %d)", guard, val, lo, val, hi)
+		cond = fmt.Sprintf("%s(%s < %s || %s > %s)", guard, val, lo, val, hi)
 	}
-	msg := fmt.Sprintf(`"%s: out of range [%d, %d]"`, f.Name, lo, hi)
+	msg := fmt.Sprintf(`"%s: out of range [%s, %s]"`, f.Name, lo, hi)
 	return ifReturnf(cond, msg)
 }
 
@@ -498,7 +520,15 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, uses map[str
 
 // ----- array -------------------------------------------------------------
 
-// itemsBoundCheck handles `@minItems(n)` and `@maxItems(n)`.
+// itemsBoundCheck handles `@minItems(n)` and `@maxItems(n)`. Optional
+// arrays (`T[]?`) skip the check when the slice is nil — Go's `len(nil)`
+// is 0, so a bare `len(v.X) < 1` would reject the absent case. The
+// canonical nil-guard `if v.X != nil { ... }` preserves "absent =
+// skipped" for optional shapes.
+//
+// `@maxItems` doesn't need the guard for correctness (`len(nil) > N` is
+// always false) but emit one anyway for symmetry — keeps the optional
+// codepath uniform across min/max.
 func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
 	if f.Type == nil || !f.Type.Array || len(d.Args) != 1 {
 		return ""
@@ -514,7 +544,11 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	uses["fmt"] = true
 	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
 	msg := fmt.Sprintf(`"%s: %s %d"`, f.Name, label, n)
-	return ifReturnf(cond, msg)
+	check := ifReturnf(cond, msg)
+	if f.Type.Optional {
+		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
+	}
+	return check
 }
 
 // uniqueItemsCheck handles `@uniqueItems` on array fields. The emitted
@@ -687,10 +721,7 @@ return err
 // what a human would write by hand.
 func nestedValidateCall(f *ast.Field, pkg *semantic.Package, uses map[string]bool) string {
 	_ = uses
-	if pkg == nil || f.Type == nil || f.Type.Map != nil || f.Type.Named == nil {
-		return ""
-	}
-	if _, ok := pkg.Types[f.Type.Named.Name.String()]; !ok {
+	if pkg == nil || f.Type == nil {
 		return ""
 	}
 	access := "v." + GoFieldName(f.Name)
@@ -699,9 +730,48 @@ func nestedValidateCall(f *ast.Field, pkg *semantic.Package, uses map[string]boo
 return err
 }`, elem)
 	}
+	// Map: walk the values. A map value that is a user-defined type
+	// (or an array / optional thereof) carries its own Validate(); the
+	// previous early-return left every `map<K, User>` etc. unchecked,
+	// silently breaking the recursive-validation contract.
+	if f.Type.Map != nil {
+		v := f.Type.Map.Value
+		if !typeRefHasValidator(v, pkg) {
+			return ""
+		}
+		// Element-access expression for one map value, wrapped in
+		// optional / array shape as needed.
+		switch {
+		case v.Array:
+			depth := v.ArrayDepth
+			if depth < 1 {
+				depth = 1
+			}
+			inner := emitNestedForLoops("val", depth, body)
+			return fmt.Sprintf("for _, val := range %s {\n%s\n}", access, inner)
+		case v.Optional:
+			return fmt.Sprintf("for _, val := range %s {\nif val != nil {\n%s\n}\n}", access, body("val"))
+		default:
+			return fmt.Sprintf("for _, val := range %s {\n%s\n}", access, body("val"))
+		}
+	}
+	if f.Type.Named == nil {
+		return ""
+	}
+	if _, ok := pkg.Types[f.Type.Named.Name.String()]; !ok {
+		return ""
+	}
 	switch {
 	case f.Type.Array:
-		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
+		// Multi-dim arrays (`T[][]`, `T[][][]`) need one for-loop per
+		// dimension; a single loop would call `Validate()` on a slice,
+		// not the element. ArrayDepth (0 means 1-dim "T[]") drives the
+		// nesting depth.
+		depth := f.Type.ArrayDepth
+		if depth < 1 {
+			depth = 1
+		}
+		return emitNestedForLoops(access, depth, body)
 	case f.Type.Optional:
 		// access is already `*Type`. Method dispatch auto-resolves
 		// through the pointer; no explicit deref needed.
@@ -709,4 +779,39 @@ return err
 	default:
 		return body(access)
 	}
+}
+
+// typeRefHasValidator reports whether the type referenced by `t`
+// (after stripping any array / optional decoration) is a user-defined
+// struct that carries a generated Validate() method. Map keys go
+// through scalar-decorator emission elsewhere, so this only inspects
+// the value side.
+func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package) bool {
+	if t == nil || t.Map != nil || t.Named == nil {
+		return false
+	}
+	_, ok := pkg.Types[t.Named.Name.String()]
+	return ok
+}
+
+// emitNestedForLoops produces `depth` nested `for i0 := range x` loops
+// where the innermost body sees the deepest element expression
+// (`x[i0][i1]...[i{depth-1}]`). Used by [nestedValidateCall] for
+// multi-dimensional arrays of struct-typed elements.
+func emitNestedForLoops(access string, depth int, body func(elem string) string) string {
+	// Build the deepest element path that the body operates on.
+	elem := access
+	for d := 0; d < depth; d++ {
+		elem += fmt.Sprintf("[i%d]", d)
+	}
+	out := body(elem)
+	// Wrap loops outside-in. Loop d ranges over `access[i0]…[i{d-1}]`.
+	for d := depth - 1; d >= 0; d-- {
+		rangeOver := access
+		for k := 0; k < d; k++ {
+			rangeOver += fmt.Sprintf("[i%d]", k)
+		}
+		out = fmt.Sprintf("for i%d := range %s {\n%s\n}", d, rangeOver, out)
+	}
+	return out
 }

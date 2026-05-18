@@ -266,6 +266,21 @@ type Spec struct {
 	// field-type compatibility check reads this when LvlField or
 	// LvlScalar is the current site.
 	AppliesTo Prims
+	// Flag reports whether the decorator never accepts arguments. It
+	// is a presentation hint, not a parser rule:
+	//
+	//   - LSP completion inserts `@positive` (no parens) for Flag
+	//     decorators and `@range($1, $2)` (snippet placeholders) for
+	//     the rest.
+	//   - `craftgo fmt` strips empty parens (`@positive()` →
+	//     `@positive`) so canonical form is parens-free.
+	//   - The parser emits [CodeFlagEmptyParens] (warning) when a Flag
+	//     decorator is written with empty `()`. Soft-migration: not an
+	//     error, but the formatter rewrites it on save.
+	//
+	// The invariant is `Flag == true ⇒ Args.Max == 0`. A future check
+	// in init() enforces this.
+	Flag bool
 }
 
 // formatValues lists the named string formats accepted by `@format` on
@@ -300,10 +315,8 @@ var Registry = map[string]Spec{
 	"example": {
 		Name:   "example",
 		Levels: LvlType | LvlField | LvlMethod | LvlError | LvlErrorField,
-		Doc:    "Single example value rendered in OpenAPI examples block.",
-		// Validated by [analyzer.checkExampleArgs] - the arg may be
-		// a literal OR a {key: value} object. Min/Max enforced in the
-		// hook to keep ArgsRule simple.
+		Doc:    "Single example value rendered in OpenAPI examples block. Argument may be a literal (string / int / float / bool) OR a `{k: v}` object.",
+		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
 	"examples": {
 		Name:   "examples",
@@ -399,26 +412,38 @@ var Registry = map[string]Spec{
 	},
 
 	// ---- Field validation: number ----
-	"min": {
-		Name: "min", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Minimum numeric value (inclusive).",
+	"gt": {
+		Name: "gt", Levels: LvlField | LvlScalar | LvlErrorField,
+		Doc:       "Value must be strictly greater than N (x > N).",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
-	"max": {
-		Name: "max", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Maximum numeric value (inclusive).",
+	"gte": {
+		Name: "gte", Levels: LvlField | LvlScalar | LvlErrorField,
+		Doc:       "Value must be greater than or equal to N (x >= N). Replaces @min.",
+		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo: PrimNumber,
+	},
+	"lt": {
+		Name: "lt", Levels: LvlField | LvlScalar | LvlErrorField,
+		Doc:       "Value must be strictly less than N (x < N).",
+		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo: PrimNumber,
+	},
+	"lte": {
+		Name: "lte", Levels: LvlField | LvlScalar | LvlErrorField,
+		Doc:       "Value must be less than or equal to N (x <= N). Replaces @max.",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
 	"range": {
 		Name: "range", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Numeric range (min, max) inclusive.",
+		Doc:       "Numeric range [min, max] — both bounds inclusive.",
 		Args:      ArgsRule{Min: 2, Max: 2, Kinds: []ArgKind{ArgNumber, ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
-	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber},
-	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber},
+	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber, Flag: true},
+	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber, Flag: true},
 	"multipleOf": {
 		Name: "multipleOf", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:       "Value must be a multiple of N.",
@@ -439,7 +464,13 @@ var Registry = map[string]Spec{
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
 		AppliesTo: PrimArray,
 	},
-	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray},
+	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Flag: true},
+	"each": {
+		Name: "each", Levels: LvlField | LvlErrorField,
+		Doc:       "Apply the nested validator decorator to every element of an array field. E.g. `@each(@gte(0))` requires every element to be non-negative; `@each(@length(1, 20))` constrains every string element.",
+		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
+		AppliesTo: PrimArray,
+	},
 
 	// ---- Field validation: file ----
 	"maxSize": {
@@ -461,10 +492,10 @@ var Registry = map[string]Spec{
 		Doc:  "Default value applied when field absent.",
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
-	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null."},
+	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null.", Flag: true},
 	"sensitive": {
-		Name: "sensitive", Levels: LvlField | LvlErrorField,
-		Doc: "Server-only field: tagged `json:\"-\"` so neither the request decoder nor the response encoder touches it, and skipped entirely from OpenAPI. Cannot combine with any wire-shaping decorator: validators (@length / @min / @max / @range / @pattern / @format / @minItems / @maxItems / @multipleOf / @positive / @negative / @uniqueItems / @requiresOneOf / @mutuallyExclusive), nullability / defaults (@nullable / @default), or any binding (@body / @path / @query / @header / @cookie / @form). The field stays as a Go struct member that server logic populates / reads internally.",
+		Name: "sensitive", Levels: LvlField | LvlErrorField, Flag: true,
+		Doc: "Server-only field: tagged `json:\"-\"` so neither the request decoder nor the response encoder touches it, and skipped entirely from OpenAPI. Cannot combine with any wire-shaping decorator: validators (@length / @gt / @gte / @lt / @lte / @range / @pattern / @format / @minItems / @maxItems / @multipleOf / @positive / @negative / @uniqueItems / @requiresOneOf / @mutuallyExclusive), nullability / defaults (@nullable / @default), or any binding (@body / @path / @query / @header / @cookie / @form). The field stays as a Go struct member that server logic populates / reads internally.",
 	},
 
 	// ---- Field binding ----
@@ -516,7 +547,7 @@ var Registry = map[string]Spec{
 	"produces":    {Name: "produces", Levels: LvlMethod, Doc: "Emitted response content types.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method behavior ----
-	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly."},
+	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly.", Flag: true},
 	"accepts":     {Name: "accepts", Levels: LvlMethod, Doc: "Restrict allowed request encodings.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method limits ----
@@ -553,8 +584,10 @@ var sensitiveConflicts = map[string]bool{
 	"maxLength":         true,
 	"pattern":           true,
 	"format":            true,
-	"min":               true,
-	"max":               true,
+	"gt":                true,
+	"gte":               true,
+	"lt":                true,
+	"lte":               true,
 	"range":             true,
 	"positive":          true,
 	"negative":          true,

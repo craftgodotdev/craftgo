@@ -164,8 +164,8 @@ func (v *User) Validate() error {
 // Validate checks every field-level constraint declared on UserList.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UserList) Validate() error {
-	for i := range v.Items {
-		if err := v.Items[i].Validate(); err != nil {
+	for i0 := range v.Items {
+		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
 	}

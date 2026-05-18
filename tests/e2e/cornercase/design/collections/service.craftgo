@@ -1,0 +1,45 @@
+// service.craftgo wires the array + map types up to a handler
+// surface so the generated routes / OpenAPI emit. Each endpoint
+// returns a representative shape from arrays.craftgo / maps.craftgo
+// — the interesting validation lives on the types, not the routes.
+package collections
+
+@prefix("/collections")
+@tags(collections)
+service Collections {
+	// ArrayBounds echoes the canonical @minItems + @maxItems +
+	// @uniqueItems combo from Arr_BoundsBasic.
+	post ArrayBounds /array-bounds {
+		request  Arr_BoundsBasic
+		response Arr_BoundsBasic
+	}
+
+	// TagSlice exercises the scalar-array case — per-element Tag
+	// validators (minLength + maxLength + pattern) fire on every
+	// element via the scalar-leaves walk.
+	post TagSlice /tag-slice {
+		request  Arr_TagSlice
+		response Arr_TagSlice
+	}
+
+	// MultiDim drives a 2D array of scalars through the request
+	// body so the doubly-nested loop emits on the wire boundary.
+	post MultiDim /multi-dim {
+		request  Arr_Tag2D
+		response Arr_Tag2D
+	}
+
+	// MapKeyValue is the scalar-on-both-sides map case.
+	post MapKeyValue /map-key-value {
+		request  Map_KeyAndValue
+		response Map_KeyAndValue
+	}
+
+	// MapStruct exposes the struct-valued map so the generated
+	// validate.go for Map_StructValue is visible in the e2e
+	// snapshot.
+	post MapStruct /map-struct {
+		request  Map_StructValue
+		response Map_StructValue
+	}
+}

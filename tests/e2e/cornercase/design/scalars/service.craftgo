@@ -1,0 +1,78 @@
+// ScalarsService exposes a small surface that exercises the scalar
+// + generic + mixin types defined in this package. Every endpoint
+// drives at least one scalar-typed or generic-typed payload through
+// the transport / validator / OpenAPI pipeline.
+package scalars
+
+@prefix("/scalars")
+@tags(scalars)
+service ScalarsService {
+	@doc("Fetch one order by id. Path-bound id is a UUID scalar so the per-field decorator chain reduces to @path; the inherited @format(uuid) check runs in req.Validate().")
+	get GetOrder /orders/{id} {
+		request  GetOrderReq
+		response Order
+	}
+
+	@doc("List orders with cursor pagination. Demonstrates a generic-instance response (Page<Order>) — codegen emits the parametric struct and substitutes T=Order at the concrete site.")
+	get ListOrders /orders {
+		request  ListOrdersReq
+		response OrderPage
+	}
+
+	@doc("Create an order from a full payload. Every scalar-typed field on Order runs its inherited validators.")
+	post CreateOrder /orders {
+		request  CreateOrderReq
+		response Envelope<Order>
+	}
+
+	@doc("Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request DTO — per-element @pattern fires once per item.")
+	post SearchProducts /search {
+		request  Search
+		response ProductPage
+	}
+
+	@doc("Read audited record. Response type uses the mixin pattern (AuditFields embedded into Audited).")
+	get GetAudited /audited/{id} {
+		request  GetOrderReq
+		response Audited
+	}
+
+	@doc("Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.")
+	post EchoWrapped /wrapped {
+		request  EchoWrappedReq
+		response Wrapped
+	}
+}
+
+// GetOrderReq pins a UUID-typed path parameter. The scalar's
+// @format(uuid) inherits onto the field-level @path binding.
+type GetOrderReq {
+	id UUID @path
+}
+
+// ListOrdersReq mirrors the canonical cursor-pagination request shape.
+// The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
+// inside @query — codegen parses the wire string as int then casts
+// up to the alias.
+//
+// NOTE: limit cannot be `Cents?` because v1 forbids optional ints on
+// query bindings — the transport pass rejects "optional int cannot
+// bind to query in v1". The bare-int form uses 0 as the absent
+// sentinel, with @default providing the canonical fallback the
+// handler sees after pre-fill.
+type ListOrdersReq {
+	cursor string?
+	limit  Cents   @default(20)
+}
+
+// CreateOrderReq is a full-shape POST body that drives every Order
+// field through the validator. Note: id is supplied client-side so
+// the cornercase fixture can keep the request DTO simple.
+type CreateOrderReq {
+	order Order
+}
+
+// EchoWrappedReq carries the nested generic for round-tripping.
+type EchoWrappedReq {
+	payload Wrapped
+}

@@ -81,11 +81,11 @@ type Order {
 	// Cross-package OPTIONAL nested ref. Generated Go:
 	// `*users.UserRef` with `omitempty`.
 	cosignedBy users.UserRef?
-	// SCALAR REF on a numeric type: `Cents` carries @min(0) +
+	// SCALAR REF on a numeric type: `Cents` carries @gte(0) +
 	// @multipleOf(1). The field-level `@max` adds the per-Order
 	// ceiling (the scalar stays generic; the order-specific cap
 	// is local to this aggregate).
-	totalCents Cents                     @max(100000000)
+	totalCents Cents                     @lte(100000000)
 	// Required enum. `@required` on enums checks against the
 	// type's zero value (empty string for string-valued enums).
 	status     OrderStatus
@@ -185,7 +185,7 @@ type Customer {
 	// wire can carry an explicit `null` (different from "0 points
 	// means a brand-new account"). Without, presence is
 	// not enforced — caller may send the key with null OR omit it.
-	loyaltyPoints  int                                    @nullable @min(0) @max(1000000)
+	loyaltyPoints  int                                    @nullable @gte(0) @lte(1000000)
 	// Optional FILE upload. Demonstrates the file-validator pair
 	// (`@maxSize` + `@mimeTypes`) which the field-type-compat
 	// pass restricts to `file` typed fields.
@@ -237,11 +237,11 @@ type Geocode {
 // on a float — radii are quantized to half-meters because most GPS
 // hardware doesn't realistically deliver finer granularity.
 type Precision {
-	radiusMeters float64   @positive @max(10000) @multipleOf(0.5)
+	radiusMeters float64   @positive @lte(10000) @multipleOf(0.5)
 	source       GeoSource
 	// Confidence is a 0-1 ratio. @range pins both sides; the
 	// codegen rejects values outside the closed interval.
-	confidence   float64   @min(0) @max(1)
+	confidence   float64   @gte(0) @lte(1)
 	// Optional nested (Level 6 — deepest).
 	gpsFix       GpsFix?
 }
@@ -255,7 +255,7 @@ type Precision {
 // pattern on an optional string (`deviceId`).
 type GpsFix {
 	satellites int     @range(1, 64)
-	hdop       float64 @min(0) @max(50)
+	hdop       float64 @gte(0) @lte(50)
 	timestamp  string  @format(datetime)
 	// Optional with pattern — the validator nil-guards before
 	// running the regex.
@@ -273,10 +273,10 @@ type LineItem {
 	productId string    @length(1, 64)
 	// SCALAR REF: SkuCode bundles the alphanumeric pattern.
 	sku       SkuCode
-	quantity  int       @positive @max(1000)
-	// SCALAR REF: Cents bundles @min(0) + @multipleOf(1); the
+	quantity  int       @positive @lte(1000)
+	// SCALAR REF: Cents bundles @gte(0) + @multipleOf(1); the
 	// field-level @max adds a per-line ceiling.
-	unitCents Cents     @max(1000000)
+	unitCents Cents     @lte(1000000)
 	discount  Discount?
 	// String with default. The handler's pre-fill logic sets the
 	// empty string before JSON decode so a missing `note` key
@@ -291,9 +291,9 @@ type LineItem {
 // downstream pricing engine sums all monetary fields.
 type Discount {
 	code       string           @pattern("^[A-Z]{2,16}$")
-	percent    float64          @min(0) @max(100) @multipleOf(0.5)
+	percent    float64          @gte(0) @lte(100) @multipleOf(0.5)
 	// CROSS-PACKAGE SCALAR: shared.PercentBP carries
-	// @min(0)+@max(10000) automatically. The field-level chain is
+	// @gte(0)+@lte(10000) automatically. The field-level chain is
 	// empty, demonstrating that scalar validators inherit across
 	// package boundaries.
 	bpsBonus   shared.PercentBP

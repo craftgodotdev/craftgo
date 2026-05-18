@@ -69,8 +69,8 @@ func (v *CreateProfileReq) Validate() error {
 	if len(v.Addresses) > 5 {
 		return fmt.Errorf("addresses: maxItems 5")
 	}
-	for i := range v.Addresses {
-		if err := v.Addresses[i].Validate(); err != nil {
+	for i0 := range v.Addresses {
+		if err := v.Addresses[i0].Validate(); err != nil {
 			return err
 		}
 	}
@@ -89,8 +89,8 @@ func (v *GetProfileReq) Validate() error {
 // Validate checks every field-level constraint declared on ListProfilesResp.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListProfilesResp) Validate() error {
-	for i := range v.Items {
-		if err := v.Items[i].Validate(); err != nil {
+	for i0 := range v.Items {
+		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
 	}
@@ -127,13 +127,43 @@ func (v *Profile) Validate() error {
 	if len(v.Addresses) > 5 {
 		return fmt.Errorf("addresses: maxItems 5")
 	}
-	for i := range v.Addresses {
-		if err := v.Addresses[i].Validate(); err != nil {
+	for i0 := range v.Addresses {
+		if err := v.Addresses[i0].Validate(); err != nil {
 			return err
 		}
 	}
 	if len(v.Tags) > 10 {
 		return fmt.Errorf("tags: maxItems 10")
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on DuplicateEmailBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DuplicateEmailBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on InsufficientPermissionsBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *InsufficientPermissionsBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ProfileValidationFailedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ProfileValidationFailedBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on RateLimitedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *RateLimitedBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on StaleVersionBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *StaleVersionBody) Validate() error {
 	return nil
 }

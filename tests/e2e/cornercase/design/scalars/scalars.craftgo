@@ -1,0 +1,75 @@
+// Scalars exercise the named-primitive-with-baked-in-validators
+// surface. Each declaration centralises a validation contract so the
+// field-level decorator chain reduces to presence rules only.
+//
+// Coverage matrix:
+//
+//   Email        string + @format(email) + @maxLength → format + length stack
+//   URL          string + @format(url)                → format alone
+//   UUID         string + @format(uuid)               → format alone
+//   Cents        int    + @gte + @lte                 → numeric scalar bounds
+//   Percent      float64 + @gte + @lte                → float scalar bounds
+//   NonEmpty     string + @minLength(1)               → minLength alone
+//   Tag          string + @minLength + @maxLength + @pattern  → triple stack
+//   ISO3         string + @length + @pattern          → length + pattern
+//
+// Cornercase probes (commented out where the framework rejects them):
+//
+//   OptionalEmail    `scalar X string? @format(email)` — the parser
+//                    grammar requires the primitive token to be an
+//                    Ident; `string?` is two tokens so it fails at
+//                    parse time. The optionality lives on the FIELD
+//                    instead (`email Email?`).
+//   Composed         `scalar X SomeOtherScalar` — the parser admits
+//                    the second token as any Ident, so it compiles
+//                    syntactically; semantic analysis rejects it as
+//                    a non-builtin primitive. We INCLUDE the
+//                    declaration commented out to record the exact
+//                    failure mode for future grammar work.
+package scalars
+
+// Email centralises the canonical email-shape contract. Every field
+// of type Email inherits @format(email) and @maxLength(254) so the
+// per-field decorator chain stays empty.
+scalar Email string @format(email) @maxLength(254)
+
+// URL carries the @format(url) check for safe-URL fields.
+scalar URL string @format(url)
+
+// UUID carries the @format(uuid) check.
+scalar UUID string @format(uuid)
+
+// Cents is the canonical money scalar — non-negative integer with a
+// per-request ceiling. Bound stacking (@gte + @lte) demonstrates that
+// numeric scalars accept both lower and upper bounds.
+scalar Cents int @gte(0) @lte(1000000000)
+
+// Percent is a 0-1 ratio. @gte/@lte on a float64 scalar exercises
+// the numeric-bound emitter on a non-integer primitive.
+scalar Percent float64 @gte(0) @lte(1)
+
+// NonEmpty is the "must be at least one character" string scalar.
+scalar NonEmpty string @minLength(1)
+
+// Tag stacks @minLength + @maxLength + @pattern so a SINGLE scalar
+// reference brings in three element-level validators.
+scalar Tag string @minLength(1) @maxLength(20) @pattern("^[a-z-]+$")
+
+// ISO3 stacks @length + @pattern. @length(3, 3) pins the string to
+// exactly three characters; the @pattern enforces the alphabet.
+scalar ISO3 string @length(3, 3) @pattern("^[A-Z]{3}$")
+
+// OptionalEmail probes whether the scalar declaration itself can be
+// marked optional. The parser grammar accepts only `Ident Ident` for
+// the `scalar Name Primitive` shape, so `string?` fails to parse.
+// Field-level optionality (`email Email?`) is the supported form.
+//
+// scalar OptionalEmail string? @format(email)
+
+// Composed probes whether one scalar may reference another scalar as
+// its underlying primitive. The parser accepts the syntax (both
+// tokens are Idents) but the semantic resolver rejects it because
+// `Email` is not in idents.BuiltinTypes. Kept commented to record
+// the failure mode.
+//
+// scalar Composed Email

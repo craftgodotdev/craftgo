@@ -12,6 +12,8 @@ package codegen
 // preserves the legacy single-package behaviour.
 
 import (
+	"strings"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -127,17 +129,97 @@ func resolveTypeRef(n *ast.NamedTypeRef, crossPkg CrossPkg) (alias, bare string,
 	}
 	parts := n.Name.Parts
 	if len(parts) == 1 {
-		return "types", parts[0], extraImport{}
+		return "types", parts[0] + genericArgsSuffix(n.Args, "types", crossPkg), extraImport{}
 	}
 	pkgName, sym := parts[0], parts[len(parts)-1]
 	if path, ok := crossPkg[pkgName]; ok {
-		return pkgName, sym, extraImport{Alias: pkgName, Path: path}
+		return pkgName, sym + genericArgsSuffix(n.Args, "types", crossPkg), extraImport{Alias: pkgName, Path: path}
 	}
 	// Cross-pkg without a CrossPkg entry - fall back to dotted form.
 	// The single-package legacy generator always rendered this as
 	// `types.<dotted>` and emitted no extra import; preserve that so
 	// existing tests/fixtures still pass.
-	return "types", n.Name.String(), extraImport{}
+	return "types", n.Name.String() + genericArgsSuffix(n.Args, "types", crossPkg), extraImport{}
+}
+
+// genericArgsSuffix renders the Go generic-instantiation suffix for a
+// named-type ref, or "" when the ref has no type arguments. Used so
+// service / handler signatures emit `Page[types.Order]` instead of
+// bare `Page` — the latter trips a "cannot use generic type without
+// instantiation" compile error wherever the signature lives.
+//
+// `localAlias` is the Go import alias the consuming file uses for
+// the canonical types package (almost always "types"). Single-segment
+// generic args (local types like `Order`) get prefixed with it so the
+// reference resolves through the consuming file's import block.
+// Cross-package args (`shared.User`) keep their DSL qualifier — the
+// caller is responsible for ensuring that package is imported, same
+// as for the top-level type. Multi-arg (`Pair<A, B>`) and nested
+// instantiations flow through `GoTypeRef` recursively.
+func genericArgsSuffix(args []*ast.TypeRef, localAlias string, crossPkg CrossPkg) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args))
+	for _, a := range args {
+		parts = append(parts, qualifyGoTypeRef(a, localAlias, crossPkg))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// qualifyGoTypeRef walks a TypeRef and qualifies its leaf named refs
+// with the consuming file's local-types alias. Used to render generic
+// args at the handler / service surface where local types live behind
+// the `types` import. Cross-package refs (`shared.User`) keep the
+// DSL-supplied qualifier; primitive types pass through unchanged.
+func qualifyGoTypeRef(t *ast.TypeRef, localAlias string, crossPkg CrossPkg) string {
+	if t == nil {
+		return ""
+	}
+	if t.Map != nil {
+		return "map[" + qualifyGoTypeRef(t.Map.Key, localAlias, crossPkg) + "]" + qualifyGoTypeRef(t.Map.Value, localAlias, crossPkg)
+	}
+	depth := t.ArrayDepth
+	if depth == 0 && t.Array {
+		depth = 1
+	}
+	leaf := ""
+	if t.Named != nil {
+		leaf = qualifyNamedRef(t.Named, localAlias, crossPkg)
+	}
+	for i := 0; i < depth; i++ {
+		leaf = "[]" + leaf
+	}
+	if t.Optional && !isNilableGoType(leaf) {
+		leaf = "*" + leaf
+	}
+	return leaf
+}
+
+// qualifyNamedRef applies the local-alias qualifier to a single
+// NamedTypeRef. Builtins (`string`, `int`, …) and cross-package
+// refs are left alone; only single-segment user-defined names get
+// the alias prefix.
+func qualifyNamedRef(n *ast.NamedTypeRef, localAlias string, crossPkg CrossPkg) string {
+	if n == nil || n.Name == nil {
+		return ""
+	}
+	name := n.Name.String()
+	switch name {
+	case "string", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64", "bool", "any", "bytes", "file":
+		return goNamedType(n)
+	}
+	parts := n.Name.Parts
+	suffix := genericArgsSuffix(n.Args, localAlias, crossPkg)
+	if len(parts) == 1 {
+		if localAlias == "" {
+			return parts[0] + suffix
+		}
+		return localAlias + "." + parts[0] + suffix
+	}
+	return name + suffix
 }
 
 // walkCrossPkgImports recurses into a TypeRef and grows set with

@@ -1,0 +1,102 @@
+// arrays.craftgo exercises the array-shape corner cases:
+//
+//   - Bounds: @minItems(N) / @maxItems(N) with N = 0 (dead code),
+//     N = 1 (typical), exact-size pin (lo == hi), open-ended single
+//     bound.
+//   - Flag: @uniqueItems — emits a map-based dedupe loop scoped to a
+//     bare block.
+//   - Nested element decorator: @each(@inner) — the AST node exists
+//     and the parser accepts it, but `@each` is NOT in the framework
+//     Registry today (semantic phase rejects it with `decorator/unknown`).
+//     The per-element validator inheritance pattern is exercised via
+//     SCALAR ARRAYS instead (`Tag[]`) — scalar's @minLength /
+//     @maxLength / @pattern automatically fire per element through the
+//     scalar-leaves walk.
+//   - Optional array nil-guard: `T[]?` must SKIP @minItems when the
+//     slice is nil (Sprint 3 C3 fix).
+//   - Multi-dim of scalar: Tag[][] and Tag[][][] — should produce
+//     correctly-nested for-loops per the scalar-leaves walk (Sprint 3
+//     C5 fix). Optional 2D: Tag[][]? — outer nil-guard, inner loop.
+package collections
+
+// Arr_BoundsBasic stacks the canonical @minItems + @maxItems +
+// @uniqueItems combo on a required slice of plain strings. The
+// generator emits:
+//
+//   - length check  (>= 1)
+//   - length check  (<= 10)
+//   - dedupe block  (`seen := make(map[string]struct{}, len(v.Tags))`)
+type Arr_BoundsBasic {
+	tags string[] @minItems(1) @maxItems(10) @uniqueItems
+}
+
+// Arr_OptionalBound proves the Sprint 3 C3 fix: an optional array
+// with @minItems(1) must SKIP the check when the slice is nil. Without
+// the nil-guard, `len(nil) == 0` would fail the bound even though the
+// field is legitimately absent.
+type Arr_OptionalBound {
+	tags string[]? @minItems(1)
+}
+
+// Arr_PlainInts is a bare int slice with no per-element validators.
+// Without @each in the registry the only way to validate elements is
+// via a SCALAR element type — see Arr_TagSlice / Arr_Tag2D below for
+// the per-element validator pattern.
+type Arr_PlainInts {
+	scores int[]
+}
+
+// Arr_PlainStrings is the string-array baseline. No per-element
+// constraints — the generated validator should be the bare presence
+// check on `v.Codes` (slice == nil) only.
+type Arr_PlainStrings {
+	codes string[]
+}
+
+// Arr_TagSlice is the array-of-scalar case. `Tag[]` inherits Tag's
+// per-element @minLength + @maxLength + @pattern via the scalar-leaves
+// walk — the field carries NO per-element decorators because the
+// scalar already does. Field-level @minItems / @maxItems still apply
+// on top.
+type Arr_TagSlice {
+	tags Tag[] @minItems(1) @maxItems(10) @uniqueItems
+}
+
+// Arr_Tag2D — `Tag[][]` is the 2D scalar array. Sprint 3 C5 fix:
+// the generator MUST emit doubly-nested for-loops so each
+// `v.Grid[i0][i1]` runs Tag's three validators. Pre-fix versions
+// emitted only the outer loop and ran validators on the inner slice
+// (which would not compile).
+type Arr_Tag2D {
+	grid Tag[][]
+}
+
+// Arr_Tag3D — `Tag[][][]` exercises THREE-deep iteration. Three
+// nested `for iN := range ...` loops, with Tag's per-element
+// validators in the innermost body.
+type Arr_Tag3D {
+	cube Tag[][][]
+}
+
+// Arr_Tag2DOptional — `Tag[][]?` is the optional 2D scalar array.
+// Outer nil-guard wraps the doubly-nested for-loops; the inner pair
+// runs only when the slice is non-nil.
+type Arr_Tag2DOptional {
+	grid Tag[][]?
+}
+
+// Arr_MinZero pins the lower bound at ZERO. The generator currently
+// emits `if len(v.Items) < 0 { ... }` which is DEAD CODE (lengths are
+// never negative). Captured here so the e2e snapshot pins the
+// suboptimal output and a future cleanup is detectable.
+type Arr_MinZero {
+	items string[] @minItems(0)
+}
+
+// Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
+// semantically "this slice must always be empty". The lower-bound
+// dead-code wart from Arr_MinZero applies here too; the upper bound
+// (`> 0`) is the meaningful check that actually rejects values.
+type Arr_EmptyExact {
+	always_empty string[] @minItems(0) @maxItems(0)
+}

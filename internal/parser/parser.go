@@ -184,6 +184,7 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	lastTok := nameTok
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
+		d.HasParens = true
 		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
 			d.Args = append(d.Args, p.parseDecoratorArg())
 			if p.peek().Kind == lexer.Comma {

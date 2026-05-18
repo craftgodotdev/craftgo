@@ -110,7 +110,7 @@ type GetOrderReq {
 // request types — see users.ListUsersReq for the full rationale.
 type ListOrdersReq {
 	cursor string?
-	limit  int     @min(0) @max(100)
+	limit  int     @gte(0) @lte(100)
 }
 
 // CreateOrderReq is the POST body. Note the deeply-nested

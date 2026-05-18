@@ -7,15 +7,21 @@ components:
         the length validator pins it to exactly two characters.
       properties:
         city:
+          maxLength: 100
+          minLength: 1
           type: string
         coords:
           $ref: '#/components/schemas/Coords'
         country:
+          maxLength: 2
+          minLength: 2
           type: string
         postal:
           nullable: true
           type: string
         street:
+          maxLength: 200
+          minLength: 1
           type: string
       required:
       - street
@@ -30,8 +36,11 @@ components:
         regex is intentionally permissive (RFC 5322 is too much for a v1 demo).
       properties:
         email:
+          pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
           type: string
         phone:
+          maxLength: 20
+          minLength: 7
           nullable: true
           type: string
       required:
@@ -43,8 +52,12 @@ components:
         claim a location outside the WGS84 envelope.
       properties:
         lat:
+          maximum: 90
+          minimum: -90
           type: number
         lng:
+          maximum: 180
+          minimum: -180
           type: number
       required:
       - lat
@@ -58,6 +71,8 @@ components:
         addresses:
           items:
             $ref: '#/components/schemas/Address'
+          maxItems: 5
+          minItems: 1
           type: array
         age:
           nullable: true
@@ -65,6 +80,8 @@ components:
         contacts:
           $ref: '#/components/schemas/ContactInfo'
         displayName:
+          maxLength: 50
+          minLength: 1
           type: string
         meta:
           additionalProperties:
@@ -73,6 +90,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
       required:
       - displayName
@@ -86,6 +104,8 @@ components:
         addresses:
           items:
             $ref: '#/components/schemas/Address'
+          maxItems: 5
+          minItems: 1
           type: array
         age:
           nullable: true
@@ -93,6 +113,8 @@ components:
         contacts:
           $ref: '#/components/schemas/ContactInfo'
         displayName:
+          maxLength: 50
+          minLength: 1
           type: string
         meta:
           additionalProperties:
@@ -101,6 +123,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
       required:
       - displayName
@@ -167,6 +190,8 @@ components:
         the matching part of the HTTP request.
       properties:
         displayName:
+          maxLength: 50
+          minLength: 1
           type: string
         dryRun:
           type: string
@@ -186,6 +211,8 @@ components:
     PatchProfileReqBody:
       properties:
         displayName:
+          maxLength: 50
+          minLength: 1
           type: string
       required:
       - displayName
@@ -251,6 +278,8 @@ components:
         addresses:
           items:
             $ref: '#/components/schemas/Address'
+          maxItems: 5
+          minItems: 1
           type: array
         age:
           nullable: true
@@ -258,6 +287,8 @@ components:
         contacts:
           $ref: '#/components/schemas/ContactInfo'
         displayName:
+          maxLength: 50
+          minLength: 1
           type: string
         id:
           type: string
@@ -268,6 +299,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
       required:
       - id

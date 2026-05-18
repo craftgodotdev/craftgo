@@ -295,12 +295,17 @@ func (a *analyzer) checkArgsScope(site Level, decs []*ast.Decorator) {
 // decorators to their hook; everything else goes through the generic
 // positional check.
 func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
+	// Flag decorators never take arguments — empty parens are
+	// stylistically wrong. Warn (not error); `craftgo fmt` strips
+	// them on save.
+	if spec.Flag && d.HasParens {
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeFlagEmptyParens,
+			"@%s never accepts arguments — drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
+			d.Name, d.Name)
+	}
 	switch d.Name {
 	case "security":
 		a.checkSecurityArgs(d)
-		return
-	case "example":
-		a.checkExampleArgs(d)
 		return
 	case "examples":
 		a.checkExamplesArgs(d)
@@ -312,14 +317,17 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 	a.checkPositionalArgs(site, d, spec)
 }
 
-// positionalArgs splits d.Args into positional vs other (named, nested
-// decorators, object literals). The generic checker only consults the
-// positional slice; per-decorator hooks read named/object args
-// directly off d.Args.
+// positionalArgs splits d.Args into positional vs named. Object and
+// nested-decorator args are treated as positional (they have no name)
+// so the generic checker can count them against [ArgsRule.Min/Max].
+// Per-position kind checks then decide what to do: [ArgAny] passes
+// them through; tighter kinds (`ArgString`, `ArgInt`, ...) reject them
+// because [exprMatchesKind] returns false for `nil` Value with any
+// non-ArgAny kind.
 func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 	var out []*ast.DecoratorArg
 	for _, ag := range d.Args {
-		if ag == nil || ag.Named || ag.Object != nil || ag.Nested != nil {
+		if ag == nil || ag.Named {
 			continue
 		}
 		out = append(out, ag)
@@ -416,6 +424,11 @@ func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.
 // checkEnumOnFirst applies the value-set check on the first positional
 // arg. Bare-int / non-textual args silently skip - the kind check above
 // already flagged them.
+//
+// When the arg is enum-valid but spelled as a STRING (`@format("email")`
+// instead of `@format(email)`) the canonical form is the bare ident.
+// Emit a soft `CodeArgPreferIdent` warning so the IDE surfaces the
+// non-canonical form; `craftgo fmt` rewrites on save.
 func (a *analyzer) checkEnumOnFirst(site Level, d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
 	_ = site
 	enum := spec.Args.Enum
@@ -430,6 +443,12 @@ func (a *analyzer) checkEnumOnFirst(site Level, d *ast.Decorator, spec Spec, pos
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorArgValue,
 			"@%s arg 1: %q is not a valid value (expected one of: %s)",
 			d.Name, val, joinQuoted(enum))
+		return
+	}
+	if _, isStr := pos[0].Value.(*ast.StringLit); isStr {
+		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityWarning, CodeArgPreferIdent,
+			"@%s arg 1: prefer bare identifier `%s` over string \"%s\" (`craftgo fmt` rewrites this on save)",
+			d.Name, val, val)
 	}
 }
 
@@ -614,22 +633,6 @@ func (a *analyzer) checkSecurityArgs(d *ast.Decorator) {
 					"@security scopes[%d]: expected string, got %s", i, exprKindName(el))
 			}
 		}
-	}
-}
-
-// checkExampleArgs handles `@example(value)` where value may be a
-// literal OR an object. Exactly one positional or one object arg.
-func (a *analyzer) checkExampleArgs(d *ast.Decorator) {
-	count := len(d.Args)
-	if count != 1 {
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArity,
-			"@example expects exactly 1 argument (got %d)", count)
-		return
-	}
-	ag := d.Args[0]
-	if ag.Named {
-		a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
-			"@example does not accept named arguments")
 	}
 }
 

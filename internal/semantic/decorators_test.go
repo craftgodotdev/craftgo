@@ -370,7 +370,7 @@ func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
     message string? @default("Gone")
 }`)
 	mustClean(t, `error TooManyRequests RateLimited {
-    retryAfter int @min(1)
+    retryAfter int @gte(1)
     bucket     string?
 }`)
 }
@@ -445,8 +445,8 @@ type User { secret string @sensitive @format(email) }`, CodeDecoratorConflict)
 
 func TestSensitiveConflictsMinMax(t *testing.T) {
 	d := expectError(t, `package design
-type User { age int @sensitive @min(0) }`, CodeDecoratorConflict)
-	expectMessage(t, d, "@min cannot be combined with @sensitive")
+type User { age int @sensitive @gte(0) }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@gte cannot be combined with @sensitive")
 }
 
 // ---------- @sensitive + nullability / default ----------

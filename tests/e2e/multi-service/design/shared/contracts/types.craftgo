@@ -17,5 +17,5 @@ type Order {
 // Item represents a catalog item in the catalog service.
 type Item {
 	sku   string
-	price int    @min(0)
+	price int    @gte(0)
 }

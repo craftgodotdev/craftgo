@@ -118,21 +118,32 @@ type helpersData struct{ Package string }
 // Equivalent to [GenerateTransportPackage] with a nil [CrossPkg]
 // context - kept so single-package callers / tests stay unchanged.
 func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	return GenerateTransportPackage(pkg, cfg, projectRoot, nil)
+	return GenerateTransportWith(pkg, cfg, projectRoot, nil, nil)
 }
 
 // GenerateTransportPackage is the multi-package variant of
 // [GenerateTransport]. crossPkg supplies the alias→Go-import-path
 // table so a method whose request type lives in a sibling DSL
 // package (`request shared.Cred`) renders the correct Go reference
-// and import statements.
+// and import statements. Kept for backward compatibility — callers
+// that need cross-package scalar binding should use
+// [GenerateTransportWith].
 func GenerateTransportPackage(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
+	return GenerateTransportWith(pkg, cfg, projectRoot, crossPkg, nil)
+}
+
+// GenerateTransportWith is the full-context variant. `scalars`
+// supplies the project-wide [ScalarTable] so cross-package scalar
+// fields (`shared.ID @path`) can resolve through to their underlying
+// primitive — without it `stringBindable` only sees the local
+// `pkg.Scalars` map and rejects every cross-package binding.
+func GenerateTransportWith(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg, scalars ScalarTable) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
-		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {
+		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, crossPkg, scalars); err != nil {
 			return err
 		}
 	}
@@ -152,7 +163,7 @@ func sortedServices(pkg *semantic.Package) []string {
 // generateTransportFor emits all per-method handler files for a single
 // service. Each method becomes a separate file so that user-friendly diffs
 // are produced when only one endpoint changes.
-func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
+func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg, scalars ScalarTable) error {
 	imps := importPathsFor(cfg, pkg, svcName)
 	dir := filepath.Join(projectRoot, cfg.Output.Transport, ServiceDir(svcName))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -162,7 +173,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	passthroughTpl := tmpl("transport-passthrough.tmpl")
 	multipartTpl := tmpl("transport-multipart.tmpl")
 	for _, m := range svc.Methods {
-		data, err := buildTransportData(svcName, m, imps, pkg, crossPkg)
+		data, err := buildTransportData(svcName, m, imps, pkg, crossPkg, scalars)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
@@ -194,7 +205,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // the handler's Go file gets an extra import for that package and
 // the generated `var req foo.Cred` line uses the package name as the
 // Go alias.
-func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, crossPkg CrossPkg) (transportData, error) {
+func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarTable) (transportData, error) {
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	d := transportData{
@@ -229,8 +240,21 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.NeedsTypes = false
 			d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
 		}
+		// Wire binders cast cross-package scalar fields to their
+		// declared Go type — `req.ID = shared.ID(r.PathValue("id"))`.
+		// Without this import-walk the `shared` package never makes
+		// it into the file's import block, and the cast compiles to
+		// `undefined: shared`. Walk every field type of the request
+		// struct so transitively-referenced packages get pulled in.
+		fieldImports := collectRequestFieldImports(m, pkg, crossPkg)
+		for _, alias := range sortedKeys(fieldImports) {
+			d.ExtraTypesImports = append(d.ExtraTypesImports, extraImport{
+				Alias: alias,
+				Path:  fieldImports[alias],
+			})
+		}
 		var err error
-		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg, d.RequestPkgAlias)
+		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg, d.RequestPkgAlias, scalars)
 		if err != nil {
 			return transportData{}, err
 		}
@@ -622,7 +646,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 // Unsupported binding shapes (struct/[]struct/map on @query, non-string
 // on @path/@header/@cookie) return a non-nil error. Silent skips were
 // removed in favour of fail-fast feedback at `craftgo gen` time.
-func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
+func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scalars ScalarTable) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
 		return
 	}
@@ -655,9 +679,17 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (pat
 			bind = "query"
 			auto = true
 		}
+		// Wire-side name defaults to the DSL field name, but an
+		// explicit string argument on the binding decorator overrides
+		// it: `@path("user_id")` binds the field to the path segment
+		// `{user_id}` even when the Go field name is `UserId`. Without
+		// honouring the arg, URLs like `/users/{user_id}` never match
+		// the field `userId` because `r.PathValue("userId")` returns
+		// the empty string.
+		wireName := bindingWireName(f, bind)
 		switch bind {
 		case "path":
-			if !stringBindable(f, pkg) {
+			if !stringBindable(f, pkg, scalars) {
 				if auto {
 					// Auto-promoted from a path segment match - silently skip
 					// so a body field that happens to share a name with a
@@ -670,12 +702,12 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (pat
 				return
 			}
 			path = append(path, paramBinding{
-				DSLName: f.Name,
+				DSLName: wireName,
 				GoName:  GoFieldName(f.Name),
-				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.PathValue(%q)", f.Name), pkgAlias)),
+				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.PathValue(%q)", wireName), pkgAlias)),
 			})
 		case "query":
-			line, needs, lerr := renderQueryBindLine(f, pkg, pkgAlias)
+			line, needs, lerr := renderQueryBindLine(f, pkg, pkgAlias, wireName)
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -684,31 +716,31 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (pat
 				needsStrconv = true
 			}
 			query = append(query, paramBinding{
-				DSLName: f.Name,
+				DSLName: wireName,
 				GoName:  GoFieldName(f.Name),
 				Bind:    line,
 			})
 		case "header":
-			if !stringBindable(f, pkg) {
+			if !stringBindable(f, pkg, scalars) {
 				err = fmt.Errorf("%s.%s: @header requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			header = append(header, paramBinding{
-				DSLName: f.Name,
+				DSLName: wireName,
 				GoName:  GoFieldName(f.Name),
-				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.Header.Get(%q)", f.Name), pkgAlias)),
+				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.Header.Get(%q)", wireName), pkgAlias)),
 			})
 		case "cookie":
-			if !stringBindable(f, pkg) {
+			if !stringBindable(f, pkg, scalars) {
 				err = fmt.Errorf("%s.%s: @cookie requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			cookie = append(cookie, paramBinding{
-				DSLName: f.Name,
+				DSLName: wireName,
 				GoName:  GoFieldName(f.Name),
 				Bind: fmt.Sprintf(`if c, err := r.Cookie(%q); err == nil {
 	req.%s = %s
-}`, f.Name, GoFieldName(f.Name), stringBindCast(f, "c.Value", pkgAlias)),
+}`, wireName, GoFieldName(f.Name), stringBindCast(f, "c.Value", pkgAlias)),
 			})
 		}
 	}
@@ -767,6 +799,89 @@ var queryPrims = map[string]queryPrim{
 	"float64": {parser: "strconv.ParseFloat", bits: 64, goType: "float64", label: "float"},
 }
 
+// collectRequestFieldImports walks every WIRE-BOUND field of the
+// method's request type (path / query / header / cookie, explicit
+// or auto-promoted) and returns the cross-package import paths
+// reached through those field types. Result keys the DSL package
+// name (= Go alias used in the binder cast) to its full Go import
+// path, ready to append to the handler's extra-imports block.
+//
+// Body-only fields are intentionally skipped: the JSON decoder
+// reads them through the request struct's own package, so no
+// extra import is needed at the handler-file level. Including them
+// would emit unused `import` statements that `go build` rejects.
+//
+// Without this walk, a request with a cross-package scalar field
+// auto-promoted to @path (`id shared.ID` on a `/{id}` route)
+// emitted `req.ID = shared.ID(...)` without importing `shared`.
+func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg CrossPkg) map[string]string {
+	out := map[string]string{}
+	if m == nil || m.Request == nil || pkg == nil || len(crossPkg) == 0 {
+		return out
+	}
+	td, ok := pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return out
+	}
+	pathSegs := map[string]bool{}
+	if m.Path != nil {
+		for _, seg := range m.Path.Segments {
+			if seg.Param {
+				pathSegs[seg.Literal] = true
+			}
+		}
+	}
+	autoQuery := !hasBodyVerb(m.Verb)
+	set := map[string]bool{}
+	for _, member := range td.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		bind := bindingFromDecorators(f.Decorators)
+		if bind == "" && pathSegs[f.Name] {
+			bind = "path"
+		}
+		if bind == "" && autoQuery {
+			bind = "query"
+		}
+		switch bind {
+		case "path", "query", "header", "cookie":
+			walkCrossPkgImports(f.Type, crossPkg, set)
+		}
+	}
+	for pkgName, path := range crossPkg {
+		if !set[path] {
+			continue
+		}
+		out[pkgName] = path
+	}
+	return out
+}
+
+// bindingWireName returns the wire-side parameter name for a bound
+// field. The default is the DSL field name; an explicit string
+// argument on the binding decorator (`@path("user_id")`,
+// `@header("X-API-Key")`, etc.) overrides it so wire-side conventions
+// (snake_case path segments, kebab/hyphen HTTP headers) can differ
+// from the Go field name. `kind` selects which decorator to inspect
+// (`path`/`query`/`header`/`cookie`) so the same field may carry the
+// wrong-decorator's arg without leakage.
+func bindingWireName(f *ast.Field, kind string) string {
+	if f == nil {
+		return ""
+	}
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != kind || len(d.Args) == 0 {
+			continue
+		}
+		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
+			return s.Value
+		}
+	}
+	return f.Name
+}
+
 // renderQueryBindLine returns the Go source that binds one field from
 // the URL query string. Shape varies by field type:
 //   - string single → `req.X = r.URL.Query().Get("x")`
@@ -777,13 +892,15 @@ var queryPrims = map[string]queryPrim{
 //     (string-backed scalar/enum: `req.X = X(r.URL.Query().Get("x"))`;
 //     int-backed: parse int then `X(_n)`).
 //
+// `wireName` is the on-the-wire query parameter key — either the DSL
+// field name (default) or the explicit override from `@query("name")`.
 // Returns a non-nil error for unsupported field shapes (structs,
 // []struct, maps, generics, ...) so the codegen surfaces the
 // mistake at `craftgo gen` time instead of silently producing a
 // handler that leaves the field zero-valued. The second return
 // value is true when the rendered code references "strconv" so
 // the caller can flip the import flag once.
-func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias string) (string, bool, error) {
+func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName string) (string, bool, error) {
 	if f.Type == nil {
 		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
 	}
@@ -845,7 +962,7 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias string) (
 		}
 		return cast + "(" + s + ")"
 	}
-	dslName := f.Name
+	dslName := wireName
 	goName := GoFieldName(f.Name)
 	if f.Type.Array {
 		if prim.parser == "" {
@@ -880,10 +997,23 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias string) (
 		// string single
 		access := "req." + goName
 		if f.Type.Optional {
-			// `*string`: store the queried value via address.
-			return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
+			// Plain `*string`: take the address of the raw query
+			// value directly. Scalar/enum optional (`*Color`,
+			// `*UUID`): the query yields a `string`, so we must
+			// cast through the alias type and bind to a NEW
+			// variable that has the alias type — addressing the
+			// raw `string` variable would produce `*string`,
+			// which is incompatible with the field's `*<Alias>`
+			// type and refuses to compile.
+			if cast == "" {
+				return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
 	%s = &_v
 }`, dslName, access), false, nil
+			}
+			return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
+	_w := %s
+	%s = &_w
+}`, dslName, wrap("_v"), access), false, nil
 		}
 		return fmt.Sprintf("%s = %s", access, wrap(fmt.Sprintf("r.URL.Query().Get(%q)", dslName))), false, nil
 	}
@@ -967,12 +1097,20 @@ func isPlainStringField(f *ast.Field) bool {
 // stringBindable reports whether f's type can ride a path / header /
 // cookie wire (always a string at the protocol level). Matches:
 //   - the bare `string` primitive
-//   - a `scalar X string @...` declared in pkg
+//   - a `scalar X string @...` declared in any reachable package
 //   - a string-backed enum (kind EnumBare or EnumString) in pkg
+//
+// `scalars` is the project-wide lookup table built by
+// [BuildScalarTable]; it carries both local scalars (keyed by bare
+// name) and cross-package scalars (keyed by qualified name like
+// "shared.ID"). Without consulting it, every cross-package scalar
+// binding was rejected — a `shared.ID @path` field hit the catch-all
+// "@path requires a string-backed field" error even though
+// `shared.ID` IS a string scalar.
 //
 // Mirrors `semantic.isStringBindingType` so design-time and gen-time
 // rejections agree.
-func stringBindable(f *ast.Field, pkg *semantic.Package) bool {
+func stringBindable(f *ast.Field, pkg *semantic.Package, scalars ScalarTable) bool {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
 		return false
 	}
@@ -980,17 +1118,35 @@ func stringBindable(f *ast.Field, pkg *semantic.Package) bool {
 	if name == "string" {
 		return true
 	}
-	if pkg == nil {
-		return false
-	}
-	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
+	if sc := lookupScalar(name, pkg, scalars); sc != nil && sc.Primitive == "string" {
 		return true
 	}
-	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		k := firstEnumKind(ed)
-		return k == ast.EnumBare || k == ast.EnumString
+	if pkg != nil {
+		if ed, ok := pkg.Enums[name]; ok && ed != nil {
+			k := firstEnumKind(ed)
+			return k == ast.EnumBare || k == ast.EnumString
+		}
 	}
 	return false
+}
+
+// lookupScalar resolves a possibly-qualified scalar name to its
+// declaration, consulting the project-wide [ScalarTable] first
+// (covers cross-package references) and falling back to the local
+// `pkg.Scalars` map for legacy single-package callers that pass a
+// nil table.
+func lookupScalar(name string, pkg *semantic.Package, scalars ScalarTable) *ast.ScalarDecl {
+	if scalars != nil {
+		if sc, ok := scalars[name]; ok {
+			return sc
+		}
+	}
+	if pkg != nil {
+		if sc, ok := pkg.Scalars[name]; ok {
+			return sc
+		}
+	}
+	return nil
 }
 
 // stringBindCast wraps `src` (a Go expression yielding a string) in
@@ -1012,7 +1168,12 @@ func stringBindCast(f *ast.Field, src, pkgAlias string) string {
 	if name == "string" {
 		return src
 	}
-	if pkgAlias != "" {
+	// Cross-package references (`shared.ID`) carry their own
+	// qualifier from the DSL and already match the Go import added
+	// by the type resolver. Prepending the local `pkgAlias` would
+	// produce `types.shared.ID(...)` which doesn't resolve — the
+	// cross-pkg path skips the local alias entirely.
+	if !strings.Contains(name, ".") && pkgAlias != "" {
 		name = pkgAlias + "." + name
 	}
 	return name + "(" + src + ")"

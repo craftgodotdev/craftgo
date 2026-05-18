@@ -42,8 +42,10 @@ type T {
     @deprecated
     name  string
 
-    @min(0)
-    @max(150)
+    @gt(-1)
+    @gte(0)
+    @lt(200)
+    @lte(150)
     @range(0, 150)
     @positive
     @negative
@@ -144,7 +146,7 @@ middleware RateLimit(rps: int = 100)
 		"title", "version", "doc", "deprecated",
 		"example", "examples", "requiresOneOf", "mutuallyExclusive",
 		"length", "minLength", "maxLength", "pattern", "format", "enum",
-		"min", "max", "range", "positive", "negative", "multipleOf",
+		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
 		"minItems", "maxItems", "uniqueItems", "each", "maxSize", "mimeTypes",
 		"default", "nullable",
 		"path", "query", "body", "header", "cookie", "form",

@@ -1,0 +1,33 @@
+package strings
+
+// StringsService exposes a small surface so the generator wires the
+// string-cornercase types into a real handler. Three POST endpoints
+// give the codegen + transport stack a body-decode path to drive
+// for each type cluster:
+//
+//   - Echo: round-trips the canonical Str_EchoReq.
+//   - Validate: takes AllFormats so every @format(name) in the
+//     catalogue feeds through req.Validate().
+//   - Combine: takes Str_Combos so the stacked length+pattern+
+//     format decorators all fire at request time.
+@prefix("/strings")
+@tags(strings)
+service StringsService {
+	@doc("Echo a request that carries one field per interesting validator shape (length, pattern, format, optional, default). Logic just returns the payload after Validate() so smoke tests can assert the round-trip preserves wire fidelity.")
+	post Echo /echo {
+		request  Str_EchoReq
+		response Str_EchoResp
+	}
+
+	@doc("Validate every @format(name) in the catalogue. The request body is AllFormats — one field per format — so a malformed value in any slot fails the boundary check.")
+	post ValidateAllFormats /formats {
+		request  AllFormats
+		response AllFormats
+	}
+
+	@doc("Exercise stacked length + pattern + format decorators on a single field. The request body's three lines each layer the full validator menu.")
+	post CombineConstraints /combos {
+		request  Str_Combos
+		response Str_Combos
+	}
+}

@@ -1,20 +1,28 @@
 package codegen
 
 import (
-	"sort"
-
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // middlewareData is the template input for `middleware.tmpl`. One value
-// is built per `middleware Name` declaration in the DSL.
+// is built per `middleware Name` declaration in the DSL. ParamList is
+// the formatted Go-side parameter signature (e.g. `rps int, burst int`)
+// derived from the DSL `middleware Name(rps: int = 100, burst: int = 200)`
+// form; empty when the declaration has no params. DefaultsDoc is a
+// commentary list of the declared defaults, surfaced in the scaffold
+// header so users wiring main.go know which defaults the DSL chose.
 type middlewareData struct {
-	Name string
+	Name        string
+	ParamList   string
+	DefaultsDoc []string
 }
 
 // middlewareFieldsData is the input for `middleware-fields.tmpl`. The
@@ -56,7 +64,7 @@ func GenerateProjectMiddlewares(proj *semantic.Project, cfg *config.Config, proj
 	if err := writeMiddlewareFields(cfg, projectRoot, names); err != nil {
 		return err
 	}
-	return writeProjectMiddlewareImpls(cfg, projectRoot, names)
+	return writeProjectMiddlewareImpls(cfg, projectRoot, proj, names)
 }
 
 // projectSortedMiddlewareNames collects middleware decl names from every
@@ -85,7 +93,7 @@ func projectSortedMiddlewareNames(proj *semantic.Project) []string {
 // in the project. Existing files survive - the framework only writes
 // missing scaffolds so user edits in the impl body are preserved across
 // `craftgo gen` runs.
-func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, names []string) error {
+func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *semantic.Project, names []string) error {
 	if len(names) == 0 {
 		return nil
 	}
@@ -94,13 +102,15 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, names [
 		return err
 	}
 	tpl := tmpl("middleware.tmpl")
+	declByName := projectMiddlewareDecls(proj)
 	for _, name := range names {
 		filename := kebabCase(name) + "-middleware.go"
 		dest := filepath.Join(dir, filename)
 		if _, err := os.Stat(dest); err == nil {
 			continue
 		}
-		formatted, err := renderGo(tpl, middlewareData{Name: name})
+		data := buildMiddlewareData(name, declByName[name])
+		formatted, err := renderGo(tpl, data)
 		if err != nil {
 			return fmt.Errorf("render middleware %s: %w", name, err)
 		}
@@ -109,6 +119,80 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, names [
 		}
 	}
 	return nil
+}
+
+// projectMiddlewareDecls flattens every package's middleware decls
+// into a single name → MiddlewareDecl map. Names are project-globally
+// unique (semantic phase enforces this), so the dedupe is defensive.
+func projectMiddlewareDecls(proj *semantic.Project) map[string]*ast.MiddlewareDecl {
+	out := map[string]*ast.MiddlewareDecl{}
+	if proj == nil {
+		return out
+	}
+	for _, pkg := range proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for n, md := range pkg.Middlewares {
+			out[n] = md
+		}
+	}
+	return out
+}
+
+// buildMiddlewareData fills the scaffold-template inputs from the
+// DSL-declared params. When the middleware was declared without
+// parens the scaffold falls back to the bare `New<Name>Middleware()`
+// signature; with params the generated constructor's signature
+// matches the DSL so wire-up in `main.go` doesn't need a second
+// adapter layer.
+func buildMiddlewareData(name string, md *ast.MiddlewareDecl) middlewareData {
+	d := middlewareData{Name: name}
+	if md == nil || len(md.Params) == 0 {
+		return d
+	}
+	parts := make([]string, 0, len(md.Params))
+	defaults := make([]string, 0, len(md.Params))
+	for _, p := range md.Params {
+		if p == nil || p.Type == nil {
+			continue
+		}
+		parts = append(parts, p.Name+" "+GoTypeRef(p.Type))
+		if p.Default != nil {
+			defaults = append(defaults, fmt.Sprintf("%s = %s", p.Name, exprText(p.Default)))
+		}
+	}
+	d.ParamList = strings.Join(parts, ", ")
+	d.DefaultsDoc = defaults
+	return d
+}
+
+// exprText renders a default-expression literal back to its source
+// form so the scaffold comment surfaces the DSL-declared default in
+// a shape the user recognises.
+func exprText(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.StringLit:
+		return fmt.Sprintf("%q", v.Value)
+	case *ast.IntLit:
+		return fmt.Sprintf("%d", v.Value)
+	case *ast.FloatLit:
+		return fmt.Sprintf("%g", v.Value)
+	case *ast.BoolLit:
+		if v.Value {
+			return "true"
+		}
+		return "false"
+	case *ast.DurationLit:
+		return v.Text
+	case *ast.SizeLit:
+		return v.Text
+	case *ast.IdentExpr:
+		if v.Name != nil {
+			return v.Name.String()
+		}
+	}
+	return "?"
 }
 
 // writeMiddlewareFields emits svccontext/middlewares.go (overwrite). When

@@ -57,7 +57,7 @@ type GetProjectReq {
 // users.ListUsersReq comment for the rationale.
 type ListProjectsReq {
 	cursor string?
-	limit  int     @min(0) @max(100)
+	limit  int     @gte(0) @lte(100)
 }
 
 // CreateProjectReq is the POST body for project creation. Note

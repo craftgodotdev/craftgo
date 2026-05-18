@@ -1,0 +1,26 @@
+// `extend service UserService` — splits the admin operations of
+// UserService into a separate file in the SAME PACKAGE. The
+// analyser enforces:
+//
+//   - the primary `service UserService { ... }` must exist somewhere
+//     in package `services` (orphan extends fire
+//     `service/extend-orphan`).
+//   - `extend service` blocks may NOT carry service-level decorators
+//     — those live on the primary; per-method `@middlewares(...)`
+//     and `@errors(...)` are still fair game (and APPEND to the
+//     primary's chain).
+//
+// Here BanUser layers on a cross-package `shared.RateLimit`
+// middleware so admin actions are throttled tighter than the
+// primary CRUD surface.
+package services
+
+import "shared"
+
+extend service UserService {
+	@middlewares(shared.RateLimit)
+	post BanUser /{id}/ban {
+		request  UserRef
+		response User
+	}
+}

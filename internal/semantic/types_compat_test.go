@@ -79,11 +79,11 @@ func TestPatternOnBoolRejected(t *testing.T) {
 // ---------- Number validators ----------
 
 func TestNumberValidatorsOnInt(t *testing.T) {
-	mustClean(t, `type X { age int @min(0) @max(120) @multipleOf(1) }`)
+	mustClean(t, `type X { age int @gte(0) @lte(120) @multipleOf(1) }`)
 }
 
 func TestNumberValidatorOnStringRejected(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @min(1) }`))
+	_, diags := Analyze(parseFiles(t, `type X { name string @gte(1) }`))
 	if findCode(diags, CodeDecoratorTypeMismatch) == nil {
 		t.Fatalf("got %v", codes(diags))
 	}
@@ -132,7 +132,7 @@ type X { addr Email @minLength(5) }`)
 }
 
 func TestNumberValidatorOnNumberScalar(t *testing.T) {
-	mustClean(t, `scalar Age int @min(0) @max(150)
+	mustClean(t, `scalar Age int @gte(0) @lte(150)
 type X { who Age @positive }`)
 }
 

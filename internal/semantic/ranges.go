@@ -61,6 +61,111 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember) {
 		a.checkDecoratorRanges(f.Decorators)
 		a.checkPairOrdering(f)
 		a.checkNullableRedundant(f)
+		a.checkBoundCapacity(f)
+		a.checkMultipleOfTarget(f)
+	}
+}
+
+// checkMultipleOfTarget rejects `@multipleOf` on float-typed fields.
+// Go's `%` operator is integer-only; the existing codegen drops the
+// check silently for float fields, which left the OpenAPI side
+// (`multipleOf: 0.5`) inconsistent with the runtime side (no check).
+// Approximating modulo for floats requires a tolerance argument the
+// DSL doesn't carry, so the safer fix is to reject at semantic time
+// and let users layer a custom check inside their service handler.
+func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
+	if f == nil || f.Type == nil || f.Type.Named == nil {
+		return
+	}
+	prim := f.Type.Named.Name.String()
+	if sd, ok := a.pkg.Scalars[prim]; ok {
+		prim = sd.Primitive
+	}
+	if prim != "float32" && prim != "float64" {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d != nil && d.Name == "multipleOf" {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@multipleOf does not support float fields — Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
+		}
+	}
+}
+
+// intCapacity returns the value range a Go integer primitive can hold.
+// Returns ok=false for non-integer or unrecognised primitives so the
+// caller skips the check rather than emit a false-positive overflow
+// diagnostic.
+func intCapacity(primitive string) (lo, hi float64, ok bool) {
+	switch primitive {
+	case "int8":
+		return -128, 127, true
+	case "int16":
+		return -32768, 32767, true
+	case "int32":
+		return -2147483648, 2147483647, true
+	case "int64", "int":
+		// `int` is 32 or 64-bit depending on platform; treat as the
+		// narrower of the two so designs stay portable.
+		return -9223372036854775808, 9223372036854775807, true
+	case "uint8":
+		return 0, 255, true
+	case "uint16":
+		return 0, 65535, true
+	case "uint32":
+		return 0, 4294967295, true
+	case "uint64", "uint":
+		// `uint` follows the same portable-narrow rule as int.
+		return 0, 18446744073709551615, true
+	}
+	return 0, 0, false
+}
+
+// checkBoundCapacity rejects numeric bound literals that exceed the
+// field's primitive type capacity. Without this, codegen happily emits
+// `if v.Small > 300 { ... }` against an `int8` field, which fails to
+// compile because 300 overflows int8. Floats are skipped — Go float64
+// captures every IntLit we accept, and float64 bounds for float32
+// fields are tolerated.
+func (a *analyzer) checkBoundCapacity(f *ast.Field) {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
+		return
+	}
+	prim := f.Type.Named.Name.String()
+	if sd, ok := a.pkg.Scalars[prim]; ok {
+		prim = sd.Primitive
+	}
+	lo, hi, ok := intCapacity(prim)
+	if !ok {
+		return
+	}
+	check := func(d *ast.Decorator, val *ast.IntLit, pos lexer.Position) {
+		v := float64(val.Value)
+		if v < lo || v > hi {
+			a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
+				"@%s bound %d exceeds %s range [%g, %g]",
+				d.Name, val.Value, prim, lo, hi)
+		}
+	}
+	for _, d := range f.Decorators {
+		if d == nil {
+			continue
+		}
+		// All single-arg comparison decorators + dual-arg @range.
+		switch d.Name {
+		case "gt", "gte", "lt", "lte", "multipleOf":
+			if len(d.Args) == 1 {
+				if il, ok := d.Args[0].Value.(*ast.IntLit); ok {
+					check(d, il, d.Args[0].Pos)
+				}
+			}
+		case "range":
+			for _, ag := range d.Args {
+				if il, ok := ag.Value.(*ast.IntLit); ok {
+					check(d, il, ag.Pos)
+				}
+			}
+		}
 	}
 }
 
@@ -111,19 +216,30 @@ func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 	}
 }
 
-// checkMultipleOf rejects `@multipleOf(0)` - division by zero would
-// panic at runtime; the user almost always meant a positive divisor.
+// checkMultipleOf rejects non-positive divisors. Zero panics at
+// runtime (division by zero). Negative divisors are mathematically
+// valid in Go (`%` follows the dividend sign) but every common
+// interpretation of "multiple of N" means N > 0 — accepting negatives
+// silently lets a typo (`@multipleOf(-2)`) compile to a validator
+// that exhibits surprising symmetry around the dividend's sign.
 func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
 		return
 	}
 	v, ok := numericValue(pos[0].Value)
-	if !ok || v != 0 {
+	if !ok {
 		return
 	}
-	a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
-		"@multipleOf: divisor must not be 0")
+	if v == 0 {
+		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+			"@multipleOf: divisor must not be 0")
+		return
+	}
+	if v < 0 {
+		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+			"@multipleOf: divisor must be positive (got %g)", v)
+	}
 }
 
 // checkHTTPStatus rejects `@status(code)` outside the 100..599 range.
@@ -184,14 +300,31 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 	}
 }
 
-// checkPairOrdering enforces "min decorator ≤ max decorator" when both
-// appear on the same field. Missing one of the pair is fine - the
-// solo decorator is unconstrained.
+// checkPairOrdering enforces "lower decorator ≤ upper decorator" when
+// both appear on the same field. Missing one of the pair is fine — the
+// solo decorator is unconstrained. Four pair families:
+//
+//   - String length: `@minLength` vs `@maxLength`
+//   - Array items:   `@minItems` vs `@maxItems`
+//   - Numeric (inclusive): `@gte` vs `@lte`
+//   - Numeric (strict):    `@gt`  vs `@lt`
+//
+// Mixed strict/inclusive pairs (`@gte(5) @lt(5)` etc.) are inspected
+// for emptiness — when at least one bound is strict and the endpoints
+// touch, no value satisfies both checks. Without this, codegen happily
+// emits a validator that rejects every input.
 func (a *analyzer) checkPairOrdering(f *ast.Field) {
-	pairs := []struct{ lo, hi string }{
-		{"minLength", "maxLength"},
-		{"minItems", "maxItems"},
-		{"min", "max"},
+	pairs := []struct {
+		lo, hi     string
+		loStrict   bool
+		hiStrict   bool
+	}{
+		{lo: "minLength", hi: "maxLength"},
+		{lo: "minItems", hi: "maxItems"},
+		{lo: "gte", hi: "lte"},
+		{lo: "gt", hi: "lt", loStrict: true, hiStrict: true},
+		{lo: "gte", hi: "lt", hiStrict: true},
+		{lo: "gt", hi: "lte", loStrict: true},
 	}
 	for _, p := range pairs {
 		loV, loPos, loOk := singleNumericArg(f.Decorators, p.lo)
@@ -202,6 +335,18 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 		if loV > hiV {
 			diag := a.diag(hiPos, hiPos, lexer.SeverityError, CodeDecoratorRange,
 				"@%s (%g) must be ≥ @%s (%g)", p.hi, hiV, p.lo, loV)
+			diag.Related = related(loPos, "@"+p.lo+" declared here")
+			continue
+		}
+		// Equal endpoints define an empty value set whenever EITHER
+		// bound is strict — `@gt(5) @lte(5)` excludes 5 on the
+		// lower side, `@gte(5) @lt(5)` excludes 5 on the upper side,
+		// `@gt(5) @lt(5)` excludes 5 on both. Only fully-inclusive
+		// `@gte(N) @lte(N)` accepts the single value N.
+		if loV == hiV && (p.loStrict || p.hiStrict) {
+			diag := a.diag(hiPos, hiPos, lexer.SeverityWarning, CodeBoundEmptyRange,
+				"@%s(%g) combined with @%s(%g) defines an empty range — no value satisfies both",
+				p.hi, hiV, p.lo, loV)
 			diag.Related = related(loPos, "@"+p.lo+" declared here")
 		}
 	}

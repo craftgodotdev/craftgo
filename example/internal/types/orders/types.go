@@ -165,7 +165,7 @@ type Discount struct {
 	Code    string  `json:"code"`
 	Percent float64 `json:"percent"`
 	// CROSS-PACKAGE SCALAR: shared.PercentBP carries
-	// @min(0)+@max(10000) automatically. The field-level chain is
+	// @gte(0)+@lte(10000) automatically. The field-level chain is
 	// empty, demonstrating that scalar validators inherit across
 	// package boundaries.
 	BpsBonus shared.PercentBP `json:"bpsBonus"`
@@ -237,7 +237,7 @@ type LineItem struct {
 	// SCALAR REF: SkuCode bundles the alphanumeric pattern.
 	Sku      SkuCode `json:"sku"`
 	Quantity int     `json:"quantity"`
-	// SCALAR REF: Cents bundles @min(0) + @multipleOf(1); the
+	// SCALAR REF: Cents bundles @gte(0) + @multipleOf(1); the
 	// field-level @max adds a per-line ceiling.
 	UnitCents Cents     `json:"unitCents"`
 	Discount  *Discount `json:"discount,omitempty"`
@@ -291,7 +291,7 @@ type Order struct {
 	// Cross-package OPTIONAL nested ref. Generated Go:
 	// `*users.UserRef` with `omitempty`.
 	CosignedBy *users.UserRef `json:"cosignedBy,omitempty"`
-	// SCALAR REF on a numeric type: `Cents` carries @min(0) +
+	// SCALAR REF on a numeric type: `Cents` carries @gte(0) +
 	// @multipleOf(1). The field-level `@max` adds the per-Order
 	// ceiling (the scalar stays generic; the order-specific cap
 	// is local to this aggregate).

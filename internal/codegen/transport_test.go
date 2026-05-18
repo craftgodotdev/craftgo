@@ -181,7 +181,7 @@ enum Status { Active  Inactive  Pending }
 enum Priority { Low = 1  High = 2 }
 
 scalar Email string @format(email) @maxLength(254)
-scalar Cents int @min(0) @max(1000000)
+scalar Cents int @gte(0) @lte(1000000)
 
 type ListReq {
     state    Status   @path
@@ -219,6 +219,124 @@ service S {
 		`req.Sess = c.Value`,
 		// header cast (string-backed enum)
 		`req.Role = types.Status(r.Header.Get("role"))`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in handler:\n%s", want, got)
+		}
+	}
+}
+
+// TestCollectRequestFieldImports covers the cross-package import
+// walk for request type fields. A request with a `shared.ID` field
+// auto-promoted to @path emits `req.ID = shared.ID(...)` in the
+// handler — without scanning field types for cross-pkg refs the
+// `shared` import never lands and the handler fails to compile.
+func TestCollectRequestFieldImports(t *testing.T) {
+	method := &ast.Method{
+		Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"UserRef"}}},
+	}
+	pkg := &semantic.Package{
+		Name: "services",
+		Types: map[string]*ast.TypeDecl{
+			"UserRef": {
+				Name: "UserRef",
+				Body: []ast.TypeMember{
+					&ast.Field{Name: "id", Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "ID"}}}}},
+				},
+			},
+		},
+	}
+	cross := CrossPkg{"shared": "github.com/example/svc/internal/types/shared"}
+	got := collectRequestFieldImports(method, pkg, cross)
+	if got["shared"] != "github.com/example/svc/internal/types/shared" {
+		t.Errorf("expected `shared` import in collected map, got %v", got)
+	}
+}
+
+// TestGenerateTransportNamedBindingArg covers the explicit-name
+// override on every binding decorator. `@path("user_id")` makes the
+// runtime call `r.PathValue("user_id")` instead of the field's Go
+// name; same for `@header("X-API-Key")` etc. Without honouring the
+// arg, `/users/{user_id}` never binds because `r.PathValue("userId")`
+// returns the empty string and the call site never realises the param
+// went missing.
+func TestGenerateTransportNamedBindingArg(t *testing.T) {
+	src := `package design
+
+type GetReq {
+    userId  string @path("user_id")
+    apiKey  string @header("X-API-Key")
+    session string @cookie("session_id")
+    sortBy  string? @query("sort_by")
+}
+
+service S {
+    get Get /users/{user_id} { request GetReq }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/get.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	for _, want := range []string{
+		`r.PathValue("user_id")`,
+		`r.Header.Get("X-API-Key")`,
+		`r.Cookie("session_id")`,
+		`r.URL.Query().Get("sort_by")`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("named binding arg ignored — missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestGenerateTransportOptionalEnumScalarQuery covers the optional
+// alias-typed query binding. A field `sort Color? @query` becomes
+// `*Color` in Go; the query string yields a raw `string`, so a naive
+// `req.Sort = &_v` is a `*string` and refuses to compile against the
+// `*Color` field. The fix routes the raw string through the alias cast
+// into a fresh variable and addresses THAT variable.
+func TestGenerateTransportOptionalEnumScalarQuery(t *testing.T) {
+	src := `package design
+
+enum Color { Red  Green  Blue }
+scalar Email string @format(email)
+
+type SearchReq {
+    sort  Color?  @query
+    cc    Email?  @query
+    plain string? @query
+}
+
+service S {
+    get Search /items { request SearchReq }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/search.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	// Optional enum → cast through alias type and address the new
+	// alias-typed variable.
+	for _, want := range []string{
+		`_w := types.Color(_v)`,
+		`req.Sort = &_w`,
+		`_w := types.Email(_v)`,
+		`req.Cc = &_w`,
+		// Plain *string still takes the address of the raw value.
+		`req.Plain = &_v`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in handler:\n%s", want, got)
@@ -619,6 +737,65 @@ func TestGenerateServiceScaffold(t *testing.T) {
 	getSrc, _ := os.ReadFile(filepath.Join(dir, "get-user.go"))
 	if !strings.Contains(string(getSrc), "func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error)") {
 		t.Errorf("GetUser logic signature mismatch:\n%s", getSrc)
+	}
+}
+
+func TestGenerateServiceGenericInstantiation(t *testing.T) {
+	// `response Page<User>` previously emitted `*types.Page` —
+	// missing the `[User]` instantiation — which fails to compile
+	// with "cannot use generic type Page[T any] without
+	// instantiation". The fix renders generic args inline so the
+	// signature reads `*types.Page[types.User]`. Local type args
+	// pick up the canonical `types.` alias; scalar args, multi-arg
+	// generics, and nested instantiations all flow through the same
+	// path.
+	src := `package design
+type User { id string }
+scalar Email string @format(email)
+type Page<T> { items T[]  total int }
+type Envelope<T> { data T }
+type Pair<A, B> { left A  right B }
+type CreateReq { user User }
+type EchoReq { v string }
+type WrapReq { v string }
+type PairReq { v string }
+service S {
+    post Create /c   { request CreateReq  response Page<User> }
+    post Echo   /e   { request EchoReq    response Envelope<Email> }
+    post Wrap   /w   { request WrapReq    response Page<Envelope<User>> }
+    post Pair   /p   { request PairReq    response Pair<User, Email> }
+    post Mix    /m   { request Page<User> response Envelope<User> }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateService(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		file, want string
+	}{
+		// Single-arg generic with local type.
+		{"create.go", "(*types.Page[types.User], error)"},
+		// Single-arg generic with local scalar.
+		{"echo.go", "(*types.Envelope[types.Email], error)"},
+		// Nested generic.
+		{"wrap.go", "(*types.Page[types.Envelope[types.User]], error)"},
+		// Multi-arg generic mixing struct + scalar.
+		{"pair.go", "(*types.Pair[types.User, types.Email], error)"},
+		// Generic on the REQUEST side too.
+		{"mix.go", "(req *types.Page[types.User])"},
+		{"mix.go", "(*types.Envelope[types.User], error)"},
+	}
+	for _, c := range cases {
+		body, err := os.ReadFile(filepath.Join(root, "internal/service/s", c.file))
+		if err != nil {
+			t.Fatalf("read %s: %v", c.file, err)
+		}
+		got := string(body)
+		mustParseGo(t, got)
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s missing %q:\n%s", c.file, c.want, got)
+		}
 	}
 }
 

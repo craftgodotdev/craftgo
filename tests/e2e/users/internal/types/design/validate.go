@@ -41,3 +41,9 @@ func (v *UpdateUserReq) Validate() error {
 func (v *User) Validate() error {
 	return nil
 }
+
+// Validate checks every field-level constraint declared on ValidationFailedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ValidationFailedBody) Validate() error {
+	return nil
+}

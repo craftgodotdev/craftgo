@@ -1,0 +1,211 @@
+// Package `bindings` exercises the request-binding decorators (`@path`,
+// `@query`, `@header`, `@cookie`, `@body`, `@form`) plus the typing
+// rules that gate each — `@path` requires string-shape, `@query`
+// accepts the full primitive + array matrix, `@header` / `@cookie` are
+// string-only, and `@form` carries the `file` upload pair.
+//
+// Each request DTO below lives next to a service method in
+// service.craftgo so the codegen has a real handler to drive at gen
+// time. The clusters are organised top-down by binding kind.
+package bindings
+
+// ---------------------------------------------------------------
+// Path bindings.
+//
+// `@path` requires the field to be string-shaped — `string`, a
+// string-backed scalar, or a string-backed enum. The wire name is the
+// DSL field name (the explicit-name form `@path("user_id")` is parsed
+// but the codegen always emits `r.PathValue(<f.Name>)`).
+// ---------------------------------------------------------------
+
+// UUID is a string-backed scalar that adds @format(uuid) inheritance
+// to every field that references it. Used in PathScalarReq so the
+// path binder lands a typed alias instead of a bare string.
+scalar UUID string @format(uuid)
+
+// Color is a string-backed enum (bare-ident form, default string
+// values are the ident text). Exercised across path, query, and the
+// cookie binders so every wire-format binder gets the enum cast +
+// validate path.
+enum Color {
+	Red
+	Green
+	Blue
+}
+
+// PathStringReq is the canonical path-bound DTO: a single `id string`
+// field that auto-binds (or explicitly binds) to the `{id}` segment
+// of `/items/{id}`.
+type PathStringReq {
+	id string @path @length(1, 64)
+}
+
+// PathScalarReq replaces the bare `string` with the UUID scalar. The
+// generator emits `req.Id = UUID(r.PathValue("id"))` so the field
+// lands as the typed alias and the inherited @format(uuid) validator
+// fires at request time.
+type PathScalarReq {
+	id UUID @path
+}
+
+// PathEnumReq drives the enum-typed @path binder. The wire value is
+// a string ("red" / "green" / "blue"); req.Validate() rejects any
+// value outside the enum's declared set.
+type PathEnumReq {
+	c Color @path
+}
+
+// PathExplicitNameReq exercises the `@path("user_id")` form where the
+// DSL field name (`userId`) differs from the URL placeholder
+// (`{user_id}`). NOTE: the codegen currently ignores the decorator
+// argument and emits `r.PathValue("userId")` regardless — flagged in
+// the report as a wart, the runtime binding will not match.
+type PathExplicitNameReq {
+	userId string @path("user_id") @length(1, 64)
+}
+
+// PathIntReq is the DELIBERATELY-INVALID shape: `@path` requires
+// string-shape and `int` is not. Codegen rejects this at gen time
+// with a clear error message — uncomment the field + PathIntProbe
+// method to reproduce. Captured diagnostic:
+//
+//   bindings.craftgo:NN:9: field PathIntReq.id: @path requires a
+//   string-backed field (string, string scalar, or string enum) -
+//   got int
+//
+// type PathIntReq {
+// 	id int @path
+// }
+
+// ---------------------------------------------------------------
+// Query bindings.
+//
+// `@query` accepts every primitive (string / bool / int* / uint* /
+// float*) plus arrays of those, scalars / enums of either kind, and
+// optional strings. Optional NON-string primitives currently fail —
+// the binder needs a tri-state (absent / empty / parsed) idiom it
+// does not have yet.
+// ---------------------------------------------------------------
+
+// QueryStringReq exercises the optional-string query path. The
+// generator emits a nil-guarded pointer write because Go has a clean
+// "absent vs empty" sentinel for `*string`.
+type QueryStringReq {
+	q string? @query
+}
+
+// QueryIntReq is the deliberate "optional int query" probe. Codegen
+// rejects this shape outright with the captured diagnostic:
+//
+//   transport(bindings): BindingsService.QueryIntProbe:
+//   QueryIntReq.page on GET /probe-int: field "page": optional int
+//   cannot bind to query in v1 - drop the `?` (use 0 / false as the
+//   absent sentinel) or move to body
+//
+// Uncomment both this type and QueryIntProbe in service.craftgo to
+// reproduce.
+//
+// type QueryIntReq {
+// 	page int? @query @gte(1)
+// }
+
+// QueryIntRequiredReq sidesteps the optional-numeric limitation: the
+// caller MUST supply `page` or the binder fails with HTTP 400.
+type QueryIntRequiredReq {
+	page int @query @gte(1)
+}
+
+// QueryBoolReq mirrors QueryIntReq — optional non-string primitives
+// hit the same v1 limitation, so the bool variant is kept as a
+// required field for now.
+type QueryBoolReq {
+	active bool @query
+}
+
+// QueryEnumReq drives the enum cast path through @query. Enums are
+// string-shape on the wire, so optional is fine — the binder reads
+// the raw string and casts up to the Color alias.
+type QueryEnumReq {
+	c Color? @query
+}
+
+// QueryArrayStringReq exercises the `[]string @query` shape. The
+// generator emits `req.Tags = r.URL.Query()["tags"]` — repeated
+// `?tags=a&tags=b` lands as `["a", "b"]`. CSV (`?tags=a,b`) is NOT
+// auto-split.
+type QueryArrayStringReq {
+	tags string[]? @query
+}
+
+// QueryArrayIntReq drives the `[]int @query` shape. Each repeated
+// value goes through strconv.ParseInt + append; one bad value fails
+// the whole request with HTTP 400.
+type QueryArrayIntReq {
+	ids int[]? @query
+}
+
+// QueryRequiredReq is the canonical "always required, capped" query
+// param. Codegen emits the int parser with @gte / @lte gates so
+// `?limit=0` and `?limit=101` are both rejected.
+type QueryRequiredReq {
+	limit int @query @gte(1) @lte(100)
+}
+
+// ---------------------------------------------------------------
+// Header / cookie bindings.
+//
+// Both are string-shape only on the wire. Codegen rejects @header /
+// @cookie on a non-string-shape field at gen time. Optional `string?`
+// is fine — the absent header reads as the empty string, which the
+// generator stores as a nil pointer.
+// ---------------------------------------------------------------
+
+// HeaderReq carries a required X-API-Key style header. NOTE: the
+// explicit-name argument `@header("X-API-Key")` is parsed but ignored
+// — codegen emits `r.Header.Get("apiKey")`. Flagged in the report
+// alongside the same wart on @path.
+type HeaderReq {
+	apiKey string @header("X-API-Key")
+}
+
+// HeaderOptionalReq probes the optional-header path. NOTE: codegen
+// currently rejects `string? @header` outright with "@header
+// requires a string-backed field ... got string?" — the
+// `stringBindable` predicate checks `f.Type.Optional` and bails. To
+// keep the package generating we drop the `?`; the binder treats an
+// absent header as the empty string. Flagged in the report alongside
+// the explicit-name wart.
+type HeaderOptionalReq {
+	traceId string @header("X-Trace-Id")
+}
+
+// CookieReq drives the cookie binder. Same explicit-name wart — the
+// runtime fetches the cookie named `session`, not `session_id`.
+type CookieReq {
+	session string @cookie("session_id")
+}
+
+// ---------------------------------------------------------------
+// Body & form bindings.
+//
+// `@body` carries a single field that holds the whole request
+// payload (useful for raw-string / opaque blob shapes). `@form` pairs
+// with `file` fields for multipart uploads and accepts the
+// @maxSize + @mimeTypes validator pair.
+// ---------------------------------------------------------------
+
+// BodyExplicitReq has one explicit `@body`-bound field. Useful when
+// the wire payload is an opaque string (signed token, raw markdown,
+// etc.) rather than a JSON object.
+type BodyExplicitReq {
+	payload string @body
+}
+
+// FormFileReq drives the multipart-form upload path. The `file` type
+// renders as `*multipart.FileHeader`; the @maxSize + @mimeTypes
+// validator pair enforces the upload envelope at boundary-validate
+// time.
+type FormFileReq {
+	id   string @path @length(1, 64)
+	file file   @form @maxSize(5MB) @mimeTypes(["image/png", "image/jpeg"])
+}

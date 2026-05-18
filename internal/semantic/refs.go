@@ -31,14 +31,35 @@ func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 	}
 }
 
-// checkDeclRefs dispatches by declaration kind. Type-level
-// `@requiresOneOf` / `@mutuallyExclusive` need the type body for field
-// resolution, so we do that walk inline. Method / service refs delegate
-// to a shared helper.
+// checkLocalDecoratorRefs runs only the field-group refs
+// (`@requiresOneOf` / `@mutuallyExclusive`) — these never cross
+// package boundaries (their targets are same-type field names) so
+// they're safe to validate in the per-package pass that
+// [AnalyzeProject] runs with `skipMiddlewareRefCheck=true`. Without
+// this separation, typoed field names slipped through to codegen,
+// which substituted a literal `false` for the unknown name and
+// produced a silently-broken validator that never fires.
+func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
+	for _, f := range files {
+		for _, d := range f.Decls {
+			td, ok := d.(*ast.TypeDecl)
+			if !ok {
+				continue
+			}
+			a.checkFieldGroupRefs(td.Name, td.Decorators, td.Body)
+		}
+	}
+}
+
+// checkDeclRefs dispatches by declaration kind. Field-group refs
+// (`@requiresOneOf` / `@mutuallyExclusive`) run via
+// [checkLocalDecoratorRefs] before this path because they're always
+// local — TypeDecl bodies skipped here to avoid double-emission.
+// Method / service refs delegate to a shared helper.
 func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		a.checkFieldGroupRefs(dd.Name, dd.Decorators, dd.Body)
+		_ = dd
 	case *ast.ErrorDecl:
 		// Errors don't carry @requiresOneOf/@mutuallyExclusive in v1
 		// (placement matrix gates this), but we keep the structure
@@ -78,12 +99,35 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 		if d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive" {
 			continue
 		}
-		for _, name := range collectIdentOrStringArgs(d) {
+		args := collectIdentOrStringArgs(d)
+		// Dedupe within the same decorator. Without this,
+		// `@requiresOneOf(a, a, b)` emits `v.A == nil && v.A == nil`
+		// which `go vet` rejects as a redundant boolean (QF1001),
+		// breaking `go test` for any project running vet (the
+		// default).
+		seen := map[string]bool{}
+		for _, name := range args {
+			if seen[name.value] {
+				a.diag(name.pos, name.pos, lexer.SeverityWarning, CodeDuplicateGroupField,
+					"@%s on type %s: field %q listed more than once",
+					d.Name, typeName, name.value)
+				continue
+			}
+			seen[name.value] = true
 			if !getFields()[name.value] {
 				a.diag(name.pos, name.pos, lexer.SeverityError, CodeDecoratorRef,
 					"@%s on type %s: %q is not a field of this type",
 					d.Name, typeName, name.value)
 			}
+		}
+		// `@mutuallyExclusive` with 0 or 1 distinct fields renders
+		// the counter check (`n > 1`) unreachable — dead code that
+		// silently never fires. Flag it so the author either adds
+		// fields or removes the decorator.
+		if d.Name == "mutuallyExclusive" && len(seen) < 2 {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeMutExSingleField,
+				"@mutuallyExclusive needs at least 2 distinct fields (got %d) — the runtime check can never fire",
+				len(seen))
 		}
 	}
 }
