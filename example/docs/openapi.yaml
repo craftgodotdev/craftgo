@@ -158,7 +158,10 @@ components:
         country:
           $ref: '#/components/schemas/CountryCode'
         geo:
-          $ref: '#/components/schemas/Geocode'
+          allOf:
+          - $ref: '#/components/schemas/Geocode'
+          description: Optional nested (Level 4).
+          nullable: true
         postalCode:
           pattern: ^[A-Z0-9 -]{3,12}$
           type: string
@@ -259,6 +262,8 @@ components:
       - sizeBytes
       type: object
     Cents:
+      minimum: 0
+      multipleOf: 2
       type: integer
     Comment:
       description: |-
@@ -317,6 +322,9 @@ components:
           type: boolean
       type: object
     CountryCode:
+      maxLength: 2
+      minLength: 2
+      pattern: ^[A-Z]{2}$
       type: string
     CreateOrderReq:
       description: |-
@@ -523,7 +531,12 @@ components:
         store's persistence layer.
       properties:
         avatar:
-          $ref: '#/components/schemas/Avatar'
+          allOf:
+          - $ref: '#/components/schemas/Avatar'
+          description: |-
+            Optional avatar at create-time — the request struct uses the
+            same Avatar type so the wire shape stays canonical.
+          nullable: true
         bio:
           maxLength: 500
           nullable: true
@@ -543,7 +556,12 @@ components:
     CreateUserReqBody:
       properties:
         avatar:
-          $ref: '#/components/schemas/Avatar'
+          allOf:
+          - $ref: '#/components/schemas/Avatar'
+          description: |-
+            Optional avatar at create-time — the request struct uses the
+            same Avatar type so the wire shape stays canonical.
+          nullable: true
         bio:
           maxLength: 500
           nullable: true
@@ -563,6 +581,9 @@ components:
     CreateUserRespBody:
       $ref: '#/components/schemas/User'
     CurrencyCode:
+      maxLength: 3
+      minLength: 3
+      pattern: ^[A-Z]{3}$
       type: string
     Customer:
       description: |-
@@ -571,7 +592,12 @@ components:
         and the `@nullable` forced-pointer pattern on `loyaltyPoints`.
       properties:
         billingAddress:
-          $ref: '#/components/schemas/Address'
+          allOf:
+          - $ref: '#/components/schemas/Address'
+          description: |-
+            Optional nested — billing may differ from primary or be
+            omitted entirely.
+          nullable: true
         channels:
           additionalProperties:
             items:
@@ -666,7 +692,10 @@ components:
           nullable: true
           type: string
         referrer:
-          $ref: '#/components/schemas/UserRef'
+          allOf:
+          - $ref: '#/components/schemas/UserRef'
+          description: Cross-package OPTIONAL ref to a referring user.
+          nullable: true
       required:
       - gridLabels
       - id
@@ -687,11 +716,20 @@ components:
             Array of enum — values are bare idents resolved to their Go
             const counterparts.
           items:
-            $ref: '#/components/schemas/PaymentMethod'
+            allOf:
+            - $ref: '#/components/schemas/PaymentMethod'
+            nullable: true
           nullable: true
           type: array
         currency:
-          $ref: '#/components/schemas/CurrencyCode'
+          allOf:
+          - $ref: '#/components/schemas/CurrencyCode'
+          default: USD
+          description: |-
+            Scalar wrapping a primitive (CurrencyCode = string). The
+            emitted field type is the scalar alias; default literal is a
+            plain string accepted via the alias.
+          nullable: true
         flag:
           default: true
           nullable: true
@@ -716,7 +754,13 @@ components:
           nullable: true
           type: array
         status:
-          $ref: '#/components/schemas/OrderStatus'
+          allOf:
+          - $ref: '#/components/schemas/OrderStatus'
+          default: Pending
+          description: |-
+            Enum-valued field. Default uses the bare ident and renders as
+            the matching `<Enum><Value>` Go constant.
+          nullable: true
         str:
           default: anon
           description: Plain primitives.
@@ -739,11 +783,20 @@ components:
             Array of enum — values are bare idents resolved to their Go
             const counterparts.
           items:
-            $ref: '#/components/schemas/PaymentMethod'
+            allOf:
+            - $ref: '#/components/schemas/PaymentMethod'
+            nullable: true
           nullable: true
           type: array
         currency:
-          $ref: '#/components/schemas/CurrencyCode'
+          allOf:
+          - $ref: '#/components/schemas/CurrencyCode'
+          default: USD
+          description: |-
+            Scalar wrapping a primitive (CurrencyCode = string). The
+            emitted field type is the scalar alias; default literal is a
+            plain string accepted via the alias.
+          nullable: true
         flag:
           default: true
           nullable: true
@@ -768,7 +821,13 @@ components:
           nullable: true
           type: array
         status:
-          $ref: '#/components/schemas/OrderStatus'
+          allOf:
+          - $ref: '#/components/schemas/OrderStatus'
+          default: Pending
+          description: |-
+            Enum-valued field. Default uses the bare ident and renders as
+            the matching `<Enum><Value>` Go constant.
+          nullable: true
         str:
           default: anon
           description: Plain primitives.
@@ -869,6 +928,7 @@ components:
       type: object
     Email:
       format: email
+      maxLength: 254
       type: string
     EmailTakenErr:
       description: Conflict error response (HTTP 409).
@@ -978,7 +1038,10 @@ components:
         lng:
           $ref: '#/components/schemas/Longitude'
         precision:
-          $ref: '#/components/schemas/Precision'
+          allOf:
+          - $ref: '#/components/schemas/Precision'
+          description: Optional nested (Level 5).
+          nullable: true
       required:
       - lat
       - lng
@@ -1129,11 +1192,15 @@ components:
       description: Unauthorized error response (HTTP 401).
       type: object
     Latitude:
+      maximum: 90
+      minimum: -90
       type: number
     LineItem:
       properties:
         discount:
-          $ref: '#/components/schemas/Discount'
+          allOf:
+          - $ref: '#/components/schemas/Discount'
+          nullable: true
         note:
           default: ""
           description: |-
@@ -1315,6 +1382,8 @@ components:
     ListUsersRespBody:
       $ref: '#/components/schemas/UserList'
     Longitude:
+      maximum: 180
+      minimum: -180
       type: number
     MaintenanceWindowErr:
       description: ServiceUnavailable error response (HTTP 503).
@@ -1341,6 +1410,9 @@ components:
           type: integer
       type: object
     NonEmptyID:
+      maxLength: 128
+      minLength: 1
+      pattern: ^[A-Za-z0-9_-]+$
       type: string
     OkResp:
       description: |-
@@ -1373,7 +1445,12 @@ components:
         auditedBy:
           $ref: '#/components/schemas/UserRef'
         cosignedBy:
-          $ref: '#/components/schemas/UserRef'
+          allOf:
+          - $ref: '#/components/schemas/UserRef'
+          description: |-
+            Cross-package OPTIONAL nested ref. Generated Go:
+            `*users.UserRef` with `omitempty`.
+          nullable: true
         createdAt:
           description: |-
             Required ISO timestamp at the wrapper level. Top-level
@@ -1381,7 +1458,14 @@ components:
           format: datetime
           type: string
         currency:
-          $ref: '#/components/schemas/CurrencyCode'
+          allOf:
+          - $ref: '#/components/schemas/CurrencyCode'
+          default: USD
+          description: |-
+            SCALAR REF + @default. CurrencyCode contributes
+            @length(3,3) + @pattern; the field-level chain only needs
+            the default value.
+          nullable: true
         customer:
           $ref: '#/components/schemas/Customer'
         id:
@@ -1418,7 +1502,12 @@ components:
           nullable: true
           type: string
         payment:
-          $ref: '#/components/schemas/Payment'
+          allOf:
+          - $ref: '#/components/schemas/Payment'
+          description: |-
+            Optional nested struct (`T?`). Wire-level the `payment` key
+            may be missing entirely; when present its own validators run.
+          nullable: true
         shippedAt:
           description: |-
             4-STATE PRESENCE: optional + nullable. The wire payload may:
@@ -1456,6 +1545,9 @@ components:
       - createdAt
       type: object
     OrderID:
+      maxLength: 64
+      minLength: 8
+      pattern: ^ord_[A-Z0-9]+$
       type: string
     OrderList:
       description: |-
@@ -1535,7 +1627,12 @@ components:
         method:
           $ref: '#/components/schemas/PaymentMethod'
         receiptURL:
-          $ref: '#/components/schemas/SafeURL'
+          allOf:
+          - $ref: '#/components/schemas/SafeURL'
+          description: |-
+            CROSS-PACKAGE SCALAR: shared.SafeURL on an optional field —
+            the @format(url) + @maxLength inherit through the scalar.
+          nullable: true
         referenceId:
           $ref: '#/components/schemas/NonEmptyID'
       required:
@@ -1551,6 +1648,8 @@ components:
       - invoice
       type: string
     PercentBP:
+      maximum: 10000
+      minimum: 0
       type: integer
     PluginConfig:
       description: |-
@@ -1592,7 +1691,10 @@ components:
           minimum: 0
           type: number
         gpsFix:
-          $ref: '#/components/schemas/GpsFix'
+          allOf:
+          - $ref: '#/components/schemas/GpsFix'
+          description: Optional nested (Level 6 — deepest).
+          nullable: true
         radiusMeters:
           exclusiveMinimum: true
           maximum: 10000
@@ -1703,8 +1805,10 @@ components:
       $ref: '#/components/schemas/OkResp'
     SafeURL:
       format: url
+      maxLength: 2048
       type: string
     SkuCode:
+      pattern: ^[A-Z0-9-]{4,32}$
       type: string
     StaleVersionErr:
       description: PreconditionFailed error response (HTTP 412).
@@ -1726,6 +1830,9 @@ components:
     SuspendUserRespBody:
       $ref: '#/components/schemas/OkResp'
     Tag:
+      maxLength: 32
+      minLength: 1
+      pattern: ^[a-z][a-z0-9-]*$
       type: string
     Task:
       description: |-
@@ -1745,7 +1852,14 @@ components:
         required (v1 doesn't auto-recurse).
       properties:
         assignee:
-          $ref: '#/components/schemas/UserRef'
+          allOf:
+          - $ref: '#/components/schemas/UserRef'
+          description: |-
+            OPTIONAL CROSS-PACKAGE NESTED — the showcase pointer case.
+            Generated Go: `Assignee *users.UserRef` (the `T?` postfix
+            turns into a pointer + omitempty), so an unassigned task
+            marshals without an `assignee` key on the wire.
+          nullable: true
         comments:
           description: |-
             Slice of nested struct. Empty array is fine; @maxItems caps
@@ -1817,7 +1931,9 @@ components:
         struct.
       properties:
         avatar:
-          $ref: '#/components/schemas/Avatar'
+          allOf:
+          - $ref: '#/components/schemas/Avatar'
+          nullable: true
         bio:
           maxLength: 500
           nullable: true
@@ -1837,7 +1953,9 @@ components:
     UpdateUserReqBody:
       properties:
         avatar:
-          $ref: '#/components/schemas/Avatar'
+          allOf:
+          - $ref: '#/components/schemas/Avatar'
+          nullable: true
         bio:
           maxLength: 500
           nullable: true
@@ -1875,7 +1993,13 @@ components:
         invariant holds.
       properties:
         avatar:
-          $ref: '#/components/schemas/Avatar'
+          allOf:
+          - $ref: '#/components/schemas/Avatar'
+          description: |-
+            avatar is the nested-with-pointer case: the field is OPTIONAL
+            (User without an avatar is fine) and the nested type carries
+            its own validators.
+          nullable: true
         bio:
           maxLength: 500
           nullable: true

@@ -218,13 +218,6 @@ func (v *Customer) Validate() error {
 	if v.ProfilePic != nil && v.ProfilePic.Size > 5242880 {
 		return fmt.Errorf("profilePic: file size exceeds 5242880 bytes")
 	}
-	if v.ProfilePic != nil {
-		switch v.ProfilePic.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
-		default:
-			return fmt.Errorf("profilePic: disallowed content type")
-		}
-	}
 	return nil
 }
 

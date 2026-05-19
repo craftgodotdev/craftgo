@@ -102,6 +102,12 @@ type paramBinding struct {
 	DSLName string
 	GoName  string
 	Bind    string
+	// MimeTypes carries the allowlist declared via `@mimeTypes("a/b",
+	// "c/d")` on a `file @form` field. Populated only by
+	// [collectFormBindings] for file entries so the OpenAPI emitter
+	// can surface the contract under multipart `encoding[field].
+	// contentType`; non-file bindings leave it nil.
+	MimeTypes []string
 }
 
 // helpersData is the template input for `handler_helpers.tmpl`.
@@ -615,6 +621,31 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 		}
 		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
+			// Record the @mimeTypes allowlist (if any) so the
+			// OpenAPI multipart emitter can render
+			// `encoding[field].contentType` — without this the
+			// client SDK has no way to see what MIME types the
+			// server's runtime validator will accept.
+			for _, d := range f.Decorators {
+				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
+					continue
+				}
+				// Canonical syntax is variadic — `@mimeTypes("a",
+				// "b")`. The legacy array form `@mimeTypes(["a",
+				// "b"])` still parses (registry sets
+				// AllowArrayShortcut for back-compat); try the
+				// array branch first, fall back to collecting
+				// each positional string arg.
+				if mimes, ok := stringArrayArg(d.Args[0]); ok {
+					entry.MimeTypes = mimes
+				} else {
+					for _, a := range d.Args {
+						if s, ok := a.Value.(*ast.StringLit); ok {
+							entry.MimeTypes = append(entry.MimeTypes, s.Value)
+						}
+					}
+				}
+			}
 			files = append(files, entry)
 			continue
 		}

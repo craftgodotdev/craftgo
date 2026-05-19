@@ -537,12 +537,18 @@ var Registry = map[string]Spec{
 	"operationId": {Name: "operationId", Levels: LvlMethod, Doc: "Override OpenAPI operationId.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}},
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
-	"consumes":    {Name: "consumes", Levels: LvlMethod, Doc: "Accepted request content types.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
-	"produces":    {Name: "produces", Levels: LvlMethod, Doc: "Emitted response content types.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
+	// NOTE: `@consumes`, `@produces`, `@accepts` were removed in
+	// favour of a JSON-only v1 codec surface. craftgo's transport
+	// layer hardcodes `application/json` for both request decode
+	// and response encode; the decorators previously parsed but
+	// produced no runtime / spec effect, so authors had no way to
+	// realise they were silently dropped. Multi-codec content
+	// negotiation is a planned future feature — when it lands the
+	// decorators come back paired with a real `CodecRegistry`
+	// dispatch path. Until then keep the surface small and honest.
 
 	// ---- Method behavior ----
 	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly.", Flag: true},
-	"accepts":     {Name: "accepts", Levels: LvlMethod, Doc: "Restrict allowed request encodings.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true}},
 
 	// ---- Method limits ----
 	// `@timeout` caps the full handler lifecycle (decode body → user

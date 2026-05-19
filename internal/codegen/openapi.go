@@ -516,10 +516,21 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 	}
 }
 
-// addScalarSchemas emits one schema per ScalarDecl. The schema is a
-// thin alias of the underlying primitive - refinements (format /
-// pattern carried via decorators on the scalar itself) are surfaced
-// here too so OpenAPI consumers see the contract.
+// addScalarSchemas emits one schema per ScalarDecl. The schema is
+// the underlying primitive enriched with every decorator the scalar
+// carries so OpenAPI consumers see the full contract:
+//
+//   - `@format(email)` → `format: email`
+//   - `@length(1, 80)` / `@minLength(1)` / `@maxLength(80)` → minLength/maxLength
+//   - `@pattern("...")` → pattern
+//   - `@gte(0)` / `@lte(100)` / `@gt` / `@lt` / `@range(lo, hi)` → minimum/maximum (+exclusiveMin/Max)
+//   - `@positive` / `@negative` → strict bound at 0
+//   - `@multipleOf(N)` → multipleOf
+//
+// Without these the OpenAPI spec collapsed every scalar back to its
+// bare primitive — the runtime validator enforced the rules but
+// generated TS clients saw only `string` / `number` and could send
+// values the server would reject.
 func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
 	names := make([]string, 0, len(pkg.Scalars))
 	for n := range pkg.Scalars {
@@ -532,17 +543,9 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
 		if base == nil {
 			base = &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		}
-		// Decorators on the scalar (e.g. @format("email")) refine the
-		// base. Today only @format is honoured because that's the only
-		// scalar-meaningful one in the existing fixtures; the rest are
-		// folded in as we encounter them.
-		for _, d := range sc.Decorators {
-			if d.Name == "format" && len(d.Args) == 1 {
-				if name := stringOrIdentArg(d.Args[0]); name != "" {
-					base.Format = name
-				}
-			}
-		}
+		applyPatternFormat(sc.Decorators, base)
+		applyStringLengthConstraints(sc.Decorators, base)
+		applyNumericConstraints(sc.Decorators, base)
 		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: base}
 	}
 }
@@ -569,20 +572,48 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 	if ed := externalDocsFromDecorators(td.Decorators); ed != nil {
 		s.ExternalDocs = ed
 	}
+	var mixinRefs openapi3.SchemaRefs
 	for _, m := range td.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
+		switch v := m.(type) {
+		case *ast.Field:
+			if hasSensitiveDecorator(v.Decorators) {
+				continue
+			}
+			ref := schemaForTypeRef(v.Type, pkg)
+			applyFieldMetadata(v, ref)
+			s.Properties[v.Name] = ref
+			if fieldIsRequired(v) {
+				s.Required = append(s.Required, v.Name)
+			}
+		case *ast.Mixin:
+			// Embedded mixin: OpenAPI 3.0 expresses Go's field-
+			// promotion via `allOf: [$ref]` so the host schema
+			// inherits every property of the referenced type. The
+			// previous codepath dropped mixins entirely — host
+			// schema only listed its own non-mixin fields, leaving
+			// generated TS clients without `createdAt`/`updatedAt`
+			// (or whatever the mixin contributed).
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
+				Ref: "#/components/schemas/" + v.Ref.Name.String(),
+			})
 		}
-		if hasSensitiveDecorator(f.Decorators) {
-			continue
+	}
+	// Apply allOf with the mixin refs PLUS the host's own properties
+	// when at least one mixin contributed. Without mixins we keep the
+	// flat object shape so simple cases stay readable in YAML output.
+	if len(mixinRefs) > 0 {
+		host := &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: s.Properties,
+			Required:   s.Required,
 		}
-		ref := schemaForTypeRef(f.Type, pkg)
-		applyFieldMetadata(f, ref)
-		s.Properties[f.Name] = ref
-		if fieldIsRequired(f) {
-			s.Required = append(s.Required, f.Name)
-		}
+		mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
+		s.Properties = nil
+		s.Required = nil
+		s.AllOf = mixinRefs
 	}
 	return s
 }
@@ -1017,6 +1048,18 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 			if generic, ok := pkg.Types[name]; ok && len(generic.TypeParams) > 0 {
 				return &openapi3.SchemaRef{Value: instantiateGeneric(generic, t.Named.Args, pkg)}
 			}
+		}
+		// Bare `$ref` doesn't carry the nullable flag; the OpenAPI 3.0
+		// idiom for "ref OR null" is `allOf: [$ref] + nullable: true`.
+		// Without this wrapper, optional struct fields (`boss User?`)
+		// emit a plain `$ref` and TS client generators type the field
+		// as required `User`, refusing `null` even though the server
+		// accepts it.
+		if t.Optional {
+			return &openapi3.SchemaRef{Value: &openapi3.Schema{
+				AllOf:    openapi3.SchemaRefs{{Ref: "#/components/schemas/" + name}},
+				Nullable: true,
+			}}
 		}
 		return &openapi3.SchemaRef{Ref: "#/components/schemas/" + name}
 	}
@@ -1504,6 +1547,13 @@ func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 // every plain-text form field plus every `file` field declared on the
 // request type. File fields use `format: binary`, which Swagger UI
 // renders as a file picker.
+//
+// Files carrying `@mimeTypes(["a/b", "c/d"])` surface their allowlist
+// under the OpenAPI `encoding[field].contentType` slot — without this
+// the client SDK has no way to see what MIME types the server's
+// runtime validator will accept, so users would upload an arbitrary
+// file and get a 400 from the validator instead of a typed rejection
+// at SDK call time.
 func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
 	for _, f := range forms {
@@ -1511,22 +1561,30 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 			Type: &openapi3.Types{"string"},
 		}}
 	}
+	encoding := map[string]*openapi3.Encoding{}
 	for _, f := range files {
 		props[f.DSLName] = &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:   &openapi3.Types{"string"},
 			Format: "binary",
 		}}
+		if len(f.MimeTypes) > 0 {
+			encoding[f.DSLName] = &openapi3.Encoding{
+				ContentType: strings.Join(f.MimeTypes, ", "),
+			}
+		}
+	}
+	mt := &openapi3.MediaType{
+		Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: props,
+		}},
+	}
+	if len(encoding) > 0 {
+		mt.Encoding = encoding
 	}
 	return &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 		Required: true,
-		Content: openapi3.Content{
-			"multipart/form-data": &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
-					Type:       &openapi3.Types{"object"},
-					Properties: props,
-				}},
-			},
-		},
+		Content:  openapi3.Content{"multipart/form-data": mt},
 	}}
 }
 

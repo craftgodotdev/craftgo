@@ -114,7 +114,7 @@ type SearchReq {
 // validate time.
 type UploadReq {
 	id     string @path @length(1, 64)
-	file   file   @form @maxSize(5MB) @mimeTypes(["image/png", "image/jpeg"])
+	file   file   @form @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
 }
 
 // AddItemReq is the canonical JSON body for the POST /items

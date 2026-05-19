@@ -57,13 +57,6 @@ func (v *FormFileReq) Validate() error {
 	if v.File != nil && v.File.Size > 5242880 {
 		return fmt.Errorf("file: file size exceeds 5242880 bytes")
 	}
-	if v.File != nil {
-		switch v.File.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg":
-		default:
-			return fmt.Errorf("file: disallowed content type")
-		}
-	}
 	return nil
 }
 
@@ -243,13 +236,6 @@ func (v *UploadReq) Validate() error {
 	}
 	if v.File != nil && v.File.Size > 5242880 {
 		return fmt.Errorf("file: file size exceeds 5242880 bytes")
-	}
-	if v.File != nil {
-		switch v.File.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg":
-		default:
-			return fmt.Errorf("file: disallowed content type")
-		}
 	}
 	return nil
 }

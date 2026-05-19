@@ -14,7 +14,9 @@ components:
         generation per-call - generate once per TYPE).
       properties:
         b:
-          $ref: '#/components/schemas/B'
+          allOf:
+          - $ref: '#/components/schemas/B'
+          nullable: true
         id:
           type: string
       required:
@@ -353,7 +355,9 @@ components:
         grid:
           items:
             items:
-              $ref: '#/components/schemas/CollectionsTag'
+              allOf:
+              - $ref: '#/components/schemas/CollectionsTag'
+              nullable: true
             type: array
           nullable: true
           type: array
@@ -444,17 +448,20 @@ components:
       - updatedAt
       type: object
     Audited:
+      allOf:
+      - $ref: '#/components/schemas/AuditFields'
+      - properties:
+          id:
+            $ref: '#/components/schemas/ScalarsUUID'
+        required:
+        - id
+        type: object
       description: |-
         Audited is the mixin SITE. The bare `AuditFields` identifier on
         its own line embeds AuditFields's two fields into Audited's body;
         the generated struct lists `createdAt`, `updatedAt`, AND `id` as
         peer fields, and the Validate() emitter runs the datetime checks
         alongside the UUID check.
-      properties:
-        id:
-          $ref: '#/components/schemas/ScalarsUUID'
-      required:
-      - id
       type: object
     AuthRequiredErr:
       description: Unauthorized error response (HTTP 401).
@@ -465,7 +472,9 @@ components:
     B:
       properties:
         a:
-          $ref: '#/components/schemas/A'
+          allOf:
+          - $ref: '#/components/schemas/A'
+          nullable: true
         id:
           type: string
       required:
@@ -546,6 +555,8 @@ components:
       - users
       type: object
     Cents:
+      maximum: 1000000000
+      minimum: 0
       type: integer
     CollectionsAddress:
       description: |-
@@ -567,8 +578,12 @@ components:
       type: object
     CollectionsEmail:
       format: email
+      maxLength: 254
       type: string
     CollectionsTag:
+      maxLength: 20
+      minLength: 1
+      pattern: ^[a-z-]+$
       type: string
     CollectionsUser:
       description: |-
@@ -780,7 +795,10 @@ components:
         value reference resolves through the enum decl above.
       properties:
         c:
-          $ref: '#/components/schemas/CombineColor'
+          allOf:
+          - $ref: '#/components/schemas/CombineColor'
+          default: Red
+          nullable: true
       type: object
     DefaultsScalar:
       description: |-
@@ -788,7 +806,10 @@ components:
         int — the codegen widens it to the scalar alias via cast.
       properties:
         size:
-          $ref: '#/components/schemas/PageSize'
+          allOf:
+          - $ref: '#/components/schemas/PageSize'
+          default: 20
+          nullable: true
       type: object
     DeleteItemReqPath:
       properties:
@@ -812,7 +833,9 @@ components:
     EchoAReqBody:
       properties:
         b:
-          $ref: '#/components/schemas/B'
+          allOf:
+          - $ref: '#/components/schemas/B'
+          nullable: true
         id:
           type: string
       required:
@@ -823,7 +846,9 @@ components:
     EchoBReqBody:
       properties:
         a:
-          $ref: '#/components/schemas/A'
+          allOf:
+          - $ref: '#/components/schemas/A'
+          nullable: true
         id:
           type: string
       required:
@@ -907,7 +932,10 @@ components:
     EchoEnumReqBody:
       properties:
         c:
-          $ref: '#/components/schemas/CombineColor'
+          allOf:
+          - $ref: '#/components/schemas/CombineColor'
+          default: Red
+          nullable: true
       type: object
     EchoEnumRespBody:
       $ref: '#/components/schemas/DefaultsEnum'
@@ -918,7 +946,9 @@ components:
             $ref: '#/components/schemas/NestedOrder'
           type: array
         meta:
-          $ref: '#/components/schemas/NestedAddress'
+          allOf:
+          - $ref: '#/components/schemas/NestedAddress'
+          nullable: true
       required:
       - items
       type: object
@@ -956,7 +986,9 @@ components:
       properties:
         teams:
           items:
-            $ref: '#/components/schemas/Team'
+            allOf:
+            - $ref: '#/components/schemas/Team'
+            nullable: true
           nullable: true
           type: array
       type: object
@@ -1031,7 +1063,10 @@ components:
     EchoScalarReqBody:
       properties:
         size:
-          $ref: '#/components/schemas/PageSize'
+          allOf:
+          - $ref: '#/components/schemas/PageSize'
+          default: 20
+          nullable: true
       type: object
     EchoScalarRespBody:
       $ref: '#/components/schemas/DefaultsScalar'
@@ -1056,7 +1091,10 @@ components:
           nullable: true
           type: string
         boss:
-          $ref: '#/components/schemas/NestedUser'
+          allOf:
+          - $ref: '#/components/schemas/NestedUser'
+          description: Self-optional - the marquee recursion case.
+          nullable: true
         name:
           nullable: true
           type: string
@@ -1252,8 +1290,13 @@ components:
       - rooms
       type: object
     ID:
+      maxLength: 64
+      minLength: 1
       type: string
     ISO3:
+      maxLength: 3
+      minLength: 3
+      pattern: ^[A-Z]{3}$
       type: string
     InvalidInputErr:
       description: BadRequest error response (HTTP 400).
@@ -1348,22 +1391,27 @@ components:
             $ref: '#/components/schemas/NestedOrder'
           type: array
         meta:
-          $ref: '#/components/schemas/NestedAddress'
+          allOf:
+          - $ref: '#/components/schemas/NestedAddress'
+          nullable: true
       required:
       - items
       type: object
     ListProjectsRespBody:
       $ref: '#/components/schemas/ProjectsResp'
     ListUsersReq:
+      allOf:
+      - $ref: '#/components/schemas/Pagination'
+      - properties:
+          query:
+            nullable: true
+            type: string
+        type: object
       description: |-
         ListUsersReq embeds `shared.Pagination` cross-package. The
         implicit mixin form makes the limit / cursor / total fields land
         at the request root, and the optional `query` slot adds the free-
         text filter on top.
-      properties:
-        query:
-          nullable: true
-          type: string
       type: object
     ListUsersReqQuery:
       properties:
@@ -1629,7 +1677,10 @@ components:
           nullable: true
           type: string
         boss:
-          $ref: '#/components/schemas/NestedUser'
+          allOf:
+          - $ref: '#/components/schemas/NestedUser'
+          description: Self-optional - the marquee recursion case.
+          nullable: true
         name:
           nullable: true
           type: string
@@ -1654,8 +1705,11 @@ components:
       - children
       type: object
     NonEmpty:
+      minLength: 1
       type: string
     NonEmptyID:
+      maxLength: 64
+      minLength: 1
       type: string
     NotFoundErr:
       description: NotFound error response (HTTP 404).
@@ -2185,11 +2239,15 @@ components:
       properties:
         teams:
           items:
-            $ref: '#/components/schemas/Team'
+            allOf:
+            - $ref: '#/components/schemas/Team'
+            nullable: true
           nullable: true
           type: array
       type: object
     PageSize:
+      maximum: 100
+      minimum: 1
       type: integer
     Pagination:
       description: |-
@@ -2361,6 +2419,8 @@ components:
       - id
       type: object
     Percent:
+      maximum: 1
+      minimum: 0
       type: number
     Person:
       description: |-
@@ -2541,7 +2601,9 @@ components:
         the raw string and casts up to the Color alias.
       properties:
         c:
-          $ref: '#/components/schemas/BindingsColor'
+          allOf:
+          - $ref: '#/components/schemas/BindingsColor'
+          nullable: true
       type: object
     QueryIntRequiredReq:
       description: |-
@@ -2601,6 +2663,7 @@ components:
       type: object
     ScalarsEmail:
       format: email
+      maxLength: 254
       type: string
     ScalarsOrder:
       description: |-
@@ -2630,6 +2693,9 @@ components:
       - country
       type: object
     ScalarsTag:
+      maxLength: 20
+      minLength: 1
+      pattern: ^[a-z-]+$
       type: string
     ScalarsUUID:
       format: uuid
@@ -2644,11 +2710,16 @@ components:
       properties:
         keywords:
           items:
-            $ref: '#/components/schemas/ScalarsTag'
+            allOf:
+            - $ref: '#/components/schemas/ScalarsTag'
+            nullable: true
           nullable: true
           type: array
         limit:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          default: 20
+          nullable: true
       type: object
     SearchItemsReqQuery:
       properties:
@@ -2667,7 +2738,9 @@ components:
           minimum: 1
           type: integer
         sort:
-          $ref: '#/components/schemas/BindingsColor'
+          allOf:
+          - $ref: '#/components/schemas/BindingsColor'
+          nullable: true
       required:
       - limit
       - active
@@ -2678,11 +2751,16 @@ components:
       properties:
         keywords:
           items:
-            $ref: '#/components/schemas/ScalarsTag'
+            allOf:
+            - $ref: '#/components/schemas/ScalarsTag'
+            nullable: true
           nullable: true
           type: array
         limit:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          default: 20
+          nullable: true
       type: object
     SearchProductsRespBody:
       $ref: '#/components/schemas/ProductPage'
@@ -2709,30 +2787,35 @@ components:
           minimum: 1
           type: integer
         sort:
-          $ref: '#/components/schemas/BindingsColor'
+          allOf:
+          - $ref: '#/components/schemas/BindingsColor'
+          nullable: true
       required:
       - limit
       - active
       type: object
     ServicesUser:
+      allOf:
+      - $ref: '#/components/schemas/Audit'
+      - properties:
+          email:
+            $ref: '#/components/schemas/SharedEmail'
+          id:
+            $ref: '#/components/schemas/ID'
+          name:
+            minLength: 1
+            type: string
+        required:
+        - id
+        - email
+        - name
+        type: object
       description: |-
         User is the full entity. Embeds `shared.Audit` via the implicit
         CROSS-PACKAGE MIXIN form (`shared.Audit` alone on a body line is
         a mixin reference, not a field) so the createdAt / updatedAt /
         createdBy bookkeeping lands at the wire root without a nested
         envelope.
-      properties:
-        email:
-          $ref: '#/components/schemas/SharedEmail'
-        id:
-          $ref: '#/components/schemas/ID'
-        name:
-          minLength: 1
-          type: string
-      required:
-      - id
-      - email
-      - name
       type: object
     Severity:
       enum:
@@ -2743,6 +2826,7 @@ components:
       type: string
     SharedEmail:
       format: email
+      maxLength: 254
       type: string
     Str_Combos:
       description: |-
@@ -3348,7 +3432,9 @@ paths:
       - in: query
         name: sort
         schema:
-          $ref: '#/components/schemas/BindingsColor'
+          allOf:
+          - $ref: '#/components/schemas/BindingsColor'
+          nullable: true
       - in: query
         name: ids
         schema:
@@ -3478,6 +3564,9 @@ paths:
       requestBody:
         content:
           multipart/form-data:
+            encoding:
+              file:
+                contentType: image/png, image/jpeg
             schema:
               properties:
                 file:

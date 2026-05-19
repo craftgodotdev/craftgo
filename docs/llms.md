@@ -321,9 +321,6 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@operationId("name")`      | method          | `(string)`                             |
 | `@status(code)`             | method          | `(int)`                                |
 | `@errors(E1, E2, ...)`      | method          | error idents (or array literal)        |
-| `@consumes("type", ...)`    | method          | strings (or array literal)             |
-| `@produces("type", ...)`    | method          | strings (or array literal)             |
-| `@accepts("encoding", ...)` | method          | strings                                |
 | `@passthrough`              | method          | `()`                                   |
 | `@timeout(d)`               | method          | `(duration)`                           |
 | `@maxBodySize(n)`           | method          | `(size)`                               |
@@ -634,7 +631,8 @@ type UploadAvatarReq {
 
 @prefix("/v1")
 service UserService {
-    @consumes("multipart/form-data")
+    // craftgo auto-detects multipart from the request's `file @form`
+    // field — no content-type decorator needed.
     post UploadAvatar /users/{userId}/avatar {
         request  UploadAvatarReq
         response shared.OkResp

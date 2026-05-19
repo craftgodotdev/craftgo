@@ -83,6 +83,54 @@ service S { post Send /m { request Req } }`)
 	expectGolden(t, "openapi-scalar-schemas.yaml", body)
 }
 
+// TestGenerateOpenAPIScalarFullConstraints covers every scalar
+// decorator family (format / length / pattern / numeric bounds /
+// multipleOf) flowing into the component schema. Earlier behaviour
+// only honoured `@format`; everything else was silently dropped at
+// the spec layer so generated TS clients lost the validators that
+// the runtime still enforced.
+func TestGenerateOpenAPIScalarFullConstraints(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+scalar Email     string @format(email) @maxLength(254)
+scalar Tag       string @minLength(1) @maxLength(20) @pattern("^[a-z-]+$")
+scalar ISO3      string @length(3, 3) @pattern("^[A-Z]{3}$")
+scalar Cents     int    @gte(0) @lte(1000000)
+scalar Percent   float64 @gte(0) @lte(1)
+scalar Step      int    @gt(0) @multipleOf(5)
+type Req {
+    email   Email
+    tag     Tag
+    country ISO3
+    price   Cents
+    ratio   Percent
+    step    Step
+}
+service S { post Send /m { request Req } }`)
+	for _, want := range []string{
+		// Email
+		"format: email",
+		"maxLength: 254",
+		// Tag
+		"minLength: 1",
+		"maxLength: 20",
+		"pattern: ^[a-z-]+$",
+		// ISO3
+		"minLength: 3",
+		"maxLength: 3",
+		"pattern: ^[A-Z]{3}$",
+		// Cents
+		"minimum: 0",
+		"maximum: 1000000",
+		// Step
+		"exclusiveMinimum: true",
+		"multipleOf: 5",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scalar schema missing %q:\n%s", want, body)
+		}
+	}
+}
+
 // TestGenerateOpenAPIErrorsDecorator pins the @errors flow:
 // referenced error decls land as components.schemas entries AND as
 // per-operation responses keyed by the error category's HTTP status.
@@ -222,6 +270,92 @@ service S { post Make /m { request Order  response Order } }`)
 		if !strings.Contains(body, want) {
 			t.Errorf("expected %q in openapi:\n%s", want, body)
 		}
+	}
+}
+
+// TestGenerateOpenAPIMultipartMimeTypes pins D-MM: a `file @form`
+// field with `@mimeTypes(["a/b", "c/d"])` must surface its MIME
+// allowlist under multipart/form-data `encoding[field].contentType`
+// so generated client SDKs can either pre-check or warn the user
+// when an upload's MIME falls outside the contract. Earlier
+// behaviour emitted bare `format: binary` and the runtime validator
+// was the only place the allowlist lived.
+func TestGenerateOpenAPIMultipartMimeTypes(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type UploadReq {
+    userId string @path
+    avatar file   @form @maxSize(2MB) @mimeTypes("image/png", "image/jpeg")
+    doc    file   @form
+}
+service S {
+    post Upload /users/{userId}/avatar { request UploadReq  response UploadReq }
+}`)
+	for _, want := range []string{
+		"multipart/form-data:",
+		"format: binary",
+		"encoding:",
+		"avatar:",
+		"contentType: image/png, image/jpeg",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("multipart encoding missing %q:\n%s", want, body)
+		}
+	}
+	// File without @mimeTypes leaves encoding empty for that field.
+	if strings.Contains(body, "doc:\n          contentType") {
+		t.Errorf("file without @mimeTypes should not produce contentType:\n%s", body)
+	}
+}
+
+// TestGenerateOpenAPIMixinFlatten covers W8: embedded mixins must
+// surface in the host schema via OpenAPI's allOf composition so
+// generated TS clients see every field — including those inherited
+// from the mixin. The previous behaviour dropped mixin members
+// entirely; client SDKs lost `createdAt`/`updatedAt` (or whatever
+// the mixin contributed) and runtime requests with those fields
+// failed type-checks against the spec.
+func TestGenerateOpenAPIMixinFlatten(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Audit { createdAt string @format(datetime)  updatedAt string @format(datetime) }
+type User { Audit  id string  name string }
+service S { post Create /c { request User  response User } }`)
+	// User schema must use allOf with Audit ref + its own properties.
+	if !strings.Contains(body, "allOf:") {
+		t.Errorf("mixin host should use allOf:\n%s", body)
+	}
+	if !strings.Contains(body, "$ref: '#/components/schemas/Audit'") {
+		t.Errorf("mixin ref missing:\n%s", body)
+	}
+	// Host's own properties must still appear via the inline branch.
+	if !strings.Contains(body, "id:") || !strings.Contains(body, "name:") {
+		t.Errorf("host properties missing:\n%s", body)
+	}
+}
+
+// TestGenerateOpenAPIOptionalRefNullable covers W6: an optional
+// struct-typed field (`boss User?`) must emit nullable in the
+// component schema. Bare `$ref` carries no nullable flag; the
+// OpenAPI 3.0 idiom wraps via `allOf + nullable: true`. Without
+// this, TS client generators type the field as required `User`
+// and refuse `null` even though the server accepts it.
+func TestGenerateOpenAPIOptionalRefNullable(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Inner { id string }
+type T {
+    plain    Inner
+    optional Inner?
+}
+service S { post Create /c { request T  response T } }`)
+	// Plain Inner stays as bare $ref.
+	if !strings.Contains(body, "$ref: '#/components/schemas/Inner'") {
+		t.Errorf("plain ref missing:\n%s", body)
+	}
+	// Optional Inner wraps in allOf + nullable.
+	if !strings.Contains(body, "nullable: true") {
+		t.Errorf("optional ref should carry nullable:\n%s", body)
+	}
+	if !strings.Contains(body, "allOf:") {
+		t.Errorf("optional ref should use allOf wrapper:\n%s", body)
 	}
 }
 

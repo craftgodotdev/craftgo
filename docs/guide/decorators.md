@@ -547,27 +547,15 @@ Declare which error types this method may return. Drives OpenAPI's per-status re
 post CreateUser /users { ... }
 ```
 
-### `@consumes("type", ...)` and `@produces("type", ...)`
+### Content negotiation — `@consumes` / `@produces` / `@accepts`
 
-Restrict request and response content types in OpenAPI.
-
-| Sites | method |
-| -------- | -------- |
-| Args  | strings (or one array literal) |
-
-```craftgo
-@consumes("application/json")
-@produces("application/json")
-post CreateUser /users { ... }
-```
-
-### `@accepts("encoding", ...)`
-
-Restrict accepted request encodings (gzip, deflate, identity).
-
-| Sites | method |
-| -------- | -------- |
-| Args  | strings |
+Removed in v1. craftgo's transport hardcodes `application/json` for
+both request decode and response encode; the prior decorators parsed
+but produced no runtime / spec effect, hiding the JSON-only constraint
+from authors. Multi-codec support (XML / msgpack / cbor via a
+`CodecRegistry` dispatch) is planned; when it lands these decorators
+will return with a real wiring path. For now the transport pipeline is
+JSON in, JSON out.
 
 ### `@passthrough`
 

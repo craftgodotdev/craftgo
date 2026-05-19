@@ -11,7 +11,9 @@ components:
           minLength: 1
           type: string
         coords:
-          $ref: '#/components/schemas/Coords'
+          allOf:
+          - $ref: '#/components/schemas/Coords'
+          nullable: true
         country:
           maxLength: 2
           minLength: 2

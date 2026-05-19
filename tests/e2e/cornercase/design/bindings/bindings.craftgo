@@ -207,5 +207,5 @@ type BodyExplicitReq {
 // time.
 type FormFileReq {
 	id   string @path @length(1, 64)
-	file file   @form @maxSize(5MB) @mimeTypes(["image/png", "image/jpeg"])
+	file file   @form @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
 }

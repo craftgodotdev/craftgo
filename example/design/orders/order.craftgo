@@ -189,7 +189,7 @@ type Customer {
 	// Optional FILE upload. Demonstrates the file-validator pair
 	// (`@maxSize` + `@mimeTypes`) which the field-type-compat
 	// pass restricts to `file` typed fields.
-	profilePic     file?                                  @maxSize(5MB) @mimeTypes(["image/png", "image/jpeg", "image/webp"])
+	profilePic     file?                                  @maxSize(5MB) @mimeTypes("image/png", "image/jpeg", "image/webp")
 }
 
 // ---------------------------------------------------------------

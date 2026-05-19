@@ -113,12 +113,9 @@ service S {
     @security(noauth)
     @example("e")
     @examples(["a"])
-    @consumes("application/json")
-    @produces("application/json")
     @deprecated
     @externalDocs("https://docs.example.com")
     @passthrough
-    @accepts("application/json")
     @timeout(5s)
     @maxBodySize(1MB)
     @responseDoc("ok")
@@ -151,7 +148,7 @@ middleware RateLimit(rps: int = 100)
 		"path", "query", "body", "header", "cookie", "form",
 		"prefix", "middlewares", "group", "tags", "externalDocs", "security",
 		"summary", "operationId", "errors", "status",
-		"consumes", "produces", "passthrough", "accepts",
+		"passthrough",
 		"timeout", "maxBodySize",
 		"responseDoc", "responseExample", "responseHeaders",
 	}
