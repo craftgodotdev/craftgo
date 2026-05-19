@@ -26,6 +26,15 @@ type URL = string
 // UUID is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
 type UUID = string
 
+// ArrayOfGenericInstance probes the array wrapper around a generic
+// instance: `Page<Order>[]` must render `items: { $ref: PageOfOrder }`,
+// NOT split the wrapper into two separate components. The synthetic
+// component name carries no `Array` suffix because the outer array
+// is just an OpenAPI `type: array, items: ...` shape.
+type ArrayOfGenericInstance struct {
+	Pages []Page[Order] `json:"pages"`
+}
+
 // AuditFields is the mixin source — two timestamp fields with
 // @format(datetime). Any host that mixes this in inherits both
 // fields plus their format validators.
@@ -42,6 +51,10 @@ type AuditFields struct {
 type Audited struct {
 	AuditFields
 	ID UUID `json:"id"`
+}
+
+type AuditedPage struct {
+	Page PageWithAudit[Order] `json:"page"`
 }
 
 // Bag exercises ARRAY-of-scalar: the per-element validators from Tag
@@ -92,10 +105,36 @@ type ListOrdersReq struct {
 	Limit  Cents   `json:"limit"`
 }
 
+// MapValueGeneric verifies that generic instances ride the `map<K, V>`
+// builtin without losing their synthetic name: the value branch goes
+// through schemaForTypeRef recursively, so `Page<Order>` is registered
+// the same way it would be at top level.
+type MapValueGeneric struct {
+	Bucket map[string]Page[Order] `json:"bucket"`
+}
+
 // Maybe<T> stacks generic-param with the `?` optional marker. The
 // emitted Go field is `*T` (pointer) with `omitempty`.
 type Maybe[T any] struct {
 	Value *T `json:"value,omitempty"`
+}
+
+// MaybeOrder exercises the `T?` substitution path inside the generic
+// body. The `Maybe<T>` decl has `value T?` so substituting T=Order
+// produces a field with nullable optional Order - the emitter must
+// preserve the `?` in the generated schema, not silently strip it
+// while walking through substitution.
+type MaybeOrder struct {
+	Hit Maybe[Order] `json:"hit"`
+}
+
+// OptionalPage probes the OUTER `?` on a generic instance: the
+// reference `Page<Order>?` is a nullable instance, not a nullable
+// element. The emitter must wrap the synthetic `$ref:PageOfOrder` in
+// an `allOf + nullable` shape - the OpenAPI 3.0 idiom for "ref OR
+// null" - identical to how plain `User?` fields render.
+type OptionalPage struct {
+	MaybePage *Page[Order] `json:"maybePage,omitempty"`
 }
 
 // Order is the marquee type: six scalar-typed fields, all of which
@@ -134,12 +173,42 @@ type Page[T any] struct {
 	Cursor *string `json:"cursor,omitempty"`
 }
 
+// PageOfPrimitive exercises a non-component arg type: `Page<string>`
+// must emit a component `PageOfString` whose items field is
+// `{ type: string }` (primitive inline), not `$ref:String`. The
+// naming function PascalCases the primitive identifier so the
+// component name is collision-free against any future user-declared
+// scalar called `String`.
+type PageOfPrimitiveHost struct {
+	Rows Page[string] `json:"rows"`
+}
+
+// GenericWithMixin exercises CB-4 directly: a generic body that
+// embeds a mixin must NOT silently drop the mixin's fields during
+// instantiation. `PageWithAudit<T>` mixes `AuditFields` inside its
+// body; the substituted `PageWithAudit<Order>` component must list
+// `createdAt` / `updatedAt` (from AuditFields) in addition to its
+// own `items` / `total`.
+type PageWithAudit[T any] struct {
+	AuditFields
+	Items []T `json:"items"`
+	Total int `json:"total"`
+}
+
 // Pair<A, B> is the multi-parameter generic. Each field references
 // a distinct type parameter so the codegen substitutes two
 // arguments at the concrete site.
 type Pair[A any, B any] struct {
 	Left  A `json:"left"`
 	Right B `json:"right"`
+}
+
+// PairUserOrder forces a multi-parameter instantiation through the
+// emitter: `Pair<Order, ProductRef>` must emit `PairOfOrderAndProductRef`
+// (the `And` separator distinguishes args). Reuse the existing scalars
+// types so the fixture stays self-contained.
+type PairUserOrder struct {
+	Pair Pair[Order, ProductRef] `json:"pair"`
 }
 
 // ProductPage instantiates Page<ProductRef> — separate scalar set
@@ -157,6 +226,10 @@ type ProductRef struct {
 	Price Cents `json:"price"`
 }
 
+type RecursiveHost struct {
+	Root Tree[Order] `json:"root"`
+}
+
 // Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
 // The keywords field is `Tag[]?` so the wire may omit it entirely; when
 // present every element runs Tag's @pattern check. The limit field
@@ -165,6 +238,19 @@ type ProductRef struct {
 type Search struct {
 	Keywords []Tag  `json:"keywords,omitempty"`
 	Limit    *Cents `json:"limit,omitempty"`
+}
+
+// Tree<T> is the marquee recursive-generic test: the body references
+// `Tree<T>` itself through the `kids` field. Pre-refactor inlining
+// would infinite-loop substituting T=Order. Post-refactor the
+// instance registers as `TreeOfOrder`, emits its body, hits
+// `kids: Tree<T>[]` substituted to `Tree<Order>[]`, asks the
+// registry for the component name, finds `TreeOfOrder` is already
+// registered, and emits `$ref:TreeOfOrder` - the cycle terminates
+// as a reference.
+type Tree[T any] struct {
+	Val  T         `json:"val"`
+	Kids []Tree[T] `json:"kids"`
 }
 
 // Wrapped nests two generic instantiations: outer Page<…> over inner

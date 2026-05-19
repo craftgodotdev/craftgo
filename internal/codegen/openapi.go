@@ -335,23 +335,48 @@ func rewriteTypeRef(t *ast.TypeRef, srcPkg string, rewrite func(string, *ast.Nam
 
 // cloneServiceInfo shallow-clones a ServiceInfo and rewrites every
 // method's request/response type so $ref resolution lines up after
-// the merge's rename pass.
+// the merge's rename pass. Both the top-level NamedTypeRef name AND
+// any generic args are rewritten - without arg rewriting, a method
+// response like `Envelope<Order>` keeps a stale `Order` arg even when
+// the merge renamed it to `ScalarsOrder`, producing two divergent
+// generic instantiation components.
 func cloneServiceInfo(si *semantic.ServiceInfo, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *semantic.ServiceInfo {
 	out := *si
 	out.Methods = make([]*ast.Method, len(si.Methods))
 	for i, m := range si.Methods {
 		cp := *m
 		if m.Request != nil {
-			cp.Request = rewrite(srcPkg, m.Request)
+			cp.Request = rewriteNamedTypeRef(m.Request, srcPkg, rewrite)
 		}
 		if m.Response != nil && m.Response.Type != nil {
 			respCopy := *m.Response
-			respCopy.Type = rewrite(srcPkg, m.Response.Type)
+			respCopy.Type = rewriteNamedTypeRef(m.Response.Type, srcPkg, rewrite)
 			cp.Response = &respCopy
 		}
 		out.Methods[i] = &cp
 	}
 	return &out
+}
+
+// rewriteNamedTypeRef rewrites a NamedTypeRef itself plus the args
+// recursively. Used by the service-clone path where the request and
+// response types are stored as *NamedTypeRef (not wrapped in TypeRef),
+// so [rewriteTypeRef] cannot be reused directly.
+func rewriteNamedTypeRef(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.NamedTypeRef {
+	if n == nil {
+		return nil
+	}
+	named := rewrite(srcPkg, n)
+	if named != nil && len(named.Args) > 0 {
+		args := make([]*ast.TypeRef, len(named.Args))
+		for i, a := range named.Args {
+			args[i] = rewriteTypeRef(a, srcPkg, rewrite)
+		}
+		ncp := *named
+		ncp.Args = args
+		named = &ncp
+	}
+	return named
 }
 
 // pascalCase converts a DSL package name (commonly lowercase or
@@ -395,10 +420,45 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) *openapi3.T {
 	if cfg.OpenAPI.BasePath != "" {
 		doc.Servers = openapi3.Servers{{URL: cfg.OpenAPI.BasePath}}
 	}
-	addSchemas(doc, pkg)
-	addPaths(doc, pkg)
+	// Single registry shared across schema + path emission so generic
+	// instantiations encountered anywhere (type fields, method request/
+	// response, error bodies) deduplicate into one component each.
+	registry := newGenericRegistry()
+	// Pre-pass: walk all TypeDecls / ErrorDecls / methods to seed the
+	// registry with every (decl, args) tuple. Emission then proceeds
+	// with the full set already known, which keeps component ordering
+	// deterministic and lets nested instantiations resolve their
+	// shared bases on first reference.
+	collectGenericInstancesInPackage(pkg, registry)
+	addSchemas(doc, pkg, registry)
+	addPaths(doc, pkg, registry)
+	// Generic instance components are emitted last so any nested
+	// generic encountered during schema / path emission has had a
+	// chance to register. The loop drains until no new pending
+	// instances remain - recursive generics (`Tree<User>`) terminate
+	// because they $ref themselves rather than re-instantiate.
+	emitGenericInstanceComponents(doc, pkg, registry)
 	addSecuritySchemes(doc, pkg)
 	return doc
+}
+
+// emitGenericInstanceComponents drains the registry by emitting one
+// component schema per registered instance. Emission may register new
+// nested instances; the loop continues until the pending list is
+// stable. The function is idempotent on already-emitted names.
+func emitGenericInstanceComponents(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
+	for {
+		pending := registry.pending()
+		if len(pending) == 0 {
+			return
+		}
+		for _, inst := range pending {
+			doc.Components.Schemas[inst.name] = &openapi3.SchemaRef{
+				Value: instantiateGeneric(inst.decl, inst.args, pkg, registry),
+			}
+			registry.markEmitted(inst.name)
+		}
+	}
 }
 
 // addSchemas populates components.schemas from every concrete TypeDecl,
@@ -412,11 +472,11 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) *openapi3.T {
 // renders `#/components/schemas/<Name>` for any named user type, and
 // OpenAPI 3.x parsers (`kin-openapi`, swagger-cli, etc.) reject the
 // resulting document with "key not found in object".
-func addSchemas(doc *openapi3.T, pkg *semantic.Package) {
-	addTypeSchemas(doc, pkg)
+func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
+	addTypeSchemas(doc, pkg, registry)
 	addEnumSchemas(doc, pkg)
 	addScalarSchemas(doc, pkg)
-	addErrorSchemas(doc, pkg)
+	addErrorSchemas(doc, pkg, registry)
 }
 
 // addErrorSchemas emits one components.schemas entry per ErrorDecl so
@@ -425,7 +485,7 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package) {
 // `message` (string), plus any user-declared custom field. The
 // resulting schema name uses the smart-suffix rule (`UserNotFound` →
 // `UserNotFoundErr`), matching the Go type name in errors.go.
-func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
+func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
 	names := make([]string, 0, len(pkg.Errors))
 	for n := range pkg.Errors {
 		names = append(names, n)
@@ -461,7 +521,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 				case "header", "cookie":
 					continue
 				}
-				s.Properties[v.Name] = schemaForTypeRef(v.Type, pkg)
+				s.Properties[v.Name] = schemaForTypeRef(v.Type, pkg, registry)
 			case *ast.Mixin:
 				// Embedded mixin: same `allOf: [$ref]` shape that
 				// `schemaForType` uses for TypeDecl, so error schemas
@@ -491,7 +551,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 }
 
 // addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
-func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package) {
+func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
 	names := make([]string, 0, len(pkg.Types))
 	for n := range pkg.Types {
 		names = append(names, n)
@@ -502,7 +562,7 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package) {
 		if len(td.TypeParams) > 0 {
 			continue
 		}
-		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: schemaForType(td, pkg)}
+		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: schemaForType(td, pkg, registry)}
 	}
 }
 
@@ -580,7 +640,7 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
 // the entire schema as deprecated; field-level marks only that
 // property. Tools like Swagger UI render deprecated entries with a
 // strikethrough so consumers can spot them at a glance.
-func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
+func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
@@ -599,7 +659,7 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 			if hasSensitiveDecorator(v.Decorators) {
 				continue
 			}
-			ref := schemaForTypeRef(v.Type, pkg)
+			ref := schemaForTypeRef(v.Type, pkg, registry)
 			applyFieldMetadata(v, ref)
 			s.Properties[v.Name] = ref
 			if fieldIsRequired(v) {
@@ -1062,12 +1122,22 @@ func appendDescription(existing, note string) string {
 //
 //   - Primitive DSL names (string, bool, int family, float family,
 //     bytes, any, file) collapse to inline schemas.
-//   - Generic instances (`Page<Book>`) are inlined by substituting the
-//     type-param refs in the generic body - OpenAPI 3.x has no
-//     parametric-schema concept, so $ref into the generic decl would
-//     dangle.
+//   - Generic instances (`Page<Book>`) register their (decl, args)
+//     tuple with the supplied registry and emit a `$ref` to the
+//     synthetic component name; the registry is responsible for
+//     actually emitting that component's body in a later pass. This
+//     replaces the older inline-everywhere strategy: inlining
+//     duplicated bodies across the spec, defeated client codegen's
+//     ability to share types, and infinite-looped on recursive
+//     generics like `Tree<T>`.
 //   - Plain named user types become `$ref` entries.
-func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef {
+//
+// A nil registry is allowed when the caller knows no generic
+// instantiation can appear (e.g. emitting a primitive helper). When
+// nil, generic instances fall back to inline emission with no
+// component reuse - the legacy path - because the registry is what
+// makes the $ref target deterministic.
+func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
 	if t == nil {
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 	}
@@ -1089,13 +1159,13 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 		}
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:  &openapi3.Types{"array"},
-			Items: schemaForTypeRef(&inner, pkg),
+			Items: schemaForTypeRef(&inner, pkg, registry),
 		}}
 	}
 	if t.Map != nil {
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:                 &openapi3.Types{"object"},
-			AdditionalProperties: openapi3.AdditionalProperties{Schema: schemaForTypeRef(t.Map.Value, pkg)},
+			AdditionalProperties: openapi3.AdditionalProperties{Schema: schemaForTypeRef(t.Map.Value, pkg, registry)},
 		}}
 	}
 	if t.Named != nil {
@@ -1105,7 +1175,22 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 		}
 		if len(t.Named.Args) > 0 {
 			if generic, ok := pkg.Types[name]; ok && len(generic.TypeParams) > 0 {
-				return &openapi3.SchemaRef{Value: instantiateGeneric(generic, t.Named.Args, pkg)}
+				if registry != nil {
+					componentName := registry.register(generic, t.Named.Args)
+					// Optional generic instance keeps the same allOf
+					// wrapper trick as plain named refs - bare `$ref`
+					// has no `nullable` companion in OpenAPI 3.0.
+					if t.Optional {
+						return &openapi3.SchemaRef{Value: &openapi3.Schema{
+							AllOf:    openapi3.SchemaRefs{{Ref: "#/components/schemas/" + componentName}},
+							Nullable: true,
+						}}
+					}
+					return &openapi3.SchemaRef{Ref: "#/components/schemas/" + componentName}
+				}
+				// No registry: fall through to legacy inline form.
+				// Only the legacy unit-test path hits this branch.
+				return &openapi3.SchemaRef{Value: instantiateGeneric(generic, t.Named.Args, pkg, nil)}
 			}
 		}
 		// Bare `$ref` doesn't carry the nullable flag; the OpenAPI 3.0
@@ -1125,12 +1210,25 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 }
 
-// instantiateGeneric inlines a generic decl with the supplied type
-// arguments. Each field's TypeRef is rebuilt with type-param names
-// substituted by the matching concrete arg, then converted to a
-// schema. The returned schema has no $ref of its own - the caller
-// embeds it directly.
-func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.Package) *openapi3.Schema {
+// instantiateGeneric builds the schema body for one generic instance
+// (`Page<Order>`, `Result<User, Error>`, ...) by substituting each
+// type-param name with the matching concrete arg and walking the
+// decl's body fields + embedded mixins.
+//
+// Mixin expansion mirrors [schemaForType]: when the body has at least
+// one mixin reference, the host schema flips to an `allOf` composition
+// whose first entries are `$ref`s to each mixin's component and whose
+// last entry is an inline object carrying the host's own (substituted)
+// fields. Before this change (`CB-4`), mixin members were silently
+// skipped - clients saw a Page<T> instance missing the audit timestamp
+// fields it inherited at the DSL level.
+//
+// The registry is passed through so any nested generic encountered
+// during substitution (e.g. `Page<Envelope<Order>>` recurses into
+// `Envelope<Order>`) registers transitively. A nil registry falls
+// back to inline emission for the nested level - kept for the no-
+// registry test path that does not exercise nesting.
+func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	subst := map[string]*ast.TypeRef{}
 	for i, p := range decl.TypeParams {
 		if i < len(args) {
@@ -1141,18 +1239,43 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
 	}
+	var mixinRefs openapi3.SchemaRefs
 	for _, m := range decl.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
+		switch v := m.(type) {
+		case *ast.Field:
+			if hasSensitiveDecorator(v.Decorators) {
+				continue
+			}
+			s.Properties[v.Name] = schemaForTypeRef(substituteTypeRef(v.Type, subst), pkg, registry)
+			if fieldIsRequired(v) {
+				s.Required = append(s.Required, v.Name)
+			}
+		case *ast.Mixin:
+			// Embedded mixin inside a generic body. The mixin name
+			// itself does not undergo substitution: only TypeRef args
+			// (i.e. the `T` in `items: T[]`) participate in substitution.
+			// A mixin named after a type-param (`type X<Y> { Y }`) is
+			// disallowed at the DSL level - mixins are always
+			// PascalCase identifiers resolved against the package's
+			// type table.
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
+				Ref: "#/components/schemas/" + v.Ref.Name.String(),
+			})
 		}
-		if hasSensitiveDecorator(f.Decorators) {
-			continue
+	}
+	if len(mixinRefs) > 0 {
+		host := &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: s.Properties,
+			Required:   s.Required,
 		}
-		s.Properties[f.Name] = schemaForTypeRef(substituteTypeRef(f.Type, subst), pkg)
-		if fieldIsRequired(f) {
-			s.Required = append(s.Required, f.Name)
-		}
+		mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
+		s.Properties = nil
+		s.Required = nil
+		s.AllOf = mixinRefs
 	}
 	return s
 }
@@ -1198,6 +1321,31 @@ func substituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 			}
 			return &out
 		}
+		// The Named ref itself is not a type-param, but its generic
+		// args might be: `kids: Tree<T>[]` inside `type Tree<T>` has
+		// `Tree` (not a param) plus arg `T` (a param). Substitute
+		// inside the args so the synthesized instance carries the
+		// concrete arg, not the still-bound param. Without this the
+		// post-substitution body would register the parametric
+		// `Tree<T>` again at every recursive site, polluting the
+		// component map with phantom `TreeOfT` entries.
+		if len(t.Named.Args) > 0 {
+			args := make([]*ast.TypeRef, len(t.Named.Args))
+			subbed := false
+			for i, a := range t.Named.Args {
+				args[i] = substituteTypeRef(a, subst)
+				if args[i] != a {
+					subbed = true
+				}
+			}
+			if subbed {
+				cp := *t
+				named := *t.Named
+				named.Args = args
+				cp.Named = &named
+				return &cp
+			}
+		}
 	}
 	return t
 }
@@ -1235,19 +1383,19 @@ func primitiveSchema(name string) *openapi3.Schema {
 // path`. Passing basePath through `methodFullPath` would double-stamp the
 // prefix in spec consumers (`/api` server + `/api/v1/foo` path →
 // resolved `/api/api/v1/foo`).
-func addPaths(doc *openapi3.T, pkg *semantic.Package) {
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
 			full := methodFullPath("", svc.Primary, m)
-			addPerOperationRequestSchemas(doc, m, pkg)
-			addPerOperationResponseSchema(doc, m, pkg)
+			addPerOperationRequestSchemas(doc, m, pkg, registry)
+			addPerOperationResponseSchema(doc, m, pkg, registry)
 			item := doc.Paths.Value(full)
 			if item == nil {
 				item = &openapi3.PathItem{}
 				doc.Paths.Set(full, item)
 			}
-			op := buildOperation(svcName, m, pkg)
+			op := buildOperation(svcName, m, pkg, registry)
 			setOperation(item, m.Verb, op)
 		}
 	}
@@ -1323,25 +1471,25 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 // schema holds INLINE property definitions - making the per-kind schema
 // the single canonical place where each field's type lives. Parameter
 // `schema:` clauses then `$ref` into these per-kind schemas.
-func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic.Package) {
+func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
 	bins := binRequestFields(m, pkg)
 	if m.Request == nil {
 		return
 	}
 	if len(bins.body) > 0 {
-		doc.Components.Schemas[m.Name+"ReqBody"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg)}
+		doc.Components.Schemas[m.Name+"ReqBody"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg, registry)}
 	}
 	if len(bins.query) > 0 {
-		doc.Components.Schemas[m.Name+"ReqQuery"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.query, pkg)}
+		doc.Components.Schemas[m.Name+"ReqQuery"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.query, pkg, registry)}
 	}
 	if len(bins.header) > 0 {
-		doc.Components.Schemas[m.Name+"ReqHeader"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.header, pkg)}
+		doc.Components.Schemas[m.Name+"ReqHeader"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.header, pkg, registry)}
 	}
 	if len(bins.cookie) > 0 {
-		doc.Components.Schemas[m.Name+"ReqCookie"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.cookie, pkg)}
+		doc.Components.Schemas[m.Name+"ReqCookie"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.cookie, pkg, registry)}
 	}
 	if len(bins.path) > 0 {
-		doc.Components.Schemas[m.Name+"ReqPath"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.path, pkg)}
+		doc.Components.Schemas[m.Name+"ReqPath"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.path, pkg, registry)}
 	}
 }
 
@@ -1352,19 +1500,30 @@ func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic
 // JSON-body fields end up in the schema (the wire form the runtime
 // serialises). The matching response.headers map is emitted by
 // buildOperation.
-func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package) {
+func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
 	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
 	bins := binResponseFields(m, pkg)
 	if len(bins.header) == 0 && len(bins.cookie) == 0 {
+		// Generic response (e.g. `response Envelope<Order>`) must
+		// $ref the synthetic instance name, NOT the bare generic
+		// decl name - the generic decl is never emitted as a
+		// component since it has no concrete schema, so a bare
+		// `Envelope` $ref would dangle.
+		respName := m.Response.Type.Name.String()
+		if len(m.Response.Type.Args) > 0 {
+			if decl, ok := pkg.Types[respName]; ok && len(decl.TypeParams) > 0 {
+				respName = registry.register(decl, m.Response.Type.Args)
+			}
+		}
 		doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
-			Ref: "#/components/schemas/" + m.Response.Type.Name.String(),
+			Ref: "#/components/schemas/" + respName,
 		}
 		return
 	}
 	doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
-		Value: schemaFromFields(bins.body, pkg),
+		Value: schemaFromFields(bins.body, pkg, registry),
 	}
 }
 
@@ -1408,7 +1567,7 @@ func binResponseFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 // cookie response slot — listing the cookie names there documents what
 // the runtime writes via http.SetCookie even when the spec format has
 // to round-trip through Set-Cookie.
-func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package) openapi3.Headers {
+func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
 	if len(headers) == 0 && len(cookies) == 0 {
 		return nil
 	}
@@ -1420,7 +1579,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package) 
 		}
 		hdr := &openapi3.Header{
 			Parameter: openapi3.Parameter{
-				Schema:      schemaForTypeRef(f.Type, pkg),
+				Schema:      schemaForTypeRef(f.Type, pkg, registry),
 				Description: resolveDescription(f.Decorators, f.Doc),
 			},
 		}
@@ -1466,7 +1625,7 @@ func cookieNameFromDecorators(ds []*ast.Decorator) string {
 // @nullable, @deprecated, @doc) are applied via [applyFieldMetadata] so
 // per-operation `<Method>Req<Kind>` schemas carry the same metadata
 // the top-level type schemas do.
-func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Schema {
+func schemaFromFields(fields []*ast.Field, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
@@ -1475,7 +1634,7 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Sche
 		if hasSensitiveDecorator(f.Decorators) {
 			continue
 		}
-		ref := schemaForTypeRef(f.Type, pkg)
+		ref := schemaForTypeRef(f.Type, pkg, registry)
 		applyFieldMetadata(f, ref)
 		s.Properties[f.Name] = ref
 		if fieldIsRequired(f) {
@@ -1490,7 +1649,7 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package) *openapi3.Sche
 // (POST/PUT/PATCH) get a requestBody; the others expose request-type
 // fields as path/query parameters so the spec mirrors the actual wire
 // shape clients are expected to use.
-func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *openapi3.Operation {
+func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) *openapi3.Operation {
 	op := &openapi3.Operation{
 		OperationID: operationID(m),
 		Tags:        operationTags(svcName, m, pkg),
@@ -1586,9 +1745,9 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 		// since the form-data body covers the regular fields; only true
 		// path/query/header bindings remain (handled in paramsFromBins).
 		if !isMultipart {
-			op.Parameters = paramsFromBins(bins, pkg)
+			op.Parameters = paramsFromBins(bins, pkg, registry)
 		} else {
-			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg)
+			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg, registry)
 		}
 	}
 	if isPassthrough {
@@ -1618,7 +1777,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 			},
 		}
 		if respBins := binResponseFields(m, pkg); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
-			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg)
+			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
 		}
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
 	default:
@@ -1807,12 +1966,12 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 // or drop the type entirely. Inlining keeps the spec portable; the
 // wrapper schemas stay in `components.schemas` for tooling that wants
 // to ref the full request shape.
-func paramsFromBins(bins fieldBins, pkg *semantic.Package) openapi3.Parameters {
+func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegistry) openapi3.Parameters {
 	var params openapi3.Parameters
 	add := func(in string, fields []*ast.Field, alwaysRequired bool) {
 		for _, f := range fields {
 			required := alwaysRequired || fieldIsRequired(f)
-			ref := schemaForTypeRef(f.Type, pkg)
+			ref := schemaForTypeRef(f.Type, pkg, registry)
 			applyFieldMetadata(f, ref)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     f.Name,

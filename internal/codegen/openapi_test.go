@@ -332,6 +332,144 @@ service S { post Create /c { request User  response User } }`)
 	}
 }
 
+// TestGenerateOpenAPIGenericInstanceEmitsComponent pins the core
+// CB-1 contract: every distinct generic instantiation lands as its
+// own component in `components.schemas`, and the reference site
+// emits a `$ref` instead of inlining the body.
+func TestGenerateOpenAPIGenericInstanceEmitsComponent(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Order { id string }
+type Page<T> { items T[]  total int }
+type ListResp { page Page<Order> }
+service S { get List /things { response ListResp } }`)
+	if !strings.Contains(body, "PageOfOrder:") {
+		t.Errorf("expected PageOfOrder component schema:\n%s", body)
+	}
+	if !strings.Contains(body, "$ref: '#/components/schemas/PageOfOrder'") {
+		t.Errorf("expected $ref to PageOfOrder from listing site:\n%s", body)
+	}
+	// PageOfOrder body MUST reference Order by component $ref, not
+	// inline the Order schema (it has its own component).
+	idx := strings.Index(body, "PageOfOrder:")
+	if idx < 0 {
+		t.Fatal("PageOfOrder not found")
+	}
+	tail := body[idx : idx+400]
+	if !strings.Contains(tail, "$ref: '#/components/schemas/Order'") {
+		t.Errorf("PageOfOrder items should $ref Order:\n%s", tail)
+	}
+}
+
+// TestGenerateOpenAPIGenericInstanceMixinFlatten pins CB-4: a mixin
+// reference inside the generic body must surface in the instance
+// component via the `allOf` composition - identical to the
+// non-generic mixin emission already covered by W8.
+func TestGenerateOpenAPIGenericInstanceMixinFlatten(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Audit { createdAt string  updatedAt string }
+type Order { id string }
+type Page<T> { Audit  items T[]  total int }
+type ListResp { page Page<Order> }
+service S { get List /things { response ListResp } }`)
+	if !strings.Contains(body, "PageOfOrder:") {
+		t.Fatal("PageOfOrder missing")
+	}
+	idx := strings.Index(body, "PageOfOrder:")
+	tail := body[idx : idx+500]
+	if !strings.Contains(tail, "allOf:") {
+		t.Errorf("PageOfOrder should use allOf for mixin:\n%s", tail)
+	}
+	if !strings.Contains(tail, "$ref: '#/components/schemas/Audit'") {
+		t.Errorf("PageOfOrder should reference Audit mixin:\n%s", tail)
+	}
+}
+
+// TestGenerateOpenAPIRecursiveGenericTerminatesViaRef pins the
+// termination guarantee for self-referential generics like
+// `type Tree<T> = { val: T, kids: Tree<T>[] }`. Pre-refactor the
+// inlining path would infinite-loop; post-refactor the registry
+// short-circuits by returning the already-registered component name
+// when the substituted body re-encounters the same instance.
+func TestGenerateOpenAPIRecursiveGenericTerminatesViaRef(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Leaf { id string }
+type Tree<T> { val T  kids Tree<T>[] }
+type Forest { root Tree<Leaf> }
+service S { get Get /trees { response Forest } }`)
+	if !strings.Contains(body, "TreeOfLeaf:") {
+		t.Fatal("TreeOfLeaf missing")
+	}
+	idx := strings.Index(body, "TreeOfLeaf:")
+	tail := body[idx : idx+400]
+	// The kids field is `Tree<T>[]` post-substitution `Tree<Leaf>[]`,
+	// which the emitter recognises as the same instance and rewrites
+	// to a $ref - the cycle terminator.
+	if !strings.Contains(tail, "$ref: '#/components/schemas/TreeOfLeaf'") {
+		t.Errorf("TreeOfLeaf body should $ref itself in the kids field:\n%s", tail)
+	}
+}
+
+// TestGenerateOpenAPIGenericOptionalWraps pins the
+// `Page<User>?` → `allOf: [$ref:PageOfUser] + nullable: true` shape.
+// Without the wrapper, client codegen (`openapi-typescript`, ...) types
+// the field as required-and-non-null even though the server may send
+// `null` because the wire decoder accepts both.
+func TestGenerateOpenAPIGenericOptionalWraps(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Order { id string }
+type Page<T> { items T[]  total int }
+type Holder { page Page<Order>? }
+service S { get Get /h { response Holder } }`)
+	idx := strings.Index(body, "Holder:")
+	if idx < 0 {
+		t.Fatal("Holder missing")
+	}
+	tail := body[idx : idx+400]
+	if !strings.Contains(tail, "allOf:") {
+		t.Errorf("Holder.page should use allOf wrapper for optional ref:\n%s", tail)
+	}
+	if !strings.Contains(tail, "$ref: '#/components/schemas/PageOfOrder'") {
+		t.Errorf("Holder.page should $ref the generic instance:\n%s", tail)
+	}
+	if !strings.Contains(tail, "nullable: true") {
+		t.Errorf("Holder.page should be nullable:\n%s", tail)
+	}
+}
+
+// TestGenerateOpenAPIGenericResponseTopLevel covers the
+// `response Page<Order>` path. The method's response sits directly on
+// a generic instance - the per-operation `<Method>RespBody` schema
+// must $ref the synthetic component name, not the bare generic decl
+// name (which would dangle - the generic decl never gets emitted).
+func TestGenerateOpenAPIGenericResponseTopLevel(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Order { id string }
+type Page<T> { items T[]  total int }
+service S { get List /things { response Page<Order> } }`)
+	if !strings.Contains(body, "ListRespBody:") {
+		t.Fatal("ListRespBody missing")
+	}
+	idx := strings.Index(body, "ListRespBody:")
+	tail := body[idx : idx+200]
+	if !strings.Contains(tail, "$ref: '#/components/schemas/PageOfOrder'") {
+		t.Errorf("ListRespBody should $ref PageOfOrder, got:\n%s", tail)
+	}
+}
+
+// TestGenerateOpenAPIGenericMultiParam ensures multi-param naming
+// uses the `And` separator and emits the expected component shape.
+func TestGenerateOpenAPIGenericMultiParam(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Order { id string }
+type ProductRef { sku string }
+type Pair<A, B> { left A  right B }
+type Resp { pair Pair<Order, ProductRef> }
+service S { get Get /p { response Resp } }`)
+	if !strings.Contains(body, "PairOfOrderAndProductRef:") {
+		t.Errorf("expected PairOfOrderAndProductRef:\n%s", body)
+	}
+}
+
 // TestGenerateOpenAPIServiceLevelSecurityInherit pins the
 // service+method security inheritance: a `@security` on the primary
 // service applies to every operation, and a method-level `@security`

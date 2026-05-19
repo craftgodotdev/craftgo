@@ -410,6 +410,21 @@ components:
       type: object
     ArrayBoundsRespBody:
       $ref: '#/components/schemas/Arr_BoundsBasic'
+    ArrayOfGenericInstance:
+      description: |-
+        ArrayOfGenericInstance probes the array wrapper around a generic
+        instance: `Page<Order>[]` must render `items: { $ref: PageOfOrder }`,
+        NOT split the wrapper into two separate components. The synthetic
+        component name carries no `Array` suffix because the outer array
+        is just an OpenAPI `type: array, items: ...` shape.
+      properties:
+        pages:
+          items:
+            $ref: '#/components/schemas/PageOfScalarsOrder'
+          type: array
+      required:
+      - pages
+      type: object
     AsyncJobResp:
       description: |-
         AsyncJobResp is the standard "request acknowledged, work runs
@@ -494,6 +509,13 @@ components:
         the generated struct lists `createdAt`, `updatedAt`, AND `id` as
         peer fields, and the Validate() emitter runs the datetime checks
         alongside the UUID check.
+      type: object
+    AuditedPage:
+      properties:
+        page:
+          $ref: '#/components/schemas/PageWithAuditOfScalarsOrder'
+      required:
+      - page
       type: object
     AuthRequiredErr:
       description: Unauthorized error response (HTTP 401).
@@ -754,7 +776,7 @@ components:
       - order
       type: object
     CreateOrderRespBody:
-      $ref: '#/components/schemas/Envelope'
+      $ref: '#/components/schemas/EnvelopeOfScalarsOrder'
     CreateUserReqBody:
       properties:
         email:
@@ -1228,6 +1250,15 @@ components:
       required:
       - actor
       - action
+      type: object
+    EnvelopeOfScalarsOrder:
+      properties:
+        data:
+          $ref: '#/components/schemas/ScalarsOrder'
+        meta:
+          type: string
+      required:
+      - data
       type: object
     ExactReq:
       description: ExactReq wraps NumberExact (exact-match shapes).
@@ -1717,6 +1748,20 @@ components:
       type: object
     MapStructRespBody:
       $ref: '#/components/schemas/Map_StructValue'
+    MapValueGeneric:
+      description: |-
+        MapValueGeneric verifies that generic instances ride the `map<K, V>`
+        builtin without losing their synthetic name: the value branch goes
+        through schemaForTypeRef recursively, so `Page<Order>` is registered
+        the same way it would be at top level.
+      properties:
+        bucket:
+          additionalProperties:
+            $ref: '#/components/schemas/PageOfScalarsOrder'
+          type: object
+      required:
+      - bucket
+      type: object
     Matrix:
       description: |-
         Matrix is the 2-D slice of nested case. Codegen emits two nested
@@ -1730,6 +1775,26 @@ components:
           type: array
       required:
       - grid
+      type: object
+    MaybeOfScalarsOrder:
+      properties:
+        value:
+          allOf:
+          - $ref: '#/components/schemas/ScalarsOrder'
+          nullable: true
+      type: object
+    MaybeOrder:
+      description: |-
+        MaybeOrder exercises the `T?` substitution path inside the generic
+        body. The `Maybe<T>` decl has `value T?` so substituting T=Order
+        produces a field with nullable optional Order - the emitter must
+        preserve the `?` in the generated schema, not silently strip it
+        while walking through substitution.
+      properties:
+        hit:
+          $ref: '#/components/schemas/MaybeOfScalarsOrder'
+      required:
+      - hit
       type: object
     MixedReq:
       description: MixedReq wraps NumberMixed (mixed strict/inclusive).
@@ -2338,6 +2403,19 @@ components:
       - gtLtUint64
       - posUint
       type: object
+    OptionalPage:
+      description: |-
+        OptionalPage probes the OUTER `?` on a generic instance: the
+        reference `Page<Order>?` is a nullable instance, not a nullable
+        element. The emitter must wrap the synthetic `$ref:PageOfOrder` in
+        an `allOf + nullable` shape - the OpenAPI 3.0 idiom for "ref OR
+        null" - identical to how plain `User?` fields render.
+      properties:
+        maybePage:
+          allOf:
+          - $ref: '#/components/schemas/PageOfScalarsOrder'
+          nullable: true
+      type: object
     OptionalReq:
       description: OptionalReq wraps NumberOptional (presence axes).
       properties:
@@ -2354,19 +2432,7 @@ components:
         generic body's loop.
       properties:
         page:
-          properties:
-            cursor:
-              type: string
-            items:
-              items:
-                $ref: '#/components/schemas/ScalarsOrder'
-              type: array
-            total:
-              type: integer
-          required:
-          - items
-          - total
-          type: object
+          $ref: '#/components/schemas/PageOfScalarsOrder'
       required:
       - page
       type: object
@@ -2383,10 +2449,95 @@ components:
           nullable: true
           type: array
       type: object
+    PageOfEnvelopeOfScalarsOrder:
+      properties:
+        cursor:
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/EnvelopeOfScalarsOrder'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    PageOfPrimitiveHost:
+      description: |-
+        PageOfPrimitive exercises a non-component arg type: `Page<string>`
+        must emit a component `PageOfString` whose items field is
+        `{ type: string }` (primitive inline), not `$ref:String`. The
+        naming function PascalCases the primitive identifier so the
+        component name is collision-free against any future user-declared
+        scalar called `String`.
+      properties:
+        rows:
+          $ref: '#/components/schemas/PageOfString'
+      required:
+      - rows
+      type: object
+    PageOfProductRef:
+      properties:
+        cursor:
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/ProductRef'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    PageOfScalarsOrder:
+      properties:
+        cursor:
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsOrder'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    PageOfString:
+      properties:
+        cursor:
+          type: string
+        items:
+          items:
+            type: string
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
     PageSize:
       maximum: 100
       minimum: 1
       type: integer
+    PageWithAuditOfScalarsOrder:
+      allOf:
+      - $ref: '#/components/schemas/AuditFields'
+      - properties:
+          items:
+            items:
+              $ref: '#/components/schemas/ScalarsOrder'
+            type: array
+          total:
+            type: integer
+        required:
+        - items
+        - total
+        type: object
+      type: object
     PaginatedResp:
       description: |-
         PaginatedResp carries a JSON list plus two response-only fields:
@@ -2440,6 +2591,28 @@ components:
         total:
           nullable: true
           type: integer
+      type: object
+    PairOfScalarsOrderAndProductRef:
+      properties:
+        left:
+          $ref: '#/components/schemas/ScalarsOrder'
+        right:
+          $ref: '#/components/schemas/ProductRef'
+      required:
+      - left
+      - right
+      type: object
+    PairUserOrder:
+      description: |-
+        PairUserOrder forces a multi-parameter instantiation through the
+        emitter: `Pair<Order, ProductRef>` must emit `PairOfOrderAndProductRef`
+        (the `And` separator distinguishes args). Reuse the existing scalars
+        types so the fixture stays self-contained.
+      properties:
+        pair:
+          $ref: '#/components/schemas/PairOfScalarsOrderAndProductRef'
+      required:
+      - pair
       type: object
     PairsArr:
       description: "PairsArr stacks the array-level decorators (@minItems, @maxItems,\n@uniqueItems).
@@ -2662,19 +2835,7 @@ components:
         clashes in the Validate generator.
       properties:
         page:
-          properties:
-            cursor:
-              type: string
-            items:
-              items:
-                $ref: '#/components/schemas/ProductRef'
-              type: array
-            total:
-              type: integer
-          required:
-          - items
-          - total
-          type: object
+          $ref: '#/components/schemas/PageOfProductRef'
       required:
       - page
       type: object
@@ -2849,6 +3010,13 @@ components:
       type: object
     RecordNotFoundErr:
       description: NotFound error response (HTTP 404).
+      type: object
+    RecursiveHost:
+      properties:
+        root:
+          $ref: '#/components/schemas/TreeOfScalarsOrder'
+      required:
+      - root
       type: object
     Room:
       description: |-
@@ -3285,6 +3453,18 @@ components:
       required:
       - members
       type: object
+    TreeOfScalarsOrder:
+      properties:
+        kids:
+          items:
+            $ref: '#/components/schemas/TreeOfScalarsOrder'
+          type: array
+        val:
+          $ref: '#/components/schemas/ScalarsOrder'
+      required:
+      - val
+      - kids
+      type: object
     URL:
       format: url
       type: string
@@ -3548,26 +3728,7 @@ components:
         that is itself a generic instance.
       properties:
         results:
-          properties:
-            cursor:
-              type: string
-            items:
-              items:
-                properties:
-                  data:
-                    $ref: '#/components/schemas/ScalarsOrder'
-                  meta:
-                    type: string
-                required:
-                - data
-                type: object
-              type: array
-            total:
-              type: integer
-          required:
-          - items
-          - total
-          type: object
+          $ref: '#/components/schemas/PageOfEnvelopeOfScalarsOrder'
       required:
       - results
       type: object

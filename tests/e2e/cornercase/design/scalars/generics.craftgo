@@ -71,6 +71,97 @@ type AuditFields {
 	updatedAt string @format(datetime)
 }
 
+// ---------------------------------------------------------------
+// Coverage for the P1.8 generic-component refactor: every case the
+// FastAPI-style naming scheme must handle.
+// ---------------------------------------------------------------
+
+// PairUserOrder forces a multi-parameter instantiation through the
+// emitter: `Pair<Order, ProductRef>` must emit `PairOfOrderAndProductRef`
+// (the `And` separator distinguishes args). Reuse the existing scalars
+// types so the fixture stays self-contained.
+type PairUserOrder {
+	pair Pair<Order, ProductRef>
+}
+
+// MaybeOrder exercises the `T?` substitution path inside the generic
+// body. The `Maybe<T>` decl has `value T?` so substituting T=Order
+// produces a field with nullable optional Order - the emitter must
+// preserve the `?` in the generated schema, not silently strip it
+// while walking through substitution.
+type MaybeOrder {
+	hit Maybe<Order>
+}
+
+// OptionalPage probes the OUTER `?` on a generic instance: the
+// reference `Page<Order>?` is a nullable instance, not a nullable
+// element. The emitter must wrap the synthetic `$ref:PageOfOrder` in
+// an `allOf + nullable` shape - the OpenAPI 3.0 idiom for "ref OR
+// null" - identical to how plain `User?` fields render.
+type OptionalPage {
+	maybePage Page<Order>?
+}
+
+// ArrayOfGenericInstance probes the array wrapper around a generic
+// instance: `Page<Order>[]` must render `items: { $ref: PageOfOrder }`,
+// NOT split the wrapper into two separate components. The synthetic
+// component name carries no `Array` suffix because the outer array
+// is just an OpenAPI `type: array, items: ...` shape.
+type ArrayOfGenericInstance {
+	pages Page<Order>[]
+}
+
+// MapValueGeneric verifies that generic instances ride the `map<K, V>`
+// builtin without losing their synthetic name: the value branch goes
+// through schemaForTypeRef recursively, so `Page<Order>` is registered
+// the same way it would be at top level.
+type MapValueGeneric {
+	bucket map<string, Page<Order>>
+}
+
+// PageOfPrimitive exercises a non-component arg type: `Page<string>`
+// must emit a component `PageOfString` whose items field is
+// `{ type: string }` (primitive inline), not `$ref:String`. The
+// naming function PascalCases the primitive identifier so the
+// component name is collision-free against any future user-declared
+// scalar called `String`.
+type PageOfPrimitiveHost {
+	rows Page<string>
+}
+
+// GenericWithMixin exercises CB-4 directly: a generic body that
+// embeds a mixin must NOT silently drop the mixin's fields during
+// instantiation. `PageWithAudit<T>` mixes `AuditFields` inside its
+// body; the substituted `PageWithAudit<Order>` component must list
+// `createdAt` / `updatedAt` (from AuditFields) in addition to its
+// own `items` / `total`.
+type PageWithAudit<T> {
+	AuditFields
+	items T[]
+	total int
+}
+
+type AuditedPage {
+	page PageWithAudit<Order>
+}
+
+// Tree<T> is the marquee recursive-generic test: the body references
+// `Tree<T>` itself through the `kids` field. Pre-refactor inlining
+// would infinite-loop substituting T=Order. Post-refactor the
+// instance registers as `TreeOfOrder`, emits its body, hits
+// `kids: Tree<T>[]` substituted to `Tree<Order>[]`, asks the
+// registry for the component name, finds `TreeOfOrder` is already
+// registered, and emits `$ref:TreeOfOrder` - the cycle terminates
+// as a reference.
+type Tree<T> {
+	val  T
+	kids Tree<T>[]
+}
+
+type RecursiveHost {
+	root Tree<Order>
+}
+
 // Audited is the mixin SITE. The bare `AuditFields` identifier on
 // its own line embeds AuditFields's two fields into Audited's body;
 // the generated struct lists `createdAt`, `updatedAt`, AND `id` as
