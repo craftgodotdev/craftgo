@@ -229,11 +229,31 @@ func needsHyphen(s string, i int) bool {
 // to not match the path is just a regular query/body field.
 func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route string) {
 	pathParams := extractPathParams(route)
-	// No request type means the user pulls path params via `r.PathValue`
-	// in their logic-side code - codegen permits this, so we don't flag
-	// missing bindings. We still keep walking when a request DOES exist
-	// so explicit `@path` orphans are reported.
+	// When the route declares `{param}` segments but the method has no
+	// request struct, the generated logic signature drops to bare
+	// `func() error` — path values land nowhere. Surface a warning so
+	// authors realise they need to declare a request struct (or accept
+	// that the path param is informational only). Downgraded from
+	// error because many test fixtures legitimately use the no-request
+	// pattern for routes that pass the param straight to a downstream
+	// passthrough; tightening to error would regress those builds.
 	if m.Request == nil {
+		// Passthrough methods receive the raw http.ResponseWriter
+		// and *http.Request, so path params land via `r.PathValue`
+		// at the framework boundary — no struct binding is needed
+		// and the diagnostic would be spurious for them.
+		passthrough := false
+		for _, d := range m.Decorators {
+			if d != nil && d.Name == "passthrough" {
+				passthrough = true
+				break
+			}
+		}
+		if len(pathParams) > 0 && !passthrough {
+			a.diag(m.Pos, m.Pos, lexer.SeverityWarning, CodePathParamMissing,
+				"method %s.%s: path declares %v but no request struct — path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
+				svcName, m.Name, pathParams)
+		}
 		return
 	}
 	if len(pathParams) == 0 && m.Request.Name == nil {

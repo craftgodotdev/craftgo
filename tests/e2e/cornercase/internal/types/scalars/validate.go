@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	_pattern1 = regexp.MustCompile(`^[a-z-]+$`)
+	_pattern2 = regexp.MustCompile(`^[A-Z]{3}$`)
+)
+
 // Validate checks every field-level constraint declared on AuditFields.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AuditFields) Validate() error {
@@ -27,7 +35,7 @@ func (v *Audited) Validate() error {
 	if err := v.AuditFields.Validate(); err != nil {
 		return err
 	}
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	return nil
@@ -47,7 +55,7 @@ func (v *Bag) Validate() error {
 		}
 	}
 	for i0 := range v.Tags {
-		if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Tags[i0]) {
+		if !_pattern1.MatchString(v.Tags[i0]) {
 			return fmt.Errorf("tags: does not match pattern")
 		}
 	}
@@ -92,7 +100,7 @@ func (v *Envelope[T]) Validate() error {
 // Validate checks every field-level constraint declared on GetOrderReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetOrderReq) Validate() error {
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	return nil
@@ -126,7 +134,7 @@ func (v *Maybe[T]) Validate() error {
 // Validate checks every field-level constraint declared on Order.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Order) Validate() error {
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {
@@ -153,13 +161,13 @@ func (v *Order) Validate() error {
 	if len(v.Tag) > 20 {
 		return fmt.Errorf("tag: length greater than 20")
 	}
-	if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Tag) {
+	if !_pattern1.MatchString(v.Tag) {
 		return fmt.Errorf("tag: does not match pattern")
 	}
 	if l := len(v.Country); l < 3 || l > 3 {
 		return fmt.Errorf("country: length out of range [3, 3]")
 	}
-	if !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(v.Country) {
+	if !_pattern2.MatchString(v.Country) {
 		return fmt.Errorf("country: does not match pattern")
 	}
 	return nil
@@ -241,7 +249,7 @@ func (v *Search) Validate() error {
 		}
 	}
 	for i0 := range v.Keywords {
-		if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Keywords[i0]) {
+		if !_pattern1.MatchString(v.Keywords[i0]) {
 			return fmt.Errorf("keywords: does not match pattern")
 		}
 	}

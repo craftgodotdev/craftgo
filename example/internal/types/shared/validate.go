@@ -5,6 +5,15 @@ package shared
 import (
 	"fmt"
 	"regexp"
+	"time"
+)
+
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[a-z]+$`)
+	_pattern1 = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	_pattern2 = regexp.MustCompile(`^[a-z]+(\.[a-z]+)+$`)
 )
 
 // Validate checks every field-level constraint declared on AuditEntry.
@@ -16,7 +25,7 @@ func (v *AuditEntry) Validate() error {
 	if l := len(v.EntityID); l < 1 || l > 128 {
 		return fmt.Errorf("entityId: length out of range [1, 128]")
 	}
-	if !regexp.MustCompile(`^[a-z]+$`).MatchString(v.Action) {
+	if !_pattern0.MatchString(v.Action) {
 		return fmt.Errorf("action: does not match pattern")
 	}
 	if v.Tags == nil {
@@ -34,7 +43,7 @@ func (v *AuditEntry) Validate() error {
 			seen[item] = struct{}{}
 		}
 	}
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.Uuid) {
+	if !_pattern1.MatchString(v.Uuid) {
 		return fmt.Errorf("uuid: not a valid UUID")
 	}
 	return nil
@@ -76,7 +85,7 @@ func (v *PluginConfig) Validate() error {
 // Validate checks every field-level constraint declared on WebhookEvent.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *WebhookEvent) Validate() error {
-	if !regexp.MustCompile(`^[a-z]+(\.[a-z]+)+$`).MatchString(v.EventType) {
+	if !_pattern2.MatchString(v.EventType) {
 		return fmt.Errorf("eventType: does not match pattern")
 	}
 	if len(v.EventType) > 64 {
@@ -87,6 +96,29 @@ func (v *WebhookEvent) Validate() error {
 	}
 	if v.Data == nil {
 		return fmt.Errorf("data: required")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on AuthRequiredErrBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AuthRequiredErrBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on MaintenanceWindowBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *MaintenanceWindowBody) Validate() error {
+	if v.Reason == "" {
+		return fmt.Errorf("reason: required")
+	}
+	switch v.Reason {
+	case MaintenanceWindowReasonScheduledMaintenance, MaintenanceWindowReasonIncidentRecovery, MaintenanceWindowReasonCapacityExpansion:
+	default:
+		return fmt.Errorf("reason: invalid MaintenanceWindowReason value")
+	}
+	if _, _err := time.Parse(time.RFC3339, v.EstimatedEndAt); _err != nil {
+		return fmt.Errorf("estimatedEndAt: not a valid RFC 3339 datetime")
 	}
 	return nil
 }

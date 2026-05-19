@@ -1,8 +1,8 @@
 // Package `collections` exercises array + map type-shapes and the
 // validator decorators that live on them: @minItems / @maxItems
-// (bounds), @uniqueItems (flag), @each(...) (nested decorator), and
-// the interactions between these and optionality / multi-dim arrays
-// / map<K, V>.
+// (array-level bounds), @uniqueItems (flag), per-element validators
+// via scalar inheritance, and the interactions between these and
+// optionality / multi-dim arrays / map<K, V>.
 //
 // Scalar + struct declarations live here so arrays.craftgo and
 // maps.craftgo can both reference them. The scalars carry their own

@@ -7,6 +7,12 @@ import (
 	"regexp"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+)
+
 // Validate checks every field-level constraint declared on Address.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Address) Validate() error {
@@ -30,7 +36,7 @@ func (v *Address) Validate() error {
 // Validate checks every field-level constraint declared on ContactInfo.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ContactInfo) Validate() error {
-	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(v.Email) {
+	if !_pattern0.MatchString(v.Email) {
 		return fmt.Errorf("email: does not match pattern")
 	}
 	if v.Phone != nil && len(*v.Phone) < 7 {

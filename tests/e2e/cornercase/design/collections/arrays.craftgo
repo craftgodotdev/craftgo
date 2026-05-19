@@ -5,13 +5,11 @@
 //     bound.
 //   - Flag: @uniqueItems — emits a map-based dedupe loop scoped to a
 //     bare block.
-//   - Nested element decorator: @each(@inner) — the AST node exists
-//     and the parser accepts it, but `@each` is NOT in the framework
-//     Registry today (semantic phase rejects it with `decorator/unknown`).
-//     The per-element validator inheritance pattern is exercised via
-//     SCALAR ARRAYS instead (`Tag[]`) — scalar's @minLength /
-//     @maxLength / @pattern automatically fire per element through the
-//     scalar-leaves walk.
+//   - Per-element validators: declare a scalar for the element type
+//     (`scalar Tag string @minLength(1) @maxLength(20)`). The
+//     scalar-leaves walker emits one nested loop per scalar decorator
+//     on every reachable element, including nested arrays and map
+//     values — no dedicated per-element decorator needed.
 //   - Optional array nil-guard: `T[]?` must SKIP @minItems when the
 //     slice is nil (Sprint 3 C3 fix).
 //   - Multi-dim of scalar: Tag[][] and Tag[][][] — should produce
@@ -39,9 +37,9 @@ type Arr_OptionalBound {
 }
 
 // Arr_PlainInts is a bare int slice with no per-element validators.
-// Without @each in the registry the only way to validate elements is
-// via a SCALAR element type — see Arr_TagSlice / Arr_Tag2D below for
-// the per-element validator pattern.
+// To constrain elements, declare a scalar (`scalar NonNegInt int @gte(0)`)
+// and type the field as `NonNegInt[]` — the scalar-leaves walker emits
+// the per-element check automatically.
 type Arr_PlainInts {
 	scores int[]
 }

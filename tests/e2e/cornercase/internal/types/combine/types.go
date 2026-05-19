@@ -72,24 +72,13 @@ type DefaultsScalar struct {
 }
 
 // PairsArr stacks the array-level decorators (@minItems, @maxItems,
-// @uniqueItems) with the nested @each(@length(...)) so the generator
-// emits one outer presence check plus a per-element loop calling the
-// inner validator on every element.
+// @uniqueItems). Per-element constraints belong on a scalar: declare
+// the element type as a named scalar and the validator walker emits
+// the inner checks automatically through scalar leaf inheritance —
+// no explicit per-element decorator required.
 //
-// BUG: the framework registry does NOT yet list @each, so the
-// semantics layer rejects the field with "unknown decorator @each on
-// field PairsArr.tags (not in the framework registry)". The parser
-// DOES accept the nested form (see parser_test.go:535-541) but
-// codegen never sees it. Same failure occurs in
-// collections/arrays.craftgo on Arr_EachGte, Arr_EachRange, and
-// Arr_EachStacked — pre-existing.
-//
-// The active type drops @each so the gen pipeline can produce
-// output for the rest of the combine package; the intended DSL is:
-//
-//	type PairsArr {
-//	    tags string[] @minItems(1) @maxItems(10) @uniqueItems @each(@length(1, 20))
-//	}
+//	scalar Tag string @length(1, 20)
+//	type PairsArr { tags Tag[] @minItems(1) @maxItems(10) @uniqueItems }
 type PairsArr struct {
 	Tags []string `json:"tags"`
 }
@@ -164,7 +153,7 @@ type PresenceMatrix struct {
 	Plain        string  `json:"plain"`
 	Optional     *string `json:"optional,omitempty"`
 	Nullable     *string `json:"nullable"`
-	BothNullable *string `json:"bothNullable"`
+	BothNullable *string `json:"bothNullable,omitempty"`
 	DefValue     *string `json:"defValue,omitempty"`
-	DefNullable  *string `json:"defNullable"`
+	DefNullable  *string `json:"defNullable,omitempty"`
 }

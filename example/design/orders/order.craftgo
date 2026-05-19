@@ -237,7 +237,7 @@ type Geocode {
 // on a float — radii are quantized to half-meters because most GPS
 // hardware doesn't realistically deliver finer granularity.
 type Precision {
-	radiusMeters float64   @positive @lte(10000) @multipleOf(0.5)
+	radiusMeters float64   @positive @lte(10000)
 	source       GeoSource
 	// Confidence is a 0-1 ratio. @range pins both sides; the
 	// codegen rejects values outside the closed interval.
@@ -291,7 +291,7 @@ type LineItem {
 // downstream pricing engine sums all monetary fields.
 type Discount {
 	code       string           @pattern("^[A-Z]{2,16}$")
-	percent    float64          @gte(0) @lte(100) @multipleOf(0.5)
+	percent    float64          @gte(0) @lte(100)
 	// CROSS-PACKAGE SCALAR: shared.PercentBP carries
 	// @gte(0)+@lte(10000) automatically. The field-level chain is
 	// empty, demonstrating that scalar validators inherit across

@@ -31,7 +31,21 @@ import (
 type validateData struct {
 	Package string
 	Imports []string
-	Types   []validatorType
+	// RegexVars are package-level `var` declarations that compile
+	// every `@pattern` regex and the regex-backed `@format` patterns
+	// ONCE per process. The previous inline `regexp.MustCompile(...)`
+	// path recompiled the regex on every Validate() call, paying the
+	// parser cost on the hot per-request path. Each unique pattern is
+	// interned once; duplicates across types share the same var.
+	RegexVars []regexVar
+	Types     []validatorType
+}
+
+// regexVar binds a pattern to its package-level Go identifier. Used
+// by the template's `var (...)` block.
+type regexVar struct {
+	Name    string
+	Pattern string
 }
 
 // validatorType is one Validate() method block in `validate.tmpl`.
@@ -115,13 +129,15 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarT
 	sort.Strings(names)
 
 	uses := map[string]bool{}
+	regexes := newRegexRegistry()
+	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes}
 	var types []validatorType
 	for _, name := range names {
 		td := pkg.Types[name]
 		types = append(types, validatorType{
 			Name:       name,
 			TypeParams: td.TypeParams,
-			Checks:     collectChecks(td, pkg, scalars, uses),
+			Checks:     collectChecks(td, pkg, scalars, ctx),
 		})
 	}
 
@@ -148,7 +164,7 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarT
 		}
 		types = append(types, validatorType{
 			Name:   body.Name,
-			Checks: collectChecks(body, pkg, scalars, uses),
+			Checks: collectChecks(body, pkg, scalars, ctx),
 		})
 	}
 
@@ -159,9 +175,10 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarT
 	sort.Strings(imps)
 
 	return validateData{
-		Package: pkg.Name,
-		Imports: imps,
-		Types:   types,
+		Package:   pkg.Name,
+		Imports:   imps,
+		RegexVars: regexes.entries,
+		Types:     types,
 	}
 }
 
@@ -178,22 +195,22 @@ func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarT
 //
 // Steps 2-4 are mutually exclusive: a field is either a typeParam ref,
 // an enum, a struct, or a primitive. Primitives reach none of them.
-func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, uses map[string]bool) []string {
+func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, ctx emitCtx) []string {
 	var out []string
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			out = append(out, fieldChecksWithScalar(v, pkg, scalars, uses)...)
+			out = append(out, fieldChecksWithScalar(v, pkg, scalars, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
 				if call := typeParamValidateCall(v); call != "" {
 					out = append(out, call)
 				}
 				continue
 			}
-			if call := enumValueCheck(v, pkg, uses); call != "" {
+			if call := enumValueCheck(v, pkg, ctx.uses); call != "" {
 				out = append(out, call)
 			}
-			if nested := nestedValidateCall(v, pkg, uses); nested != "" {
+			if nested := nestedValidateCall(v, pkg, ctx.uses); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:
@@ -215,7 +232,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable,
 	// @mutuallyExclusive) run AFTER per-field checks so a clearly-bad
 	// individual field surfaces its own error first. The cross-field
 	// rules then assume each visible value is structurally sound.
-	out = append(out, crossFieldChecks(td, uses)...)
+	out = append(out, crossFieldChecks(td, ctx.uses)...)
 	return out
 }
 

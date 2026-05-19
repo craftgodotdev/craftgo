@@ -110,7 +110,7 @@ type Customer struct {
 	Name string `json:"name"`
 	// 4-STATE PRESENCE: optional + nullable + pattern. Phone
 	// matches a permissive E.164-ish regex when present.
-	Phone *string `json:"phone"`
+	Phone *string `json:"phone,omitempty"`
 	// Required nested (Level 3).
 	PrimaryAddress Address `json:"primaryAddress"`
 	// Optional nested — billing may differ from primary or be
@@ -229,7 +229,7 @@ type GpsFix struct {
 	// running the regex.
 	DeviceID *string `json:"deviceId,omitempty"`
 	// 4-state with maxLength: missing | null | string ≤ 500 chars.
-	Notes *string `json:"notes"`
+	Notes *string `json:"notes,omitempty"`
 }
 
 type LineItem struct {
@@ -307,7 +307,7 @@ type Order struct {
 	//   - send `"shippedAt": null`          (nil pointer)
 	//   - send `"shippedAt": "2026-01-..."` (validated as datetime)
 	// Validators run only when the value is non-null.
-	ShippedAt *string `json:"shippedAt"`
+	ShippedAt *string `json:"shippedAt,omitempty"`
 	// SCALAR REF + @default. CurrencyCode contributes
 	// @length(3,3) + @pattern; the field-level chain only needs
 	// the default value.
@@ -343,7 +343,7 @@ type OrderList struct {
 type Payment struct {
 	Method PaymentMethod `json:"method"`
 	// 4-state on a length-strict + pattern-strict field.
-	CardLast4 *string `json:"cardLast4"`
+	CardLast4 *string `json:"cardLast4,omitempty"`
 	// CROSS-PACKAGE SCALAR: shared.NonEmptyID inherits
 	// @minLength(1) + @maxLength(128) + @pattern; the field-level
 	// chain reduces to.

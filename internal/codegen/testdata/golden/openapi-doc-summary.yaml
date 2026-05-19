@@ -13,6 +13,20 @@ components:
       - id
       - title
       type: object
+    BookReq:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    GetBookReqPath:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
     GetBookRespBody:
       $ref: '#/components/schemas/Book'
 info:
@@ -24,6 +38,12 @@ paths:
     get:
       description: Fetch a single book.
       operationId: GetBook
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
       responses:
         "200":
           content:

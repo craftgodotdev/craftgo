@@ -55,9 +55,9 @@ type Arr_OptionalBound struct {
 }
 
 // Arr_PlainInts is a bare int slice with no per-element validators.
-// Without @each in the registry the only way to validate elements is
-// via a SCALAR element type — see Arr_TagSlice / Arr_Tag2D below for
-// the per-element validator pattern.
+// To constrain elements, declare a scalar (`scalar NonNegInt int @gte(0)`)
+// and type the field as `NonNegInt[]` — the scalar-leaves walker emits
+// the per-element check automatically.
 type Arr_PlainInts struct {
 	Scores []int `json:"scores"`
 }

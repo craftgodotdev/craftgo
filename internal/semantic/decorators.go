@@ -465,12 +465,6 @@ var Registry = map[string]Spec{
 		AppliesTo: PrimArray,
 	},
 	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Flag: true},
-	"each": {
-		Name: "each", Levels: LvlField | LvlErrorField,
-		Doc:       "Apply the nested validator decorator to every element of an array field. E.g. `@each(@gte(0))` requires every element to be non-negative; `@each(@length(1, 20))` constrains every string element.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
-		AppliesTo: PrimArray,
-	},
 
 	// ---- Field validation: file ----
 	"maxSize": {

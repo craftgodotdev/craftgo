@@ -130,3 +130,17 @@ func (v *TaskList) Validate() error {
 	}
 	return nil
 }
+
+// Validate checks every field-level constraint declared on TaskAssignmentConflictBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *TaskAssignmentConflictBody) Validate() error {
+	if v.PendingStatus == "" {
+		return fmt.Errorf("pendingStatus: required")
+	}
+	switch v.PendingStatus {
+	case TaskStatusOpen, TaskStatusInProgress, TaskStatusDone, TaskStatusArchived:
+	default:
+		return fmt.Errorf("pendingStatus: invalid TaskStatus value")
+	}
+	return nil
+}

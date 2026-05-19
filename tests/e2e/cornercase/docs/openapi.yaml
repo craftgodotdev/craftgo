@@ -303,9 +303,9 @@ components:
     Arr_PlainInts:
       description: |-
         Arr_PlainInts is a bare int slice with no per-element validators.
-        Without @each in the registry the only way to validate elements is
-        via a SCALAR element type — see Arr_TagSlice / Arr_Tag2D below for
-        the per-element validator pattern.
+        To constrain elements, declare a scalar (`scalar NonNegInt int @gte(0)`)
+        and type the field as `NonNegInt[]` — the scalar-leaves walker emits
+        the per-element check automatically.
       properties:
         scores:
           items:
@@ -2219,26 +2219,12 @@ components:
           type: integer
       type: object
     PairsArr:
-      description: |-
-        PairsArr stacks the array-level decorators (@minItems, @maxItems,
-        @uniqueItems) with the nested @each(@length(...)) so the generator
-        emits one outer presence check plus a per-element loop calling the
-        inner validator on every element.
-
-        BUG: the framework registry does NOT yet list @each, so the
-        semantics layer rejects the field with "unknown decorator @each on
-        field PairsArr.tags (not in the framework registry)". The parser
-        DOES accept the nested form (see parser_test.go:535-541) but
-        codegen never sees it. Same failure occurs in
-        collections/arrays.craftgo on Arr_EachGte, Arr_EachRange, and
-        Arr_EachStacked — pre-existing.
-
-        The active type drops @each so the gen pipeline can produce
-        output for the rest of the combine package; the intended DSL is:
-
-          type PairsArr {
-              tags string[] @minItems(1) @maxItems(10) @uniqueItems @each(@length(1, 20))
-          }
+      description: "PairsArr stacks the array-level decorators (@minItems, @maxItems,\n@uniqueItems).
+        Per-element constraints belong on a scalar: declare\nthe element type as a
+        named scalar and the validator walker emits\nthe inner checks automatically
+        through scalar leaf inheritance —\nno explicit per-element decorator required.\n\n\tscalar
+        Tag string @length(1, 20)\n\ttype PairsArr { tags Tag[] @minItems(1) @maxItems(10)
+        @uniqueItems }"
       properties:
         tags:
           items:

@@ -10,6 +10,23 @@ import (
 	"time"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0  = regexp.MustCompile(`^[A-Z0-9 -]{3,12}$`)
+	_pattern1  = regexp.MustCompile(`^[A-Z]{2}$`)
+	_pattern2  = regexp.MustCompile(`^[A-Z]{3}$`)
+	_pattern3  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	_pattern4  = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	_pattern5  = regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`)
+	_pattern6  = regexp.MustCompile(`^[A-Z]{2,16}$`)
+	_pattern7  = regexp.MustCompile(`^ord_[A-Z0-9]+$`)
+	_pattern8  = regexp.MustCompile(`^dev_[A-Z0-9]{8,32}$`)
+	_pattern9  = regexp.MustCompile(`^[A-Z0-9-]{4,32}$`)
+	_pattern10 = regexp.MustCompile(`^[0-9]{4}$`)
+	_pattern11 = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+)
+
 // Validate checks every field-level constraint declared on Address.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Address) Validate() error {
@@ -28,13 +45,13 @@ func (v *Address) Validate() error {
 	if v.Region != nil && len(*v.Region) > 100 {
 		return fmt.Errorf("region: length greater than 100")
 	}
-	if !regexp.MustCompile(`^[A-Z0-9 -]{3,12}$`).MatchString(v.PostalCode) {
+	if !_pattern0.MatchString(v.PostalCode) {
 		return fmt.Errorf("postalCode: does not match pattern")
 	}
 	if l := len(v.Country); l < 2 || l > 2 {
 		return fmt.Errorf("country: length out of range [2, 2]")
 	}
-	if !regexp.MustCompile(`^[A-Z]{2}$`).MatchString(v.Country) {
+	if !_pattern1.MatchString(v.Country) {
 		return fmt.Errorf("country: does not match pattern")
 	}
 	if v.Geo != nil {
@@ -68,7 +85,7 @@ func (v *CreateOrderReq) Validate() error {
 	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
-	if v.Currency != nil && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*v.Currency) {
+	if v.Currency != nil && !_pattern2.MatchString(*v.Currency) {
 		return fmt.Errorf("currency: does not match pattern")
 	}
 	if len(v.Tags) < 1 {
@@ -108,7 +125,7 @@ func (v *Customer) Validate() error {
 	}
 	for _, val0 := range v.Channels {
 		for i1 := range val0 {
-			if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(val0[i1]) {
+			if !_pattern3.MatchString(val0[i1]) {
 				return fmt.Errorf("channels: does not match pattern")
 			}
 		}
@@ -129,7 +146,7 @@ func (v *Customer) Validate() error {
 	}
 	for _, val0 := range v.Index {
 		for k1 := range val0 {
-			if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(k1) {
+			if !_pattern3.MatchString(k1) {
 				return fmt.Errorf("index: does not match pattern")
 			}
 		}
@@ -164,12 +181,12 @@ func (v *Customer) Validate() error {
 	}
 	for i0 := range v.GridLabels {
 		for i1 := range v.GridLabels[i0] {
-			if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(v.GridLabels[i0][i1]) {
+			if !_pattern3.MatchString(v.GridLabels[i0][i1]) {
 				return fmt.Errorf("gridLabels: does not match pattern")
 			}
 		}
 	}
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern4.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {
@@ -181,7 +198,7 @@ func (v *Customer) Validate() error {
 	if l := len(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
 	}
-	if v.Phone != nil && !regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`).MatchString(*v.Phone) {
+	if v.Phone != nil && !_pattern5.MatchString(*v.Phone) {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if err := v.PrimaryAddress.Validate(); err != nil {
@@ -217,7 +234,7 @@ func (v *DefaultsShowcaseReq) Validate() error {
 	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
-	if v.Currency != nil && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*v.Currency) {
+	if v.Currency != nil && !_pattern2.MatchString(*v.Currency) {
 		return fmt.Errorf("currency: does not match pattern")
 	}
 	if v.Status != nil {
@@ -240,7 +257,7 @@ func (v *DefaultsShowcaseReq) Validate() error {
 // Validate checks every field-level constraint declared on Discount.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Discount) Validate() error {
-	if !regexp.MustCompile(`^[A-Z]{2,16}$`).MatchString(v.Code) {
+	if !_pattern6.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
 	if v.Percent < 0 {
@@ -295,7 +312,7 @@ func (v *FilterOrdersReq) Validate() error {
 	if l := len(v.IdemKey); l < 8 || l > 64 {
 		return fmt.Errorf("idemKey: length out of range [8, 64]")
 	}
-	if !regexp.MustCompile(`^ord_[A-Z0-9]+$`).MatchString(v.IdemKey) {
+	if !_pattern7.MatchString(v.IdemKey) {
 		return fmt.Errorf("idemKey: does not match pattern")
 	}
 	if v.LastFilter == "" {
@@ -362,7 +379,7 @@ func (v *GpsFix) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, v.Timestamp); _err != nil {
 		return fmt.Errorf("timestamp: not a valid RFC 3339 datetime")
 	}
-	if v.DeviceID != nil && !regexp.MustCompile(`^dev_[A-Z0-9]{8,32}$`).MatchString(*v.DeviceID) {
+	if v.DeviceID != nil && !_pattern8.MatchString(*v.DeviceID) {
 		return fmt.Errorf("deviceId: does not match pattern")
 	}
 	if v.Notes != nil && len(*v.Notes) > 500 {
@@ -377,7 +394,7 @@ func (v *LineItem) Validate() error {
 	if l := len(v.ProductID); l < 1 || l > 64 {
 		return fmt.Errorf("productId: length out of range [1, 64]")
 	}
-	if !regexp.MustCompile(`^[A-Z0-9-]{4,32}$`).MatchString(v.Sku) {
+	if !_pattern9.MatchString(v.Sku) {
 		return fmt.Errorf("sku: does not match pattern")
 	}
 	if v.Quantity <= 0 {
@@ -418,7 +435,7 @@ func (v *Order) Validate() error {
 	if l := len(v.ID); l < 8 || l > 64 {
 		return fmt.Errorf("id: length out of range [8, 64]")
 	}
-	if !regexp.MustCompile(`^ord_[A-Z0-9]+$`).MatchString(v.ID) {
+	if !_pattern7.MatchString(v.ID) {
 		return fmt.Errorf("id: does not match pattern")
 	}
 	if err := v.Customer.Validate(); err != nil {
@@ -465,7 +482,7 @@ func (v *Order) Validate() error {
 	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
-	if v.Currency != nil && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*v.Currency) {
+	if v.Currency != nil && !_pattern2.MatchString(*v.Currency) {
 		return fmt.Errorf("currency: does not match pattern")
 	}
 	for i0 := range v.Tags {
@@ -479,7 +496,7 @@ func (v *Order) Validate() error {
 		}
 	}
 	for i0 := range v.Tags {
-		if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(v.Tags[i0]) {
+		if !_pattern3.MatchString(v.Tags[i0]) {
 			return fmt.Errorf("tags: does not match pattern")
 		}
 	}
@@ -509,7 +526,7 @@ func (v *Order) Validate() error {
 		}
 	}
 	for k0 := range v.Metadata {
-		if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(k0) {
+		if !_pattern3.MatchString(k0) {
 			return fmt.Errorf("metadata: does not match pattern")
 		}
 	}
@@ -554,7 +571,7 @@ func (v *Payment) Validate() error {
 	if v.CardLast4 != nil && (len(*v.CardLast4) < 4 || len(*v.CardLast4) > 4) {
 		return fmt.Errorf("cardLast4: length out of range [4, 4]")
 	}
-	if v.CardLast4 != nil && !regexp.MustCompile(`^[0-9]{4}$`).MatchString(*v.CardLast4) {
+	if v.CardLast4 != nil && !_pattern10.MatchString(*v.CardLast4) {
 		return fmt.Errorf("cardLast4: does not match pattern")
 	}
 	if len(v.ReferenceID) < 1 {
@@ -563,7 +580,7 @@ func (v *Payment) Validate() error {
 	if len(v.ReferenceID) > 128 {
 		return fmt.Errorf("referenceId: length greater than 128")
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(v.ReferenceID) {
+	if !_pattern11.MatchString(v.ReferenceID) {
 		return fmt.Errorf("referenceId: does not match pattern")
 	}
 	if v.AuthCents <= 0 {

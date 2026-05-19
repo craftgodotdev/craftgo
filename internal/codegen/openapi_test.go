@@ -90,10 +90,11 @@ func TestGenerateOpenAPIErrorsDecorator(t *testing.T) {
 	src := `package design
 error NotFound BookNotFound
 error Conflict DuplicateISBN { sku string }
+type BookReq { id string }
 type Book { id string }
 service S {
     @errors(BookNotFound)
-    get GetBook /books/{id} { response Book }
+    get GetBook /books/{id} { request BookReq  response Book }
     @errors(DuplicateISBN)
     @status(201)
     post CreateBook /books { request Book  response Book }
@@ -138,10 +139,11 @@ type Book {
     id    string @doc("Stable identifier.")
     title string
 }
+type BookReq { id string }
 service S {
     @doc("Fetch a single book.")
     @summary("Get a book")
-    get GetBook /books/{id} { response Book }
+    get GetBook /books/{id} { request BookReq  response Book }
 }`)
 	expectGolden(t, "openapi-doc-summary.yaml", body)
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -29,6 +30,7 @@ service UserService {
         response  User
     }
     delete DeleteUser /users/{id} {
+        request   GetUserReq
         response  User
     }
 }
@@ -62,8 +64,14 @@ func analyzePkg(t *testing.T, src string) *semantic.Package {
 		t.Fatalf("parse errors: %v", d)
 	}
 	pkg, diags := semantic.Analyze([]*ast.File{f})
-	if len(diags) > 0 {
-		t.Fatalf("semantic errors: %v", diags)
+	// Tolerate warnings — the analyser surfaces advisory diagnostics
+	// (e.g. "path has {id} but no request struct") that fixtures
+	// legitimately exercise. Only error-severity diagnostics fail
+	// the test, matching the CLI's `craftgo gen` exit semantics.
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityError {
+			t.Fatalf("semantic errors: %v", diags)
+		}
 	}
 	return pkg
 }

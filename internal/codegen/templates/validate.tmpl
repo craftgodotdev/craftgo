@@ -8,6 +8,15 @@ import (
 {{- end}}
 )
 {{- end}}
+{{if .RegexVars}}
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+{{- range .RegexVars}}
+	{{.Name}} = regexp.MustCompile(`{{.Pattern}}`)
+{{- end}}
+)
+{{- end}}
 
 {{range .Types}}
 // Validate checks every field-level constraint declared on {{.Name}}.

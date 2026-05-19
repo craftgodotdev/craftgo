@@ -177,8 +177,10 @@ service Users {
 	@summary("get user")
 	@operationId("getUser")
 	@maxBodySize(1MB)
-	get GetUser /users/{id} {}
+	get GetUser /users/{id} { request GetUserReq }
 }
+
+type GetUserReq { id string }
 
 extend service Users {
 	@passthrough

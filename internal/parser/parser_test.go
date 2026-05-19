@@ -533,7 +533,13 @@ type X {}`)
 }
 
 func TestDecoratorNested(t *testing.T) {
-	f := mustParse(t, `@each(@length(1, 20))
+	// Parser-level: confirm a decorator-arg in the form `@outer(@inner)`
+	// preserves the nested decorator on `arg.Nested`. The semantic
+	// registry doesn't recognise this decorator pair — that's
+	// intentional, the parser must keep the grammar shape even when no
+	// downstream consumer claims it, so future meta-decorators can
+	// land without grammar churn.
+	f := mustParse(t, `@wrap(@length(1, 20))
 type X {}`)
 	a := f.Decls[0].(*ast.TypeDecl).Decorators[0].Args[0]
 	if a.Nested == nil {

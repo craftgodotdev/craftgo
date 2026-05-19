@@ -8,6 +8,12 @@ import (
 	"regexp"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[a-z-]+$`)
+)
+
 // Validate checks every field-level constraint declared on Address.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Address) Validate() error {
@@ -104,7 +110,7 @@ func (v *Arr_Tag2D) Validate() error {
 	}
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
-			if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Grid[i0][i1]) {
+			if !_pattern0.MatchString(v.Grid[i0][i1]) {
 				return fmt.Errorf("grid: does not match pattern")
 			}
 		}
@@ -131,7 +137,7 @@ func (v *Arr_Tag2DOptional) Validate() error {
 	}
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
-			if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Grid[i0][i1]) {
+			if !_pattern0.MatchString(v.Grid[i0][i1]) {
 				return fmt.Errorf("grid: does not match pattern")
 			}
 		}
@@ -163,7 +169,7 @@ func (v *Arr_Tag3D) Validate() error {
 	for i0 := range v.Cube {
 		for i1 := range v.Cube[i0] {
 			for i2 := range v.Cube[i0][i1] {
-				if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Cube[i0][i1][i2]) {
+				if !_pattern0.MatchString(v.Cube[i0][i1][i2]) {
 					return fmt.Errorf("cube: does not match pattern")
 				}
 			}
@@ -186,7 +192,7 @@ func (v *Arr_TagSlice) Validate() error {
 		}
 	}
 	for i0 := range v.Tags {
-		if !regexp.MustCompile(`^[a-z-]+$`).MatchString(v.Tags[i0]) {
+		if !_pattern0.MatchString(v.Tags[i0]) {
 			return fmt.Errorf("tags: does not match pattern")
 		}
 	}
@@ -227,7 +233,7 @@ func (v *Map_ArrayValue) Validate() error {
 	}
 	for _, val0 := range v.Buckets {
 		for i1 := range val0 {
-			if !regexp.MustCompile(`^[a-z-]+$`).MatchString(val0[i1]) {
+			if !_pattern0.MatchString(val0[i1]) {
 				return fmt.Errorf("buckets: does not match pattern")
 			}
 		}
@@ -293,7 +299,7 @@ func (v *Map_ScalarValue) Validate() error {
 		}
 	}
 	for _, val0 := range v.Labels {
-		if !regexp.MustCompile(`^[a-z-]+$`).MatchString(val0) {
+		if !_pattern0.MatchString(val0) {
 			return fmt.Errorf("labels: does not match pattern")
 		}
 	}

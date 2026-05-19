@@ -159,11 +159,24 @@ service S {
 	}
 }
 
-func TestPathParamSkippedWithoutRequest(t *testing.T) {
-	// Path with {id} but no request type - codegen permits this
-	// (user pulls via r.PathValue), so no diag.
-	mustClean(t, `service S {
+func TestPathParamWarnsWithoutRequest(t *testing.T) {
+	// Path declares {id} but no request struct → the path value
+	// has no Go-side binding. The analyser emits a warning so the
+	// author either adds a request struct or accepts the path
+	// param as informational (e.g. for a passthrough handler that
+	// reaches `r.PathValue` directly).
+	expectDiag(t, `service S {
 	get GetUser /users/{id} {}
+}`, CodePathParamMissing)
+}
+
+func TestPathParamPassthroughSkipsWarn(t *testing.T) {
+	// Passthrough handlers reach `r.PathValue` directly through the
+	// raw http.Request, so the warning would be spurious — suppress
+	// it for the passthrough path.
+	mustClean(t, `service S {
+	@passthrough
+	get Stream /users/{id}/feed {}
 }`)
 }
 

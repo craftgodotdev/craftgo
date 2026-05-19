@@ -117,7 +117,7 @@ type NumberOptional struct {
 	NullableFloat *float64 `json:"nullableFloat"`
 	// 4-state: optional + nullable. Numbers wire shape: missing key,
 	// null, or a valid value.
-	MaybeInt *int `json:"maybeInt"`
+	MaybeInt *int `json:"maybeInt,omitempty"`
 	// Defaults: @default fills in the value when the field is absent.
 	DefaultInt   *int     `json:"defaultInt,omitempty"`
 	DefaultFloat *float64 `json:"defaultFloat,omitempty"`

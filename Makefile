@@ -97,7 +97,7 @@ fmt-check: ## Fail if any Go file isn't gofmt'd.
 lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
 
 # ---- codegen + example --------------------------------------------------
-E2E_DIRS := tests/e2e/users tests/e2e/complex tests/e2e/multi-service
+E2E_DIRS := tests/e2e/users tests/e2e/complex tests/e2e/multi-service tests/e2e/cornercase
 
 .PHONY: gen
 gen: build ## Regenerate the example project from its design dir.

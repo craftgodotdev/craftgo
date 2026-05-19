@@ -441,10 +441,15 @@ func GoFieldName(name string) string {
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is
 // used verbatim.
 //
-// `omitempty` rules:
-//   - Required fields → never (always emit, must be present).
-//   - `@nullable` → never (always emit, may be null).
-//   - Optional `T?` (no @nullable) → yes (omit when zero/nil).
+// `omitempty` rules — `?` is the dominant flag:
+//   - Optional `T?` (with or without @nullable) → yes (omit when nil).
+//     The `?` suffix means "field may be absent on the wire", so a nil
+//     value MUST round-trip as omitted, not as explicit JSON `null`.
+//     Adding `@nullable` on top of `?` is a redundant-decorator warning
+//     at semantic time but doesn't change the omit policy.
+//   - Plain `T @nullable` → never (always emit; nil surfaces as `null`).
+//     The intent is "must send the key, value may be null".
+//   - Required fields → never.
 //   - Plain field → never.
 //
 // Fields bound to a non-body location (`@path`, `@query`, `@header`,
@@ -460,16 +465,19 @@ func jsonTag(f *ast.Field) string {
 	if isNonBodyBound(f) || hasSensitiveDecorator(f.Decorators) {
 		return "-"
 	}
-	// `@nullable` keeps the field always-emitting so a nil value
-	// surfaces as JSON `null` rather than being skipped. The combined
-	// `T? @nullable` form collapses to "always emit, may be null" -
-	// std encoding/json can't distinguish "absent" from "null" with a
-	// single pointer field, and `@nullable` is the more specific intent.
-	if hasNullableDecorator(f.Decorators) {
-		return f.Name
-	}
+	// `?` always implies omitempty — the wire contract is "may be
+	// absent" and Go's encoder must honour that even when @nullable
+	// is also present (semantic flags @nullable as redundant on a
+	// `T?` field, but the codegen path must not regress to emit
+	// `"field": null` for the nil case).
 	if f.Type != nil && f.Type.Optional {
 		return f.Name + ",omitempty"
+	}
+	// `@nullable` on a non-optional field keeps the value always-
+	// emitted so a nil pointer surfaces as JSON `null` rather than
+	// being skipped — "must send the key, may be null".
+	if hasNullableDecorator(f.Decorators) {
+		return f.Name
 	}
 	return f.Name
 }

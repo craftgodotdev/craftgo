@@ -312,7 +312,11 @@ type LegacyBook {
 //   - value type (string) → `*T` field, no omitempty (null-emitting).
 //   - already-nilable ([]byte slice / `*FileHeader`) → no extra wrap,
 //     just drop omitempty.
-//   - combined `T? @nullable` → still `*T` (no double-wrap), no omitempty.
+//   - combined `T? @nullable` → still `*T` (no double-wrap), omitempty
+//     applies because the `?` suffix takes precedence: a nil pointer
+//     must round-trip as absent on the wire, not as explicit JSON
+//     `null`. The combined form is also flagged redundant at semantic
+//     time so users converge on plain `T?`.
 //   - non-nullable required field → unchanged (`T` value, no omitempty).
 func TestGenerateTypesNullable(t *testing.T) {
 	pkg := analyze(t, `package design
@@ -332,19 +336,14 @@ type T {
 
 	want := []struct{ ident, typ, tag string }{
 		{"Plain", "string", `json:"plain"`},
-		{"NullStr", "*string", `json:"nullStr"`},   // pointer + no omitempty
-		{"NullBlob", "[]byte", `json:"nullBlob"`},  // already nilable + no omitempty
-		{"OptNull", "*string", `json:"optNull"`},   // single pointer, no omitempty
+		{"NullStr", "*string", `json:"nullStr"`},            // @nullable only → no omitempty
+		{"NullBlob", "[]byte", `json:"nullBlob"`},           // already nilable + no omitempty
+		{"OptNull", "*string", `json:"optNull,omitempty"`},  // `?` dominates → omitempty
 	}
 	for _, w := range want {
 		if !lineHasField(src, w.ident, w.typ) || !lineHasField(src, w.ident, w.tag) {
 			t.Errorf("expected %s %s with tag %s in:\n%s", w.ident, w.typ, w.tag, src)
 		}
-	}
-	// `omitempty` must NOT appear anywhere - every field is either
-	// required (no omitempty) or @nullable (no omitempty).
-	if strings.Contains(src, "omitempty") {
-		t.Errorf("@nullable fields should not carry omitempty:\n%s", src)
 	}
 }
 

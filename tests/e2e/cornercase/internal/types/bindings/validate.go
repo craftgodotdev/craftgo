@@ -9,6 +9,12 @@ import (
 	"regexp"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+)
+
 // Validate checks every field-level constraint declared on AddItemReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AddItemReq) Validate() error {
@@ -64,7 +70,7 @@ func (v *FormFileReq) Validate() error {
 // Validate checks every field-level constraint declared on GetItemReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetItemReq) Validate() error {
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	return nil
@@ -85,7 +91,7 @@ func (v *HeaderReq) Validate() error {
 // Validate checks every field-level constraint declared on Item.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Item) Validate() error {
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
@@ -134,7 +140,7 @@ func (v *PathExplicitNameReq) Validate() error {
 // Validate checks every field-level constraint declared on PathScalarReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathScalarReq) Validate() error {
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.ID) {
+	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
 	}
 	return nil

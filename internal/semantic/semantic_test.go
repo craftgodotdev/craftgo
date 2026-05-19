@@ -441,7 +441,8 @@ func TestPathString(t *testing.T) {
 	if PathString(nil) != "" {
 		t.Error("nil path")
 	}
-	pkg := mustClean(t, `service S { get A /users/{id}/posts {} }`)
+	pkg := mustClean(t, `type R { id string }
+service S { get A /users/{id}/posts { request R } }`)
 	got := PathString(pkg.Services["S"].Methods[0].Path)
 	if got != "/users/{id}/posts" {
 		t.Errorf("got %q", got)

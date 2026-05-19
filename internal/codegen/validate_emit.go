@@ -171,10 +171,11 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	return ifReturnf(cond, msg)
 }
 
-// patternCheck handles `@pattern("regex")`. The regex is compiled inline
-// via `regexp.MustCompile` for v1; a future revision can hoist it to a
-// package-level `var` to amortise compile cost.
-func patternCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+// patternCheck handles `@pattern("regex")`. The regex is interned in
+// the file's [regexRegistry] so the `regexp.MustCompile` call happens
+// ONCE at package init — Validate() references the pre-compiled var
+// instead of recompiling per call.
+func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -182,11 +183,12 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 	if !ok {
 		return ""
 	}
-	uses["fmt"] = true
-	uses["regexp"] = true
+	ctx.uses["fmt"] = true
+	ctx.uses["regexp"] = true
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s!regexp.MustCompile(`%s`).MatchString(%s)", guard, s, val)
+	patVar := ctx.regexes.intern(s)
+	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
 	msg := fmt.Sprintf(`"%s: does not match pattern"`, f.Name)
 	return ifReturnf(cond, msg)
 }
@@ -198,7 +200,7 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 // (`@format("email")`) or a bare identifier (`@format(email)`) - both
 // accepted. Unknown names skip silently; projects can extend with
 // `@pattern("...")` for niche cases.
-func formatCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -211,19 +213,29 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 		return ""
 	}
 	for _, imp := range v.imports {
-		uses[imp] = true
+		ctx.uses[imp] = true
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	val := stringValueExpr(f, access)
 	msg := fmt.Sprintf(`"%s: not a valid %s"`, f.Name, v.label)
+	// Regex-backed formats intern their pattern in the package-level
+	// registry so `MustCompile` runs once; stdlib-backed formats
+	// (mail/url/time/...) emit their init-stmt verbatim.
+	emit := v.emit
+	if v.pattern != "" {
+		patVar := ctx.regexes.intern(v.pattern)
+		emit = func(val, msg string) string {
+			return ifReturnf("!"+patVar+".MatchString("+val+")", msg)
+		}
+	}
 	if f.Type.Optional {
 		// Pointer field: nest the check inside a nil-guard so the
 		// init-stmt forms (mail.ParseAddress / time.Parse / ...) only
 		// run when a value is present.
-		inner := v.emit(val, msg)
+		inner := emit(val, msg)
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(inner))
 	}
-	return v.emit(val, msg)
+	return emit(val, msg)
 }
 
 // indentBlock prefixes every line after the first with a single tab so
@@ -245,10 +257,15 @@ func indentBlock(s string) string {
 //     to skip the init when the value is absent.
 //
 // imports lists the Go packages used by the check; they're appended to
-// the validate file's import block via [emitCtx.uses].
+// the validate file's import block via [emitCtx.uses]. `pattern` is
+// non-empty for regex-backed formats so the caller can intern the
+// regex once at package-init via [regexRegistry] instead of compiling
+// per call; stdlib-backed formats leave it empty and rely on their
+// own `emit` closure.
 type formatValidator struct {
 	label   string
 	imports []string
+	pattern string
 	emit    func(val, msg string) string
 }
 
@@ -281,12 +298,18 @@ func stmtFormat(label string, imports []string, condFmt string) formatValidator 
 	}
 }
 
-// regexFormat is shorthand for [exprFormat] with the standard
-// regex-MatchString pattern. Kept for the formats where regex is the
-// pragmatic choice (uuid, hostname, hexcolor, ...).
+// regexFormat builds a [formatValidator] that the caller routes
+// through the package-level regex registry: the pattern is interned
+// once at file emit, and the check references the resulting var by
+// name (e.g. `_pattern0.MatchString(v.Foo)`). The validator carries
+// `regexp` in its imports so the var block stays well-formed even
+// when no other emit pulls it in.
 func regexFormat(label, pattern string) formatValidator {
-	return exprFormat(label, []string{"regexp"},
-		"!regexp.MustCompile(`"+pattern+"`).MatchString(%s)")
+	return formatValidator{
+		label:   label,
+		imports: []string{"regexp"},
+		pattern: pattern,
+	}
 }
 
 // formatValidators is the canonical catalogue. For RFC compliance the

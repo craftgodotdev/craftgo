@@ -861,7 +861,6 @@ components:
         percent:
           maximum: 100
           minimum: 0
-          multipleOf: 0.5
           type: number
       required:
       - code
@@ -1598,7 +1597,6 @@ components:
           exclusiveMinimum: true
           maximum: 10000
           minimum: 0
-          multipleOf: 0.5
           type: number
         source:
           $ref: '#/components/schemas/GeoSource'

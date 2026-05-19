@@ -230,31 +230,6 @@ type X { tags string[] @uniqueItems }`)
 	}
 }
 
-func TestValidateEachDecorator(t *testing.T) {
-	// `@each(@inner)` applies a nested validator decorator to every
-	// element of an array. Previously the parser accepted the nested
-	// form but the semantic registry didn't include `@each`, so every
-	// use produced `decorator/unknown` and the validator generator
-	// emitted nothing. Common patterns like
-	// `tags string[] @each(@length(1, 20))` were unusable.
-	src := runValidateGen(t, `package design
-type X {
-    scores int[]    @each(@gte(0))
-    tags   string[] @each(@length(1, 20))
-}`)
-	for _, want := range []string{
-		"for _i := range v.Scores",
-		"v.Scores[_i] < 0",
-		"for _i := range v.Tags",
-		"len(v.Tags[_i])",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("@each codegen missing %q:\n%s", want, src)
-		}
-	}
-	mustParseGo(t, src)
-}
-
 func TestValidateMapStructValueRecurses(t *testing.T) {
 	// Previously every `map<K, V>` short-circuited recursive
 	// validation regardless of V's shape. A `map<string, User>` left
@@ -284,6 +259,40 @@ type Catalog {
 		if !strings.Contains(src, want) {
 			t.Errorf("map value recursion missing %q:\n%s", want, src)
 		}
+	}
+	mustParseGo(t, src)
+}
+
+func TestValidateRegexHoisted(t *testing.T) {
+	// Patterns and regex-backed format catalogue entries must compile
+	// ONCE at package init via `var _pattern0 = regexp.MustCompile(...)`
+	// — the previous inline form recompiled the regex on every
+	// Validate() call, paying the parser cost per request.
+	src := runValidateGen(t, `package design
+type X {
+    code   string @pattern("^[A-Z]+$")
+    sku    string @pattern("^[A-Z]+$")
+    uuidV  string @format(uuid)
+    color  string @format(hexcolor)
+}`)
+	// Package-level var block exists.
+	if !strings.Contains(src, "var (") || !strings.Contains(src, "= regexp.MustCompile(") {
+		t.Errorf("expected package-level regex var block:\n%s", src)
+	}
+	// Validate() body references the interned var, not MustCompile.
+	if strings.Contains(src, "regexp.MustCompile(") {
+		// Allowed only inside the var block; check it doesn't leak
+		// into func bodies by counting occurrences vs unique patterns.
+		nMustCompile := strings.Count(src, "regexp.MustCompile(")
+		// 3 patterns total: user pattern ("^[A-Z]+$"), uuid, hexcolor.
+		// The two `@pattern("^[A-Z]+$")` deduplicate into a single var.
+		if nMustCompile != 3 {
+			t.Errorf("expected 3 unique regex vars (^[A-Z]+$ deduped, uuid, hexcolor), got %d:\n%s", nMustCompile, src)
+		}
+	}
+	// Validate body uses pre-compiled var.
+	if !strings.Contains(src, "_pattern0.MatchString") {
+		t.Errorf("Validate() should reference precompiled var:\n%s", src)
 	}
 	mustParseGo(t, src)
 }

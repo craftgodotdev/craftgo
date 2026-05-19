@@ -55,7 +55,6 @@ type T {
     @minItems(1)
     @maxItems(10)
     @uniqueItems
-    @each(@length(1, 20))
     tags  string[]
 
     @maxSize(5MB)
@@ -147,7 +146,7 @@ middleware RateLimit(rps: int = 100)
 		"example", "examples", "requiresOneOf", "mutuallyExclusive",
 		"length", "minLength", "maxLength", "pattern", "format", "enum",
 		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
-		"minItems", "maxItems", "uniqueItems", "each", "maxSize", "mimeTypes",
+		"minItems", "maxItems", "uniqueItems", "maxSize", "mimeTypes",
 		"default", "nullable",
 		"path", "query", "body", "header", "cookie", "form",
 		"prefix", "middlewares", "group", "tags", "externalDocs", "security",

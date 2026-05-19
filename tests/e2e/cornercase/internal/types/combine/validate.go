@@ -8,6 +8,13 @@ import (
 	"regexp"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^\+\d+$`)
+	_pattern1 = regexp.MustCompile(`^.*@example\.com$`)
+)
+
 // Validate checks every field-level constraint declared on DefaultsBoundary.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsBoundary) Validate() error {
@@ -115,7 +122,7 @@ func (v *PairsContact) Validate() error {
 			return fmt.Errorf("email: not a valid email")
 		}
 	}
-	if v.Phone != nil && !regexp.MustCompile(`^\+\d+$`).MatchString(*v.Phone) {
+	if v.Phone != nil && !_pattern0.MatchString(*v.Phone) {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
@@ -151,7 +158,7 @@ func (v *PairsStr) Validate() error {
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
 	}
-	if !regexp.MustCompile(`^.*@example\.com$`).MatchString(v.Email) {
+	if !_pattern1.MatchString(v.Email) {
 		return fmt.Errorf("email: does not match pattern")
 	}
 	return nil

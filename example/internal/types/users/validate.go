@@ -7,6 +7,13 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"time"
+)
+
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`)
 )
 
 // Validate checks every field-level constraint declared on AddContactReq.
@@ -50,7 +57,7 @@ func (v *Contact) Validate() error {
 	if v.Email != nil && len(*v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
-	if v.Phone != nil && !regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`).MatchString(*v.Phone) {
+	if v.Phone != nil && !_pattern0.MatchString(*v.Phone) {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
@@ -177,6 +184,166 @@ func (v *UserList) Validate() error {
 func (v *UserRef) Validate() error {
 	if l := len(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on AccountActionDeniedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AccountActionDeniedBody) Validate() error {
+	if v.Reason == "" {
+		return fmt.Errorf("reason: required")
+	}
+	switch v.Reason {
+	case AccountSuspensionReasonPolicyViolation, AccountSuspensionReasonPaymentFailure, AccountSuspensionReasonSecurityHold, AccountSuspensionReasonOperatorAction:
+	default:
+		return fmt.Errorf("reason: invalid AccountSuspensionReason value")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on AccountSuspendedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AccountSuspendedBody) Validate() error {
+	if v.Reason != nil && len(*v.Reason) > 280 {
+		return fmt.Errorf("reason: length greater than 280")
+	}
+	if v.Until != nil {
+		if _, _err := time.Parse(time.RFC3339, *v.Until); _err != nil {
+			return fmt.Errorf("until: not a valid RFC 3339 datetime")
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on DependencyUnavailableBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DependencyUnavailableBody) Validate() error {
+	if len(v.Upstream) < 1 {
+		return fmt.Errorf("upstream: length less than 1")
+	}
+	if len(v.Upstream) > 40 {
+		return fmt.Errorf("upstream: length greater than 40")
+	}
+	if v.Eta != nil && *v.Eta < 0 {
+		return fmt.Errorf("eta: below minimum 0")
+	}
+	if v.Eta != nil && *v.Eta > 7200 {
+		return fmt.Errorf("eta: above maximum 7200")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on EmailTakenBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *EmailTakenBody) Validate() error {
+	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+		return fmt.Errorf("email: not a valid email")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on InsufficientScopeBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *InsufficientScopeBody) Validate() error {
+	if len(v.RequiredScope) < 1 {
+		return fmt.Errorf("requiredScope: length less than 1")
+	}
+	if len(v.RequiredScope) > 64 {
+		return fmt.Errorf("requiredScope: length greater than 64")
+	}
+	{
+		seen := make(map[string]struct{}, len(v.HoldingScopes))
+		for _, item := range v.HoldingScopes {
+			if _, dup := seen[item]; dup {
+				return fmt.Errorf("holdingScopes: items must be unique")
+			}
+			seen[item] = struct{}{}
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on MalformedRequestBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *MalformedRequestBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on OwnershipConflictBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *OwnershipConflictBody) Validate() error {
+	if err := v.Owner.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on RateLimitedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *RateLimitedBody) Validate() error {
+	if v.RetryAfter < 1 {
+		return fmt.Errorf("retry_after: below minimum 1")
+	}
+	if v.RetryAfter > 86400 {
+		return fmt.Errorf("retry_after: above maximum 86400")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on StaleVersionBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *StaleVersionBody) Validate() error {
+	if v.ExpectedVersion < 0 {
+		return fmt.Errorf("expected_version: below minimum 0")
+	}
+	if v.ActualVersion < 0 {
+		return fmt.Errorf("actual_version: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on UpstreamTimeoutBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *UpstreamTimeoutBody) Validate() error {
+	if len(v.Upstream) < 1 {
+		return fmt.Errorf("upstream: length less than 1")
+	}
+	if len(v.Upstream) > 40 {
+		return fmt.Errorf("upstream: length greater than 40")
+	}
+	if v.ElapsedMs < 0 {
+		return fmt.Errorf("elapsedMs: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on UsernameTakenBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *UsernameTakenBody) Validate() error {
+	if len(v.Username) < 1 {
+		return fmt.Errorf("username: length less than 1")
+	}
+	if len(v.Username) > 40 {
+		return fmt.Errorf("username: length greater than 40")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ValidationFailedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ValidationFailedBody) Validate() error {
+	{
+		seen := make(map[string]struct{}, len(v.Fields))
+		for _, item := range v.Fields {
+			if _, dup := seen[item]; dup {
+				return fmt.Errorf("fields: items must be unique")
+			}
+			seen[item] = struct{}{}
+		}
+	}
+	if v.Hint != nil && len(*v.Hint) > 200 {
+		return fmt.Errorf("hint: length greater than 200")
 	}
 	return nil
 }

@@ -13,6 +13,21 @@ import (
 	"time"
 )
 
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	_pattern1 = regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`)
+	_pattern2 = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`)
+	_pattern3 = regexp.MustCompile(`^[0-9]{12,19}$`)
+	_pattern4 = regexp.MustCompile(`^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`)
+	_pattern5 = regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$`)
+	_pattern6 = regexp.MustCompile(`^[A-Z0-9_]+$`)
+	_pattern7 = regexp.MustCompile(`^[A-Z]{2,4}$`)
+	_pattern8 = regexp.MustCompile(`^\+?[0-9]+$`)
+	_pattern9 = regexp.MustCompile(`\d{3}-\d{3}-\d{4}`)
+)
+
 // Validate checks every field-level constraint declared on AllFormats.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AllFormats) Validate() error {
@@ -34,7 +49,7 @@ func (v *AllFormats) Validate() error {
 	if len(v.URI) > 2048 {
 		return fmt.Errorf("uri: length greater than 2048")
 	}
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(v.Uuid) {
+	if !_pattern0.MatchString(v.Uuid) {
 		return fmt.Errorf("uuid: not a valid UUID")
 	}
 	if l := len(v.Uuid); l < 36 || l > 36 {
@@ -58,13 +73,13 @@ func (v *AllFormats) Validate() error {
 	if l := len(v.TimeField); l < 8 || l > 8 {
 		return fmt.Errorf("timeField: length out of range [8, 8]")
 	}
-	if !regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`).MatchString(v.Phone) {
+	if !_pattern1.MatchString(v.Phone) {
 		return fmt.Errorf("phone: not a valid phone")
 	}
 	if len(v.Phone) > 20 {
 		return fmt.Errorf("phone: length greater than 20")
 	}
-	if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`).MatchString(v.Hostname) {
+	if !_pattern2.MatchString(v.Hostname) {
 		return fmt.Errorf("hostname: not a valid hostname")
 	}
 	if len(v.Hostname) > 253 {
@@ -94,7 +109,7 @@ func (v *AllFormats) Validate() error {
 	if len(v.MAC) > 17 {
 		return fmt.Errorf("mac: length greater than 17")
 	}
-	if !regexp.MustCompile(`^[0-9]{12,19}$`).MatchString(v.Creditcard) {
+	if !_pattern3.MatchString(v.Creditcard) {
 		return fmt.Errorf("creditcard: not a valid credit card number")
 	}
 	if l := len(v.Creditcard); l < 12 || l > 19 {
@@ -112,7 +127,7 @@ func (v *AllFormats) Validate() error {
 	if len(v.Base64url) > 8192 {
 		return fmt.Errorf("base64url: length greater than 8192")
 	}
-	if !regexp.MustCompile(`^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`).MatchString(v.Hexcolor) {
+	if !_pattern4.MatchString(v.Hexcolor) {
 		return fmt.Errorf("hexcolor: not a valid hex color")
 	}
 	if len(v.Hexcolor) > 7 {
@@ -133,7 +148,7 @@ func (v *Str_Combos) Validate() error {
 	if l := len(v.Email1); l < 1 || l > 80 {
 		return fmt.Errorf("email1: length out of range [1, 80]")
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$`).MatchString(v.Email1) {
+	if !_pattern5.MatchString(v.Email1) {
 		return fmt.Errorf("email1: does not match pattern")
 	}
 	if _, _err := mail.ParseAddress(v.Email1); _err != nil {
@@ -151,7 +166,7 @@ func (v *Str_Combos) Validate() error {
 	if l := len(v.CodeID); l < 3 || l > 16 {
 		return fmt.Errorf("codeID: length out of range [3, 16]")
 	}
-	if !regexp.MustCompile(`^[A-Z0-9_]+$`).MatchString(v.CodeID) {
+	if !_pattern6.MatchString(v.CodeID) {
 		return fmt.Errorf("codeID: does not match pattern")
 	}
 	return nil
@@ -178,7 +193,7 @@ func (v *Str_EchoReq) Validate() error {
 	if len(v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
-	if !regexp.MustCompile(`^[A-Z]{2,4}$`).MatchString(v.Code) {
+	if !_pattern7.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
 	if v.Bio != nil && len(*v.Bio) > 500 {
@@ -202,7 +217,7 @@ func (v *Str_EchoResp) Validate() error {
 	if len(v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
-	if !regexp.MustCompile(`^[A-Z]{2,4}$`).MatchString(v.Code) {
+	if !_pattern7.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
 	if v.Bio != nil && len(*v.Bio) > 500 {
@@ -255,7 +270,7 @@ func (v *Str_Optionals) Validate() error {
 			return fmt.Errorf("mailOpt: not a valid email")
 		}
 	}
-	if v.PattOpt != nil && !regexp.MustCompile(`^[A-Z]{2,4}$`).MatchString(*v.PattOpt) {
+	if v.PattOpt != nil && !_pattern7.MatchString(*v.PattOpt) {
 		return fmt.Errorf("pattOpt: does not match pattern")
 	}
 	if v.BothOpt != nil && (len(*v.BothOpt) < 1 || len(*v.BothOpt) > 80) {
@@ -272,13 +287,13 @@ func (v *Str_Optionals) Validate() error {
 // Validate checks every field-level constraint declared on Str_Patterns.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Str_Patterns) Validate() error {
-	if !regexp.MustCompile(`^[A-Z]{2,4}$`).MatchString(v.Upper) {
+	if !_pattern7.MatchString(v.Upper) {
 		return fmt.Errorf("upper: does not match pattern")
 	}
-	if !regexp.MustCompile(`^\+?[0-9]+$`).MatchString(v.IntlNum) {
+	if !_pattern8.MatchString(v.IntlNum) {
 		return fmt.Errorf("intlNum: does not match pattern")
 	}
-	if !regexp.MustCompile(`\d{3}-\d{3}-\d{4}`).MatchString(v.PhoneUs) {
+	if !_pattern9.MatchString(v.PhoneUs) {
 		return fmt.Errorf("phoneUS: does not match pattern")
 	}
 	return nil
