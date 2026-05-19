@@ -7,7 +7,6 @@ Decorators attach metadata to declarations and fields. Every decorator starts wi
 50 decorators, grouped by where they apply. Each decorator declares one or more **sites** (file, type, field, service, method, ...) and an **argument shape** (none, string, number, ident, list, ...). Using a decorator at the wrong site or with the wrong arguments fires a diagnostic with the line and column.
 
 ```craftgo
-@title("My API")               // file
 @version("1.0.0")              // file
 
 type User {                    // type
@@ -123,16 +122,15 @@ service UserService { ... }
 
 ## OpenAPI file-header
 
-### `@title(text)` and `@version(text)`
+### `@version(text)`
 
-Override the OpenAPI document title and version per file. Without these, the values come from `craftgo.design.yaml`'s `openapi.title` / `openapi.version`.
+Override the OpenAPI document version per file. Without it, the value comes from `craftgo.design.yaml`'s `openapi.version`. The document title is set exclusively via the manifest's `openapi.title`.
 
 | Sites | file |
 | -------- | -------- |
 | Args  | `(string)` |
 
 ```craftgo
-@title("My API")
 @version("2.0.0")
 package design
 ```

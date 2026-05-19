@@ -115,8 +115,8 @@ import`)
 // ---------- file decorators ----------
 
 func TestFileDecorators(t *testing.T) {
-	f := mustParse(t, `@title("API")
-@version("1.0")
+	f := mustParse(t, `@version("1.0")
+@doc("file-level doc")
 package design`)
 	if len(f.Decorators) != 2 {
 		t.Errorf("count: %d", len(f.Decorators))

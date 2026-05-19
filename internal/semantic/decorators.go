@@ -337,12 +337,6 @@ var Registry = map[string]Spec{
 	// OpenAPI metadata when no design-yaml override is supplied. Not in
 	// the README §"Decorator compatibility matrix" table - kept here as
 	// the runtime / fixtures rely on them.
-	"title": {
-		Name:   "title",
-		Levels: LvlFile,
-		Doc:    "OpenAPI document title (overrides craftgo.design.yaml openapi.title).",
-		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
-	},
 	"version": {
 		Name:   "version",
 		Levels: LvlFile,

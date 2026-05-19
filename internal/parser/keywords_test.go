@@ -43,8 +43,7 @@ type X { id string }
 
 func TestParseAllKeywordsRoundTrip(t *testing.T) {
 	// Every reserved keyword + decorator should parse without error.
-	src := `@title("X")
-@version("1")
+	src := `@version("1")
 package design
 
 import "shared"
@@ -117,8 +116,8 @@ extend service S {
 	if f.Package == nil || f.Package.Name != "design" {
 		t.Errorf("package name lost: %+v", f.Package)
 	}
-	if len(f.Decorators) != 2 {
-		t.Errorf("want 2 file decorators, got %d", len(f.Decorators))
+	if len(f.Decorators) != 1 {
+		t.Errorf("want 1 file decorator, got %d", len(f.Decorators))
 	}
 	// Find the service.
 	var svcCount int
@@ -138,7 +137,7 @@ extend service S {
 }
 
 func TestParseDecoratorsOnEveryLevel(t *testing.T) {
-	src := `@title("X")
+	src := `@version("1")
 package design
 
 @doc("type")

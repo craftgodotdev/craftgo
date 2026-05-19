@@ -19,6 +19,15 @@ func (v *Audit) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on AuditTrail.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AuditTrail) Validate() error {
+	if _, _err := time.Parse(time.RFC3339, v.At); _err != nil {
+		return fmt.Errorf("at: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Money.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Money) Validate() error {
@@ -40,6 +49,12 @@ func (v *Pagination) Validate() error {
 	if v.Limit != nil && *v.Limit > 100 {
 		return fmt.Errorf("limit: above maximum 100")
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on AccessDeniedErrBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AccessDeniedErrBody) Validate() error {
 	return nil
 }
 

@@ -1,0 +1,41 @@
+// response_headers.craftgo exercises @header / @cookie on the
+// response side. The runtime already routes those fields through
+// http.Header.Set / http.SetCookie before encoding the JSON body;
+// what was missing is the OpenAPI emission picking them out of the
+// response type and surfacing them as response.headers entries.
+//
+// Without this fixture, the failure mode is silent: code lints fine
+// and tests pass, but client generators read the spec, see the
+// header field as part of the JSON body, and refuse / mis-route
+// the value at runtime.
+package services
+
+import "shared"
+
+// PaginatedResp carries a JSON list plus two response-only fields:
+// `X-Total-Count` advertises the count to clients implementing
+// virtual scrolling, and the `session` cookie refreshes the auth
+// token without forcing a separate /refresh round trip. Both fields
+// stay out of the JSON body via runtime header/cookie writers.
+//
+// `count` is a string on the wire because @header / @cookie
+// codegen only accepts string-backed shapes - the runtime writer
+// http.Header.Set takes a string, so non-string typed fields would
+// need a per-type formatter that the framework deliberately keeps
+// out of the binding layer.
+type PaginatedResp {
+	items   shared.ID[]
+	count   string      @header("X-Total-Count")
+	session string      @cookie("session_id")
+}
+
+// HeaderEchoService demonstrates that the JSON body schema and the
+// response.headers map come out of the SAME response struct: split
+// purely by `@header` / `@cookie` decorators on individual fields.
+@prefix("/header-echo")
+service HeaderEchoService {
+	@doc("List items with the total surfaced via response header and the auth cookie refreshed in passing.")
+	get ListItems / {
+		response PaginatedResp
+	}
+}

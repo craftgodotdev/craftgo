@@ -173,12 +173,48 @@ func TestServiceExtendWithoutPrimary(t *testing.T) {
 	}
 }
 
-func TestServiceExtendWithDecorators(t *testing.T) {
+// TestServiceExtendWithServiceOnlyDecorator pins the validation that
+// a service-only decorator like `@prefix` is rejected when it lands on
+// an `extend service` block - those blocks now propagate decorators to
+// methods inside them, so a decorator with no method-level form has
+// nothing meaningful to do.
+func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `service S {}
 @prefix("/x")
 extend service S { get Op /x {} }`))
-	if !diagsContain(diags, "must not have service-level decorators") {
+	if !diagsContain(diags, "not valid at method level") {
 		t.Errorf("got %v", diags)
+	}
+}
+
+// TestServiceExtendDecoratorPropagatesToMethods is the happy path for
+// the extend-service decorator relax: a method-level-applicable
+// decorator on the extend block reaches every method inside.
+func TestServiceExtendDecoratorPropagatesToMethods(t *testing.T) {
+	pkg, diags := Analyze(parseFiles(t, `middleware Auth
+service S { get A /a {} }
+@middlewares(Auth)
+extend service S { get B /b {} }`))
+	if len(diags) > 0 {
+		t.Fatalf("unexpected diags: %v", diags)
+	}
+	var bMethod *ast.Method
+	for _, m := range pkg.Services["S"].Methods {
+		if m.Name == "B" {
+			bMethod = m
+		}
+	}
+	if bMethod == nil {
+		t.Fatal("method B missing")
+	}
+	saw := false
+	for _, d := range bMethod.Decorators {
+		if d.Name == "middlewares" {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Errorf("@middlewares did not propagate to method B: %+v", bMethod.Decorators)
 	}
 }
 
@@ -327,14 +363,31 @@ type X { name string }`))
 	}
 }
 
+// TestDuplicateDecoratorOnMethod uses `@deprecated` (single-value,
+// idempotent) to pin the duplicate check, because `@tags` is part of
+// the repeatable set (multiple @tags decorators concat their values).
 func TestDuplicateDecoratorOnMethod(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `service S {
+		@deprecated
+		@deprecated
+		get GetUser /u {}
+	}`))
+	if !diagsContain(diags, "duplicate decorator @deprecated on method S.GetUser") {
+		t.Errorf("got %v", diags)
+	}
+}
+
+// TestRepeatableDecoratorAllowedOnMethod pins the relax: multiple
+// `@tags` decorators on the same method are valid - each contributes
+// its arguments to the aggregate the codegen layer reads.
+func TestRepeatableDecoratorAllowedOnMethod(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `service S {
 		@tags("a")
 		@tags("b")
 		get GetUser /u {}
 	}`))
-	if !diagsContain(diags, "duplicate decorator @tags on method S.GetUser") {
-		t.Errorf("got %v", diags)
+	if diagsContain(diags, "duplicate decorator @tags") {
+		t.Errorf("@tags is repeatable; expected no diag, got %v", diags)
 	}
 }
 

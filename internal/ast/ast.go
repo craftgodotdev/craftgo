@@ -43,13 +43,13 @@ var astMarkerCalled bool
 // File is the root node - one per `.craftgo` source file.
 //
 // Decorators are the file-level decorators that appear BEFORE `package` (e.g.
-// `@title`, `@version`). Decorators that appear without a `package` keyword
+// `@version`, `@doc`). Decorators that appear without a `package` keyword
 // belong to the first declaration instead and are attached there by the
 // parser.
 type File struct {
 	// LeadingDoc preserves a `//` block at the very top of the file
 	// when the first AST-bearing token is a file-level decorator
-	// (`@title`, `@version`, ...). [Decorator] has no Doc field, so
+	// (`@version`, `@doc`, ...). [Decorator] has no Doc field, so
 	// without LeadingDoc the lexer-attached comment would be lost
 	// after the parse / format round trip. When the first token is
 	// `package`, the same comment lands on [PackageDecl.Doc] instead

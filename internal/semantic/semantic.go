@@ -367,6 +367,10 @@ const (
 	// CodeEnumDuplicateLiteral fires when two enum values share an
 	// int or string literal.
 	CodeEnumDuplicateLiteral = "enum/duplicate-literal"
+	// CodeEnumEmpty fires when an `enum X { }` has zero values. An
+	// empty enum has no value that passes validation and emits
+	// `enum: []` which violates JSON Schema 2020-12.
+	CodeEnumEmpty = "enum/empty-values"
 
 	// CodeServiceDuplicate fires for two primary `service` decls of
 	// the same name.
@@ -374,9 +378,12 @@ const (
 	// CodeServiceExtendOrphan fires when an `extend service` has no
 	// primary declaration in the package.
 	CodeServiceExtendOrphan = "service/extend-orphan"
-	// CodeServiceExtendDecorators fires when an `extend service`
-	// carries service-level decorators (those belong on the primary).
-	CodeServiceExtendDecorators = "service/extend-decorators"
+	// CodeExtendDecoratorNotMethod fires when an `extend service` block
+	// carries a decorator that has no method-level form (e.g. `@prefix`).
+	// Such decorators must sit on the primary service declaration;
+	// putting them on an extend block would propagate to every method
+	// in the block, which is meaningless for service-only directives.
+	CodeExtendDecoratorNotMethod = "service/extend-decorator-not-method"
 	// CodeServiceDuplicateMethod fires for two methods sharing a name
 	// inside one service (after extends merge).
 	CodeServiceDuplicateMethod = "service/duplicate-method"
@@ -765,9 +772,13 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 }
 
 // mergeServices flattens each [ServiceInfo] into a single ordered method
-// list. `extend service` declarations may not carry service-level
-// decorators (those belong on the primary), and orphan extends without a
-// primary are reported.
+// list. Decorators on an `extend service` block are propagated to every
+// method inside that block by prepending them to the method's own
+// decorator chain - so a method authored under `@middlewares(Auth)
+// extend service Users { ... }` sees Auth as if the decorator were
+// written directly above it. This lets the same logical service split
+// into "public" + "authenticated" sub-blocks without forking the
+// service declaration.
 func (a *analyzer) mergeServices() {
 	for name, si := range a.pkg.Services {
 		if si.Primary == nil {
@@ -781,12 +792,34 @@ func (a *analyzer) mergeServices() {
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
 		for _, e := range si.Extends {
-			if len(e.Decorators) > 0 {
-				d := a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendDecorators,
-					"extend service %q must not have service-level decorators", name)
-				d.Related = related(si.Primary.Pos, "primary service declared here")
+			// Filter decorators by level: only those that can apply at
+			// method-level get propagated. Service-only decorators like
+			// `@prefix` make no sense per-method - we emit a diagnostic
+			// instead so the user moves them to the primary service.
+			var propagate []*ast.Decorator
+			for _, d := range e.Decorators {
+				spec, ok := Lookup(d.Name)
+				if !ok {
+					// Unknown decorator: skip here; the decorator-check
+					// pass already emits a diagnostic for it.
+					continue
+				}
+				if spec.Levels&LvlMethod == 0 {
+					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
+						"decorator @%s on extend service %q is not valid at method level; move it to the primary service", d.Name, name)
+					continue
+				}
+				propagate = append(propagate, d)
 			}
-			si.Methods = append(si.Methods, e.Methods()...)
+			for _, m := range e.Methods() {
+				if len(propagate) > 0 {
+					merged := make([]*ast.Decorator, 0, len(propagate)+len(m.Decorators))
+					merged = append(merged, propagate...)
+					merged = append(merged, m.Decorators...)
+					m.Decorators = merged
+				}
+				si.Methods = append(si.Methods, m)
+			}
 		}
 	}
 }
@@ -824,13 +857,19 @@ func (a *analyzer) checkFieldUniqueness() {
 // int and string enums.
 func (a *analyzer) checkEnums() {
 	for _, ed := range a.pkg.Enums {
+		values := ed.EnumValues()
+		if len(values) == 0 {
+			a.diag(ed.Pos, ed.Pos, lexer.SeverityError, CodeEnumEmpty,
+				"enum %q has no values; OpenAPI emits `enum: []` which is invalid per JSON Schema 2020-12", ed.Name)
+			continue
+		}
 		seenNames := map[string]lexer.Position{}
 		seenInts := map[int64]lexer.Position{}
 		seenStrs := map[string]lexer.Position{}
 		var firstKind ast.EnumValueKind
 		var firstKindPos lexer.Position
 		first := true
-		for _, v := range ed.EnumValues() {
+		for _, v := range values {
 			if prev, dup := seenNames[v.Name]; dup {
 				d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateName,
 					"duplicate enum value name %q in %q", v.Name, ed.Name)
@@ -956,10 +995,20 @@ func (a *analyzer) checkFieldDecorators(parent string, members []ast.TypeMember)
 // whose Name appears more than once in decs. The first occurrence is silent;
 // every subsequent one is flagged with a Related link to the first so the
 // IDE can render a clickable cross-reference.
+//
+// Repeatable decorators (`@security`, `@tags`, `@middlewares`) bypass the
+// check: each instance is its own semantic contribution (OR alternative
+// for security, additional tag, additional middleware in the chain) and
+// the extend-service propagation naturally produces multiple instances
+// of the same name when a method-level decorator merges with one inherited
+// from an `extend service` block.
 func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 	seen := map[string]lexer.Position{}
 	for _, d := range decs {
 		if d == nil {
+			continue
+		}
+		if repeatableDecorators[d.Name] {
 			continue
 		}
 		if prev, ok := seen[d.Name]; ok {
@@ -971,6 +1020,15 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 		}
 		seen[d.Name] = d.Pos
 	}
+}
+
+// repeatableDecorators lists decorators whose multi-instance form is
+// the intended idiom: each occurrence adds to the aggregate (tags
+// merge, middlewares chain, security alternatives OR).
+var repeatableDecorators = map[string]bool{
+	"security":    true,
+	"tags":        true,
+	"middlewares": true,
 }
 
 // checkDecoratorConflicts fires CodeDecoratorConflict for any field

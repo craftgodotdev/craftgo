@@ -79,7 +79,7 @@ func (p *Parser) Diagnostics() []lexer.Diagnostic { return p.diags }
 func (p *Parser) Parse() *ast.File {
 	f := &ast.File{}
 	// Capture the file-header `//` block when it would otherwise be
-	// dropped: a decorator-led file (`@title(...) ... package x`)
+	// dropped: a decorator-led file (`@version(...) ... package x`)
 	// lets the lexer attach the comment to the first `@` token, but
 	// [ast.Decorator] has no Doc field, so without this snapshot the
 	// comment vanishes through the parser/format round trip.

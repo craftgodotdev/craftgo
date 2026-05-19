@@ -18,6 +18,19 @@ type Audit struct {
 	CreatedBy string `json:"createdBy"`
 }
 
+// AuditTrail is the canonical "who-did-what-when" mixin shape.
+// Declared as a regular type so other decls can embed it (the
+// language has no separate `mixin` keyword - any type member that
+// is a bare ident becomes a mixin reference). Embedded into a
+// regular type works (covered elsewhere); embedded into an error
+// body must flatten the same way - generated TS clients reading
+// the error envelope need the `actor` / `at` fields to be part of
+// the error schema, not silently dropped.
+type AuditTrail struct {
+	Actor string `json:"actor"`
+	At    string `json:"at"`
+}
+
 // Money is the canonical currency-aware amount: an integer minor-
 // unit value paired with the ISO-4217 currency code. `currency` is
 // fixed at exactly three characters; `amount` is non-negative so

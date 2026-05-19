@@ -1219,8 +1219,8 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	}
 	line := int(pos.Line) + 1
 	// File-header decorator zone: cursor sits AT or above the
-	// `package` line - anything legal at file scope (`@title`,
-	// `@version`, `@doc`) wins. Without this branch the zone above
+	// `package` line - anything legal at file scope (`@version`,
+	// `@doc`) wins. Without this branch the zone above
 	// `package` would be classified by the first decl below it,
 	// which is almost always wrong (a field-level decorator like
 	// `@length` would surface as a completion for the file header).

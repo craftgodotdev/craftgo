@@ -1,0 +1,77 @@
+// extend_inheritance.craftgo pins the "extend service decorator
+// propagation" mechanism that solves the 50/50-auth case: one
+// logical service splits into a public primary block and one or
+// more `extend service` blocks that each carry their own
+// method-level-applicable decorators. The merge step prepends the
+// extend block's decorators to every method inside, so authoring
+// a single `@middlewares(Auth)` on the block reaches every method
+// without per-method repetition.
+package services
+
+import "shared"
+
+// EntitlementsAuditTrail records the auth scheme that gated an
+// admin endpoint. Plain string body field - no @header/@cookie
+// involvement; it just rides in the JSON response so the audit
+// log can correlate writes to the operator that performed them.
+type EntitlementsAuditTrail {
+	actor  string
+	action string
+}
+
+// AdminInventoryService primary is public-only: the `health`
+// probe is intentionally outside any auth boundary so liveness
+// checks succeed before credentials are configured.
+@prefix("/admin/inventory")
+service AdminInventoryService {
+	@doc("Liveness probe. Public on purpose - operators hit this before secrets are loaded.")
+	get Health /health {
+		response HealthResp
+	}
+}
+
+// HealthResp is a minimal envelope for the liveness probe - a bare
+// boolean would force a wrapper anyway, so we make it explicit.
+type HealthResp {
+	ok bool
+}
+
+// `extend service AdminInventoryService` adds authenticated
+// endpoints that share the `@middlewares(AuthRequired)` chain.
+// Without the propagation step, each method below would need
+// `@middlewares(AuthRequired)` written explicitly - this is the
+// verbosity the relax is designed to eliminate.
+@middlewares(AuthRequired)
+@tags("admin")
+@security(AdminBearer)
+extend service AdminInventoryService {
+	@doc("List inventory items. Inherits auth + tags from the extend block.")
+	get ListItems / {
+		response InventoryListResp
+	}
+
+	@doc("Promote an item to the featured slot. Inherits the same auth chain plus a method-level admin scope.")
+	@security(AdminWriteScope)
+	post PromoteItem /{itemId}/promote {
+		request  PromoteItemReq
+		response EntitlementsAuditTrail
+	}
+}
+
+// InventoryListResp envelopes the slice + total count. Body-only
+// fields here so the extend-inheritance focus stays on decorator
+// propagation rather than response binding (covered separately by
+// response_headers.craftgo).
+type InventoryListResp {
+	items shared.ID[]
+	total int
+}
+
+// PromoteItemReq is path-bound by `itemId` and carries the slot
+// position as a body field. `slot` is a positive int with a
+// reasonable upper bound so out-of-range requests bounce at the
+// transport gate.
+type PromoteItemReq {
+	itemId string @minLength(1)
+	slot   int    @gte(1) @lte(100)
+}

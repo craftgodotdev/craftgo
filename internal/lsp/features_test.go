@@ -10,8 +10,21 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
+
+// mustParseFile parses src into an [ast.File] for tests that need to
+// build a synthetic project layout (multi-file go-to-def fixtures).
+func mustParseFile(t *testing.T, path, src string) *ast.File {
+	t.Helper()
+	p := parser.New(path, src)
+	f := p.Parse()
+	if pd := p.Diagnostics(); len(pd) > 0 {
+		t.Fatalf("parse %s: %v", path, pd)
+	}
+	return f
+}
 
 const testDSL = `package design
 
@@ -242,14 +255,11 @@ type T {
 		t.Fatal("expected completion items after @ at field site")
 	}
 	hasLength := false
-	hasTitle := false
 	hasSensitive := false
 	for _, it := range items {
 		switch it.Label {
 		case "length":
 			hasLength = true
-		case "title":
-			hasTitle = true
 		case "sensitive":
 			hasSensitive = true
 		}
@@ -259,9 +269,6 @@ type T {
 	}
 	if !hasSensitive {
 		t.Error("expected @sensitive in field-level completions")
-	}
-	if hasTitle {
-		t.Error("@title is file-only and should not appear at field level")
 	}
 }
 
@@ -697,6 +704,174 @@ type Holder {
 
 // findToken locates the first occurrence of needle in src and returns
 // its 0-indexed LSP position at the start of the token.
+// TestDefinitionPrefersKindFromDecoratorContext pins the LSP fix for
+// cross-namespace ambiguity: when an identifier names both a middleware
+// AND a same-named error decl, a click inside `@middlewares(...)` jumps
+// to the middleware decl - not the error decl declared earlier in the
+// file. Without this preference, the linear scan would always return
+// whichever decl appeared first in source order.
+func TestDefinitionPrefersKindFromDecoratorContext(t *testing.T) {
+	src := `package x
+error Forbidden AuthRequired { reason string }
+middleware AuthRequired
+service S {
+	@middlewares(AuthRequired)
+	get GetThing /things/{id} {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	// Find the AuthRequired token INSIDE @middlewares(...) - it is the
+	// third occurrence in source order (after the error name and the
+	// middleware decl name).
+	var inside protocol.Position
+	count := 0
+	for _, tok := range view.tokens {
+		if tok.Text != "AuthRequired" {
+			continue
+		}
+		count++
+		if count == 3 {
+			inside = protocol.Position{Line: uint32(tok.Pos.Line - 1), Character: uint32(tok.Pos.Column - 1)}
+			break
+		}
+	}
+	if count < 3 {
+		t.Fatalf("expected at least 3 AuthRequired tokens, got %d", count)
+	}
+	// Without context, findDecl would return the FIRST decl named
+	// AuthRequired - in this fixture, the error decl. With context, we
+	// expect the middleware decl.
+	decName, ok := decoratorArgContext(view, inside)
+	if !ok || decName != "middlewares" {
+		t.Fatalf("decoratorArgContext should detect @middlewares, got name=%q ok=%v", decName, ok)
+	}
+	d := findDeclKindAware(view.file, "AuthRequired", "middlewares")
+	if d == nil {
+		t.Fatal("findDeclKindAware returned nil for middleware context")
+	}
+	if _, isMW := d.(*ast.MiddlewareDecl); !isMW {
+		t.Errorf("expected MiddlewareDecl, got %T", d)
+	}
+}
+
+// TestDefinitionTypeShapePositionExcludesMiddleware pins the inverse
+// disambiguation: a click on an ident in a TYPE-shape position
+// (mixin, field type, request, response, generic arg) must NEVER
+// jump to a middleware decl even when one shares the name. Middleware
+// has its own decl namespace; in type positions, only TypeDecl /
+// EnumDecl / ScalarDecl / ErrorDecl are reachable.
+func TestDefinitionTypeShapePositionExcludesMiddleware(t *testing.T) {
+	src := `package x
+middleware Greeter
+type Greeter { id string }
+type Holder { g Greeter }
+`
+	view := parseSnapshot("t.craftgo", src)
+	// Locate `Greeter` inside `g Greeter` (the field-type position).
+	count := 0
+	var fieldTypePos protocol.Position
+	for _, tok := range view.tokens {
+		if tok.Text != "Greeter" {
+			continue
+		}
+		count++
+		if count == 3 {
+			fieldTypePos = protocol.Position{Line: uint32(tok.Pos.Line - 1), Character: uint32(tok.Pos.Column - 1)}
+			break
+		}
+	}
+	idx, _ := view.tokenAt(fieldTypePos.Line, fieldTypePos.Character)
+	ctx := refContextAt(view, idx, fieldTypePos)
+	if ctx != "type" {
+		t.Errorf("expected type context for field-type position, got %q", ctx)
+	}
+	d := findDeclKindAware(view.file, "Greeter", "type")
+	if d == nil {
+		t.Fatal("type-context lookup returned nil")
+	}
+	if _, isMW := d.(*ast.MiddlewareDecl); isMW {
+		t.Errorf("type-context lookup wrongly returned MiddlewareDecl")
+	}
+	if _, isType := d.(*ast.TypeDecl); !isType {
+		t.Errorf("expected TypeDecl, got %T", d)
+	}
+}
+
+// TestDefinitionKindAwareAcrossFiles pins the cross-file branch of
+// the context-aware lookup. The original report was that a click on
+// `AuthRequired` in `@middlewares(AuthRequired)` jumped to the same-
+// named error decl - even after the in-file fix - because the
+// project-wide `findDeclAcross` was still kind-blind. Here the
+// middleware lives in one virtual file, the error in another, and
+// the cursor in a third (the import-only `services` file).
+func TestDefinitionKindAwareAcrossFiles(t *testing.T) {
+	mwFile := `package shared
+middleware AuthRequired
+`
+	errFile := `package shared
+error Forbidden AuthRequired { reason string }
+`
+	useFile := `package services
+import "shared"
+service S {
+	@middlewares(AuthRequired)
+	get GetX /x {}
+}
+`
+	files := []projectAST{
+		{path: "shared/mw.craftgo", file: mustParseFile(t, "shared/mw.craftgo", mwFile)},
+		{path: "shared/err.craftgo", file: mustParseFile(t, "shared/err.craftgo", errFile)},
+		{path: "services/use.craftgo", file: mustParseFile(t, "services/use.craftgo", useFile)},
+	}
+	// The bare-name path (no qualifier) - matches what
+	// `findDeclAcrossKindAware` receives when the cursor's
+	// `qualifiedNameAt` returns just `AuthRequired`.
+	d, pf, ok := findDeclAcrossKindAware(files, "AuthRequired", nil, "", "middlewares")
+	if !ok {
+		t.Fatal("findDeclAcrossKindAware did not find middleware decl across files")
+	}
+	if _, isMW := d.(*ast.MiddlewareDecl); !isMW {
+		t.Errorf("expected MiddlewareDecl across files, got %T from %s", d, pf.path)
+	}
+	if pf.path != "shared/mw.craftgo" {
+		t.Errorf("expected hit in shared/mw.craftgo, got %s", pf.path)
+	}
+	// The reverse direction also works: `@errors(AuthRequired)` finds
+	// the error decl, not the middleware.
+	d, pf, ok = findDeclAcrossKindAware(files, "AuthRequired", nil, "", "errors")
+	if !ok {
+		t.Fatal("findDeclAcrossKindAware did not find error decl across files")
+	}
+	if _, isErr := d.(*ast.ErrorDecl); !isErr {
+		t.Errorf("expected ErrorDecl, got %T", d)
+	}
+	if pf.path != "shared/err.craftgo" {
+		t.Errorf("expected hit in shared/err.craftgo, got %s", pf.path)
+	}
+}
+
+// TestDefinitionErrorContextResolvesToError mirrors the middleware
+// case for `@errors(...)` - the cursor lands on the error decl even
+// when a same-named middleware exists.
+func TestDefinitionErrorContextResolvesToError(t *testing.T) {
+	src := `package x
+middleware Conflict
+error Conflict Conflict { reason string }
+service S {
+	@errors(Conflict)
+	get GetThing /t {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	d := findDeclKindAware(view.file, "Conflict", "errors")
+	if d == nil {
+		t.Fatal("findDeclKindAware returned nil for errors context")
+	}
+	if _, isErr := d.(*ast.ErrorDecl); !isErr {
+		t.Errorf("expected ErrorDecl, got %T", d)
+	}
+}
+
 func findToken(t *testing.T, view snapshotView, needle string) protocol.Position {
 	t.Helper()
 	for _, tok := range view.tokens {

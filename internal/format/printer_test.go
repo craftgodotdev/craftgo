@@ -176,7 +176,7 @@ service S {
 // TestFormatExampleFiles runs the formatter on the real example files and
 // asserts they roundtrip cleanly with no diagnostics.
 func TestFormatPreservesParse(t *testing.T) {
-	src := `@title("API")
+	src := `@version("1.0")
 package design
 
 type Foo {
@@ -192,7 +192,7 @@ type Foo {
 	if f.Package == nil || f.Package.Name != "design" {
 		t.Errorf("expected package design, got %+v", f.Package)
 	}
-	if !strings.Contains(formatted, `@title("API")`) {
+	if !strings.Contains(formatted, `@version("1.0")`) {
 		t.Errorf("file decorator missing in output:\n%s", formatted)
 	}
 }

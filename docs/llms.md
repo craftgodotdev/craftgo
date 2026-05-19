@@ -236,7 +236,6 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 | Decorator                            | Args               | Effect                   |
 | ------------------------------------ | ------------------ | ------------------------ |
-| `@title("...")`                      | `(string)`         | OpenAPI document title   |
 | `@version("...")`                    | `(string)`         | OpenAPI document version |
 | `@deprecated` / `@deprecated("...")` | `()` or `(string)` | Mark file deprecated     |
 | `@doc("...")`                        | `(string)`         | File description         |

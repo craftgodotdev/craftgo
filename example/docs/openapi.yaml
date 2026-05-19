@@ -160,7 +160,6 @@ components:
         geo:
           allOf:
           - $ref: '#/components/schemas/Geocode'
-          description: Optional nested (Level 4).
           nullable: true
         postalCode:
           pattern: ^[A-Z0-9 -]{3,12}$
@@ -533,9 +532,6 @@ components:
         avatar:
           allOf:
           - $ref: '#/components/schemas/Avatar'
-          description: |-
-            Optional avatar at create-time — the request struct uses the
-            same Avatar type so the wire shape stays canonical.
           nullable: true
         bio:
           maxLength: 500
@@ -558,9 +554,6 @@ components:
         avatar:
           allOf:
           - $ref: '#/components/schemas/Avatar'
-          description: |-
-            Optional avatar at create-time — the request struct uses the
-            same Avatar type so the wire shape stays canonical.
           nullable: true
         bio:
           maxLength: 500
@@ -594,9 +587,6 @@ components:
         billingAddress:
           allOf:
           - $ref: '#/components/schemas/Address'
-          description: |-
-            Optional nested — billing may differ from primary or be
-            omitted entirely.
           nullable: true
         channels:
           additionalProperties:
@@ -694,7 +684,6 @@ components:
         referrer:
           allOf:
           - $ref: '#/components/schemas/UserRef'
-          description: Cross-package OPTIONAL ref to a referring user.
           nullable: true
       required:
       - gridLabels
@@ -723,10 +712,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/CurrencyCode'
           default: USD
-          description: |-
-            Scalar wrapping a primitive (CurrencyCode = string). The
-            emitted field type is the scalar alias; default literal is a
-            plain string accepted via the alias.
           nullable: true
         flag:
           default: true
@@ -755,9 +740,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/OrderStatus'
           default: Pending
-          description: |-
-            Enum-valued field. Default uses the bare ident and renders as
-            the matching `<Enum><Value>` Go constant.
           nullable: true
         str:
           default: anon
@@ -788,10 +770,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/CurrencyCode'
           default: USD
-          description: |-
-            Scalar wrapping a primitive (CurrencyCode = string). The
-            emitted field type is the scalar alias; default literal is a
-            plain string accepted via the alias.
           nullable: true
         flag:
           default: true
@@ -820,9 +798,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/OrderStatus'
           default: Pending
-          description: |-
-            Enum-valued field. Default uses the bare ident and renders as
-            the matching `<Enum><Value>` Go constant.
           nullable: true
         str:
           default: anon
@@ -1036,7 +1011,6 @@ components:
         precision:
           allOf:
           - $ref: '#/components/schemas/Precision'
-          description: Optional nested (Level 5).
           nullable: true
       required:
       - lat
@@ -1443,9 +1417,6 @@ components:
         cosignedBy:
           allOf:
           - $ref: '#/components/schemas/UserRef'
-          description: |-
-            Cross-package OPTIONAL nested ref. Generated Go:
-            `*users.UserRef` with `omitempty`.
           nullable: true
         createdAt:
           description: |-
@@ -1457,10 +1428,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/CurrencyCode'
           default: USD
-          description: |-
-            SCALAR REF + @default. CurrencyCode contributes
-            @length(3,3) + @pattern; the field-level chain only needs
-            the default value.
           nullable: true
         customer:
           $ref: '#/components/schemas/Customer'
@@ -1500,9 +1467,6 @@ components:
         payment:
           allOf:
           - $ref: '#/components/schemas/Payment'
-          description: |-
-            Optional nested struct (`T?`). Wire-level the `payment` key
-            may be missing entirely; when present its own validators run.
           nullable: true
         shippedAt:
           description: |-
@@ -1625,9 +1589,6 @@ components:
         receiptURL:
           allOf:
           - $ref: '#/components/schemas/SafeURL'
-          description: |-
-            CROSS-PACKAGE SCALAR: shared.SafeURL on an optional field —
-            the @format(url) + @maxLength inherit through the scalar.
           nullable: true
         referenceId:
           $ref: '#/components/schemas/NonEmptyID'
@@ -1689,7 +1650,6 @@ components:
         gpsFix:
           allOf:
           - $ref: '#/components/schemas/GpsFix'
-          description: Optional nested (Level 6 — deepest).
           nullable: true
         radiusMeters:
           exclusiveMinimum: true
@@ -1850,11 +1810,6 @@ components:
         assignee:
           allOf:
           - $ref: '#/components/schemas/UserRef'
-          description: |-
-            OPTIONAL CROSS-PACKAGE NESTED — the showcase pointer case.
-            Generated Go: `Assignee *users.UserRef` (the `T?` postfix
-            turns into a pointer + omitempty), so an unassigned task
-            marshals without an `assignee` key on the wire.
           nullable: true
         comments:
           description: |-
@@ -1991,10 +1946,6 @@ components:
         avatar:
           allOf:
           - $ref: '#/components/schemas/Avatar'
-          description: |-
-            avatar is the nested-with-pointer case: the field is OPTIONAL
-            (User without an avatar is fine) and the nested type carries
-            its own validators.
           nullable: true
         bio:
           maxLength: 500
@@ -2628,6 +2579,8 @@ paths:
           description: TooManyRequests
         default:
           description: ""
+      security:
+      - bearer: []
       tags:
       - users
     post:
@@ -2679,6 +2632,8 @@ paths:
           description: TooManyRequests
         default:
           description: ""
+      security:
+      - bearer: []
       tags:
       - users
   /users/{id}:
@@ -2722,6 +2677,7 @@ paths:
         default:
           description: ""
       security:
+      - bearer: []
       - oauth2: []
       tags:
       - users
@@ -2763,6 +2719,8 @@ paths:
           description: Gone
         default:
           description: ""
+      security:
+      - bearer: []
       tags:
       - users
     patch:
@@ -2827,6 +2785,8 @@ paths:
           description: UnprocessableEntity
         default:
           description: ""
+      security:
+      - bearer: []
       tags:
       - users
   /users/{id}/restore:
@@ -2851,6 +2811,7 @@ paths:
         default:
           description: ""
       security:
+      - bearer: []
       - oauth2: []
       tags:
       - users
@@ -2876,6 +2837,7 @@ paths:
         default:
           description: ""
       security:
+      - bearer: []
       - oauth2: []
       tags:
       - users
@@ -2938,6 +2900,8 @@ paths:
           description: ServiceUnavailable
         default:
           description: ""
+      security:
+      - bearer: []
       tags:
       - users
   /users/suspended:
@@ -2967,6 +2931,7 @@ paths:
         default:
           description: ""
       security:
+      - bearer: []
       - oauth2: []
       tags:
       - users
@@ -2984,6 +2949,8 @@ paths:
           description: OK
         default:
           description: ""
+      security:
+      - bearer: []
       tags:
       - users
 servers:

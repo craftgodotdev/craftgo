@@ -112,7 +112,7 @@ Metadata that flows into the generated `openapi.yaml`.
 | `basePath`         | string        | Path prefix prepended to every operation path         |
 | `securitySchemes`  | map           | Named OpenAPI security schemes (see below)            |
 
-`title` and `version` can also be set per-file via `@title("...")` and `@version("...")` decorators - file-level decorators win when present.
+`version` can also be set per-file via `@version("...")` - file-level decorator wins when present. `title` is manifest-only.
 
 `basePath` rides into the `servers[0].url` field of the generated spec. If you need multiple servers or richer descriptions, edit the generated `openapi.yaml` after gen (it is committed; craftgo regenerates it on every run).
 

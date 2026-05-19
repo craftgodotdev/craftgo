@@ -7,11 +7,61 @@ import (
 	"net/mail"
 )
 
+// Validate checks every field-level constraint declared on AsyncJobResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AsyncJobResp) Validate() error {
+	if l := len(v.JobID); l < 1 || l > 64 {
+		return fmt.Errorf("jobId: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on CancelJobReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *CancelJobReq) Validate() error {
+	if l := len(v.JobID); l < 1 || l > 64 {
+		return fmt.Errorf("jobId: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on CreateJobReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *CreateJobReq) Validate() error {
+	if len(v.Kind) < 1 {
+		return fmt.Errorf("kind: length less than 1")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on EntitlementsAuditTrail.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *EntitlementsAuditTrail) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on GetUserReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetUserReq) Validate() error {
 	if l := len(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on HealthResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *HealthResp) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on InventoryListResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *InventoryListResp) Validate() error {
+	for i0 := range v.Items {
+		if l := len(v.Items[i0]); l < 1 || l > 64 {
+			return fmt.Errorf("items: length out of range [1, 64]")
+		}
 	}
 	return nil
 }
@@ -31,6 +81,17 @@ func (v *ListUsersResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PaginatedResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PaginatedResp) Validate() error {
+	for i0 := range v.Items {
+		if l := len(v.Items[i0]); l < 1 || l > 64 {
+			return fmt.Errorf("items: length out of range [1, 64]")
 		}
 	}
 	return nil
@@ -58,6 +119,21 @@ func (v *ProjectsResp) Validate() error {
 		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PromoteItemReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PromoteItemReq) Validate() error {
+	if len(v.ItemID) < 1 {
+		return fmt.Errorf("itemId: length less than 1")
+	}
+	if v.Slot < 1 {
+		return fmt.Errorf("slot: below minimum 1")
+	}
+	if v.Slot > 100 {
+		return fmt.Errorf("slot: above maximum 100")
 	}
 	return nil
 }

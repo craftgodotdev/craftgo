@@ -168,6 +168,10 @@ service S {
 	if !strings.Contains(body, `"201":`) {
 		t.Errorf("expected @status(201) override:\n%s", body)
 	}
+	// 201 response carries the IANA reason phrase, not the hardcoded "OK".
+	if !strings.Contains(body, `description: Created`) {
+		t.Errorf("expected `description: Created` for 201 response:\n%s", body)
+	}
 	// CreateBook also registers 409 (Conflict) for DuplicateISBN.
 	if !strings.Contains(body, `"409":`) {
 		t.Errorf("expected 409 Conflict response:\n%s", body)
@@ -325,6 +329,161 @@ service S { post Create /c { request User  response User } }`)
 	// Host's own properties must still appear via the inline branch.
 	if !strings.Contains(body, "id:") || !strings.Contains(body, "name:") {
 		t.Errorf("host properties missing:\n%s", body)
+	}
+}
+
+// TestGenerateOpenAPIServiceLevelSecurityInherit pins the
+// service+method security inheritance: a `@security` on the primary
+// service applies to every operation, and a method-level `@security`
+// adds an OR alternative on top.
+func TestGenerateOpenAPIServiceLevelSecurityInherit(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+@security(Bearer)
+service S {
+    @doc("inherits service-level Bearer")
+    get A /a {}
+    @doc("inherits Bearer plus its own Admin alt")
+    @security(Admin)
+    get B /b {}
+}`)
+	aBlock := operationBlock(t, body, "A")
+	if !strings.Contains(aBlock, "Bearer:") {
+		t.Errorf("operation A missing inherited Bearer security:\n%s", aBlock)
+	}
+	bBlock := operationBlock(t, body, "B")
+	if !strings.Contains(bBlock, "Bearer:") {
+		t.Errorf("operation B missing inherited Bearer:\n%s", bBlock)
+	}
+	if !strings.Contains(bBlock, "Admin:") {
+		t.Errorf("operation B missing method-level Admin:\n%s", bBlock)
+	}
+}
+
+// operationBlock returns the slice of YAML body covering exactly one
+// operation. It walks back from the operationId line to the matching
+// verb line so sibling fields emitted alphabetically before operationId
+// (externalDocs, description, ...) stay inside the block, and trims
+// forward at the next path or end-of-paths so the block terminates
+// before the following operation's header.
+func operationBlock(t *testing.T, body, opID string) string {
+	t.Helper()
+	idx := strings.Index(body, "\n      operationId: "+opID)
+	if idx < 0 {
+		t.Fatalf("operation %q not found in:\n%s", opID, body)
+	}
+	// Walk backward to the nearest verb line above the operationId.
+	verbs := []string{"\n    get:\n", "\n    post:\n", "\n    put:\n", "\n    patch:\n", "\n    delete:\n"}
+	start := -1
+	for _, v := range verbs {
+		if s := strings.LastIndex(body[:idx], v); s > start {
+			start = s
+		}
+	}
+	if start < 0 {
+		start = idx
+	}
+	// Walk forward from PAST the operationId line to find the next
+	// path entry (`  /...:` at two-space indent) or the next verb
+	// (which would belong to a sibling operation on the same path).
+	// Either marks the end of this operation block.
+	searchFrom := idx + 1
+	end := len(body)
+	for _, v := range verbs {
+		if s := strings.Index(body[searchFrom:], v); s >= 0 && searchFrom+s < end {
+			end = searchFrom + s
+		}
+	}
+	// New path entry: line starts with `  /` after a newline.
+	if s := strings.Index(body[searchFrom:], "\n  /"); s >= 0 && searchFrom+s < end {
+		end = searchFrom + s
+	}
+	return body[start:end]
+}
+
+// TestGenerateOpenAPIServiceLevelExternalDocsInherit pins the
+// fallback behaviour: a method without its own `@externalDocs`
+// inherits from the primary service; a method with its own
+// `@externalDocs` overrides (single-value semantics).
+func TestGenerateOpenAPIServiceLevelExternalDocsInherit(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+@externalDocs(url: "https://svc.example/docs")
+service S {
+    @doc("inherits svc-level externalDocs")
+    get A /a {}
+    @externalDocs(url: "https://b.example/docs")
+    get B /b {}
+}`)
+	aBlock := operationBlock(t, body, "A")
+	if !strings.Contains(aBlock, "https://svc.example/docs") {
+		t.Errorf("operation A missing inherited externalDocs URL:\n%s", aBlock)
+	}
+	bBlock := operationBlock(t, body, "B")
+	if !strings.Contains(bBlock, "https://b.example/docs") {
+		t.Errorf("operation B missing method-level externalDocs URL:\n%s", bBlock)
+	}
+	if strings.Contains(bBlock, "https://svc.example/docs") {
+		t.Errorf("operation B unexpectedly carries service-level externalDocs:\n%s", bBlock)
+	}
+}
+
+// TestGenerateOpenAPIResponseHeaders pins the response @header /
+// @cookie split: fields decorated with @header land in the
+// operation's response.headers map, fields decorated with @cookie
+// collapse into a Set-Cookie header (OpenAPI 3.x has no first-class
+// cookie response slot), and ONLY the unbound fields end up in the
+// JSON body schema.
+func TestGenerateOpenAPIResponseHeaders(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Resp { items string  total string @header("X-Total-Count")  session string @cookie("sid") }
+service S { get List /things { response Resp } }`)
+	// Header field surfaces under response.headers, NOT body schema.
+	if !strings.Contains(body, "X-Total-Count:") {
+		t.Errorf("X-Total-Count header missing:\n%s", body)
+	}
+	// Cookie field collapses into Set-Cookie with a names hint.
+	if !strings.Contains(body, "Set-Cookie:") {
+		t.Errorf("Set-Cookie header missing:\n%s", body)
+	}
+	if !strings.Contains(body, "Sets cookies: sid") {
+		t.Errorf("cookie names hint missing:\n%s", body)
+	}
+	// ListRespBody must NOT advertise the header/cookie fields.
+	if strings.Contains(body, "total:") && strings.Contains(body, "ListRespBody:\n      properties:\n        items:") {
+		// total appears, but make sure it's NOT inside the body schema.
+		// A precise check: the body schema's properties block must list
+		// only `items`.
+		idx := strings.Index(body, "ListRespBody:")
+		if idx >= 0 {
+			tail := body[idx:]
+			if end := strings.Index(tail, "type: object"); end >= 0 {
+				snippet := tail[:end]
+				if strings.Contains(snippet, "total:") || strings.Contains(snippet, "session:") {
+					t.Errorf("header/cookie field leaked into RespBody:\n%s", snippet)
+				}
+			}
+		}
+	}
+}
+
+// TestGenerateOpenAPIErrorMixinFlatten mirrors the type-side mixin
+// flatten for ErrorDecl bodies: an `error X { Timestamps; ... }`
+// must expose every Timestamps field on the wire, otherwise clients
+// pre-parsing error envelopes drop fields they should accept.
+func TestGenerateOpenAPIErrorMixinFlatten(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Audit { createdAt string @format(datetime)  updatedAt string @format(datetime) }
+error NotFound BookNotFound { Audit  sku string }
+type BookReq { id string }
+type Book { id string }
+service S { @errors(BookNotFound) get GetBook /b/{id} { request BookReq  response Book } }`)
+	if !strings.Contains(body, "BookNotFoundErr:") {
+		t.Fatalf("error schema missing:\n%s", body)
+	}
+	if !strings.Contains(body, "allOf:") {
+		t.Errorf("error mixin host should use allOf:\n%s", body)
+	}
+	if !strings.Contains(body, "$ref: '#/components/schemas/Audit'") {
+		t.Errorf("Audit mixin ref missing on error schema:\n%s", body)
 	}
 }
 

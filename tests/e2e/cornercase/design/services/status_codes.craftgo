@@ -1,0 +1,61 @@
+// status_codes.craftgo exercises the `@status(N)` override on
+// success responses. The OpenAPI emitter looks up the IANA reason
+// phrase for N (`Created` for 201, `Accepted` for 202, `No Content`
+// for 204) and uses it as the response `description`. Without the
+// lookup every success response gets the generic `OK` placeholder,
+// which is wrong for non-200 codes and surfaces in Swagger UI /
+// generated TS clients as misleading documentation.
+package services
+
+import "shared"
+
+// AsyncJobResp is the standard "request acknowledged, work runs
+// later" envelope. Pairs with `@status(202)` on the trigger method.
+type AsyncJobResp {
+	jobId  shared.ID
+	queued bool
+}
+
+// CreateJobReq carries enough metadata for the worker to pick the
+// job up. Body-bound (POST verb), so every field rides in the JSON
+// body without explicit `@body` decorators.
+type CreateJobReq {
+	kind    string @minLength(1)
+	payload string
+}
+
+// StatusCodesService demonstrates each non-200 success category the
+// emitter handles distinctly: 201 (Created), 202 (Accepted), and 204
+// (No Content). Anyone touching the response-description logic should
+// regenerate this fixture and verify the YAML carries the IANA reason
+// phrase for each code; a regression that re-introduces hardcoded
+// `OK` shows up in the diff immediately.
+@prefix("/jobs")
+service StatusCodesService {
+	@doc("Create a job; the row is persisted before the response returns.")
+	@status(201)
+	post CreateJob / {
+		request  CreateJobReq
+		response AsyncJobResp
+	}
+
+	@doc("Enqueue a job for async processing; returns once accepted by the queue.")
+	@status(202)
+	post EnqueueJob /enqueue {
+		request  CreateJobReq
+		response AsyncJobResp
+	}
+
+	@doc("Cancel a queued job. No body on success - 204 keeps the wire silent.")
+	@status(204)
+	delete CancelJob /{jobId} {
+		request  CancelJobReq
+	}
+}
+
+// CancelJobReq is path-only; pairs with the 204 response. The path
+// param is the canonical ID so logic can look the job up without a
+// body.
+type CancelJobReq {
+	jobId shared.ID
+}

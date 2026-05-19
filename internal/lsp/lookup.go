@@ -86,6 +86,41 @@ func findDecl(f *ast.File, name string) ast.Decl {
 	return nil
 }
 
+// findDeclKindAware returns the in-file decl whose name matches and whose
+// kind is appropriate for the supplied lookup context. The semantic layer
+// keeps middleware names in a separate namespace from types/enums/errors/
+// scalars, so a name like `AuthRequired` can legally be both an `error`
+// AND a `middleware` decl. Without context, a click in
+// `@middlewares(AuthRequired)` would land on whichever decl came first
+// in source order - this helper restricts the search by the kind the
+// surrounding syntax is documented to accept.
+//
+// ctx values:
+//   - "middlewares": cursor inside `@middlewares(...)` - return MiddlewareDecl
+//   - "errors":      cursor inside `@errors(...)`      - return ErrorDecl
+//   - "type":        cursor in a type / mixin / field-type / request /
+//     response / generic-arg position - return anything EXCEPT
+//     MiddlewareDecl (the only decl kind that does not appear in
+//     type-shape positions). This handles the inverse ambiguity:
+//     `type X { AuthRequired }` should not jump to a middleware decl.
+//   - "":            unknown context - returns nil so the caller falls
+//     back to the generic [findDecl].
+//
+// Returns nil when no matching decl of the right kind exists in this
+// file; callers should fall back to the generic [findDecl].
+func findDeclKindAware(f *ast.File, name, ctx string) ast.Decl {
+	if f == nil || ctx == "" {
+		return nil
+	}
+	matches := makeKindMatcher(ctx)
+	for _, d := range f.Decls {
+		if d.DeclName() == name && matches(d) {
+			return d
+		}
+	}
+	return nil
+}
+
 // projectAST is one parsed `.craftgo` file collected from a design root.
 // path is the absolute filesystem path; file is the parser output (may
 // be a partial AST if the parse hit recoverable errors).
@@ -153,6 +188,18 @@ func (s *Server) projectFilesWithRoot(currentPath, currentSrc string) ([]project
 // files we should search. Pass empty string when the lookup is
 // in-package only and bare names are sufficient.
 func findDeclAcross(files []projectAST, name string, currentImports []*ast.Import, designRoot string) (ast.Decl, projectAST, bool) {
+	return findDeclAcrossKindAware(files, name, currentImports, designRoot, "")
+}
+
+// findDeclAcrossKindAware mirrors [findDeclAcross] with the additional
+// kind filter consumed by [findDeclKindAware]. Pass ctx="" to disable
+// the filter (legacy behaviour); pass "middlewares" / "errors" / "type"
+// to restrict matches to the expected decl kind. The filter is essential
+// when the same name lives in two decl namespaces across the project
+// (e.g. `middleware AuthRequired` in one file, `error AuthRequired` in
+// another) - without it the linear scan returns whichever appeared
+// first, which is wrong for a click in `@middlewares(...)`.
+func findDeclAcrossKindAware(files []projectAST, name string, currentImports []*ast.Import, designRoot, ctx string) (ast.Decl, projectAST, bool) {
 	pkgQualifier := ""
 	bare := name
 	for i := 0; i < len(name); i++ {
@@ -162,13 +209,14 @@ func findDeclAcross(files []projectAST, name string, currentImports []*ast.Impor
 			break
 		}
 	}
+	kindMatch := makeKindMatcher(ctx)
 	if pkgQualifier == "" {
 		for _, p := range files {
 			if p.file == nil {
 				continue
 			}
 			for _, d := range p.file.Decls {
-				if d.DeclName() == bare {
+				if d.DeclName() == bare && kindMatch(d) {
 					return d, p, true
 				}
 			}
@@ -202,7 +250,7 @@ func findDeclAcross(files []projectAST, name string, currentImports []*ast.Impor
 				continue
 			}
 			for _, d := range p.file.Decls {
-				if d.DeclName() == bare {
+				if d.DeclName() == bare && kindMatch(d) {
 					return d, p, true
 				}
 			}
@@ -217,12 +265,37 @@ func findDeclAcross(files []projectAST, name string, currentImports []*ast.Impor
 			continue
 		}
 		for _, d := range p.file.Decls {
-			if d.DeclName() == bare {
+			if d.DeclName() == bare && kindMatch(d) {
 				return d, p, true
 			}
 		}
 	}
 	return nil, projectAST{}, false
+}
+
+// makeKindMatcher returns a predicate that tests whether a decl matches
+// the lookup context ctx. The empty context accepts every decl - that
+// is how legacy callers (no context-aware lookup) pass through.
+func makeKindMatcher(ctx string) func(ast.Decl) bool {
+	switch ctx {
+	case "middlewares":
+		return func(d ast.Decl) bool {
+			_, ok := d.(*ast.MiddlewareDecl)
+			return ok
+		}
+	case "errors":
+		return func(d ast.Decl) bool {
+			_, ok := d.(*ast.ErrorDecl)
+			return ok
+		}
+	case "type":
+		return func(d ast.Decl) bool {
+			_, isMW := d.(*ast.MiddlewareDecl)
+			return !isMW
+		}
+	default:
+		return func(ast.Decl) bool { return true }
+	}
 }
 
 // importTargetDir resolves an import path (slash-separated, relative to

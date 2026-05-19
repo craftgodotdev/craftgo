@@ -6,6 +6,7 @@ package codegen
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -446,22 +447,44 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package) {
 		// `@header` / `@cookie` are also excluded - they ride on the
 		// response writer (see [renderErrorResponseHeadersMethod]).
 		// Anything else becomes a regular property on the schema.
+		var mixinRefs openapi3.SchemaRefs
 		for _, m := range ed.Body {
-			f, ok := m.(*ast.Field)
-			if !ok {
-				continue
+			switch v := m.(type) {
+			case *ast.Field:
+				if v.Name == "code" || v.Name == "message" {
+					continue
+				}
+				if hasSensitiveDecorator(v.Decorators) {
+					continue
+				}
+				switch bindingFromDecorators(v.Decorators) {
+				case "header", "cookie":
+					continue
+				}
+				s.Properties[v.Name] = schemaForTypeRef(v.Type, pkg)
+			case *ast.Mixin:
+				// Embedded mixin: same `allOf: [$ref]` shape that
+				// `schemaForType` uses for TypeDecl, so error schemas
+				// stay consistent with type schemas when a shared
+				// mixin (`Timestamps`, audit fields, ...) is embedded.
+				if v == nil || v.Ref == nil || v.Ref.Name == nil {
+					continue
+				}
+				mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
+					Ref: "#/components/schemas/" + v.Ref.Name.String(),
+				})
 			}
-			if f.Name == "code" || f.Name == "message" {
-				continue
+		}
+		if len(mixinRefs) > 0 {
+			host := &openapi3.Schema{
+				Type:       &openapi3.Types{"object"},
+				Properties: s.Properties,
+				Required:   s.Required,
 			}
-			if hasSensitiveDecorator(f.Decorators) {
-				continue
-			}
-			switch bindingFromDecorators(f.Decorators) {
-			case "header", "cookie":
-				continue
-			}
-			s.Properties[f.Name] = schemaForTypeRef(f.Type, pkg)
+			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
+			s.Properties = nil
+			s.Required = nil
+			s.AllOf = mixinRefs
 		}
 		doc.Components.Schemas[typeName] = &openapi3.SchemaRef{Value: s}
 	}
@@ -563,9 +586,6 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 		Properties: openapi3.Schemas{},
 	}
 	s.Description = resolveDescription(td.Decorators, td.Doc)
-	if title := decoratorStringArg(td.Decorators, "title"); title != "" {
-		s.Title = title
-	}
 	if hasDeprecatedDecorator(td.Decorators) {
 		s.Deprecated = true
 	}
@@ -629,7 +649,29 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 // `required[]` semantics (handled by [fieldIsRequired]): `?` drops the
 // field from required, `@nullable` keeps it.
 func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
-	if ref == nil || ref.Value == nil {
+	if ref == nil {
+		return
+	}
+	// Plain $ref: nothing to mutate on the field site - description,
+	// example, default come from the referenced schema's own definition.
+	if ref.Ref != "" {
+		return
+	}
+	if ref.Value == nil {
+		return
+	}
+	// Optional-ref wrapper (allOf:[$ref] + nullable: true). Cosmetic
+	// metadata like description/example would land on the wrapper, which
+	// tooling renders inconsistently - some UI generators show it next
+	// to the field, others let the $ref's own description win. We drop
+	// those decorators here; users who need a field-specific
+	// description should alias the type (`type Manager = User`). But
+	// `default` carries runtime semantics (server fills in when the
+	// field is absent), so it stays on the wrapper regardless.
+	if isAllOfRefWrapper(ref.Value) {
+		if def, ok := defaultValue(f.Decorators); ok {
+			ref.Value.Default = def
+		}
 		return
 	}
 	if desc := resolveDescription(f.Decorators, f.Doc); desc != "" {
@@ -654,6 +696,18 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	applyStringLengthConstraints(f.Decorators, ref.Value)
 	applyArrayConstraints(f.Decorators, ref.Value)
 	applyPatternFormat(f.Decorators, ref.Value)
+}
+
+// isAllOfRefWrapper recognises the `allOf: [{$ref}] + nullable: true`
+// shape that schemaForTypeRef emits for an optional named-type field.
+// The wrapper is the OpenAPI 3.0 idiom for "ref OR null"; metadata on
+// the wrapper is interpreted inconsistently by clients, so callers
+// branch on this signature to avoid stamping description/example on it.
+func isAllOfRefWrapper(s *openapi3.Schema) bool {
+	if s == nil || len(s.AllOf) != 1 || s.AllOf[0].Ref == "" {
+		return false
+	}
+	return s.Type == nil && len(s.Properties) == 0
 }
 
 // applyNumericConstraints translates the numeric comparison decorators
@@ -1187,7 +1241,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package) {
 		for _, m := range svc.Methods {
 			full := methodFullPath("", svc.Primary, m)
 			addPerOperationRequestSchemas(doc, m, pkg)
-			addPerOperationResponseSchema(doc, m)
+			addPerOperationResponseSchema(doc, m, pkg)
 			item := doc.Paths.Value(full)
 			if item == nil {
 				item = &openapi3.PathItem{}
@@ -1291,16 +1345,118 @@ func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic
 	}
 }
 
-// addPerOperationResponseSchema emits `<Method>RespBody` aliasing the
-// declared response type so consumers reference the response by the same
-// `<Method>Resp<Kind>` convention used on the request side.
-func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method) {
+// addPerOperationResponseSchema emits `<Method>RespBody` carrying the
+// response shape consumers see in JSON. When the response type has no
+// `@header` / `@cookie` bindings the schema is a thin alias of the type
+// itself; when it does, header/cookie fields are stripped and only the
+// JSON-body fields end up in the schema (the wire form the runtime
+// serialises). The matching response.headers map is emitted by
+// buildOperation.
+func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package) {
 	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
-	doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
-		Ref: "#/components/schemas/" + m.Response.Type.Name.String(),
+	bins := binResponseFields(m, pkg)
+	if len(bins.header) == 0 && len(bins.cookie) == 0 {
+		doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
+			Ref: "#/components/schemas/" + m.Response.Type.Name.String(),
+		}
+		return
 	}
+	doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
+		Value: schemaFromFields(bins.body, pkg),
+	}
+}
+
+// binResponseFields partitions the response type's fields the same way
+// [binRequestFields] does on the request side. Fields without an
+// explicit response-side binding decorator default to `body` (the JSON
+// payload), so adding @header / @cookie to a couple of fields does not
+// silently drop the rest.
+func binResponseFields(m *ast.Method, pkg *semantic.Package) fieldBins {
+	var bins fieldBins
+	if m.Response == nil || m.Response.Type == nil {
+		return bins
+	}
+	td, ok := pkg.Types[m.Response.Type.Name.String()]
+	if !ok {
+		return bins
+	}
+	for _, member := range td.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		if hasSensitiveDecorator(f.Decorators) {
+			continue
+		}
+		switch bindingFromDecorators(f.Decorators) {
+		case "header":
+			bins.header = append(bins.header, f)
+		case "cookie":
+			bins.cookie = append(bins.cookie, f)
+		default:
+			bins.body = append(bins.body, f)
+		}
+	}
+	return bins
+}
+
+// buildResponseHeaders converts response-side @header / @cookie fields
+// into the OpenAPI `response.headers` map. Cookie fields collapse into
+// a single `Set-Cookie` entry because OpenAPI 3.x has no first-class
+// cookie response slot — listing the cookie names there documents what
+// the runtime writes via http.SetCookie even when the spec format has
+// to round-trip through Set-Cookie.
+func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package) openapi3.Headers {
+	if len(headers) == 0 && len(cookies) == 0 {
+		return nil
+	}
+	out := openapi3.Headers{}
+	for _, f := range headers {
+		name := headerNameFromDecorators(f.Decorators)
+		if name == "" {
+			name = f.Name
+		}
+		hdr := &openapi3.Header{
+			Parameter: openapi3.Parameter{
+				Schema:      schemaForTypeRef(f.Type, pkg),
+				Description: resolveDescription(f.Decorators, f.Doc),
+			},
+		}
+		out[name] = &openapi3.HeaderRef{Value: hdr}
+	}
+	if len(cookies) > 0 {
+		names := make([]string, 0, len(cookies))
+		for _, f := range cookies {
+			n := cookieNameFromDecorators(f.Decorators)
+			if n == "" {
+				n = f.Name
+			}
+			names = append(names, n)
+		}
+		desc := "Sets cookies: " + strings.Join(names, ", ")
+		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{
+			Parameter: openapi3.Parameter{
+				Schema:      &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}},
+				Description: desc,
+			},
+		}}
+	}
+	return out
+}
+
+// headerNameFromDecorators returns the literal name passed to
+// `@header("X-Foo")` when present, otherwise empty so the caller
+// falls back to the field name.
+func headerNameFromDecorators(ds []*ast.Decorator) string {
+	return decoratorStringArg(ds, "header")
+}
+
+// cookieNameFromDecorators mirrors [headerNameFromDecorators] for
+// `@cookie("session_id")`.
+func cookieNameFromDecorators(ds []*ast.Decorator) string {
+	return decoratorStringArg(ds, "cookie")
 }
 
 // schemaFromFields builds an inline object schema covering the supplied
@@ -1342,17 +1498,44 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 		Description: resolveDescription(m.Decorators, m.Doc),
 		Summary:     decoratorStringArg(m.Decorators, "summary"),
 	}
+	// Service-level `@externalDocs` is a single-value fallback: the
+	// method-level decorator wins when present, otherwise the service's
+	// own externalDocs applies to every operation it owns.
+	svc := pkg.Services[svcName]
 	if ed := externalDocsFromDecorators(m.Decorators); ed != nil {
 		op.ExternalDocs = ed
+	} else if svc != nil && svc.Primary != nil {
+		if ed := externalDocsFromDecorators(svc.Primary.Decorators); ed != nil {
+			op.ExternalDocs = ed
+		}
 	}
-	if sec := securityFromDecorators(m.Decorators); sec != nil {
+	// Service-level `@security` is appended to the method-level chain:
+	// each entry in OpenAPI `security[]` is an OR alternative, so
+	// declaring `@security(Bearer)` on the service plus
+	// `@security(Admin)` on a method means "either Bearer alone OR Admin
+	// alone unlocks this op". Use a sentinel `noauth` on the method to
+	// override the inheritance entirely (current behaviour - emits an
+	// empty requirement).
+	var sec *openapi3.SecurityRequirements
+	if svc != nil && svc.Primary != nil {
+		sec = securityFromDecorators(svc.Primary.Decorators)
+	}
+	if methodSec := securityFromDecorators(m.Decorators); methodSec != nil {
+		if sec == nil {
+			sec = methodSec
+		} else {
+			combined := append(openapi3.SecurityRequirements{}, *sec...)
+			combined = append(combined, *methodSec...)
+			sec = &combined
+		}
+	}
+	if sec != nil {
 		op.Security = sec
 	}
 	// @deprecated may sit on the method itself or on the primary
 	// service decl; either marks the operation deprecated. The
 	// optional reason becomes a `Deprecated: ...` line in the
 	// description so docs viewers surface it inline.
-	svc := pkg.Services[svcName]
 	deprecated := hasDeprecatedDecorator(m.Decorators)
 	if !deprecated && svc != nil && svc.Primary != nil {
 		deprecated = hasDeprecatedDecorator(svc.Primary.Decorators)
@@ -1414,7 +1597,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 	successCode := successStatus(m)
 	switch {
 	case isPassthrough:
-		desc := "OK"
+		desc := successDescription(successCode)
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
@@ -1422,8 +1605,8 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 			},
 		}})
 	case m.Response != nil && m.Response.Type != nil:
-		desc := "OK"
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
+		desc := successDescription(successCode)
+		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
 				"application/json": &openapi3.MediaType{
@@ -1433,17 +1616,37 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package) *opena
 					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + m.Name + "RespBody"},
 				},
 			},
-		}})
+		}
+		if respBins := binResponseFields(m, pkg); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
+			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg)
+		}
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
 	default:
-		desc := "No Content"
 		fallback := "204"
 		if successCode != "200" {
 			fallback = successCode
 		}
+		desc := successDescription(fallback)
 		op.Responses.Set(fallback, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
 	}
 	addErrorResponses(op, m, pkg)
 	return op
+}
+
+// successDescription returns the IANA-registered reason phrase for an
+// HTTP status code so OpenAPI clients see `Created` for 201, `No Content`
+// for 204, etc. Falls back to "OK" for unknown codes - a generic but
+// valid placeholder is better than an empty description (which some
+// validators flag as required).
+func successDescription(code string) string {
+	n, err := strconv.Atoi(code)
+	if err != nil {
+		return "OK"
+	}
+	if text := http.StatusText(n); text != "" {
+		return text
+	}
+	return "OK"
 }
 
 // successStatus returns the HTTP status code key for the success

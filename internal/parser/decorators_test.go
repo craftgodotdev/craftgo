@@ -12,8 +12,7 @@ import (
 // below exercises each decorator at least once; if any of them ever
 // stops parsing, this test fails loudly so the regression is obvious.
 func TestParseEveryDocumentedDecorator(t *testing.T) {
-	src := `@title("API")
-@version("1.0.0")
+	src := `@version("1.0.0")
 @doc("file-level doc")
 @deprecated
 package design
@@ -21,7 +20,6 @@ package design
 import "shared"
 
 @doc("type-level doc")
-@title("Type")
 @example("simple")
 @examples(["a", "b"])
 @deprecated
@@ -134,12 +132,12 @@ middleware RateLimit(rps: int = 100)
 		t.Fatalf("decorators failed to parse: %v", d)
 	}
 	// Spot-check that high-level decorators landed where expected.
-	if len(f.Decorators) < 4 {
-		t.Errorf("file decorators count = %d, want >= 4", len(f.Decorators))
+	if len(f.Decorators) < 3 {
+		t.Errorf("file decorators count = %d, want >= 3", len(f.Decorators))
 	}
 
 	want := []string{
-		"title", "version", "doc", "deprecated",
+		"version", "doc", "deprecated",
 		"example", "examples", "requiresOneOf", "mutuallyExclusive",
 		"length", "minLength", "maxLength", "pattern", "format", "enum",
 		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",

@@ -4,13 +4,16 @@ package routes
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+	admininventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/admin-inventory-service"
 	bindingsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/bindings-service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/collections"
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/combine-service"
+	headerechoserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/header-echo-service"
 	nestedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/nested-service"
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/numbers-service"
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/project-service"
 	scalarsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/scalars-service"
+	statuscodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/status-codes-service"
 	stringsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/strings-service"
 	userserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/user-service"
 
@@ -20,13 +23,16 @@ import (
 // RegisterAll wires every service's routes onto srv with one call.
 // Generated from the DSL service set; always overwritten.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
+	admininventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	bindingsserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)
+	headerechoserviceroutes.RegisterRoutes(srv, svcCtx)
 	nestedserviceroutes.RegisterRoutes(srv, svcCtx)
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
 	scalarsserviceroutes.RegisterRoutes(srv, svcCtx)
+	statuscodesserviceroutes.RegisterRoutes(srv, svcCtx)
 	stringsserviceroutes.RegisterRoutes(srv, svcCtx)
 	userserviceroutes.RegisterRoutes(srv, svcCtx)
 }

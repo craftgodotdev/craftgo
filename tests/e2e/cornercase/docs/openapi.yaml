@@ -23,12 +23,13 @@ components:
       - id
       type: object
     AccessDeniedErr:
+      allOf:
+      - $ref: '#/components/schemas/AuditTrail'
+      - properties:
+          reason:
+            type: string
+        type: object
       description: Forbidden error response (HTTP 403).
-      properties:
-        reason:
-          type: string
-        retryAfter:
-          type: integer
       type: object
     AddBoundaryReqBody:
       properties:
@@ -409,6 +410,19 @@ components:
       type: object
     ArrayBoundsRespBody:
       $ref: '#/components/schemas/Arr_BoundsBasic'
+    AsyncJobResp:
+      description: |-
+        AsyncJobResp is the standard "request acknowledged, work runs
+        later" envelope. Pairs with `@status(202)` on the trigger method.
+      properties:
+        jobId:
+          $ref: '#/components/schemas/ID'
+        queued:
+          type: boolean
+      required:
+      - jobId
+      - queued
+      type: object
     Audit:
       description: |-
         Audit captures the create/update bookkeeping every persistent
@@ -444,6 +458,26 @@ components:
       required:
       - createdAt
       - updatedAt
+      type: object
+    AuditTrail:
+      description: |-
+        AuditTrail is the canonical "who-did-what-when" mixin shape.
+        Declared as a regular type so other decls can embed it (the
+        language has no separate `mixin` keyword - any type member that
+        is a bare ident becomes a mixin reference). Embedded into a
+        regular type works (covered elsewhere); embedded into an error
+        body must flatten the same way - generated TS clients reading
+        the error envelope need the `actor` / `at` fields to be part of
+        the error schema, not silently dropped.
+      properties:
+        actor:
+          type: string
+        at:
+          format: datetime
+          type: string
+      required:
+      - actor
+      - at
       type: object
     Audited:
       allOf:
@@ -536,6 +570,24 @@ components:
           $ref: '#/components/schemas/NumberBoundary'
       required:
       - body
+      type: object
+    CancelJobReq:
+      description: |-
+        CancelJobReq is path-only; pairs with the 204 response. The path
+        param is the canonical ID so logic can look the job up without a
+        body.
+      properties:
+        jobId:
+          $ref: '#/components/schemas/ID'
+      required:
+      - jobId
+      type: object
+    CancelJobReqPath:
+      properties:
+        jobId:
+          $ref: '#/components/schemas/ID'
+      required:
+      - jobId
       type: object
     Catalog:
       description: |-
@@ -655,6 +707,34 @@ components:
       required:
       - body
       type: object
+    CreateJobReq:
+      description: |-
+        CreateJobReq carries enough metadata for the worker to pick the
+        job up. Body-bound (POST verb), so every field rides in the JSON
+        body without explicit `@body` decorators.
+      properties:
+        kind:
+          minLength: 1
+          type: string
+        payload:
+          type: string
+      required:
+      - kind
+      - payload
+      type: object
+    CreateJobReqBody:
+      properties:
+        kind:
+          minLength: 1
+          type: string
+        payload:
+          type: string
+      required:
+      - kind
+      - payload
+      type: object
+    CreateJobRespBody:
+      $ref: '#/components/schemas/AsyncJobResp'
     CreateOrderReq:
       description: |-
         CreateOrderReq is a full-shape POST body that drives every Order
@@ -1089,7 +1169,6 @@ components:
         boss:
           allOf:
           - $ref: '#/components/schemas/NestedUser'
-          description: Self-optional - the marquee recursion case.
           nullable: true
         name:
           nullable: true
@@ -1121,6 +1200,34 @@ components:
       properties:
         email:
           type: string
+      type: object
+    EnqueueJobReqBody:
+      properties:
+        kind:
+          minLength: 1
+          type: string
+        payload:
+          type: string
+      required:
+      - kind
+      - payload
+      type: object
+    EnqueueJobRespBody:
+      $ref: '#/components/schemas/AsyncJobResp'
+    EntitlementsAuditTrail:
+      description: |-
+        EntitlementsAuditTrail records the auth scheme that gated an
+        admin endpoint. Plain string body field - no @header/@cookie
+        involvement; it just rides in the JSON response so the audit
+        log can correlate writes to the operator that performed them.
+      properties:
+        action:
+          type: string
+        actor:
+          type: string
+      required:
+      - actor
+      - action
       type: object
     ExactReq:
       description: ExactReq wraps NumberExact (exact-match shapes).
@@ -1272,6 +1379,18 @@ components:
       required:
       - apiKey
       type: object
+    HealthResp:
+      description: |-
+        HealthResp is a minimal envelope for the liveness probe - a bare
+        boolean would force a wrapper anyway, so we make it explicit.
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+      type: object
+    HealthRespBody:
+      $ref: '#/components/schemas/HealthResp'
     Home:
       description: |-
         Home owns a slice of nested Rooms. The slice variant tests that
@@ -1303,6 +1422,23 @@ components:
           type: array
         trace:
           type: string
+      type: object
+    InventoryListResp:
+      description: |-
+        InventoryListResp envelopes the slice + total count. Body-only
+        fields here so the extend-inheritance focus stays on decorator
+        propagation rather than response binding (covered separately by
+        response_headers.craftgo).
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ID'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
       type: object
     Item:
       description: |-
@@ -1340,6 +1476,15 @@ components:
         total:
           nullable: true
           type: integer
+      required:
+      - items
+      type: object
+    ListItemsRespBody:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ID'
+          type: array
       required:
       - items
       type: object
@@ -1675,7 +1820,6 @@ components:
         boss:
           allOf:
           - $ref: '#/components/schemas/NestedUser'
-          description: Self-optional - the marquee recursion case.
           nullable: true
         name:
           nullable: true
@@ -2243,6 +2387,33 @@ components:
       maximum: 100
       minimum: 1
       type: integer
+    PaginatedResp:
+      description: |-
+        PaginatedResp carries a JSON list plus two response-only fields:
+        `X-Total-Count` advertises the count to clients implementing
+        virtual scrolling, and the `session` cookie refreshes the auth
+        token without forcing a separate /refresh round trip. Both fields
+        stay out of the JSON body via runtime header/cookie writers.
+
+        `count` is a string on the wire because @header / @cookie
+        codegen only accepts string-backed shapes - the runtime writer
+        http.Header.Set takes a string, so non-string typed fields would
+        need a per-type formatter that the framework deliberately keeps
+        out of the binding layer.
+      properties:
+        count:
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/ID'
+          type: array
+        session:
+          type: string
+      required:
+      - items
+      - count
+      - session
+      type: object
     Pagination:
       description: |-
         Pagination is the canonical cursor/limit envelope every list
@@ -2552,6 +2723,43 @@ components:
       required:
       - items
       type: object
+    PromoteItemReq:
+      description: |-
+        PromoteItemReq is path-bound by `itemId` and carries the slot
+        position as a body field. `slot` is a positive int with a
+        reasonable upper bound so out-of-range requests bounce at the
+        transport gate.
+      properties:
+        itemId:
+          minLength: 1
+          type: string
+        slot:
+          maximum: 100
+          minimum: 1
+          type: integer
+      required:
+      - itemId
+      - slot
+      type: object
+    PromoteItemReqBody:
+      properties:
+        slot:
+          maximum: 100
+          minimum: 1
+          type: integer
+      required:
+      - slot
+      type: object
+    PromoteItemReqPath:
+      properties:
+        itemId:
+          minLength: 1
+          type: string
+      required:
+      - itemId
+      type: object
+    PromoteItemRespBody:
+      $ref: '#/components/schemas/EntitlementsAuditTrail'
     QueryArrayIntReq:
       description: |-
         QueryArrayIntReq drives the `[]int @query` shape. Each repeated
@@ -3363,6 +3571,15 @@ components:
       required:
       - results
       type: object
+  securitySchemes:
+    AdminBearer:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
+    AdminWriteScope:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
 info:
   title: Cornercase API
   version: 1.0.0
@@ -3382,6 +3599,71 @@ paths:
           description: ""
       tags:
       - ProjectService
+  /admin/inventory:
+    get:
+      description: List inventory items. Inherits auth + tags from the extend block.
+      operationId: ListItems
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListItemsRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - AdminBearer: []
+      tags:
+      - admin
+  /admin/inventory/{itemId}/promote:
+    post:
+      description: Promote an item to the featured slot. Inherits the same auth chain
+        plus a method-level admin scope.
+      operationId: PromoteItem
+      parameters:
+      - in: path
+        name: itemId
+        required: true
+        schema:
+          minLength: 1
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteItemReqBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteItemRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - AdminBearer: []
+      - AdminWriteScope: []
+      tags:
+      - admin
+  /admin/inventory/health:
+    get:
+      description: Liveness probe. Public on purpose - operators hit this before secrets
+        are loaded.
+      operationId: Health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - AdminInventoryService
   /bindings/health:
     get:
       description: Health probe. No request, no response — just a 200 OK when the
@@ -3935,6 +4217,90 @@ paths:
           description: ""
       tags:
       - combine
+  /header-echo:
+    get:
+      description: List items with the total surfaced via response header and the
+        auth cookie refreshed in passing.
+      operationId: ListItems
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListItemsRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: session_id'
+              schema:
+                type: string
+            X-Total-Count:
+              schema:
+                type: string
+        default:
+          description: ""
+      tags:
+      - HeaderEchoService
+  /jobs:
+    post:
+      description: Create a job; the row is persisted before the response returns.
+      operationId: CreateJob
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateJobRespBody'
+          description: Created
+        default:
+          description: ""
+      tags:
+      - StatusCodesService
+  /jobs/{jobId}:
+    delete:
+      description: Cancel a queued job. No body on success - 204 keeps the wire silent.
+      operationId: CancelJob
+      parameters:
+      - in: path
+        name: jobId
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: ""
+      tags:
+      - StatusCodesService
+  /jobs/enqueue:
+    post:
+      description: Enqueue a job for async processing; returns once accepted by the
+        queue.
+      operationId: EnqueueJob
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnqueueJobReqBody'
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnqueueJobRespBody'
+          description: Accepted
+        default:
+          description: ""
+      tags:
+      - StatusCodesService
   /nested/a:
     post:
       description: Mutual recursion entry - request A traverses A → B → A → ...

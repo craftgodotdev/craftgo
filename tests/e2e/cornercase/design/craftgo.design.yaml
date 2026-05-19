@@ -10,3 +10,12 @@ openapi:
   title:    Cornercase API
   version:  1.0.0
   basePath: /api
+  securitySchemes:
+    AdminBearer:
+      type: http
+      scheme: bearer
+      description: Admin-tier bearer token used by extend-service inheritance fixture.
+    AdminWriteScope:
+      type: http
+      scheme: bearer
+      description: Write-scope override applied at the method level on top of AdminBearer.

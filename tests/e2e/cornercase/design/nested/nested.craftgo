@@ -34,16 +34,16 @@ type Address {
 // - the cross-field check runs AFTER every nested Validate() call.
 @requiresOneOf(name, alias)
 type User {
-	addr   Address
-	name   string?
-	alias  string?
+	addr        Address
+	name        string?
+	alias       string?
 	// SENSITIVE FIELD - codegen MUST omit the JSON tag (`json:"-"`)
 	// and skip the field in OpenAPI; the validator side does NOT
 	// emit per-field checks for `@sensitive` flagged fields anyway,
 	// so the nested cascade simply has no entry for `secretNotes`.
-	secretNotes string @sensitive
+	secretNotes string  @sensitive
 	// Self-optional - the marquee recursion case.
-	boss   User?
+	boss        User?
 }
 
 // ---------------------------------------------------------------

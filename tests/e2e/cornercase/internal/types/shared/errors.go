@@ -2,6 +2,45 @@
 
 package shared
 
+// ErrCodeAccessDeniedErr is the canonical machine-readable code for AccessDeniedErr.
+const ErrCodeAccessDeniedErr = "ACCESS_DENIED_ERR"
+
+// AccessDeniedErrBody is the wire-shape payload declared at design time for AccessDeniedErr.
+// User code instantiates this struct and hands it to NewAccessDeniedErr; the
+// framework wraps it with the type-bound code / message metadata.
+type AccessDeniedErrBody struct {
+	Reason string `json:"reason"`
+}
+
+// AccessDeniedErr is the typed Forbidden error generated for `AccessDeniedErr`.
+// The unexported `code` and `message` fields hold the type-bound
+// metadata populated by the constructor. Because they are unexported,
+// json.Marshal omits them from the wire payload - clients see only
+// the embedded body shape (or `{}` when no body was declared).
+type AccessDeniedErr struct {
+	code    string
+	message string
+	AccessDeniedErrBody
+}
+
+// NewAccessDeniedErr constructs AccessDeniedErr with the framework metadata baked in.
+// `code` and `message` are bound to the type and not exposed as
+// constructor parameters; only the body struct varies per instance.
+func NewAccessDeniedErr(body AccessDeniedErrBody) *AccessDeniedErr {
+	return &AccessDeniedErr{
+		code:                ErrCodeAccessDeniedErr,
+		message:             "Forbidden",
+		AccessDeniedErrBody: body,
+	}
+}
+
+// Error implements the standard error interface and returns the
+// category-default message bound to the type.
+func (e *AccessDeniedErr) Error() string { return e.message }
+
+// HTTPStatus returns the HTTP status code associated with the Forbidden category.
+func (e *AccessDeniedErr) HTTPStatus() int { return 403 }
+
 // ErrCodeConflictErr is the canonical machine-readable code for ConflictErr.
 const ErrCodeConflictErr = "CONFLICT_ERR"
 

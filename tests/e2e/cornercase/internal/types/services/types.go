@@ -6,6 +6,37 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/shared"
 )
 
+// AsyncJobResp is the standard "request acknowledged, work runs
+// later" envelope. Pairs with `@status(202)` on the trigger method.
+type AsyncJobResp struct {
+	JobID  shared.ID `json:"jobId"`
+	Queued bool      `json:"queued"`
+}
+
+// CancelJobReq is path-only; pairs with the 204 response. The path
+// param is the canonical ID so logic can look the job up without a
+// body.
+type CancelJobReq struct {
+	JobID shared.ID `json:"jobId"`
+}
+
+// CreateJobReq carries enough metadata for the worker to pick the
+// job up. Body-bound (POST verb), so every field rides in the JSON
+// body without explicit `@body` decorators.
+type CreateJobReq struct {
+	Kind    string `json:"kind"`
+	Payload string `json:"payload"`
+}
+
+// EntitlementsAuditTrail records the auth scheme that gated an
+// admin endpoint. Plain string body field - no @header/@cookie
+// involvement; it just rides in the JSON response so the audit
+// log can correlate writes to the operator that performed them.
+type EntitlementsAuditTrail struct {
+	Actor  string `json:"actor"`
+	Action string `json:"action"`
+}
+
 // GetUserReq is the workaround for the cross-package-scalar bug.
 //
 // Originally `id shared.ID @path`, but `isStringBindingType` /
@@ -21,6 +52,21 @@ import (
 // validator stack manually — the bug is recorded in the report.
 type GetUserReq struct {
 	ID string `json:"-"`
+}
+
+// HealthResp is a minimal envelope for the liveness probe - a bare
+// boolean would force a wrapper anyway, so we make it explicit.
+type HealthResp struct {
+	Ok bool `json:"ok"`
+}
+
+// InventoryListResp envelopes the slice + total count. Body-only
+// fields here so the extend-inheritance focus stays on decorator
+// propagation rather than response binding (covered separately by
+// response_headers.craftgo).
+type InventoryListResp struct {
+	Items []shared.ID `json:"items"`
+	Total int         `json:"total"`
 }
 
 // ListUsersReq embeds `shared.Pagination` cross-package. The
@@ -42,6 +88,23 @@ type ListUsersResp struct {
 	Meta  shared.Pagination `json:"meta"`
 }
 
+// PaginatedResp carries a JSON list plus two response-only fields:
+// `X-Total-Count` advertises the count to clients implementing
+// virtual scrolling, and the `session` cookie refreshes the auth
+// token without forcing a separate /refresh round trip. Both fields
+// stay out of the JSON body via runtime header/cookie writers.
+//
+// `count` is a string on the wire because @header / @cookie
+// codegen only accepts string-backed shapes - the runtime writer
+// http.Header.Set takes a string, so non-string typed fields would
+// need a per-type formatter that the framework deliberately keeps
+// out of the binding layer.
+type PaginatedResp struct {
+	Items   []shared.ID `json:"items"`
+	Count   string      `json:"-"`
+	Session string      `json:"-"`
+}
+
 // Project carries the cross-package `shared.ID` scalar (Go field
 // type: `string`, validators inherited from the scalar decl) and
 // the SAME-PACKAGE `UserRef` nested type — exercise of both the
@@ -59,6 +122,15 @@ type Project struct {
 // the array-suffix branch.
 type ProjectsResp struct {
 	Items []Project `json:"items"`
+}
+
+// PromoteItemReq is path-bound by `itemId` and carries the slot
+// position as a body field. `slot` is a positive int with a
+// reasonable upper bound so out-of-range requests bounce at the
+// transport gate.
+type PromoteItemReq struct {
+	ItemID string `json:"itemId"`
+	Slot   int    `json:"slot"`
 }
 
 // User is the full entity. Embeds `shared.Audit` via the implicit

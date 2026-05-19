@@ -153,8 +153,8 @@ enum E { A B }`, CodeDecoratorPlacement)
 // ---------- Placement: happy path ----------
 
 func TestPlacementHappyPath(t *testing.T) {
-	mustClean(t, `@title("X")
-@version("1.0")
+	mustClean(t, `@version("1.0")
+@doc("file doc")
 @deprecated
 package design
 
@@ -282,6 +282,10 @@ func TestCodeOnEnumDuplicateLiteral(t *testing.T) {
 	expectDiag(t, `enum Y { A = "x"  B = "x" }`, CodeEnumDuplicateLiteral)
 }
 
+func TestCodeOnEnumEmpty(t *testing.T) {
+	expectDiag(t, `enum Empty {}`, CodeEnumEmpty)
+}
+
 func TestCodeOnDuplicateService(t *testing.T) {
 	expectDiag(t, `service S {}
 service S {}`, CodeServiceDuplicate)
@@ -291,16 +295,55 @@ func TestCodeOnExtendOrphan(t *testing.T) {
 	expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
 }
 
-func TestCodeOnExtendDecorators(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {}
-@prefix("/x")
-extend service S { get Op /x {} }`))
-	d := findCode(diags, CodeServiceExtendDecorators)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
+// TestExtendServiceDecoratorsPropagate pins the relax of the previous
+// "extend service must not have service-level decorators" rule: an
+// `extend service` block can now carry its own decorators which the
+// merge step prepends to every method's chain inside that block. This
+// is the mechanism that lets one logical service split into public
+// and authenticated sub-blocks via decorators-on-extend.
+func TestExtendServiceDecoratorsPropagate(t *testing.T) {
+	pkg, diags := Analyze(parseFiles(t, `middleware Auth
+service S { get Pub /pub {} }
+@middlewares(Auth) @tags("priv")
+extend service S { get Priv /priv {} }`))
+	if len(diags) > 0 {
+		t.Fatalf("expected no diagnostics, got %v", codes(diags))
 	}
-	if len(d.Related) != 1 {
-		t.Errorf("expected related to primary, got %+v", d.Related)
+	si := pkg.Services["S"]
+	if si == nil {
+		t.Fatal("service S not merged")
+	}
+	var pub, priv *ast.Method
+	for _, m := range si.Methods {
+		switch m.Name {
+		case "Pub":
+			pub = m
+		case "Priv":
+			priv = m
+		}
+	}
+	if pub == nil || priv == nil {
+		t.Fatalf("methods missing: pub=%v priv=%v", pub, priv)
+	}
+	// Public method's decorator chain is empty (no inheritance from
+	// primary, which had no decorators).
+	if len(pub.Decorators) != 0 {
+		t.Errorf("Pub picked up unexpected decorators: %+v", pub.Decorators)
+	}
+	// Private method inherits @middlewares and @tags from the extend
+	// block - the decorator chain matches "as if the user wrote those
+	// decorators above the method directly".
+	var sawMW, sawTags bool
+	for _, d := range priv.Decorators {
+		switch d.Name {
+		case "middlewares":
+			sawMW = true
+		case "tags":
+			sawTags = true
+		}
+	}
+	if !sawMW || !sawTags {
+		t.Errorf("Priv missing inherited decorators: %+v", priv.Decorators)
 	}
 }
 
