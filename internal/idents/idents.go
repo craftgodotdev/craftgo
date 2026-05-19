@@ -32,8 +32,8 @@ var BuiltinTypes = map[string]bool{
 // fully upper-cased when they appear as a word inside a Go identifier
 // (matches `golint`/`staticcheck` conventions). Adding entries here
 // changes the canonical Go name for any DSL field whose word list
-// includes the new initialism - projects depending on the previous
-// spelling must be regenerated.
+// includes the new initialism — projects must regenerate to pick up
+// the new spelling.
 var commonInitialisms = map[string]bool{
 	"id": true, "url": true, "uri": true, "api": true, "http": true,
 	"https": true, "json": true, "xml": true, "tcp": true, "udp": true,
@@ -145,9 +145,9 @@ type Collision struct {
 //     collision-free, which is the overwhelming common case.
 //
 // The dedup keeps the first DSL spelling at its bare Go name so a
-// project that adds a colliding alias later does not retroactively
-// rename the original field - generated code stays stable for
-// previously-published struct shapes.
+// project that adds a colliding alias later doesn't retroactively
+// rename the original field — generated code stays stable for
+// already-published struct shapes.
 func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Collision) {
 	resolved = make([]string, len(dslNames))
 	groups := map[string][]int{}

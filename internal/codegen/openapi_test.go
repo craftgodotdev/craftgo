@@ -83,12 +83,11 @@ service S { post Send /m { request Req } }`)
 	expectGolden(t, "openapi-scalar-schemas.yaml", body)
 }
 
-// TestGenerateOpenAPIScalarFullConstraints covers every scalar
+// TestGenerateOpenAPIScalarFullConstraints checks that every scalar
 // decorator family (format / length / pattern / numeric bounds /
-// multipleOf) flowing into the component schema. Earlier behaviour
-// only honoured `@format`; everything else was silently dropped at
-// the spec layer so generated TS clients lost the validators that
-// the runtime still enforced.
+// multipleOf) flows into the component schema. If only `@format`
+// reached OpenAPI, generated TS clients would lose validators the
+// runtime still enforces — a silent spec/runtime drift.
 func TestGenerateOpenAPIScalarFullConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Email     string @format(email) @maxLength(254)
@@ -228,10 +227,9 @@ service S { post Create /c { request T  response T } }`
 
 // TestGenerateOpenAPIValidatorConstraints pins the mapping from
 // validator decorators onto OpenAPI's numeric / string / array /
-// pattern / format keywords. Earlier the OpenAPI emitter ignored every
-// runtime-validator decorator, so client generators saw fields as
-// unbounded primitives and produced types that didn't match the
-// server's accepted shape.
+// pattern / format keywords. Without this wiring, client generators
+// would see fields as unbounded primitives and produce types that
+// don't match the server's accepted shape.
 func TestGenerateOpenAPIValidatorConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order {
@@ -273,13 +271,12 @@ service S { post Make /m { request Order  response Order } }`)
 	}
 }
 
-// TestGenerateOpenAPIMultipartMimeTypes pins D-MM: a `file @form`
-// field with `@mimeTypes(["a/b", "c/d"])` must surface its MIME
-// allowlist under multipart/form-data `encoding[field].contentType`
-// so generated client SDKs can either pre-check or warn the user
-// when an upload's MIME falls outside the contract. Earlier
-// behaviour emitted bare `format: binary` and the runtime validator
-// was the only place the allowlist lived.
+// TestGenerateOpenAPIMultipartMimeTypes checks that a `file @form`
+// field with `@mimeTypes(...)` surfaces the allowlist under
+// multipart/form-data `encoding[field].contentType` so generated
+// client SDKs can pre-check / warn the user when the upload's MIME
+// falls outside the contract. Without the encoding entry, only the
+// runtime validator carries the allowlist — client SDKs upload blind.
 func TestGenerateOpenAPIMultipartMimeTypes(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq {
@@ -307,13 +304,12 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIMixinFlatten covers W8: embedded mixins must
+// TestGenerateOpenAPIMixinFlatten checks that embedded mixins
 // surface in the host schema via OpenAPI's allOf composition so
 // generated TS clients see every field — including those inherited
-// from the mixin. The previous behaviour dropped mixin members
-// entirely; client SDKs lost `createdAt`/`updatedAt` (or whatever
-// the mixin contributed) and runtime requests with those fields
-// failed type-checks against the spec.
+// from the mixin. Without it, runtime requests carrying mixin
+// fields (`createdAt`, `updatedAt`, ...) fail type-checks against
+// the spec because the host schema lists only its own properties.
 func TestGenerateOpenAPIMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Audit { createdAt string @format(datetime)  updatedAt string @format(datetime) }
@@ -332,11 +328,11 @@ service S { post Create /c { request User  response User } }`)
 	}
 }
 
-// TestGenerateOpenAPIOptionalRefNullable covers W6: an optional
-// struct-typed field (`boss User?`) must emit nullable in the
-// component schema. Bare `$ref` carries no nullable flag; the
-// OpenAPI 3.0 idiom wraps via `allOf + nullable: true`. Without
-// this, TS client generators type the field as required `User`
+// TestGenerateOpenAPIOptionalRefNullable checks that an optional
+// struct-typed field (`boss User?`) emits nullable in the component
+// schema. Bare `$ref` carries no nullable flag; OpenAPI 3.0 expresses
+// "ref OR null" via `allOf: [$ref] + nullable: true`. Without the
+// wrapper, TS client generators type the field as required `User`
 // and refuse `null` even though the server accepts it.
 func TestGenerateOpenAPIOptionalRefNullable(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
@@ -359,10 +355,11 @@ service S { post Create /c { request T  response T } }`)
 	}
 }
 
-// TestGenerateOpenAPIOptionalEmitsNullable pins B3: a `T?` field
-// produces `nullable: true` in OpenAPI so spec consumers accept JSON
-// `null` for the field. The `?` field is also dropped from `required[]`;
-// `@nullable` stays in required. Both forms agree on `nullable: true`.
+// TestGenerateOpenAPIOptionalEmitsNullable: a `T?` field produces
+// `nullable: true` in OpenAPI so spec consumers accept JSON `null`
+// for it. The `?` field is also dropped from `required[]`; an
+// `@nullable` field stays in required. Both forms agree on
+// `nullable: true`.
 func TestGenerateOpenAPIOptionalEmitsNullable(t *testing.T) {
 	src := `package design
 type T {
@@ -397,12 +394,12 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
-// TestGenerateOpenAPIPerOperationSchemaMetadata pins B2: the inline
-// `<Method>ReqBody/Query/Path/Header/Cookie` schemas carry the same
-// field-level decorator effects (@default, @example, @nullable, @doc,
-// @deprecated) as the top-level type schemas. Earlier `schemaFromFields`
-// skipped applyFieldMetadata, silently dropping those for per-operation
-// schemas.
+// TestGenerateOpenAPIPerOperationSchemaMetadata: the inline
+// `<Method>Req{Body,Query,Path,Header,Cookie}` schemas carry the
+// same field-level decorator effects (@default, @example,
+// @nullable, @doc, @deprecated) as the top-level type schema.
+// Without applyFieldMetadata in schemaFromFields, per-operation
+// schemas would silently drop them.
 func TestGenerateOpenAPIPerOperationSchemaMetadata(t *testing.T) {
 	src := `package design
 type T {
@@ -421,9 +418,9 @@ service S { post Create /c { request T  response T } }`
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	out := string(body)
 	// Each marker should appear twice: once under the top-level `T`
-	// schema, and once under the per-operation `CreateReqBody`. Before
-	// B2 `schemaFromFields` dropped the metadata, so each marker
-	// appeared exactly once.
+	// schema, and once under the per-operation `CreateReqBody`.
+	// A single occurrence means schemaFromFields skipped
+	// applyFieldMetadata.
 	for _, want := range []string{
 		"example: alice",
 		"default: 18",
@@ -471,7 +468,7 @@ service S {
 // sites: type-level marks the schema deprecated, field-level marks
 // only that property, and method-level marks the operation. A
 // per-decorator string argument lands in the OpenAPI description so
-// docs viewers display the migration hint inline.
+// docs viewers display the deprecation reason inline.
 func TestGenerateOpenAPIDeprecated(t *testing.T) {
 	src := `package design
 @deprecated

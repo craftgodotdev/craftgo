@@ -749,14 +749,12 @@ func TestGenerateServiceScaffold(t *testing.T) {
 }
 
 func TestGenerateServiceGenericInstantiation(t *testing.T) {
-	// `response Page<User>` previously emitted `*types.Page` —
-	// missing the `[User]` instantiation — which fails to compile
-	// with "cannot use generic type Page[T any] without
-	// instantiation". The fix renders generic args inline so the
-	// signature reads `*types.Page[types.User]`. Local type args
-	// pick up the canonical `types.` alias; scalar args, multi-arg
-	// generics, and nested instantiations all flow through the same
-	// path.
+	// `response Page<User>` must render generic args inline as
+	// `*types.Page[types.User]`. A bare `*types.Page` would fail to
+	// compile with "cannot use generic type Page[T any] without
+	// instantiation". Local type args pick up the canonical `types.`
+	// alias; scalar args, multi-arg generics, and nested
+	// instantiations flow through the same path.
 	src := `package design
 type User { id string }
 scalar Email string @format(email)
@@ -992,21 +990,21 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 }
 
 // TestGenerateTransportRejectsBadQueryShapes pins the codegen-time
-// rejection of unsupported query-binding shapes. Before this gate
-// existed, struct/[]struct/map fields on a GET request were silently
-// dropped - the handler omitted the bind line and the field landed
-// at the logic layer zero-valued, with no error to chase.
+// rejection of unsupported query-binding shapes. Without the gate,
+// struct/[]struct/map fields on a GET request would be silently
+// dropped — the handler would omit the bind line and the field
+// would land at the logic layer zero-valued, with no error to chase.
 //
-// Non-string `@path` / `@header` / `@cookie` is enforced earlier by
-// the semantic analyser (see `binding/type` diagnostic) so those
-// cases live in semantic tests, not here.
+// Non-string `@path` / `@header` / `@cookie` is enforced at the
+// semantic layer (see `binding/type` diagnostic) so those cases
+// live in semantic tests, not here.
 //
 // Each case constructs a request type that exercises one rejection branch:
 //   - Filter Point      → struct on @query
 //   - Tags  []Point     → []struct on @query
 //   - Meta  map<string,string> → map on @query
 //   - Page  Page<Book>  → generic on @query
-//   - opt   int? @query  → optional numeric on @query (no clean v1 idiom)
+//   - opt   int? @query  → optional numeric on @query (no clean idiom)
 func TestGenerateTransportRejectsBadQueryShapes(t *testing.T) {
 	cases := []struct {
 		label   string

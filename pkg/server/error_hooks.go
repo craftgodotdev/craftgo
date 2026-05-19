@@ -22,9 +22,8 @@ func init() {
 }
 
 // defaultValidationFailed writes the validator's message body with a
-// 400 Bad Request status. Same shape as the previous inline
-// `http.Error` call so existing clients keep observing the same wire
-// behaviour until [SetDefaultValidationFailed] is invoked.
+// 400 Bad Request status. This is the wire default;
+// [SetDefaultValidationFailed] swaps it.
 func defaultValidationFailed(w http.ResponseWriter, _ *http.Request, err error) {
 	http.Error(w, err.Error(), http.StatusBadRequest)
 }

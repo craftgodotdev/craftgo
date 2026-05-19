@@ -357,8 +357,8 @@ service AuthService {
 //   - drop the now-unused canonical `types` import when neither side
 //     of the signature is local.
 //
-// This is the "v1 constraint #1" relaxation: services in any package
-// may reference request/response types from any other package.
+// Cross-package: services in any package may reference
+// request/response types declared in any other package.
 func TestRunGenCrossPackageRequestResponse(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "go.mod", "module github.com/test/cross\n\ngo 1.24\n")

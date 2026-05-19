@@ -11,9 +11,9 @@
 //	otel.Init(otel.WithOTLPgRPCExporter(ctx, "collector:4317"))
 //	otel.Init(otel.WithOTLPHTTPExporter(ctx, "http://collector:4318"))
 //
-// Multiple exporter options can be stacked - every span is fanned to
-// each registered processor (canonical migration shape: stdout for
-// debugging while OTLP is being validated).
+// Multiple exporter options can be stacked — every span is fanned
+// to each registered processor (e.g. stdout for local debugging
+// while OTLP runs against a real collector).
 package otel
 
 import (

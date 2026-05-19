@@ -182,7 +182,6 @@ func (s *zapLogger) Info(msg string, fs ...Field)  { s.z.Info(msg, fieldsToZap(f
 func (s *zapLogger) Warn(msg string, fs ...Field)  { s.z.Warn(msg, fieldsToZap(fs)...) }
 func (s *zapLogger) Error(msg string, fs ...Field) { s.z.Error(msg, fieldsToZap(fs)...) }
 
-// Ctx-suffixed methods currently delegate to the non-ctx variants. Once
 func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
 }

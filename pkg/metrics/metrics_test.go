@@ -202,9 +202,9 @@ func TestInitWithOTLPHTTPReaderInstallsPushExporter(t *testing.T) {
 
 // TestInitCombinesPullAndPushReaders pins the multi-reader path:
 // stacking [WithPrometheusReader] + an OTLP push option produces a
-// MeterProvider that fans every recorded metric to BOTH outputs,
-// the canonical migration shape (scrape stays live while the new
-// collector is being validated).
+// MeterProvider that fans every recorded metric to BOTH outputs —
+// the side-by-side shape (Prometheus scrape stays live while the
+// OTLP collector is validated).
 func TestInitCombinesPullAndPushReaders(t *testing.T) {
 	resetForTest(t)
 	ctx := context.Background()

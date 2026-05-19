@@ -61,9 +61,9 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	case *ast.TypeDecl:
 		_ = dd
 	case *ast.ErrorDecl:
-		// Errors don't carry @requiresOneOf/@mutuallyExclusive in v1
-		// (placement matrix gates this), but we keep the structure
-		// symmetric so future additions slot in.
+		// Errors don't currently carry @requiresOneOf or
+		// @mutuallyExclusive (the placement matrix gates this); the
+		// case stays here so future additions slot in symmetrically.
 	case *ast.ServiceDecl:
 		if !dd.Extend {
 			a.checkServiceLevelRefs(dd.Decorators)

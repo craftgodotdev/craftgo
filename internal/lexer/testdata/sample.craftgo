@@ -1,0 +1,35 @@
+package design
+
+import "shared"
+
+@title("User API")
+type User {
+	id   string @required
+	name string @length(1, 100)
+	age  int?   @gte(0)
+}
+
+enum Status {
+	Active   = "active"
+	Inactive = "inactive"
+}
+
+error NotFound UserNotFound {
+	userId string
+}
+
+@prefix("/api/v1")
+service UserService {
+	@doc("Get user by ID")
+	get GetUser /users/{id} {
+		request  GetUserReq
+		response User
+	}
+
+	@timeout(5s)
+	@maxBodySize(1MB)
+	post UpdateUser /users/{id} {
+		request  UpdateUserReq
+		response User
+	}
+}

@@ -144,24 +144,28 @@ func TestMultipleOfNegativeRejected(t *testing.T) {
 }
 
 func TestCrossFieldDuplicateRef(t *testing.T) {
-	// C7: @requiresOneOf(a, a, b) — duplicate field name. Without
-	// dedupe, generated code emits `v.A == nil && v.A == nil` which
-	// go vet flags as a redundant boolean expression.
+	// @requiresOneOf(a, a, b) — duplicate field names get rejected
+	// because the generated check would be `v.A == nil && v.A == nil`,
+	// which go vet flags as a redundant boolean expression and breaks
+	// `go test` for downstream projects.
 	expectDiag(t, `@requiresOneOf(a, a, b)
 type X { a string? b string? }`, CodeDuplicateGroupField)
 }
 
 func TestMutuallyExclusiveSingleField(t *testing.T) {
-	// W-R2.5: @mutuallyExclusive(only) — single field. The counter
-	// `n > 1` is provably unreachable.
+	// @mutuallyExclusive(only) with a single field — the counter
+	// check `n > 1` is unreachable, so the rule never fires. Flag
+	// it so the author either adds more fields or removes the
+	// decorator.
 	expectDiag(t, `@mutuallyExclusive(only)
 type X { only string? }`, CodeMutExSingleField)
 }
 
 func TestBoundOverflowInt8(t *testing.T) {
-	// C2: bound literal exceeds field primitive's capacity. Without
-	// the check, codegen emits `if v.X > 300` against int8 → compile
-	// fail (300 overflows int8 = max 127).
+	// Bound literals that exceed the field primitive's capacity are
+	// rejected at semantic time so codegen never emits something
+	// like `if v.X > 300` against an int8 field (300 overflows the
+	// int8 range — max 127).
 	expectDiag(t, `type X { score int8 @lte(300) }`, CodeBoundOverflow)
 	expectDiag(t, `type X { neg int8 @gte(-200) }`, CodeBoundOverflow)
 	expectDiag(t, `type X { u uint @lt(-1) }`, CodeBoundOverflow)

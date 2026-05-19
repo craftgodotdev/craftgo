@@ -445,12 +445,13 @@ func (p *Parser) parseTypeParams() []string {
 // that trailing on the surrounding decl's TrailingDoc so it survives
 // parse → format round-trip.
 //
-// Phase 1 limitation: the body slice contains only [*Field] and [*Mixin]
-// members. The [*FreeComment] member type is defined and the format printer
-// can render it, but the parser does not yet populate FreeComment entries —
-// doing so reliably requires per-comment-line position tracking in the
-// lexer (Phase 4) so we can disambiguate true free-floating comments from
-// trailing comments that the lexer mis-attached to the next non-trivia token.
+// The body slice contains only [*Field] and [*Mixin] members today.
+// The [*FreeComment] member type is defined and the format printer
+// can render it, but the parser doesn't yet populate FreeComment
+// entries — doing so reliably requires per-comment-line position
+// tracking in the lexer so the disambiguation between free-floating
+// comments and trailing comments mis-attached to the next non-trivia
+// token is sound.
 func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 	if !p.peekIs(lexer.LBrace) {
 		return nil, lexer.Token{}

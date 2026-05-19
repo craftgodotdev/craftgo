@@ -8,7 +8,7 @@ Validators are decorators that constrain field values. They live in the DSL and 
 type CreateUserReq {
     name  string @length(1, 80)
     email string @format(email)
-    age   int?   @min(0) @max(150)
+    age   int?   @gte(0) @lte(150)
 }
 ```
 
@@ -26,7 +26,7 @@ You write:
 type CreateUserReq {
     name  string @length(1, 80)
     email string @format(email)
-    age   int?   @min(0) @max(150)
+    age   int?   @gte(0) @lte(150)
 }
 ```
 
@@ -88,17 +88,19 @@ type Profile {
 
 | Decorator                   | Effect                                |
 | --------------------------- | ------------------------------------- |
-| `@min(n)`                   | Value `>= n`                          |
-| `@max(n)`                   | Value `<= n`                          |
-| `@range(min, max)`          | Both bounds                           |
-| `@positive`                 | `> 0`                                 |
-| `@negative`                 | `< 0`                                 |
-| `@multipleOf(n)`            | Divisible by `n`                      |
+| `@gte(n)`                   | Value `>= n` (inclusive)              |
+| `@lte(n)`                   | Value `<= n` (inclusive)              |
+| `@gt(n)`                    | Value `> n` (strict)                  |
+| `@lt(n)`                    | Value `< n` (strict)                  |
+| `@range(min, max)`          | Both bounds, inclusive                |
+| `@positive`                 | `> 0` (alias for `@gt(0)`)            |
+| `@negative`                 | `< 0` (alias for `@lt(0)`)            |
+| `@multipleOf(n)`            | Divisible by `n` (integers only)      |
 
 ```craftgo
 type Order {
-    quantity int   @positive @max(1000)
-    price    int   @min(0) @multipleOf(2)
+    quantity int   @positive @lte(1000)
+    price    int   @gte(0) @multipleOf(2)
     rating   float @range(0.0, 5.0)
 }
 ```
@@ -179,7 +181,7 @@ type AvatarReq {
 ```craftgo
 type ListUsersReq {
     page     int     @default(1)
-    pageSize int     @default(20) @min(1) @max(100)
+    pageSize int     @default(20) @gte(1) @lte(100)
     sort     string? @default("created_at")
 }
 ```

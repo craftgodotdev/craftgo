@@ -18,6 +18,7 @@ package semantic
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -402,7 +403,7 @@ func (r *refResolver) checkMiddlewareDecorators(decs []*ast.Decorator, declared 
 // middlewareRefResolves returns true when value is recognised as a
 // valid middleware reference under either the qualified or bare form.
 func (r *refResolver) middlewareRefResolves(value string, declared map[string]bool) bool {
-	if dot := lastByte(value, '.'); dot >= 0 {
+	if dot := strings.LastIndexByte(value, '.'); dot >= 0 {
 		pkgName := value[:dot]
 		bare := value[dot+1:]
 		pkg := r.proj.Packages[pkgName]
@@ -413,18 +414,6 @@ func (r *refResolver) middlewareRefResolves(value string, declared map[string]bo
 		return ok
 	}
 	return declared[value]
-}
-
-// lastByte returns the last occurrence index of b in s, or -1 when
-// s contains no such byte. Mirrors the standard library helper but
-// avoids an import cycle in the test variant of this package.
-func lastByte(s string, b byte) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == b {
-			return i
-		}
-	}
-	return -1
 }
 
 // packageHasSymbol reports whether sym is declared in pkg's symbol

@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -177,29 +178,7 @@ func pathToURI(p string) string {
 // about the same span). Without this guard the editor would render
 // stacked duplicate squigglies.
 func keyOf(d lexer.Diagnostic) string {
-	return d.Pos.Filename + ":" + intToA(d.Pos.Line) + ":" + intToA(d.Pos.Column) + ":" + d.Code + ":" + d.Msg
-}
-
-func intToA(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	var buf [20]byte
-	pos := len(buf)
-	for i > 0 {
-		pos--
-		buf[pos] = byte('0' + i%10)
-		i /= 10
-	}
-	if neg {
-		pos--
-		buf[pos] = '-'
-	}
-	return string(buf[pos:])
+	return d.Pos.Filename + ":" + strconv.Itoa(d.Pos.Line) + ":" + strconv.Itoa(d.Pos.Column) + ":" + d.Code + ":" + d.Msg
 }
 
 // toLSP converts an internal [lexer.Diagnostic] to the LSP wire shape.

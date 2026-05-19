@@ -275,8 +275,8 @@ type Spec struct {
 	//   - `craftgo fmt` strips empty parens (`@positive()` →
 	//     `@positive`) so canonical form is parens-free.
 	//   - The parser emits [CodeFlagEmptyParens] (warning) when a Flag
-	//     decorator is written with empty `()`. Soft-migration: not an
-	//     error, but the formatter rewrites it on save.
+	//     decorator is written with empty `()`. Warning only — the
+	//     formatter rewrites it on save.
 	//
 	// The invariant is `Flag == true ⇒ Args.Max == 0`. A future check
 	// in init() enforces this.
@@ -537,15 +537,14 @@ var Registry = map[string]Spec{
 	"operationId": {Name: "operationId", Levels: LvlMethod, Doc: "Override OpenAPI operationId.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}},
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
-	// NOTE: `@consumes`, `@produces`, `@accepts` were removed in
-	// favour of a JSON-only v1 codec surface. craftgo's transport
-	// layer hardcodes `application/json` for both request decode
-	// and response encode; the decorators previously parsed but
-	// produced no runtime / spec effect, so authors had no way to
-	// realise they were silently dropped. Multi-codec content
-	// negotiation is a planned future feature — when it lands the
-	// decorators come back paired with a real `CodecRegistry`
-	// dispatch path. Until then keep the surface small and honest.
+	// NOTE: `@consumes`, `@produces`, `@accepts` are not in the
+	// registry. craftgo's transport hardcodes `application/json` for
+	// both request decode and response encode, so accepting those
+	// decorators would parse but produce no runtime / spec effect.
+	// Multi-codec content negotiation is a planned feature — when a
+	// real `CodecRegistry` dispatch path lands, the decorators come
+	// back paired with it. Until then keep the surface small and
+	// honest.
 
 	// ---- Method behavior ----
 	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly.", Flag: true},

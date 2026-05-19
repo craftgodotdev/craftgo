@@ -237,10 +237,10 @@ func TestPlacementNilEntry(t *testing.T) {
 
 // ---------- Existing diags now carry Code + Related ----------
 
-// Each test below picks one previously-string-only diagnostic and
-// asserts the IDE-facing structured fields are populated. The Msg
-// substring assertions live in semantic_test.go and continue to pass -
-// these tests sit alongside as the contract for LSP consumers.
+// Each test below asserts that an LSP-consumed diagnostic carries
+// the structured Code + Related fields, in addition to its message
+// string. Substring assertions on Msg live in semantic_test.go;
+// these tests are the IDE-side contract.
 
 func TestCodeOnDuplicateDecl(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X {}

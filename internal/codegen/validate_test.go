@@ -103,8 +103,9 @@ type X {
 }
 
 func TestValidateFloatBounds(t *testing.T) {
-	// C1: float bound literals must emit checks (previously dropped
-	// silently because intArg only matched IntLit).
+	// Float bound literals (FloatLit) must produce checks alongside
+	// integer bounds (IntLit). Without this the integer-only path
+	// would silently skip `@gte(0.5)` etc.
 	src := runValidateGen(t, `package design
 type X {
     rate  float64 @gte(0.5) @lte(1.5)
@@ -125,8 +126,8 @@ type X {
 }
 
 func TestValidateStrictBounds(t *testing.T) {
-	// Sprint 2 S2: @gt and @lt are strict variants of @gte / @lte.
-	// Validity = `x > N` / `x < N`; codegen emits the inverted form
+	// @gt and @lt are strict variants of @gte / @lte. Validity is
+	// `x > N` / `x < N`; codegen emits the inverted form
 	// `x <= N` / `x >= N` as the failure condition.
 	src := runValidateGen(t, `package design
 type X {
@@ -176,11 +177,10 @@ type X { count int @multipleOf(5) }`)
 }
 
 func TestValidateMultipleOfRejectsFloat(t *testing.T) {
-	// Float fields with @multipleOf are rejected at the semantic
-	// layer. Earlier behaviour silently dropped the check at codegen
-	// (Go's `%` operator is integer-only), leaving the runtime
-	// validator inconsistent with the OpenAPI side which still
-	// emitted `multipleOf: 0.5`.
+	// Float fields with @multipleOf are rejected at semantic time
+	// because Go's `%` operator is integer-only — accepting them
+	// silently would leave the runtime validator inconsistent with
+	// the OpenAPI side that still emits `multipleOf: 0.5`.
 	src := tryRunValidateGen(t, `package design
 type X { ratio float64 @multipleOf(2) }`)
 	if src != "" && strings.Contains(src, "v.Ratio%") {
@@ -231,12 +231,12 @@ type X { tags string[] @uniqueItems }`)
 }
 
 func TestValidateMapStructValueRecurses(t *testing.T) {
-	// Previously every `map<K, V>` short-circuited recursive
-	// validation regardless of V's shape. A `map<string, User>` left
-	// `User.Validate()` uncalled — Email format / length / pattern
-	// checks silently skipped for every map entry. The fix walks
-	// values for user-defined types (including array / optional of
-	// user types).
+	// `map<K, V>` walks values when V is a user-defined type so the
+	// inner Validate() (format/length/pattern decorators on V's
+	// fields) actually runs per entry. Array and optional shapes of
+	// V follow the same path — `map<string, User[]>` and
+	// `map<string, User?>` each cascade through their per-element
+	// or nil-guard wrapper.
 	src := runValidateGen(t, `package design
 type User { id string @minLength(1) }
 type Catalog {
@@ -264,10 +264,10 @@ type Catalog {
 }
 
 func TestValidateRegexHoisted(t *testing.T) {
-	// Patterns and regex-backed format catalogue entries must compile
-	// ONCE at package init via `var _pattern0 = regexp.MustCompile(...)`
-	// — the previous inline form recompiled the regex on every
-	// Validate() call, paying the parser cost per request.
+	// Patterns and regex-backed format catalogue entries compile
+	// ONCE at package init via `var _pattern0 = regexp.MustCompile(...)`.
+	// Inline compilation inside Validate() would pay the parser cost
+	// on every call — unacceptable on the hot per-request path.
 	src := runValidateGen(t, `package design
 type X {
     code   string @pattern("^[A-Z]+$")
@@ -336,9 +336,10 @@ type X { id string }`)
 }
 
 func TestValidateMultiDimNestedArray(t *testing.T) {
-	// C5: Node[][] previously emitted a single `for i := range v.Matrix`
-	// that called Validate() on `v.Matrix[i]` — a []Node, not Node →
-	// compile fail. Now must emit 2 nested loops.
+	// Multi-dim arrays of struct types need one for-loop per
+	// dimension; the innermost body refs the deepest element. A
+	// single loop would call Validate() on a slice (`[]Node`), not
+	// on the struct.
 	src := runValidateGen(t, `package design
 type Node { id string }
 type Catalog { matrix Node[][] }`)
@@ -356,9 +357,9 @@ type Catalog { matrix Node[][] }`)
 }
 
 func TestValidateMinMaxItemsOptionalArrayNilGuard(t *testing.T) {
-	// C3: optional array (`T[]?`) must skip minItems/maxItems when nil.
-	// `len(nil) == 0` would otherwise fail @minItems(1) even though
-	// the field was marked optional.
+	// Optional arrays (`T[]?`) skip minItems/maxItems when nil:
+	// `len(nil) == 0` would otherwise reject an absent field that
+	// the `?` suffix explicitly allows.
 	src := runValidateGen(t, `package design
 type X { tags string[]? @minItems(1) @maxItems(5) }`)
 	if !strings.Contains(src, "if v.Tags != nil {") {
@@ -419,9 +420,10 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 // ---------- cross-field validators ----------
 
 func TestValidateRequiresOneOfNullableFields(t *testing.T) {
-	// C4: @nullable forces pointer in Go. Cross-field validators must
-	// emit `v.X == nil` for nullable fields, not value-shape compares
-	// like `v.X == ""` (which fails to compile against `*string`).
+	// @nullable forces a pointer in Go. Cross-field validators must
+	// emit `v.X == nil` for nullable fields, not value-shape
+	// comparisons like `v.X == ""` which fail to compile against
+	// `*string`.
 	src := runValidateGen(t, `package design
 @requiresOneOf(left, right)
 type Choice {

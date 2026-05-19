@@ -355,9 +355,7 @@ components:
         grid:
           items:
             items:
-              allOf:
-              - $ref: '#/components/schemas/CollectionsTag'
-              nullable: true
+              $ref: '#/components/schemas/CollectionsTag'
             type: array
           nullable: true
           type: array
@@ -986,9 +984,7 @@ components:
       properties:
         teams:
           items:
-            allOf:
-            - $ref: '#/components/schemas/Team'
-            nullable: true
+            $ref: '#/components/schemas/Team'
           nullable: true
           type: array
       type: object
@@ -2239,9 +2235,7 @@ components:
       properties:
         teams:
           items:
-            allOf:
-            - $ref: '#/components/schemas/Team'
-            nullable: true
+            $ref: '#/components/schemas/Team'
           nullable: true
           type: array
       type: object
@@ -2710,9 +2704,7 @@ components:
       properties:
         keywords:
           items:
-            allOf:
-            - $ref: '#/components/schemas/ScalarsTag'
-            nullable: true
+            $ref: '#/components/schemas/ScalarsTag'
           nullable: true
           type: array
         limit:
@@ -2751,9 +2743,7 @@ components:
       properties:
         keywords:
           items:
-            allOf:
-            - $ref: '#/components/schemas/ScalarsTag'
-            nullable: true
+            $ref: '#/components/schemas/ScalarsTag'
           nullable: true
           type: array
         limit:

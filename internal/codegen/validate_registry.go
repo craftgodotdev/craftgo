@@ -87,10 +87,10 @@ var validators = []validatorEntry{
 	{"pattern", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) }},
 	{"format", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) }},
 
-	// numeric — math-style comparison operators replace the older
-	// @min (= @gte) and @max (= @lte). Strict variants (@gt, @lt)
-	// have no @min/@max equivalent; they fill the gap that previously
-	// forced users to write @positive / @negative or @pattern.
+	// numeric — math-style comparison operators. Strict variants
+	// (@gt, @lt) sit next to inclusive variants (@gte, @lte); no
+	// legacy aliases. `@positive`/`@negative` remain as flag-form
+	// sugar for `@gt(0)` / `@lt(0)`.
 	{"gt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return numericBoundCheck(f, a, d, ">", "must be greater than", c.uses)
 	}},

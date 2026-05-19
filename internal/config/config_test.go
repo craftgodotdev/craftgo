@@ -61,10 +61,10 @@ func TestLoadFullOverride(t *testing.T) {
 	}
 }
 
-// TestLoadIgnoresStrayPackageKey pins the migration story: existing
-// projects with a `package:` key in the manifest still load cleanly.
-// The key is silently dropped (no struct field consumes it) so the
-// truth-source is exclusively go.mod.
+// TestLoadIgnoresStrayPackageKey: a `package:` key in the manifest
+// is silently dropped (no struct field consumes it) so existing
+// projects load cleanly. The truth-source for module path is
+// exclusively go.mod.
 func TestLoadIgnoresStrayPackageKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, Filename)

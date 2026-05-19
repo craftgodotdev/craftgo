@@ -716,9 +716,7 @@ components:
             Array of enum — values are bare idents resolved to their Go
             const counterparts.
           items:
-            allOf:
-            - $ref: '#/components/schemas/PaymentMethod'
-            nullable: true
+            $ref: '#/components/schemas/PaymentMethod'
           nullable: true
           type: array
         currency:
@@ -783,9 +781,7 @@ components:
             Array of enum — values are bare idents resolved to their Go
             const counterparts.
           items:
-            allOf:
-            - $ref: '#/components/schemas/PaymentMethod'
-            nullable: true
+            $ref: '#/components/schemas/PaymentMethod'
           nullable: true
           type: array
         currency:

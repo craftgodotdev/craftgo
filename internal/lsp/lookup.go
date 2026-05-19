@@ -3,6 +3,7 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.lsp.dev/protocol"
 
@@ -238,19 +239,10 @@ func importTargetDir(designRoot, importPath string) string {
 // import path. Used as the implicit alias when an import has no
 // explicit `alias` keyword.
 func lastPathSegment(p string) string {
-	if i := lastIndex(p, '/'); i >= 0 {
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
 		return p[i+1:]
 	}
 	return p
-}
-
-func lastIndex(s string, b byte) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == b {
-			return i
-		}
-	}
-	return -1
 }
 
 // inDir reports whether path lies directly inside (or equals) dir. The
@@ -436,8 +428,9 @@ func declSummary(d ast.Decl) string {
 	return ""
 }
 
-// declDoc returns the doc-comment lines of d, or nil for declarations
-// that do not carry doc strings (Scalar / Middleware).
+// declDoc returns the doc-comment lines of d. Every doc-bearing decl
+// type is enumerated here so hover popups stay consistent across
+// type / enum / error / service / scalar / middleware.
 func declDoc(d ast.Decl) []string {
 	switch v := d.(type) {
 	case *ast.TypeDecl:
@@ -447,6 +440,10 @@ func declDoc(d ast.Decl) []string {
 	case *ast.ErrorDecl:
 		return v.Doc
 	case *ast.ServiceDecl:
+		return v.Doc
+	case *ast.ScalarDecl:
+		return v.Doc
+	case *ast.MiddlewareDecl:
 		return v.Doc
 	}
 	return nil

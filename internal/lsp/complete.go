@@ -493,7 +493,7 @@ func (s *Server) enumDeclByNameProjectWide(view snapshotView, currentURI, curren
 // durationSuffixes / sizeSuffixes mirror the unit set the lexer
 // recognises in [lexer.lexNumber]; keep these in sync if the lexer
 // gains new units.
-var durationSuffixes = []string{"ms", "s", "m", "h"}
+var durationSuffixes = []string{"ns", "us", "µs", "ms", "s", "m", "h"}
 var sizeSuffixes = []string{"B", "KB", "MB", "GB"}
 
 // durationPresets / sizePresets are the values surfaced when the
@@ -1095,8 +1095,13 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	return out
 }
 
+// needsArgs reports whether the decorator REQUIRES arguments - only
+// then do we expand the completion item into `name($0)` so the cursor
+// lands inside the parens. Decorators where args are optional (Min=0)
+// like `@deprecated` should insert bare so the user can accept the
+// no-arg form without deleting empty parentheses.
 func needsArgs(r semantic.ArgsRule) bool {
-	return r.Min > 0 || r.Variadic != 0 || r.Max > 0
+	return r.Min > 0 || r.Variadic != 0
 }
 
 

@@ -18,12 +18,12 @@
 //   - Generic instantiation: arg arity, non-generic-with-args, and
 //     type-parameter scoping.
 //
-// Future work: cross-package qualified-ref resolution (v1 uses a
-// folder-merge model and rejects qualified names), and richer path
-// resolution against [config.OpenAPI].BasePath. Diagnostics carry
-// stable [lexer.Diagnostic.Code] identifiers (`decorator/arity`,
-// `mixin/conflict`, `generic/arity`, …) so the LSP and docs site can
-// reference each rule individually.
+// Cross-package qualified-ref resolution is not yet supported: the
+// analyser uses a folder-merge import model and rejects qualified
+// names. Richer path resolution against [config.OpenAPI].BasePath is
+// also pending. Diagnostics carry stable [lexer.Diagnostic.Code]
+// identifiers (`decorator/arity`, `mixin/conflict`, `generic/arity`,
+// …) so the LSP and docs site can reference each rule individually.
 package semantic
 
 import (
@@ -283,9 +283,9 @@ const (
 	CodeDecoratorConflict = "decorator/conflict"
 	// CodeFlagEmptyParens fires (severity warning) when a Flag
 	// decorator (one that never takes arguments) is written with empty
-	// parens — `@positive()` instead of `@positive`. Soft migration:
-	// not an error, but `craftgo fmt` strips the parens on save so
-	// canonical form is parens-free.
+	// parens — `@positive()` instead of `@positive`. Warning only:
+	// `craftgo fmt` strips the parens on save so canonical form is
+	// parens-free.
 	CodeFlagEmptyParens = "decorator/flag-empty-parens"
 	// CodeArgPreferIdent fires (severity warning) when a decorator
 	// argument names a registered identifier (format name, security
@@ -423,8 +423,8 @@ const (
 	// the analyser rejects the mistake up front.
 	CodePassthroughBody = "passthrough/has-body"
 
-	// CodeQualifiedRef fires for a `pkg.Type` reference; v1 uses a
-	// folder-merge import model and rejects qualified names.
+	// CodeQualifiedRef fires for a `pkg.Type` reference. The current
+	// resolver uses folder-merge imports and rejects qualified names.
 	CodeQualifiedRef = "ref/qualified"
 
 	// CodeMixinUnresolved fires when a mixin reference does not name
@@ -1024,14 +1024,16 @@ func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
 	}
 }
 
-// checkQualifiedRefs flags any `pkg.Type` reference that the v1 model
-// cannot resolve. CraftGo v1 uses a folder-merge import model: every
-// `.craftgo` file reachable from the design root contributes to a single
-// logical package, so type references should be unqualified. A multi-part
-// qualified name (e.g. `shared.User`) parses successfully - the AST keeps it
-// so the v2 cross-package resolver has something to work with - but produces
-// a Go compile error downstream because no Go-level import is emitted. We
-// turn that latent failure into a friendly diagnostic up front.
+// checkQualifiedRefs flags any `pkg.Type` reference that the current
+// resolver cannot handle. craftgo uses a folder-merge import model:
+// every `.craftgo` file reachable from the design root contributes
+// to a single logical package, so type references should be
+// unqualified. A multi-part qualified name (e.g. `shared.User`)
+// parses successfully — the AST preserves the shape so a future
+// cross-package resolver has something to work with — but produces a
+// Go compile error downstream because no Go-level import is emitted.
+// This check turns that latent failure into a friendly diagnostic up
+// front.
 //
 // Mixin references are exempt from the check because the codegen already
 // strips qualified prefixes (`emitMixin` uses the trailing segment) and the
@@ -1220,8 +1222,8 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 //   - a `scalar X string @...` declared in pkg
 //   - a bare or string-valued enum declared in pkg
 //
-// Optional / array shapes are rejected - the codegen has no clean
-// idiom for them on these wire formats in v1.
+// Optional / array shapes are rejected: no clean codegen idiom
+// exists for them on these wire formats yet.
 func isStringBindingType(t *ast.TypeRef, pkg *Package) bool {
 	if t == nil || t.Array || t.Optional || t.Named == nil {
 		return false

@@ -2,7 +2,6 @@ package semantic
 
 import (
 	"sort"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -143,7 +142,3 @@ func describeProducedNames(p declProducer) string {
 	}
 	return "decl emits its name verbatim"
 }
-
-// (helper rendering kept separate for readability - joined on demand
-// when the declProducer list becomes a subject of the diagnostic.)
-var _ = strings.Join

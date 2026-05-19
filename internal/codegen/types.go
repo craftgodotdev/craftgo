@@ -405,13 +405,11 @@ func goNamedType(n *ast.NamedTypeRef) string {
 	case "bytes":
 		return "[]byte"
 	case "any":
-		// Codec-agnostic: `any` lands on Go's empty interface so
-		// every codec (json / msgpack / cbor / ...) can decode and
-		// re-encode the value without being coupled to a specific
-		// raw-message type. The previous mapping
-		// (`json.RawMessage`) preserved bytes verbatim but only
-		// worked under JSON - swapping the codec quietly broke
-		// marshalling.
+		// Codec-agnostic: Go's empty interface lets every codec
+		// (json / msgpack / cbor / ...) decode and re-encode the
+		// value without being coupled to a specific raw-message
+		// type. `json.RawMessage` would preserve bytes verbatim
+		// under JSON but break the moment the codec changes.
 		return "any"
 	case "file":
 		return "*multipart.FileHeader"

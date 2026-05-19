@@ -231,7 +231,7 @@ func TestSecurityArityZero(t *testing.T) {
 service S {}`, CodeDecoratorArity)
 }
 
-// ---------- Flag decorators (S5) ----------
+// ---------- Flag decorators ----------
 
 func TestFlagDecoratorEmptyParensWarn(t *testing.T) {
 	// @positive is a Flag decorator (never takes args). Writing `()`
@@ -260,8 +260,8 @@ func TestExampleArityWrong(t *testing.T) {
 }
 
 func TestExampleRejectsNamedArg(t *testing.T) {
-	// After S1 @example uses generic ArgsRule. A lone named arg is
-	// filtered out of positional → arity (0 vs Min=1) fires.
+	// @example takes a single positional literal. A lone named arg
+	// is filtered out of positional → arity (0 vs Min=1) fires.
 	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArity)
 }
 

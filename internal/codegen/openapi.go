@@ -94,10 +94,10 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		out.Name = pkgNames[0]
 	}
 
-	// Phase 1: build name-resolution table - for each (pkgName,
-	// origName) tuple, the merged identifier the schema lives under.
-	// Conflicts are detected by membership-counting across all
-	// packages: a name is "shared" when it appears in 2+ packages.
+	// Build the name-resolution table: for each (pkgName, origName)
+	// tuple, the merged identifier the schema lives under. Conflicts
+	// are detected by membership-counting across all packages: a
+	// name is "shared" when it appears in 2+ packages.
 	type symbolKey struct{ pkg, name string }
 	resolve := map[symbolKey]string{}
 	collide := func(name string) bool {
@@ -130,11 +130,11 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		}
 	}
 
-	// Phase 2: clone every decl into the merged package, rewriting
-	// the decl's body type refs so `$ref` resolution still lines up.
-	// rewriteRef takes the SOURCE package + a NamedTypeRef and
-	// returns either the original ref (no rewrite needed) or a new
-	// ref with the resolved single-part name.
+	// Clone every decl into the merged package, rewriting the decl's
+	// body type refs so `$ref` resolution still lines up. rewriteRef
+	// takes the SOURCE package + a NamedTypeRef and returns either
+	// the original ref (no rewrite needed) or a new ref with the
+	// resolved single-part name.
 	rewriteRef := func(srcPkg string, n *ast.NamedTypeRef) *ast.NamedTypeRef {
 		if n == nil || n.Name == nil {
 			return n
@@ -395,7 +395,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) *openapi3.T {
 		doc.Servers = openapi3.Servers{{URL: cfg.OpenAPI.BasePath}}
 	}
 	addSchemas(doc, pkg)
-	addPaths(doc, pkg, cfg)
+	addPaths(doc, pkg)
 	addSecuritySchemes(doc, pkg)
 	return doc
 }
@@ -588,11 +588,11 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package) *openapi3.Schema {
 		case *ast.Mixin:
 			// Embedded mixin: OpenAPI 3.0 expresses Go's field-
 			// promotion via `allOf: [$ref]` so the host schema
-			// inherits every property of the referenced type. The
-			// previous codepath dropped mixins entirely — host
-			// schema only listed its own non-mixin fields, leaving
-			// generated TS clients without `createdAt`/`updatedAt`
-			// (or whatever the mixin contributed).
+			// inherits every property of the referenced type.
+			// Skipping the mixin would leave generated TS clients
+			// without the embedded fields (`createdAt`/`updatedAt`,
+			// ...) and runtime requests carrying them would fail
+			// spec validation.
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
 				continue
 			}
@@ -799,10 +799,10 @@ func applyArrayConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 	}
 }
 
-// applyPatternFormat maps `@pattern("...")` and `@format(name)` to the
-// OpenAPI keywords of the same name. Field-level `@format` was
-// previously lost in the schema — only scalar-level `@format` survived
-// because the scalar emitter set it directly on the component schema.
+// applyPatternFormat maps `@pattern("...")` and `@format(name)` to
+// the OpenAPI keywords of the same name. Must be called for every
+// field-level schema; scalar component schemas have their own emit
+// path that sets these directly.
 func applyPatternFormat(ds []*ast.Decorator, s *openapi3.Schema) {
 	if s == nil {
 		return
@@ -1021,7 +1021,12 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package) *openapi3.SchemaRef
 		// Peel ONE bracket per recursion so multi-array types
 		// (`Tag[][]`) emit nested OpenAPI `array` schemas. The
 		// inner schemaForTypeRef call sees `Tag[]`, then `Tag`.
+		// Clear Optional on the inner — `Tag[]?` means "the slice
+		// may be absent", not "each element may be null"; leaving
+		// the flag set would propagate `nullable: true` into the
+		// items schema.
 		inner := *t
+		inner.Optional = false
 		if inner.ArrayDepth > 0 {
 			inner.ArrayDepth--
 		}
@@ -1170,15 +1175,13 @@ func primitiveSchema(name string) *openapi3.Schema {
 // request schemas (`<Method>ReqBody`, `<Method>ReqQuery`, ...) are
 // emitted into components.schemas as a side effect so operations can
 // $ref them.
-func addPaths(doc *openapi3.T, pkg *semantic.Package, cfg *config.Config) {
-	// OpenAPI 3.x resolves request URLs as `servers[].url + path`. We've
-	// already pushed `basePath` onto the servers entry above, so the
-	// path keys here MUST be relative - passing the basePath through
-	// `methodFullPath` would double-stamp the prefix in spec consumers
-	// (e.g. `/api` server + `/api/v1/foo` path → resolved `/api/api/v1/foo`).
-	// Runtime routes still concatenate basePath via the same helper but
-	// from `routes.go`, which has no separate "server URL" concept.
-	_ = cfg
+//
+// Path keys here MUST be relative - basePath has already been pushed onto
+// the servers entry, and OpenAPI 3.x resolves URLs as `servers[].url +
+// path`. Passing basePath through `methodFullPath` would double-stamp the
+// prefix in spec consumers (`/api` server + `/api/v1/foo` path →
+// resolved `/api/api/v1/foo`).
+func addPaths(doc *openapi3.T, pkg *semantic.Package) {
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
@@ -1492,8 +1495,9 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 // errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`
 // chain on the method into a deduplicated list of error declaration
 // names. Both the bare-ident form (`@errors(Foo)`) and the
-// fully-qualified `pkg.Foo` form parse here - qualified refs collapse
-// to the trailing segment because cross-package resolution is v2.
+// fully-qualified `pkg.Foo` form parse here — qualified refs
+// collapse to the trailing segment because cross-package resolution
+// isn't yet supported.
 func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	seen := map[string]bool{}
 	var out []string

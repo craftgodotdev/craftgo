@@ -158,7 +158,7 @@ func WithReader(r sdkmetric.Reader) Option {
 //	// Push (OTLP gRPC to collector):
 //	metrics.Init(metrics.WithOTLPgRPCReader(ctx, "collector:4317"))
 //
-//	// Both - useful during a migration window:
+//	// Both — side-by-side scrape and push:
 //	metrics.Init(
 //	    metrics.WithPrometheusReader(),
 //	    metrics.WithOTLPgRPCReader(ctx, "collector:4317"),

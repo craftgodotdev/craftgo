@@ -197,10 +197,11 @@ type Foo {
 	}
 }
 
-// TestFormatStripsEmptyParens covers S5: empty `()` is canonicalised
-// away — `@positive()` → `@positive`, `@nullable()` → `@nullable`,
-// `@deprecated()` → `@deprecated`. Holds for Flag decorators (which
-// never take args) AND non-Flag decorators authored with no args.
+// TestFormatStripsEmptyParens: empty `()` is canonicalised away
+// — `@positive()` → `@positive`, `@nullable()` → `@nullable`,
+// `@deprecated()` → `@deprecated`. Applies to Flag decorators
+// (which never take args) AND non-Flag decorators authored with
+// no args.
 func TestFormatStripsEmptyParens(t *testing.T) {
 	src := `package design
 
@@ -223,10 +224,10 @@ type X {
 	}
 }
 
-// TestFormatMigratesMinMax covers Sprint 2 S2: `@min(N)` is rewritten
-// to `@gte(N)` and `@max(N)` to `@lte(N)` on format. The semantic
-// registry no longer recognises @min/@max — format normalises them so
-// the next lint pass sees the canonical names. Existing @gte/@lte stay
+// TestFormatMigratesMinMax: `@min(N)` is rewritten to `@gte(N)`
+// and `@max(N)` to `@lte(N)` on format. The semantic registry
+// doesn't recognise @min/@max; the formatter normalises them so the
+// next lint pass sees the canonical names. Existing @gte/@lte stay
 // intact, idempotently.
 func TestFormatMigratesMinMax(t *testing.T) {
 	src := `package design
@@ -252,12 +253,12 @@ type X {
 	}
 }
 
-// TestFormatRewritesFormatStringToIdent covers Sprint 2 S4:
-// `@format("email")` is rewritten to `@format(email)` on save. The
-// rule: when a decorator argument names a registered identifier
-// (format name, security scheme, ...), the canonical form is bare
-// ident. Strings with non-ident characters (hyphens, dots) stay
-// quoted so the rewrite doesn't produce un-parseable output.
+// TestFormatRewritesFormatStringToIdent: `@format("email")` is
+// rewritten to `@format(email)` on save. Rule — when a decorator
+// argument names a registered identifier (format name, security
+// scheme, ...), bare ident is canonical. Strings with non-ident
+// characters (hyphens, dots) stay quoted so the rewrite doesn't
+// produce un-parseable output.
 func TestFormatRewritesFormatStringToIdent(t *testing.T) {
 	src := `package design
 
@@ -316,8 +317,8 @@ type Other {
 	}
 }
 
-// TestImportAndDecoratorComments verifies Phase 3: leading and trailing
-// comments on `import` lines and trailing comments on decorators round-trip
+// TestImportAndDecoratorComments: leading and trailing comments on
+// `import` lines and trailing comments on decorators round-trip
 // through Format intact.
 func TestImportAndDecoratorComments(t *testing.T) {
 	src := `package users
@@ -432,9 +433,10 @@ service Svc {
 }
 
 // TestFreeCommentRender verifies the printer handles [*ast.FreeComment]
-// members inside type, enum, and service bodies. The parser does not yet
-// populate FreeComment in Phase 1, so the AST is built directly here and
-// piped into [Print] to exercise the body-iteration code paths.
+// members inside type, enum, and service bodies. The parser does not
+// populate FreeComment members yet (per-comment-line position tracking
+// would be needed), so the AST is built directly here to exercise the
+// body-iteration code paths.
 func TestFreeCommentRender(t *testing.T) {
 	file := &ast.File{
 		Package: &ast.PackageDecl{Name: "x"},

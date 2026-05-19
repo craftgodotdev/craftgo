@@ -865,7 +865,7 @@ func TestQualifiedIdentMissingFirstIdent(t *testing.T) {
 // ---------- golden ----------
 
 func TestGoldenSample(t *testing.T) {
-	path, err := filepath.Abs("../../testdata/grammar/sample.craftgo")
+	path, err := filepath.Abs("testdata/sample.craftgo")
 	if err != nil {
 		t.Fatal(err)
 	}

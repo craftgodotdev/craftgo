@@ -208,8 +208,8 @@ func defaultPrimitiveKind(name string, pkg *Package) ArgKind {
 // optional of those, and arrays of those are allowed. Map / struct /
 // generic / array-of-struct return false so the caller can flag the
 // combination. Cross-package qualified refs (multi-segment names)
-// also return false - the v1 model doesn't resolve them and the
-// codegen path has nothing to emit.
+// also return false — the resolver doesn't handle them and the
+// codegen path has no emission target.
 func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 	if t == nil || t.Map != nil {
 		return false

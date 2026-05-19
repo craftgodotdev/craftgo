@@ -142,7 +142,7 @@ Generated Go: `type <Enum><base>` plus one constant per value named `<Enum><Valu
 ```craftgo
 scalar Email     string  @format(email) @maxLength(254)
 scalar OrderID   string  @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
-scalar Cents     int     @min(0) @multipleOf(2)
+scalar Cents     int     @gte(0) @multipleOf(2)
 ```
 
 Wraps a primitive. Validators inherit to every field of the scalar's type. Generated as Go type alias (`type Email = string`).
@@ -267,19 +267,21 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@maxLength(n)`     | string    | `(int)`            | Length `<= n`                 |
 | `@pattern("regex")` | string    | `(string)`         | RE2 regex match               |
 | `@format(name)`     | string    | ident or string    | Named format (see list below) |
-| `@min(n)`           | number    | `(number)`         | Value `>= n`                  |
-| `@max(n)`           | number    | `(number)`         | Value `<= n`                  |
-| `@range(min, max)`  | number    | `(number, number)` | Both bounds                   |
-| `@positive`         | number    | `()`               | Value `> 0`                   |
-| `@negative`         | number    | `()`               | Value `< 0`                   |
-| `@multipleOf(n)`    | number    | `(number)`         | Divisible by `n`              |
+| `@gte(n)`           | number    | `(number)`         | Value `>= n` (inclusive)      |
+| `@lte(n)`           | number    | `(number)`         | Value `<= n` (inclusive)      |
+| `@gt(n)`            | number    | `(number)`         | Value `> n` (strict)          |
+| `@lt(n)`            | number    | `(number)`         | Value `< n` (strict)          |
+| `@range(min, max)`  | number    | `(number, number)` | Both bounds, inclusive        |
+| `@positive`         | number    | `()`               | Value `> 0` (= `@gt(0)`)      |
+| `@negative`         | number    | `()`               | Value `< 0` (= `@lt(0)`)      |
+| `@multipleOf(n)`    | number    | `(number)`         | Divisible by `n` (int only)   |
 | `@minItems(n)`      | array     | `(int)`            | At least `n` elements         |
 | `@maxItems(n)`      | array     | `(int)`            | At most `n` elements          |
 | `@uniqueItems`      | array     | `()`               | All elements distinct         |
 | `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
 | `@mimeTypes([...])` | file      | string array       | Multipart MIME allow-list     |
 
-**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `hexcolor`, `json`.
+**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`.
 
 Validators on `errorField` are emitted as OpenAPI schema constraints only (no runtime check on server-emitted error bodies).
 
@@ -598,7 +600,7 @@ service UserService {
 ```craftgo
 type ListReq {
     cursor string?
-    limit  int @default(20) @min(1) @max(100)
+    limit  int @default(20) @gte(1) @lte(100)
     sort   string? @default("created_at")
 }
 

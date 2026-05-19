@@ -67,9 +67,10 @@ func isFileField(f *ast.Field) bool {
 	return f.Type.Named.Name.String() == "file"
 }
 
-// isTypeParamRef reports whether the field's type is a direct reference
-// to one of the host decl's generic parameters. Map types are excluded
-// because we don't generate range-validation for them in v1.
+// isTypeParamRef reports whether the field's type is a direct
+// reference to one of the host decl's generic parameters. Map types
+// are excluded because range-validation for map values isn't
+// generated yet.
 func isTypeParamRef(t *ast.TypeRef, params []string) bool {
 	if t == nil || t.Map != nil || t.Named == nil {
 		return false

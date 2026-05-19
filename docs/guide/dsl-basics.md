@@ -110,7 +110,7 @@ Decorators attach metadata. They start with `@` and may take arguments.
 type CreateUserReq {
     name  string @length(1, 80)
     email string @format(email)
-    age   int?   @min(0) @max(150)
+    age   int?   @gte(0) @lte(150)
 }
 ```
 
@@ -224,7 +224,7 @@ Named primitives with built-in validators:
 
 ```craftgo
 scalar Email string @format(email) @maxLength(254)
-scalar Cents int @min(0) @multipleOf(2)
+scalar Cents int @gte(0) @multipleOf(2)
 
 type Order {
     email Email

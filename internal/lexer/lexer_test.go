@@ -397,7 +397,7 @@ func TestTokenize(t *testing.T) {
 // ----- Golden file -----
 
 func TestGoldenSample(t *testing.T) {
-	path, err := filepath.Abs("../../testdata/lexer/sample.craftgo")
+	path, err := filepath.Abs("testdata/sample.craftgo")
 	if err != nil {
 		t.Fatal(err)
 	}

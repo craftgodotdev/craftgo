@@ -379,10 +379,10 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 // this filter the trailing would be re-emitted as a leading comment on
 // the wrong field.
 //
-// The previous field's printer pulls trailing text from p.trailing
-// (built in [scanTrailingComments]), so dropping the misattributed
-// entry here does not lose information - it lands on the correct
-// field below by way of the trailing map.
+// The preceding field's printer pulls its trailing text from
+// p.trailing (built in [scanTrailingComments]), so dropping the
+// misattributed entry here does not lose information — it lands on
+// the correct field by way of the trailing map.
 func (p *Printer) printFieldDoc(f *ast.Field) {
 	if len(f.Doc) == 0 {
 		return
@@ -699,15 +699,14 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 	}
 }
 
-// decoratorArgInContext renders a decorator argument with awareness of
-// the host decorator name + position index. The only context-sensitive
-// rewrite today is the string-to-ident migration for `@format`: when
-// the user authored `@format("email")` (quoted), the formatter emits
-// the canonical bare-ident form `@format(email)`. The rule: when the
-// argument names a registered identifier (format name, security
-// scheme, ...), bare ident is canonical; free-form values (regex,
-// paths) stay quoted. Every other decorator falls through to the
-// generic [Printer.DecoratorArg] path unchanged.
+// decoratorArgInContext renders a decorator argument with awareness
+// of the host decorator name + position index. The only context-
+// sensitive rewrite today is the string-to-ident canonicalisation
+// for `@format`: `@format("email")` is rewritten to `@format(email)`.
+// Rule — when the argument names a registered identifier (format
+// name, security scheme, ...), bare ident is canonical; free-form
+// values (regex, paths) stay quoted. Every other decorator falls
+// through to the generic [Printer.DecoratorArg] path unchanged.
 func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
 	if decoratorName == "format" && idx == 0 && !a.Named {
 		if s, ok := a.Value.(*ast.StringLit); ok && isPlainIdent(s.Value) {

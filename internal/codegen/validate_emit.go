@@ -352,8 +352,8 @@ var formatValidators = map[string]formatValidator{
 		`_ip := net.ParseIP(%s); _ip == nil || _ip.To4() == nil`),
 
 	// RFC 4291 IPv6 - parse succeeds AND not a v4 address. Handles
-	// `::`, zone IDs, IPv4-mapped (`::ffff:1.2.3.4`), shortened
-	// forms - all the cases the previous regex missed.
+	// `::`, zone IDs, IPv4-mapped (`::ffff:1.2.3.4`), and shortened
+	// forms — every shape a regex would miss.
 	"ipv6": stmtFormat("IPv6", []string{"net"},
 		`_ip := net.ParseIP(%s); _ip == nil || _ip.To4() != nil`),
 
@@ -363,8 +363,8 @@ var formatValidators = map[string]formatValidator{
 		`^\+?[0-9 ()-]{6,20}$`),
 
 	// RFC 3339 date-time. time.Parse handles fractional seconds,
-	// optional offset, and rejects malformed dates (Feb 30 etc.)
-	// that the regex previously let through.
+	// optional offset, and rejects malformed dates (Feb 30 etc.) —
+	// a regex couldn't catch the latter.
 	"datetime": stmtFormat("RFC 3339 datetime", []string{"time"},
 		`_, _err := time.Parse(time.RFC3339, %s); _err != nil`),
 
@@ -377,9 +377,8 @@ var formatValidators = map[string]formatValidator{
 	"time": stmtFormat("time", []string{"time"},
 		`_, _err := time.Parse(time.TimeOnly, %s); _err != nil`),
 
-	// RFC 4632 / RFC 4291 CIDR - net.ParseCIDR handles both v4
-	// and v6 with mask-range validation. The previous regex was
-	// IPv4-only and didn't validate octet bounds.
+	// RFC 4632 / RFC 4291 CIDR - net.ParseCIDR handles both v4 and
+	// v6 with mask-range and octet-bound validation.
 	"cidr": stmtFormat("CIDR", []string{"net"},
 		`_, _, _err := net.ParseCIDR(%s); _err != nil`),
 
@@ -408,9 +407,9 @@ var formatValidators = map[string]formatValidator{
 	"hexcolor": regexFormat("hex color",
 		`^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`),
 
-	// RFC 8259 JSON - json.Valid does the full structural parse so
-	// we catch bad escapes, unbalanced brackets, etc. that the
-	// previous "non-empty" regex passed through.
+	// RFC 8259 JSON - json.Valid does a full structural parse so
+	// bad escapes, unbalanced brackets, etc. all get caught. A
+	// "non-empty" regex would let them through.
 	"json": exprFormat("JSON", []string{"encoding/json"},
 		`!json.Valid([]byte(%s))`),
 }
@@ -742,8 +741,7 @@ return err
 // `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
 // the pointer-receiver Validate either way, and the cleaner form is
 // what a human would write by hand.
-func nestedValidateCall(f *ast.Field, pkg *semantic.Package, uses map[string]bool) string {
-	_ = uses
+func nestedValidateCall(f *ast.Field, pkg *semantic.Package) string {
 	if pkg == nil || f.Type == nil {
 		return ""
 	}
@@ -754,9 +752,9 @@ return err
 }`, elem)
 	}
 	// Map: walk the values. A map value that is a user-defined type
-	// (or an array / optional thereof) carries its own Validate(); the
-	// previous early-return left every `map<K, User>` etc. unchecked,
-	// silently breaking the recursive-validation contract.
+	// (or an array / optional thereof) carries its own Validate().
+	// Skipping the walk would leave `map<K, User>` entries unchecked
+	// and silently break the recursive-validation contract.
 	if f.Type.Map != nil {
 		v := f.Type.Map.Value
 		if !typeRefHasValidator(v, pkg) {

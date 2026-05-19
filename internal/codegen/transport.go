@@ -1019,10 +1019,10 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName
 }`, dslName, parseCall(prim), dslName, prim.label, goName, goName, wrap(castExpr(prim, "_n"))), true, nil
 	}
 	// Single (non-array). Optional non-string primitives are not
-	// supported in v1 - `*int` from query would need a tri-state
-	// (absent / empty / parsed) we don't have a clean idiom for yet.
+	// supported: `*int` from query would need a tri-state
+	// (absent / empty / parsed) and no clean idiom exists yet.
 	if f.Type.Optional && prim.parser != "" {
-		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query in v1 - drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
+		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
 	}
 	if prim.parser == "" {
 		// string single

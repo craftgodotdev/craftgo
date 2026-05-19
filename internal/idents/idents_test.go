@@ -85,8 +85,8 @@ func TestDedupThreeWayCollision(t *testing.T) {
 
 // TestDedupOrderStability pins the rule that the FIRST occurrence
 // keeps the bare canonical Go name even when the user later adds a
-// duplicate. Generated code remains stable for previously-published
-// struct shapes - adding a colliding alias does not retroactively
+// duplicate. Generated code remains stable for already-published
+// struct shapes — adding a colliding alias does not retroactively
 // rename the original field.
 func TestDedupOrderStability(t *testing.T) {
 	resolved, _ := DedupGoFieldNames([]string{"userId", "user_id"})

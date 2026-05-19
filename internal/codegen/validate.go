@@ -33,10 +33,10 @@ type validateData struct {
 	Imports []string
 	// RegexVars are package-level `var` declarations that compile
 	// every `@pattern` regex and the regex-backed `@format` patterns
-	// ONCE per process. The previous inline `regexp.MustCompile(...)`
-	// path recompiled the regex on every Validate() call, paying the
-	// parser cost on the hot per-request path. Each unique pattern is
-	// interned once; duplicates across types share the same var.
+	// ONCE per process. Inline `regexp.MustCompile(...)` inside
+	// Validate() would pay the parser cost on every call. Each unique
+	// pattern is interned once; duplicates across types share the
+	// same var.
 	RegexVars []regexVar
 	Types     []validatorType
 }
@@ -99,7 +99,7 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	data := buildValidateData(pkg, crossPkg, scalars)
+	data := buildValidateData(pkg, scalars)
 	formatted, err := renderGo(tmpl("validate.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render validate.go: %w", err)
@@ -112,16 +112,15 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 // concrete and generic decls produce a Validate(); generics emit with a
 // parametric receiver (see [validatorType.TypeParams]).
 //
-// crossPkg is not consulted here: cross-package fields validate via
-// the receiver's own Validate() method, resolved by the import
-// already present in types.go.
+// Cross-package fields validate via the receiver's own Validate()
+// method, resolved by the import already present in types.go - no
+// CrossPkg parameter is needed here.
 //
 // scalars, when non-nil, enables scalar-decorator inheritance: a
 // field whose declared type is a scalar gains the scalar's own
 // `@format` / `@length` / `@min` / etc. validators on top of the
 // field-level chain. See [scalarInheritedDecorators].
-func buildValidateData(pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarTable) validateData {
-	_ = crossPkg
+func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData {
 	names := make([]string, 0, len(pkg.Types))
 	for n := range pkg.Types {
 		names = append(names, n)
@@ -210,7 +209,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable,
 			if call := enumValueCheck(v, pkg, ctx.uses); call != "" {
 				out = append(out, call)
 			}
-			if nested := nestedValidateCall(v, pkg, ctx.uses); nested != "" {
+			if nested := nestedValidateCall(v, pkg); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:
