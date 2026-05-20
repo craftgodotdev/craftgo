@@ -1,0 +1,506 @@
+// Operation assembly: buildOperation, parameters, errors, tags, security.
+package codegen
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
+)
+
+func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) *openapi3.Operation {
+	op := &openapi3.Operation{
+		OperationID: operationID(m),
+		Tags:        operationTags(svcName, m, pkg),
+		Responses:   openapi3.NewResponses(),
+		Description: resolveDescription(m.Decorators, m.Doc),
+		Summary:     decoratorStringArg(m.Decorators, "summary"),
+	}
+	// Service-level `@externalDocs` is a single-value fallback: the
+	// method-level decorator wins when present, otherwise the service's
+	// own externalDocs applies to every operation it owns.
+	svc := pkg.Services[svcName]
+	if ed := externalDocsFromDecorators(m.Decorators); ed != nil {
+		op.ExternalDocs = ed
+	} else if svc != nil && svc.Primary != nil {
+		if ed := externalDocsFromDecorators(svc.Primary.Decorators); ed != nil {
+			op.ExternalDocs = ed
+		}
+	}
+	// Service-level `@security` is appended to the method-level chain:
+	// each entry in OpenAPI `security[]` is an OR alternative, so
+	// declaring `@security(Bearer)` on the service plus
+	// `@security(Admin)` on a method means "either Bearer alone OR Admin
+	// alone unlocks this op". Use a sentinel `noauth` on the method to
+	// override the inheritance entirely (current behaviour - emits an
+	// empty requirement).
+	var sec *openapi3.SecurityRequirements
+	if svc != nil && svc.Primary != nil {
+		sec = securityFromDecorators(svc.Primary.Decorators)
+	}
+	if methodSec := securityFromDecorators(m.Decorators); methodSec != nil {
+		if sec == nil {
+			sec = methodSec
+		} else {
+			combined := append(openapi3.SecurityRequirements{}, *sec...)
+			combined = append(combined, *methodSec...)
+			sec = &combined
+		}
+	}
+	if sec != nil {
+		op.Security = sec
+	}
+	// @deprecated may sit on the method itself or on the primary
+	// service decl; either marks the operation deprecated. The
+	// optional reason becomes a `Deprecated: ...` line in the
+	// description so docs viewers surface it inline.
+	deprecated := hasDeprecatedDecorator(m.Decorators)
+	if !deprecated && svc != nil && svc.Primary != nil {
+		deprecated = hasDeprecatedDecorator(svc.Primary.Decorators)
+	}
+	if deprecated {
+		op.Deprecated = true
+		reason := deprecatedReason(m.Decorators)
+		if reason == "" && svc != nil && svc.Primary != nil {
+			reason = deprecatedReason(svc.Primary.Decorators)
+		}
+		if reason != "" {
+			op.Description = appendDescription(op.Description, "Deprecated: "+reason)
+		}
+	}
+	isPassthrough := hasPassthroughDecorator(m.Decorators)
+	isMultipart := false
+	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
+	if m.Request != nil && !isPassthrough {
+		if fs, ff := collectFormBindings(m, pkg); len(ff) > 0 {
+			isMultipart = true
+			formStrings, formFiles = fs, ff
+		}
+	}
+	if m.Request != nil && !isPassthrough {
+		bins := binRequestFields(m, pkg)
+		// Body-bearing verbs $ref the per-method body schema. The
+		// per-kind schemas live in components.schemas so consumers have
+		// a single canonical reference for each binding kind.
+		if hasBodyVerb(m.Verb) {
+			switch {
+			case isMultipart:
+				op.RequestBody = multipartRequestBody(formStrings, formFiles)
+			case len(bins.body) > 0:
+				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
+					Required: true,
+					Content: openapi3.Content{
+						"application/json": &openapi3.MediaType{
+							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + m.Name + "ReqBody"},
+						},
+					},
+				}}
+			}
+		}
+		// Parameters keep individual entries - that's the OpenAPI norm -
+		// but each field's `schema:` $refs into the matching
+		// `<Method>Req<Kind>` schema, which holds the canonical
+		// definition. Multipart skips path/query/header params here too
+		// since the form-data body covers the regular fields; only true
+		// path/query/header bindings remain (handled in paramsFromBins).
+		if !isMultipart {
+			op.Parameters = paramsFromBins(bins, pkg, registry)
+		} else {
+			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg, registry)
+		}
+	}
+	if isPassthrough {
+		op.Parameters = passthroughPathParams(m)
+	}
+	successCode := successStatus(m)
+	switch {
+	case isPassthrough:
+		desc := successDescription(successCode)
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
+			Description: &desc,
+			Content: openapi3.Content{
+				"*/*": &openapi3.MediaType{},
+			},
+		}})
+	case m.Response != nil && m.Response.Type != nil:
+		desc := successDescription(successCode)
+		resp := &openapi3.Response{
+			Description: &desc,
+			Content: openapi3.Content{
+				"application/json": &openapi3.MediaType{
+					// Per the request-side convention, the response body
+					// is referenced via `<Method>RespBody` so consumers
+					// have a stable, per-operation $ref target.
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + m.Name + "RespBody"},
+				},
+			},
+		}
+		if respBins := binResponseFields(m, pkg); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
+			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
+		}
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
+	default:
+		fallback := "204"
+		if successCode != "200" {
+			fallback = successCode
+		}
+		desc := successDescription(fallback)
+		op.Responses.Set(fallback, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
+	}
+	addErrorResponses(op, m, pkg)
+	return op
+}
+
+// successDescription returns the IANA-registered reason phrase for an
+// HTTP status code so OpenAPI clients see `Created` for 201, `No Content`
+// for 204, etc. Falls back to "OK" for unknown codes - a generic but
+// valid placeholder is better than an empty description (which some
+// validators flag as required).
+func successDescription(code string) string {
+	n, err := strconv.Atoi(code)
+	if err != nil {
+		return "OK"
+	}
+	if text := http.StatusText(n); text != "" {
+		return text
+	}
+	return "OK"
+}
+
+// successStatus returns the HTTP status code key for the success
+// response. `@status(N)` overrides the default; otherwise body verbs
+// without a response default to 204 elsewhere, and everything else
+// to 200 here.
+func successStatus(m *ast.Method) string {
+	for _, d := range m.Decorators {
+		if d.Name != "status" || len(d.Args) == 0 {
+			continue
+		}
+		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
+			return strconv.FormatInt(i.Value, 10)
+		}
+	}
+	return "200"
+}
+
+// addErrorResponses walks `@errors(NameA, NameB)` on the method and
+// adds one OpenAPI response entry per declared error type. The status
+// code comes from the error's category (categoryStatus) and the schema
+// $refs the error type's components.schemas entry. Unknown error names
+// are silently skipped - semantic phase doesn't validate the refs yet,
+// so we treat that as best-effort docs rather than fail codegen.
+func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package) {
+	names := errorRefsFromDecorators(m.Decorators)
+	if len(names) == 0 {
+		return
+	}
+	for _, name := range names {
+		ed, ok := pkg.Errors[name]
+		if !ok {
+			continue
+		}
+		typeName := errSuffix(ed.Name)
+		status := strconv.Itoa(categoryStatus[ed.Category])
+		desc := ed.Category
+		op.Responses.Set(status, &openapi3.ResponseRef{Value: &openapi3.Response{
+			Description: &desc,
+			Content: openapi3.Content{
+				"application/json": &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + typeName},
+				},
+			},
+		}})
+	}
+}
+
+// errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`
+// chain on the method into a deduplicated list of error declaration
+// names. Both the bare-ident form (`@errors(Foo)`) and the
+// fully-qualified `pkg.Foo` form parse here — qualified refs
+// collapse to the trailing segment because cross-package resolution
+// isn't yet supported.
+func errorRefsFromDecorators(ds []*ast.Decorator) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, d := range ds {
+		if d.Name != "errors" {
+			continue
+		}
+		for _, a := range d.Args {
+			id, ok := a.Value.(*ast.IdentExpr)
+			if !ok || id.Name == nil {
+				continue
+			}
+			name := id.Name.Parts[len(id.Name.Parts)-1]
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// passthroughPathParams emits one OpenAPI path-parameter entry per
+// `{name}` segment in the route. Passthrough endpoints have no
+// request type to mine for typed parameters, so the schema is the
+// minimal `string` placeholder - enough to render Swagger UI's
+// "try it" form without lying about the wire shape.
+func passthroughPathParams(m *ast.Method) openapi3.Parameters {
+	if m.Path == nil {
+		return nil
+	}
+	var params openapi3.Parameters
+	for _, seg := range m.Path.Segments {
+		if !seg.Param {
+			continue
+		}
+		params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
+			Name:     seg.Literal,
+			In:       "path",
+			Required: true,
+			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
+				Type: &openapi3.Types{"string"},
+			}},
+		}})
+	}
+	return params
+}
+
+// multipartRequestBody renders a `multipart/form-data` schema covering
+// every plain-text form field plus every `file` field declared on the
+// request type. File fields use `format: binary`, which Swagger UI
+// renders as a file picker.
+//
+// Files carrying `@mimeTypes(["a/b", "c/d"])` surface their allowlist
+// under the OpenAPI `encoding[field].contentType` slot — without this
+// the client SDK has no way to see what MIME types the server's
+// runtime validator will accept, so users would upload an arbitrary
+// file and get a 400 from the validator instead of a typed rejection
+// at SDK call time.
+func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef {
+	props := openapi3.Schemas{}
+	for _, f := range forms {
+		props[f.DSLName] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+			Type: &openapi3.Types{"string"},
+		}}
+	}
+	encoding := map[string]*openapi3.Encoding{}
+	for _, f := range files {
+		props[f.DSLName] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+			Type:   &openapi3.Types{"string"},
+			Format: "binary",
+		}}
+		if len(f.MimeTypes) > 0 {
+			encoding[f.DSLName] = &openapi3.Encoding{
+				ContentType: strings.Join(f.MimeTypes, ", "),
+			}
+		}
+	}
+	mt := &openapi3.MediaType{
+		Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: props,
+		}},
+	}
+	if len(encoding) > 0 {
+		mt.Encoding = encoding
+	}
+	return &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
+		Required: true,
+		Content:  openapi3.Content{"multipart/form-data": mt},
+	}}
+}
+
+// paramsFromBins flattens the non-body bins into the `parameters[]`
+// slice the OpenAPI spec requires. Path is always required; query /
+// header / cookie required flags follow the field's optionality (the
+// inverse of `?`). Each parameter's schema is emitted inline (by value)
+// rather than `$ref`-ing into the wrapper `<Method>Req<Kind>` schema.
+// Nested `$ref` (into `.../properties/<name>`) is technically valid
+// JSON-Pointer but many TS / Java / Rust client generators (hey-api,
+// openapi-typescript, openapi-generator < 7) fail to derive a stable
+// type name from the property-walk path and emit anonymous placeholders
+// or drop the type entirely. Inlining keeps the spec portable; the
+// wrapper schemas stay in `components.schemas` for tooling that wants
+// to ref the full request shape.
+func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegistry) openapi3.Parameters {
+	var params openapi3.Parameters
+	add := func(in string, fields []*ast.Field, alwaysRequired bool) {
+		for _, f := range fields {
+			required := alwaysRequired || fieldIsRequired(f)
+			ref := schemaForTypeRef(f.Type, pkg, registry)
+			applyFieldMetadata(f, ref)
+			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
+				Name:     f.Name,
+				In:       in,
+				Required: required,
+				Schema:   ref,
+			}})
+		}
+	}
+	add("path", bins.path, true)
+	add("query", bins.query, false)
+	add("header", bins.header, false)
+	add("cookie", bins.cookie, false)
+	return params
+}
+
+// bindingFromDecorators returns the OpenAPI `in` string implied by a
+// field-binding decorator, or "" when the field has no explicit binding.
+// `@body` and `@form` are returned verbatim so the caller can recognise
+// and skip them - body-shaped fields land in requestBody, not parameters.
+func bindingFromDecorators(ds []*ast.Decorator) string {
+	for _, d := range ds {
+		switch d.Name {
+		case "path":
+			return "path"
+		case "query":
+			return "query"
+		case "header":
+			return "header"
+		case "cookie":
+			return "cookie"
+		case "body":
+			return "body"
+		case "form":
+			return "form"
+		}
+	}
+	return ""
+}
+
+// setOperation routes a built operation onto the right verb slot.
+func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) {
+	switch strings.ToUpper(verb) {
+	case "GET":
+		item.Get = op
+	case "POST":
+		item.Post = op
+	case "PUT":
+		item.Put = op
+	case "PATCH":
+		item.Patch = op
+	case "DELETE":
+		item.Delete = op
+	case "HEAD":
+		item.Head = op
+	case "OPTIONS":
+		item.Options = op
+	}
+}
+
+// fieldIsRequired reports whether f must be present in the request
+// payload. craftgo's "required by default" model: a field is required
+// unless its type carries the `?` suffix that explicitly marks it
+// optional.
+func fieldIsRequired(f *ast.Field) bool {
+	return f != nil && f.Type != nil && !f.Type.Optional
+}
+
+// operationID returns the OpenAPI operationId for the method. Default
+// is the method's source-side name (e.g. `CreateProfile`); a method
+// decorated with `@operationId("createUserProfile")` overrides the
+// default with the supplied string literal. The override is honoured
+// verbatim so projects can adopt camelCase / kebab-case / whatever
+// convention their tooling expects.
+func operationID(m *ast.Method) string {
+	for _, d := range m.Decorators {
+		if d.Name != "operationId" || len(d.Args) == 0 {
+			continue
+		}
+		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
+			return s.Value
+		}
+	}
+	return m.Name
+}
+
+// operationTags assembles the OpenAPI `tags:` slice for one method.
+// Service-level `@tags(...)` come first (so they sort before method
+// tags in the resulting spec), then method-level `@tags(...)` are
+// appended. When neither level declares tags the service name is used
+// as a single default - keeping every operation grouped by service for
+// tools that don't render an empty tag list well.
+func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(t string) {
+		if t == "" || seen[t] {
+			return
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	if svc, ok := pkg.Services[svcName]; ok && svc.Primary != nil {
+		for _, t := range tagsFromDecorators(svc.Primary.Decorators) {
+			add(t)
+		}
+	}
+	for _, t := range tagsFromDecorators(m.Decorators) {
+		add(t)
+	}
+	if len(out) == 0 {
+		out = []string{svcName}
+	}
+	return out
+}
+
+// tagsFromDecorators collects every argument from every `@tags(...)`
+// decorator in ds. Arguments may be string literals (`@tags("v1")`) or
+// bare identifiers (`@tags(api, v1)`); both shapes produce the same
+// stringified entry in the resulting slice.
+func tagsFromDecorators(ds []*ast.Decorator) []string {
+	var out []string
+	for _, d := range ds {
+		if d.Name != "tags" {
+			continue
+		}
+		for _, a := range d.Args {
+			switch v := a.Value.(type) {
+			case *ast.StringLit:
+				out = append(out, v.Value)
+			case *ast.IdentExpr:
+				out = append(out, v.Name.String())
+			}
+		}
+	}
+	return out
+}
+
+// securityFromDecorators turns `@security(SchemeA, SchemeB)` declarations
+// on a method or service into the OpenAPI `security` slice. Each
+// decorator argument that is an identifier becomes one entry whose value
+// is an empty scopes list - multi-scheme arguments inside a single
+// decorator are AND-combined; multiple `@security(...)` decorators are
+// OR-combined per the OpenAPI spec semantics. The special name
+// `noauth` produces an empty Requirement, telling the OpenAPI consumer
+// the endpoint is explicitly public.
+func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
+	var reqs openapi3.SecurityRequirements
+	for _, d := range ds {
+		if d.Name != "security" {
+			continue
+		}
+		req := openapi3.SecurityRequirement{}
+		for _, a := range d.Args {
+			if id, ok := a.Value.(*ast.IdentExpr); ok {
+				name := id.Name.String()
+				if name == "noauth" {
+					continue
+				}
+				req[name] = []string{}
+			}
+		}
+		reqs = append(reqs, req)
+	}
+	if len(reqs) == 0 {
+		return nil
+	}
+	return &reqs
+}

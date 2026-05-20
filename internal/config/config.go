@@ -60,7 +60,7 @@ type Output struct {
 	OpenAPI    string `yaml:"openapi"`
 	// Middleware is the scaffold-once output dir for middleware
 	// implementation files. The corresponding type declarations live
-	// next to svccontext.go (see GenerateMiddlewares).
+	// next to svccontext.go (see GenerateProjectMiddlewares).
 	Middleware string `yaml:"middleware"`
 	// Config is the scaffold-once directory holding the runtime
 	// configuration package (config.go + config.yaml +

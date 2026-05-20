@@ -1,0 +1,192 @@
+// Transport: @default literal rendering + Go pre-fill code generation.
+package codegen
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
+)
+
+func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string) []defaultBinding {
+	if m.Request == nil {
+		return nil
+	}
+	td, ok := pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return nil
+	}
+	var out []defaultBinding
+	for _, member := range td.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		if f.Type == nil || f.Type.Map != nil {
+			continue
+		}
+		lit := defaultLiteral(f, pkg, pkgAlias)
+		if lit == "" {
+			continue
+		}
+		out = append(out, defaultBinding{
+			GoName:  GoFieldName(f.Name),
+			Literal: lit,
+			Ptr:     goFieldIsPointer(f),
+		})
+	}
+	return out
+}
+
+// defaultLiteral returns the Go-source form of a `@default(...)`
+// value, or "" when the decorator is absent or unrenderable. The
+// supported shapes are: string / int / float / bool literals,
+// IdentExpr (resolved to an enum constant), and ArrayLit (rendered
+// recursively as a Go slice literal). Map / struct / generic field
+// types fall through to "" - the semantic phase has already flagged
+// the unsupported combination.
+func defaultLiteral(f *ast.Field, pkg *semantic.Package, pkgAlias string) string {
+	for _, d := range f.Decorators {
+		if d.Name != "default" || len(d.Args) != 1 {
+			continue
+		}
+		return renderDefault(f.Type, d.Args[0].Value, pkg, pkgAlias)
+	}
+	return ""
+}
+
+// renderDefault produces the Go source for one `@default(...)` value
+// against the field's resolved type. Recurses through array / array
+// elements; returns "" when the value can't be rendered (mixed kind,
+// unknown enum, struct element, etc.). pkgAlias is the Go-side
+// alias of the types package used by the request struct (e.g.
+// "types") so named-type references (enums, scalars) emit as
+// `<alias>.<Name>` and stay valid in the handler's own package.
+func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, pkgAlias string) string {
+	if t == nil {
+		return ""
+	}
+	if t.Array {
+		arr, ok := v.(*ast.ArrayLit)
+		if !ok {
+			return ""
+		}
+		elemT := arrayElemTypeRef(t)
+		elemGo := qualifyNamed(GoTypeRef(elemT), elemT, pkg, pkgAlias)
+		if elemGo == "" {
+			return ""
+		}
+		parts := make([]string, 0, len(arr.Elements))
+		for _, e := range arr.Elements {
+			p := renderDefault(elemT, e, pkg, pkgAlias)
+			if p == "" {
+				return ""
+			}
+			parts = append(parts, p)
+		}
+		return "[]" + elemGo + "{" + strings.Join(parts, ", ") + "}"
+	}
+	switch lit := v.(type) {
+	case *ast.StringLit:
+		return strconv.Quote(lit.Value)
+	case *ast.IntLit:
+		return strconv.FormatInt(lit.Value, 10)
+	case *ast.FloatLit:
+		return strconv.FormatFloat(lit.Value, 'g', -1, 64)
+	case *ast.BoolLit:
+		if lit.Value {
+			return "true"
+		}
+		return "false"
+	case *ast.IdentExpr:
+		return enumDefaultConst(t, pkg, lit, pkgAlias)
+	}
+	return ""
+}
+
+// qualifyNamed prefixes a Go type reference with `<pkgAlias>.` when
+// the underlying TypeRef points at a project-defined named type
+// (enum or scalar) - those constants live in the types package and
+// the handler file's package needs the alias to reach them.
+// Primitives stay bare.
+func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, pkgAlias string) string {
+	if pkgAlias == "" || goName == "" {
+		return goName
+	}
+	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+		return goName
+	}
+	name := t.Named.Name.Parts[0]
+	if _, ok := pkg.Enums[name]; ok {
+		return pkgAlias + "." + goName
+	}
+	if _, ok := pkg.Scalars[name]; ok {
+		return pkgAlias + "." + goName
+	}
+	return goName
+}
+
+// arrayElemTypeRef returns the element TypeRef of an array. Drops
+// the Array marker and decrements ArrayDepth so nested-array
+// elements (rare but legal) collapse one level at a time.
+//
+// The parent's Optional flag is cleared on the element clone: `T[]?`
+// means "the slice may be nil" not "every element is *T". Without
+// this clearance, defaultLiteral / OpenAPI emission would render
+// `[]*T{...}` for `T[]? @default(...)`, which produces invalid Go.
+func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
+	if t == nil {
+		return nil
+	}
+	clone := *t
+	clone.Array = false
+	clone.Optional = false
+	if clone.ArrayDepth > 0 {
+		clone.ArrayDepth--
+	}
+	if clone.ArrayDepth > 0 {
+		clone.Array = true
+	}
+	return &clone
+}
+
+// enumDefaultConst resolves an `@default(<Ident>)` reference to its
+// emitted Go constant name. The semantic phase has already validated
+// that the field type is an enum and the ident matches a declared
+// value; this function reproduces buildEnumView's dedup so the
+// const-name lookup hits the same identifier even when value names
+// differ only in case.
+func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, v *ast.IdentExpr, pkgAlias string) string {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
+		return ""
+	}
+	if len(t.Named.Name.Parts) != 1 {
+		return ""
+	}
+	enumName := t.Named.Name.Parts[0]
+	ed, ok := pkg.Enums[enumName]
+	if !ok || v.Name == nil || len(v.Name.Parts) != 1 {
+		return ""
+	}
+	valueName := v.Name.Parts[0]
+	idx := -1
+	enumVals := ed.EnumValues()
+	dslNames := make([]string, len(enumVals))
+	for i, val := range enumVals {
+		dslNames[i] = val.Name
+		if val.Name == valueName {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return ""
+	}
+	resolved, _ := idents.DedupGoFieldNames(dslNames)
+	bare := enumName + resolved[idx]
+	if pkgAlias != "" {
+		return pkgAlias + "." + bare
+	}
+	return bare
+}

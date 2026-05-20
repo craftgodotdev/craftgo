@@ -116,9 +116,6 @@ service S {
     @passthrough
     @timeout(5s)
     @maxBodySize(1MB)
-    @responseDoc("ok")
-    @responseExample("e")
-    @responseHeaders("h")
     get GetX /x {
     }
 }
@@ -148,7 +145,6 @@ middleware RateLimit(rps: int = 100)
 		"summary", "operationId", "errors", "status",
 		"passthrough",
 		"timeout", "maxBodySize",
-		"responseDoc", "responseExample", "responseHeaders",
 	}
 	seen := collectAllDecoratorNames(f)
 	for _, w := range want {

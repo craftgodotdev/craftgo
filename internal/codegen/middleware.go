@@ -32,7 +32,13 @@ type middlewareFieldsData struct {
 	Names []string
 }
 
-// GenerateMiddlewares emits two artefacts per `middleware Name` block:
+// GenerateProjectMiddlewares emits the unified `svccontext/middlewares.go`
+// + per-middleware scaffolds for every package in the project. Middleware
+// names are global (the project resolver enforces uniqueness), so a
+// single Middlewares struct embeds every declaration regardless of which
+// package it lives in. Run ONCE per `craftgo gen` instead of per-package.
+//
+// Two artefacts per `middleware Name` block:
 //
 //  1. The IMPLEMENTATION at `<output.middleware>/<kebab-name>-middleware.go`.
 //     Scaffold-only - gen-once; existing files are left alone.
@@ -43,22 +49,6 @@ type middlewareFieldsData struct {
 // ServiceContext, then assign each field to a concrete impl in main.go.
 // Routes consume the middleware via the embedded fields directly, so no
 // runtime name registry lookup is needed.
-func GenerateMiddlewares(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
-	names := sortedMiddlewareNames(pkg)
-	if err := writeMiddlewareFields(cfg, projectRoot, names); err != nil {
-		return err
-	}
-	return writeMiddlewareImpls(cfg, projectRoot, pkg, names)
-}
-
-// GenerateProjectMiddlewares emits the unified `svccontext/middlewares.go`
-// + per-middleware scaffolds for every package in the project. Middleware
-// names are global (the project resolver enforces uniqueness), so a
-// single Middlewares struct embeds every declaration regardless of which
-// package it lives in. Run ONCE per `craftgo gen` instead of per-package.
 func GenerateProjectMiddlewares(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	names := projectSortedMiddlewareNames(proj)
 	if err := writeMiddlewareFields(cfg, projectRoot, names); err != nil {
@@ -213,34 +203,6 @@ func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []strin
 		return fmt.Errorf("render middlewares.go: %w", err)
 	}
 	return os.WriteFile(dest, formatted, 0o644)
-}
-
-// writeMiddlewareImpls scaffolds one impl file per middleware. Existing
-// files survive untouched (gen-once).
-func writeMiddlewareImpls(cfg *config.Config, projectRoot string, _ *semantic.Package, names []string) error {
-	dir := filepath.Join(projectRoot, cfg.Output.Middleware)
-	if len(names) == 0 {
-		return nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tpl := tmpl("middleware.tmpl")
-	for _, name := range names {
-		filename := kebabCase(name) + "-middleware.go"
-		dest := filepath.Join(dir, filename)
-		if _, err := os.Stat(dest); err == nil {
-			continue
-		}
-		formatted, err := renderGo(tpl, middlewareData{Name: name})
-		if err != nil {
-			return fmt.Errorf("render middleware %s: %w", name, err)
-		}
-		if err := os.WriteFile(dest, formatted, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // sortedMiddlewareNames returns the package's middleware declarations

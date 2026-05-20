@@ -27,52 +27,19 @@ type mainData struct {
 	OperationName string
 }
 
-// GenerateMain scaffolds the project's main.go (`output.main`). The file
-// is written once and skipped on subsequent gen runs so user-written
-// boot code (extra middlewares, config loading, OTel SDK setup, etc.)
-// survives regeneration.
+// GenerateProjectMain scaffolds the project's main.go (`output.main`)
+// using the union of services and middlewares from every package. The
+// single shared umbrella `routes.RegisterAll` (emitted by
+// [GenerateProjectRoutesUmbrella]) is the one-call wire-up so the
+// template doesn't have to import per-package routes packages.
 //
-// When the project declares no services the function is a no-op -
-// there's no canonical RegisterRoutes target to wire.
+// The file is gen-once: written when missing, skipped on subsequent
+// gen runs so user-written boot code (extra middlewares, config
+// loading, OTel SDK setup, etc.) survives regeneration.
 //
 // Setting `output.main: "-"` in the manifest opts the project out of
 // scaffolding entirely - useful for test fixtures that ship their own
 // httptest server and would collide with a generated `package main`.
-func GenerateMain(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
-	if len(pkg.Services) == 0 {
-		return nil
-	}
-	if cfg.Output.Main == "-" {
-		return nil
-	}
-	dest := filepath.Join(projectRoot, cfg.Output.Main)
-	if _, err := os.Stat(dest); err == nil {
-		// Gen-once: don't clobber user changes.
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	data := buildMainData(pkg, cfg)
-	formatted, err := renderGo(tmpl("main.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render main.go: %w", err)
-	}
-	return os.WriteFile(dest, formatted, 0o644)
-}
-
-// GenerateProjectMain is the multi-package counterpart of
-// [GenerateMain]: it scaffolds main.go using the union of services and
-// middlewares from every package. The single shared umbrella
-// `routes.RegisterAll` (emitted by [GenerateProjectRoutesUmbrella])
-// continues to be the one-call wire-up so the template doesn't have
-// to import per-package routes packages.
-//
-// As with the single-package variant, the file is gen-once and skipped
-// when it already exists.
 func GenerateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	if proj == nil {
 		return nil
@@ -80,8 +47,8 @@ func GenerateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot
 	if cfg.Output.Main == "-" {
 		return nil
 	}
-	// Skip when no package declares a service - same policy as the
-	// single-package GenerateMain.
+	// Skip when no package declares a service - there is no canonical
+	// RegisterRoutes target to wire.
 	hasService := false
 	for _, p := range proj.Packages {
 		if p != nil && len(p.Services) > 0 {
@@ -131,22 +98,6 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 			d.Middlewares = append(d.Middlewares, name)
 		}
 	}
-	d.HasMiddlewares = len(d.Middlewares) > 0
-	return d
-}
-
-// buildMainData assembles the import paths + middleware list the
-// template needs. Per-service routes are reached via the umbrella
-// `routes.RegisterAll`, so main.go only imports the umbrella.
-func buildMainData(pkg *semantic.Package, cfg *config.Config) mainData {
-	d := mainData{
-		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
-		RoutesImport:     goImportFromRel(cfg.Package, cfg.Output.Routes),
-		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
-		OperationName:    operationNameFor(cfg.Package),
-	}
-	d.Middlewares = sortedMiddlewareNames(pkg)
 	d.HasMiddlewares = len(d.Middlewares) > 0
 	return d
 }
