@@ -106,3 +106,28 @@ func (a *analyzer) warnFieldCollisions(parent string, members []ast.TypeMember) 
 		}
 	}
 }
+
+func (a *analyzer) checkFieldUniqueness() {
+	check := func(name string, members []ast.TypeMember) {
+		seen := map[string]lexer.Position{}
+		for _, m := range members {
+			f, ok := m.(*ast.Field)
+			if !ok {
+				continue
+			}
+			if prev, exists := seen[f.Name]; exists {
+				d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateField,
+					"duplicate field %q in %q", f.Name, name)
+				d.Related = related(prev, "first declared here")
+			} else {
+				seen[f.Name] = f.Pos
+			}
+		}
+	}
+	for _, td := range a.pkg.Types {
+		check(td.Name, td.Body)
+	}
+	for _, ed := range a.pkg.Errors {
+		check(ed.Name, ed.Body)
+	}
+}
