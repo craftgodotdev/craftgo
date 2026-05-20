@@ -45,7 +45,7 @@ extend service UserService {
 	// `users:admin`.
 	@doc("Suspend a user. Idempotent — calling twice has no extra effect.")
 	@middlewares(shared.BodyLimit, shared.Timeout)
-	@security(oauth2, scopes: ["users:admin"])
+	@security(oauth2)
 	post SuspendUser /{id}/suspend {
 		request  GetUserReq
 		response shared.OkResp
@@ -57,7 +57,7 @@ extend service UserService {
 	// package's full type table.
 	@doc("Restore a previously suspended user. Idempotent.")
 	@middlewares(shared.BodyLimit, shared.Timeout)
-	@security(oauth2, scopes: ["users:admin"])
+	@security(oauth2)
 	post RestoreUser /{id}/restore {
 		request  GetUserReq
 		response shared.OkResp
@@ -70,7 +70,7 @@ extend service UserService {
 	// different rate limits) without breaking either contract.
 	@doc("List currently-suspended users with cursor pagination.")
 	@middlewares(shared.Timeout)
-	@security(oauth2, scopes: ["users:admin"])
+	@security(oauth2)
 	get ListSuspendedUsers /suspended {
 		request  ListUsersReq
 		response UserList

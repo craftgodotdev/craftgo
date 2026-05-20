@@ -15,6 +15,12 @@ func (v *CreateUserReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on DeleteUserReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DeleteUserReq) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Empty.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Empty) Validate() error {

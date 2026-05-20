@@ -677,6 +677,76 @@ type User { name string? @default(["x"]) }`, CodeDecoratorArgType)
 	expectMessage(t, d, "@default")
 }
 
+// ---------- @default + optional combination ----------
+
+func TestDefaultNeedsOptionalWarning(t *testing.T) {
+	// `@default(x)` on a non-optional field implies the field is
+	// allowed to be absent on the wire, so the type must carry `?`.
+	// `craftgo fmt` auto-fixes this on save; semantic warns until then.
+	d := expectDiag(t, `package design
+type ListReq { page int @default(1) }`, CodeDefaultNeedsOptional)
+	expectMessage(t, d, "@default", "optional")
+}
+
+func TestDefaultOnOptionalFieldClean(t *testing.T) {
+	mustClean(t, `package design
+type ListReq { page int? @default(1) }`)
+}
+
+// ---------- extend service decorator placement ----------
+
+func TestExtendServiceRejectsServiceLevelDecorator(t *testing.T) {
+	// `extend service` may carry method-level-applicable decorators
+	// (@middlewares, @security, @tags, @doc) but not service-only ones
+	// like @prefix; those belong on the primary service decl.
+	expectDiag(t, `package design
+service S {}
+
+middleware Auth
+
+@prefix("/v1")
+extend service S {
+    get GetX /x {}
+}`, CodeExtendDecoratorNotMethod)
+}
+
+func TestExtendServiceAcceptsMethodLevelDecorator(t *testing.T) {
+	mustClean(t, `package design
+service S {}
+
+middleware Auth
+
+@middlewares(Auth)
+extend service S {
+    get GetX /x {}
+}`)
+}
+
+// ---------- bound overlap ----------
+
+func TestLengthOverlapsMinLengthWarning(t *testing.T) {
+	// `@length(min, max)` already encodes both bounds. Pairing it with
+	// `@minLength` or `@maxLength` is harmless but noisy - warn so the
+	// user picks one canonical form per field.
+	expectWarning(t, `package design
+type T { name string @length(1, 80) @minLength(3) }`, CodeDecoratorRedundant)
+}
+
+func TestRangeOverlapsLteWarning(t *testing.T) {
+	expectWarning(t, `package design
+type T { age int @range(0, 150) @lte(120) }`, CodeDecoratorRedundant)
+}
+
+func TestLengthAloneClean(t *testing.T) {
+	mustClean(t, `package design
+type T { name string @length(1, 80) }`)
+}
+
+func TestMinLengthAloneClean(t *testing.T) {
+	mustClean(t, `package design
+type T { name string @minLength(1) @maxLength(80) }`)
+}
+
 // ---------- helpers ----------
 
 func codes(diags []Diagnostic) []string {

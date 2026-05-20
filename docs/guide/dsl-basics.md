@@ -141,7 +141,9 @@ service UserService {
 
 Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`.
 
-Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
+Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. `trace` and `connect` are not supported.
+
+**Request and response types are single named structs only.** Generic instantiations such as `response Page<Order>` work; bare-array forms (`response Order[]`) and optional markers (`response User?`) do not — wrap the shape in a struct (`type Items { items Order[] }`) and reference that struct instead.
 
 Path parameters use `{name}` and bind to fields with `@path`:
 
@@ -150,6 +152,8 @@ type GetUserReq {
     id string @path
 }
 ```
+
+A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is `@passthrough` handlers, which receive the raw `*http.Request` and pull params themselves. Trailing slashes are kept verbatim (`/users/` is distinct from `/users`); avoid them unless the API explicitly distinguishes the two.
 
 ### Extending a service across files
 
@@ -210,7 +214,7 @@ The extend block's `@middlewares` / `@security` decorators apply to every method
 **Rules** (enforced at gen time with a diagnostic, not silently):
 
 - The primary `service` block declares whole-service decorators (`@prefix`, `@group` belong here).
-- `extend service` blocks may carry **method-level-applicable** decorators only (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`). Service-only decorators like `@prefix` on an extend raise `service/extend-decorator-not-method`.
+- `extend service` blocks may carry **method-level-applicable** decorators only (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`). Service-only decorators like `@prefix` on an extend raise `service/extend-decorator-not-method`.
 - The extended service must already be declared somewhere in the **same package** (same design subfolder); a cross-package extend raises `service/extend-orphan`.
 - Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). Each block contributes its own decorators only to its own methods.
 

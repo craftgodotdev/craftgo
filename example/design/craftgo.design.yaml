@@ -22,9 +22,7 @@ openapi:
       type: http
       scheme: bearer
       bearerFormat: JWT
-    # OAuth2 — referenced as `@security(oauth2, scopes: ["users:write"])`
-    # on individual methods that need an extra capability beyond the
-    # bearer token. Scopes are validated as strings, not against a
-    # closed set, because OAuth2 scopes are application-defined.
+    # OAuth2 — referenced as `@security(oauth2)` on individual methods
+    # that need a flow distinct from the inherited bearer token.
     oauth2:
       type: oauth2

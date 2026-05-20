@@ -562,6 +562,7 @@ func TestGenerateRoutesMultipleMiddlewares(t *testing.T) {
 	pkg := analyzePkg(t, `package design
 
 type Thing { id string }
+type GetThingReq { id string @path }
 
 middleware Auth
 middleware RateLimit
@@ -572,6 +573,7 @@ middleware RequestCounter
 service S {
     @middlewares(RateLimit, RequestCounter)
     get GetThing /things/{id} {
+        request  GetThingReq
         response Thing
     }
 }`)
@@ -598,6 +600,7 @@ func TestGenerateRoutesIgnoreMiddlewareClearsInherited(t *testing.T) {
 	pkg := analyzePkg(t, `package design
 
 type Thing { id string }
+type GetThingReq { id string @path }
 
 middleware Auth
 middleware Audit
@@ -608,6 +611,7 @@ service S {
     @ignoreMiddleware
     @middlewares(Audit)
     get GetThing /things/{id} {
+        request  GetThingReq
         response Thing
     }
 }`)

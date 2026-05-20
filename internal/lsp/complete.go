@@ -130,17 +130,14 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 }
 
 // decoratorArgItems dispatches a decorator-argument completion to
-// the right resolver based on which decorator the cursor sits in
-// AND which slot of its argument list. The three special-cased
-// decorators are:
+// the right resolver based on which decorator the cursor sits in.
+// Special-cased decorators:
 //
 //   - `@middlewares(...)` → declared middleware names.
-//   - `@security(<scheme>, scopes: [...])` → the project's
-//     `openapi.securitySchemes` keys, but ONLY at the first slot
-//     (cursor right after `(` or mid-typing an ident with prev=`(`).
-//     Past the first comma we're inside `scopes: [...]`, where the
-//     items are application-defined strings, not scheme names -
-//     fall through to the generic enum-value path instead.
+//   - `@security(A, B, ...)` → keys declared in the project's
+//     `openapi.securitySchemes` (any slot, since the decorator is a
+//     variadic ident list).
+//   - `@default(...)` → enum values when the field's type is an enum.
 //   - everything else → the registered enum values from the
 //     decorator's [semantic.Spec].
 //

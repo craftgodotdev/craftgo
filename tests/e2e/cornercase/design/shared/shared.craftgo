@@ -23,7 +23,7 @@ package shared
 // pagination contract stays identical across services without copy-
 // paste.
 type Pagination {
-	limit  int? @gte(1) @lte(100) @default(20)
+	limit  int?    @gte(1) @lte(100) @default(20)
 	cursor string?
 	total  int?
 }

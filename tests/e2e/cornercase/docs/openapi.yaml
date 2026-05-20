@@ -962,6 +962,15 @@ components:
       type: object
     DeleteItemRespBody:
       $ref: '#/components/schemas/Item'
+    DeleteUserReqPath:
+      properties:
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      type: object
     DeleteUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
     DuplicateKeyErr:
@@ -3768,6 +3777,8 @@ components:
       type: object
     ValidateStrRespBody:
       $ref: '#/components/schemas/PairsStr'
+    WipeRespBody:
+      $ref: '#/components/schemas/HealthResp'
     Wrapped:
       description: |-
         Wrapped nests two generic instantiations: outer Page<…> over inner
@@ -3785,6 +3796,10 @@ components:
       scheme: bearer
       type: http
     AdminWriteScope:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
+    MFA:
       bearerFormat: JWT
       scheme: bearer
       type: http
@@ -5173,6 +5188,26 @@ paths:
       - AdminBearer: []
       tags:
       - internal
+  /secured/wipe:
+    post:
+      description: Destructive admin op - requires AdminBearer AND MFA on top of the
+        service-level inheritance.
+      operationId: Wipe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WipeRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - AdminBearer: []
+      - AdminBearer: []
+        MFA: []
+      tags:
+      - internal
   /strings/combos:
     post:
       description: Exercise stacked length + pattern + format decorators on a single
@@ -5284,6 +5319,14 @@ paths:
   /users/{id}:
     delete:
       operationId: DeleteUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
       responses:
         "200":
           content:

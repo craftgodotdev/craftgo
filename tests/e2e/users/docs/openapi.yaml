@@ -48,6 +48,25 @@ components:
       type: object
     CreateUserRespBody:
       $ref: '#/components/schemas/User'
+    DeleteUserReq:
+      description: |-
+        DeleteUserReq is the path-bound input for DELETE /users/{id}. It
+        mirrors GetUserReq - keeping the shape separate makes the binding
+        intent explicit at each call site and leaves room for future
+        soft-delete query flags without touching the read path.
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    DeleteUserReqPath:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
     DeleteUserRespBody:
       $ref: '#/components/schemas/Empty'
     Empty:
@@ -221,8 +240,17 @@ paths:
       - UserService
   /v1/users/{id}:
     delete:
-      description: DeleteUser clears the in-memory store. Path id is currently ignored.
+      description: |-
+        DeleteUser removes a user identified by the URL id. The path
+        parameter binds onto the request struct so the handler can act
+        on it instead of receiving an opaque {id}.
       operationId: DeleteUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
       responses:
         "200":
           content:

@@ -20,17 +20,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		Description: resolveDescription(m.Decorators, m.Doc),
 		Summary:     decoratorStringArg(m.Decorators, "summary"),
 	}
-	// Service-level `@externalDocs` is a single-value fallback: the
-	// method-level decorator wins when present, otherwise the service's
-	// own externalDocs applies to every operation it owns.
 	svc := pkg.Services[svcName]
-	if ed := externalDocsFromDecorators(m.Decorators); ed != nil {
-		op.ExternalDocs = ed
-	} else if svc != nil && svc.Primary != nil {
-		if ed := externalDocsFromDecorators(svc.Primary.Decorators); ed != nil {
-			op.ExternalDocs = ed
-		}
-	}
 	// Service-level `@security` is appended to the method-level chain:
 	// each entry in OpenAPI `security[]` is an OR alternative, so
 	// declaring `@security(Bearer)` on the service plus `@security(Admin)`
@@ -539,9 +529,10 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 // decorator argument that is an identifier becomes one entry whose value
 // is an empty scopes list - multi-scheme arguments inside a single
 // decorator are AND-combined; multiple `@security(...)` decorators are
-// OR-combined per the OpenAPI spec semantics. To opt out of inherited
-// service-level security, use `@ignoreSecurity` at the method level
-// instead of a sentinel scheme name.
+// OR-combined per the OpenAPI spec semantics. The array-shortcut form
+// `@security([A, B])` is treated as equivalent to `@security(A, B)`. To
+// opt out of inherited service-level security, use `@ignoreSecurity` at
+// the method level instead of a sentinel scheme name.
 func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
 	var reqs openapi3.SecurityRequirements
 	for _, d := range ds {
@@ -550,8 +541,15 @@ func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements 
 		}
 		req := openapi3.SecurityRequirement{}
 		for _, a := range d.Args {
-			if id, ok := a.Value.(*ast.IdentExpr); ok {
-				req[id.Name.String()] = []string{}
+			switch v := a.Value.(type) {
+			case *ast.IdentExpr:
+				req[v.Name.String()] = []string{}
+			case *ast.ArrayLit:
+				for _, el := range v.Elements {
+					if id, ok := el.(*ast.IdentExpr); ok {
+						req[id.Name.String()] = []string{}
+					}
+				}
 			}
 		}
 		reqs = append(reqs, req)

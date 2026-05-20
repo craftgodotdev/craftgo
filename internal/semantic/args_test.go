@@ -195,8 +195,15 @@ func TestBindingArgOptional(t *testing.T) {
 
 // ---------- @security ----------
 
-func TestSecurityIdentRequired(t *testing.T) {
+func TestSecuritySingleIdent(t *testing.T) {
 	mustClean(t, `@security(bearerAuth)
+service S {}`)
+}
+
+func TestSecurityMultipleIdents(t *testing.T) {
+	// `@security(A, B)` is the AND form: one requirement that needs both
+	// schemes. Multiple `@security(...)` decorators OR-combine instead.
+	mustClean(t, `@security(bearerAuth, oauth2)
 service S {}`)
 }
 
@@ -205,25 +212,18 @@ func TestSecurityRejectsString(t *testing.T) {
 service S {}`, CodeDecoratorArgType)
 }
 
-func TestSecurityScopesArrayOfStrings(t *testing.T) {
-	mustClean(t, `@security(oauth2, scopes: ["read:users", "write:users"])
+func TestSecurityRejectsNamedArg(t *testing.T) {
+	// `@security` is a variadic ident list - named args (including the
+	// historical `scopes: [...]` form) are rejected.
+	expectDiag(t, `@security(oauth2, scopes: ["read"])
+service S {}`, CodeDecoratorArgType)
+}
+
+func TestSecurityArrayShortcut(t *testing.T) {
+	// Symmetric with other variadics: `@security([A, B])` parses the
+	// same as `@security(A, B)`.
+	mustClean(t, `@security([bearerAuth, oauth2])
 service S {}`)
-}
-
-func TestSecurityScopesMustBeStrings(t *testing.T) {
-	expectDiag(t, `@security(oauth2, scopes: [foo, 1])
-service S {}`, CodeDecoratorArgType)
-}
-
-func TestSecurityScopesNotArray(t *testing.T) {
-	d := expectDiag(t, `@security(oauth2, scopes: "read:users")
-service S {}`, CodeDecoratorArgType)
-	expectMessage(t, d, "expected array")
-}
-
-func TestSecurityRejectsUnknownNamedArg(t *testing.T) {
-	expectDiag(t, `@security(oauth2, mystery: "x")
-service S {}`, CodeDecoratorArgType)
 }
 
 func TestSecurityArityZero(t *testing.T) {
@@ -248,7 +248,7 @@ func TestFlagDecoratorBareForm(t *testing.T) {
 	mustClean(t, `type X { nick string @nullable }`)
 }
 
-// ---------- @example / @examples ----------
+// ---------- @example ----------
 
 func TestExampleSingleArg(t *testing.T) {
 	mustClean(t, `type X { name string @example("foo") }`)
@@ -260,65 +260,15 @@ func TestExampleArityWrong(t *testing.T) {
 }
 
 func TestExampleRejectsNamedArg(t *testing.T) {
-	// @example takes a single positional literal. A lone named arg
-	// is filtered out of positional → arity (0 vs Min=1) fires.
-	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArity)
+	// Named args are no longer accepted on any decorator.
+	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArgType)
 }
 
-func TestExamplesArityZero(t *testing.T) {
-	expectDiag(t, `type X { name string @examples }`, CodeDecoratorArity)
-}
-
-func TestExamplesObjectRequired(t *testing.T) {
-	expectDiag(t, `type X { name string @examples("foo") }`, CodeDecoratorArgType)
-}
-
-func TestExamplesAccepted(t *testing.T) {
-	mustClean(t, `type X { name string @examples({tiny: "a", huge: "b"}) }`)
-}
-
-// ---------- @externalDocs ----------
-
-func TestExternalDocsString(t *testing.T) {
-	mustClean(t, `@externalDocs("https://docs.example.com")
-type X {}`)
-}
-
-func TestExternalDocsObject(t *testing.T) {
-	mustClean(t, `@externalDocs({url: "https://x.io", description: "ref"})
-type X {}`)
-}
-
-func TestExternalDocsNamed(t *testing.T) {
-	// All-named-args form (used by existing fixtures).
-	mustClean(t, `@externalDocs(url: "https://x.io", description: "ref")
-type X {}`)
-}
-
-func TestExternalDocsRejectsUnknownKey(t *testing.T) {
-	expectDiag(t, `@externalDocs(url: "x", mystery: "y")
-type X {}`, CodeDecoratorArgType)
-}
-
-func TestExternalDocsRejectsNonString(t *testing.T) {
-	expectDiag(t, `@externalDocs(url: 123)
-type X {}`, CodeDecoratorArgType)
-}
-
-func TestExternalDocsPositionalNonString(t *testing.T) {
-	expectDiag(t, `@externalDocs(123)
-type X {}`, CodeDecoratorArgType)
-}
-
-func TestExternalDocsTwoPositionalsRejected(t *testing.T) {
-	d := expectDiag(t, `@externalDocs("a", "b")
-type X {}`, CodeDecoratorArity)
-	expectMessage(t, d, "positional form")
-}
-
-func TestExternalDocsZeroArgs(t *testing.T) {
-	expectDiag(t, `@externalDocs
-type X {}`, CodeDecoratorArity)
+func TestExampleRejectsTypeLevel(t *testing.T) {
+	// @example is field-only; the codegen never emits anywhere else,
+	// so semantic rejects misplaced uses with a placement diagnostic.
+	expectDiag(t, `@example("X")
+type T {}`, CodeDecoratorPlacement)
 }
 
 // ---------- exprKindName / inSet / joinQuoted ----------

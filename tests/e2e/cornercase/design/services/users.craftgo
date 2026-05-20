@@ -116,6 +116,7 @@ service UserService {
 
 	@errors(shared.NotFoundErr, shared.ConflictErr)
 	delete DeleteUser /{id} {
+		request  GetUserReq
 		response User
 	}
 }

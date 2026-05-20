@@ -188,9 +188,6 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 	if hasDeprecatedDecorator(td.Decorators) {
 		s.Deprecated = true
 	}
-	if ed := externalDocsFromDecorators(td.Decorators); ed != nil {
-		s.ExternalDocs = ed
-	}
 	var mixinRefs openapi3.SchemaRefs
 	for _, m := range td.Body {
 		switch v := m.(type) {

@@ -87,37 +87,19 @@ type User {
 }
 ```
 
-### `@example(value)` / `@examples(...)`
+### `@example(value)`
 
-OpenAPI examples block.
+Example value rendered in the OpenAPI schema for this field.
 
-| Sites | type, field, method, error, errorField |
+| Sites | field |
 | -------- | -------- |
-| Args  | `@example`: a literal or `{key: value}` object. `@examples`: named map of example objects. |
+| Args  | a literal (string / int / float / bool) or `{key: value}` object |
 
 ```craftgo
 type User {
-    name string @example("alice")
+    name  string @example("alice")
+    meta  object @example({tier: "gold", trial: false})
 }
-
-@examples(
-    happy: {summary: "Typical create", value: {name: "alice"}},
-    edge:  {summary: "Long name",      value: {name: "alice-the-great"}},
-)
-type CreateUserReq { name string }
-```
-
-### `@externalDocs(url)` / `@externalDocs(url: ..., description: ...)`
-
-OpenAPI external documentation pointer.
-
-| Sites | type, service, method |
-| -------- | -------- |
-| Args  | a string URL OR `{url: "...", description: "..."}` object |
-
-```craftgo
-@externalDocs("https://docs.example.com/api/users")
-service UserService { ... }
 ```
 
 ## OpenAPI file-header
@@ -201,17 +183,19 @@ Run on int / uint / float fields and scalars wrapping them.
 
 | Decorator               | Args               | Effect                          |
 | ----------------------- | ------------------ | ------------------------------- |
-| `@min(n)`               | `(number)`         | Value `>= n`                    |
-| `@max(n)`               | `(number)`         | Value `<= n`                    |
-| `@range(min, max)`      | `(number, number)` | Both bounds inclusive           |
+| `@gte(n)`               | `(number)`         | Value `>= n`                    |
+| `@gt(n)`                | `(number)`         | Value `> n`                     |
+| `@lte(n)`               | `(number)`         | Value `<= n`                    |
+| `@lt(n)`                | `(number)`         | Value `< n`                     |
+| `@range(min, max)`      | `(number, number)` | Both bounds inclusive (`@gte` + `@lte`) |
 | `@positive`             | `()`               | Value `> 0`                     |
 | `@negative`             | `()`               | Value `< 0`                     |
 | `@multipleOf(n)`        | `(number)`         | Value divisible by `n`          |
 
 ```craftgo
 type Order {
-    quantity int   @positive @max(1000)
-    price    int   @min(0) @multipleOf(2)
+    quantity int   @positive @lte(1000)
+    price    int   @gte(0) @multipleOf(2)
     rating   float64 @range(0.0, 5.0)
 }
 ```
@@ -286,7 +270,7 @@ Conflicts: cannot combine with any binding, or be applied to map / struct / gene
 ```craftgo
 type ListReq {
     page     int     @default(1)
-    pageSize int     @default(20) @min(1) @max(100)
+    pageSize int     @default(20) @gte(1) @lte(100)
     status   Status  @default(Pending)
     tags     string[] @default([])
 }
@@ -407,18 +391,20 @@ service UserService {
 
 Method-level `@tags(...)` **appends** to the service-level list. Use `@ignoreTags` if a single method must drop the inherited list (see [Service-level decorators and inheritance](#service-level-decorators-and-inheritance)).
 
-### `@security(scheme)` / `@security(scheme, scopes: [...])`
+### `@security(A, B, ...)`
 
-OpenAPI security requirement. The `scheme` is a key from `craftgo.design.yaml` `openapi.securitySchemes`. The semantic check rejects unknown names.
+OpenAPI security requirements. Each ident is a key from `craftgo.design.yaml` `openapi.securitySchemes`; the semantic check rejects unknown names.
 
 | Sites | service, method |
 | -------- | -------- |
-| Args  | scheme ident, optional named `scopes: [...]` |
+| Args  | variadic ident list (one or more scheme names) |
+
+Within a single decorator the idents are AND-combined (the operation requires every listed scheme). Multiple `@security(...)` decorators on the same site OR-combine: any matching set unlocks the operation.
 
 ```craftgo
 @security(bearer)
 service UserService {
-    @security(oauth2, scopes: ["users:write"])
+    @security(oauth2)
     post CreateUser /users { ... }
 }
 ```
@@ -427,7 +413,7 @@ service UserService {
 
 ### Service-level decorators and inheritance
 
-Service-level decorators (`@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`, `@externalDocs`) declared on the primary `service { ... }` block apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain:
+Service-level decorators (`@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`) declared on the primary `service { ... }` block apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain:
 
 ```craftgo
 @prefix("/v1")
@@ -504,7 +490,7 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 
 #### Rules for `extend service` decorators
 
-- Only **method-level-applicable** decorators are valid on an `extend service` block - `@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`. Service-only decorators like `@prefix` / `@group` belong on the primary and produce `service/extend-decorator-not-method` if put on extend.
+- Only **method-level-applicable** decorators are valid on an `extend service` block - `@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`. Service-only decorators like `@prefix` / `@group` belong on the primary and produce `service/extend-decorator-not-method` if put on extend.
 - The primary service declaration must exist in the same package. A cross-package extend produces `service/extend-orphan` with a Related pointer to where the primary was found (or expected). To extend a service from another package, move the extend file into the primary's folder or rename the extend block to a new service.
 
 #### Combinations cheatsheet

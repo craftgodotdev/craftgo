@@ -691,17 +691,18 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 
 // ----- error -----
 
-// errorCategories enumerates the 19 reserved HTTP-status categories the
-// `error <Category> Name` form may use. Anything outside this set produces a
-// diagnostic.
+// errorCategories enumerates the reserved HTTP-status categories the
+// `error <Category> Name` form may use. Anything outside this set produces
+// a diagnostic. Each entry maps 1:1 to an RFC-defined HTTP status code; the
+// status emitted at runtime + in OpenAPI is derived from the category name.
 var errorCategories = map[string]bool{
 	"BadRequest": true, "Unauthorized": true, "PaymentRequired": true,
 	"Forbidden": true, "NotFound": true, "MethodNotAllowed": true,
 	"NotAcceptable": true, "Conflict": true, "Gone": true,
-	"PreconditionFailed": true, "PayloadTooLarge": true, "UnsupportedMediaType": true,
-	"UnprocessableEntity": true, "TooManyRequests": true, "Internal": true,
-	"NotImplemented": true, "BadGateway": true, "ServiceUnavailable": true,
-	"GatewayTimeout": true,
+	"LengthRequired": true, "PreconditionFailed": true, "PayloadTooLarge": true,
+	"UnsupportedMediaType": true, "UnprocessableEntity": true, "Locked": true,
+	"TooManyRequests": true, "Internal": true, "NotImplemented": true,
+	"BadGateway": true, "ServiceUnavailable": true, "GatewayTimeout": true,
 }
 
 // parseErrorDecl reads `error <Category> Name [{ Body }]`.
@@ -818,6 +819,27 @@ func (p *Parser) parseExtendService(decs []*ast.Decorator) *ast.ServiceDecl {
 	return p.parseServiceDecl(decs, true)
 }
 
+// rejectMethodTypeSuffix flags `request`/`response` types written with
+// an array suffix (`Order[]`) or optional marker (`User?`). Both shapes
+// would silently parse without these checks - `[]`/`?` simply leave the
+// next iteration on a stray token - so the diagnostic explains the gap
+// and steers users to wrap the type in a struct.
+func (p *Parser) rejectMethodTypeSuffix(slot string) {
+	t := p.peek()
+	switch t.Kind {
+	case lexer.LBracket:
+		p.errorf(t.Pos, "%s type cannot be a bare array - wrap it in a type (e.g. `type Items { items Order[] }`) and reference that type instead", slot)
+		// consume `[]` so subsequent parsing doesn't compound the error.
+		p.advance()
+		if p.peek().Kind == lexer.RBracket {
+			p.advance()
+		}
+	case lexer.Question:
+		p.errorf(t.Pos, "%s type cannot be optional - omit the `?` (use a struct field with `?` if a nullable payload is needed)", slot)
+		p.advance()
+	}
+}
+
 // parseMethod reads `[@decorators] <verb> Name [Path] { request? response? }`.
 func (p *Parser) parseMethod() *ast.Method {
 	p.captureDoc()
@@ -840,11 +862,13 @@ func (p *Parser) parseMethod() *ast.Method {
 		case lexer.KwRequest:
 			p.advance()
 			m.Request = p.parseNamedTypeRef()
+			p.rejectMethodTypeSuffix("request")
 		case lexer.KwResponse:
 			p.advance()
 			mr := &ast.MethodResponse{Pos: p.peek().Pos}
 			mr.Type = p.parseNamedTypeRef()
 			m.Response = mr
+			p.rejectMethodTypeSuffix("response")
 		default:
 			p.errorf(p.peek().Pos, "expected request or response in method body, got %s", p.peek().Kind)
 			p.advance()

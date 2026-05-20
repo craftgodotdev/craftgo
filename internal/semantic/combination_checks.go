@@ -121,6 +121,47 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f)
 		a.checkDefaultNeedsOptional(parent, f)
+		a.checkBoundOverlap(parent, f)
+	}
+}
+
+// checkBoundOverlap warns when both the closed-form bound
+// (`@length(min, max)` / `@range(min, max)`) and one of its one-sided
+// equivalents (`@minLength`/`@maxLength`, `@gt*`/`@lt*`) appear on the
+// same field. The bound interpretation in OpenAPI is well-defined - the
+// validator path applies every constraint, so the bounds AND together -
+// but two equivalent forms make the source noisy and the canonical form
+// ambiguous. Warn (not error) and let the user pick.
+func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
+	if f == nil {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d == nil {
+			continue
+		}
+		var partners []string
+		switch d.Name {
+		case "length":
+			partners = []string{"minLength", "maxLength"}
+		case "range":
+			partners = []string{"gt", "gte", "lt", "lte"}
+		default:
+			continue
+		}
+		for _, p := range f.Decorators {
+			if p == nil || p == d {
+				continue
+			}
+			for _, want := range partners {
+				if p.Name != want {
+					continue
+				}
+				a.diag(p.Pos, decoratorEnd(p), lexer.SeverityWarning, CodeDecoratorRedundant,
+					"field %s.%s: @%s overlaps with @%s on the same field; pick one form for clarity",
+					parent, f.Name, p.Name, d.Name)
+			}
+		}
 	}
 }
 

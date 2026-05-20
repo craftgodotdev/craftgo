@@ -5,71 +5,72 @@ import "shared"
 import v1 "v1/api"
 
 type User {
-    id    string  @required
-    name  string  @length(1, 100)
-    age   int?    @min(0) @max(150)
-    tags  string[]
-    meta  map<string, string>
+	id   string
+	name string              @length(1, 100)
+	age  int?                @gte(0) @lte(150)
+	tags string[]
+	meta map<string, string>
 }
 
 type Page<T> {
-    items   T[]
-    total   int
-    cursor  string?
+	items  T[]
+	total  int
+	cursor string?
 }
 
 type UserListPage {
-    Page<User>
-    requestId string
+	Page<User>
+	requestId string
 }
 
-scalar Email string @format("email")
+scalar Email string @format(email)
 
 enum Status {
-    Active = "active"
-    Inactive = "inactive"
+	Active   = "active"
+	Inactive = "inactive"
 }
 
 enum Priority {
-    Low = 1
-    Medium = 2
-    High = 3
+	Low    = 1
+	Medium = 2
+	High   = 3
 }
 
 error NotFound UserNotFound
+
 error BadRequest ValidationFailed {
-    code     string  @default("VALIDATION_FAILED")
-    message  string
-    fields   string[]
+	code    string?  @default("VALIDATION_FAILED")
+	message string
+	fields  string[]
 }
 
 middleware AuthRequired
+
 middleware RateLimit
 
 @prefix("/api/v1")
 @middlewares(AuthRequired)
 service UserService {
-    @doc("Get user by ID")
-    @errors(UserNotFound)
-    get GetUser /users/{id} {
-        request   GetUserReq
-        response  User
-    }
+	@doc("Get user by ID")
+	@errors(UserNotFound)
+	get GetUser /users/{id} {
+		request  GetUserReq
+		response User
+	}
 
-    @timeout(5s)
-    @maxBodySize(1MB)
-    post UpdateUser /users/{id} {
-        request   UpdateUserReq
-        response  User
-    }
+	@timeout(5s)
+	@maxBodySize(1MB)
+	post UpdateUser /users/{id} {
+		request  UpdateUserReq
+		response User
+	}
 
-    @passthrough
-    get StreamUsers /users-feed {
-    }
+	@passthrough
+	get StreamUsers /users-feed {}
 }
 
 extend service UserService {
-    delete DeleteUser /users/{id} {
-        response  User
-    }
+	delete DeleteUser /users/{id} {
+		response User
+	}
 }

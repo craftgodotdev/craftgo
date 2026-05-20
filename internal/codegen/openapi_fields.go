@@ -371,39 +371,6 @@ func applyNullable(s *openapi3.Schema) {
 	}
 }
 
-// externalDocsFromDecorators reads `@externalDocs(url: "…", description: "…")`
-// off a chain. Both `url` and `description` are accepted as named args;
-// missing url returns nil because OpenAPI treats `externalDocs.url` as
-// required and consumers (Swagger UI) drop entries without it.
-func externalDocsFromDecorators(ds []*ast.Decorator) *openapi3.ExternalDocs {
-	for _, d := range ds {
-		if d.Name != "externalDocs" {
-			continue
-		}
-		var url, desc string
-		for _, a := range d.Args {
-			if !a.Named {
-				continue
-			}
-			s, ok := a.Value.(*ast.StringLit)
-			if !ok {
-				continue
-			}
-			switch a.Name {
-			case "url":
-				url = s.Value
-			case "description":
-				desc = s.Value
-			}
-		}
-		if url == "" {
-			return nil
-		}
-		return &openapi3.ExternalDocs{URL: url, Description: desc}
-	}
-	return nil
-}
-
 // appendDescription joins a new note onto an existing description with
 // a single blank-line separator. Empty existing description means the
 // note becomes the entire description; empty note is a no-op.

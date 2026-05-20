@@ -20,8 +20,8 @@ var errorCategories = map[string]bool{
 	"BadRequest": true, "Unauthorized": true, "PaymentRequired": true,
 	"Forbidden": true, "NotFound": true, "MethodNotAllowed": true,
 	"NotAcceptable": true, "Conflict": true, "Gone": true,
-	"PreconditionFailed": true, "PayloadTooLarge": true,
-	"UnsupportedMediaType": true, "UnprocessableEntity": true,
+	"LengthRequired": true, "PreconditionFailed": true, "PayloadTooLarge": true,
+	"UnsupportedMediaType": true, "UnprocessableEntity": true, "Locked": true,
 	"TooManyRequests": true, "Internal": true, "NotImplemented": true,
 	"BadGateway": true, "ServiceUnavailable": true, "GatewayTimeout": true,
 }

@@ -20,8 +20,6 @@ package design
 import "shared"
 
 @doc("type-level doc")
-@example("simple")
-@examples(["a", "b"])
 @deprecated
 @requiresOneOf("a", "b")
 @mutuallyExclusive("a", "b")
@@ -34,7 +32,6 @@ type T {
     @format("email")
     @enum("a", "b")
     @example("alice")
-    @examples(["a", "b"])
     @doc("field doc")
     @default("d")
     @deprecated
@@ -96,7 +93,6 @@ error NotFound MyErr {
 @middlewares(Auth)
 @group("admin")
 @tags("v1")
-@externalDocs("https://docs.example.com")
 @security(Bearer)
 @deprecated
 @doc("svc doc")
@@ -109,10 +105,7 @@ service S {
     @errors(MyErr)
     @status(200)
     @ignoreSecurity
-    @example("e")
-    @examples(["a"])
     @deprecated
-    @externalDocs("https://docs.example.com")
     @passthrough
     @timeout(5s)
     @maxBodySize(1MB)
@@ -135,13 +128,13 @@ middleware RateLimit
 
 	want := []string{
 		"version", "doc", "deprecated",
-		"example", "examples", "requiresOneOf", "mutuallyExclusive",
+		"example", "requiresOneOf", "mutuallyExclusive",
 		"length", "minLength", "maxLength", "pattern", "format", "enum",
 		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
 		"minItems", "maxItems", "uniqueItems", "maxSize", "mimeTypes",
 		"default", "nullable",
 		"path", "query", "body", "header", "cookie", "form",
-		"prefix", "middlewares", "group", "tags", "externalDocs", "security",
+		"prefix", "middlewares", "group", "tags", "security",
 		"ignoreSecurity",
 		"summary", "operationId", "errors", "status",
 		"passthrough",

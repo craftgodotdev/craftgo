@@ -77,7 +77,7 @@ type User {
 }
 ```
 
-The string is the path of a sibling subfolder under `design/`. craftgo wires the matching Go imports automatically when codegen sees a `<pkg>.<Type>` reference.
+The string is the path of a sibling subfolder under `design/`. craftgo wires the matching Go imports automatically when codegen sees a `<pkg>.<Type>` reference. Import cycles, self-imports, and out-of-tree paths (`..`, `/abs/path`) are rejected by the semantic phase (`import/escape`, `import/self`, etc.). Middleware names are global across the project; type / enum / error / scalar names live in their declaring package and must be qualified at the call site (`shared.Audit`, `users.User`).
 
 ## `type`
 
@@ -89,7 +89,7 @@ type CreateUserReq {
     email string @format(email)
 }
 
-type Page<T any> {              // generic
+type Page<T> {                  // generic — bare ident, no constraint
     items T[]
     total int
 }
@@ -106,6 +106,8 @@ enum Status { Active  Inactive  Pending }
 enum Priority { Low = 1  Medium = 2  High = 3 }
 enum Color { Red = "red"  Green = "green"  Blue = "blue" }
 ```
+
+All values inside one enum must share the same form. Mixing them (e.g. `Active = 1  Inactive = "off"`) raises `enum/mixed-types`. Enums are not generic — only `type` declarations support `<T, U, ...>` parameters.
 
 See [Enums](/guide/enums).
 
@@ -178,7 +180,7 @@ extend service UserService {
 }
 ```
 
-`extend` blocks may carry method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`) - those propagate to every method inside. Service-only decorators like `@prefix` / `@group` belong on the primary `service` block. The extended service must already exist in the same package.
+`extend` blocks may carry method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) - those propagate to every method inside. Service-only decorators like `@prefix` / `@group` belong on the primary `service` block. The extended service must already exist in the same package.
 
 Used to split a large service across files, separate authenticated endpoints from public ones (the 50/50 pattern: primary holds public methods, an extend block holds the authenticated chain), or organise admin endpoints under a different middleware chain than the default. See [DSL Basics](/guide/dsl-basics#extending-a-service-across-files) for the full pattern.
 
@@ -192,7 +194,7 @@ middleware RateLimit
 middleware CORS
 ```
 
-Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and an empty stub at `internal/middleware/<name>-middleware.go` you fill in. Methods opt in via `@middlewares(Name, ...)`.
+Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and an empty stub at `internal/middleware/<name>-middleware.go` you fill in. Methods opt in via `@middlewares(Name, ...)`. Middleware names are global across the project — `@middlewares(AuthRequired)` resolves the same regardless of package — because middleware represents runtime behavior, not data; type / enum / error / scalar names stay package-scoped and must be qualified across packages.
 
 See [Middleware](/guide/middleware).
 

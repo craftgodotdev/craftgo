@@ -16,7 +16,7 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
 	}
-	if name == "security" && atFirstDecoratorArg(prev, mid) {
+	if name == "security" {
 		if items := s.securitySchemeCompletions(currentURI); items != nil {
 			return items
 		}
@@ -35,23 +35,6 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 		}
 	}
 	return decoratorArgCompletions(view, pos, name)
-}
-
-// atFirstDecoratorArg reports whether the cursor sits at slot 1 of a
-// decorator's argument list - i.e. between the opening `(` and the
-// first comma. Two shapes count:
-//
-//   - mid is `(` itself (cursor on the open paren).
-//   - prev is `(` and mid is anything else (typically an Ident the
-//     user just started typing).
-func atFirstDecoratorArg(prev, mid *lexer.Token) bool {
-	if mid != nil && mid.Kind == lexer.LParen {
-		return true
-	}
-	if prev != nil && prev.Kind == lexer.LParen {
-		return true
-	}
-	return false
 }
 
 // surroundingTokens returns the tokens immediately before and at the
@@ -221,10 +204,12 @@ var errorCategoryStatus = []struct {
 	{"NotAcceptable", 406},
 	{"Conflict", 409},
 	{"Gone", 410},
+	{"LengthRequired", 411},
 	{"PreconditionFailed", 412},
 	{"PayloadTooLarge", 413},
 	{"UnsupportedMediaType", 415},
 	{"UnprocessableEntity", 422},
+	{"Locked", 423},
 	{"TooManyRequests", 429},
 	{"Internal", 500},
 	{"NotImplemented", 501},

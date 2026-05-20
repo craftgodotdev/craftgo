@@ -62,7 +62,7 @@ service UserService {
 	@doc("Delete a user. Returns shared.OkResp regardless of prior state — idempotent.")
 	@errors(InsufficientScope, AccountSuspended, AccountActionDenied, OwnershipConflict, InvalidToken)
 	@middlewares(shared.BodyLimit, shared.Timeout)
-	@security(oauth2, scopes: ["users:write"])
+	@security(oauth2)
 	delete DeleteUser /{id} {
 		request  GetUserReq
 		response shared.OkResp

@@ -86,7 +86,7 @@ type User {
 ### Generics
 
 ```craftgo
-type Page<T any> {
+type Page<T> {
     items T[]
     total int
 }
@@ -96,7 +96,7 @@ type UserList {
 }
 ```
 
-The Go output uses standard Go 1.18+ generics. Each concrete instantiation also becomes a flat schema in OpenAPI.
+Generic type parameters are bare identifiers — no constraint or variance syntax. The Go output uses standard Go 1.18+ generics with an implicit `any` constraint; each concrete instantiation also becomes a flat schema in OpenAPI (`Page<User>` emits a component named `PageOfUser`). `extend` only applies to `service` — there is no `extend type` / `extend enum`.
 
 ### Mixins
 
@@ -128,7 +128,7 @@ type User { Auditable  Identified  name string }
 Generics work too:
 
 ```craftgo
-type Page<T any> {
+type Page<T> {
     items T[]
     total int
 }
@@ -157,9 +157,11 @@ The parser reads each line in a type body and decides whether the first identifi
 1. If the next token is `.` or `<` -> mixin (qualified or generic name).
 2. If the next token is a builtin primitive on the same line (`string`, `int`, `bool`, `bytes`, `float64`, ...) -> field.
 3. If the first identifier starts lowercase -> field (the canonical form: `name string`).
-4. Otherwise -> mixin (PascalCase identifier alone, or followed by another identifier that is the start of the next member).
+4. Otherwise -> mixin (PascalCase identifier alone, or followed by another PascalCase identifier that is the start of the next member).
 
 The "PascalCase + builtin -> field" carve-out lets you name a field with an exported JSON tag (`CreatedAt string`) without breaking the compact mixin form.
+
+The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type — e.g. `CreatedAt MyTimestamp` on its own line — is read as a mixin reference to `CreatedAt` followed by a field named `MyTimestamp`. When in doubt, write the field on its own line with a builtin or scalar-backed type.
 
 #### Restrictions
 

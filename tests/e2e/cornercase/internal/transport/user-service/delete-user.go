@@ -4,9 +4,11 @@ package userservice
 
 import (
 	"encoding/json"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/user-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/svccontext"
 )
 
@@ -14,8 +16,14 @@ import (
 // DELETE DeleteUser endpoint.
 func DeleteUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var req types.GetUserReq
+		req.ID = r.PathValue("id")
+		if err := req.Validate(); err != nil {
+			server.WriteValidationError(w, r, err)
+			return
+		}
 		l := service.NewDeleteUserService(r.Context(), svcCtx)
-		resp, err := l.DeleteUser()
+		resp, err := l.DeleteUser(&req)
 		if err != nil {
 			writeError(w, err)
 			return

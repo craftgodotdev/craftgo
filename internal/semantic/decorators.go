@@ -243,10 +243,9 @@ func (p Prims) String() string {
 
 // Spec describes one decorator: its canonical name, every site it may
 // appear, a short doc string for IDE hover, and the positional argument
-// shape. Decorators with non-uniform argument shapes (e.g. `@security`'s
-// optional `scopes:` named arg, `@externalDocs`'s string-or-object) are
-// validated by per-decorator hooks; their [Args] entry covers the
-// uniform part and the hook handles the rest.
+// shape. Every decorator validates through the generic
+// [analyzer.checkPositionalArgs] path - there are no per-decorator
+// argument shape hooks.
 type Spec struct {
 	// Name is the bare decorator name (no leading `@`). Stored so callers
 	// holding a *Spec can render diagnostics without a separate lookup.
@@ -314,24 +313,10 @@ var Registry = map[string]Spec{
 	},
 	"example": {
 		Name:   "example",
-		Levels: LvlType | LvlField | LvlMethod | LvlError | LvlErrorField,
-		Doc:    "Single example value rendered in OpenAPI examples block. Argument may be a literal (string / int / float / bool) OR a `{k: v}` object.",
+		Levels: LvlField,
+		Doc:    "Example value rendered in the OpenAPI schema for this field. Argument may be a literal (string / int / float / bool) OR a `{k: v}` object.",
 		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
-	"examples": {
-		Name:   "examples",
-		Levels: LvlType | LvlField | LvlMethod | LvlError | LvlErrorField,
-		Doc:    "Named map of example values rendered in OpenAPI.",
-		// Validated by [analyzer.checkExamplesArgs].
-	},
-	"externalDocs": {
-		Name:   "externalDocs",
-		Levels: LvlType | LvlService | LvlMethod,
-		Doc:    "External documentation URL surfaced in OpenAPI externalDocs.",
-		// Validated by [analyzer.checkExternalDocsArgs] - string OR
-		// {url: ..., description: ...} object.
-	},
-
 	// ---- OpenAPI file-header metadata ----
 	// Per ast.File comment, file-level decorators carry top-of-file
 	// OpenAPI metadata when no design-yaml override is supplied. Not in
@@ -348,7 +333,7 @@ var Registry = map[string]Spec{
 	"requiresOneOf": {
 		Name:   "requiresOneOf",
 		Levels: LvlType,
-		Doc:    "At least one of the listed fields must be present.",
+		Doc:    "At least one of the listed fields must be present. Args: variadic idents/strings or a single array literal.",
 		Args: ArgsRule{
 			Min: 1, Max: -1, Variadic: ArgStringOrIdent,
 			AllowArrayShortcut: true,
@@ -357,7 +342,7 @@ var Registry = map[string]Spec{
 	"mutuallyExclusive": {
 		Name:   "mutuallyExclusive",
 		Levels: LvlType,
-		Doc:    "At most one of the listed fields may be present.",
+		Doc:    "At most one of the listed fields may be present. Args: variadic idents/strings or a single array literal.",
 		Args: ArgsRule{
 			Min: 1, Max: -1, Variadic: ArgStringOrIdent,
 			AllowArrayShortcut: true,
@@ -469,7 +454,7 @@ var Registry = map[string]Spec{
 	},
 	"mimeTypes": {
 		Name: "mimeTypes", Levels: LvlField,
-		Doc:       "Allowed Content-Type list for uploads.",
+		Doc:       "Allowed Content-Type list for uploads. Args: variadic strings or a single array literal.",
 		Args:      ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true},
 		AppliesTo: PrimFile,
 	},
@@ -508,21 +493,20 @@ var Registry = map[string]Spec{
 	"middlewares": {
 		Name:   "middlewares",
 		Levels: LvlService | LvlMethod,
-		Doc:    "Apply named middlewares; method-level appends to service-level chain.",
+		Doc:    "Apply named middlewares; method-level appends to service-level chain. Args: variadic idents or a single array literal.",
 		Args:   ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
 	},
 	"tags": {
 		Name:   "tags",
 		Levels: LvlService | LvlMethod,
-		Doc:    "OpenAPI tags. Method-level overrides service-level.",
+		Doc:    "OpenAPI tags. Method-level appends to service-level. Args: variadic idents/strings or a single array literal.",
 		Args:   ArgsRule{Min: 1, Max: -1, Variadic: ArgStringOrIdent, AllowArrayShortcut: true},
 	},
 	"security": {
 		Name:   "security",
 		Levels: LvlService | LvlMethod,
-		Doc:    "Security scheme requirement (OpenAPI metadata, not enforcement).",
-		// Validated by [analyzer.checkSecurityArgs] - first positional
-		// arg is the scheme ident, with optional named `scopes: [...]`.
+		Doc:    "Security scheme requirements (OpenAPI metadata). Args: variadic scheme idents or a single array literal. Within one decorator the schemes AND-combine; multiple `@security(...)` decorators OR-combine.",
+		Args:   ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
 	},
 	"ignoreMiddleware": {
 		Name:   "ignoreMiddleware",
@@ -546,7 +530,7 @@ var Registry = map[string]Spec{
 	// ---- Method-only ----
 	"summary":     {Name: "summary", Levels: LvlMethod, Doc: "One-line OpenAPI operation summary.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"operationId": {Name: "operationId", Levels: LvlMethod, Doc: "Override OpenAPI operationId.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}},
+	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI. Args: variadic error idents or a single array literal.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}},
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
 	// NOTE: `@consumes`, `@produces`, `@accepts` are not in the
 	// registry. craftgo's transport hardcodes `application/json` for

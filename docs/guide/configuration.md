@@ -133,7 +133,7 @@ openapi:
       in: header
       name: X-API-Key
 
-    oauth2:                    # @security(oauth2, scopes: ["read"])
+    oauth2:                    # @security(oauth2)
       type: oauth2
 
     openIdConnect:

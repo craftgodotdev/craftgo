@@ -550,9 +550,9 @@ service S {
 // operationBlock returns the slice of YAML body covering exactly one
 // operation. It walks back from the operationId line to the matching
 // verb line so sibling fields emitted alphabetically before operationId
-// (externalDocs, description, ...) stay inside the block, and trims
-// forward at the next path or end-of-paths so the block terminates
-// before the following operation's header.
+// (description, ...) stay inside the block, and trims forward at the
+// next path or end-of-paths so the block terminates before the following
+// operation's header.
 func operationBlock(t *testing.T, body, opID string) string {
 	t.Helper()
 	idx := strings.Index(body, "\n      operationId: "+opID)
@@ -586,32 +586,6 @@ func operationBlock(t *testing.T, body, opID string) string {
 		end = searchFrom + s
 	}
 	return body[start:end]
-}
-
-// TestGenerateOpenAPIServiceLevelExternalDocsInherit pins the
-// fallback behaviour: a method without its own `@externalDocs`
-// inherits from the primary service; a method with its own
-// `@externalDocs` overrides (single-value semantics).
-func TestGenerateOpenAPIServiceLevelExternalDocsInherit(t *testing.T) {
-	body := generateOpenAPIToString(t, `package design
-@externalDocs(url: "https://svc.example/docs")
-service S {
-    @doc("inherits svc-level externalDocs")
-    get A /a {}
-    @externalDocs(url: "https://b.example/docs")
-    get B /b {}
-}`)
-	aBlock := operationBlock(t, body, "A")
-	if !strings.Contains(aBlock, "https://svc.example/docs") {
-		t.Errorf("operation A missing inherited externalDocs URL:\n%s", aBlock)
-	}
-	bBlock := operationBlock(t, body, "B")
-	if !strings.Contains(bBlock, "https://b.example/docs") {
-		t.Errorf("operation B missing method-level externalDocs URL:\n%s", bBlock)
-	}
-	if strings.Contains(bBlock, "https://svc.example/docs") {
-		t.Errorf("operation B unexpectedly carries service-level externalDocs:\n%s", bBlock)
-	}
 }
 
 // TestGenerateOpenAPIResponseHeaders pins the response @header /
@@ -782,35 +756,6 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
-// TestGenerateOpenAPIExternalDocs covers `@externalDocs(url:..., description:...)`
-// on operations and types.
-func TestGenerateOpenAPIExternalDocs(t *testing.T) {
-	src := `package design
-@externalDocs(url: "https://docs.example.com/book", description: "Book schema reference")
-type Book { id string }
-service S {
-    @externalDocs(url: "https://docs.example.com/list", description: "Listing endpoint guide")
-    get List /books { response Book }
-}`
-	pkg := analyzePkg(t, src)
-	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
-		t.Fatal(err)
-	}
-	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
-	src2 := string(body)
-	for _, want := range []string{
-		"https://docs.example.com/book",
-		"Book schema reference",
-		"https://docs.example.com/list",
-		"Listing endpoint guide",
-	} {
-		if !strings.Contains(src2, want) {
-			t.Errorf("expected externalDocs entry %q:\n%s", want, src2)
-		}
-	}
-}
-
 // TestGenerateOpenAPIDeprecated covers the three @deprecated emission
 // sites: type-level marks the schema deprecated, field-level marks
 // only that property, and method-level marks the operation. A
@@ -884,9 +829,10 @@ service S {
 // keys are relative and the basePath lives only in servers[0].url.
 func TestGenerateOpenAPIBasePathNotDuplicated(t *testing.T) {
 	pkg := analyzePkg(t, `package design
+type GetThingReq { id string @path }
 @prefix("/v1")
 service S {
-    get GetThing /things/{id} {}
+    get GetThing /things/{id} { request GetThingReq }
 }`)
 	cfg := &config.Config{
 		Package: "x/y",

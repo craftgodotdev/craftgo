@@ -131,6 +131,7 @@ The `<Category>` slot picks the HTTP status. Built-in categories:
 | `LengthRequired`      | 411    | Length Required            |
 | `PreconditionFailed`  | 412    | Precondition Failed        |
 | `PayloadTooLarge`     | 413    | Payload Too Large          |
+| `UnsupportedMediaType`| 415    | Unsupported Media Type     |
 | `UnprocessableEntity` | 422    | Unprocessable Entity       |
 | `Locked`              | 423    | Locked                     |
 | `TooManyRequests`     | 429    | Too Many Requests          |

@@ -7,6 +7,14 @@ type GetUserReq {
 	id string
 }
 
+// DeleteUserReq is the path-bound input for DELETE /users/{id}. It
+// mirrors GetUserReq - keeping the shape separate makes the binding
+// intent explicit at each call site and leaves room for future
+// soft-delete query flags without touching the read path.
+type DeleteUserReq {
+	id string
+}
+
 // CreateUserReq is the body for POST /users.
 type CreateUserReq {
 	name string              @length(1, 50)
@@ -76,8 +84,11 @@ service UserService {
 		response User
 	}
 
-	// DeleteUser clears the in-memory store. Path id is currently ignored.
+	// DeleteUser removes a user identified by the URL id. The path
+	// parameter binds onto the request struct so the handler can act
+	// on it instead of receiving an opaque {id}.
 	delete DeleteUser /users/{id} {
+		request  DeleteUserReq
 		response Empty
 	}
 

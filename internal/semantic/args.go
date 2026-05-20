@@ -2,9 +2,7 @@ package semantic
 
 // Decorator argument validation. Walks every decorator already passed
 // the placement check and verifies its positional arguments match the
-// [ArgsRule] declared on its [Spec]. Decorators with non-uniform shapes
-// (`@security`, `@example`, `@examples`, `@externalDocs`) are routed to
-// per-decorator hooks so the registry stays simple for the 90% case.
+// [ArgsRule] declared on its [Spec].
 //
 // Three diagnostic codes fire here:
 //   - [CodeDecoratorArity]    - wrong number of positional arguments.
@@ -86,9 +84,9 @@ func (a *analyzer) checkArgsScope(site Level, decs []*ast.Decorator) {
 	}
 }
 
-// checkDecoratorArg validates one decorator. Routes special-shape
-// decorators to their hook; everything else goes through the generic
-// positional check.
+// checkDecoratorArg validates one decorator against its [Spec]. Flag
+// decorators (`@positive`, `@uniqueItems`, ...) warn on empty parens;
+// everything else goes through the generic positional check.
 func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 	// Flag decorators never take arguments — empty parens are
 	// stylistically wrong. Warn (not error); `craftgo fmt` strips
@@ -97,17 +95,6 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeFlagEmptyParens,
 			"@%s never accepts arguments — drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
 			d.Name, d.Name)
-	}
-	switch d.Name {
-	case "security":
-		a.checkSecurityArgs(d)
-		return
-	case "examples":
-		a.checkExamplesArgs(d)
-		return
-	case "externalDocs":
-		a.checkExternalDocsArgs(d)
-		return
 	}
 	a.checkPositionalArgs(site, d, spec)
 }
@@ -140,6 +127,15 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 // Stops on the first arity mismatch because subsequent kind errors
 // would just compound the user's confusion.
 func (a *analyzer) checkPositionalArgs(site Level, d *ast.Decorator, spec Spec) {
+	// Named args are reserved for decorators with custom shape hooks
+	// (currently none). Reject them globally so users get a single
+	// clear error instead of a silently-ignored argument.
+	for _, ag := range d.Args {
+		if ag != nil && ag.Named {
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s: named argument %q is not supported (use positional args)", d.Name, ag.Name)
+		}
+	}
 	pos := positionalArgs(d)
 	rule := spec.Args
 

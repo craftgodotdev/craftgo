@@ -4,19 +4,29 @@ package userservice
 
 import (
 	"encoding/json"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/service/user-service"
+	types "github.com/craftgodotdev/craftgo/tests/e2e/users/internal/types/design"
 	"github.com/craftgodotdev/craftgo/tests/e2e/users/svccontext"
 )
 
-// DeleteUser clears the in-memory store. Path id is currently ignored.
+// DeleteUser removes a user identified by the URL id. The path
+// parameter binds onto the request struct so the handler can act
+// on it instead of receiving an opaque {id}.
 // DeleteUser returns the http.HandlerFunc for the
 // DELETE DeleteUser endpoint.
 func DeleteUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var req types.DeleteUserReq
+		req.ID = r.PathValue("id")
+		if err := req.Validate(); err != nil {
+			server.WriteValidationError(w, r, err)
+			return
+		}
 		l := service.NewDeleteUserService(r.Context(), svcCtx)
-		resp, err := l.DeleteUser()
+		resp, err := l.DeleteUser(&req)
 		if err != nil {
 			writeError(w, err)
 			return

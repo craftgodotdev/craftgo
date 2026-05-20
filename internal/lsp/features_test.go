@@ -353,13 +353,11 @@ func TestDocumentSymbolsSkipUnnamedDecls(t *testing.T) {
 }
 
 // TestCompletionSecuritySchemeAtArgOne pins the autocompletion that
-// fires inside `@security(<arg1>, ...)` - the LSP loads the
-// project's craftgo.design.yaml and surfaces every key declared
-// under `openapi.securitySchemes` so the user picks from a closed
-// set instead of memorising names. Completion only fires when the
-// cursor sits right after the opening `(` (arg 1 position) - past
-// the first comma we are in `scopes: [...]` and want strings, not
-// scheme names.
+// fires inside `@security(A, B, ...)` - the LSP loads the project's
+// craftgo.design.yaml and surfaces every key declared under
+// `openapi.securitySchemes` so the user picks from a closed set
+// instead of memorising names. The decorator is a variadic ident
+// list, so completions fire at every slot.
 func TestCompletionSecuritySchemeAtArgOne(t *testing.T) {
 	t.Helper()
 	// Spin up an isolated project root with a manifest declaring two
@@ -553,8 +551,8 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	pos := protocol.Position{Line: 2, Character: 6}
 	srv := &Server{docs: map[uri.URI]*document{}}
 	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	if len(items) != 19 {
-		t.Fatalf("expected 19 category items (one per reserved HTTP category), got %d", len(items))
+	if len(items) != 21 {
+		t.Fatalf("expected 21 category items (one per reserved HTTP category), got %d", len(items))
 	}
 	// Spot-check coverage of common categories + their HTTP statuses.
 	want := map[string]string{
@@ -595,8 +593,8 @@ func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	pos := protocol.Position{Line: 2, Character: 9}
 	srv := &Server{docs: map[uri.URI]*document{}}
 	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	if len(items) != 19 {
-		t.Fatalf("expected 19 category items while typing, got %d", len(items))
+	if len(items) != 21 {
+		t.Fatalf("expected 21 category items while typing, got %d", len(items))
 	}
 }
 

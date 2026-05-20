@@ -8,7 +8,7 @@ package semantic
 //   - `@middlewares(Auth, RateLimit)` - must exist in pkg.Middlewares
 //   - `@requiresOneOf(email, phone)` and `@mutuallyExclusive(...)` -
 //     each ident must be a field name in the enclosing type body
-//   - `@security(scheme[, scopes: [...]])` - scheme must appear in
+//   - `@security(A, B, ...)` - each scheme ident must appear in
 //     [Options.SecuritySchemes] (when non-nil). Use `@ignoreSecurity`
 //     to opt out of inherited security rather than a sentinel name.
 //
@@ -196,29 +196,37 @@ func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 	}
 }
 
-// checkSecurityRef validates the scheme name passed to `@security(...)`
-// against [Options.SecuritySchemes]. When the options list is nil the
-// check is skipped - the LSP runs without a loaded manifest in some
-// contexts and we don't want spurious errors. To express "this endpoint
-// is public" use `@ignoreSecurity` instead of a sentinel scheme name.
+// checkSecurityRef validates every scheme name passed to
+// `@security(A, B, ...)` against [Options.SecuritySchemes]. When the
+// options list is nil the check is skipped - the LSP runs without a
+// loaded manifest in some contexts and we don't want spurious errors.
+// To express "this endpoint is public" use `@ignoreSecurity` instead of
+// a sentinel scheme name.
 func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	if a.opts.SecuritySchemes == nil {
 		return
 	}
-	pos := positionalArgs(d)
-	if len(pos) == 0 {
-		return
+	check := func(name string, pos lexer.Position) {
+		if inSet(name, a.opts.SecuritySchemes) {
+			return
+		}
+		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorRef,
+			"@security: scheme %q is not declared in openapi.securitySchemes (known: %s)",
+			name, joinQuoted(a.opts.SecuritySchemes))
 	}
-	name, ok := identOrStringValue(pos[0].Value)
-	if !ok {
-		return
+	for _, ag := range positionalArgs(d) {
+		if arr, ok := ag.Value.(*ast.ArrayLit); ok {
+			for _, el := range arr.Elements {
+				if name, ok := identOrStringValue(el); ok {
+					check(name, el.ExprPos())
+				}
+			}
+			continue
+		}
+		if name, ok := identOrStringValue(ag.Value); ok {
+			check(name, ag.Pos)
+		}
 	}
-	if inSet(name, a.opts.SecuritySchemes) {
-		return
-	}
-	a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRef,
-		"@security: scheme %q is not declared in openapi.securitySchemes (known: %s)",
-		name, joinQuoted(a.opts.SecuritySchemes))
 }
 
 // argName ties a name extracted from a decorator argument to the

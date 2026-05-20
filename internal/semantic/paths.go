@@ -250,7 +250,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 			}
 		}
 		if len(pathParams) > 0 && !passthrough {
-			a.diag(m.Pos, m.Pos, lexer.SeverityWarning, CodePathParamMissing,
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
 				"method %s.%s: path declares %v but no request struct — path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
 				svcName, m.Name, pathParams)
 		}

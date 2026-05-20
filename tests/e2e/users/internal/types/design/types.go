@@ -10,6 +10,14 @@ type CreateUserReq struct {
 	Meta map[string]string `json:"meta"`
 }
 
+// DeleteUserReq is the path-bound input for DELETE /users/{id}. It
+// mirrors GetUserReq - keeping the shape separate makes the binding
+// intent explicit at each call site and leaves room for future
+// soft-delete query flags without touching the read path.
+type DeleteUserReq struct {
+	ID string `json:"id"`
+}
+
 // Empty is the zero-payload response for endpoints that succeed without
 // returning data.
 type Empty struct {

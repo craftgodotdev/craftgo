@@ -83,7 +83,7 @@ type User { Auditable  Identified  name string }
 Generic mixins:
 
 ```craftgo
-type Page<T any> { items T[]  total int }
+type Page<T> { items T[]  total int }
 
 type UserList { Page<User>  requestId string }
 ```
@@ -106,13 +106,13 @@ Mixin targets must be `type` declarations. Referencing an `enum`, `error`, `scal
 ### Generics
 
 ```craftgo
-type Page<T any> {
+type Page<T> {
     items T[]
     total int
 }
 ```
 
-Standard Go 1.18+ generics. OpenAPI emits each concrete instantiation as a flat schema.
+Type parameters are bare idents (no constraints or variance). Go output uses standard Go 1.18+ generics with implicit `any`. OpenAPI emits each concrete instantiation as a flat component named `<Type>Of<Arg>` (e.g. `PageOfUser`). `extend` only applies to `service`.
 
 ## Enums
 
@@ -205,7 +205,7 @@ Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`. `reques
 
 ### `extend service`
 
-Add methods to an existing service from a different file. The extend block can carry its own **method-level-applicable** decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`) that propagate to every method inside:
+Add methods to an existing service from a different file. The extend block can carry its own **method-level-applicable** decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) that propagate to every method inside:
 
 ```craftgo
 service Users {
@@ -236,9 +236,9 @@ middleware RateLimit
 
 Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and a stub at `internal/middleware/<name>-middleware.go` (gen-once - you fill it). Attach via `@middlewares(Name, ...)` on services or methods.
 
-## Decorator registry (50)
+## Decorator registry
 
-Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`), `size` (`1MB` / `8KB`), `array literal`, named arg (`scopes: [...]`).
+Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`), `size` (`1MB` / `8KB`), `array literal`. All arguments are positional - named args are not accepted.
 
 ### File-level
 
@@ -247,7 +247,6 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@version("...")`                    | `(string)`         | OpenAPI document version |
 | `@deprecated` / `@deprecated("...")` | `()` or `(string)` | Mark file deprecated     |
 | `@doc("...")`                        | `(string)`         | File description         |
-| `@externalDocs("url")` / object      | string or object   | OpenAPI externalDocs     |
 
 ### Type / error / enum / scalar / middleware level
 
@@ -255,9 +254,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | ---------------------------- | ------------------------------------------------------------ | ------------------------- |
 | `@doc("...")`                | type, enum, error, scalar, middleware, enumValue, errorField | `(string)`                |
 | `@deprecated`                | type, enumValue, errorField, middleware                      | `()` or `(string)`        |
-| `@example(value)`            | type, field, method, error, errorField                       | literal or object         |
-| `@examples(name: ..., ...)`  | type, field, method, error, errorField                       | object                    |
-| `@externalDocs(...)`         | type, service, method                                        | string or object          |
+| `@example(value)`            | field                                                        | literal or object         |
 | `@requiresOneOf(a, b, ...)`  | type                                                         | idents (or array literal) |
 | `@mutuallyExclusive(a, ...)` | type                                                         | idents (or array literal) |
 
@@ -325,7 +322,7 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@group("name")`            | service         | `(string)`                             |
 | `@middlewares(A, B, ...)`   | service, method | idents (or array literal)              |
 | `@tags(a, b, ...)`          | service, method | idents/strings (or array literal)      |
-| `@security(scheme, ...)`    | service, method | scheme ident, optional `scopes: [...]` |
+| `@security(A, B, ...)`      | service, method | variadic scheme idents (AND within one decorator, OR across multiple) |
 | `@ignoreMiddleware`         | method          | `()` — clear inherited middleware chain |
 | `@ignoreSecurity`           | method          | `()` — clear inherited security chain   |
 | `@ignoreTags`               | method          | `()` — clear inherited tags             |

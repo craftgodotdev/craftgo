@@ -524,13 +524,17 @@ type X {}`)
 }
 
 func TestDecoratorNamedArgs(t *testing.T) {
-	f := mustParse(t, `@security(oauth2, scopes: ["read", "write"])
+	// Parser-level: confirm `name: value` is captured as a named arg and
+	// retains its position in the arg slice. The decorator name is
+	// arbitrary - the parser accepts any decorator shape and lets the
+	// semantic registry decide which names + arg shapes are valid.
+	f := mustParse(t, `@hypothetical(positional, key: "value")
 type X {}`)
 	d := f.Decls[0].(*ast.TypeDecl).Decorators[0]
 	if len(d.Args) != 2 {
 		t.Fatal()
 	}
-	if d.Args[1].Name != "scopes" || !d.Args[1].Named {
+	if d.Args[1].Name != "key" || !d.Args[1].Named {
 		t.Error()
 	}
 }
@@ -862,6 +866,37 @@ func TestQualifiedIdentMissingFirstIdent(t *testing.T) {
 	_, errs := parseWithErrors(t, `type X { name }`)
 	if len(errs) == 0 {
 		t.Error()
+	}
+}
+
+// ---------- method body type suffix rejection ----------
+
+func TestMethodResponseRejectsBareArray(t *testing.T) {
+	// `response Order[]` would silently leave the `[` token on the
+	// next iteration; instead emit a hint pointing users to wrap the
+	// array in a named type.
+	_, msgs := parseWithErrors(t, `package design
+service S { get H /h { response Order[] } }`)
+	if len(msgs) == 0 || !strings.Contains(msgs[0], "bare array") {
+		t.Fatalf("expected bare-array diagnostic, got %v", msgs)
+	}
+}
+
+func TestMethodResponseRejectsOptionalMarker(t *testing.T) {
+	// `response User?` would silently leave the `?` and confuse the
+	// next-iteration parser. Reject with a clear message.
+	_, msgs := parseWithErrors(t, `package design
+service S { get H /h { response User? } }`)
+	if len(msgs) == 0 || !strings.Contains(msgs[0], "optional") {
+		t.Fatalf("expected optional-marker diagnostic, got %v", msgs)
+	}
+}
+
+func TestMethodRequestRejectsBareArray(t *testing.T) {
+	_, msgs := parseWithErrors(t, `package design
+service S { post H /h { request Order[] } }`)
+	if len(msgs) == 0 || !strings.Contains(msgs[0], "bare array") {
+		t.Fatalf("expected bare-array diagnostic, got %v", msgs)
 	}
 }
 
