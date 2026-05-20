@@ -7,6 +7,24 @@ import (
 	"net/mail"
 )
 
+// Validate checks every field-level constraint declared on AccountLoginResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AccountLoginResp) Validate() error {
+	if l := len(v.ID); l < 1 || l > 64 {
+		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on AccountProfile.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AccountProfile) Validate() error {
+	if l := len(v.ID); l < 1 || l > 64 {
+		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on AsyncJobResp.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AsyncJobResp) Validate() error {
@@ -30,6 +48,15 @@ func (v *CancelJobReq) Validate() error {
 func (v *CreateJobReq) Validate() error {
 	if len(v.Kind) < 1 {
 		return fmt.Errorf("kind: length less than 1")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on DeleteAccountReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DeleteAccountReq) Validate() error {
+	if l := len(v.ID); l < 1 || l > 64 {
+		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
 }

@@ -27,10 +27,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
 			}
 			for _, a := range d.Args {
 				if id, ok := a.Value.(*ast.IdentExpr); ok {
-					n := id.Name.String()
-					if n != "noauth" {
-						into[n] = true
-					}
+					into[id.Name.String()] = true
 				}
 			}
 		}
@@ -63,10 +60,9 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
 // projects that haven't migrated continue to work). When the manifest
 // HAS declared at least one scheme, every reference must resolve to a
 // key in that map; unknown references produce a sorted list of error
-// strings the caller can format.
-//
-// The special name `noauth` is always accepted - it is a marker, not a
-// scheme reference.
+// strings the caller can format. To express "this endpoint is public"
+// use `@ignoreSecurity` at the method level rather than a sentinel
+// scheme name.
 func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
 		return nil
@@ -83,9 +79,6 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 					continue
 				}
 				name := id.Name.String()
-				if name == "noauth" {
-					continue
-				}
 				if _, exists := declared[name]; exists {
 					continue
 				}

@@ -4,9 +4,17 @@ package svccontext
 
 import "github.com/craftgodotdev/craftgo/pkg/server"
 
+// AuditMiddleware is the typed alias for the Audit middleware so the
+// field below has a self-documenting name.
+type AuditMiddleware = server.Middleware
+
 // AuthRequiredMiddleware is the typed alias for the AuthRequired middleware so the
 // field below has a self-documenting name.
 type AuthRequiredMiddleware = server.Middleware
+
+// BasicAuthMiddleware is the typed alias for the BasicAuth middleware so the
+// field below has a self-documenting name.
+type BasicAuthMiddleware = server.Middleware
 
 // RateLimitMiddleware is the typed alias for the RateLimit middleware so the
 // field below has a self-documenting name.
@@ -29,7 +37,9 @@ type TimingMiddleware = server.Middleware
 //	    // ... your own fields ...
 //	}
 type Middlewares struct {
+	Audit        AuditMiddleware
 	AuthRequired AuthRequiredMiddleware
+	BasicAuth    BasicAuthMiddleware
 	RateLimit    RateLimitMiddleware
 	Timing       TimingMiddleware
 }

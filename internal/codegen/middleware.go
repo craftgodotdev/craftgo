@@ -5,24 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// middlewareData is the template input for `middleware.tmpl`. One value
-// is built per `middleware Name` declaration in the DSL. ParamList is
-// the formatted Go-side parameter signature (e.g. `rps int, burst int`)
-// derived from the DSL `middleware Name(rps: int = 100, burst: int = 200)`
-// form; empty when the declaration has no params. DefaultsDoc is a
-// commentary list of the declared defaults, surfaced in the scaffold
-// header so users wiring main.go know which defaults the DSL chose.
+// middlewareData drives the scaffold template that emits one
+// `<name>-middleware.go` file per `middleware Name` declaration. The
+// scaffold is gen-once: the file is created with a stub constructor
+// and a stub middleware function, and subsequent gen runs skip it so
+// user-authored body / parameters survive regeneration.
 type middlewareData struct {
-	Name        string
-	ParamList   string
-	DefaultsDoc []string
+	Name string
 }
 
 // middlewareFieldsData is the input for `middleware-fields.tmpl`. The
@@ -130,59 +125,11 @@ func projectMiddlewareDecls(proj *semantic.Project) map[string]*ast.MiddlewareDe
 	return out
 }
 
-// buildMiddlewareData fills the scaffold-template inputs from the
-// DSL-declared params. When the middleware was declared without
-// parens the scaffold falls back to the bare `New<Name>Middleware()`
-// signature; with params the generated constructor's signature
-// matches the DSL so wire-up in `main.go` doesn't need a second
-// adapter layer.
-func buildMiddlewareData(name string, md *ast.MiddlewareDecl) middlewareData {
-	d := middlewareData{Name: name}
-	if md == nil || len(md.Params) == 0 {
-		return d
-	}
-	parts := make([]string, 0, len(md.Params))
-	defaults := make([]string, 0, len(md.Params))
-	for _, p := range md.Params {
-		if p == nil || p.Type == nil {
-			continue
-		}
-		parts = append(parts, p.Name+" "+GoTypeRef(p.Type))
-		if p.Default != nil {
-			defaults = append(defaults, fmt.Sprintf("%s = %s", p.Name, exprText(p.Default)))
-		}
-	}
-	d.ParamList = strings.Join(parts, ", ")
-	d.DefaultsDoc = defaults
-	return d
-}
-
-// exprText renders a default-expression literal back to its source
-// form so the scaffold comment surfaces the DSL-declared default in
-// a shape the user recognises.
-func exprText(e ast.Expr) string {
-	switch v := e.(type) {
-	case *ast.StringLit:
-		return fmt.Sprintf("%q", v.Value)
-	case *ast.IntLit:
-		return fmt.Sprintf("%d", v.Value)
-	case *ast.FloatLit:
-		return fmt.Sprintf("%g", v.Value)
-	case *ast.BoolLit:
-		if v.Value {
-			return "true"
-		}
-		return "false"
-	case *ast.DurationLit:
-		return v.Text
-	case *ast.SizeLit:
-		return v.Text
-	case *ast.IdentExpr:
-		if v.Name != nil {
-			return v.Name.String()
-		}
-	}
-	return "?"
+// buildMiddlewareData fills the scaffold-template inputs. The DSL
+// captures only the name; configuration shape (params, defaults,
+// dependencies) is the user's choice in the hand-written impl file.
+func buildMiddlewareData(name string, _ *ast.MiddlewareDecl) middlewareData {
+	return middlewareData{Name: name}
 }
 
 // writeMiddlewareFields emits svccontext/middlewares.go (overwrite). When

@@ -8,8 +8,9 @@ package semantic
 //   - `@middlewares(Auth, RateLimit)` - must exist in pkg.Middlewares
 //   - `@requiresOneOf(email, phone)` and `@mutuallyExclusive(...)` -
 //     each ident must be a field name in the enclosing type body
-//   - `@security(scheme[, scopes: [...]])` - scheme must be `noauth` or
-//     in [Options.SecuritySchemes] (when non-nil)
+//   - `@security(scheme[, scopes: [...]])` - scheme must appear in
+//     [Options.SecuritySchemes] (when non-nil). Use `@ignoreSecurity`
+//     to opt out of inherited security rather than a sentinel name.
 //
 // Every miss surfaces as [CodeDecoratorRef] so the IDE can render the
 // "unresolved name" squiggle and offer a quick-fix list of candidates.
@@ -196,10 +197,10 @@ func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 }
 
 // checkSecurityRef validates the scheme name passed to `@security(...)`
-// against [Options.SecuritySchemes]. The literal `noauth` is always
-// accepted (it explicitly marks an endpoint as public). When the
-// options list is nil the check is skipped - the LSP runs without a
-// loaded manifest in some contexts and we don't want spurious errors.
+// against [Options.SecuritySchemes]. When the options list is nil the
+// check is skipped - the LSP runs without a loaded manifest in some
+// contexts and we don't want spurious errors. To express "this endpoint
+// is public" use `@ignoreSecurity` instead of a sentinel scheme name.
 func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	if a.opts.SecuritySchemes == nil {
 		return
@@ -212,7 +213,7 @@ func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	if !ok {
 		return
 	}
-	if name == "noauth" || inSet(name, a.opts.SecuritySchemes) {
+	if inSet(name, a.opts.SecuritySchemes) {
 		return
 	}
 	a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRef,

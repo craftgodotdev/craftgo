@@ -11,6 +11,14 @@ type Decorator struct {
 	// it so the semantic analyzer can flag `@positive()` (empty parens
 	// on a Flag decorator) and the formatter can normalise it away.
 	HasParens bool
+	// Propagated marks decorators that the semantic phase copied onto
+	// this site from an enclosing scope - currently used by
+	// `mergeServices` to flag method-level decorators it cloned from an
+	// `extend service` block. Codegen uses the flag to distinguish
+	// "inherited" decorators (which `@ignoreMiddleware` / `@ignoreTags`
+	// / `@ignoreSecurity` should clear) from the method's own
+	// decorators (which they should not).
+	Propagated bool
 }
 
 // DecoratorArg is one argument inside `@name(...)`. Exactly one of Value,

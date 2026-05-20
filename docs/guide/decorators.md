@@ -4,7 +4,7 @@ Decorators attach metadata to declarations and fields. Every decorator starts wi
 
 ## At a glance
 
-50 decorators, grouped by where they apply. Each decorator declares one or more **sites** (file, type, field, service, method, ...) and an **argument shape** (none, string, number, ident, list, ...). Using a decorator at the wrong site or with the wrong arguments fires a diagnostic with the line and column.
+~50 decorators, grouped by where they apply. Each decorator declares one or more **sites** (file, type, field, service, method, ...) and an **argument shape** (none, string, number, ident, list, ...). Using a decorator at the wrong site or with the wrong arguments fires a diagnostic with the line and column.
 
 ```craftgo
 @version("1.0.0")              // file
@@ -400,10 +400,12 @@ OpenAPI tags. Method-level overrides service-level (method's list wins).
 @tags(users, public)
 service UserService {
     @tags(admin)
-    delete PurgeUser /users/{id} { ... }   // shows under "admin" tag
-    get GetUser /users/{id} { ... }        // shows under "users" and "public" tags
+    delete PurgeUser /users/{id} { ... }   // tags: [users, public, admin] (appended)
+    get GetUser /users/{id} { ... }        // tags: [users, public]
 }
 ```
+
+Method-level `@tags(...)` **appends** to the service-level list. Use `@ignoreTags` if a single method must drop the inherited list (see [Service-level decorators and inheritance](#service-level-decorators-and-inheritance)).
 
 ### `@security(scheme)` / `@security(scheme, scopes: [...])`
 
@@ -423,80 +425,125 @@ service UserService {
 
 `@security` is OpenAPI metadata - it does not enforce anything at runtime. Pair it with an `AuthRequired` middleware to actually check the token.
 
-### Service-level decorators and `extend service`
+### Service-level decorators and inheritance
 
-Service-level decorators (`@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`) live **only on the primary `service` declaration**. The DSL hard-rejects two combinations to keep the model unambiguous.
-
-#### Rule 1: decorators are not allowed on `extend service`
+Service-level decorators (`@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`, `@externalDocs`) declared on the primary `service { ... }` block apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain:
 
 ```craftgo
-package design
-
+@prefix("/v1")
+@middlewares(AuthRequired)
+@tags("users")
 service UserService {
+    @doc("inherits AuthRequired + users tag")
     get GetUser /{id} { ... }
-}
 
-@group("admin")                     // ❌ rejected
-@prefix("/internal")                // ❌ rejected
-extend service UserService {
+    @doc("inherits + adds AdminOnly + 'admin' tag")
+    @middlewares(AdminOnly)
+    @tags("admin")
     delete PurgeUser /{id}/purge { ... }
 }
 ```
 
-Diagnostic: `service/extend-decorators`.
+`GetUser` runs `[AuthRequired]` with tags `["users"]`. `PurgeUser` runs `[AuthRequired, AdminOnly]` with tags `["users", "admin"]` - the method-level decorators append, not replace.
 
-```
-extend service "UserService" must not have service-level decorators
-```
+#### `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags`
 
-The whole-service settings have one canonical home (the primary block). Method-level `@middlewares(...)` is still permitted inside an `extend` block - those append to the primary's chain on a per-method basis.
-
-#### Rule 2: extend must live in the primary's package
+The append default fits the 90% case. For an exceptional method that must drop the inherited chain, use the matching `@ignore*` decorator at method level:
 
 ```craftgo
-// design/users/service.craftgo  →  package design.users
-package design
+@middlewares(AuthRequired, RateLimit)
+@security(Bearer)
+@tags("internal")
+service SecuredService {
+    get ListItems / { ... }       // inherits AuthRequired + RateLimit + Bearer + internal tag
 
-@group("public-users")
-service UserService {
-    get GetUser /{id} { ... }
+    @doc("Liveness probe - public on purpose.")
+    @ignoreMiddleware
+    @ignoreSecurity
+    @ignoreTags
+    @tags("monitoring")
+    get Healthz /healthz { ... }  // no middleware, no security, tag = ["monitoring"] only
 }
 ```
 
+The combine semantic is **clear-then-append**:
+
+1. `@ignoreX` on the method clears whatever the service contributed to that decorator's chain.
+2. Any method-level `@X(...)` decorators then append to the now-empty chain.
+
+So `@ignoreMiddleware` + `@middlewares(Audit)` = method chain is exactly `[Audit]` (no inherited Auth). This is the **reset-and-replace** pattern - useful when one endpoint needs a completely different chain instead of the default.
+
+The `@ignore*` decorators only apply at method level. They take no arguments. Repeating them is a `decorator/duplicate` error.
+
+> [!NOTE]
+> Earlier versions of the DSL used `@security(noauth)` as a sentinel for public endpoints. That syntax is removed - use `@ignoreSecurity` instead. The `@ignore*` form is symmetrical across security/middleware/tags and avoids tying a magic name to one specific decorator.
+
+### `extend service` with decorators
+
+The most common reason to split a service into `extend service` blocks is the **50/50 case**: half the methods need one decorator chain (authenticated admin endpoints), half need another (public probes, sign-up, login). Putting the entire service under `@middlewares(Auth)` and using `@ignoreMiddleware` on every public method is verbose. The clean alternative is to declare the primary service with the public endpoints (no service-level decorators) and use an `extend service` block for the authenticated half:
+
 ```craftgo
-// design/admin/extra.craftgo  →  package design.admin (different folder!)
-package admin
+service Users {
+    // Public endpoints
+    get  /healthz => Health()
+    post /signup  => Signup()
+    post /login   => Login()
+}
 
-extend service UserService { ... }   // ❌ rejected
+@middlewares(AuthRequired)
+@security(Bearer)
+extend service Users {
+    get    /users      => List()       // authenticated
+    get    /users/{id} => Get()         // authenticated
+    post   /users      => Create()       // authenticated
+    delete /users/{id} => Del()          // authenticated
+}
 ```
 
-Diagnostic: `service/extend-orphan`.
+Methods inside an `extend` block inherit the **block's own** decorators in addition to whatever the primary service declared. Multiple `extend` blocks may layer different decorator chains on the same service.
 
-```
-extend service "UserService": primary lives in package "design" - extend
-declarations are per-package, move this block into that package or rename
-the service
-```
+#### Rules for `extend service` decorators
 
-The diagnostic carries a Related pointer back to the primary's location. Codegen writes per-service scaffolds keyed on a single package, so a cross-package extend would split the artifacts; the framework refuses upfront.
-
-**Workarounds:**
-- Move the extend file into the primary's folder (most common).
-- Rename the extend block to a different service - it becomes a separate service.
-- Use `import` to share types across packages while keeping the service definition in one place.
+- Only **method-level-applicable** decorators are valid on an `extend service` block - `@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`. Service-only decorators like `@prefix` / `@group` belong on the primary and produce `service/extend-decorator-not-method` if put on extend.
+- The primary service declaration must exist in the same package. A cross-package extend produces `service/extend-orphan` with a Related pointer to where the primary was found (or expected). To extend a service from another package, move the extend file into the primary's folder or rename the extend block to a new service.
 
 #### Combinations cheatsheet
 
-| Setup                                                | Result | Diagnostic                  |
-| ---------------------------------------------------- | ------ | --------------------------- |
-| `@group` on primary, extend in same folder           | ✅      | -                           |
-| extend in a different folder (different package)     | ❌      | `service/extend-orphan`     |
-| `@group` (or any svc-level decorator) on `extend`    | ❌      | `service/extend-decorators` |
-| Method-level `@middlewares` inside `extend`          | ✅      | (chain appends to primary)  |
-
-The extended methods inherit every service-level decorator from the primary - `@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`. They show up under the same OpenAPI bucket and run the same chain.
+| Setup                                                | Result | Notes                                                 |
+| ---------------------------------------------------- | ------ | ----------------------------------------------------- |
+| `@middlewares` / `@security` / `@tags` on extend     | ✅      | Method-level-applicable decorators on extend OK       |
+| `@prefix` / `@group` on extend                       | ❌      | `service/extend-decorator-not-method` - move to primary |
+| Extend in a different folder (different package)     | ❌      | `service/extend-orphan`                                |
+| Multiple extend blocks targeting the same service    | ✅      | Each block's decorators apply only to its own methods  |
+| `@ignoreMiddleware` on a method inside extend        | ✅      | Clears extend-block + primary middleware chain        |
 
 ## Method decorators
+
+### `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags`
+
+Opt the current method out of the inherited service-level chain for the matching decorator. Useful for public endpoints (probes, sign-up, login) inside an otherwise-authenticated service, or for an admin method that needs a completely different middleware chain than the service default.
+
+| Sites | method |
+| -------- | -------- |
+| Args  | none |
+
+```craftgo
+@middlewares(AuthRequired)
+@security(Bearer)
+@tags("internal")
+service Users {
+    get  /users => List()             // inherits all three
+
+    @ignoreSecurity                   // clears Bearer only
+    get  /users/{id}/avatar => Avatar()
+
+    @ignoreMiddleware                 // clears AuthRequired
+    @middlewares(BasicAuth, Audit)   // method-level chain becomes [BasicAuth, Audit]
+    post /admin/reset => Reset()
+}
+```
+
+The combine semantic is **clear-then-append**: `@ignoreX` clears the inherited chain first, then any method-level `@X(...)` decorators append to the now-empty chain. See [Service-level decorators and inheritance](#service-level-decorators-and-inheritance).
 
 ### `@summary(text)`
 

@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -356,17 +357,19 @@ func TestMiddlewareNoParams(t *testing.T) {
 	}
 }
 
-func TestMiddlewareWithParams(t *testing.T) {
-	f := mustParse(t, `middleware RateLimit(rps: int = 100, burst: int)`)
-	md := f.Decls[0].(*ast.MiddlewareDecl)
-	if len(md.Params) != 2 {
-		t.Errorf("params: %d", len(md.Params))
+// TestMiddlewareRejectsParams pins the rule that the DSL captures
+// only the middleware name. Any `(...)` after the name fails parsing
+// because configuration (params, defaults, dependencies) lives in the
+// hand-written Go impl file, never in the DSL surface.
+func TestMiddlewareRejectsParams(t *testing.T) {
+	p := New("t.craftgo", `middleware RateLimit(rps: int = 100)`)
+	p.Parse()
+	if len(p.Diagnostics()) == 0 {
+		t.Fatal("expected a diagnostic for middleware with params")
 	}
-	if md.Params[0].Default == nil {
-		t.Error("expected default")
-	}
-	if md.Params[1].Default != nil {
-		t.Error("did not expect default")
+	got := p.Diagnostics()[0].Msg
+	if !strings.Contains(got, "no parameters") {
+		t.Errorf("expected 'no parameters' diagnostic, got %q", got)
 	}
 }
 

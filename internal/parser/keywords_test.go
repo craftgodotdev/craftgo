@@ -85,7 +85,7 @@ error BadRequest Validation {
 }
 
 middleware AuthRequired
-middleware RateLimit(rps: int = 100, burst: int = 200)
+middleware RateLimit
 
 @prefix("/api")
 @middlewares(AuthRequired)
@@ -171,7 +171,7 @@ service S {
     @consumes("application/json")
     @produces("application/json")
     @tags(api, v1)
-    @security(noauth)
+    @ignoreSecurity
     get Op /ops {
         response  T
     }

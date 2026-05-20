@@ -204,6 +204,18 @@ Reference them per-method in DSL:
 get GetUser /users/{id} { ... }
 ```
 
+For a public method inside an otherwise-authenticated service, use `@ignoreSecurity` at the method level to drop the inherited chain:
+
+```craftgo
+@security(bearerAuth)
+service Users {
+    get GetUser /users/{id} { ... }       // requires bearerAuth
+
+    @ignoreSecurity
+    get Healthz /healthz { ... }          // no security clause emitted
+}
+```
+
 The spec carries the security requirement; runtime enforcement is your middleware's job.
 
 ## Spec location

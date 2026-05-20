@@ -369,17 +369,6 @@ type T { kv map<string, mistype> }`))
 	}
 }
 
-// TestLocalTypeRefMiddlewareParamType exercises the middleware param
-// branch of [checkLocalTypeRefs] - the param's TypeRef must also be
-// validated, not just field types.
-func TestLocalTypeRefMiddlewareParamType(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-middleware Throttle(rps: mistype = 10)`))
-	if findCode(diags, CodeRefUnknownSymbol) == nil {
-		t.Fatalf("expected unknown-symbol on middleware param type, got %v", diags)
-	}
-}
-
 // TestMiddlewareCollisionTouchesAllSites verifies every decl that
 // participates in the collision is reported (so editors can underline
 // each of them, not just one).

@@ -154,11 +154,48 @@ When to use `extend`:
 - Keep admin / internal endpoints next to the public ones but easy to find
 - Add methods from a different package that imports the service's package
 
+An `extend` block can also carry its own method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`) - those propagate to every method inside. Useful for the 50/50 split: primary holds public endpoints, an extend block holds the authenticated chain.
+
+```craftgo
+service Users {
+    get  /healthz => Health()              // public
+    post /signup  => Signup()              // public
+}
+
+@middlewares(AuthRequired)
+extend service Users {
+    get    /users      => List()           // inherits AuthRequired
+    delete /users/{id} => Del()            // inherits
+}
+```
+
 Restrictions:
 
-- The extended service must exist somewhere in the same package
-- Decorators that affect the whole service (`@prefix`, `@tags`, `@security`) live on the primary `service` block, not on `extend`
-- An `extend` block only carries methods and method-level decorators
+- The extended service must exist somewhere in the same package.
+- Whole-service decorators (`@prefix`, `@group`) live on the primary `service` block; an extend block carrying them raises `service/extend-decorator-not-method`.
+- Inside an extend block, individual methods may opt out of the inherited chain via `@ignoreMiddleware` (see [Opt-out: `@ignoreMiddleware`](#opt-out-ignoremiddleware) below).
+
+## Opt-out: `@ignoreMiddleware`
+
+A method with `@ignoreMiddleware` drops the inherited middleware chain (from primary + extend block) entirely. The method-level chain (if any) then starts from empty - useful for a public endpoint sitting inside an otherwise-authenticated service, or for an admin endpoint that needs a completely different chain:
+
+```craftgo
+@middlewares(AuthRequired, RateLimit)
+service Secured {
+    get ListItems /            => List()       // chain: [AuthRequired, RateLimit]
+
+    @ignoreMiddleware
+    get Healthz /healthz       => Health()     // chain: [] - no middleware
+
+    @ignoreMiddleware
+    @middlewares(BasicAuth, Audit)
+    post Reset /reset          => Reset()       // chain: [BasicAuth, Audit] - reset + replace
+}
+```
+
+The combine semantic is **clear-then-append**: `@ignoreMiddleware` clears the inherited chain, then any method-level `@middlewares(...)` decorators append to the now-empty chain.
+
+`@ignoreMiddleware` is method-level only, takes no arguments. Pair it with `@ignoreSecurity` / `@ignoreTags` to drop those inherited chains too.
 
 ## Middleware order at runtime
 

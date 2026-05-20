@@ -75,8 +75,9 @@ type Options struct {
 	// (`craftgo.design.yaml` openapi.securitySchemes). When nil the
 	// `@security(name)` reference check is skipped - there is no
 	// authoritative list to compare against. When non-nil, every
-	// scheme name except the literal `noauth` must appear here or
-	// produce a [CodeDecoratorRef] diagnostic.
+	// scheme name must appear here or produce a [CodeDecoratorRef]
+	// diagnostic. To opt out of inherited security on a public
+	// endpoint use `@ignoreSecurity` (not a sentinel scheme name).
 	SecuritySchemes []string
 
 	// BasePath is the project's `openapi.basePath` from the manifest.

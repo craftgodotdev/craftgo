@@ -33,16 +33,31 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	}
 	// Service-level `@security` is appended to the method-level chain:
 	// each entry in OpenAPI `security[]` is an OR alternative, so
-	// declaring `@security(Bearer)` on the service plus
-	// `@security(Admin)` on a method means "either Bearer alone OR Admin
-	// alone unlocks this op". Use a sentinel `noauth` on the method to
-	// override the inheritance entirely (current behaviour - emits an
-	// empty requirement).
+	// declaring `@security(Bearer)` on the service plus `@security(Admin)`
+	// on a method means "either Bearer alone OR Admin alone unlocks this
+	// op". `@ignoreSecurity` on a method clears the inherited chain so
+	// the method-level (if any) starts from empty - useful for public
+	// endpoints inside an otherwise-authenticated service.
+	ignoreSec := hasOwnDecorator(m.Decorators, "ignoreSecurity")
 	var sec *openapi3.SecurityRequirements
-	if svc != nil && svc.Primary != nil {
+	if !ignoreSec && svc != nil && svc.Primary != nil {
 		sec = securityFromDecorators(svc.Primary.Decorators)
 	}
-	if methodSec := securityFromDecorators(m.Decorators); methodSec != nil {
+	methodDecs := m.Decorators
+	if ignoreSec {
+		// Drop decorators propagated from the extend block too - those
+		// count as "inherited" alongside the primary's chain, so the
+		// method-level @ignoreSecurity should clear them.
+		filtered := make([]*ast.Decorator, 0, len(m.Decorators))
+		for _, d := range m.Decorators {
+			if d != nil && d.Propagated && d.Name == "security" {
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		methodDecs = filtered
+	}
+	if methodSec := securityFromDecorators(methodDecs); methodSec != nil {
 		if sec == nil {
 			sec = methodSec
 		} else {
@@ -375,6 +390,40 @@ func bindingFromDecorators(ds []*ast.Decorator) string {
 	return ""
 }
 
+// hasDecoratorName reports whether ds contains a decorator whose Name
+// matches name. Used for the bare presence checks that drive `@ignore*`
+// inheritance overrides where the decorator carries no args.
+func hasDecoratorName(ds []*ast.Decorator, name string) bool {
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		if d.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// hasOwnDecorator is the [hasDecoratorName] variant that skips
+// decorators copied onto the method from an enclosing scope (currently
+// `extend service` blocks - see [ast.Decorator.Propagated]). The
+// `@ignore*` family must match only decorators the user wrote directly
+// above the method; a propagated `@ignoreMiddleware` would have been
+// rejected at extend-block placement anyway, but the explicit filter
+// keeps the semantic clear.
+func hasOwnDecorator(ds []*ast.Decorator, name string) bool {
+	for _, d := range ds {
+		if d == nil || d.Propagated {
+			continue
+		}
+		if d.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // setOperation routes a built operation onto the right verb slot.
 func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) {
 	switch strings.ToUpper(verb) {
@@ -424,7 +473,8 @@ func operationID(m *ast.Method) string {
 // operationTags assembles the OpenAPI `tags:` slice for one method.
 // Service-level `@tags(...)` come first (so they sort before method
 // tags in the resulting spec), then method-level `@tags(...)` are
-// appended. When neither level declares tags the service name is used
+// appended. `@ignoreTags` on a method skips the service-level chain
+// entirely. When neither level declares tags the service name is used
 // as a single default - keeping every operation grouped by service for
 // tools that don't render an empty tag list well.
 func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
@@ -437,13 +487,24 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 		seen[t] = true
 		out = append(out, t)
 	}
-	if svc, ok := pkg.Services[svcName]; ok && svc.Primary != nil {
-		for _, t := range tagsFromDecorators(svc.Primary.Decorators) {
-			add(t)
+	ignore := hasOwnDecorator(m.Decorators, "ignoreTags")
+	if !ignore {
+		if svc, ok := pkg.Services[svcName]; ok && svc.Primary != nil {
+			for _, t := range tagsFromDecorators(svc.Primary.Decorators) {
+				add(t)
+			}
 		}
 	}
-	for _, t := range tagsFromDecorators(m.Decorators) {
-		add(t)
+	for _, d := range m.Decorators {
+		if d == nil || d.Name != "tags" {
+			continue
+		}
+		if d.Propagated && ignore {
+			continue
+		}
+		for _, t := range tagsFromDecorators([]*ast.Decorator{d}) {
+			add(t)
+		}
 	}
 	if len(out) == 0 {
 		out = []string{svcName}
@@ -478,9 +539,9 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 // decorator argument that is an identifier becomes one entry whose value
 // is an empty scopes list - multi-scheme arguments inside a single
 // decorator are AND-combined; multiple `@security(...)` decorators are
-// OR-combined per the OpenAPI spec semantics. The special name
-// `noauth` produces an empty Requirement, telling the OpenAPI consumer
-// the endpoint is explicitly public.
+// OR-combined per the OpenAPI spec semantics. To opt out of inherited
+// service-level security, use `@ignoreSecurity` at the method level
+// instead of a sentinel scheme name.
 func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
 	var reqs openapi3.SecurityRequirements
 	for _, d := range ds {
@@ -490,11 +551,7 @@ func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements 
 		req := openapi3.SecurityRequirement{}
 		for _, a := range d.Args {
 			if id, ok := a.Value.(*ast.IdentExpr); ok {
-				name := id.Name.String()
-				if name == "noauth" {
-					continue
-				}
-				req[name] = []string{}
+				req[id.Name.String()] = []string{}
 			}
 		}
 		reqs = append(reqs, req)

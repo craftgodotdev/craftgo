@@ -44,7 +44,7 @@ error BadRequest ValidationFailed {
 }
 
 middleware AuthRequired
-middleware RateLimit(rps: int = 100, burst: int = 200)
+middleware RateLimit
 
 @prefix("/api/v1")
 @middlewares(AuthRequired)

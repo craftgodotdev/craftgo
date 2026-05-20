@@ -184,17 +184,39 @@ extend service UserService {
 
 After codegen, both methods live under the same service, sharing the `/users` prefix and the `AuthRequired` middleware. `PurgeUser` additionally runs `AdminOnly`.
 
+#### `extend service` carries its own decorators
+
+The `extend` block itself can declare **method-level-applicable decorators** that propagate to every method in the block. The canonical use case is the **50/50 split**: half the methods need auth, half don't.
+
+```craftgo
+service Users {
+    // Public endpoints - no service-level decorators
+    get  /healthz => Health()
+    post /signup  => Signup()
+    post /login   => Login()
+}
+
+@middlewares(AuthRequired)
+@security(Bearer)
+extend service Users {
+    get    /users      => List()       // inherits AuthRequired + Bearer
+    get    /users/{id} => Get()         // inherits
+    post   /users      => Create()       // inherits
+}
+```
+
+The extend block's `@middlewares` / `@security` decorators apply to every method inside as if they were written directly on the method. Each method can still add its own decorators on top - those append.
+
 **Rules** (enforced at gen time with a diagnostic, not silently):
 
-- The primary `service` block declares service-level decorators (`@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`)
-- `extend service` blocks contain only methods and method-level decorators
-- A service-level decorator on an `extend` block raises `service/extend-decorators`
-- The extended service must already be declared somewhere in the **same package** (same design subfolder); a cross-package extend raises `service/extend-orphan`
-- Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern)
+- The primary `service` block declares whole-service decorators (`@prefix`, `@group` belong here).
+- `extend service` blocks may carry **method-level-applicable** decorators only (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`). Service-only decorators like `@prefix` on an extend raise `service/extend-decorator-not-method`.
+- The extended service must already be declared somewhere in the **same package** (same design subfolder); a cross-package extend raises `service/extend-orphan`.
+- Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). Each block contributes its own decorators only to its own methods.
 
-The extended methods inherit every service-level decorator from the primary - same `@prefix`, same `@group`, same `@tags`, same `@security`, same service-level `@middlewares`. Method-level `@middlewares` inside an `extend` block append to the primary chain.
+The extended methods inherit every service-level decorator from the primary AND every decorator on the extend block. Method-level decorators of the same kind (`@middlewares`, `@security`, `@tags`) append; use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` to drop the inherited chain for one specific method.
 
-See [Decorators - Service-level decorators and `extend service`](/guide/decorators#service-level-decorators-and-extend-service) for the full diagnostic catalog and combinations cheatsheet.
+See [Decorators - Service-level decorators and inheritance](/guide/decorators#service-level-decorators-and-inheritance) for the full combine semantics and combinations cheatsheet.
 
 **When to use it**:
 

@@ -31,6 +31,31 @@ components:
         type: object
       description: Forbidden error response (HTTP 403).
       type: object
+    AccountLoginResp:
+      description: AccountLoginResp wraps the session token returned by Login.
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        token:
+          type: string
+      required:
+      - id
+      - token
+      type: object
+    AccountProfile:
+      description: |-
+        AccountProfile is the authenticated user's profile shape. Stays
+        minimal so the fixture focuses on the decorator chain semantics
+        rather than the response body.
+      properties:
+        email:
+          type: string
+        id:
+          $ref: '#/components/schemas/ID'
+      required:
+      - id
+      - email
+      type: object
     AddBoundaryReqBody:
       properties:
         body:
@@ -911,6 +936,23 @@ components:
           default: 20
           nullable: true
       type: object
+    DeleteAccountReq:
+      description: DeleteAccountReq is path-bound by id; no body.
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+      required:
+      - id
+      type: object
+    DeleteAccountReqPath:
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+      required:
+      - id
+      type: object
+    DeleteAccountRespBody:
+      $ref: '#/components/schemas/ID'
     DeleteItemReqPath:
       properties:
         id:
@@ -1422,6 +1464,8 @@ components:
       type: object
     HealthRespBody:
       $ref: '#/components/schemas/HealthResp'
+    HealthzRespBody:
+      $ref: '#/components/schemas/HealthResp'
     Home:
       description: |-
         Home owns a slice of nested Rooms. The slice variant tests that
@@ -1511,14 +1555,7 @@ components:
       - items
       type: object
     ListItemsRespBody:
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/ID'
-          type: array
-      required:
-      - items
-      type: object
+      $ref: '#/components/schemas/InventoryListResp'
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
@@ -1611,6 +1648,10 @@ components:
       type: object
     ListUsersRespBody:
       $ref: '#/components/schemas/ListUsersResp'
+    LoginRespBody:
+      $ref: '#/components/schemas/AccountLoginResp'
+    LogoutRespBody:
+      $ref: '#/components/schemas/ID'
     Map_ArrayValue:
       description: |-
         Map_ArrayValue stacks an array INSIDE a map value: each value is a
@@ -1796,6 +1837,8 @@ components:
       required:
       - hit
       type: object
+    MeRespBody:
+      $ref: '#/components/schemas/AccountProfile'
     MixedReq:
       description: MixedReq wraps NumberMixed (mixed strict/inclusive).
       properties:
@@ -3018,6 +3061,8 @@ components:
       required:
       - root
       type: object
+    ResetRespBody:
+      $ref: '#/components/schemas/HealthResp'
     Room:
       description: |-
         Room owns a slice of Furniture. Two consecutive slice-of-nested
@@ -3194,6 +3239,8 @@ components:
       format: email
       maxLength: 254
       type: string
+    SignupRespBody:
+      $ref: '#/components/schemas/ID'
     Str_Combos:
       description: |-
         Str_Combos stacks length + pattern + format on a single field so
@@ -3760,6 +3807,109 @@ paths:
           description: ""
       tags:
       - ProjectService
+  /account/admin/{id}:
+    delete:
+      description: 'Delete an account — admin-only. Chain: [RateLimit, BasicAuth,
+        Audit].'
+      operationId: DeleteAccount
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteAccountRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - account
+      - admin
+  /account/admin/reset:
+    post:
+      description: Hard reset — bypasses BasicAuth, uses its own minimal chain.
+      operationId: Reset
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - account
+      - admin
+  /account/login:
+    post:
+      description: Log in — public, only inherits rate limiting.
+      operationId: Login
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - account
+  /account/logout:
+    post:
+      description: Logout — inherits RateLimit + AuthRequired. Also appends Audit
+        at method level.
+      operationId: Logout
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - account
+      - authenticated
+      - audited
+  /account/me:
+    get:
+      description: Get the current user — inherits RateLimit + AuthRequired.
+      operationId: Me
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - account
+      - authenticated
+  /account/signup:
+    post:
+      description: Sign up — public, only inherits rate limiting.
+      operationId: Signup
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - account
   /admin/inventory:
     get:
       description: List inventory items. Inherits auth + tags from the extend block.
@@ -4973,6 +5123,56 @@ paths:
           description: ""
       tags:
       - scalars
+  /secured:
+    get:
+      description: Normal authenticated endpoint - inherits everything from service-level.
+      operationId: ListItems
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListItemsRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - AdminBearer: []
+      tags:
+      - internal
+  /secured/healthz:
+    get:
+      description: Liveness probe - public on purpose.
+      operationId: Healthz
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - monitoring
+  /secured/reset:
+    post:
+      description: Admin-only reset; uses its own middleware chain instead of the
+        service default.
+      operationId: Reset
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - AdminBearer: []
+      tags:
+      - internal
   /strings/combos:
     post:
       description: Exercise stacked length + pattern + format decorators on a single

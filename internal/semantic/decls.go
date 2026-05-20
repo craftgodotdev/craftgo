@@ -167,7 +167,14 @@ func (a *analyzer) mergeServices() {
 			for _, m := range e.Methods() {
 				if len(propagate) > 0 {
 					merged := make([]*ast.Decorator, 0, len(propagate)+len(m.Decorators))
-					merged = append(merged, propagate...)
+					for _, src := range propagate {
+						// Clone so the Propagated flag does not leak
+						// into the original extend block's decorator
+						// list (which other passes still read).
+						cp := *src
+						cp.Propagated = true
+						merged = append(merged, &cp)
+					}
 					merged = append(merged, m.Decorators...)
 					m.Decorators = merged
 				}

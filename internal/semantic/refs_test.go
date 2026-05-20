@@ -115,9 +115,14 @@ func TestSecurityRefAcceptsKnown(t *testing.T) {
 service S {}`, Options{SecuritySchemes: []string{"bearerAuth", "apiKey"}})
 }
 
-func TestSecurityRefAcceptsNoauth(t *testing.T) {
+// TestSecurityRefAcceptsIgnoreSecurity covers the public-endpoint
+// pattern: rather than threading a sentinel scheme name through
+// `@security(...)`, the method opts out via `@ignoreSecurity`. The
+// ref-pass should never see `@ignoreSecurity` as a scheme reference,
+// so the SecuritySchemes manifest list is irrelevant for that method.
+func TestSecurityRefAcceptsIgnoreSecurity(t *testing.T) {
 	expectNoRefWithOptions(t, `service S {
-	@security(noauth)
+	@ignoreSecurity
 	get Public /p {}
 }`, Options{SecuritySchemes: []string{"bearerAuth"}})
 }

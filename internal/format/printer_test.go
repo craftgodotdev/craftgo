@@ -85,12 +85,12 @@ scalar Cents int @gte(0) @multipleOf(1)
 `,
 		},
 		{
-			name: "middleware with params",
+			name: "middleware declarations",
 			src: `package x
 
 middleware AuthRequired
 
-middleware RateLimit(rps: int = 100, burst: int = 200)
+middleware RateLimit
 `,
 		},
 		{

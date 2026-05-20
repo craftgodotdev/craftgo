@@ -589,6 +589,45 @@ service S {
 	}
 }
 
+// TestGenerateRoutesIgnoreMiddlewareClearsInherited pins the
+// `@ignoreMiddleware` opt-out: a method with this decorator must
+// NOT see the service-level chain. Combined with a method-level
+// `@middlewares(...)` it becomes "reset + replace" - the method
+// keeps only its own chain.
+func TestGenerateRoutesIgnoreMiddlewareClearsInherited(t *testing.T) {
+	pkg := analyzePkg(t, `package design
+
+type Thing { id string }
+
+middleware Auth
+middleware Audit
+
+@prefix("/v1")
+@middlewares(Auth)
+service S {
+    @ignoreMiddleware
+    @middlewares(Audit)
+    get GetThing /things/{id} {
+        response Thing
+    }
+}`)
+	root := t.TempDir()
+	cfg := sampleConfig()
+	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	if strings.Contains(src, "svcCtx.Auth(") {
+		t.Errorf("Auth should be cleared by @ignoreMiddleware:\n%s", src)
+	}
+	want := `svcCtx.Audit(transport.GetThing(svcCtx))`
+	if !strings.Contains(src, want) {
+		t.Errorf("expected method-only chain %q in:\n%s", want, src)
+	}
+}
+
 // TestGenerateRoutesGroupAddsPathSegment confirms `@group("...")` on a
 // service stitches its argument into the route between the @prefix and
 // the method path. A service with `@prefix("/v1") @group("admin")`

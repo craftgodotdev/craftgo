@@ -1,0 +1,103 @@
+// inheritance_3level.craftgo pins the three-tier append chain for
+// service+method decorators: primary service contributes the
+// outermost layer, every `extend service` block contributes its own
+// layer on top of primary, and method-level decorators append to
+// whichever block the method lives in.
+//
+// Concrete chain assembly for a method inside an extend block:
+//
+//   1. Primary service decorators (apply to every method in the
+//      logical service)
+//   2. Extend block decorators (apply only to methods inside that
+//      block)
+//   3. Method-level decorators (apply only to this method)
+//
+// `@ignoreMiddleware` at method level clears the inherited chain
+// (steps 1 + 2 combined) before the method-level append.
+package services
+
+import "shared"
+
+// AccountService is the primary block. It declares the baseline
+// chain that every method gets: rate-limited + tagged "account".
+// Nothing here requires authentication so anonymous endpoints
+// (signup, login) can live in this block directly.
+@prefix("/account")
+@middlewares(RateLimit)
+@tags("account")
+service AccountService {
+	@doc("Sign up — public, only inherits rate limiting.")
+	post Signup /signup {
+		response shared.ID
+	}
+
+	@doc("Log in — public, only inherits rate limiting.")
+	post Login /login {
+		response AccountLoginResp
+	}
+}
+
+// First extend block: layers AuthRequired + 'authenticated' tag on
+// top of the primary chain. Methods here see chain = [RateLimit,
+// AuthRequired] with tags [account, authenticated].
+@middlewares(AuthRequired)
+@tags("authenticated")
+extend service AccountService {
+	@doc("Get the current user — inherits RateLimit + AuthRequired.")
+	get Me /me {
+		response AccountProfile
+	}
+
+	@doc("Logout — inherits RateLimit + AuthRequired. Also appends Audit at method level.")
+	@middlewares(Audit)
+	@tags("audited")
+	post Logout /logout {
+		response shared.ID
+	}
+}
+
+// Second extend block: layers Audit + 'admin' tag on top of the
+// primary chain. The admin block does NOT see AuthRequired (that's
+// the first block's contribution) — each extend block is independent.
+// To require auth here too the block would need its own
+// `@middlewares(AuthRequired)` declaration.
+@middlewares(BasicAuth, Audit)
+@tags("admin")
+extend service AccountService {
+	@doc("Delete an account — admin-only. Chain: [RateLimit, BasicAuth, Audit].")
+	delete DeleteAccount /admin/{id} {
+		request DeleteAccountReq
+		response shared.ID
+	}
+
+	// Reset endpoint shows the reset-and-replace pattern inside an
+	// extend block: drop the inherited chain entirely (RateLimit
+	// from primary + BasicAuth + Audit from this extend), then
+	// declare the method's own minimal chain. Final chain: [Audit]
+	// only — both inherited layers cleared.
+	@doc("Hard reset — bypasses BasicAuth, uses its own minimal chain.")
+	@ignoreMiddleware
+	@middlewares(Audit)
+	post Reset /admin/reset {
+		response shared.ID
+	}
+}
+
+// AccountProfile is the authenticated user's profile shape. Stays
+// minimal so the fixture focuses on the decorator chain semantics
+// rather than the response body.
+type AccountProfile {
+	id    shared.ID
+	email string
+}
+
+// AccountLoginResp wraps the session token returned by Login.
+type AccountLoginResp {
+	id      shared.ID
+	token   string
+}
+
+// DeleteAccountReq is path-bound by id; no body.
+type DeleteAccountReq {
+	id shared.ID
+}

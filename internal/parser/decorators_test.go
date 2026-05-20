@@ -97,7 +97,7 @@ error NotFound MyErr {
 @group("admin")
 @tags("v1")
 @externalDocs("https://docs.example.com")
-@security(noauth)
+@security(Bearer)
 @deprecated
 @doc("svc doc")
 service S {
@@ -108,7 +108,7 @@ service S {
     @middlewares(RateLimit)
     @errors(MyErr)
     @status(200)
-    @security(noauth)
+    @ignoreSecurity
     @example("e")
     @examples(["a"])
     @deprecated
@@ -121,7 +121,7 @@ service S {
 }
 
 middleware Auth
-middleware RateLimit(rps: int = 100)
+middleware RateLimit
 `
 	p := New("decorators.craftgo", src)
 	f := p.Parse()
@@ -142,6 +142,7 @@ middleware RateLimit(rps: int = 100)
 		"default", "nullable",
 		"path", "query", "body", "header", "cookie", "form",
 		"prefix", "middlewares", "group", "tags", "externalDocs", "security",
+		"ignoreSecurity",
 		"summary", "operationId", "errors", "status",
 		"passthrough",
 		"timeout", "maxBodySize",

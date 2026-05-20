@@ -4,6 +4,7 @@ package routes
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+	accountserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/account-service"
 	admininventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/admin-inventory-service"
 	bindingsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/bindings-service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/collections"
@@ -13,6 +14,7 @@ import (
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/numbers-service"
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/project-service"
 	scalarsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/scalars-service"
+	securedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/secured-service"
 	statuscodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/status-codes-service"
 	stringsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/strings-service"
 	userserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/routes/user-service"
@@ -23,6 +25,7 @@ import (
 // RegisterAll wires every service's routes onto srv with one call.
 // Generated from the DSL service set; always overwritten.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
+	accountserviceroutes.RegisterRoutes(srv, svcCtx)
 	admininventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	bindingsserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
@@ -32,6 +35,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
 	scalarsserviceroutes.RegisterRoutes(srv, svcCtx)
+	securedserviceroutes.RegisterRoutes(srv, svcCtx)
 	statuscodesserviceroutes.RegisterRoutes(srv, svcCtx)
 	stringsserviceroutes.RegisterRoutes(srv, svcCtx)
 	userserviceroutes.RegisterRoutes(srv, svcCtx)

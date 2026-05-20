@@ -738,35 +738,39 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 
 // ----- middleware -----
 
-// parseMiddlewareDecl reads `middleware Name [(p1: T1 [= default], ...)]`.
+// parseMiddlewareDecl reads `middleware Name`. The DSL captures only the
+// name; param shape and behaviour live in the hand-written Go impl
+// file the scaffolder produces. Any trailing `(...)` on a middleware
+// declaration is a parse error (the parser still consumes it to keep
+// downstream passes alive when an LSP user is mid-typing, but it does
+// not retain the data).
 func (p *Parser) parseMiddlewareDecl(decs []*ast.Decorator) *ast.MiddlewareDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	md := &ast.MiddlewareDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
 	if p.peek().Kind == lexer.LParen {
-		p.advance()
-		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
-			md.Params = append(md.Params, p.parseMiddlewareParam())
-			if p.peek().Kind == lexer.Comma {
-				p.advance()
+		p.errorf(p.peek().Pos, "middleware declaration takes no parameters - configuration lives in the generated impl file, not the DSL")
+		// Recover by consuming up to the matching ')' so the rest of
+		// the file still parses.
+		depth := 0
+		for {
+			t := p.peek()
+			if t.Kind == lexer.EOF {
+				break
 			}
+			if t.Kind == lexer.LParen {
+				depth++
+			} else if t.Kind == lexer.RParen {
+				depth--
+				if depth == 0 {
+					p.advance()
+					break
+				}
+			}
+			p.advance()
 		}
-		p.expect(lexer.RParen)
 	}
 	return md
-}
-
-// parseMiddlewareParam reads `name: Type [= literal]`.
-func (p *Parser) parseMiddlewareParam() *ast.MiddlewareParam {
-	name, _ := p.expect(lexer.Ident)
-	p.expect(lexer.Colon)
-	tref := p.parseTypeRef()
-	mp := &ast.MiddlewareParam{Pos: name.Pos, Name: name.Text, Type: tref}
-	if p.peek().Kind == lexer.Equal {
-		p.advance()
-		mp.Default = p.parseValue()
-	}
-	return mp
 }
 
 // ----- service -----

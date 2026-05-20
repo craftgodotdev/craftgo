@@ -99,10 +99,6 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 				// purpose so future primitive additions don't break
 				// projects that pulled them in via dependencies.
 				_ = v
-			case *ast.MiddlewareDecl:
-				for _, p := range v.Params {
-					a.checkLocalTypeRef(p.Type, nil, imports)
-				}
 			case *ast.ServiceDecl:
 				for _, m := range v.Methods() {
 					if m.Request != nil {

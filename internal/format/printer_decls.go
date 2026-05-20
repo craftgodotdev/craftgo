@@ -300,22 +300,6 @@ func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 	p.indent()
 	p.write("middleware ")
 	p.write(d.Name)
-	if d.Params != nil {
-		p.write("(")
-		for i, par := range d.Params {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.write(par.Name)
-			p.write(": ")
-			p.TypeRef(par.Type)
-			if par.Default != nil {
-				p.write(" = ")
-				p.Expr(par.Default)
-			}
-		}
-		p.write(")")
-	}
 	p.nl()
 }
 

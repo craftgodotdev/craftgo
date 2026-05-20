@@ -522,8 +522,25 @@ var Registry = map[string]Spec{
 		Levels: LvlService | LvlMethod,
 		Doc:    "Security scheme requirement (OpenAPI metadata, not enforcement).",
 		// Validated by [analyzer.checkSecurityArgs] - first positional
-		// arg is the scheme ident (or `noauth`), with optional named
-		// `scopes: [...]`.
+		// arg is the scheme ident, with optional named `scopes: [...]`.
+	},
+	"ignoreMiddleware": {
+		Name:   "ignoreMiddleware",
+		Levels: LvlMethod,
+		Doc:    "Clear the inherited @middlewares chain on this method. Method-level @middlewares(...) then start from empty instead of appending to the service-level chain.",
+		Args:   ArgsRule{Min: 0, Max: 0},
+	},
+	"ignoreSecurity": {
+		Name:   "ignoreSecurity",
+		Levels: LvlMethod,
+		Doc:    "Clear the inherited @security chain on this method. Useful for public endpoints inside an otherwise-authenticated service.",
+		Args:   ArgsRule{Min: 0, Max: 0},
+	},
+	"ignoreTags": {
+		Name:   "ignoreTags",
+		Levels: LvlMethod,
+		Doc:    "Clear the inherited @tags list on this method. Method-level @tags(...) then start from empty.",
+		Args:   ArgsRule{Min: 0, Max: 0},
 	},
 
 	// ---- Method-only ----

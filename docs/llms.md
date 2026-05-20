@@ -205,19 +205,27 @@ Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`. `reques
 
 ### `extend service`
 
-Add methods to an existing service from a different file:
+Add methods to an existing service from a different file. The extend block can carry its own **method-level-applicable** decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@externalDocs`, `@doc`) that propagate to every method inside:
 
 ```craftgo
-extend service UserService {
-    @middlewares(AdminOnly)
-    delete PurgeUser /users/{id}/purge {
-        request  GetUserReq
-        response shared.OkResp
-    }
+service Users {
+    get  /healthz => Health()                 // public, no decorators
+    post /signup  => Signup()
+}
+
+@middlewares(AuthRequired)
+@security(Bearer)
+extend service Users {
+    get    /users      => List()              // inherits AuthRequired + Bearer
+    delete /users/{id} => Del()
 }
 ```
 
-Service-level decorators (`@prefix`, `@tags`, `@security`, service-level `@middlewares`) live on the **primary** `service` block. `extend` blocks contain only methods and method-level decorators. Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern).
+Whole-service decorators (`@prefix`, `@group`) belong on the **primary** `service` block - putting them on extend raises `service/extend-decorator-not-method`. Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
+
+### Inheritance and opt-outs
+
+Service-level decorators (and decorators on an `extend service` block) apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain. Use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` at method level to drop the inherited chain entirely (then any method-level `@X(...)` decorators start from empty - the "clear-then-append" reset pattern).
 
 ## Middleware
 
@@ -318,6 +326,9 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@middlewares(A, B, ...)`   | service, method | idents (or array literal)              |
 | `@tags(a, b, ...)`          | service, method | idents/strings (or array literal)      |
 | `@security(scheme, ...)`    | service, method | scheme ident, optional `scopes: [...]` |
+| `@ignoreMiddleware`         | method          | `()` — clear inherited middleware chain |
+| `@ignoreSecurity`           | method          | `()` — clear inherited security chain   |
+| `@ignoreTags`               | method          | `()` — clear inherited tags             |
 | `@summary("...")`           | method          | `(string)`                             |
 | `@operationId("name")`      | method          | `(string)`                             |
 | `@status(code)`             | method          | `(int)`                                |

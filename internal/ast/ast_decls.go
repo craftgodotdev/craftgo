@@ -176,29 +176,20 @@ func (*ScalarDecl) declNode()          { astMarker() }
 func (d *ScalarDecl) DeclName() string { return d.Name }
 func (d *ScalarDecl) DeclPos() Pos     { return d.Pos }
 
-// MiddlewareDecl is `middleware Name [(Params)]`. Params is non-nil only
-// when parentheses are present; an empty parameter list `()` and no
-// parentheses both produce nil. Doc preserves the leading `//` block.
+// MiddlewareDecl is `middleware Name`. The DSL captures only the name -
+// configuration (parameter shape, defaults, behaviour) lives in the
+// hand-written Go impl file the scaffolder produces. Doc preserves the
+// leading `//` block.
 type MiddlewareDecl struct {
 	Pos        Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
-	Params     []*MiddlewareParam
 }
 
 func (*MiddlewareDecl) declNode()          { astMarker() }
 func (d *MiddlewareDecl) DeclName() string { return d.Name }
 func (d *MiddlewareDecl) DeclPos() Pos     { return d.Pos }
-
-// MiddlewareParam is one entry in `middleware Name(p1: T1 = default, ...)`.
-// Default may be nil when no `= literal` follows.
-type MiddlewareParam struct {
-	Pos     Pos
-	Name    string
-	Type    *TypeRef
-	Default Expr
-}
 
 // ServiceDecl is either a primary `service Name { ... }` (Extend == false) or
 // a continuation `extend service Name { ... }` (Extend == true). The

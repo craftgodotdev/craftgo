@@ -1,0 +1,47 @@
+// ignore_pattern.craftgo exercises the @ignoreMiddleware / @ignoreSecurity /
+// @ignoreTags decorators that opt a single method out of the inherited
+// service-level chain. Without these, a service-wide @middlewares(Auth)
+// applies to every endpoint - useful for the majority case but wrong for
+// liveness probes and other public endpoints. The opt-out pattern keeps
+// the service split intact while letting the exception live next to its
+// authenticated siblings.
+//
+// Combine semantics: `@ignoreX` clears the inherited chain THEN any
+// method-level `@X(...)` decorators start fresh from empty. So a method
+// with both `@ignoreMiddleware` and `@middlewares(Audit)` ends up with
+// exactly `[Audit]` - the inherited Auth/RateLimit are dropped.
+package services
+
+@prefix("/secured")
+@middlewares(AuthRequired, RateLimit)
+@tags("internal")
+@security(AdminBearer)
+service SecuredService {
+	@doc("Normal authenticated endpoint - inherits everything from service-level.")
+	get ListItems / {
+		response InventoryListResp
+	}
+
+	// Public liveness probe sits inside an otherwise-authenticated
+	// service. The three @ignore* decorators clear inherited middlewares,
+	// security, and tags so monitoring tools can poll without credentials
+	// and the endpoint is grouped separately from the admin surface.
+	@doc("Liveness probe - public on purpose.")
+	@ignoreMiddleware
+	@ignoreSecurity
+	@ignoreTags
+	@tags("monitoring")
+	get Healthz /healthz {
+		response HealthResp
+	}
+
+	// Reset endpoint shows the "reset + replace" middleware pattern:
+	// inherited Auth/RateLimit cleared, then the method-level chain
+	// (BasicAuth + Audit only) becomes the entire chain.
+	@doc("Admin-only reset; uses its own middleware chain instead of the service default.")
+	@ignoreMiddleware
+	@middlewares(BasicAuth, Audit)
+	post Reset /reset {
+		response HealthResp
+	}
+}

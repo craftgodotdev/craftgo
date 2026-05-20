@@ -34,18 +34,26 @@ package shared
 // svccontext / config, not in the DSL contract.
 middleware AuthRequired
 
-// RateLimit applies a token-bucket per remote IP. `rps` is the
-// steady-state refill rate (requests per second); `burst` is the
-// bucket size that absorbs short spikes. Defaults match the
-// project's standard "polite client" envelope — services that need
-// a tighter or looser policy override the args at the
-// `@middlewares(RateLimit(rps: 10, burst: 20))` call site.
-middleware RateLimit(rps: int = 100, burst: int = 200)
+// RateLimit applies a token-bucket per remote IP. The concrete refill
+// rate, burst size, and storage backend are choices the user makes
+// inside the generated impl file - the DSL only reserves the slot.
+middleware RateLimit
 
-// Timing emits a structured warn-log entry whenever a handler
-// exceeds `threshold`. The default literal lands as
-// `*ast.DurationLit` in the AST, so codegen still sees the
-// "500ms" spelling — the param type is `int` only because the
-// semantic checker rejects `duration` as a type spelling. See the
-// package header for the rationale.
-middleware Timing(threshold: int = 500ms)
+// Timing emits a structured warn-log entry whenever a handler exceeds
+// the user-configured threshold. Threshold value, log level, and
+// reporter are wired up in the impl file.
+middleware Timing
+
+// BasicAuth is an alternative auth strategy used by the
+// `@ignoreMiddleware + @middlewares(...)` reset-and-replace pattern
+// in `services/ignore_pattern.craftgo`. Body of the middleware is
+// scaffolded; behaviour (Authorization header parse, credential
+// lookup, ...) lives in the generated impl file.
+middleware BasicAuth
+
+// Audit records the actor + action of every request that flows
+// through it. Paired with BasicAuth in the admin-reset endpoint of
+// SecuredService - that's the only endpoint that intentionally
+// drops the service-wide AuthRequired/RateLimit pair in favour of
+// its own chain.
+middleware Audit

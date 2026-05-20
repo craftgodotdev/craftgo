@@ -13,17 +13,41 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// middlewareNames returns the union of middleware identifiers declared
-// on the service (via service-level `@middlewares(...)`) and the method
-// (via method-level `@middlewares(...)`). Service-level middlewares run
-// outermost so they wrap every method. Order within each level matches
-// the source.
+// middlewareNames returns the chain of middleware identifiers for one
+// method. The chain is assembled outermost-first so codegen wraps the
+// handler in the same order a reader sees the decorators:
+//
+//   1. Primary service-level `@middlewares(...)`
+//   2. Extend-block-level `@middlewares(...)` (decorators marked
+//      Propagated=true that the semantic merge copied onto the method)
+//   3. Method-level `@middlewares(...)` (decorators with
+//      Propagated=false that the user wrote directly above the method)
+//
+// `@ignoreMiddleware` on a method drops layers 1 + 2 - the inherited
+// chain - so the method starts fresh from layer 3. This implements the
+// clear-then-append pattern documented in
+// docs/guide/decorators.md#service-level-decorators-and-inheritance.
 func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
+	ignore := false
+	for _, d := range m.Decorators {
+		if d != nil && !d.Propagated && d.Name == "ignoreMiddleware" {
+			ignore = true
+			break
+		}
+	}
 	var names []string
-	if svc != nil {
+	if svc != nil && !ignore {
 		names = append(names, extractMiddlewareNames(svc.Decorators)...)
 	}
-	names = append(names, extractMiddlewareNames(m.Decorators)...)
+	for _, d := range m.Decorators {
+		if d == nil || d.Name != "middlewares" {
+			continue
+		}
+		if d.Propagated && ignore {
+			continue
+		}
+		names = append(names, extractMiddlewareNames([]*ast.Decorator{d})...)
+	}
 	return names
 }
 

@@ -497,6 +497,56 @@ service S {
 	}
 }
 
+// TestGenerateOpenAPIIgnoreSecurityClearsInherited pins the
+// `@ignoreSecurity` opt-out: a method with this decorator MUST NOT
+// inherit the service-level `@security` chain, so the operation
+// renders without any `security:` clause (or with an explicit empty
+// requirement, which OpenAPI tooling treats as "no auth").
+func TestGenerateOpenAPIIgnoreSecurityClearsInherited(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+@security(Bearer)
+service S {
+    @doc("inherits Bearer")
+    get Authed /a {}
+    @doc("public endpoint, opts out of inherited security")
+    @ignoreSecurity
+    get Public /p {}
+}`)
+	authedBlock := operationBlock(t, body, "Authed")
+	if !strings.Contains(authedBlock, "Bearer:") {
+		t.Errorf("Authed should inherit Bearer:\n%s", authedBlock)
+	}
+	publicBlock := operationBlock(t, body, "Public")
+	if strings.Contains(publicBlock, "Bearer:") {
+		t.Errorf("Public should have cleared Bearer:\n%s", publicBlock)
+	}
+}
+
+// TestGenerateOpenAPIIgnoreTagsClearsInherited mirrors the
+// security case for `@ignoreTags`: cleared inherited tags, plus any
+// method-level `@tags(...)` start from an empty list.
+func TestGenerateOpenAPIIgnoreTagsClearsInherited(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+@tags("users")
+service S {
+    get WithUsers /u {}
+    @ignoreTags
+    @tags("admin")
+    get OnlyAdmin /a {}
+}`)
+	withUsersBlock := operationBlock(t, body, "WithUsers")
+	if !strings.Contains(withUsersBlock, "users") {
+		t.Errorf("WithUsers should inherit users tag:\n%s", withUsersBlock)
+	}
+	onlyAdminBlock := operationBlock(t, body, "OnlyAdmin")
+	if strings.Contains(onlyAdminBlock, "users") {
+		t.Errorf("OnlyAdmin should have cleared users tag:\n%s", onlyAdminBlock)
+	}
+	if !strings.Contains(onlyAdminBlock, "admin") {
+		t.Errorf("OnlyAdmin should keep its own admin tag:\n%s", onlyAdminBlock)
+	}
+}
+
 // operationBlock returns the slice of YAML body covering exactly one
 // operation. It walks back from the operationId line to the matching
 // verb line so sibling fields emitted alphabetically before operationId
@@ -943,9 +993,13 @@ func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
 	}
 }
 
-func TestValidateSecurityRefsAllowsNoauth(t *testing.T) {
+// TestValidateSecurityRefsIgnoreSecurityNotChecked ensures
+// `@ignoreSecurity` is not mistaken for a scheme reference. It is a
+// method-level opt-out decorator, not a security requirement, so
+// ValidateSecurityRefs should never flag it as "unknown scheme".
+func TestValidateSecurityRefsIgnoreSecurityNotChecked(t *testing.T) {
 	pkg := analyzePkg(t, `service S {
-    @security(noauth)
+    @ignoreSecurity
     get GetUser /u {}
 }`)
 	cfg := &config.Config{
@@ -957,7 +1011,7 @@ func TestValidateSecurityRefsAllowsNoauth(t *testing.T) {
 		},
 	}
 	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
-		t.Errorf("noauth must be accepted, got: %v", errs)
+		t.Errorf("@ignoreSecurity must not be treated as a scheme ref: %v", errs)
 	}
 }
 

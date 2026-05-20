@@ -6,6 +6,20 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/shared"
 )
 
+// AccountLoginResp wraps the session token returned by Login.
+type AccountLoginResp struct {
+	ID    shared.ID `json:"id"`
+	Token string    `json:"token"`
+}
+
+// AccountProfile is the authenticated user's profile shape. Stays
+// minimal so the fixture focuses on the decorator chain semantics
+// rather than the response body.
+type AccountProfile struct {
+	ID    shared.ID `json:"id"`
+	Email string    `json:"email"`
+}
+
 // AsyncJobResp is the standard "request acknowledged, work runs
 // later" envelope. Pairs with `@status(202)` on the trigger method.
 type AsyncJobResp struct {
@@ -26,6 +40,11 @@ type CancelJobReq struct {
 type CreateJobReq struct {
 	Kind    string `json:"kind"`
 	Payload string `json:"payload"`
+}
+
+// DeleteAccountReq is path-bound by id; no body.
+type DeleteAccountReq struct {
+	ID shared.ID `json:"id"`
 }
 
 // EntitlementsAuditTrail records the auth scheme that gated an
