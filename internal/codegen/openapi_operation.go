@@ -413,22 +413,8 @@ func bindingFromDecorators(ds []*ast.Decorator) string {
 	return ""
 }
 
-// hasDecoratorName reports whether ds contains a decorator whose Name
-// matches name. Used for the bare presence checks that drive `@ignore*`
-// inheritance overrides where the decorator carries no args.
-func hasDecoratorName(ds []*ast.Decorator, name string) bool {
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		if d.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// hasOwnDecorator is the [hasDecoratorName] variant that skips
+// hasOwnDecorator reports whether ds carries a non-propagated decorator
+// with the given name. Used for the bare presence checks that drive
 // decorators copied onto the method from an enclosing scope (currently
 // `extend service` blocks - see [ast.Decorator.Propagated]). The
 // `@ignore*` family must match only decorators the user wrote directly

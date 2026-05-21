@@ -128,22 +128,13 @@ type helpersData struct{ Package string }
 // projectRoot is prepended to `cfg.Output.Transport` so the function can be
 // called with paths relative to the manifest's directory.
 //
-// Equivalent to [GenerateTransportPackage] with a nil [CrossPkg]
-// context - kept so single-package callers / tests stay unchanged.
-
+// Equivalent to [GenerateTransportWith] with nil [CrossPkg] and nil
+// [ScalarTable] - the convenience entry single-package tests reach
+// for. Production CLI flows go straight through [GenerateTransportWith]
+// because they always have a project-wide cross-package table to feed
+// in.
 func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	return GenerateTransportWith(pkg, cfg, projectRoot, nil, nil)
-}
-
-// GenerateTransportPackage is the multi-package variant of
-// [GenerateTransport]. crossPkg supplies the alias→Go-import-path
-// table so a method whose request type lives in a sibling DSL
-// package (`request shared.Cred`) renders the correct Go reference
-// and import statements. Kept for backward compatibility — callers
-// that need cross-package scalar binding should use
-// [GenerateTransportWith].
-func GenerateTransportPackage(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
-	return GenerateTransportWith(pkg, cfg, projectRoot, crossPkg, nil)
 }
 
 // GenerateTransportWith is the full-context variant. `scalars`

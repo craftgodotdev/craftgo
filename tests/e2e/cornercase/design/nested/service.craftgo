@@ -31,7 +31,7 @@ service NestedService {
 		response Org
 	}
 
-	@doc("Map of nested - validates map presence but does NOT recurse into values (v1 limitation).")
+	@doc("Map of nested - validates map presence but does NOT recurse into values (map-value validators are not yet wired through the codegen walker).")
 	post EchoCatalog /catalog {
 		request  Catalog
 		response Catalog

@@ -551,7 +551,7 @@ var Registry = map[string]Spec{
 	// `WriteTimeout`) which the user configures on the server itself
 	// when the stdlib defaults are not enough.
 	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time. Returns 503 + cancels context when the deadline elapses.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
-	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Reads past the cap surface as a normal Read error which the JSON decoder maps to 400.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
+	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Two enforcement points fire: Content-Length pre-check returns 413 immediately when the declared size exceeds the cap, and MaxBytesReader wraps r.Body so reads past the cap surface as a 400 Read error. Multipart parsers also lift their in-memory budget to this value.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
 }
 
 // Lookup returns the [Spec] for `name` and whether it is registered.

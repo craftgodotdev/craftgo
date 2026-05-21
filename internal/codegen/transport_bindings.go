@@ -25,8 +25,18 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, coo
 		if !isPlainStringField(f) {
 			continue
 		}
-		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
-		switch bindingFromDecorators(f.Decorators) {
+		// HTTP header / cookie names live in a different character
+		// set than DSL field names (hyphens, mixed case): `apiKey
+		// string @header("X-API-Key")` declares a Go field `ApiKey`
+		// that must reach the wire as the canonical `X-API-Key`.
+		// bindingWireName returns the explicit decorator arg when
+		// present and falls back to the field name otherwise.
+		kind := bindingFromDecorators(f.Decorators)
+		entry := paramBinding{
+			DSLName: bindingWireName(f, kind),
+			GoName:  GoFieldName(f.Name),
+		}
+		switch kind {
 		case "header":
 			headers = append(headers, entry)
 		case "cookie":

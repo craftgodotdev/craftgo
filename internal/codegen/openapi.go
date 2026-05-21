@@ -58,18 +58,6 @@ func GenerateProjectOpenAPI(proj *semantic.Project, cfg *config.Config, projectR
 	return GenerateOpenAPI(merged, cfg, projectRoot)
 }
 
-// mergeProjectForOpenAPI flattens every package in proj into a single
-// synthetic [semantic.Package] suitable for feeding into the existing
-// single-package OpenAPI generator. Name conflicts across packages
-// are resolved by prefixing later occurrences with the
-// PascalCase-d package name; type references inside merged decls are
-// rewritten in lock-step so `$ref` values still point at the right
-// schema after renaming.
-//
-// The merge is conservative: unique names stay bare, so a single-
-// package project produces output identical to the legacy
-// GenerateOpenAPI path. The conflict prefix only appears when the
-
 func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) *openapi3.T {
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
@@ -123,17 +111,6 @@ func emitGenericInstanceComponents(doc *openapi3.T, pkg *semantic.Package, regis
 		}
 	}
 }
-
-// addSchemas populates components.schemas from every concrete TypeDecl,
-// every EnumDecl, and every ScalarDecl. Generic type decls are skipped
-// - there's no faithful OpenAPI 3.x representation for a parametric
-// type, so generic INSTANCES are inlined at every reference site
-// instead (see [schemaForTypeRef]).
-//
-// Enums and scalars MUST be emitted here too because a `$ref` from a
-// field schema would otherwise dangle: `schemaForTypeRef` blindly
-// renders `#/components/schemas/<Name>` for any named user type, and
-// OpenAPI 3.x parsers (`kin-openapi`, swagger-cli, etc.) reject the
 
 func orDefault(v, fallback string) string {
 	if v == "" {

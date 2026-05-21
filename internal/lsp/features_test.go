@@ -538,10 +538,10 @@ func labelsOf(items []protocol.CompletionItem) []string {
 }
 
 // TestCompletionErrorCategoryAfterKeyword pins the autocompletion that
-// fires right after the `error` keyword: the closed set of 19 reserved
-// HTTP categories must appear with their HTTP status surfaced as the
-// detail line, and items unrelated to that position (decorator names,
-// declaration keywords) must NOT leak in.
+// fires right after the `error` keyword: every reserved HTTP category
+// must appear with its HTTP status surfaced as the detail line, and
+// items unrelated to that position (decorator names, declaration
+// keywords) must NOT leak in.
 func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	// Cursor sits right after the trailing space of `error `. The LSP
 	// sees the previous non-trivia token as KwError and drives the
@@ -551,8 +551,8 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	pos := protocol.Position{Line: 2, Character: 6}
 	srv := &Server{docs: map[uri.URI]*document{}}
 	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	if len(items) != 21 {
-		t.Fatalf("expected 21 category items (one per reserved HTTP category), got %d", len(items))
+	if len(items) != len(errorCategories) {
+		t.Fatalf("expected %d category items (one per reserved HTTP category), got %d", len(errorCategories), len(items))
 	}
 	// Spot-check coverage of common categories + their HTTP statuses.
 	want := map[string]string{
@@ -593,8 +593,8 @@ func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	pos := protocol.Position{Line: 2, Character: 9}
 	srv := &Server{docs: map[uri.URI]*document{}}
 	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	if len(items) != 21 {
-		t.Fatalf("expected 21 category items while typing, got %d", len(items))
+	if len(items) != len(errorCategories) {
+		t.Fatalf("expected %d category items while typing, got %d", len(errorCategories), len(items))
 	}
 }
 

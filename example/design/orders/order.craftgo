@@ -65,7 +65,8 @@ type Order {
 	// @pattern automatically; the field only needs.
 	id         OrderID
 	// Required nested struct (Level 2). Customer carries its own
-	// deep validators; v1 doesn't auto-cascade so logic code calls
+	// deep validators; the generator does not auto-cascade into
+	// nested struct fields so logic code calls
 	// `req.Customer.Validate()` when full-tree validation matters.
 	customer   Customer
 	// Required slice of nested LineItems with bound. @minItems

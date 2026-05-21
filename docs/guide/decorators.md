@@ -29,6 +29,22 @@ service UserService {
 
 The rest of this page lists every decorator with its sites, arguments, and effect.
 
+### Removed decorators
+
+The following decorators were dropped from the closed set and now fire `decorator/unknown` at semantic analysis time. The previous behaviour is described so existing DSL sources have a clear migration path:
+
+| Removed             | Replacement / reason                                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@externalDocs`     | Dropped entirely — OpenAPI `externalDocs` was opaque metadata that nothing in the runtime read. Move the URL to a `@doc("See https://...")` string if you want it on the operation description. |
+| `@examples`         | Use one or more `@example(...)` decorators instead. The map-of-named-examples form had no codegen consumer.                                                          |
+| `@example` on type / method / error | Restricted to `LvlField` — the only level whose value reaches the OpenAPI schema. Move the example onto the relevant field.                            |
+| `@security(noauth)` | Use `@ignoreSecurity` on the method instead. The `noauth` sentinel was a magic ident that hid the real intent ("opt out of inherited security").                    |
+| `@title`            | Dropped — the OpenAPI document title is now set exclusively via `craftgo.design.yaml`'s `openapi.title`, with `@version("...")` on a file overriding the version only.|
+| `@responseDoc`      | Use `@doc(...)` on the method instead — operation-level documentation now flows through a single decorator.                                                          |
+| `@required`         | Required-by-default: every field is required unless its type carries the `?` suffix.                                                                                  |
+| `@min(n)` / `@max(n)` | Renamed to `@gte(n)` / `@lte(n)` to match the strict (`@gt` / `@lt`) variants and the `@range(min, max)` closed form. |
+| `middleware Name(params)` | Middleware declarations are bare-name only; configuration lives in the generated impl file at `internal/middleware/<name>-middleware.go`. |
+
 ## Sites
 
 | Site name      | Where the decorator sits                                  |
@@ -154,6 +170,8 @@ type Account {
 ## Field validators
 
 > **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator — to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
+
+> **Error-body validators are spec-only.** Validators (`@minLength`, `@pattern`, `@range`, ...) on `error` body fields surface in the generated OpenAPI schema constraints but produce **no runtime check** — errors are emitted server-side from your handler, so the framework cannot validate something it just constructed. Treat the constraints on error fields as documentation contracts that consumer SDKs read; the handler is responsible for shaping the values correctly before calling `NewFooErr(...)`.
 
 ### Strings
 
@@ -324,6 +342,20 @@ A field with no binding decorator falls back to:
 - `body` for body verbs (POST / PUT / PATCH)
 - `query` for non-body verbs (GET / DELETE / HEAD / OPTIONS)
 
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body — the JSON tag is automatically `json:"-"` so the same field doesn't double up. The explicit-name argument applies here too:
+
+```craftgo
+type PaginatedResp {
+    items   shared.ID[]
+    count   string  @header("X-Total-Count")   // emitted on the wire as X-Total-Count
+    session string  @cookie("session_id")       // emitted as Set-Cookie: session_id=...
+}
+
+error TooManyRequests RateLimitedErr {
+    retryAfter string  @header("Retry-After")   // error responses can ship custom headers
+}
+```
+
 ## Service decorators
 
 ### `@prefix(path)`
@@ -376,7 +408,7 @@ The named middleware must be declared somewhere in the same package via `middlew
 
 ### `@tags(name1, name2, ...)`
 
-OpenAPI tags. Method-level overrides service-level (method's list wins).
+OpenAPI tags. Method-level **appends** to the service-level list; use `@ignoreTags` to drop the inherited list when a single method needs to opt out.
 
 | Sites | service, method |
 | -------- | -------- |
@@ -411,7 +443,10 @@ service UserService {
 }
 ```
 
-`@security` is OpenAPI metadata - it does not enforce anything at runtime. Pair it with an `AuthRequired` middleware to actually check the token.
+> [!IMPORTANT]
+> **`@security` is OpenAPI metadata only — it does NOT enforce anything at runtime.** The decorator drives the `security` block in the generated OpenAPI spec so SDKs and Swagger UI know what the operation expects; no middleware is auto-attached, no header is auto-checked. Pair `@security(Bearer)` with an `AuthRequired` (or equivalent) middleware to actually verify the credential.
+
+`@ignoreSecurity` on a method clears the inherited service-level `@security` chain — useful for a single public endpoint (liveness probe, etc.) inside an otherwise-protected service.
 
 ### Service-level decorators and inheritance
 
@@ -462,6 +497,8 @@ The combine semantic is **clear-then-append**:
 So `@ignoreMiddleware` + `@middlewares(Audit)` = method chain is exactly `[Audit]` (no inherited Auth). This is the **reset-and-replace** pattern - useful when one endpoint needs a completely different chain instead of the default.
 
 The `@ignore*` decorators only apply at method level. They take no arguments. Repeating them is a `decorator/duplicate` error.
+
+When the service is split across an `extend service` block, `@ignore*` clears the **combined** inherited chain — both decorators on the primary `service { ... }` declaration AND decorators on the `extend service` block. A method that opts out walks back to an empty chain regardless of which side of the split introduced the inheritance.
 
 > [!NOTE]
 > Earlier versions of the DSL used `@security(noauth)` as a sentinel for public endpoints. That syntax is removed - use `@ignoreSecurity` instead. The `@ignore*` form is symmetrical across security/middleware/tags and avoids tying a magic name to one specific decorator.
@@ -582,13 +619,13 @@ post CreateUser /users { ... }
 
 ### Content negotiation — `@consumes` / `@produces` / `@accepts`
 
-Removed in v1. craftgo's transport hardcodes `application/json` for
-both request decode and response encode; the prior decorators parsed
-but produced no runtime / spec effect, hiding the JSON-only constraint
-from authors. Multi-codec support (XML / msgpack / cbor via a
-`CodecRegistry` dispatch) is planned; when it lands these decorators
-will return with a real wiring path. For now the transport pipeline is
-JSON in, JSON out.
+Not supported. craftgo's transport hardcodes `application/json` for
+both request decode and response encode, so a content-negotiation
+decorator would parse but produce no runtime or spec effect — which
+hides the JSON-only constraint from authors. The decorator surface
+stays small and honest: the transport pipeline is JSON in, JSON out,
+and the codec is swappable wholesale via `server.SetGlobalJSONCodec`
+when a project wants sonic / jsoniter in place of `encoding/json`.
 
 ### `@passthrough`
 
@@ -620,7 +657,12 @@ post ProcessImage /images/process { ... }
 
 ### `@maxBodySize(size)`
 
-Cap the request body size in bytes. Reads past the cap surface as a normal Read error which the JSON decoder maps to 400.
+Cap the request body size in bytes. Two enforcement points fire:
+
+1. **Pre-check on `Content-Length`** — when the client declares a length bigger than the cap, the middleware returns 413 immediately without touching the body. Catches oversized requests even when downstream validation would short-circuit before reading.
+2. **`http.MaxBytesReader` wraps `r.Body`** — JSON decoders that read past the cap get a normal Read error, which the handler maps to 400.
+
+For multipart uploads, `@maxBodySize` also lifts the in-memory parser budget above the stdlib's 32 MiB floor so files up to the declared cap stay in memory without spilling to a temp file.
 
 | Sites | method |
 | -------- | -------- |

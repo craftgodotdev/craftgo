@@ -249,7 +249,7 @@ type LineItem struct {
 }
 
 // ListOrdersReq mirrors shared.Pagination's field set locally
-// because v1's query binder doesn't auto-resolve cross-package
+// because the query binder does not auto-resolve cross-package
 // request types — see users.ListUsersReq for the full rationale.
 type ListOrdersReq struct {
 	Cursor *string `json:"cursor,omitempty"`
@@ -275,7 +275,8 @@ type Order struct {
 	// @pattern automatically; the field only needs.
 	ID OrderID `json:"id"`
 	// Required nested struct (Level 2). Customer carries its own
-	// deep validators; v1 doesn't auto-cascade so logic code calls
+	// deep validators; the generator does not auto-cascade into
+	// nested struct fields so logic code calls
 	// `req.Customer.Validate()` when full-tree validation matters.
 	Customer Customer `json:"customer"`
 	// Required slice of nested LineItems with bound. @minItems

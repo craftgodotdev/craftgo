@@ -99,7 +99,7 @@ type QueryStringReq {
 //
 //   transport(bindings): BindingsService.QueryIntProbe:
 //   QueryIntReq.page on GET /probe-int: field "page": optional int
-//   cannot bind to query in v1 - drop the `?` (use 0 / false as the
+//   cannot bind to query — drop the `?` (use 0 / false as the
 //   absent sentinel) or move to body
 //
 // Uncomment both this type and QueryIntProbe in service.craftgo to
@@ -116,8 +116,9 @@ type QueryIntRequiredReq {
 }
 
 // QueryBoolReq mirrors QueryIntReq — optional non-string primitives
-// hit the same v1 limitation, so the bool variant is kept as a
-// required field for now.
+// cannot bind to query (the `*bool` from a query string needs a
+// tri-state that has no clean idiom), so the bool variant stays
+// required and uses false as the absent sentinel.
 type QueryBoolReq {
 	active bool @query
 }
@@ -160,10 +161,10 @@ type QueryRequiredReq {
 // generator stores as a nil pointer.
 // ---------------------------------------------------------------
 
-// HeaderReq carries a required X-API-Key style header. NOTE: the
-// explicit-name argument `@header("X-API-Key")` is parsed but ignored
-// — codegen emits `r.Header.Get("apiKey")`. Flagged in the report
-// alongside the same wart on @path.
+// HeaderReq carries a required X-API-Key style header. The explicit
+// `@header("X-API-Key")` argument names the wire-side header so the
+// generated handler reads from the canonical HTTP name rather than
+// the Go field's PascalCase form (`r.Header.Get("X-API-Key")`).
 type HeaderReq {
 	apiKey string @header("X-API-Key")
 }
@@ -173,8 +174,7 @@ type HeaderReq {
 // requires a string-backed field ... got string?" — the
 // `stringBindable` predicate checks `f.Type.Optional` and bails. To
 // keep the package generating we drop the `?`; the binder treats an
-// absent header as the empty string. Flagged in the report alongside
-// the explicit-name wart.
+// absent header as the empty string.
 type HeaderOptionalReq {
 	traceId string @header("X-Trace-Id")
 }

@@ -56,9 +56,10 @@ type Pagination struct {
 	// previous page. Empty / absent on the first request.
 	Cursor *string `json:"cursor,omitempty"`
 	// limit caps the page size. Logic treats 0 as "use the default"
-	// (the v1 query binder doesn't support optional ints, so 0
-	// serves as the "absent" sentinel); the upper bound is
-	// enforced here so a hostile client can't request 1M rows.
+	// (the query binder does not support optional ints because `*int`
+	// from a query string needs a tri-state with no clean idiom, so 0
+	// serves as the absent sentinel); the upper bound is enforced
+	// here so a hostile client cannot request 1M rows.
 	Limit int `json:"limit"`
 }
 

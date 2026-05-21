@@ -29,11 +29,13 @@ func NewUserNotFoundErr() *UserNotFoundErr {
 // category-default message bound to the type.
 func (e *UserNotFoundErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *UserNotFoundErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *UserNotFoundErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the NotFound category.
 func (e *UserNotFoundErr) HTTPStatus() int { return 404 }
@@ -74,11 +76,13 @@ func NewValidationFailedErr(body ValidationFailedBody) *ValidationFailedErr {
 // category-default message bound to the type.
 func (e *ValidationFailedErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *ValidationFailedErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *ValidationFailedErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the BadRequest category.
 func (e *ValidationFailedErr) HTTPStatus() int { return 400 }

@@ -96,10 +96,10 @@ type GetItemReq {
 }
 
 // SearchReq mixes every supported @query shape in one struct. Note
-// that the optional cursor stays a `string?` (the v1 binder supports
-// `*string`), but the optional sort uses an enum (string-shape on
-// the wire, so the optional binder works just like for plain
-// strings).
+// that the optional cursor stays a `string?` (the query binder
+// supports `*string`), but the optional sort uses an enum (string-
+// shape on the wire, so the optional binder works just like for
+// plain strings).
 type SearchReq {
 	cursor string?  @query
 	limit  int      @query @gte(1) @lte(100)

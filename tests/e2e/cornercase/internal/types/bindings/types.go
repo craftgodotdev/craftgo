@@ -53,16 +53,15 @@ type GetItemReq struct {
 // requires a string-backed field ... got string?" — the
 // `stringBindable` predicate checks `f.Type.Optional` and bails. To
 // keep the package generating we drop the `?`; the binder treats an
-// absent header as the empty string. Flagged in the report alongside
-// the explicit-name wart.
+// absent header as the empty string.
 type HeaderOptionalReq struct {
 	TraceID string `json:"-"`
 }
 
-// HeaderReq carries a required X-API-Key style header. NOTE: the
-// explicit-name argument `@header("X-API-Key")` is parsed but ignored
-// — codegen emits `r.Header.Get("apiKey")`. Flagged in the report
-// alongside the same wart on @path.
+// HeaderReq carries a required X-API-Key style header. The explicit
+// `@header("X-API-Key")` argument names the wire-side header so the
+// generated handler reads from the canonical HTTP name rather than
+// the Go field's PascalCase form (`r.Header.Get("X-API-Key")`).
 type HeaderReq struct {
 	APIKey string `json:"-"`
 }
@@ -132,8 +131,9 @@ type QueryArrayStringReq struct {
 }
 
 // QueryBoolReq mirrors QueryIntReq — optional non-string primitives
-// hit the same v1 limitation, so the bool variant is kept as a
-// required field for now.
+// cannot bind to query (the `*bool` from a query string needs a
+// tri-state that has no clean idiom), so the bool variant stays
+// required and uses false as the absent sentinel.
 type QueryBoolReq struct {
 	Active bool `json:"-"`
 }
@@ -166,10 +166,10 @@ type QueryStringReq struct {
 }
 
 // SearchReq mixes every supported @query shape in one struct. Note
-// that the optional cursor stays a `string?` (the v1 binder supports
-// `*string`), but the optional sort uses an enum (string-shape on
-// the wire, so the optional binder works just like for plain
-// strings).
+// that the optional cursor stays a `string?` (the query binder
+// supports `*string`), but the optional sort uses an enum (string-
+// shape on the wire, so the optional binder works just like for
+// plain strings).
 type SearchReq struct {
 	Cursor *string `json:"-"`
 	Limit  int     `json:"-"`

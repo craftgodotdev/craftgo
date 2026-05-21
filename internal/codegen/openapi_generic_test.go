@@ -43,11 +43,12 @@ func tMap(key, value *ast.TypeRef) *ast.TypeRef {
 }
 
 // TestGenericComponentName exercises the naming function across every
-// shape the audit catalogued: single-param, multi-param, primitive arg,
-// cross-pkg arg, nested generic arg, optional arg, array arg, map arg.
-// The expected strings are the contract that P1.8 commits to - changing
-// them is a breaking change for any client codegen sitting on top of
-// the OpenAPI spec.
+// shape the registry produces: single-param, multi-param, primitive
+// arg, cross-pkg arg, nested generic arg, optional arg, array arg,
+// map arg. The expected strings are the wire-level contract that
+// downstream client codegen (TypeScript / Python / etc.) reads off
+// the OpenAPI spec; renaming any of them is a breaking change for
+// every consumer.
 func TestGenericComponentName(t *testing.T) {
 	cases := []struct {
 		name     string

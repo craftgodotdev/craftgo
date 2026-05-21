@@ -442,6 +442,56 @@ service FilesService {
 	}
 }
 
+// TestGenerateTransportResponseHeaderCookieNamedArg pins the
+// explicit-name override on the response side. `@header("X-Y-Z")` /
+// `@cookie("session_id")` must drive the wire name, not the Go field
+// name - identical to the request-side behaviour. Without this fix
+// `count string @header("X-Total-Count")` emitted
+// `w.Header().Set("count", ...)`, losing the canonical HTTP name.
+func TestGenerateTransportResponseHeaderCookieNamedArg(t *testing.T) {
+	src := `package design
+type ListReq { q string @query }
+type ListResp {
+    items     string
+    total     string @header("X-Total-Count")
+    sessionID string @cookie("session_id")
+}
+service Catalog {
+    get List /items {
+        request   ListReq
+        response  ListResp
+    }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/transport/catalog/list.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	mustParseGo(t, body)
+	for _, want := range []string{
+		`w.Header().Set("X-Total-Count", resp.Total)`,
+		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID})`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing wire-named binding %q:\n%s", want, body)
+		}
+	}
+	// Negative: the Go field name must NOT appear as the wire name.
+	for _, banned := range []string{
+		`w.Header().Set("total"`,
+		`Cookie{Name: "sessionID"`,
+	} {
+		if strings.Contains(body, banned) {
+			t.Errorf("explicit arg was ignored - found %q in:\n%s", banned, body)
+		}
+	}
+}
+
 func TestGenerateTypesNonBodyBindingsAreSkipped(t *testing.T) {
 	pkg := analyzePkg(t, `package design
 type Req {

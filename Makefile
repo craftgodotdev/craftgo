@@ -162,13 +162,6 @@ deps: ## Download/verify modules.
 	$(GO) mod download
 	$(GO) mod verify
 
-# ---- clean ---------------------------------------------------------------
-# ---- VS Code extension ---------------------------------------------------
-# Glob both legacy (`harry2401.craftgo-*`) and current (`craftgo.craftgo-*`)
-# folder shapes so the target works regardless of which `.vsix` the user
-# installed. The extension folder under ~/.vscode survives publisher
-# renames at the source level — files on disk only get rewritten when
-# the user reinstalls a fresh `.vsix`.
 EXT_SRC      := extensions/vscode
 EXT_INSTALL  := $$HOME/.vscode/extensions
 

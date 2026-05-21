@@ -18,13 +18,20 @@ import (
 // with @header / @cookie fields - it is called before WriteHeader so
 // those values land on the wire ahead of the body.
 //
+// Header precedence: the WriteResponseHeaders call writes user-declared
+// fields FIRST, then the framework stamps `Content-Type: application/
+// json; charset=utf-8` LAST. A `@header("Content-Type")` field would
+// therefore be overridden - intentional, since the body that follows
+// is always JSON. Use a passthrough handler if you need a different
+// content type.
+//
 // Body shape:
 //   - typed errors WITH user-declared fields → codec encodes the struct
 //     directly, emitting exactly those fields (the framework's `code` /
 //     `message` metadata is internal-only and stays off the wire);
 //   - typed errors WITHOUT user fields → fall through the empty-`{}`
 //     guard and surface the `{code, message}` envelope built from the
-//     `Code()` / `Error()` interface methods, so clients still
+//     `ErrCode()` / `Error()` interface methods, so clients still
 //     receive enough to discriminate the failure;
 //   - plain errors (errors.New, fmt.Errorf) → fall back to
 //     `{"message": err.Error()}` so the response is never an empty `{}`.
@@ -42,8 +49,8 @@ func writeError(w http.ResponseWriter, err error) {
 	var buf bytes.Buffer
 	if mErr := codec.Encode(&buf, err); mErr != nil || strings.TrimSpace(buf.String()) == "{}" {
 		env := map[string]string{"message": err.Error()}
-		if c, ok := err.(interface{ Code() string }); ok {
-			env["code"] = c.Code()
+		if c, ok := err.(interface{ ErrCode() string }); ok {
+			env["code"] = c.ErrCode()
 		}
 		_ = codec.Encode(w, env)
 		return

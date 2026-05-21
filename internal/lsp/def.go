@@ -15,8 +15,8 @@ import (
 // onDefinition answers `textDocument/definition`. The cursor must sit on
 // an identifier that names a top-level declaration; we walk the file's
 // declarations and return the location of the matching name. Cross-file
-// resolution is M3+ - callers receive an empty list for now and the
-// editor falls back to its own lookup.
+// resolution is not implemented - callers receive an empty list and the
+// editor falls back to its own workspace-symbol lookup.
 func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DefinitionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {

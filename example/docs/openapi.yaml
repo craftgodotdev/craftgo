@@ -1202,7 +1202,7 @@ components:
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors shared.Pagination's field set locally
-        because v1's query binder doesn't auto-resolve cross-package
+        because the query binder does not auto-resolve cross-package
         request types — see users.ListUsersReq for the full rationale.
       properties:
         cursor:
@@ -1275,8 +1275,8 @@ components:
     ListTasksReq:
       description: |-
         ListTasksReq is the LIST + EXTRA FILTER pattern: re-declares the
-        pagination contract inline (cross-package mixin would render the
-        trailing-segment without its package prefix in v1, so this is the
+        pagination contract inline (a cross-package mixin would render the
+        trailing-segment without its package prefix, so this is the
         idiomatic alternative when a list endpoint needs more than just
         cursor + limit) and adds a `projectId` query-bound filter.
 
@@ -1319,13 +1319,13 @@ components:
       $ref: '#/components/schemas/TaskList'
     ListUsersReq:
       description: |-
-        ListUsersReq mirrors shared.Pagination's field set. The v1 query
+        ListUsersReq mirrors shared.Pagination's field set. The query
         binder resolves field-by-name only against types in the same DSL
-        package as the service — using shared.Pagination directly leaves
-        `cursor` / `limit` unbound at request time. Keeping a local copy
-        is the idiomatic workaround until cross-package query binding
-        lands; the field shape stays canonical so the wire contract is
-        indistinguishable from the shared reference.
+        package as the service — using shared.Pagination directly would
+        leave `cursor` / `limit` unbound at request time. Keeping a local
+        copy is the idiomatic workaround; the field shape stays canonical
+        so the wire contract is indistinguishable from the shared
+        reference.
       properties:
         cursor:
           nullable: true
@@ -1561,9 +1561,10 @@ components:
         limit:
           description: |-
             limit caps the page size. Logic treats 0 as "use the default"
-            (the v1 query binder doesn't support optional ints, so 0
-            serves as the "absent" sentinel); the upper bound is
-            enforced here so a hostile client can't request 1M rows.
+            (the query binder does not support optional ints because `*int`
+            from a query string needs a tri-state with no clean idiom, so 0
+            serves as the absent sentinel); the upper bound is enforced
+            here so a hostile client cannot request 1M rows.
           maximum: 100
           minimum: 0
           type: integer
@@ -1802,10 +1803,10 @@ components:
             (`comments Comment[]`, where each Comment carries a UserRef).
           - Enum field with default validation via the generated UnmarshalJSON.
 
-        Validators on the wrapper (`@required`, `@length`, `@maxItems`)
-        fire at the handler boundary; the nested types' own validators
-        can be invoked explicitly from logic when deep validation is
-        required (v1 doesn't auto-recurse).
+        Validators on the wrapper (`@length`, `@maxItems`) fire at the
+        handler boundary; the nested types' own validators can be invoked
+        explicitly from logic when deep validation is required — the
+        generator does not auto-recurse into nested struct fields.
       properties:
         assignee:
           allOf:

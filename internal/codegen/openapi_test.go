@@ -203,6 +203,22 @@ service S {
 	if !strings.Contains(body, "oneOf:") {
 		t.Errorf("expected oneOf for same-status errors:\n%s", body)
 	}
+	// Count $ref entries between `oneOf:` and the next non-list-item
+	// line so the assertion fails fast if codegen accidentally
+	// duplicates or drops a schema (e.g. a deduplication bug would
+	// silently let the test pass on substring presence alone).
+	oneOfIdx := strings.Index(body, "oneOf:")
+	if oneOfIdx < 0 {
+		t.Fatalf("oneOf block missing:\n%s", body)
+	}
+	tail := body[oneOfIdx:]
+	if end := strings.Index(tail, "\n            description:"); end > 0 {
+		tail = tail[:end]
+	}
+	refCount := strings.Count(tail, "$ref:")
+	if refCount != 2 {
+		t.Errorf("oneOf must list exactly 2 $refs (one per declared error), got %d:\n%s", refCount, tail)
+	}
 	for _, want := range []string{"EmailTakenErr", "OwnershipConflictErr"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected %s in oneOf body:\n%s", want, body)
@@ -365,9 +381,11 @@ service S { post Create /c { request User  response User } }`)
 }
 
 // TestGenerateOpenAPIGenericInstanceEmitsComponent pins the core
-// CB-1 contract: every distinct generic instantiation lands as its
-// own component in `components.schemas`, and the reference site
-// emits a `$ref` instead of inlining the body.
+// generic-naming contract: every distinct generic instantiation lands
+// as its own component in `components.schemas`, and the reference
+// site emits a `$ref` instead of inlining the body. Without per-
+// instantiation components, OpenAPI consumers would see anonymous
+// inline schemas and fail to discriminate Page<Order> from Page<User>.
 func TestGenerateOpenAPIGenericInstanceEmitsComponent(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -392,10 +410,12 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericInstanceMixinFlatten pins CB-4: a mixin
-// reference inside the generic body must surface in the instance
-// component via the `allOf` composition - identical to the
-// non-generic mixin emission already covered by W8.
+// TestGenerateOpenAPIGenericInstanceMixinFlatten pins mixin
+// preservation through generic substitution: a mixin reference inside
+// the generic body must surface in the instance component via the
+// `allOf` composition, identical to the non-generic mixin emission.
+// An earlier walker dropped mixin members during instantiation -
+// `Page<Order>` would lose audit fields its template inherited.
 func TestGenerateOpenAPIGenericInstanceMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Audit { createdAt string  updatedAt string }

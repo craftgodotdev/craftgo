@@ -2,7 +2,7 @@
 
 ## 0.2.0 — unreleased
 
-Phase 2 — full LSP-backed language support.
+Full LSP-backed language support.
 
 - **Language server integration** via the bundled `craftgo-lsp` binary
   (install with `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`).
@@ -27,7 +27,7 @@ Phase 2 — full LSP-backed language support.
 
 ## 0.1.0
 
-Initial Phase 1 release.
+Initial release — syntax-only support.
 
 - Syntax highlighting for `.craftgo` files (keywords, HTTP verbs,
   built-in types, decorators, error categories, durations, sizes, path

@@ -87,12 +87,13 @@ func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
 	}
 }
 
-// TestWriteValidationErrorSkipsPostCommit pins the M4 guard: when the
-// response writer is already committed (some middleware wrote headers
-// before the handler reached req.Validate()), WriteValidationError
-// must NOT smear a 400 into the in-flight body - net/http would drop
-// the WriteHeader and append the error text to whatever was already
-// sent. The hook logs the dropped validation and leaves the wire alone.
+// TestWriteValidationErrorSkipsPostCommit pins the post-commit guard:
+// when the response writer is already committed (some middleware wrote
+// headers before the handler reached req.Validate()),
+// WriteValidationError must NOT smear a 400 into the in-flight body -
+// net/http would drop the WriteHeader and append the error text to
+// whatever was already sent, producing a corrupted response. The hook
+// logs the dropped validation and leaves the wire alone.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	s := newTestServer(t)
 	s.HandleFunc("GET /v", func(w http.ResponseWriter, r *http.Request) {
@@ -113,19 +114,22 @@ func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	}
 }
 
-// errBadField is a stand-in validator error used by the M4 guard test.
+// errBadField is a stand-in validator error used by the post-commit
+// guard test - any concrete error value works; the wire output is what
+// the test asserts on.
 var errBadField = stringError("bad field")
 
 type stringError string
 
 func (e stringError) Error() string { return string(e) }
 
-// TestWithLimitsTimeoutPanicReachesRecovery pins the M5 fix: a panic
-// inside a `@timeout`-wrapped handler must still propagate to the
-// outer Recovery middleware instead of being swallowed by goroutine
-// isolation the way [http.TimeoutHandler] used to do. The handler
-// panics immediately - well before the deadline - so the 500 must
-// reach the client and the panic must be logged.
+// TestWithLimitsTimeoutPanicReachesRecovery pins the timeout/panic
+// contract: a panic inside a `@timeout`-wrapped handler must still
+// propagate to the outer Recovery middleware instead of being
+// swallowed by goroutine isolation the way [http.TimeoutHandler]
+// used to do. The handler panics immediately - well before the
+// deadline - so the 500 must reach the client and the panic must
+// be logged.
 func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
 	logger := newTestServer(t).logger
 	core := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
@@ -154,6 +158,27 @@ func TestWithLimitsTimeoutContextCancellation(t *testing.T) {
 	guarded.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if !strings.Contains(rec.Body.String(), "cancelled:") {
 		t.Errorf("handler did not observe context cancel: %q", rec.Body.String())
+	}
+}
+
+// TestWithLimitsContentLengthPreCheck pins the upfront body-size
+// guard: a client whose
+// Content-Length already exceeds MaxBodySize gets 413 even when the
+// downstream handler never reads r.Body. http.MaxBytesReader alone
+// would only fire on the first read past the cap, so a request
+// rejected by an early validation step (e.g. a content-type guard)
+// would otherwise slip past the body guard.
+func TestWithLimitsContentLengthPreCheck(t *testing.T) {
+	core := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	guarded := WithLimits(core, Limits{MaxBodySize: 10})
+	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(""))
+	req.ContentLength = 1024
+	rec := httptest.NewRecorder()
+	guarded.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 from Content-Length pre-check, got %d", rec.Code)
 	}
 }
 

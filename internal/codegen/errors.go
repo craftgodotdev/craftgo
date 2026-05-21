@@ -199,7 +199,7 @@ type errorTemplateData struct {
 // renderError executes errors.tmpl for one [ast.ErrorDecl]. The
 // template emits, in order: the SCREAMING_SNAKE error-code const, the
 // (optional) body struct, the typed error struct with its unexported
-// code / message metadata, the constructor, Error() / Code() /
+// code / message metadata, the constructor, Error() / ErrCode() /
 // HTTPStatus() methods, and the optional WriteResponseHeaders method
 // when the error declares any `@header` / `@cookie` fields. The
 // constructor takes a body-struct argument iff the DSL declares ≥1
@@ -300,8 +300,16 @@ func errorResponseBindings(ed *ast.ErrorDecl) (headers, cookies []paramBinding) 
 		if !isPlainStringField(f) {
 			continue
 		}
-		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
-		switch bindingFromDecorators(f.Decorators) {
+		// Use the explicit `@header("X-Y")` / `@cookie("name")` arg
+		// when present so wire-side conventions (hyphenated HTTP
+		// header names, snake_case cookies) survive the round-trip
+		// from DSL identifier to actual response header.
+		kind := bindingFromDecorators(f.Decorators)
+		entry := paramBinding{
+			DSLName: bindingWireName(f, kind),
+			GoName:  GoFieldName(f.Name),
+		}
+		switch kind {
 		case "header":
 			headers = append(headers, entry)
 		case "cookie":

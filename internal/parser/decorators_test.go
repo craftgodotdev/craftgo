@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -212,14 +211,16 @@ type T {
 }`)
 	td := f.Decls[0].(*ast.TypeDecl)
 	field := td.Body[0].(*ast.Field)
-	if len(field.Decorators) != 3 {
-		t.Errorf("expected 3 trailing decorators, got %d", len(field.Decorators))
+	want := []string{"doc", "length", "pattern"}
+	if len(field.Decorators) != len(want) {
+		t.Fatalf("expected %d trailing decorators, got %d", len(want), len(field.Decorators))
 	}
-	got := []string{}
-	for _, d := range field.Decorators {
-		got = append(got, d.Name)
-	}
-	if strings.Join(got, ",") != "doc,length,pattern" {
-		t.Errorf("unexpected order: %v", got)
+	// Per-position assertion: a parser that accidentally reverses the
+	// slice would still produce the same comma-joined string after a
+	// sort, so check each slot explicitly.
+	for i, w := range want {
+		if got := field.Decorators[i].Name; got != w {
+			t.Errorf("decorator[%d] = %q, want %q", i, got, w)
+		}
 	}
 }

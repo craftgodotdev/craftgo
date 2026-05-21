@@ -95,11 +95,12 @@ type GetOrderReq struct {
 // inside @query — codegen parses the wire string as int then casts
 // up to the alias.
 //
-// NOTE: limit cannot be `Cents?` because v1 forbids optional ints on
-// query bindings — the transport pass rejects "optional int cannot
-// bind to query in v1". The bare-int form uses 0 as the absent
-// sentinel, with @default providing the canonical fallback the
-// handler sees after pre-fill.
+// NOTE: limit cannot be `Cents?` because optional numeric primitives
+// cannot bind to query — the transport pass rejects them since
+// `*int` from a query string needs a tri-state (absent / empty /
+// parsed) that the framework has no clean idiom for. The bare-int
+// form uses 0 as the absent sentinel, with @default providing the
+// canonical fallback the handler sees after pre-fill.
 type ListOrdersReq struct {
 	Cursor *string `json:"cursor,omitempty"`
 	Limit  Cents   `json:"limit"`
@@ -183,12 +184,13 @@ type PageOfPrimitiveHost struct {
 	Rows Page[string] `json:"rows"`
 }
 
-// GenericWithMixin exercises CB-4 directly: a generic body that
-// embeds a mixin must NOT silently drop the mixin's fields during
-// instantiation. `PageWithAudit<T>` mixes `AuditFields` inside its
-// body; the substituted `PageWithAudit<Order>` component must list
-// `createdAt` / `updatedAt` (from AuditFields) in addition to its
-// own `items` / `total`.
+// GenericWithMixin pins mixin substitution through generics: a
+// generic body that embeds a mixin must NOT silently drop the
+// mixin's fields during instantiation. `PageWithAudit<T>` mixes
+// `AuditFields` inside its body; the substituted
+// `PageWithAudit<Order>` component must list `createdAt` /
+// `updatedAt` (from AuditFields) in addition to its own `items` /
+// `total`.
 type PageWithAudit[T any] struct {
 	AuditFields
 	Items []T `json:"items"`

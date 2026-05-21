@@ -66,13 +66,13 @@ type GetUserReq struct {
 	ID string `json:"-"`
 }
 
-// ListUsersReq mirrors shared.Pagination's field set. The v1 query
+// ListUsersReq mirrors shared.Pagination's field set. The query
 // binder resolves field-by-name only against types in the same DSL
-// package as the service — using shared.Pagination directly leaves
-// `cursor` / `limit` unbound at request time. Keeping a local copy
-// is the idiomatic workaround until cross-package query binding
-// lands; the field shape stays canonical so the wire contract is
-// indistinguishable from the shared reference.
+// package as the service — using shared.Pagination directly would
+// leave `cursor` / `limit` unbound at request time. Keeping a local
+// copy is the idiomatic workaround; the field shape stays canonical
+// so the wire contract is indistinguishable from the shared
+// reference.
 type ListUsersReq struct {
 	Cursor *string `json:"cursor,omitempty"`
 	Limit  int     `json:"limit"`

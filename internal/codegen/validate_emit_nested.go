@@ -73,8 +73,10 @@ return err
 
 // nestedValidateCall emits a recursive `field.Validate()` call when a
 // field's declared type is another user-defined struct (or a generic
-// instance, since those now carry Validate too). Maps are skipped:
-// map values need range traversal that v1 doesn't generate.
+// instance, since those carry Validate too). Maps are skipped: map
+// values would need range traversal that the codegen does not emit -
+// the user must call Validate on map values explicitly when deep
+// validation is required.
 //
 // We bypass the generic [shape] helper for optional fields so the
 // emitted call reads `v.Avatar.Validate()` rather than the noisier

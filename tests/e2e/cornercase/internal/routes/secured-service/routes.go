@@ -19,4 +19,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/secured/healthz", transport.Healthz(svcCtx))
 	srv.Handle("POST /api/secured/reset", svcCtx.BasicAuth(svcCtx.Audit(transport.Reset(svcCtx))))
 	srv.Handle("POST /api/secured/wipe", svcCtx.AuthRequired(svcCtx.RateLimit(transport.Wipe(svcCtx))))
+	srv.Handle("POST /api/secured/quarantine", svcCtx.AuthRequired(svcCtx.RateLimit(transport.Quarantine(svcCtx))))
 }

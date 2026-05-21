@@ -57,4 +57,16 @@ service SecuredService {
 	post Wipe /wipe {
 		response HealthResp
 	}
+
+	// Quarantine exercises the array-shortcut form: `@security([A, B])`
+	// is the bracket-wrapped sugar that any variadic decorator accepts.
+	// It parses identical to `@security(A, B)`, so the generated
+	// OpenAPI security[] entry must look exactly like Wipe's
+	// AdminBearer+MFA AND-combination once the inherited service-level
+	// `@security(AdminBearer)` is layered in.
+	@doc("Locks a tenant; array-form security is functionally equal to the comma form.")
+	@security([AdminBearer, MFA])
+	post Quarantine /quarantine {
+		response HealthResp
+	}
 }

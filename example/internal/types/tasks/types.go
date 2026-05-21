@@ -50,8 +50,8 @@ type GetTaskReq struct {
 }
 
 // ListTasksReq is the LIST + EXTRA FILTER pattern: re-declares the
-// pagination contract inline (cross-package mixin would render the
-// trailing-segment without its package prefix in v1, so this is the
+// pagination contract inline (a cross-package mixin would render the
+// trailing-segment without its package prefix, so this is the
 // idiomatic alternative when a list endpoint needs more than just
 // cursor + limit) and adds a `projectId` query-bound filter.
 //
@@ -73,10 +73,10 @@ type ListTasksReq struct {
 //     (`comments Comment[]`, where each Comment carries a UserRef).
 //   - Enum field with default validation via the generated UnmarshalJSON.
 //
-// Validators on the wrapper (`@required`, `@length`, `@maxItems`)
-// fire at the handler boundary; the nested types' own validators
-// can be invoked explicitly from logic when deep validation is
-// required (v1 doesn't auto-recurse).
+// Validators on the wrapper (`@length`, `@maxItems`) fire at the
+// handler boundary; the nested types' own validators can be invoked
+// explicitly from logic when deep validation is required — the
+// generator does not auto-recurse into nested struct fields.
 type Task struct {
 	ID      string              `json:"id"`
 	Title   string              `json:"title"`

@@ -42,7 +42,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		// `code` / `message` are reserved DSL slots (design-time
 		// override of the framework defaults via `@default(...)`) and
 		// never appear on the wire - they're internal metadata exposed
-		// through the `Code()` / `Error()` methods. Fields tagged with
+		// through the `ErrCode()` / `Error()` methods. Fields tagged with
 		// `@header` / `@cookie` are also excluded - they ride on the
 		// response writer (see [renderErrorResponseHeadersMethod]).
 		// Anything else becomes a regular property on the schema.

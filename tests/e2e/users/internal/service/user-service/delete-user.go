@@ -27,9 +27,9 @@ func NewDeleteUserService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-func (l *DeleteUserService) DeleteUser() (*types.Empty, error) {
+func (l *DeleteUserService) DeleteUser(req *types.DeleteUserReq) (*types.Empty, error) {
 	l.svcCtx.Lock()
 	defer l.svcCtx.Unlock()
-	l.svcCtx.Users = map[string]map[string]any{}
+	delete(l.svcCtx.Users, req.ID)
 	return &types.Empty{}, nil
 }

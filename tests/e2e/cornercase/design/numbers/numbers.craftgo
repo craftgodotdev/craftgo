@@ -1,7 +1,7 @@
 // Package numbers is the cornercase showcase for numeric types and
 // bound decorators. Exercises every primitive numeric kind (signed +
-// unsigned int families, float32, float64) against the full Sprint 3
-// bound surface: @gt / @gte / @lt / @lte, @range, @multipleOf, the
+// unsigned int families, float32, float64) against the full bound
+// surface: @gt / @gte / @lt / @lte, @range, @multipleOf, the
 // @positive / @negative flag pair, plus the orthogonal axes of
 // optional / nullable / default presence.
 package numbers
@@ -72,8 +72,8 @@ type NumberUnsigned {
 }
 
 // NumberPrice exercises float32 + float64 with float literal bounds.
-// Sprint 3 specifically called out that @gte(0.5), @range(0.1, 0.9)
-// must round-trip cleanly.
+// Float-typed literals such as @gte(0.5) and @range(0.1, 0.9) must
+// round-trip cleanly through parse → semantic → codegen.
 type NumberPrice {
 	// float32 — narrower precision but same decorator surface.
 	rangeF32  float32 @range(0, 1)
@@ -131,8 +131,9 @@ type NumberMixed {
 }
 
 // NumberExact is the boundary case where @gte and @lte share the
-// same value — exactly one accepted value. Sprint 3 allows this
-// (only the strict variants on equal endpoints emit empty-range).
+// same value — exactly one accepted value. The semantic allows this
+// closed-form pair; only the strict variants on equal endpoints
+// (e.g. @gt(5) @lt(5)) emit empty-range diagnostics.
 type NumberExact {
 	// Only value = 5 is accepted.
 	exactly5    int     @gte(5) @lte(5)

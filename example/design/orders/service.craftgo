@@ -106,7 +106,7 @@ type GetOrderReq {
 }
 
 // ListOrdersReq mirrors shared.Pagination's field set locally
-// because v1's query binder doesn't auto-resolve cross-package
+// because the query binder does not auto-resolve cross-package
 // request types — see users.ListUsersReq for the full rationale.
 type ListOrdersReq {
 	cursor string?

@@ -11,10 +11,11 @@
 //     on every reachable element, including nested arrays and map
 //     values — no dedicated per-element decorator needed.
 //   - Optional array nil-guard: `T[]?` must SKIP @minItems when the
-//     slice is nil (Sprint 3 C3 fix).
+//     slice is nil — without the guard, len(nil) == 0 would fail the
+//     bound even though the field is legitimately absent.
 //   - Multi-dim of scalar: Tag[][] and Tag[][][] — should produce
-//     correctly-nested for-loops per the scalar-leaves walk (Sprint 3
-//     C5 fix). Optional 2D: Tag[][]? — outer nil-guard, inner loop.
+//     correctly-nested for-loops per the scalar-leaves walk.
+//     Optional 2D: Tag[][]? — outer nil-guard, inner loop.
 package collections
 
 // Arr_BoundsBasic stacks the canonical @minItems + @maxItems +
@@ -28,10 +29,10 @@ type Arr_BoundsBasic {
 	tags string[] @minItems(1) @maxItems(10) @uniqueItems
 }
 
-// Arr_OptionalBound proves the Sprint 3 C3 fix: an optional array
-// with @minItems(1) must SKIP the check when the slice is nil. Without
-// the nil-guard, `len(nil) == 0` would fail the bound even though the
-// field is legitimately absent.
+// Arr_OptionalBound pins the optional-array nil-guard: an optional
+// array with @minItems(1) must SKIP the check when the slice is nil.
+// Without the nil-guard, `len(nil) == 0` would fail the bound even
+// though the field is legitimately absent.
 type Arr_OptionalBound {
 	tags string[]? @minItems(1)
 }
@@ -60,11 +61,11 @@ type Arr_TagSlice {
 	tags Tag[] @minItems(1) @maxItems(10) @uniqueItems
 }
 
-// Arr_Tag2D — `Tag[][]` is the 2D scalar array. Sprint 3 C5 fix:
-// the generator MUST emit doubly-nested for-loops so each
-// `v.Grid[i0][i1]` runs Tag's three validators. Pre-fix versions
-// emitted only the outer loop and ran validators on the inner slice
-// (which would not compile).
+// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator must
+// emit doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's
+// three validators; an earlier scalar-leaves walker emitted only the
+// outer loop and ran validators on the inner slice (which did not
+// compile).
 type Arr_Tag2D {
 	grid Tag[][]
 }

@@ -84,6 +84,16 @@ func timeoutHandler(h http.Handler, d time.Duration) http.Handler {
 // whether to translate them into 400 / 413.
 func maxBodySizeHandler(h http.Handler, n int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Reject upfront when the client declares more bytes than we
+		// allow. [http.MaxBytesReader] alone only fires once the
+		// handler actually reads past the cap, so a request whose
+		// Content-Length already exceeds n would otherwise sail past
+		// the guard if the handler never touched r.Body (e.g. early
+		// validation rejected the request on a header).
+		if n > 0 && r.ContentLength > n {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, n)
 		}

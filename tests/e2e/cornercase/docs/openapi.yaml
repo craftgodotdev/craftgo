@@ -316,10 +316,10 @@ components:
       type: object
     Arr_OptionalBound:
       description: |-
-        Arr_OptionalBound proves the Sprint 3 C3 fix: an optional array
-        with @minItems(1) must SKIP the check when the slice is nil. Without
-        the nil-guard, `len(nil) == 0` would fail the bound even though the
-        field is legitimately absent.
+        Arr_OptionalBound pins the optional-array nil-guard: an optional
+        array with @minItems(1) must SKIP the check when the slice is nil.
+        Without the nil-guard, `len(nil) == 0` would fail the bound even
+        though the field is legitimately absent.
       properties:
         tags:
           items:
@@ -357,11 +357,11 @@ components:
       type: object
     Arr_Tag2D:
       description: |-
-        Arr_Tag2D — `Tag[][]` is the 2D scalar array. Sprint 3 C5 fix:
-        the generator MUST emit doubly-nested for-loops so each
-        `v.Grid[i0][i1]` runs Tag's three validators. Pre-fix versions
-        emitted only the outer loop and ran validators on the inner slice
-        (which would not compile).
+        Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator must
+        emit doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's
+        three validators; an earlier scalar-leaves walker emitted only the
+        outer loop and ran validators on the inner slice (which did not
+        compile).
       properties:
         grid:
           items:
@@ -1441,8 +1441,7 @@ components:
         requires a string-backed field ... got string?" — the
         `stringBindable` predicate checks `f.Type.Optional` and bails. To
         keep the package generating we drop the `?`; the binder treats an
-        absent header as the empty string. Flagged in the report alongside
-        the explicit-name wart.
+        absent header as the empty string.
       properties:
         traceId:
           type: string
@@ -1451,10 +1450,10 @@ components:
       type: object
     HeaderReq:
       description: |-
-        HeaderReq carries a required X-API-Key style header. NOTE: the
-        explicit-name argument `@header("X-API-Key")` is parsed but ignored
-        — codegen emits `r.Header.Get("apiKey")`. Flagged in the report
-        alongside the same wart on @path.
+        HeaderReq carries a required X-API-Key style header. The explicit
+        `@header("X-API-Key")` argument names the wire-side header so the
+        generated handler reads from the canonical HTTP name rather than
+        the Go field's PascalCase form (`r.Header.Get("X-API-Key")`).
       properties:
         apiKey:
           type: string
@@ -1572,11 +1571,12 @@ components:
         inside @query — codegen parses the wire string as int then casts
         up to the alias.
 
-        NOTE: limit cannot be `Cents?` because v1 forbids optional ints on
-        query bindings — the transport pass rejects "optional int cannot
-        bind to query in v1". The bare-int form uses 0 as the absent
-        sentinel, with @default providing the canonical fallback the
-        handler sees after pre-fill.
+        NOTE: limit cannot be `Cents?` because optional numeric primitives
+        cannot bind to query — the transport pass rejects them since
+        `*int` from a query string needs a tri-state (absent / empty /
+        parsed) that the framework has no clean idiom for. The bare-int
+        form uses 0 as the absent sentinel, with @default providing the
+        canonical fallback the handler sees after pre-fill.
       properties:
         cursor:
           nullable: true
@@ -2159,8 +2159,9 @@ components:
     NumberExact:
       description: |-
         NumberExact is the boundary case where @gte and @lte share the
-        same value — exactly one accepted value. Sprint 3 allows this
-        (only the strict variants on equal endpoints emit empty-range).
+        same value — exactly one accepted value. The semantic allows this
+        closed-form pair; only the strict variants on equal endpoints
+        (e.g. @gt(5) @lt(5)) emit empty-range diagnostics.
       properties:
         exactly0:
           description: Only value = 0
@@ -2291,8 +2292,8 @@ components:
     NumberPrice:
       description: |-
         NumberPrice exercises float32 + float64 with float literal bounds.
-        Sprint 3 specifically called out that @gte(0.5), @range(0.1, 0.9)
-        must round-trip cleanly.
+        Float-typed literals such as @gte(0.5) and @range(0.1, 0.9) must
+        round-trip cleanly through parse → semantic → codegen.
       properties:
         gtLtF32:
           exclusiveMaximum: true
@@ -2973,6 +2974,8 @@ components:
       type: object
     PromoteItemRespBody:
       $ref: '#/components/schemas/EntitlementsAuditTrail'
+    QuarantineRespBody:
+      $ref: '#/components/schemas/HealthResp'
     QueryArrayIntReq:
       description: |-
         QueryArrayIntReq drives the `[]int @query` shape. Each repeated
@@ -3001,8 +3004,9 @@ components:
     QueryBoolReq:
       description: |-
         QueryBoolReq mirrors QueryIntReq — optional non-string primitives
-        hit the same v1 limitation, so the bool variant is kept as a
-        required field for now.
+        cannot bind to query (the `*bool` from a query string needs a
+        tri-state that has no clean idiom), so the bool variant stays
+        required and uses false as the absent sentinel.
       properties:
         active:
           type: boolean
@@ -3187,10 +3191,10 @@ components:
     SearchReq:
       description: |-
         SearchReq mixes every supported @query shape in one struct. Note
-        that the optional cursor stays a `string?` (the v1 binder supports
-        `*string`), but the optional sort uses an enum (string-shape on
-        the wire, so the optional binder works just like for plain
-        strings).
+        that the optional cursor stays a `string?` (the query binder
+        supports `*string`), but the optional sort uses an enum (string-
+        shape on the wire, so the optional binder works just like for
+        plain strings).
       properties:
         active:
           type: boolean
@@ -4672,7 +4676,7 @@ paths:
   /nested/catalog:
     post:
       description: Map of nested - validates map presence but does NOT recurse into
-        values (v1 limitation).
+        values (map-value validators are not yet wired through the codegen walker).
       operationId: EchoCatalog
       requestBody:
         content:
@@ -5170,6 +5174,26 @@ paths:
           description: ""
       tags:
       - monitoring
+  /secured/quarantine:
+    post:
+      description: Locks a tenant; array-form security is functionally equal to the
+        comma form.
+      operationId: Quarantine
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuarantineRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - AdminBearer: []
+      - AdminBearer: []
+        MFA: []
+      tags:
+      - internal
   /secured/reset:
     post:
       description: Admin-only reset; uses its own middleware chain instead of the

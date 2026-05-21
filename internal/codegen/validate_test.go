@@ -617,9 +617,10 @@ type Upload { avatar file @maxSize(1024) }`)
 
 func TestValidateMaxSizeRejectsNonFile(t *testing.T) {
 	// @maxSize on a non-file field is rejected by the semantic
-	// analyser (decorator/typemismatch). This used to be a silent
-	// codegen-time skip; v1.x elevates it to a hard error so the IDE
-	// can surface it before the user runs `craftgo gen`.
+	// analyser (decorator/typemismatch). The check fires at semantic
+	// time so the IDE surfaces it before the user runs `craftgo gen`
+	// - a silent codegen-time skip would leave the misuse undetected
+	// until the developer noticed the missing validator.
 	p := craftparser.New("test.craftgo", `package design
 type X { name string @maxSize(1024) }`)
 	f := p.Parse()

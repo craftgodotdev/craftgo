@@ -47,8 +47,8 @@ service TaskService {
 }
 
 // ListTasksReq is the LIST + EXTRA FILTER pattern: re-declares the
-// pagination contract inline (cross-package mixin would render the
-// trailing-segment without its package prefix in v1, so this is the
+// pagination contract inline (a cross-package mixin would render the
+// trailing-segment without its package prefix, so this is the
 // idiomatic alternative when a list endpoint needs more than just
 // cursor + limit) and adds a `projectId` query-bound filter.
 //

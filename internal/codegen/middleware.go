@@ -139,6 +139,9 @@ func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []strin
 	dir := filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext))
 	dest := filepath.Join(dir, "middlewares.go")
 	if len(names) == 0 {
+		// Best-effort delete: a missing file is the desired post-state,
+		// so a `not exist` error is fine to swallow. Any other failure
+		// (permissions, IO) shows up on the next regen attempt.
 		_ = os.Remove(dest)
 		return nil
 	}

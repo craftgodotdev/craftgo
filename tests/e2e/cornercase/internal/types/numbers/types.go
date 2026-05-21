@@ -78,8 +78,9 @@ type NumberCounter struct {
 }
 
 // NumberExact is the boundary case where @gte and @lte share the
-// same value — exactly one accepted value. Sprint 3 allows this
-// (only the strict variants on equal endpoints emit empty-range).
+// same value — exactly one accepted value. The semantic allows this
+// closed-form pair; only the strict variants on equal endpoints
+// (e.g. @gt(5) @lt(5)) emit empty-range diagnostics.
 type NumberExact struct {
 	// Only value = 5 is accepted.
 	Exactly5 int `json:"exactly5"`
@@ -127,8 +128,8 @@ type NumberOptional struct {
 }
 
 // NumberPrice exercises float32 + float64 with float literal bounds.
-// Sprint 3 specifically called out that @gte(0.5), @range(0.1, 0.9)
-// must round-trip cleanly.
+// Float-typed literals such as @gte(0.5) and @range(0.1, 0.9) must
+// round-trip cleanly through parse → semantic → codegen.
 type NumberPrice struct {
 	// float32 — narrower precision but same decorator surface.
 	RangeF32  float32 `json:"rangeF32"`

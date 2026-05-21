@@ -226,6 +226,19 @@ func TestSecurityArrayShortcut(t *testing.T) {
 service S {}`)
 }
 
+func TestSecurityDuplicateIdentAccepted(t *testing.T) {
+	// `@security(A, A)` is accepted by the semantic phase - the
+	// argument-shape checker only enforces ident-typed positional
+	// args, not uniqueness. Codegen emits `{A: []string{}}` once
+	// because the OpenAPI SecurityRequirement is a map keyed by
+	// scheme name, so the duplicate collapses naturally. Pinning
+	// the accept-and-collapse behaviour here so a future
+	// deduplication-with-warning policy is an explicit choice, not
+	// a silent regression.
+	mustClean(t, `@security(bearerAuth, bearerAuth)
+service S {}`)
+}
+
 func TestSecurityArityZero(t *testing.T) {
 	expectDiag(t, `@security
 service S {}`, CodeDecoratorArity)

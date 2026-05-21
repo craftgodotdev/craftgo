@@ -90,9 +90,10 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 // one mixin reference, the host schema flips to an `allOf` composition
 // whose first entries are `$ref`s to each mixin's component and whose
 // last entry is an inline object carrying the host's own (substituted)
-// fields. Before this change (`CB-4`), mixin members were silently
-// skipped - clients saw a Page<T> instance missing the audit timestamp
-// fields it inherited at the DSL level.
+// fields. Without this expansion, mixin members would be silently
+// dropped during instantiation - a `Page<Order>` whose body mixed in
+// `AuditFields` would land on the wire missing the audit timestamps
+// it inherited at the DSL level.
 //
 // The registry is passed through so any nested generic encountered
 // during substitution (e.g. `Page<Envelope<Order>>` recurses into

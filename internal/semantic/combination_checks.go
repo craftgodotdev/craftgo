@@ -62,7 +62,7 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 	}
 	if len(n.Name.Parts) > 1 {
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
-			"cross-package qualified reference %q in %s is not supported in v1 (folder-merge model); use the unqualified name",
+			"cross-package qualified reference %q in %s is not supported (folder-merge model); use the unqualified name",
 			n.Name.String(), scope)
 	}
 	for _, arg := range n.Args {

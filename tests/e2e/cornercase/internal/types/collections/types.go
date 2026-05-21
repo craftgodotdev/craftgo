@@ -46,10 +46,10 @@ type Arr_MinZero struct {
 	Items []string `json:"items"`
 }
 
-// Arr_OptionalBound proves the Sprint 3 C3 fix: an optional array
-// with @minItems(1) must SKIP the check when the slice is nil. Without
-// the nil-guard, `len(nil) == 0` would fail the bound even though the
-// field is legitimately absent.
+// Arr_OptionalBound pins the optional-array nil-guard: an optional
+// array with @minItems(1) must SKIP the check when the slice is nil.
+// Without the nil-guard, `len(nil) == 0` would fail the bound even
+// though the field is legitimately absent.
 type Arr_OptionalBound struct {
 	Tags []string `json:"tags,omitempty"`
 }
@@ -69,11 +69,11 @@ type Arr_PlainStrings struct {
 	Codes []string `json:"codes"`
 }
 
-// Arr_Tag2D — `Tag[][]` is the 2D scalar array. Sprint 3 C5 fix:
-// the generator MUST emit doubly-nested for-loops so each
-// `v.Grid[i0][i1]` runs Tag's three validators. Pre-fix versions
-// emitted only the outer loop and ran validators on the inner slice
-// (which would not compile).
+// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator must
+// emit doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's
+// three validators; an earlier scalar-leaves walker emitted only the
+// outer loop and ran validators on the inner slice (which did not
+// compile).
 type Arr_Tag2D struct {
 	Grid [][]Tag `json:"grid"`
 }

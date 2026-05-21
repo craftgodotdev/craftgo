@@ -1,6 +1,6 @@
 // Package main hosts the showcase application's smoke tests. They
-// drive the generated Go directly (no HTTP) to verify three v1
-// guarantees:
+// drive the generated Go directly (no HTTP) to verify three core
+// guarantees of the codegen pipeline:
 //
 //  1. Cross-package nesting compiles and the generated structs hold
 //     the right field types (Project.Owner is a users.UserRef, not a
@@ -76,7 +76,7 @@ func TestNestedCrossPackageTypes(t *testing.T) {
 }
 
 // TestUserAvatarNestedValidation exercises the optional-pointer-
-// then-recursive-validator cascade. v1's per-field Validate() does
+// then-recursive-validator cascade. The per-field Validate() does
 // NOT auto-recurse into nested struct fields by default, BUT for an
 // optional nested type with its own validators we explicitly emit
 // `if v.Avatar != nil { (*v.Avatar).Validate() }` - this test pins
@@ -151,10 +151,10 @@ func TestSharedOkRespRoundTrip(t *testing.T) {
 
 // TestNestedContactPerFieldValidators pins the per-field validator
 // surface on the Contact nested type. The Contact decl carries
-// @requiresOneOf / @mutuallyExclusive type-level decorators that v1
-// records in the DSL for OpenAPI surfacing but doesn't yet emit Go
-// code for - see the comment in users/contact.craftgo. The
-// per-FIELD validators (`@format(email)`, `@pattern(...)`) DO emit
+// @requiresOneOf / @mutuallyExclusive type-level decorators that are
+// recorded in the DSL for OpenAPI surfacing but do not yet emit Go
+// code - see the comment in users/contact.craftgo. The per-FIELD
+// validators (`@format(email)`, `@pattern(...)`) DO emit
 // and we verify them here.
 func TestNestedContactPerFieldValidators(t *testing.T) {
 	bad := usersapi.Contact{Email: ptr("not-an-email")}

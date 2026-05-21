@@ -44,11 +44,13 @@ func NewTaskAssignmentConflictErr(body TaskAssignmentConflictBody) *TaskAssignme
 // category-default message bound to the type.
 func (e *TaskAssignmentConflictErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *TaskAssignmentConflictErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *TaskAssignmentConflictErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Conflict category.
 func (e *TaskAssignmentConflictErr) HTTPStatus() int { return 409 }
@@ -80,11 +82,13 @@ func NewTaskNotFoundErr() *TaskNotFoundErr {
 // category-default message bound to the type.
 func (e *TaskNotFoundErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *TaskNotFoundErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *TaskNotFoundErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the NotFound category.
 func (e *TaskNotFoundErr) HTTPStatus() int { return 404 }

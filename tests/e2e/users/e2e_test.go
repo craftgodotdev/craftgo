@@ -118,15 +118,29 @@ func TestE2EPingNoRequestNoResponse(t *testing.T) {
 
 func TestE2EDeleteReturnsEmpty(t *testing.T) {
 	ts, svc := boot(t)
-	_, _ = httpJSON(t, ts, http.MethodPost, "/api/v1/users", types.CreateUserReq{Name: "tmp"})
-	status, body := httpJSON(t, ts, http.MethodDelete, "/api/v1/users/anything", nil)
+	// Two users so we can verify the delete is scoped to the
+	// path-param ID, not a clear-all.
+	_, body1 := httpJSON(t, ts, http.MethodPost, "/api/v1/users", types.CreateUserReq{Name: "tmp"})
+	var created1 types.User
+	if err := json.Unmarshal(body1, &created1); err != nil {
+		t.Fatal(err)
+	}
+	_, body2 := httpJSON(t, ts, http.MethodPost, "/api/v1/users", types.CreateUserReq{Name: "keep"})
+	var created2 types.User
+	if err := json.Unmarshal(body2, &created2); err != nil {
+		t.Fatal(err)
+	}
+	status, body := httpJSON(t, ts, http.MethodDelete, "/api/v1/users/"+created1.ID, nil)
 	if status != http.StatusOK {
 		t.Fatalf("DeleteUser status %d: %s", status, body)
 	}
 	svc.Lock()
 	defer svc.Unlock()
-	if len(svc.Users) != 0 {
-		t.Errorf("expected store cleared, still has %d rows", len(svc.Users))
+	if _, ok := svc.Users[created1.ID]; ok {
+		t.Errorf("expected %s removed, still present", created1.ID)
+	}
+	if _, ok := svc.Users[created2.ID]; !ok {
+		t.Errorf("expected %s preserved, was removed", created2.ID)
 	}
 }
 

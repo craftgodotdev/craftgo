@@ -39,11 +39,13 @@ func NewAccountActionDeniedErr(body AccountActionDeniedBody) *AccountActionDenie
 // category-default message bound to the type.
 func (e *AccountActionDeniedErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *AccountActionDeniedErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *AccountActionDeniedErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Forbidden category.
 func (e *AccountActionDeniedErr) HTTPStatus() int { return 403 }
@@ -85,11 +87,13 @@ func NewAccountSuspendedErr(body AccountSuspendedBody) *AccountSuspendedErr {
 // category-default message bound to the type.
 func (e *AccountSuspendedErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *AccountSuspendedErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *AccountSuspendedErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Forbidden category.
 func (e *AccountSuspendedErr) HTTPStatus() int { return 403 }
@@ -131,11 +135,13 @@ func NewDependencyUnavailableErr(body DependencyUnavailableBody) *DependencyUnav
 // category-default message bound to the type.
 func (e *DependencyUnavailableErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *DependencyUnavailableErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *DependencyUnavailableErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the ServiceUnavailable category.
 func (e *DependencyUnavailableErr) HTTPStatus() int { return 503 }
@@ -177,11 +183,13 @@ func NewEmailTakenErr(body EmailTakenBody) *EmailTakenErr {
 // category-default message bound to the type.
 func (e *EmailTakenErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *EmailTakenErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *EmailTakenErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Conflict category.
 func (e *EmailTakenErr) HTTPStatus() int { return 409 }
@@ -223,11 +231,13 @@ func NewInsufficientScopeErr(body InsufficientScopeBody) *InsufficientScopeErr {
 // category-default message bound to the type.
 func (e *InsufficientScopeErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *InsufficientScopeErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *InsufficientScopeErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Forbidden category.
 func (e *InsufficientScopeErr) HTTPStatus() int { return 403 }
@@ -259,11 +269,13 @@ func NewInternalError() *InternalError {
 // category-default message bound to the type.
 func (e *InternalError) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *InternalError) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *InternalError) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Internal category.
 func (e *InternalError) HTTPStatus() int { return 500 }
@@ -295,11 +307,13 @@ func NewInvalidTokenErr() *InvalidTokenErr {
 // category-default message bound to the type.
 func (e *InvalidTokenErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *InvalidTokenErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *InvalidTokenErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Unauthorized category.
 func (e *InvalidTokenErr) HTTPStatus() int { return 401 }
@@ -342,11 +356,13 @@ func NewMalformedRequestErr(body MalformedRequestBody) *MalformedRequestErr {
 // category-default message bound to the type.
 func (e *MalformedRequestErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *MalformedRequestErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *MalformedRequestErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the BadRequest category.
 func (e *MalformedRequestErr) HTTPStatus() int { return 400 }
@@ -388,11 +404,13 @@ func NewOwnershipConflictErr(body OwnershipConflictBody) *OwnershipConflictErr {
 // category-default message bound to the type.
 func (e *OwnershipConflictErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *OwnershipConflictErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *OwnershipConflictErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Conflict category.
 func (e *OwnershipConflictErr) HTTPStatus() int { return 409 }
@@ -435,11 +453,13 @@ func NewRateLimitedErr(body RateLimitedBody) *RateLimitedErr {
 // category-default message bound to the type.
 func (e *RateLimitedErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *RateLimitedErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *RateLimitedErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the TooManyRequests category.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
@@ -481,11 +501,13 @@ func NewStaleVersionErr(body StaleVersionBody) *StaleVersionErr {
 // category-default message bound to the type.
 func (e *StaleVersionErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *StaleVersionErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *StaleVersionErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the PreconditionFailed category.
 func (e *StaleVersionErr) HTTPStatus() int { return 412 }
@@ -527,11 +549,13 @@ func NewUpstreamTimeoutErr(body UpstreamTimeoutBody) *UpstreamTimeoutErr {
 // category-default message bound to the type.
 func (e *UpstreamTimeoutErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *UpstreamTimeoutErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *UpstreamTimeoutErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the GatewayTimeout category.
 func (e *UpstreamTimeoutErr) HTTPStatus() int { return 504 }
@@ -563,11 +587,13 @@ func NewUserGoneErr() *UserGoneErr {
 // category-default message bound to the type.
 func (e *UserGoneErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *UserGoneErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *UserGoneErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Gone category.
 func (e *UserGoneErr) HTTPStatus() int { return 410 }
@@ -599,11 +625,13 @@ func NewUserNotFoundErr() *UserNotFoundErr {
 // category-default message bound to the type.
 func (e *UserNotFoundErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *UserNotFoundErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *UserNotFoundErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the NotFound category.
 func (e *UserNotFoundErr) HTTPStatus() int { return 404 }
@@ -644,11 +672,13 @@ func NewUsernameTakenErr(body UsernameTakenBody) *UsernameTakenErr {
 // category-default message bound to the type.
 func (e *UsernameTakenErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *UsernameTakenErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *UsernameTakenErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Conflict category.
 func (e *UsernameTakenErr) HTTPStatus() int { return 409 }
@@ -690,11 +720,13 @@ func NewValidationFailedErr(body ValidationFailedBody) *ValidationFailedErr {
 // category-default message bound to the type.
 func (e *ValidationFailedErr) Error() string { return e.message }
 
-// Code returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ Code() string }`
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`.
-func (e *ValidationFailedErr) Code() string { return e.code }
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *ValidationFailedErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the UnprocessableEntity category.
 func (e *ValidationFailedErr) HTTPStatus() int { return 422 }
