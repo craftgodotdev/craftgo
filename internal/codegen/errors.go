@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"bytes"
 	"fmt"
 	"go/format"
 	"os"
@@ -158,102 +159,111 @@ func buildErrorsGo(pkg *semantic.Package, crossPkg CrossPkg) string {
 	return strings.Join(parts, "\n")
 }
 
-// renderError returns the full Go scaffolding for one error declaration:
-//
-//	const ErrCode<Name> = "<SCREAMING_SNAKE>"
-//
-//	// Body struct (only emitted when the DSL declares ≥1 field).
-//	type <Name>Body struct { ...userFields }
-//
-//	type <Name>Err struct {
-//	    code    string         // unexported framework metadata
-//	    message string         // unexported framework metadata
-//	    <Name>Body              // embedded - flattens into wire JSON
-//	}
-//
-//	func New<Name>Err([body <Name>Body]) *<Name>Err { ... }
-//	func (e *<Name>Err) Error() string    { return e.message }
-//	func (e *<Name>Err) HTTPStatus() int  { return <statusCode> }
-//
-// The constructor takes a single body-struct argument when the DSL
-// declares fields, and zero arguments otherwise. The body struct is
-// the user's "shape" - they fill the fields they care about and
-// hand it off; the framework wraps it with metadata. `code` and
-// `message` live on the err type as unexported fields populated by
-// the constructor; `encoding/json` skips them so only the embedded
-// body shows up on the wire.
-func renderError(ed *ast.ErrorDecl) string {
-	typeName := errSuffix(ed.Name)
-	bodyName := ed.Name + "Body"
-	constName := "ErrCode" + ed.Name
-	code := screamingSnake(ed.Name)
-	msg := categoryMessage[ed.Category]
-	status := categoryStatus[ed.Category]
-	customFields := errorCustomFields(ed)
-	headers, cookies := errorResponseBindings(ed)
-
-	hasBody := len(customFields) > 0
-	bodyStructDecl := ""
-	bodyEmbedLine := ""
-	ctorParam := ""
-	ctorAssign := ""
-	if hasBody {
-		bodyStructDecl = fmt.Sprintf(`
-// %[1]s is the wire-shape payload declared at design time for %[2]s.
-// User code instantiates this struct and hands it to New%[2]s; the
-// framework wraps it with the type-bound code / message metadata.
-type %[1]s struct {
-%[3]s}
-`, bodyName, typeName, renderErrorCustomStructFields(customFields))
-		bodyEmbedLine = "\t" + bodyName + "\n"
-		ctorParam = "body " + bodyName
-		ctorAssign = "\t\t" + bodyName + ": body,\n"
-	}
-
-	errBlock := fmt.Sprintf(`// %[1]s is the canonical machine-readable code for %[2]s.
-const %[1]s = %[3]s
-%[11]s
-// %[2]s is the typed %[4]s error generated for `+"`%[5]s`"+`.
-// The unexported `+"`code`"+` and `+"`message`"+` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `+"`{}`"+` when no body was declared).
-type %[2]s struct {
-	code    string
-	message string
-%[6]s}
-
-// New%[2]s constructs %[2]s with the framework metadata baked in.
-// `+"`code`"+` and `+"`message`"+` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
-func New%[2]s(%[7]s) *%[2]s {
-	return &%[2]s{
-		code:    %[1]s,
-		message: %[9]s,
-%[8]s	}
+// errorBodyField is the per-field record passed into errors.tmpl. Each
+// entry renders one line inside the generated `<Name>Body` struct.
+type errorBodyField struct {
+	GoName  string
+	Type    string
+	JSONTag string
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *%[2]s) Error() string { return e.message }
+// errorBinding pairs a header / cookie's DSL name (already
+// strconv.Quoted so the template can drop it verbatim) with the Go
+// field name on the error body struct. Same shape on both sides keeps
+// the template uniform regardless of which binding kind triggered the
+// emission.
+type errorBinding struct {
+	DSLNameQuoted string
+	GoName        string
+}
 
-// HTTPStatus returns the HTTP status code associated with the %[4]s category.
-func (e *%[2]s) HTTPStatus() int { return %[10]d }
-`,
-		constName,           // [1] ErrCode<Name>
-		typeName,            // [2] <Name>Err
-		strconv.Quote(code), // [3] quoted code value
-		ed.Category,         // [4] human-readable category
-		ed.Name,             // [5] DSL name (for the struct doc)
-		bodyEmbedLine,       // [6] embedded body line (or "")
-		ctorParam,           // [7] constructor parameter (or "")
-		ctorAssign,          // [8] ctor assignment for body (or "")
-		strconv.Quote(msg),  // [9] quoted default message
-		status,              // [10] HTTP status
-		bodyStructDecl,      // [11] body struct declaration block (or "")
-	)
-	errBlock += renderErrorResponseHeadersMethod(typeName, headers, cookies)
-	return errBlock
+// errorTemplateData is the full payload handed to errors.tmpl per error.
+// Field naming mirrors the template placeholders so the mapping stays
+// obvious at the call site.
+type errorTemplateData struct {
+	TypeName           string
+	BodyName           string
+	ConstName          string
+	QuotedCode         string
+	QuotedMessage      string
+	Category           string
+	DSLName            string
+	Status             int
+	HasBody            bool
+	BodyFields         []errorBodyField
+	HasResponseHeaders bool
+	Headers            []errorBinding
+	Cookies            []errorBinding
+}
+
+// renderError executes errors.tmpl for one [ast.ErrorDecl]. The
+// template emits, in order: the SCREAMING_SNAKE error-code const, the
+// (optional) body struct, the typed error struct with its unexported
+// code / message metadata, the constructor, Error() / Code() /
+// HTTPStatus() methods, and the optional WriteResponseHeaders method
+// when the error declares any `@header` / `@cookie` fields. The
+// constructor takes a body-struct argument iff the DSL declares ≥1
+// custom field.
+func renderError(ed *ast.ErrorDecl) string {
+	headers, cookies := errorResponseBindings(ed)
+	data := errorTemplateData{
+		TypeName:           errSuffix(ed.Name),
+		BodyName:           ed.Name + "Body",
+		ConstName:          "ErrCode" + ed.Name,
+		QuotedCode:         strconv.Quote(screamingSnake(ed.Name)),
+		QuotedMessage:      strconv.Quote(categoryMessage[ed.Category]),
+		Category:           ed.Category,
+		DSLName:            ed.Name,
+		Status:             categoryStatus[ed.Category],
+		BodyFields:         buildErrorBodyFields(errorCustomFields(ed)),
+		HasResponseHeaders: len(headers)+len(cookies) > 0,
+		Headers:            toErrorBindings(headers),
+		Cookies:            toErrorBindings(cookies),
+	}
+	data.HasBody = len(data.BodyFields) > 0
+	var buf bytes.Buffer
+	if err := errorsTemplate.Execute(&buf, data); err != nil {
+		panic(fmt.Sprintf("codegen: render error %s: %v", ed.Name, err))
+	}
+	return buf.String()
+}
+
+// errorsTemplate is parsed once and reused for every error decl. The
+// tmpl helper panics on parse failure so a malformed template fails the
+// process at the first generation attempt.
+var errorsTemplate = tmpl("errors.tmpl")
+
+// buildErrorBodyFields turns each declared body field into the
+// template-friendly shape: PascalCase Go name, rendered Go type, and
+// the JSON tag string (response-bound fields are tagged `"-"` so the
+// value rides on a response header instead of the body).
+func buildErrorBodyFields(fields []*ast.Field) []errorBodyField {
+	out := make([]errorBodyField, len(fields))
+	for i, f := range fields {
+		tag := strconv.Quote(f.Name)
+		if isResponseBoundField(f) {
+			tag = `"-"`
+		}
+		out[i] = errorBodyField{
+			GoName:  GoFieldName(f.Name),
+			Type:    GoTypeRef(f.Type),
+			JSONTag: tag,
+		}
+	}
+	return out
+}
+
+// toErrorBindings adapts the shared paramBinding shape into the
+// template's view (DSL name already quoted, Go field name preserved).
+func toErrorBindings(in []paramBinding) []errorBinding {
+	out := make([]errorBinding, len(in))
+	for i, b := range in {
+		out[i] = errorBinding{
+			DSLNameQuoted: strconv.Quote(b.DSLName),
+			GoName:        b.GoName,
+		}
+	}
+	return out
 }
 
 // errorCustomFields returns every Field in the error body. `code` and
@@ -271,30 +281,6 @@ func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
 		out = append(out, f)
 	}
 	return out
-}
-
-// renderErrorCustomStructFields returns the indented struct-body lines
-// for every custom field - one `Name Type \`json:"name"\`` per line.
-// Empty when no custom fields exist; the surrounding template still
-// produces a valid struct because `Code` / `Message` are always present.
-//
-// Fields tagged with `@header` / `@cookie` get `json:"-"` because their
-// value is written onto the response writer (see
-// [renderErrorResponseHeadersMethod]) and would otherwise also leak
-// into the JSON body.
-func renderErrorCustomStructFields(fields []*ast.Field) string {
-	if len(fields) == 0 {
-		return ""
-	}
-	lines := make([]string, len(fields))
-	for i, f := range fields {
-		tag := strconv.Quote(f.Name)
-		if isResponseBoundField(f) {
-			tag = `"-"`
-		}
-		lines[i] = fmt.Sprintf("\t%s %s `json:%s`\n", GoFieldName(f.Name), GoTypeRef(f.Type), tag)
-	}
-	return strings.Join(lines, "")
 }
 
 // errorResponseBindings walks the error body and returns the
@@ -334,33 +320,6 @@ func isResponseBoundField(f *ast.Field) bool {
 		return true
 	}
 	return false
-}
-
-// renderErrorResponseHeadersMethod emits a `WriteResponseHeaders`
-// method on the error type when at least one custom field carries
-// `@header` / `@cookie`. The generated method matches the helper
-// interface that the `writeError` helper looks for via type assertion,
-// and runs before `w.WriteHeader(status)` so the values land on the
-// wire. Returns the empty string when the error has no response
-// bindings.
-func renderErrorResponseHeadersMethod(typeName string, headers, cookies []paramBinding) string {
-	if len(headers) == 0 && len(cookies) == 0 {
-		return ""
-	}
-	lines := make([]string, 0, len(headers)+len(cookies))
-	for _, h := range headers {
-		lines = append(lines, fmt.Sprintf("\tw.Header().Set(%q, e.%s)\n", h.DSLName, h.GoName))
-	}
-	for _, c := range cookies {
-		lines = append(lines, fmt.Sprintf("\thttp.SetCookie(w, &http.Cookie{Name: %q, Value: e.%s})\n", c.DSLName, c.GoName))
-	}
-	return fmt.Sprintf(`
-// WriteResponseHeaders writes the `+"`@header`"+` / `+"`@cookie`"+` fields
-// onto w. Called by the generated `+"`writeError`"+` helper before the
-// JSON body is encoded so values reach the wire in a single response.
-func (e *%[1]s) WriteResponseHeaders(w http.ResponseWriter) {
-%[2]s}
-`, typeName, strings.Join(lines, ""))
 }
 
 // errSuffix appends `Err` to name unless name already ends in `Err` or

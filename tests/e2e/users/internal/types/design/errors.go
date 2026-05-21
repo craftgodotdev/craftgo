@@ -29,6 +29,12 @@ func NewUserNotFoundErr() *UserNotFoundErr {
 // category-default message bound to the type.
 func (e *UserNotFoundErr) Error() string { return e.message }
 
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *UserNotFoundErr) Code() string { return e.code }
+
 // HTTPStatus returns the HTTP status code associated with the NotFound category.
 func (e *UserNotFoundErr) HTTPStatus() int { return 404 }
 
@@ -67,6 +73,12 @@ func NewValidationFailedErr(body ValidationFailedBody) *ValidationFailedErr {
 // Error implements the standard error interface and returns the
 // category-default message bound to the type.
 func (e *ValidationFailedErr) Error() string { return e.message }
+
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *ValidationFailedErr) Code() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the BadRequest category.
 func (e *ValidationFailedErr) HTTPStatus() int { return 400 }

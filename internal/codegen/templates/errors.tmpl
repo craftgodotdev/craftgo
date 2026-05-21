@@ -1,0 +1,69 @@
+{{- /*
+errors.tmpl renders one error declaration: const + optional body struct
++ err struct + constructor + Error() / Code() / HTTPStatus() methods +
+optional WriteResponseHeaders. Data drives every shape variation - no
+hidden defaults in the template.
+*/ -}}
+// {{.ConstName}} is the canonical machine-readable code for {{.TypeName}}.
+const {{.ConstName}} = {{.QuotedCode}}
+
+{{if .HasBody -}}
+// {{.BodyName}} is the wire-shape payload declared at design time for {{.TypeName}}.
+// User code instantiates this struct and hands it to New{{.TypeName}}; the
+// framework wraps it with the type-bound code / message metadata.
+type {{.BodyName}} struct {
+{{range .BodyFields}}	{{.GoName}} {{.Type}} `json:{{.JSONTag}}`
+{{end}}}
+{{end -}}
+
+// {{.TypeName}} is the typed {{.Category}} error generated for `{{.DSLName}}`.
+// The unexported `code` and `message` fields hold the type-bound
+// metadata populated by the constructor. Because they are unexported,
+// json.Marshal omits them from the wire payload - clients see only
+// the embedded body shape (or `{}` when no body was declared).
+type {{.TypeName}} struct {
+	code    string
+	message string
+{{- if .HasBody}}
+	{{.BodyName}}
+{{- end}}
+}
+
+// New{{.TypeName}} constructs {{.TypeName}} with the framework metadata baked in.
+// `code` and `message` are bound to the type and not exposed as
+// constructor parameters; only the body struct varies per instance.
+func New{{.TypeName}}({{if .HasBody}}body {{.BodyName}}{{end}}) *{{.TypeName}} {
+	return &{{.TypeName}}{
+		code:    {{.ConstName}},
+		message: {{.QuotedMessage}},
+{{- if .HasBody}}
+		{{.BodyName}}: body,
+{{- end}}
+	}
+}
+
+// Error implements the standard error interface and returns the
+// category-default message bound to the type.
+func (e *{{.TypeName}}) Error() string { return e.message }
+
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *{{.TypeName}}) Code() string { return e.code }
+
+// HTTPStatus returns the HTTP status code associated with the {{.Category}} category.
+func (e *{{.TypeName}}) HTTPStatus() int { return {{.Status}} }
+{{if .HasResponseHeaders}}
+// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
+// Called by the generated `writeError` helper before the JSON body is
+// encoded so values reach the wire in a single response.
+func (e *{{.TypeName}}) WriteResponseHeaders(w http.ResponseWriter) {
+{{- range .Headers}}
+	w.Header().Set({{.DSLNameQuoted}}, e.{{.GoName}})
+{{- end}}
+{{- range .Cookies}}
+	http.SetCookie(w, &http.Cookie{Name: {{.DSLNameQuoted}}, Value: e.{{.GoName}}})
+{{- end}}
+}
+{{end -}}

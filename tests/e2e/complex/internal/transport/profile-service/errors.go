@@ -3,21 +3,25 @@
 package profileservice
 
 import (
-	"encoding/json"
+	"bytes"
 	"net/http"
+	"strings"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// writeError serialises err as JSON. If err implements
-// HTTPStatus() int the returned status is used; otherwise
-// the response status is 500. If err implements
+// writeError serialises err as JSON via the active [server.JSON] codec
+// so projects that swap in sonic / jsoniter get the same encoder here.
+// If err implements HTTPStatus() int the returned status is used;
+// otherwise the response status is 500. If err implements
 // WriteResponseHeaders(http.ResponseWriter) - generated for typed errors
 // with @header / @cookie fields - it is called before WriteHeader so
 // those values land on the wire ahead of the body.
 //
 // Body shape:
-//   - typed errors WITH user-declared fields → `json.Marshal(err)`
-//     emits exactly those fields (the framework's `code` / `message`
-//     metadata is internal-only and stays off the wire);
+//   - typed errors WITH user-declared fields → codec encodes the struct
+//     directly, emitting exactly those fields (the framework's `code` /
+//     `message` metadata is internal-only and stays off the wire);
 //   - typed errors WITHOUT user fields → fall through the empty-`{}`
 //     guard and surface the `{code, message}` envelope built from the
 //     `Code()` / `Error()` interface methods, so clients still
@@ -32,16 +36,17 @@ func writeError(w http.ResponseWriter, err error) {
 	if hw, ok := err.(interface{ WriteResponseHeaders(http.ResponseWriter) }); ok {
 		hw.WriteResponseHeaders(w)
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	body, mErr := json.Marshal(err)
-	if mErr != nil || string(body) == "{}" {
+	codec := server.JSON()
+	var buf bytes.Buffer
+	if mErr := codec.Encode(&buf, err); mErr != nil || strings.TrimSpace(buf.String()) == "{}" {
 		env := map[string]string{"message": err.Error()}
 		if c, ok := err.(interface{ Code() string }); ok {
 			env["code"] = c.Code()
 		}
-		_ = json.NewEncoder(w).Encode(env)
+		_ = codec.Encode(w, env)
 		return
 	}
-	w.Write(body)
+	w.Write(buf.Bytes())
 }

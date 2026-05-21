@@ -97,13 +97,13 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 
 	// GET handler should have request decode skipped (no body verb).
 	getSrc, _ := os.ReadFile(filepath.Join(dir, "get-user.go"))
-	if strings.Contains(string(getSrc), "json.NewDecoder(r.Body)") {
+	if strings.Contains(string(getSrc), "server.JSON().Decode(r.Body") {
 		t.Errorf("GET handler must not decode body:\n%s", getSrc)
 	}
-	// POST handler must decode body.
+	// POST handler must decode body via the swappable codec.
 	postSrc, _ := os.ReadFile(filepath.Join(dir, "update-user.go"))
-	if !strings.Contains(string(postSrc), "json.NewDecoder(r.Body)") {
-		t.Errorf("POST handler must decode body:\n%s", postSrc)
+	if !strings.Contains(string(postSrc), "server.JSON().Decode(r.Body") {
+		t.Errorf("POST handler must decode body via server.JSON:\n%s", postSrc)
 	}
 	// Ping (no request, no response decl) → empty body call + 204.
 	pingSrc, _ := os.ReadFile(filepath.Join(dir, "ping.go"))
@@ -168,9 +168,9 @@ service S {
 	}
 	// Pre-fill must precede JSON decode so absent body fields keep
 	// their default.
-	if dec := strings.Index(body, "json.NewDecoder"); dec >= 0 {
+	if dec := strings.Index(body, "server.JSON().Decode"); dec >= 0 {
 		if pre := body[:dec]; !strings.Contains(pre, `__d := "anon"`) {
-			t.Error("expected default assignments before json.NewDecoder")
+			t.Error("expected default assignments before body decode")
 		}
 	}
 }
@@ -415,7 +415,7 @@ service FilesService {
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
 		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID})`,
-		`w.Header().Set("Content-Type", "application/json")`,
+		`w.Header().Set("Content-Type", "application/json; charset=utf-8")`,
 	}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {
@@ -424,10 +424,10 @@ service FilesService {
 	}
 	// Ensure header/cookie writes precede the body encoder so they hit the
 	// wire before WriteHeader implicitly fires.
-	if idx := strings.Index(body, "json.NewEncoder"); idx >= 0 {
+	if idx := strings.Index(body, "server.JSON().Encode"); idx >= 0 {
 		pre := body[:idx]
 		if !strings.Contains(pre, "w.Header().Set(\"etag\"") {
-			t.Error("expected response header write to precede json.NewEncoder")
+			t.Error("expected response header write to precede body encode")
 		}
 	}
 
@@ -979,7 +979,7 @@ func TestGenerateHandlerPassthrough(t *testing.T) {
 			t.Errorf("passthrough handler missing %q:\n%s", want, hSrc)
 		}
 	}
-	for _, banned := range []string{"json.NewDecoder", "json.NewEncoder", "req.Validate", "types."} {
+	for _, banned := range []string{"server.JSON().Decode", "server.JSON().Encode", "req.Validate", "types."} {
 		if strings.Contains(hSrc, banned) {
 			t.Errorf("passthrough handler should not contain %q:\n%s", banned, hSrc)
 		}
@@ -1027,7 +1027,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 			t.Errorf("multipart handler missing %q:\n%s", want, handler)
 		}
 	}
-	if strings.Contains(string(handler), "json.NewDecoder(r.Body)") {
+	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
 	}
 }

@@ -17,6 +17,14 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	if !ok {
 		return ""
 	}
+	// `@minItems(0)` would emit `if len(...) < 0` - a tautology that
+	// the compiler still has to evaluate at runtime. Drop the check
+	// entirely; Go's `len()` is never negative and an absent slice
+	// is already the zero-element case the user is asking us to
+	// allow.
+	if op == ">=" && n == 0 {
+		return ""
+	}
 	flip := "<"
 	if op == "<=" {
 		flip = ">"

@@ -199,9 +199,16 @@ func (s *Server) SetCORS(opts CORSOptions) *Server {
 	return s
 }
 
-// SetJSONCodec swaps the JSON codec used by handlers and the access-log
-// access path.
-func (s *Server) SetJSONCodec(c JSONCodec) *Server { s.codec = c; return s }
+// SetJSONCodec swaps the JSON codec used by generated handlers, the
+// access-log middleware, and the health endpoints. The change is
+// process-wide via [SetGlobalJSONCodec]; the per-Server field is kept
+// for callers that want to introspect via [Server.Codec] but the
+// authoritative value lives on the package-level atomic.
+func (s *Server) SetJSONCodec(c JSONCodec) *Server {
+	s.codec = c
+	SetGlobalJSONCodec(c)
+	return s
+}
 
 // SetLogger replaces the active Logger and mirrors it to the
 // package-level [log.Default] so codegen-emitted logic files reach

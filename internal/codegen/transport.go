@@ -1,10 +1,12 @@
 package codegen
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -37,7 +39,14 @@ type transportData struct {
 	NeedsTypes      bool
 	IsPassthrough   bool
 	IsMultipart     bool
-	PathParams      []paramBinding
+	// MultipartMaxMemory is the byte budget passed to
+	// r.ParseMultipartForm in multipart handlers. Defaults to 32 MiB
+	// (the stdlib historical pick) unless the method's `@maxBodySize`
+	// decorator declares a higher cap, in which case it lifts to that
+	// value so uploads up to the declared limit stay in memory
+	// without spilling to disk. Only meaningful when IsMultipart.
+	MultipartMaxMemory int64
+	PathParams         []paramBinding
 	QueryParams     []paramBinding
 	HeaderParams    []paramBinding
 	CookieParams    []paramBinding
@@ -285,6 +294,16 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.IsMultipart = true
 			d.FormStrings = forms
 			d.FormFiles = files
+			// Match the stdlib historical 32 MiB floor unless the
+			// method's `@maxBodySize` declares a higher cap. The
+			// MaxBytesReader at the route layer still enforces the
+			// declared cap; this knob only governs how much the
+			// multipart parser keeps in memory before spilling.
+			const stdlibDefault int64 = 32 << 20
+			d.MultipartMaxMemory = stdlibDefault
+			if n := sizeDecoratorArg(m.Decorators, "maxBodySize"); n > stdlibDefault {
+				d.MultipartMaxMemory = n
+			}
 		}
 	}
 	if hasResp {
@@ -493,30 +512,22 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName
 		}
 		return cast + "(" + s + ")"
 	}
-	dslName := wireName
-	goName := GoFieldName(f.Name)
+	data := queryBindData{
+		DSLNameQuoted: strconv.Quote(wireName),
+		GoName:        GoFieldName(f.Name),
+		Label:         prim.label,
+	}
 	if f.Type.Array {
 		if prim.parser == "" {
-			// []string - direct slice assignment from query map when
-			// no alias cast is needed; otherwise loop + per-element
-			// cast since Go disallows direct slice conversion to a
-			// named string type.
 			if cast == "" {
-				return fmt.Sprintf("req.%s = r.URL.Query()[%q]", goName, dslName), false, nil
+				return renderQueryBindShape("directSlice", data), false, nil
 			}
-			return fmt.Sprintf(`for _, _v := range r.URL.Query()[%q] {
-	req.%s = append(req.%s, %s)
-}`, dslName, goName, goName, wrap("_v")), false, nil
+			data.Wrap = wrap("_v")
+			return renderQueryBindShape("arrayString", data), false, nil
 		}
-		// []numeric / []bool - loop, parse each, append to slice.
-		return fmt.Sprintf(`for _, _v := range r.URL.Query()[%q] {
-	_n, _err := %s
-	if _err != nil {
-		http.Error(w, %q+": invalid %s value: "+_err.Error(), http.StatusBadRequest)
-		return
-	}
-	req.%s = append(req.%s, %s)
-}`, dslName, parseCall(prim), dslName, prim.label, goName, goName, wrap(castExpr(prim, "_n"))), true, nil
+		data.ParseCall = parseCall(prim)
+		data.Wrap = wrap(castExpr(prim, "_n"))
+		return renderQueryBindShape("arrayParsed", data), true, nil
 	}
 	// Single (non-array). Optional non-string primitives are not
 	// supported: `*int` from query would need a tri-state
@@ -525,8 +536,6 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName
 		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
 	}
 	if prim.parser == "" {
-		// string single
-		access := "req." + goName
 		if f.Type.Optional {
 			// Plain `*string`: take the address of the raw query
 			// value directly. Scalar/enum optional (`*Color`,
@@ -537,27 +546,50 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName
 			// which is incompatible with the field's `*<Alias>`
 			// type and refuses to compile.
 			if cast == "" {
-				return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
-	%s = &_v
-}`, dslName, access), false, nil
+				return renderQueryBindShape("optionalStringNoCast", data), false, nil
 			}
-			return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
-	_w := %s
-	%s = &_w
-}`, dslName, wrap("_v"), access), false, nil
+			data.Wrap = wrap("_v")
+			return renderQueryBindShape("optionalStringCast", data), false, nil
 		}
-		return fmt.Sprintf("%s = %s", access, wrap(fmt.Sprintf("r.URL.Query().Get(%q)", dslName))), false, nil
+		data.Wrap = wrap(fmt.Sprintf("r.URL.Query().Get(%s)", data.DSLNameQuoted))
+		return renderQueryBindShape("directSingle", data), false, nil
 	}
 	// numeric / bool single, gated by non-empty query value.
-	return fmt.Sprintf(`if _v := r.URL.Query().Get(%q); _v != "" {
-	_n, _err := %s
-	if _err != nil {
-		http.Error(w, %q+": invalid %s value: "+_err.Error(), http.StatusBadRequest)
-		return
-	}
-	req.%s = %s
-}`, dslName, parseCall(prim), dslName, prim.label, goName, wrap(castExpr(prim, "_n"))), true, nil
+	data.ParseCall = parseCall(prim)
+	data.Wrap = wrap(castExpr(prim, "_n"))
+	return renderQueryBindShape("singleParsed", data), true, nil
 }
+
+// queryBindData is the payload threaded through every named block in
+// transport_query_bind.tmpl. Fields that a particular shape does not
+// reference stay empty - the template only slots what it asks for so
+// unused entries are harmless.
+type queryBindData struct {
+	DSLNameQuoted string // strconv.Quote(wireName) - drops in as a Go string literal
+	GoName        string // PascalCase request struct field
+	Wrap          string // pre-computed cast / pointer-of expression
+	ParseCall     string // pre-computed strconv parse call (with bit width baked in)
+	Label         string // primitive label for the 400 error message
+}
+
+// renderQueryBindShape executes one named block from
+// transport_query_bind.tmpl. The shape name is a compile-time constant
+// at every call site so a typo would fail the next test run with a
+// clear "template not found" panic.
+func renderQueryBindShape(name string, data queryBindData) string {
+	var buf bytes.Buffer
+	if err := transportQueryBindTemplate.ExecuteTemplate(&buf, name, data); err != nil {
+		panic(fmt.Sprintf("codegen: render query bind shape %q: %v", name, err))
+	}
+	return buf.String()
+}
+
+// transportQueryBindTemplate is parsed once at first use; subsequent
+// renders are pure ExecuteTemplate dispatches by name. The template
+// holds the catalogue of shapes (see file header comment) so adding a
+// new query primitive is a template-only change once the Go dispatcher
+// knows which name to pick.
+var transportQueryBindTemplate = tmpl("transport_query_bind.tmpl")
 
 // describeFieldType renders a short human-readable form of f's type
 // for error messages - `[]Point`, `Page<Book>`, `map<string,int>`,

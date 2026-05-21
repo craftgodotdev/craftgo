@@ -39,6 +39,12 @@ func NewDuplicateEmailErr(body DuplicateEmailBody) *DuplicateEmailErr {
 // category-default message bound to the type.
 func (e *DuplicateEmailErr) Error() string { return e.message }
 
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *DuplicateEmailErr) Code() string { return e.code }
+
 // HTTPStatus returns the HTTP status code associated with the Conflict category.
 func (e *DuplicateEmailErr) HTTPStatus() int { return 409 }
 
@@ -79,6 +85,12 @@ func NewInsufficientPermissionsErr(body InsufficientPermissionsBody) *Insufficie
 // category-default message bound to the type.
 func (e *InsufficientPermissionsErr) Error() string { return e.message }
 
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *InsufficientPermissionsErr) Code() string { return e.code }
+
 // HTTPStatus returns the HTTP status code associated with the Forbidden category.
 func (e *InsufficientPermissionsErr) HTTPStatus() int { return 403 }
 
@@ -108,6 +120,12 @@ func NewProfileNotFoundErr() *ProfileNotFoundErr {
 // Error implements the standard error interface and returns the
 // category-default message bound to the type.
 func (e *ProfileNotFoundErr) Error() string { return e.message }
+
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *ProfileNotFoundErr) Code() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the NotFound category.
 func (e *ProfileNotFoundErr) HTTPStatus() int { return 404 }
@@ -148,6 +166,12 @@ func NewProfileValidationFailedErr(body ProfileValidationFailedBody) *ProfileVal
 // Error implements the standard error interface and returns the
 // category-default message bound to the type.
 func (e *ProfileValidationFailedErr) Error() string { return e.message }
+
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *ProfileValidationFailedErr) Code() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the UnprocessableEntity category.
 func (e *ProfileValidationFailedErr) HTTPStatus() int { return 422 }
@@ -190,6 +214,12 @@ func NewRateLimitedErr(body RateLimitedBody) *RateLimitedErr {
 // category-default message bound to the type.
 func (e *RateLimitedErr) Error() string { return e.message }
 
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *RateLimitedErr) Code() string { return e.code }
+
 // HTTPStatus returns the HTTP status code associated with the TooManyRequests category.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
@@ -230,6 +260,12 @@ func NewStaleVersionErr(body StaleVersionBody) *StaleVersionErr {
 // Error implements the standard error interface and returns the
 // category-default message bound to the type.
 func (e *StaleVersionErr) Error() string { return e.message }
+
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *StaleVersionErr) Code() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the PreconditionFailed category.
 func (e *StaleVersionErr) HTTPStatus() int { return 412 }

@@ -3,7 +3,6 @@
 package orderservice
 
 import (
-	"encoding/json"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
@@ -44,7 +43,7 @@ func DefaultsShowcase(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		req.Tags = []string{}
 		req.Preset = []string{"standard", "expedited"}
 		req.AllowedMethods = []types.PaymentMethod{types.PaymentMethodCard, types.PaymentMethodBank}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -58,7 +57,7 @@ func DefaultsShowcase(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

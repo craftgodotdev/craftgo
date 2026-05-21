@@ -2666,7 +2666,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccountActionDeniedErr'
+                oneOf:
+                - $ref: '#/components/schemas/InsufficientScopeErr'
+                - $ref: '#/components/schemas/AccountSuspendedErr'
+                - $ref: '#/components/schemas/AccountActionDeniedErr'
           description: Forbidden
         "409":
           content:

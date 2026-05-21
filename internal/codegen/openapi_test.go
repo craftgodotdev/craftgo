@@ -178,6 +178,38 @@ service S {
 	}
 }
 
+// TestGenerateOpenAPISameStatusErrorsMerge pins the @errors merge:
+// two error decls sharing one HTTP status (e.g. both Conflict) must
+// render as `oneOf` so neither vanishes from the spec. Before the
+// merge, the second op.Responses.Set call overwrote the first and the
+// earlier error became invisible to OpenAPI consumers.
+func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
+	src := `package design
+error Conflict EmailTaken { email string }
+error Conflict OwnershipConflict { owner string }
+type Req { id string }
+type Resp { id string }
+service S {
+    @errors(EmailTaken, OwnershipConflict)
+    post UpdateUser /users/{id} { request Req  response Resp }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+	if !strings.Contains(body, "oneOf:") {
+		t.Errorf("expected oneOf for same-status errors:\n%s", body)
+	}
+	for _, want := range []string{"EmailTakenErr", "OwnershipConflictErr"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %s in oneOf body:\n%s", want, body)
+		}
+	}
+}
+
 // TestGenerateOpenAPIDocSummaryDescription covers the doc-flavour
 // trio: type/field/operation `@doc` propagates to OpenAPI
 // `description`, `@summary` lands on the operation summary, and

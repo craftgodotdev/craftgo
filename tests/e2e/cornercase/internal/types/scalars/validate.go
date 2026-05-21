@@ -68,13 +68,9 @@ func (v *Bag) Validate() error {
 		if len(v.Tags[i0]) < 1 {
 			return fmt.Errorf("tags: length less than 1")
 		}
-	}
-	for i0 := range v.Tags {
 		if len(v.Tags[i0]) > 20 {
 			return fmt.Errorf("tags: length greater than 20")
 		}
-	}
-	for i0 := range v.Tags {
 		if !_pattern1.MatchString(v.Tags[i0]) {
 			return fmt.Errorf("tags: does not match pattern")
 		}
@@ -336,13 +332,9 @@ func (v *Search) Validate() error {
 		if len(v.Keywords[i0]) < 1 {
 			return fmt.Errorf("keywords: length less than 1")
 		}
-	}
-	for i0 := range v.Keywords {
 		if len(v.Keywords[i0]) > 20 {
 			return fmt.Errorf("keywords: length greater than 20")
 		}
-	}
-	for i0 := range v.Keywords {
 		if !_pattern1.MatchString(v.Keywords[i0]) {
 			return fmt.Errorf("keywords: does not match pattern")
 		}

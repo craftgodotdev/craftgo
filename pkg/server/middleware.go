@@ -24,22 +24,67 @@ const (
 	ctxKeyRequestID ctxKey = iota
 )
 
+// committedResponseWriter wraps http.ResponseWriter to remember whether
+// the response status / body has already been flushed. Recovery uses it
+// to decide whether a 500 can still be written or whether the response
+// is already half-sent (in which case the recovery message would be
+// silently dropped by net/http and the client would see a corrupted
+// body). The wrapper preserves http.Hijacker / http.Flusher / http.Pusher
+// so downstream middleware that depends on them keeps working.
+type committedResponseWriter struct {
+	http.ResponseWriter
+	committed bool
+}
+
+func (w *committedResponseWriter) WriteHeader(code int) {
+	w.committed = true
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *committedResponseWriter) Write(p []byte) (int, error) {
+	w.committed = true
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *committedResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Committed reports whether the response status / body has already
+// been flushed. Generated handlers and the validation-error hook use
+// it (via a type assertion against `interface{ Committed() bool }`)
+// to skip late writes that net/http would silently drop.
+func (w *committedResponseWriter) Committed() bool { return w.committed }
+
 // Recovery converts panics inside downstream handlers into a 500 response
 // while logging a stack trace. Always installed by Server.Start as the
-// outermost middleware.
+// outermost middleware. When the panic fires AFTER the handler has
+// already committed to a status (called WriteHeader or Write), the 500
+// cannot be written - net/http silently drops the second WriteHeader and
+// the body bytes would corrupt the in-flight response. In that case the
+// middleware logs the panic loudly and lets the connection terminate; the
+// client sees the truncated original response and the server operator
+// sees the stack trace.
 func Recovery(logger log.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cw := &committedResponseWriter{ResponseWriter: w}
 			defer func() {
 				if rec := recover(); rec != nil {
-					logger.WithContext(r.Context()).Error("panic recovered",
+					l := logger.WithContext(r.Context())
+					if cw.committed {
+						l.Error("panic recovered after response committed; client receives truncated body",
+							log.Any("panic", rec),
+							log.String("stack", string(debug.Stack())),
+						)
+						return
+					}
+					l.Error("panic recovered",
 						log.Any("panic", rec),
 						log.String("stack", string(debug.Stack())),
 					)
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					http.Error(cw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 			}()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(cw, r)
 		})
 	}
 }

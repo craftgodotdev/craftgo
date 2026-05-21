@@ -50,9 +50,6 @@ func (v *Arr_BoundsBasic) Validate() error {
 // Validate checks every field-level constraint declared on Arr_EmptyExact.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Arr_EmptyExact) Validate() error {
-	if len(v.AlwaysEmpty) < 0 {
-		return fmt.Errorf("always_empty: minItems 0")
-	}
 	if len(v.AlwaysEmpty) > 0 {
 		return fmt.Errorf("always_empty: maxItems 0")
 	}
@@ -62,9 +59,6 @@ func (v *Arr_EmptyExact) Validate() error {
 // Validate checks every field-level constraint declared on Arr_MinZero.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Arr_MinZero) Validate() error {
-	if len(v.Items) < 0 {
-		return fmt.Errorf("items: minItems 0")
-	}
 	return nil
 }
 
@@ -99,17 +93,9 @@ func (v *Arr_Tag2D) Validate() error {
 			if len(v.Grid[i0][i1]) < 1 {
 				return fmt.Errorf("grid: length less than 1")
 			}
-		}
-	}
-	for i0 := range v.Grid {
-		for i1 := range v.Grid[i0] {
 			if len(v.Grid[i0][i1]) > 20 {
 				return fmt.Errorf("grid: length greater than 20")
 			}
-		}
-	}
-	for i0 := range v.Grid {
-		for i1 := range v.Grid[i0] {
 			if !_pattern0.MatchString(v.Grid[i0][i1]) {
 				return fmt.Errorf("grid: does not match pattern")
 			}
@@ -126,17 +112,9 @@ func (v *Arr_Tag2DOptional) Validate() error {
 			if len(v.Grid[i0][i1]) < 1 {
 				return fmt.Errorf("grid: length less than 1")
 			}
-		}
-	}
-	for i0 := range v.Grid {
-		for i1 := range v.Grid[i0] {
 			if len(v.Grid[i0][i1]) > 20 {
 				return fmt.Errorf("grid: length greater than 20")
 			}
-		}
-	}
-	for i0 := range v.Grid {
-		for i1 := range v.Grid[i0] {
 			if !_pattern0.MatchString(v.Grid[i0][i1]) {
 				return fmt.Errorf("grid: does not match pattern")
 			}
@@ -154,21 +132,9 @@ func (v *Arr_Tag3D) Validate() error {
 				if len(v.Cube[i0][i1][i2]) < 1 {
 					return fmt.Errorf("cube: length less than 1")
 				}
-			}
-		}
-	}
-	for i0 := range v.Cube {
-		for i1 := range v.Cube[i0] {
-			for i2 := range v.Cube[i0][i1] {
 				if len(v.Cube[i0][i1][i2]) > 20 {
 					return fmt.Errorf("cube: length greater than 20")
 				}
-			}
-		}
-	}
-	for i0 := range v.Cube {
-		for i1 := range v.Cube[i0] {
-			for i2 := range v.Cube[i0][i1] {
 				if !_pattern0.MatchString(v.Cube[i0][i1][i2]) {
 					return fmt.Errorf("cube: does not match pattern")
 				}
@@ -185,13 +151,9 @@ func (v *Arr_TagSlice) Validate() error {
 		if len(v.Tags[i0]) < 1 {
 			return fmt.Errorf("tags: length less than 1")
 		}
-	}
-	for i0 := range v.Tags {
 		if len(v.Tags[i0]) > 20 {
 			return fmt.Errorf("tags: length greater than 20")
 		}
-	}
-	for i0 := range v.Tags {
 		if !_pattern0.MatchString(v.Tags[i0]) {
 			return fmt.Errorf("tags: does not match pattern")
 		}
@@ -222,17 +184,9 @@ func (v *Map_ArrayValue) Validate() error {
 			if len(val0[i1]) < 1 {
 				return fmt.Errorf("buckets: length less than 1")
 			}
-		}
-	}
-	for _, val0 := range v.Buckets {
-		for i1 := range val0 {
 			if len(val0[i1]) > 20 {
 				return fmt.Errorf("buckets: length greater than 20")
 			}
-		}
-	}
-	for _, val0 := range v.Buckets {
-		for i1 := range val0 {
 			if !_pattern0.MatchString(val0[i1]) {
 				return fmt.Errorf("buckets: does not match pattern")
 			}
@@ -254,8 +208,6 @@ func (v *Map_KeyAndValue) Validate() error {
 		if len(k0) < 1 {
 			return fmt.Errorf("index: length less than 1")
 		}
-	}
-	for k0 := range v.Index {
 		if len(k0) > 64 {
 			return fmt.Errorf("index: length greater than 64")
 		}
@@ -264,8 +216,6 @@ func (v *Map_KeyAndValue) Validate() error {
 		if _, _err := mail.ParseAddress(val0); _err != nil {
 			return fmt.Errorf("index: not a valid email")
 		}
-	}
-	for _, val0 := range v.Index {
 		if len(val0) > 254 {
 			return fmt.Errorf("index: length greater than 254")
 		}
@@ -292,13 +242,9 @@ func (v *Map_ScalarValue) Validate() error {
 		if len(val0) < 1 {
 			return fmt.Errorf("labels: length less than 1")
 		}
-	}
-	for _, val0 := range v.Labels {
 		if len(val0) > 20 {
 			return fmt.Errorf("labels: length greater than 20")
 		}
-	}
-	for _, val0 := range v.Labels {
 		if !_pattern0.MatchString(val0) {
 			return fmt.Errorf("labels: does not match pattern")
 		}

@@ -30,11 +30,6 @@ func (v *DefaultsBoundary) Validate() error {
 // Validate checks every field-level constraint declared on DefaultsCollection.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsCollection) Validate() error {
-	if v.Arr != nil {
-		if len(v.Arr) < 0 {
-			return fmt.Errorf("arr: minItems 0")
-		}
-	}
 	return nil
 }
 

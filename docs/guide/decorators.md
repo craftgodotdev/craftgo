@@ -167,6 +167,8 @@ Run on `string` and `bytes` fields, and on scalars whose primitive is one of tho
 | `@pattern("regex")`         | `(string)`            | RE2-flavored regex match            |
 | `@format(name)`             | bare ident or string  | Named format check (see below)      |
 
+Length validators count **bytes**, not runes — `len(s)` in the generated Go validator matches the wire size the body decoder saw. A `@maxLength(80)` constraint on a UTF-8 field caps payload at 80 bytes, so `"Việt Nam"` (8 bytes / 8 runes) passes while `"日本語"` (9 bytes / 3 runes) fails `@maxLength(8)` despite being 3 characters. This keeps the constraint aligned with the network budget that `@maxBodySize` already polices; switch to rune-counting in your handler if you need a "characters-as-the-user-types-them" check.
+
 **Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. RFC-compliant validators (email, ipv4/ipv6, cidr, mac, datetime/date/time, base64, json) delegate to Go stdlib (`net`, `net/mail`, `net/url`, `time`, `encoding/*`); the remainder use regex.
 
 ```craftgo

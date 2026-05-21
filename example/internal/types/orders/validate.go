@@ -114,17 +114,9 @@ func (v *Customer) Validate() error {
 			if len(val0[i1]) < 1 {
 				return fmt.Errorf("channels: length less than 1")
 			}
-		}
-	}
-	for _, val0 := range v.Channels {
-		for i1 := range val0 {
 			if len(val0[i1]) > 32 {
 				return fmt.Errorf("channels: length greater than 32")
 			}
-		}
-	}
-	for _, val0 := range v.Channels {
-		for i1 := range val0 {
 			if !_pattern3.MatchString(val0[i1]) {
 				return fmt.Errorf("channels: does not match pattern")
 			}
@@ -135,17 +127,9 @@ func (v *Customer) Validate() error {
 			if len(k1) < 1 {
 				return fmt.Errorf("index: length less than 1")
 			}
-		}
-	}
-	for _, val0 := range v.Index {
-		for k1 := range val0 {
 			if len(k1) > 32 {
 				return fmt.Errorf("index: length greater than 32")
 			}
-		}
-	}
-	for _, val0 := range v.Index {
-		for k1 := range val0 {
 			if !_pattern3.MatchString(k1) {
 				return fmt.Errorf("index: does not match pattern")
 			}
@@ -156,10 +140,6 @@ func (v *Customer) Validate() error {
 			if _u, _err := url.Parse(val1); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 				return fmt.Errorf("index: not a valid URL")
 			}
-		}
-	}
-	for _, val0 := range v.Index {
-		for _, val1 := range val0 {
 			if len(val1) > 2048 {
 				return fmt.Errorf("index: length greater than 2048")
 			}
@@ -170,17 +150,9 @@ func (v *Customer) Validate() error {
 			if len(v.GridLabels[i0][i1]) < 1 {
 				return fmt.Errorf("gridLabels: length less than 1")
 			}
-		}
-	}
-	for i0 := range v.GridLabels {
-		for i1 := range v.GridLabels[i0] {
 			if len(v.GridLabels[i0][i1]) > 32 {
 				return fmt.Errorf("gridLabels: length greater than 32")
 			}
-		}
-	}
-	for i0 := range v.GridLabels {
-		for i1 := range v.GridLabels[i0] {
 			if !_pattern3.MatchString(v.GridLabels[i0][i1]) {
 				return fmt.Errorf("gridLabels: does not match pattern")
 			}
@@ -482,13 +454,9 @@ func (v *Order) Validate() error {
 		if len(v.Tags[i0]) < 1 {
 			return fmt.Errorf("tags: length less than 1")
 		}
-	}
-	for i0 := range v.Tags {
 		if len(v.Tags[i0]) > 32 {
 			return fmt.Errorf("tags: length greater than 32")
 		}
-	}
-	for i0 := range v.Tags {
 		if !_pattern3.MatchString(v.Tags[i0]) {
 			return fmt.Errorf("tags: does not match pattern")
 		}
@@ -512,13 +480,9 @@ func (v *Order) Validate() error {
 		if len(k0) < 1 {
 			return fmt.Errorf("metadata: length less than 1")
 		}
-	}
-	for k0 := range v.Metadata {
 		if len(k0) > 32 {
 			return fmt.Errorf("metadata: length greater than 32")
 		}
-	}
-	for k0 := range v.Metadata {
 		if !_pattern3.MatchString(k0) {
 			return fmt.Errorf("metadata: does not match pattern")
 		}
@@ -527,8 +491,6 @@ func (v *Order) Validate() error {
 		if _u, _err := url.Parse(val0); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 			return fmt.Errorf("metadata: not a valid URL")
 		}
-	}
-	for _, val0 := range v.Metadata {
 		if len(val0) > 2048 {
 			return fmt.Errorf("metadata: length greater than 2048")
 		}

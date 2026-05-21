@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -241,12 +242,15 @@ type scalarLeaf struct {
 }
 
 // emitChecks runs every scalar decorator through the validator
-// dispatcher, emitting one fully-wrapped check per decorator.
-// Empty body strings (when the validator's type-guard rejects)
-// are dropped.
+// dispatcher and returns one wrapped emission for the whole leaf.
+// All non-empty bodies are concatenated BEFORE the wrap so a map
+// with `@minLength @maxLength` on its key plus `@format @maxLength`
+// on its value emits exactly two for-loops (one per side) instead
+// of one loop per decorator. Empty body strings (when a validator's
+// type-guard rejects) are dropped silently.
 func (l *scalarLeaf) emitChecks(f *ast.Field, ctx emitCtx) []string {
 	synth := scalarLeafSynthField(f, l.decl, l.optional)
-	var out []string
+	var bodies []string
 	for _, d := range l.decl.Decorators {
 		v := validatorByName(d.Name)
 		if v == nil {
@@ -256,9 +260,12 @@ func (l *scalarLeaf) emitChecks(f *ast.Field, ctx emitCtx) []string {
 		if body == "" {
 			continue
 		}
-		out = append(out, l.wrap(body))
+		bodies = append(bodies, body)
 	}
-	return out
+	if len(bodies) == 0 {
+		return nil
+	}
+	return []string{l.wrap(strings.Join(bodies, "\n"))}
 }
 
 // findScalarLeaves walks t recursively, returning every scalar

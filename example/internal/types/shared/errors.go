@@ -38,6 +38,12 @@ func NewAuthRequiredErr(body AuthRequiredErrBody) *AuthRequiredErr {
 // category-default message bound to the type.
 func (e *AuthRequiredErr) Error() string { return e.message }
 
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *AuthRequiredErr) Code() string { return e.code }
+
 // HTTPStatus returns the HTTP status code associated with the Unauthorized category.
 func (e *AuthRequiredErr) HTTPStatus() int { return 401 }
 
@@ -79,6 +85,12 @@ func NewMaintenanceWindowErr(body MaintenanceWindowBody) *MaintenanceWindowErr {
 // Error implements the standard error interface and returns the
 // category-default message bound to the type.
 func (e *MaintenanceWindowErr) Error() string { return e.message }
+
+// Code returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ Code() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`.
+func (e *MaintenanceWindowErr) Code() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the ServiceUnavailable category.
 func (e *MaintenanceWindowErr) HTTPStatus() int { return 503 }

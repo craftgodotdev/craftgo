@@ -168,6 +168,10 @@ type ServiceContext struct {
 
 Pass it once to `server.New(svc)`. Every handler and logic layer receives it.
 
+### Concurrency
+
+`ServiceContext` is shared across every concurrent request — craftgo does NOT auto-lock its fields. Long-lived dependencies (DB pools, Redis clients, gRPC channels, …) handle their own locking internally and are safe to keep as bare fields. Mutable in-process state (maps, slices, counters) is your responsibility: either guard it with `sync.Mutex` / `sync.RWMutex` / `sync.Map`, use atomic types, or make the state per-request and pass it through `context.Context`. The example app embeds a `sync.Mutex` on `ServiceContext` and exposes `Lock()` / `Unlock()` helpers so handlers can wrap a multi-step map mutation in one critical section.
+
 ## What is not in craftgo
 
 - No DI container with reflection

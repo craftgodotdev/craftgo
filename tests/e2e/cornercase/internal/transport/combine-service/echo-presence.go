@@ -3,7 +3,6 @@
 package combineservice
 
 import (
-	"encoding/json"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
@@ -25,7 +24,7 @@ func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			__d := "d"
 			req.DefNullable = &__d
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -39,7 +38,7 @@ func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

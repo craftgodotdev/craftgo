@@ -34,7 +34,7 @@ func NewDeleteUserService(ctx context.Context, svcCtx *svccontext.ServiceContext
 
 // DeleteUser is the service entry point. Replace the
 // TODO with the real implementation.
-func (l *DeleteUserService) DeleteUser() (*types.User, error) {
+func (l *DeleteUserService) DeleteUser(req *types.GetUserReq) (*types.User, error) {
 	// TODO: implement
 	return nil, nil
 }

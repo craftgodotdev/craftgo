@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"sync/atomic"
+
+	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
 // ValidationFailedHandler is the function shape every generated
@@ -24,7 +26,21 @@ func init() {
 // defaultValidationFailed writes the validator's message body with a
 // 400 Bad Request status. This is the wire default;
 // [SetDefaultValidationFailed] swaps it.
-func defaultValidationFailed(w http.ResponseWriter, _ *http.Request, err error) {
+//
+// When the response is already committed (some middleware wrote
+// headers before the handler ran) the 400 cannot be written - net/http
+// silently drops a second WriteHeader call. The hook logs the dropped
+// validation error so the operator notices the bad ordering instead of
+// having it vanish, then returns without touching the wire to avoid
+// corrupting the in-flight body.
+func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) {
+	if c, ok := w.(interface{ Committed() bool }); ok && c.Committed() {
+		log.Default().WithContext(r.Context()).Error(
+			"validation error after response committed; not rewriting",
+			log.Err(err),
+		)
+		return
+	}
 	http.Error(w, err.Error(), http.StatusBadRequest)
 }
 

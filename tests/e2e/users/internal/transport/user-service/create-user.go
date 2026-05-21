@@ -3,7 +3,6 @@
 package userservice
 
 import (
-	"encoding/json"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
@@ -18,7 +17,7 @@ import (
 func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateUserReq
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -32,7 +31,7 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

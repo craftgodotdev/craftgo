@@ -3,7 +3,7 @@
 package headerechoservice
 
 import (
-	"encoding/json"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/header-echo-service"
@@ -22,7 +22,7 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		w.Header().Set("count", resp.Count)
 		http.SetCookie(w, &http.Cookie{Name: "session", Value: resp.Session})
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

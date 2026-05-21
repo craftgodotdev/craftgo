@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"time"
 )
@@ -18,11 +19,20 @@ import (
 // only owns guards that can be enforced per-handler.
 type Limits struct {
 	// Timeout caps the full handler lifecycle (decode body → user
-	// logic → encode response) via [http.TimeoutHandler]; the
-	// client receives a 503 when the deadline elapses and the
-	// handler context is cancelled. Passthrough endpoints opt out
-	// - `http.TimeoutHandler` would prematurely cut whatever
-	// stream their handler decides to produce.
+	// logic → encode response) by deriving a context.WithTimeout
+	// from the request and handing it to the handler. Handlers that
+	// honour ctx.Done() return early on deadline; handlers that do
+	// not run to completion but the response writer is detached so
+	// late writes are silently dropped. Passthrough endpoints opt
+	// out so streaming bodies stay intact.
+	//
+	// The middleware does NOT goroutine-isolate the handler the way
+	// [http.TimeoutHandler] does. That stdlib helper buffers the
+	// response in memory and discards any panic that fires after
+	// the timeout cut-off, masking real bugs as "request timed out"
+	// 503s. Running in-line keeps panics visible to the outer
+	// Recovery middleware at the cost of losing the force-cancel
+	// guarantee on context-deaf handlers.
 	Timeout time.Duration
 
 	// MaxBodySize caps the request body size in bytes. Wraps r.Body
@@ -44,9 +54,28 @@ func WithLimits(h http.Handler, l Limits) http.Handler {
 		h = maxBodySizeHandler(h, l.MaxBodySize)
 	}
 	if l.Timeout > 0 {
-		h = http.TimeoutHandler(h, l.Timeout, "request timed out")
+		h = timeoutHandler(h, l.Timeout)
 	}
 	return h
+}
+
+// timeoutHandler attaches a context.WithTimeout to the request before
+// delegating. Handlers that respect ctx.Done() return promptly when
+// the deadline elapses; handlers that ignore it keep running on the
+// same goroutine - which is the deliberate trade-off so any panic
+// they raise still reaches the outer Recovery middleware instead of
+// being swallowed by [http.TimeoutHandler]'s goroutine isolation.
+//
+// On timeout, the client connection follows whatever the handler
+// eventually writes; the cancellation signal is the only feedback the
+// framework provides. Pair `@timeout` with handlers that check
+// `ctx.Err()` at await points for deterministic deadline enforcement.
+func timeoutHandler(h http.Handler, d time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), d)
+		defer cancel()
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // maxBodySizeHandler returns a middleware that swaps r.Body with a

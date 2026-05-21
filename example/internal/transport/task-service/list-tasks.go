@@ -3,7 +3,6 @@
 package taskservice
 
 import (
-	"encoding/json"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
@@ -42,7 +41,7 @@ func ListTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

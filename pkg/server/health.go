@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sync"
 )
@@ -12,8 +11,8 @@ import (
 // distinct from readiness which runs the registered checks.
 func (s *Server) livenessHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = JSON().Encode(w, map[string]string{"status": "ok"})
 	})
 }
 
@@ -57,11 +56,11 @@ func (s *Server) readinessHandler() http.Handler {
 				break
 			}
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if !ok {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = JSON().Encode(w, map[string]any{
 			"status": map[bool]string{true: "ready", false: "not_ready"}[ok],
 			"checks": results,
 		})

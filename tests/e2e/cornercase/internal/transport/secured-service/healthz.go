@@ -3,7 +3,7 @@
 package securedservice
 
 import (
-	"encoding/json"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/secured-service"
@@ -24,7 +24,7 @@ func Healthz(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

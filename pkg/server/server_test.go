@@ -64,6 +64,99 @@ func TestServerRecoveryConvertsPanic(t *testing.T) {
 	}
 }
 
+// TestServerRecoveryAfterWriteKeepsOriginalStatus pins the post-write
+// panic behaviour: once the handler has committed to a status (called
+// WriteHeader or Write), Recovery cannot rewrite to 500 - net/http
+// silently drops a second WriteHeader and would otherwise smear the
+// recovery body across the in-flight response. The middleware must
+// leave the committed status intact and log loudly instead.
+func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
+	s := newTestServer(t)
+	s.HandleFunc("GET /half", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"partial":true`)) // intentional truncation
+		panic("after write")
+	})
+	rec := httptest.NewRecorder()
+	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/half", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("post-write panic must not rewrite status, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"partial":true`) {
+		t.Errorf("expected partial body intact, got %q", rec.Body.String())
+	}
+}
+
+// TestWriteValidationErrorSkipsPostCommit pins the M4 guard: when the
+// response writer is already committed (some middleware wrote headers
+// before the handler reached req.Validate()), WriteValidationError
+// must NOT smear a 400 into the in-flight body - net/http would drop
+// the WriteHeader and append the error text to whatever was already
+// sent. The hook logs the dropped validation and leaves the wire alone.
+func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
+	s := newTestServer(t)
+	s.HandleFunc("GET /v", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+		WriteValidationError(w, r, errBadField)
+	})
+	rec := httptest.NewRecorder()
+	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("post-commit validation must not rewrite status, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Errorf("expected partial body intact, got %q", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "bad field") {
+		t.Errorf("validation error must not leak into committed body: %q", rec.Body.String())
+	}
+}
+
+// errBadField is a stand-in validator error used by the M4 guard test.
+var errBadField = stringError("bad field")
+
+type stringError string
+
+func (e stringError) Error() string { return string(e) }
+
+// TestWithLimitsTimeoutPanicReachesRecovery pins the M5 fix: a panic
+// inside a `@timeout`-wrapped handler must still propagate to the
+// outer Recovery middleware instead of being swallowed by goroutine
+// isolation the way [http.TimeoutHandler] used to do. The handler
+// panics immediately - well before the deadline - so the 500 must
+// reach the client and the panic must be logged.
+func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
+	logger := newTestServer(t).logger
+	core := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("inside timeout")
+	})
+	guarded := WithLimits(core, Limits{Timeout: 100 * time.Millisecond})
+	chain := Recovery(logger)(guarded)
+	rec := httptest.NewRecorder()
+	chain.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 from Recovery, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestWithLimitsTimeoutContextCancellation verifies that a handler
+// honouring ctx.Done() returns early when the deadline elapses. The
+// handler waits on the context and writes a deterministic body so the
+// assertion can confirm the cancel signal arrived.
+func TestWithLimitsTimeoutContextCancellation(t *testing.T) {
+	core := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		_, _ = w.Write([]byte("cancelled:" + r.Context().Err().Error()))
+	})
+	guarded := WithLimits(core, Limits{Timeout: 50 * time.Millisecond})
+	rec := httptest.NewRecorder()
+	guarded.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if !strings.Contains(rec.Body.String(), "cancelled:") {
+		t.Errorf("handler did not observe context cancel: %q", rec.Body.String())
+	}
+}
+
 func TestServerHealthEndpoints(t *testing.T) {
 	s := newTestServer(t)
 	called := int32(0)
@@ -294,6 +387,40 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 	if out["a"] != 1 {
 		t.Errorf("round trip lost value: %v", out)
+	}
+}
+
+// markerCodec wraps the default codec but tags every encoded byte
+// stream with a prefix so tests can prove the swap actually reaches
+// generated handlers (or any caller that goes through [JSON]).
+type markerCodec struct{ defaultCodec }
+
+func (markerCodec) Encode(w io.Writer, v any) error {
+	if _, err := w.Write([]byte("/*MARK*/")); err != nil {
+		return err
+	}
+	return defaultCodec{}.Encode(w, v)
+}
+
+func TestGlobalJSONCodecSwapTakesEffect(t *testing.T) {
+	t.Cleanup(func() { SetGlobalJSONCodec(defaultCodec{}) })
+	SetGlobalJSONCodec(markerCodec{})
+	var buf strings.Builder
+	if err := JSON().Encode(&buf, map[string]int{"a": 1}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(buf.String(), "/*MARK*/") {
+		t.Errorf("global codec swap not picked up by JSON(): %q", buf.String())
+	}
+}
+
+func TestServerSetJSONCodecPropagatesToGlobal(t *testing.T) {
+	t.Cleanup(func() { SetGlobalJSONCodec(defaultCodec{}) })
+	New(nil).SetJSONCodec(markerCodec{})
+	var buf strings.Builder
+	_ = JSON().Encode(&buf, map[string]int{"b": 2})
+	if !strings.HasPrefix(buf.String(), "/*MARK*/") {
+		t.Errorf("Server.SetJSONCodec must update the global codec; got %q", buf.String())
 	}
 }
 

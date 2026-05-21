@@ -443,6 +443,8 @@ error NotFound UserNotFound`)
 		"code: ErrCodeUserNotFound",
 		`message: "Not found"`,
 		"return e.message",
+		"return e.code",                // Code() accessor
+		"func (e *UserNotFoundErr) Code() string",
 		"return 404",
 	} {
 		if !strings.Contains(norm, want) {

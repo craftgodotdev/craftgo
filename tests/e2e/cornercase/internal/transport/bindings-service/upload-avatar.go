@@ -3,8 +3,9 @@
 package bindingsservice
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/bindings-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/bindings"
@@ -21,7 +22,7 @@ import (
 // for any DSL-typed `file` declarations.
 func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if err := r.ParseMultipartForm(33554432); err != nil {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -31,7 +32,7 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			req.File = header
 		}
 		if err := req.Validate(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			server.WriteValidationError(w, r, err)
 			return
 		}
 		l := service.NewUploadAvatarService(r.Context(), svcCtx)
@@ -40,7 +41,7 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = server.JSON().Encode(w, resp)
 	}
 }

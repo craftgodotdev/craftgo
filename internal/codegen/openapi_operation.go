@@ -198,11 +198,25 @@ func successStatus(m *ast.Method) string {
 // $refs the error type's components.schemas entry. Unknown error names
 // are silently skipped - semantic phase doesn't validate the refs yet,
 // so we treat that as best-effort docs rather than fail codegen.
+//
+// When two or more `@errors(...)` entries share an HTTP status (e.g.
+// both `Conflict EmailTaken` and `Conflict OwnershipConflict` → 409),
+// the schemas merge into a `oneOf` list. Without this merge the second
+// `op.Responses.Set(...)` call would overwrite the first and the lost
+// error would be invisible to OpenAPI consumers.
 func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package) {
 	names := errorRefsFromDecorators(m.Decorators)
 	if len(names) == 0 {
 		return
 	}
+	// Group declared error refs by HTTP status so multiple errors with
+	// the same category render as a single oneOf response.
+	type byStatus struct {
+		refs       []string
+		categories []string
+	}
+	grouped := map[string]*byStatus{}
+	var statusOrder []string
 	for _, name := range names {
 		ed, ok := pkg.Errors[name]
 		if !ok {
@@ -210,13 +224,32 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		}
 		typeName := errSuffix(ed.Name)
 		status := strconv.Itoa(categoryStatus[ed.Category])
-		desc := ed.Category
+		entry, exists := grouped[status]
+		if !exists {
+			entry = &byStatus{}
+			grouped[status] = entry
+			statusOrder = append(statusOrder, status)
+		}
+		entry.refs = append(entry.refs, "#/components/schemas/"+typeName)
+		entry.categories = append(entry.categories, ed.Category)
+	}
+	for _, status := range statusOrder {
+		entry := grouped[status]
+		desc := entry.categories[0]
+		var schema *openapi3.SchemaRef
+		if len(entry.refs) == 1 {
+			schema = &openapi3.SchemaRef{Ref: entry.refs[0]}
+		} else {
+			oneOf := make(openapi3.SchemaRefs, 0, len(entry.refs))
+			for _, ref := range entry.refs {
+				oneOf = append(oneOf, &openapi3.SchemaRef{Ref: ref})
+			}
+			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}}
+		}
 		op.Responses.Set(status, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
-				"application/json": &openapi3.MediaType{
-					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + typeName},
-				},
+				"application/json": &openapi3.MediaType{Schema: schema},
 			},
 		}})
 	}
