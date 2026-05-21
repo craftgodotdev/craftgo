@@ -14,6 +14,7 @@ package metrics
 
 import (
 	"context"
+	"net/http"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
@@ -211,6 +212,124 @@ func InitDefault() (*sdkmetric.MeterProvider, error) {
 		return provider, err
 	}
 	return provider, nil
+}
+
+// Config is the YAML-shaped meter configuration the generated runtime
+// hands to [InitFromConfig]. Mirrors the `metrics:` block in
+// `config/config.yaml` so the call site reads
+// `metrics.InitFromConfig(ctx, cfg.Metrics)`. Defining the type here
+// keeps the exporter dispatch + admin-listener wiring in the library.
+type Config struct {
+	// Enabled toggles the MeterProvider install AND the admin
+	// listener startup. False = no-op meter (otelhttp's recorder
+	// stays silent).
+	Enabled bool `yaml:"enabled"`
+	// Exporter selects the data path:
+	//   - "prometheus" / "" - pull on AdminAddr (default)
+	//   - "otlp_grpc"  - push via OTLP gRPC
+	//   - "otlp_http"  - push via OTLP HTTP/protobuf
+	//   - "none"       - meter installed without exporter (testing)
+	Exporter string `yaml:"exporter"`
+	// Endpoint is the collector address for OTLP exporters. Ignored
+	// for "prometheus" / "none".
+	Endpoint string `yaml:"endpoint"`
+	// AdminAddr is the bind address for the Prometheus scrape
+	// listener. Ignored unless Exporter == "prometheus".
+	AdminAddr string `yaml:"adminAddr"`
+	// Path is the scrape route (default "/metrics"). Override when a
+	// reverse proxy already claims that path.
+	Path string `yaml:"path"`
+}
+
+// InitFromConfig dispatches the exporter selection encoded in c, then
+// starts the admin scrape listener for the prometheus path. Returns
+// the active MeterProvider and the admin server (nil when no admin
+// listener was needed) so the caller can defer Shutdown on both.
+//
+// When c.Enabled is false everything is (nil, nil, nil) - the caller
+// can keep its shutdown code single-pathed.
+func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *adminServer, error) {
+	if !c.Enabled {
+		return nil, nil, nil
+	}
+	var (
+		opts         []Option
+		startScrape  bool
+		runtimeStats bool
+	)
+	switch c.Exporter {
+	case "otlp_grpc":
+		opts = append(opts, WithOTLPgRPCReader(ctx, c.Endpoint))
+	case "otlp_http":
+		opts = append(opts, WithOTLPHTTPReader(ctx, c.Endpoint))
+	case "none":
+		// no readers - meter installed but silent
+	default:
+		// "prometheus" + any unknown value default to scrape so a typo
+		// never silently turns metrics off.
+		opts = append(opts, WithPrometheusReader())
+		startScrape = true
+		runtimeStats = true
+	}
+
+	provider, err := Init(opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	if runtimeStats {
+		_ = RegisterRuntimeCollectors()
+	}
+	if !startScrape {
+		return provider, nil, nil
+	}
+	srv, errCh := StartAdmin(c.AdminAddr, WithPath(c.Path))
+	return provider, &adminServer{srv: srv, errCh: errCh, addr: c.AdminAddr, path: c.Path}, nil
+}
+
+// adminServer bundles the admin http.Server with the post-Serve error
+// channel StartAdmin returns. Callers receive it from [InitFromConfig]
+// and pass it to [ShutdownAdminFromConfig] for graceful teardown. Kept
+// unexported so the field set can grow without breaking the call site.
+type adminServer struct {
+	srv   *http.Server
+	errCh <-chan error
+	addr  string
+	path  string
+}
+
+// HTTPServer returns the underlying *http.Server (nil when the admin
+// listener was not started). Tests inspect this; production code only
+// needs the value to pass through to ShutdownAdmin.
+func (a *adminServer) HTTPServer() *http.Server {
+	if a == nil {
+		return nil
+	}
+	return a.srv
+}
+
+// ErrCh exposes the StartAdmin error channel for callers that want to
+// log a non-fatal exit from the scrape listener.
+func (a *adminServer) ErrCh() <-chan error {
+	if a == nil {
+		return nil
+	}
+	return a.errCh
+}
+
+// Addr / Path expose the bound values for log lines ("scrape listening
+// on :9090/metrics").
+func (a *adminServer) Addr() string {
+	if a == nil {
+		return ""
+	}
+	return a.addr
+}
+
+func (a *adminServer) Path() string {
+	if a == nil {
+		return ""
+	}
+	return a.path
 }
 
 // RegisterRuntimeCollectors attaches the standard Go runtime and

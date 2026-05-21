@@ -182,6 +182,52 @@ func InitDefault() *sdktrace.TracerProvider {
 	return tp
 }
 
+// Config is the YAML-shaped tracer configuration the generated runtime
+// hands to [InitFromConfig]. It mirrors the fields a project keeps in
+// `config/config.yaml` under the `otel:` block so the call site reads
+// like `craftotel.InitFromConfig(ctx, cfg.OTel)`. Defining the type
+// here keeps the dispatch logic in the library (so projects do not
+// re-implement the exporter switch in their own main.go) and gives the
+// generated config package a canonical type to import.
+type Config struct {
+	// Enabled flips both the TracerProvider install and the HTTP
+	// middleware gate. False is a complete no-op - no exporter, no
+	// span creation, no atomic load past the first.
+	Enabled bool `yaml:"enabled"`
+	// ServiceName surfaces in the OTel resource attribute
+	// `service.name`. Defaults to "craftgo-service" when blank.
+	ServiceName string `yaml:"serviceName"`
+	// Exporter selects the destination for spans:
+	//   - "none" / "" - in-process spans only (ids in logs, no export)
+	//   - "stdout"    - JSON spans on stdout (debugging)
+	//   - "otlp_grpc" - push to OTLP collector via gRPC
+	//   - "otlp_http" - push to OTLP collector via HTTP/protobuf
+	Exporter string `yaml:"exporter"`
+	// Endpoint is the collector address for the OTLP exporters.
+	// Ignored for "none" / "stdout".
+	Endpoint string `yaml:"endpoint"`
+}
+
+// InitFromConfig dispatches the exporter selection encoded in c. When
+// c.Enabled is false the function returns (nil, nil) so the caller can
+// keep its shutdown code single-pathed (a nil provider is a no-op
+// Shutdown). Returns the active TracerProvider for graceful shutdown.
+func InitFromConfig(ctx context.Context, c Config) (*sdktrace.TracerProvider, error) {
+	if !c.Enabled {
+		return nil, nil
+	}
+	opts := []Option{WithServiceName(c.ServiceName)}
+	switch c.Exporter {
+	case "otlp_grpc":
+		opts = append(opts, WithOTLPgRPCExporter(ctx, c.Endpoint))
+	case "otlp_http":
+		opts = append(opts, WithOTLPHTTPExporter(ctx, c.Endpoint))
+	case "stdout":
+		opts = append(opts, WithStdoutExporter())
+	}
+	return Init(opts...)
+}
+
 // Disable returns the middleware to no-op mode without dismantling
 // any SDK configuration. Tests use this to isolate runs.
 func Disable() { enabled.Store(false) }

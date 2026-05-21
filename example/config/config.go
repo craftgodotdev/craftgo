@@ -26,16 +26,23 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/craftgodotdev/craftgo/pkg/metrics"
+	craftotel "github.com/craftgodotdev/craftgo/pkg/otel"
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
 // maps to one runtime concern - server listener, distributed tracing,
 // metrics - so feature owners can extend their own block without
 // stepping on each other.
+//
+// OTel + Metrics reuse the canonical library types so the call sites
+// in main.go can pass `cfg.OTel` / `cfg.Metrics` straight into the
+// dispatch helpers without re-mapping fields.
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	OTel    OTelConfig    `yaml:"otel"`
-	Metrics MetricsConfig `yaml:"metrics"`
+	Server  ServerConfig     `yaml:"server"`
+	OTel    craftotel.Config `yaml:"otel"`
+	Metrics metrics.Config   `yaml:"metrics"`
 }
 
 // ServerConfig configures the public API listener that handles HTTP
@@ -86,58 +93,17 @@ type CompressionConfig struct {
 	Level int `yaml:"level"`
 }
 
-// OTelConfig drives the OpenTelemetry tracer setup. Disabled = silent
-// no-op (no spans, no propagation); enabled with exporter "none" still
-// produces in-process spans whose IDs flow into log lines but go nowhere.
-type OTelConfig struct {
-	// Enabled toggles the HTTP middleware that opens a span per request
-	// and injects `traceparent` on the response. When false the
-	// middleware is a pass-through.
-	Enabled bool `yaml:"enabled"`
-	// ServiceName surfaces in span resource attributes (`service.name`).
-	// Defaults to the project's last package segment.
-	ServiceName string `yaml:"serviceName"`
-	// Exporter selects the destination for spans. Valid values:
-	//   - "none"     - in-process spans only (default; trace ids in logs)
-	//   - "stdout"   - JSON spans on stdout (debugging)
-	//   - "otlp_grpc" - push to OTLP collector via gRPC
-	//   - "otlp_http" - push to OTLP collector via HTTP/protobuf
-	Exporter string `yaml:"exporter"`
-	// Endpoint is the collector address used by OTLP exporters
-	// (e.g. "otel-collector.observability:4317" for gRPC,
-	// "http://collector:4318" for HTTP). Ignored when Exporter is
-	// "none" or "stdout".
-	Endpoint string `yaml:"endpoint"`
-}
-
-// MetricsConfig drives the OpenTelemetry meter + admin scrape listener.
-// otelhttp's HTTPMiddleware records the standard `http.server.*`
-// instruments against whatever meter provider gets installed; this
-// block only chooses where the metrics flow OUT.
-type MetricsConfig struct {
-	// Enabled toggles the meter provider AND the admin listener. When
-	// false the global meter slot stays at the SDK no-op so otelhttp's
-	// recorder is silent.
-	Enabled bool `yaml:"enabled"`
-	// Exporter selects how metrics leave the process. Valid values:
-	//   - "prometheus" - pull on AdminAddr/Path (default; ops scrape it)
-	//   - "otlp_grpc"  - push to OTLP collector via gRPC
-	//   - "otlp_http"  - push to OTLP collector via HTTP/protobuf
-	//   - "none"       - meter installed but no exporter (rare; testing)
-	Exporter string `yaml:"exporter"`
-	// Endpoint is the collector address for OTLP exporters
-	// (e.g. "otel-collector.observability:4317"). Ignored for
-	// "prometheus" / "none".
-	Endpoint string `yaml:"endpoint"`
-	// AdminAddr is the bind address for the Prometheus scrape
-	// listener. Ignored when Exporter is not "prometheus". Defaults
-	// to ":9090" (the conventional Prometheus admin port).
-	AdminAddr string `yaml:"adminAddr"`
-	// Path is the route the scrape handler is exposed on. Defaults
-	// to "/metrics". Set when an existing reverse proxy already
-	// claims that path.
-	Path string `yaml:"path"`
-}
+// OTel + Metrics block shapes live in `pkg/otel` and `pkg/metrics`
+// respectively (look there for field-by-field docs). The aliases
+// below let `config.yaml` and call sites read like local types
+// without the project re-defining the schema.
+//
+// Aliases are kept exported so an IDE goto-definition lands on the
+// library doc strings instead of an opaque indirection.
+type (
+	OTelConfig    = craftotel.Config
+	MetricsConfig = metrics.Config
+)
 
 // Path returns the conventional config-file location. Override by
 // passing a different path to [Load] directly.
