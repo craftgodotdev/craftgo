@@ -11,6 +11,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
@@ -198,6 +199,62 @@ func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []prot
 				Detail:        detail,
 				Documentation: strings.Join(md.Doc, "\n"),
 				InsertText:    md.Name,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out
+}
+
+// errorNameCompletions enumerates every `error <Category> Name`
+// declaration in the project so an `@errors(...)` decorator argument
+// list shows the closed set of declared error types. Each item is
+// emitted as Class-kind because the user-facing wire shape is a
+// struct/class (matching how the generated Go code surfaces it as
+// `<Name>Err`); editors render it with the same icon they use for
+// any declared type, which keeps the visual grammar consistent
+// across decorator args.
+func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+	files := s.projectASTs(uriToPath(currentURI), currentSrc)
+	if len(files) == 0 {
+		// No `craftgo.design.yaml` upward from the buffer (running
+		// outside a project root, common for first-touch editing).
+		// Fall back to the current buffer so an unsaved file still
+		// surfaces its own error decls.
+		f := parser.New(uriToPath(currentURI), currentSrc).Parse()
+		if f != nil {
+			files = []projectAST{{path: uriToPath(currentURI), file: f}}
+		}
+	}
+	seen := map[string]struct{}{}
+	var out []protocol.CompletionItem
+	for _, p := range files {
+		if p.file == nil {
+			continue
+		}
+		for _, d := range p.file.Decls {
+			ed, ok := d.(*ast.ErrorDecl)
+			if !ok {
+				continue
+			}
+			if _, dup := seen[ed.Name]; dup {
+				continue
+			}
+			seen[ed.Name] = struct{}{}
+			pkgName := ""
+			if p.file.Package != nil {
+				pkgName = p.file.Package.Name
+			}
+			detail := "error " + ed.Category
+			if pkgName != "" {
+				detail = "error " + ed.Category + " (" + pkgName + ")"
+			}
+			out = append(out, protocol.CompletionItem{
+				Label:         ed.Name,
+				Kind:          protocol.CompletionItemKindClass,
+				Detail:        detail,
+				Documentation: strings.Join(ed.Doc, "\n"),
+				InsertText:    ed.Name,
 			})
 		}
 	}

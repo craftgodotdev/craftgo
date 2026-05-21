@@ -266,6 +266,13 @@ const (
 	// CodeRefUnknownSymbol fires when the package resolves correctly
 	// but doesn't declare the named type.
 	CodeRefUnknownSymbol = "ref/unknown-symbol"
+	// CodeScalarBadPrimitive fires when a `scalar Name Primitive`
+	// declaration uses a non-builtin word in the primitive slot
+	// (e.g. another type name, a typo, or the scalar's own name).
+	// The scalar's underlying type must be a primitive the framework
+	// knows how to validate; user-defined types in this slot would
+	// silently break inheritance and produce invalid Go.
+	CodeScalarBadPrimitive = "scalar/bad-primitive"
 )
 
 // related is a tiny helper that builds a single-element [lexer.Related]

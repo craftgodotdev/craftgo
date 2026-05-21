@@ -20,6 +20,9 @@ type CurrencyCode = string
 // Email is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
 type Email = string
 
+// Gmail is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
+type Gmail = string
+
 // Latitude is a DSL scalar - alias of float64 with the validators declared on it inherited by every field of this type.
 type Latitude = float64
 

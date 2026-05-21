@@ -184,12 +184,18 @@ func keyOf(d lexer.Diagnostic) string {
 // toLSP converts an internal [lexer.Diagnostic] to the LSP wire shape.
 // The Range degenerates to a zero-length cursor when End is the zero
 // position - every diagnostic still gets a clickable location that way.
+//
+// Related links (collision "first declared here", import-cycle path,
+// etc.) ride along via DiagnosticRelatedInformation so the editor's
+// quick-peek surfaces the partner location with a clickable jump -
+// without this surfacing they would be lost between the analyzer and
+// the IDE.
 func toLSP(d lexer.Diagnostic) protocol.Diagnostic {
 	end := d.End
 	if !end.IsValid() {
 		end = d.Pos
 	}
-	return protocol.Diagnostic{
+	out := protocol.Diagnostic{
 		Range: protocol.Range{
 			Start: lspPos(d.Pos),
 			End:   lspPos(end),
@@ -199,6 +205,21 @@ func toLSP(d lexer.Diagnostic) protocol.Diagnostic {
 		Source:   "craftgo",
 		Message:  d.Msg,
 	}
+	if len(d.Related) > 0 {
+		related := make([]protocol.DiagnosticRelatedInformation, 0, len(d.Related))
+		for _, r := range d.Related {
+			rng := protocol.Range{Start: lspPos(r.Pos), End: lspPos(r.Pos)}
+			related = append(related, protocol.DiagnosticRelatedInformation{
+				Location: protocol.Location{
+					URI:   protocol.DocumentURI(pathToFileURIString(r.Pos.Filename)),
+					Range: rng,
+				},
+				Message: r.Msg,
+			})
+		}
+		out.RelatedInformation = related
+	}
+	return out
 }
 
 func lspPos(p lexer.Position) protocol.Position {

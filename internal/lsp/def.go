@@ -188,12 +188,17 @@ func qualifiedNameAt(view snapshotView, idx int) string {
 	return tok.Text
 }
 
-// onReferences answers `textDocument/references`. We tokenise the source
-// once and return every token whose text equals the symbol name under the
-// cursor - a straight name match. False positives are possible (a string
-// literal containing the same word would be skipped because string
-// content lives inside a single token), but the heuristic is good enough
-// for v0.1; a real resolver lands with the workspace-wide pass.
+// onReferences answers `textDocument/references`. The walker visits
+// every `.craftgo` file under the design root so a reference search
+// is project-wide, not buffer-only - the previous single-file
+// behaviour silently lost references in multi-file projects and made
+// "find all usages" unusable for any real codebase.
+//
+// Detection is purely token-based: every Ident token whose text
+// matches the symbol's name counts. String literals (decorator args
+// like `@pattern("X")`) are not scanned because their content lives
+// inside a single String token, so cross-namespace collisions with
+// literal text remain a non-issue.
 func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.ReferenceParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -208,8 +213,67 @@ func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req j
 	if idx < 0 || tok.Kind != lexer.Ident {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
-	out := nameMatches(view, params.TextDocument.URI, tok.Text, params.Context.IncludeDeclaration)
+	out := s.projectNameMatches(view, params.TextDocument.URI, src, tok.Text, params.Context.IncludeDeclaration)
 	return reply(ctx, out, nil)
+}
+
+// projectNameMatches walks every `.craftgo` file in the design root
+// and collects token positions whose text equals name. Falls back to
+// the current buffer alone when no design root is reachable (single
+// file edit, mid-init project).
+func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.DocumentURI, currentSrc, name string, includeDecl bool) []protocol.Location {
+	files, _ := s.projectFilesWithRoot(uriToPath(string(currentURI)), currentSrc)
+	if len(files) == 0 {
+		// Outside a project root - keep the in-buffer scan so single-
+		// file edits still surface their own usages.
+		return nameMatches(view, currentURI, name, includeDecl)
+	}
+	// declPos pins the symbol's defining token across whichever file
+	// owns the decl, so includeDecl=false can filter it out even when
+	// the cursor lives in a different file from the declaration.
+	var declPos *lexer.Position
+	var declURI protocol.DocumentURI
+	for _, p := range files {
+		if d := findDecl(p.file, name); d != nil {
+			pos := d.DeclPos()
+			declPos = &pos
+			declURI = protocol.DocumentURI(pathToFileURIString(p.path))
+			break
+		}
+	}
+	var out []protocol.Location
+	for _, p := range files {
+		if p.file == nil {
+			continue
+		}
+		fileURI := protocol.DocumentURI(pathToFileURIString(p.path))
+		// Reuse the in-buffer view's tokens for the current file so
+		// unsaved edits show up; for every other file lex from its
+		// (possibly-on-disk) source.
+		var tokenSet []lexer.Token
+		if fileURI == currentURI {
+			tokenSet = view.tokens
+		} else {
+			lx := lexer.New(p.path, s.readFile(p.path, "", ""))
+			for {
+				t := lx.Next()
+				if t.Kind == lexer.EOF {
+					break
+				}
+				tokenSet = append(tokenSet, t)
+			}
+		}
+		for _, t := range tokenSet {
+			if t.Kind != lexer.Ident || t.Text != name {
+				continue
+			}
+			if !includeDecl && declPos != nil && fileURI == declURI && t.Pos == *declPos {
+				continue
+			}
+			out = append(out, protocol.Location{URI: fileURI, Range: rangeOf(t)})
+		}
+	}
+	return out
 }
 
 // nameMatches walks tokens for every Ident whose text equals name and
@@ -238,4 +302,40 @@ func declSitePos(f *ast.File, name string) *lexer.Position {
 	}
 	p := d.DeclPos()
 	return &p
+}
+
+// onDocumentHighlight answers `textDocument/documentHighlight`. Returns
+// every occurrence of the symbol under the cursor IN THE CURRENT
+// FILE so the editor can visually highlight all uses. Faster than
+// `textDocument/references` because there is no project walk - the
+// LSP client invokes this on cursor move, so cheapness matters more
+// than completeness (cross-file lookup ships through `references`).
+//
+// Each highlight gets `Kind: Text` — the LSP spec also allows Read /
+// Write kinds, but the DSL has no notion of "writing" an identifier
+// (decls are immutable from the type checker's view), so the
+// simpler Text kind matches actual semantics.
+func (s *Server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	var params protocol.DocumentHighlightParams
+	if err := json.Unmarshal(req.Params(), &params); err != nil {
+		return reply(ctx, nil, err)
+	}
+	src := s.snapshot(params.TextDocument.URI)
+	if src == "" {
+		return reply(ctx, []protocol.DocumentHighlight{}, nil)
+	}
+	view := parseSnapshot(string(params.TextDocument.URI), src)
+	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
+	if idx < 0 || tok.Kind != lexer.Ident {
+		return reply(ctx, []protocol.DocumentHighlight{}, nil)
+	}
+	out := []protocol.DocumentHighlight{}
+	for _, t := range view.tokens {
+		if t.Kind != lexer.Ident || t.Text != tok.Text {
+			continue
+		}
+		kind := protocol.DocumentHighlightKindText
+		out = append(out, protocol.DocumentHighlight{Range: rangeOf(t), Kind: kind})
+	}
+	return reply(ctx, out, nil)
 }

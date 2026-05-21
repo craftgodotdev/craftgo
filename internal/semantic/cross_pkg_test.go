@@ -287,12 +287,13 @@ func TestLocalTypeRefGenericParam(t *testing.T) {
 type Page<T> { items T[] cursor string? }`)
 }
 
-func TestLocalTypeRefScalarPrimitiveSkipped(t *testing.T) {
-	// Scalar primitives are intentionally permissive - see
-	// [TestScalarUnknownPrimitiveSkipped]. Verifying here that the
-	// new local-ref pass keeps that contract.
-	mustClean(t, `package x
-scalar Weird unknownPrim`)
+func TestLocalTypeRefScalarPrimitiveRejected(t *testing.T) {
+	// Scalar primitives must be built-ins - see
+	// [TestScalarUnknownPrimitiveRejected]. Verifying here that the
+	// local-ref pass surfaces the diagnostic at the scalar's
+	// declaration site (not on every downstream usage).
+	expectDiag(t, `package x
+scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 }
 
 // ---------- isLocalSymbol coverage paths ----------

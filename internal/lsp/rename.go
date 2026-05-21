@@ -37,10 +37,16 @@ func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, re
 	return reply(ctx, &r, nil)
 }
 
-// onRename answers `textDocument/rename`. We rewrite every Ident token
-// whose text matches the symbol's old name. The result is one
-// WorkspaceEdit with a single entry under the current document - multi-
-// file rename will land with the workspace-wide pass.
+// onRename answers `textDocument/rename`. Every `.craftgo` file under
+// the design root is scanned for Ident tokens matching the symbol's
+// current name and rewritten in one WorkspaceEdit so a project-wide
+// rename never leaves stale references in sibling files (a common
+// regression with the previous single-file behaviour - renaming a
+// shared type would silently break consumers).
+//
+// The validation precondition is unchanged: the cursor must sit on
+// an identifier whose decl exists in the current file (so the user
+// is renaming a thing they own, not an imported foreign symbol).
 func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.RenameParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -58,18 +64,20 @@ func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonr
 	if idx < 0 || tok.Kind != lexer.Ident || findDecl(view.file, tok.Text) == nil {
 		return reply(ctx, nil, nil)
 	}
-	edits := make([]protocol.TextEdit, 0)
-	for _, t := range view.tokens {
-		if t.Kind != lexer.Ident || t.Text != tok.Text {
-			continue
-		}
-		edits = append(edits, protocol.TextEdit{Range: rangeOf(t), NewText: params.NewName})
+	matches := s.projectNameMatches(view, params.TextDocument.URI, src, tok.Text, true)
+	changes := map[protocol.DocumentURI][]protocol.TextEdit{}
+	for _, loc := range matches {
+		changes[loc.URI] = append(changes[loc.URI], protocol.TextEdit{
+			Range:   loc.Range,
+			NewText: params.NewName,
+		})
 	}
-	return reply(ctx, &protocol.WorkspaceEdit{
-		Changes: map[protocol.DocumentURI][]protocol.TextEdit{
-			params.TextDocument.URI: edits,
-		},
-	}, nil)
+	if len(changes) == 0 {
+		// Ensure the current document still appears in the response
+		// so the editor's rename UI does not error out on empty maps.
+		changes[params.TextDocument.URI] = []protocol.TextEdit{}
+	}
+	return reply(ctx, &protocol.WorkspaceEdit{Changes: changes}, nil)
 }
 
 // isValidIdent enforces the lexer's identifier rule (`[A-Za-z_][A-Za-z0-9_]*`)

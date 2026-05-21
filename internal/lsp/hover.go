@@ -28,6 +28,19 @@ var errorCategories = map[string]bool{
 
 func isErrorCategory(s string) bool { return errorCategories[s] }
 
+// isVerbToken reports whether t is a lexer-recognised HTTP verb
+// keyword. Used by [hoverForToken] to gate the verb-doc dispatch so
+// arbitrary idents that happen to be spelt "get" never surface the
+// verb popup.
+func isVerbToken(t lexer.Token) bool {
+	switch t.Kind {
+	case lexer.VerbGet, lexer.VerbPost, lexer.VerbPut, lexer.VerbPatch,
+		lexer.VerbDelete, lexer.VerbHead, lexer.VerbOptions:
+		return true
+	}
+	return false
+}
+
 // builtinDocs is the doc table for the DSL's built-in primitives. It is
 // kept here (rather than in semantic) because the body is hover-text:
 // imperative, formatted markdown, opinionated, and likely to change as
@@ -50,6 +63,21 @@ var builtinDocs = map[string]string{
 	"uint16":  "**`uint16`** - 16-bit unsigned integer.",
 	"uint32":  "**`uint32`** - 32-bit unsigned integer.",
 	"uint64":  "**`uint64`** - 64-bit unsigned integer.",
+}
+
+// verbDocs documents the HTTP verb keywords so a hover on `get` /
+// `post` / ... explains the semantic the framework attaches to it.
+// Surfaced for keyword tokens that are recognised verbs - the same
+// markdown a user would read in the language reference, scoped to
+// the spot where they are about to commit a route to it.
+var verbDocs = map[string]string{
+	"get":     "**`get`** - safe, idempotent retrieval. The handler reads no body (the JSON decoder is skipped at codegen time).",
+	"post":    "**`post`** - resource creation or non-idempotent action. JSON body decoded into the request struct.",
+	"put":     "**`put`** - full resource replacement (idempotent). JSON body decoded into the request struct.",
+	"patch":   "**`patch`** - partial update (non-idempotent unless the handler enforces it). JSON body decoded into the request struct.",
+	"delete":  "**`delete`** - resource removal (idempotent). The handler reads no body.",
+	"head":    "**`head`** - metadata-only retrieval. The handler returns headers without a body; codegen still binds path / query / header fields.",
+	"options": "**`options`** - capability discovery (CORS preflight handler). The handler may return a custom Allow header set.",
 }
 
 // onHover answers `textDocument/hover`. It tokenises the buffer, finds
@@ -91,6 +119,15 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if tok.Kind == lexer.Ident && idx > 0 && view.tokens[idx-1].Kind == lexer.At {
 		return decoratorHover(tok.Text, joinedRange(view.tokens[idx-1], tok))
 	}
+	// HTTP verb keywords (`get`, `post`, ...) - the lexer assigns
+	// these distinct Kw* token kinds, so dispatch by token text via
+	// the verbDocs table.
+	if doc, ok := verbDocs[tok.Text]; ok && isVerbToken(tok) {
+		return &protocol.Hover{
+			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
+			Range:    rangePtr(rangeOf(tok)),
+		}
+	}
 	// Built-in types - only when the token spelling matches AND the
 	// surrounding context is a type position (right after `request`,
 	// `response`, `:`, a field name, etc.). The cheap heuristic: if it
@@ -108,8 +145,122 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 		if d := findDecl(view.file, tok.Text); d != nil {
 			return userTypeHover(d, rangeOf(tok))
 		}
+		// Field-name hover: when the ident is a field declared in
+		// some type / error body, render its type + decorator chain so
+		// the user can audit a field's contract without jumping to
+		// the decl. Looked up by position so we only fire on the
+		// definition site (not every occurrence of the same word).
+		if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
+			return fieldHover(parent, f, rangeOf(tok))
+		}
 	}
 	return nil
+}
+
+// findFieldAtPos walks every type / error body looking for a field
+// whose declared name token starts at pos. Returns the field and the
+// parent type / error name (for the hover header). Linear over body
+// members - small bodies, infrequent calls; the cost is well within
+// the LSP responsiveness budget.
+func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
+	if f == nil {
+		return nil, ""
+	}
+	for _, d := range f.Decls {
+		switch v := d.(type) {
+		case *ast.TypeDecl:
+			for _, m := range v.Body {
+				if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
+					return fd, v.Name
+				}
+			}
+		case *ast.ErrorDecl:
+			for _, m := range v.Body {
+				if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
+					return fd, v.Name
+				}
+			}
+		}
+	}
+	return nil, ""
+}
+
+// fieldHover renders the markdown popup for a field declaration: the
+// owning type, the field's spelt-out type with optional / array
+// markers, plus the decorator chain (one per line) so a reader scans
+// the contract without leaving the cursor.
+func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
+	var sb strings.Builder
+	if parent != "" {
+		sb.WriteString("**field `")
+		sb.WriteString(parent)
+		sb.WriteByte('.')
+		sb.WriteString(f.Name)
+		sb.WriteString("`**\n\n")
+	} else {
+		sb.WriteString("**field `")
+		sb.WriteString(f.Name)
+		sb.WriteString("`**\n\n")
+	}
+	sb.WriteString("```craftgo\n")
+	sb.WriteString(f.Name)
+	sb.WriteByte(' ')
+	sb.WriteString(typeRefString(f.Type))
+	sb.WriteString("\n```\n")
+	if len(f.Decorators) > 0 {
+		sb.WriteString("\n**Decorators**\n")
+		for _, d := range f.Decorators {
+			sb.WriteString("- `@")
+			sb.WriteString(d.Name)
+			sb.WriteString("`\n")
+		}
+	}
+	if len(f.Doc) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(strings.Join(f.Doc, "\n"))
+	}
+	return &protocol.Hover{
+		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sb.String()},
+		Range:    rangePtr(r),
+	}
+}
+
+// typeRefString prints a TypeRef in source-style for hover output:
+// `string`, `User[]`, `Page<User>?`, `map<string, int>`.
+func typeRefString(t *ast.TypeRef) string {
+	if t == nil {
+		return "?"
+	}
+	var sb strings.Builder
+	if t.Map != nil {
+		sb.WriteString("map<")
+		sb.WriteString(typeRefString(t.Map.Key))
+		sb.WriteString(", ")
+		sb.WriteString(typeRefString(t.Map.Value))
+		sb.WriteByte('>')
+	} else if t.Named != nil {
+		sb.WriteString(t.Named.Name.String())
+		if len(t.Named.Args) > 0 {
+			sb.WriteByte('<')
+			for i, a := range t.Named.Args {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(typeRefString(a))
+			}
+			sb.WriteByte('>')
+		}
+	}
+	if t.Array {
+		sb.WriteString("[]")
+	}
+	for i := 1; i < t.ArrayDepth; i++ {
+		sb.WriteString("[]")
+	}
+	if t.Optional {
+		sb.WriteByte('?')
+	}
+	return sb.String()
 }
 
 // hoverWithProject extends [hoverForToken] with cross-package lookups.

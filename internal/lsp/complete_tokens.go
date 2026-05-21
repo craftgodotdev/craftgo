@@ -134,19 +134,54 @@ func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 // them in the completion list would mislead the user. The function
 // therefore filters by the current file's package name.
 
+// keywordCompletions surfaces every reserved keyword as a completion
+// item. The high-traffic declaration keywords (`type`, `service`,
+// `error`, `enum`, `scalar`, `middleware`, `extend`, the verb set)
+// carry snippet expansions so Tab-completes a fully-shaped skeleton
+// with the cursor landing at the body's first edit point - the
+// keyword set is exactly what the user types most when scaffolding a
+// new file, and the snippet payoff outweighs the popup verbosity.
 func keywordCompletions() []protocol.CompletionItem {
-	kw := []string{
-		"package", "import", "type", "enum", "error", "scalar",
-		"service", "extend", "middleware", "request", "response",
-		"map", "true", "false", "null",
-		"get", "post", "put", "patch", "delete", "head", "options",
+	type entry struct {
+		label   string
+		snippet string // empty means plain insert (no snippet)
 	}
-	out := make([]protocol.CompletionItem, 0, len(kw))
-	for _, k := range kw {
-		out = append(out, protocol.CompletionItem{
-			Label: k,
+	entries := []entry{
+		{"package", "package $1"},
+		{"import", "import \"$1\""},
+		{"type", "type ${1:Name} {\n\t$0\n}"},
+		{"enum", "enum ${1:Name} {\n\t$0\n}"},
+		{"error", "error ${1|BadRequest,Unauthorized,Forbidden,NotFound,Conflict,UnprocessableEntity,TooManyRequests,Internal|} ${2:Name}"},
+		{"scalar", "scalar ${1:Name} ${2|string,int,int32,int64,uint,float64,bool,bytes|}"},
+		{"service", "service ${1:Name} {\n\t$0\n}"},
+		{"extend", "extend service ${1:Name} {\n\t$0\n}"},
+		{"middleware", "middleware ${1:Name}"},
+		{"request", "request ${1:Type}"},
+		{"response", "response ${1:Type}"},
+		{"map", "map<${1:string}, ${2:string}>"},
+		{"get", "get ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
+		{"post", "post ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
+		{"put", "put ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
+		{"patch", "patch ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
+		{"delete", "delete ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
+		{"head", "head ${1:Name} /${2:path} {\n\tresponse ${3:Resp}\n}"},
+		{"options", "options ${1:Name} /${2:path} {\n\tresponse ${3:Resp}\n}"},
+		// True / false / null are literal keywords - no snippet, just the value.
+		{"true", ""},
+		{"false", ""},
+		{"null", ""},
+	}
+	out := make([]protocol.CompletionItem, 0, len(entries))
+	for _, e := range entries {
+		item := protocol.CompletionItem{
+			Label: e.label,
 			Kind:  protocol.CompletionItemKindKeyword,
-		})
+		}
+		if e.snippet != "" {
+			item.InsertText = e.snippet
+			item.InsertTextFormat = protocol.InsertTextFormatSnippet
+		}
+		out = append(out, item)
 	}
 	return out
 }

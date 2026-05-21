@@ -537,6 +537,156 @@ func labelsOf(items []protocol.CompletionItem) []string {
 	return out
 }
 
+// TestCompletionScalarPrimitivePosition pins the bug where typing
+// `scalar Email <cursor>` returned keyword completions instead of
+// the primitive set. The `scalar Name <primitive>` position is the
+// ONLY legal place to put a builtin, so the LSP must surface it
+// without the user having to remember the keyword set.
+func TestCompletionScalarPrimitivePosition(t *testing.T) {
+	src := "package x\n\nscalar Email "
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor right after `scalar Email ` (line 2, col 13).
+	pos := protocol.Position{Line: 2, Character: 13}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"string", "int", "bool"} {
+		if !got[want] {
+			t.Errorf("primitive %q missing from scalar-position completions; got %v", want, labelsOf(items))
+		}
+	}
+}
+
+// TestCompletionErrorsDecoratorArgs pins the @errors arg completion -
+// the popup must surface every declared error type name in the
+// project, not the generic keyword list.
+func TestCompletionErrorsDecoratorArgs(t *testing.T) {
+	src := "package x\n\n" +
+		"error NotFound UserNotFoundErr\n" +
+		"error Conflict EmailTakenErr\n" +
+		"type Req { id string }\n" +
+		"type Resp { id string }\n" +
+		"service S {\n" +
+		"    @errors(\n" +
+		"    post Save /save { request Req response Resp }\n" +
+		"}\n"
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor right after `@errors(` - line 7, char 12.
+	pos := protocol.Position{Line: 7, Character: 12}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"UserNotFoundErr", "EmailTakenErr"} {
+		if !got[want] {
+			t.Errorf("declared error %q missing from @errors completions; got %v", want, labelsOf(items))
+		}
+	}
+}
+
+// TestCompletionDecoratorOnScalarFiltersByPrimitive pins the bug where
+// `scalar Gmail string @<cursor>` listed `@gt` even though @gt only
+// applies to numeric types. The completion popup must intersect the
+// scalar's primitive with each decorator's AppliesTo so the user
+// only sees decorators the semantic phase would later accept.
+func TestCompletionDecoratorOnScalarFiltersByPrimitive(t *testing.T) {
+	src := "package x\n\n" +
+		"scalar Gmail string @\n"
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor right after `@` on line 2 (0-indexed), char 21.
+	pos := protocol.Position{Line: 2, Character: 21}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	// String-applicable validators must appear.
+	for _, want := range []string{"length", "minLength", "maxLength", "pattern", "format"} {
+		if !got[want] {
+			t.Errorf("string validator %q missing from scalar-decorator completions; got %v", want, labelsOf(items))
+		}
+	}
+	// Numeric-only validators must NOT appear on a string scalar.
+	for _, banned := range []string{"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf"} {
+		if got[banned] {
+			t.Errorf("number-only validator %q must NOT surface on string scalar; got %v", banned, labelsOf(items))
+		}
+	}
+	// Array-only validators must also be filtered out.
+	for _, banned := range []string{"minItems", "maxItems", "uniqueItems"} {
+		if got[banned] {
+			t.Errorf("array-only validator %q must NOT surface on string scalar; got %v", banned, labelsOf(items))
+		}
+	}
+}
+
+// TestCompletionFormatDecoratorArgs pins the @format arg completion -
+// the popup must surface the registered format-validator names so
+// the user picks `email`, `uuid`, `url`, etc. from a closed set
+// instead of memorising the values.
+func TestCompletionFormatDecoratorArgs(t *testing.T) {
+	// Field decorator chain shape that the parser tolerates while the
+	// user is mid-typing `@format(` - the trailing newline + close
+	// brace keeps the type body well-formed enough for tokenisation
+	// to find the decorator span.
+	src := "package x\n" +
+		"type Req {\n" +
+		"  email string @format(\n" +
+		"}\n"
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor right after `@format(` - line 2 (0-indexed), char 24.
+	// "  email string @format(" = 23 chars; cursor sits at 23.
+	pos := protocol.Position{Line: 2, Character: 23}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"email", "uuid", "url"} {
+		if !got[want] {
+			t.Errorf("format %q missing from @format completions; got %v", want, labelsOf(items))
+		}
+	}
+}
+
+// TestCompletionStatusDecoratorArgs pins the @status arg completion -
+// HTTP status codes should appear with their IANA reason phrase as
+// detail so the user picks `201 (Created)` rather than memorising
+// codes.
+func TestCompletionStatusDecoratorArgs(t *testing.T) {
+	src := "package x\n\n" +
+		"type Req { id string }\n" +
+		"type Resp { id string }\n" +
+		"service S {\n" +
+		"    @status(\n" +
+		"    post Save /save { request Req response Resp }\n" +
+		"}\n"
+	view := parseSnapshot("t.craftgo", src)
+	// Cursor right after `@status(` - line 5, char 12.
+	pos := protocol.Position{Line: 5, Character: 12}
+	srv := &Server{docs: map[uri.URI]*document{}}
+	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	got := map[string]string{}
+	for _, it := range items {
+		got[it.Label] = it.Detail
+	}
+	for _, want := range []string{"200", "201", "204", "400", "404", "500"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("HTTP code %q missing from @status completions; got labels %v", want, labelsOf(items))
+		}
+	}
+	if got["201"] != "HTTP 201 Created" {
+		t.Errorf("HTTP 201 detail = %q, want IANA reason phrase", got["201"])
+	}
+}
+
 // TestCompletionErrorCategoryAfterKeyword pins the autocompletion that
 // fires right after the `error` keyword: every reserved HTTP category
 // must appear with its HTTP status surfaced as the detail line, and

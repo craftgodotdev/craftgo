@@ -16,6 +16,12 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
 	}
+	if name == "errors" {
+		return s.errorNameCompletions(currentURI, currentSrc)
+	}
+	if name == "status" {
+		return httpStatusCompletions()
+	}
 	if name == "security" {
 		if items := s.securitySchemeCompletions(currentURI); items != nil {
 			return items
@@ -35,6 +41,52 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 		}
 	}
 	return decoratorArgCompletions(view, pos, name)
+}
+
+// httpStatusCompletions surfaces the canonical HTTP status code set
+// inside `@status(...)` decorator arguments. Editors render the
+// integer label as a Value-kind item with the IANA reason phrase as
+// Detail so the user picks "201 (Created)" from a short list instead
+// of memorising the codes. Restricted to the reserved success +
+// redirect range plus the framework's error-category codes so a typo
+// like 999 never silently survives the completion popup.
+func httpStatusCompletions() []protocol.CompletionItem {
+	type entry struct {
+		code   string
+		phrase string
+	}
+	entries := []entry{
+		{"200", "OK"},
+		{"201", "Created"},
+		{"202", "Accepted"},
+		{"204", "No Content"},
+		{"301", "Moved Permanently"},
+		{"302", "Found"},
+		{"304", "Not Modified"},
+		{"307", "Temporary Redirect"},
+		{"308", "Permanent Redirect"},
+		{"400", "Bad Request"},
+		{"401", "Unauthorized"},
+		{"403", "Forbidden"},
+		{"404", "Not Found"},
+		{"409", "Conflict"},
+		{"422", "Unprocessable Entity"},
+		{"429", "Too Many Requests"},
+		{"500", "Internal Server Error"},
+		{"502", "Bad Gateway"},
+		{"503", "Service Unavailable"},
+		{"504", "Gateway Timeout"},
+	}
+	out := make([]protocol.CompletionItem, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, protocol.CompletionItem{
+			Label:      e.code,
+			Kind:       protocol.CompletionItemKindValue,
+			Detail:     "HTTP " + e.code + " " + e.phrase,
+			InsertText: e.code,
+		})
+	}
+	return out
 }
 
 // surroundingTokens returns the tokens immediately before and at the
@@ -130,14 +182,22 @@ func decoratorArgCompletions(view snapshotView, pos protocol.Position, name stri
 
 func decoratorCompletions(view snapshotView, pos protocol.Position, prefix string) []protocol.CompletionItem {
 	level := guessLevel(view, pos)
-	// At field level, narrow further by the field's primitive type
-	// so a `total int? @<cursor>` does not surface string-only or
-	// array-only validators. Returns 0 (PrimAny) when the cursor is
-	// not on a field row, in which case the AppliesTo filter is a
-	// no-op and only the level filter applies.
+	// Narrow the AppliesTo filter by the surrounding type's primitive
+	// category. Two sites carry one:
+	//   - field rows (`total int? @<cursor>`)
+	//   - scalar decls (`scalar Gmail string @<cursor>` -> string)
+	// In both cases the validator's AppliesTo bit must intersect the
+	// resolved primitive; mismatches like `@gt` on a string scalar
+	// would otherwise surface in the popup and only fail at gen time.
+	// Returns 0 (PrimAny) when the cursor is not on a recognised row,
+	// in which case the AppliesTo filter is a no-op and only the
+	// level filter applies.
 	var fieldPrim semantic.Prims
-	if level == semantic.LvlField {
+	switch level {
+	case semantic.LvlField:
 		fieldPrim = fieldPrimAt(view, pos)
+	case semantic.LvlScalar:
+		fieldPrim = scalarPrimAt(view, pos)
 	}
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {

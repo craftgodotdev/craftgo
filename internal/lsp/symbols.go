@@ -6,6 +6,7 @@ import (
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -30,6 +31,126 @@ func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 		out = append(out, s)
 	}
 	return reply(ctx, out, nil)
+}
+
+// onWorkspaceSymbol answers `workspace/symbol`. Walks every parsed
+// `.craftgo` file under the design root collecting top-level decls
+// whose names match the query as a (case-insensitive) substring so
+// the editor's Ctrl-T / Cmd-T picker surfaces project-wide symbols
+// in one search. Empty query returns every symbol — that matches the
+// LSP convention used by gopls / rust-analyzer where an empty query
+// is "show me everything".
+func (s *Server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	var params protocol.WorkspaceSymbolParams
+	if err := json.Unmarshal(req.Params(), &params); err != nil {
+		return reply(ctx, nil, err)
+	}
+	// projectFilesWithRoot needs SOMETHING to anchor the design-root
+	// search. Use the first open document's path; if no document is
+	// open the workspace search is impossible (no design folder to
+	// walk) - return empty rather than scanning the whole disk.
+	anchorPath := s.anyOpenDocumentPath()
+	if anchorPath == "" {
+		return reply(ctx, []protocol.SymbolInformation{}, nil)
+	}
+	files, _ := s.projectFilesWithRoot(anchorPath, "")
+	queryLower := lowerASCII(params.Query)
+	var out []protocol.SymbolInformation
+	for _, p := range files {
+		if p.file == nil {
+			continue
+		}
+		fileURI := uri.New(pathToFileURIString(p.path))
+		for _, d := range p.file.Decls {
+			name := d.DeclName()
+			if name == "" {
+				continue
+			}
+			if queryLower != "" && !containsLower(name, queryLower) {
+				continue
+			}
+			out = append(out, protocol.SymbolInformation{
+				Name: name,
+				Kind: workspaceSymbolKind(d),
+				Location: protocol.Location{
+					URI:   protocol.DocumentURI(fileURI),
+					Range: rangeOfPosLen(d.DeclPos(), len(name)),
+				},
+				ContainerName: containerNameFromFile(p.file),
+			})
+		}
+	}
+	return reply(ctx, out, nil)
+}
+
+// workspaceSymbolKind picks the LSP SymbolKind for a top-level decl.
+// Mirrors [declSymbol]'s mapping so the workspace picker and the
+// per-file outline use the same icons.
+func workspaceSymbolKind(d ast.Decl) protocol.SymbolKind {
+	switch d.(type) {
+	case *ast.TypeDecl:
+		return protocol.SymbolKindStruct
+	case *ast.EnumDecl:
+		return protocol.SymbolKindEnum
+	case *ast.ErrorDecl:
+		return protocol.SymbolKindClass
+	case *ast.ScalarDecl:
+		return protocol.SymbolKindClass
+	case *ast.ServiceDecl:
+		return protocol.SymbolKindInterface
+	case *ast.MiddlewareDecl:
+		return protocol.SymbolKindFunction
+	}
+	return protocol.SymbolKindNull
+}
+
+// containerNameFromFile returns the package name so the workspace
+// picker groups symbols by package in its sub-label ("Pkg • Name").
+func containerNameFromFile(f *ast.File) string {
+	if f == nil || f.Package == nil {
+		return ""
+	}
+	return f.Package.Name
+}
+
+// anyOpenDocumentPath returns the filesystem path of any currently
+// open document. The lookup is order-independent; we just need
+// somewhere to start the design-root walk. Returns empty string when
+// no documents are open.
+func (s *Server) anyOpenDocumentPath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for u := range s.docs {
+		return uriToPath(string(u))
+	}
+	return ""
+}
+
+// lowerASCII / containsLower are tiny case-insensitive helpers so the
+// workspace-symbol filter stays allocation-free on the hot path.
+func lowerASCII(s string) string {
+	b := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b[i] = c
+	}
+	return string(b)
+}
+
+func containsLower(haystack, needleLower string) bool {
+	if needleLower == "" {
+		return true
+	}
+	hLower := lowerASCII(haystack)
+	for i := 0; i+len(needleLower) <= len(hLower); i++ {
+		if hLower[i:i+len(needleLower)] == needleLower {
+			return true
+		}
+	}
+	return false
 }
 
 // documentSymbols walks the top-level declarations and emits one
@@ -113,7 +234,7 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 		return protocol.DocumentSymbol{
 			Name:           v.Name,
 			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindTypeParameter,
+			Kind:           protocol.SymbolKindClass,
 			Range:          r,
 			SelectionRange: r,
 		}
@@ -162,7 +283,27 @@ func fieldSymbol(f *ast.Field) protocol.DocumentSymbol {
 
 func methodSymbol(m *ast.Method) protocol.DocumentSymbol {
 	r := rangeOfPosLen(m.Pos, len(m.Verb)+1+len(m.Name))
+	// Build a one-line signature: "verb name (Req -> Resp)" so the
+	// outline preview tells the user what the method binds + returns
+	// without expanding. Missing slots collapse gracefully -
+	// `request` only shows the request type, `response` only shows
+	// the response, no body shows neither.
 	detail := m.Verb + " " + m.Name
+	req, resp := "", ""
+	if m.Request != nil && m.Request.Name != nil {
+		req = m.Request.Name.String()
+	}
+	if m.Response != nil && m.Response.Type != nil && m.Response.Type.Name != nil {
+		resp = m.Response.Type.Name.String()
+	}
+	switch {
+	case req != "" && resp != "":
+		detail += " (" + req + " → " + resp + ")"
+	case req != "":
+		detail += " (" + req + ")"
+	case resp != "":
+		detail += " (→ " + resp + ")"
+	}
 	return protocol.DocumentSymbol{
 		Name:           m.Name,
 		Detail:         detail,

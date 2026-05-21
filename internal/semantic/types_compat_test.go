@@ -157,11 +157,24 @@ func TestScalarTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestScalarUnknownPrimitiveSkipped(t *testing.T) {
-	// Unknown primitive (e.g. typo) - type-compat check skips, so we
-	// only see the upstream "unknown primitive" error eventually. Today
-	// the analyser tolerates unknown primitives silently.
-	mustClean(t, `scalar Weird unknownPrim`)
+func TestScalarUnknownPrimitiveRejected(t *testing.T) {
+	// A scalar's primitive slot must hold a built-in identifier.
+	// Typos like `scalar Weird unknownPrim` or self-references like
+	// `scalar Check Check` used to be silently accepted - the
+	// generated Go would compile but the inherited validators
+	// vanished. The check now flags the bad primitive at design
+	// time so the surprise lands before `craftgo gen`.
+	d := expectDiag(t, `scalar Weird unknownPrim`, CodeScalarBadPrimitive)
+	expectMessage(t, d, "Weird", "unknownPrim")
+}
+
+func TestScalarSelfReferenceRejected(t *testing.T) {
+	// Regression: `scalar Name Name` declares a scalar that aliases
+	// itself - syntactically a noun in the primitive slot, but
+	// semantically meaningless (infinite recursion if the codegen
+	// ever tried to resolve the underlying primitive).
+	d := expectDiag(t, `scalar Check Check`, CodeScalarBadPrimitive)
+	expectMessage(t, d, "Check")
 }
 
 // ---------- Unresolved type silently skipped ----------

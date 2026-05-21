@@ -127,6 +127,12 @@ func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 		return s.onPrepareRename(ctx, reply, req)
 	case protocol.MethodTextDocumentRename:
 		return s.onRename(ctx, reply, req)
+	case protocol.MethodTextDocumentDocumentHighlight:
+		return s.onDocumentHighlight(ctx, reply, req)
+	case protocol.MethodTextDocumentSignatureHelp:
+		return s.onSignatureHelp(ctx, reply, req)
+	case protocol.MethodWorkspaceSymbol:
+		return s.onWorkspaceSymbol(ctx, reply, req)
 	default:
 		return reply(ctx, nil, fmt.Errorf("%q: %w", req.Method(), jsonrpc2.ErrMethodNotFound))
 	}
@@ -144,7 +150,17 @@ func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req j
 			DefinitionProvider:         true,
 			ReferencesProvider:         true,
 			DocumentSymbolProvider:     true,
+			WorkspaceSymbolProvider:    true,
+			DocumentHighlightProvider:  true,
 			DocumentFormattingProvider: true,
+			SignatureHelpProvider: &protocol.SignatureHelpOptions{
+				// `(` opens a decorator-argument list, `,` advances to
+				// the next parameter slot - both should re-fetch
+				// signature help so the active parameter highlight
+				// follows the cursor.
+				TriggerCharacters:   []string{"(", ","},
+				RetriggerCharacters: []string{","},
+			},
 			RenameProvider:             &protocol.RenameOptions{PrepareProvider: true},
 			CompletionProvider: &protocol.CompletionOptions{
 				// Generous trigger set so completion auto-fires at

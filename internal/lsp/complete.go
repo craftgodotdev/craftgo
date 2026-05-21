@@ -117,9 +117,26 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
 		return nil
 	}
+	// Field type suffix (`?` optional, `]` array close) - the legal
+	// next token is either another type suffix, a decorator (`@...`),
+	// or end-of-line. Returning keyword + project decls here would
+	// spam noise; return empty so the popup stays out of the way
+	// until the user types `@` (which the decorator branch above
+	// handles).
+	if prev != nil && (prev.Kind == lexer.Question || prev.Kind == lexer.RBracket) && (mid == nil || mid.Kind != lexer.Ident) {
+		return nil
+	}
 	// Type position: include builtins + every declared type
 	// (project-wide).
 	if prev != nil && isTypePositionTrigger(*prev) {
+		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
+	}
+	// `scalar Name <cursor>` - the primitive-type slot. The previous
+	// token is the scalar name (Ident) so isTypePositionTrigger
+	// would not fire on its own; check for the scalar-keyword two
+	// tokens back to surface primitives in the position where they
+	// are the ONLY legal next token.
+	if isScalarPrimitivePosition(view, pos) {
 		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
 	}
 	// General context - keywords + project-wide declared types so
@@ -186,6 +203,15 @@ func posLessEq(a, b lexer.Position) bool {
 	return a.Column <= b.Column
 }
 
+// isTypePositionTrigger reports whether the previous token tells us
+// the cursor sits where a type identifier (declared user type OR
+// built-in primitive) is the legal next token. Used by the dispatcher
+// to surface declared decls + primitive suggestions.
+//
+//   - `request X` / `response X`           - method body
+//   - `field_name X` (Colon is currently unused but reserved)
+//   - `Page<X>` / `Pair<A, X>`             - generic args
+//   - `map<X, Y>` / array element types    - via Comma
 func isTypePositionTrigger(t lexer.Token) bool {
 	switch t.Kind {
 	case lexer.KwRequest, lexer.KwResponse,
@@ -193,6 +219,43 @@ func isTypePositionTrigger(t lexer.Token) bool {
 		return true
 	}
 	return false
+}
+
+// isScalarPrimitivePosition reports whether the cursor sits where a
+// `scalar Name <cursor>` primitive-type ident is expected: the
+// token two slots back is `scalar`, the immediately previous token
+// is an ident (the scalar's name), and the cursor is past it.
+// Catches `scalar Email <cursor>` so the IDE surfaces builtin
+// primitives (`string`, `int`, ...) which is the ONLY legal next
+// token at that position.
+func isScalarPrimitivePosition(view snapshotView, pos protocol.Position) bool {
+	idx, _ := view.tokenAt(pos.Line, pos.Character)
+	// Walk backward from the cursor through non-trivia tokens looking
+	// for the pattern `scalar <ident>` immediately preceding.
+	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
+	scanFrom := idx - 1
+	if idx < 0 {
+		scanFrom = -1
+		for i := len(view.tokens) - 1; i >= 0; i-- {
+			t := view.tokens[i]
+			if t.Kind == lexer.EOF {
+				continue
+			}
+			end := t.Pos
+			end.Column += len(t.Text)
+			if posLessEq(end, target) {
+				scanFrom = i
+				break
+			}
+		}
+	}
+	// Need at least the ident + KwScalar pair before the cursor.
+	if scanFrom < 1 {
+		return false
+	}
+	prev := view.tokens[scanFrom]
+	prevPrev := view.tokens[scanFrom-1]
+	return prev.Kind == lexer.Ident && prevPrev.Kind == lexer.KwScalar
 }
 
 // isInsideImportString reports whether pos lies inside an `import "…"`

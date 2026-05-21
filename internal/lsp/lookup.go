@@ -359,6 +359,72 @@ func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	return 0
 }
 
+// scalarPrimAt resolves the underlying primitive category for a scalar
+// declaration the cursor sits on. Walks the file's top-level decls
+// looking for a ScalarDecl whose position is on the same line as the
+// cursor (or whose decorator chain reaches the cursor's line). Returns
+// 0 (PrimAny) when the cursor is not inside a scalar context, so the
+// caller skips the AppliesTo filter cleanly.
+//
+// Used by `@<cursor>` completion at LvlScalar to drop decorators
+// whose AppliesTo bit does not intersect the scalar's primitive -
+// otherwise typing `scalar Gmail string @<cursor>` would offer
+// number-only validators like `@gt` that the semantic phase would
+// later reject as a type mismatch.
+func scalarPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
+	if view.file == nil {
+		return 0
+	}
+	line := int(pos.Line) + 1
+	for _, d := range view.file.Decls {
+		sd, ok := d.(*ast.ScalarDecl)
+		if !ok {
+			continue
+		}
+		// Match scalars on the cursor's own line OR scalars sitting
+		// just below decorator lines the user is currently editing
+		// (the "decorator zone above the decl"). Same heuristic as
+		// guessLevel.
+		if sd.Pos.Line == line || (sd.Pos.Line >= line && noDeclBetween(view.file, line, sd.Pos.Line)) {
+			return primFromIdent(sd.Primitive)
+		}
+	}
+	return 0
+}
+
+// noDeclBetween reports whether the file has zero declarations on
+// lines strictly between `from` (exclusive) and `to` (exclusive). Used
+// by scalarPrimAt to make sure the "above" attribution stays adjacent.
+func noDeclBetween(f *ast.File, from, to int) bool {
+	for _, d := range f.Decls {
+		l := d.DeclPos().Line
+		if l > from && l < to {
+			return false
+		}
+	}
+	return true
+}
+
+// primFromIdent maps a built-in primitive spelling to its semantic
+// category bit. Kept local to the LSP layer (mirroring semantic's own
+// primFromName) so this package does not reach into semantic for an
+// unexported helper.
+func primFromIdent(name string) semantic.Prims {
+	switch name {
+	case "string", "bytes":
+		return semantic.PrimString
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return semantic.PrimNumber
+	case "bool":
+		return semantic.PrimBool
+	case "file":
+		return semantic.PrimFile
+	}
+	return 0
+}
+
 // fieldAtCursor returns the field whose row matches the cursor's line
 // when the cursor is inside a type / error body. Returns nil when the
 // cursor is not on a field row.

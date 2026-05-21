@@ -74,10 +74,20 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 
 // checkScalarTypeCompat applies the same check to scalar declarations
 // (`scalar Email string @format(email)`). The scalar's primitive is
-// known directly from the AST.
+// known directly from the AST. Also validates that the primitive
+// slot holds an actual built-in (a typo like `scalar Check Check`
+// would otherwise silently produce a no-op alias that breaks
+// validator inheritance + codegen).
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	actual := primFromName(sd.Primitive)
 	if actual == 0 {
+		// Scalar's "primitive" slot is not a recognised built-in.
+		// Flag explicitly so the user sees the typo at design time
+		// rather than discovering it via mysteriously-missing
+		// validators in the generated Go.
+		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
+			"scalar %q primitive must be a built-in (got %q; expected one of string, bool, bytes, int, int8..int64, uint, uint8..uint64, float32, float64)",
+			sd.Name, sd.Primitive)
 		return
 	}
 	for _, d := range sd.Decorators {

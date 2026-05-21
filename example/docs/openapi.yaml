@@ -1111,6 +1111,8 @@ components:
       type: object
     GetUserRespBody:
       $ref: '#/components/schemas/User'
+    Gmail:
+      type: string
     GpsFix:
       description: |-
         GpsFix is the deepest nested type. Demonstrates @range on int,
