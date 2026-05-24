@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -118,9 +119,7 @@ func projectMiddlewareDecls(proj *semantic.Project) map[string]*ast.MiddlewareDe
 		if pkg == nil {
 			continue
 		}
-		for n, md := range pkg.Middlewares {
-			out[n] = md
-		}
+		maps.Copy(out, pkg.Middlewares)
 	}
 	return out
 }
@@ -132,19 +131,12 @@ func buildMiddlewareData(name string, _ *ast.MiddlewareDecl) middlewareData {
 	return middlewareData{Name: name}
 }
 
-// writeMiddlewareFields emits svccontext/middlewares.go (overwrite). When
-// the DSL declares no middlewares the file is removed so a stale
-// declaration cannot leak between runs.
+// writeMiddlewareFields emits svccontext/middlewares.go (overwrite).
+// Always emitted — even when the DSL declares no middlewares — so the
+// `Middlewares` type embedded by svccontext.go stays defined.
 func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []string) error {
 	dir := filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext))
 	dest := filepath.Join(dir, "middlewares.go")
-	if len(names) == 0 {
-		// Best-effort delete: a missing file is the desired post-state,
-		// so a `not exist` error is fine to swallow. Any other failure
-		// (permissions, IO) shows up on the next regen attempt.
-		_ = os.Remove(dest)
-		return nil
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -156,16 +148,8 @@ func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []strin
 }
 
 // sortedMiddlewareNames returns the package's middleware declarations
-// in deterministic order.
+// in deterministic order so successive codegen runs produce stable
+// diffs.
 func sortedMiddlewareNames(pkg *semantic.Package) []string {
-	out := make([]string, 0, len(pkg.Middlewares))
-	for n := range pkg.Middlewares {
-		out = append(out, n)
-	}
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j-1] > out[j]; j-- {
-			out[j-1], out[j] = out[j], out[j-1]
-		}
-	}
-	return out
+	return sortedKeys(pkg.Middlewares)
 }

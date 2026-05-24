@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -63,12 +62,7 @@ type enumValueView struct {
 // [idents.DedupGoFieldNames]; the semantic phase emits a warning
 // pointing at the duplicate spellings.
 func buildEnumsView(pkg *semantic.Package) enumsView {
-	names := make([]string, 0, len(pkg.Enums))
-	for n := range pkg.Enums {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-
+	names := sortedKeys(pkg.Enums)
 	view := enumsView{Package: pkg.Name, Enums: make([]enumView, 0, len(names))}
 	for _, name := range names {
 		view.Enums = append(view.Enums, buildEnumView(pkg.Enums[name]))

@@ -382,13 +382,29 @@ func TestCodeOnBindingType(t *testing.T) {
 		src   string
 		want  string
 	}{
+		// @path is the strictest binding: string-shaped, non-optional,
+		// non-array. Numerics (`int`/`bool`/`float`) must come in via
+		// a string scalar / enum if they belong in the URL.
 		{"non-string on @path", `type X { id int @path }`, "@path requires"},
-		{"non-string on @header", `type X { auth int @header }`, "@header requires"},
-		{"non-string on @cookie", `type X { sid int @cookie }`, "@cookie requires"},
 		{"optional string on @path", `type X { id string? @path }`, "@path requires"},
-		{"array string on @header", `type X { trace string[] @header }`, "@header requires"},
-		{"non-string @header on error", `error NotFound E { auth int @header }`, "@header requires"},
-		{"non-string @cookie on error", `error NotFound E { sid int @cookie }`, "@cookie requires"},
+		{"array string on @path", `type X { id string[] @path }`, "@path requires"},
+		// Cookie arrays are nonsense (cookies are single-value per name).
+		{"array on @cookie", `type X { ids string[] @cookie }`, "@cookie cannot bind to an array"},
+		// Maps / structs / generic instantiations never bind to wire-string sources.
+		{"map on @query", `type X { meta map<string, string> @query }`, "@query requires"},
+		{"map on @header", `type X { meta map<string, string> @header }`, "@header requires"},
+		{"struct on @query", `type P { x int }
+type X { p P @query }`, "@query requires"},
+		{"array struct on @query", `type P { x int }
+type X { ps P[] @query }`, "@query requires"},
+		{"generic instance on @query", `type Page<T> { items T[] }
+type X { p Page<string> @query }`, "@query requires"},
+		// Optional non-string primitives: zero-sentinel convention applies.
+		{"optional int on @query", `type X { limit int? @query }`, "@query requires"},
+		{"optional bool on @cookie", `type X { flag bool? @cookie }`, "@cookie requires"},
+		// `file` only binds to @form; rejected on every other wire.
+		{"file on @query", `type X { upload file @query }`, "@query requires"},
+		{"file on @header", `type X { upload file @header }`, "@header requires"},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
@@ -403,6 +419,36 @@ func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
 	// codegen has always accepted.
 	mustClean(t, `type X { id string @path  auth string @header  sid string @cookie }`)
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
+}
+
+// TestBindingTypeWireAccepts pins the Round-2.5 unification: every
+// HTTP wire-string source (@query, @header, @cookie, @form) accepts
+// the same primitive / scalar / enum / array set. The runtime codegen
+// then emits the matching parse + cast path. file is @form-only.
+func TestBindingTypeWireAccepts(t *testing.T) {
+	cases := []struct {
+		label string
+		src   string
+	}{
+		{"plain string", `type X { x string @query  y string @header  z string @cookie  w string @form }`},
+		{"int across wire", `type X { a int @query  b int @header  c int @cookie  d int @form }`},
+		{"float across wire", `type X { a float64 @query  b float64 @header  c float64 @cookie  d float64 @form }`},
+		{"bool across wire", `type X { a bool @query  b bool @header  c bool @cookie  d bool @form }`},
+		{"optional string", `type X { a string? @query  b string? @header  c string? @cookie  d string? @form }`},
+		{"array of primitive", `type X { a string[] @query  b string[] @header  c int[] @query  d string[] @form }`},
+		{"string scalar", `scalar Email string @format(email)
+type X { a Email @query  b Email @header  c Email @cookie  d Email @form  e Email? @header  f Email? @form }`},
+		{"int scalar", `scalar Cents int
+type X { a Cents @query  b Cents @header  c Cents @cookie  d Cents @form }`},
+		{"string enum", `enum Color { Red Blue }
+type X { a Color @query  b Color @header  c Color @cookie  d Color @form  e Color? @cookie }`},
+		{"int enum", `enum Priority { Low = 1  High = 2 }
+type X { a Priority @query  b Priority @header  c Priority @cookie  d Priority @form }`},
+		{"file form", `type X { upload file @form  optUpload file? @form }`},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) { mustClean(t, c.src) })
+	}
 }
 
 func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {

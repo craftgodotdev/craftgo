@@ -1,4 +1,5 @@
-// @default literal validation: type/element support, primitive-kind map, helpers.
+// Package semantic — @default literal validation: type/element support,
+// primitive-kind map, helpers.
 package semantic
 
 import (
@@ -12,13 +13,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	if f == nil {
 		return
 	}
-	var dec *ast.Decorator
-	for _, d := range f.Decorators {
-		if d != nil && d.Name == "default" {
-			dec = d
-			break
-		}
-	}
+	dec := ast.FindDecorator(f.Decorators, "default")
 	if dec == nil {
 		return
 	}
@@ -129,8 +124,9 @@ func defaultPrimitiveKind(name string, pkg *Package) ArgKind {
 // optional of those, and arrays of those are allowed. Map / struct /
 // generic / array-of-struct return false so the caller can flag the
 // combination. Cross-package qualified refs (multi-segment names)
-// also return false — the resolver doesn't handle them and the
-// codegen path has no emission target.
+// DEFER — they return true at per-package phase and are re-validated
+// by [refResolver.checkProjectFieldDefaults] with the project-wide
+// scalar / enum tables in scope.
 func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 	if t == nil || t.Map != nil {
 		return false
@@ -146,6 +142,14 @@ func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return false
+	}
+	if len(t.Named.Name.Parts) == 2 {
+		// Qualified ref (`shared.CurrencyCode`). The per-package
+		// analyser has no cross-package view, so we defer to
+		// [refResolver.checkProjectFieldDefaults] which runs after
+		// every package is built and has access to the full scalar
+		// / enum tables.
+		return true
 	}
 	if len(t.Named.Name.Parts) != 1 {
 		return false
@@ -163,9 +167,10 @@ func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 	return false
 }
 
-// semanticPkgRef is the subset of [Package] that
-// [defaultTypeSupported] needs. Lifted to a small interface so the
-// helper stays testable without the full analyzer wiring.
+// semanticPkgRef is the alias [defaultTypeSupported] takes for its
+// package-table argument. Kept as a named alias (not the bare
+// `*Package`) so the call sites read as "this helper needs only a
+// scalar / enum table" rather than the full analyzer state.
 type semanticPkgRef = Package
 
 // arrayElemTypeRef returns the element TypeRef of an array. The

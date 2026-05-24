@@ -315,9 +315,9 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 // emits a validator that rejects every input.
 func (a *analyzer) checkPairOrdering(f *ast.Field) {
 	pairs := []struct {
-		lo, hi     string
-		loStrict   bool
-		hiStrict   bool
+		lo, hi   string
+		loStrict bool
+		hiStrict bool
 	}{
 		{lo: "minLength", hi: "maxLength"},
 		{lo: "minItems", hi: "maxItems"},

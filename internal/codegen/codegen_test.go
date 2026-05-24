@@ -174,8 +174,8 @@ func TestResolveTypeRefGenericArgs(t *testing.T) {
 	//   - multi-arg generic
 	cross := CrossPkg{"shared": "github.com/x/internal/types/shared"}
 	cases := []struct {
-		name     string
-		ref      *ast.NamedTypeRef
+		name      string
+		ref       *ast.NamedTypeRef
 		wantAlias string
 		wantBare  string
 	}{
@@ -336,9 +336,9 @@ type T {
 
 	want := []struct{ ident, typ, tag string }{
 		{"Plain", "string", `json:"plain"`},
-		{"NullStr", "*string", `json:"nullStr"`},            // @nullable only → no omitempty
-		{"NullBlob", "[]byte", `json:"nullBlob"`},           // already nilable + no omitempty
-		{"OptNull", "*string", `json:"optNull,omitempty"`},  // `?` dominates → omitempty
+		{"NullStr", "*string", `json:"nullStr"`},           // @nullable only → no omitempty
+		{"NullBlob", "[]byte", `json:"nullBlob"`},          // already nilable + no omitempty
+		{"OptNull", "*string", `json:"optNull,omitempty"`}, // `?` dominates → omitempty
 	}
 	for _, w := range want {
 		if !lineHasField(src, w.ident, w.typ) || !lineHasField(src, w.ident, w.tag) {
@@ -443,7 +443,7 @@ error NotFound UserNotFound`)
 		"code: ErrCodeUserNotFound",
 		`message: "Not found"`,
 		"return e.message",
-		"return e.code",                // ErrCode() accessor
+		"return e.code", // ErrCode() accessor
 		"func (e *UserNotFoundErr) ErrCode() string",
 		"return 404",
 	} {

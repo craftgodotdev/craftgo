@@ -17,11 +17,11 @@ import (
 // method. The chain is assembled outermost-first so codegen wraps the
 // handler in the same order a reader sees the decorators:
 //
-//   1. Primary service-level `@middlewares(...)`
-//   2. Extend-block-level `@middlewares(...)` (decorators marked
-//      Propagated=true that the semantic merge copied onto the method)
-//   3. Method-level `@middlewares(...)` (decorators with
-//      Propagated=false that the user wrote directly above the method)
+//  1. Primary service-level `@middlewares(...)`
+//  2. Extend-block-level `@middlewares(...)` (decorators marked
+//     Propagated=true that the semantic merge copied onto the method)
+//  3. Method-level `@middlewares(...)` (decorators with
+//     Propagated=false that the user wrote directly above the method)
 //
 // `@ignoreMiddleware` on a method drops layers 1 + 2 - the inherited
 // chain - so the method starts fresh from layer 3. This implements the
@@ -201,7 +201,7 @@ type routeEntry struct {
 type routesData struct {
 	Package          string
 	Service          string
-	TransportImport    string
+	TransportImport  string
 	SvccontextImport string
 	Routes           []routeEntry
 	NeedsTime        bool

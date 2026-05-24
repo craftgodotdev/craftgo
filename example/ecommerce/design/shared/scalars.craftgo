@@ -1,0 +1,13 @@
+package shared
+
+scalar NonEmptyID   string  @minLength(1) @maxLength(128) @pattern("^[A-Za-z0-9_-]+$")
+scalar Email        string  @format(email) @maxLength(254)
+scalar SafeURL      string  @format(url) @maxLength(2048)
+scalar SKU          string  @pattern("^[A-Z0-9-]{4,32}$")
+scalar Slug         string  @minLength(1) @maxLength(64) @pattern("^[a-z][a-z0-9-]*$")
+scalar CurrencyCode string  @length(3, 3) @pattern("^[A-Z]{3}$")
+scalar CountryCode  string  @length(2, 2) @pattern("^[A-Z]{2}$")
+scalar Cents        int     @gte(0) @multipleOf(1)
+scalar PercentBP    int     @gte(0) @lte(10000)
+scalar Latitude     float64 @gte(-90) @lte(90)
+scalar Longitude    float64 @gte(-180) @lte(180)

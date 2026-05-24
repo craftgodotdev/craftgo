@@ -1,0 +1,22 @@
+package orders
+
+import "customers"
+
+enum SuspensionReason {
+	PolicyViolation
+	PaymentFailure
+	OperatorAction
+}
+
+error NotFound OrderNotFound
+
+error Conflict PaymentFailed {
+	code     string? @default("PAYMENT_FAILED")
+	method   PaymentMethod
+	chargedBy customers.CustomerRef
+}
+
+error Forbidden ActionDenied {
+	code   string?          @default("ACTION_DENIED")
+	reason SuspensionReason
+}

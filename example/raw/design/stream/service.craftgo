@@ -1,0 +1,40 @@
+package stream
+
+@prefix("/stream")
+@tags(stream)
+service StreamService {
+	@doc("Server-Sent Events firehose.")
+	@passthrough
+	get Events /events {}
+
+	@doc("Tail logs for a named service.")
+	@passthrough
+	get TailLogs /logs/{service} {}
+
+	@doc("Prometheus scrape endpoint (text/plain).")
+	@passthrough
+	get Metrics /metrics {}
+
+	@doc("Accept raw bytes (any content-type).")
+	@passthrough
+	post Ingest /ingest {}
+
+	@doc("Stream a file download.")
+	@passthrough
+	get Download /download/{file} {}
+
+	@doc("Plain JSON health check — contrasts with the passthrough endpoints above.")
+	get Health /health {
+		request  HealthReq
+		response HealthResp
+	}
+}
+
+type HealthReq {
+	verbose bool @query
+}
+
+type HealthResp {
+	status   string @length(1, 16)
+	uptimeMs int    @gte(0)
+}

@@ -11,12 +11,16 @@ import (
 )
 
 // BuiltinTypes is the closed set of primitive type spellings the DSL
-// recognises out of the box. The semantic resolver and the parser's
-// disambiguation rules both consult it, so the table lives here in
-// a transport-neutral package - adding a new primitive happens once,
-// every consumer picks it up. `object` is the permissive
-// bag-of-fields used inside `@example({...})`; `file` is the
-// upload-only marker that codegen maps to `*multipart.FileHeader`.
+// recognises out of the box. The semantic resolver, codegen, and the
+// parser's disambiguation rules all consult it, so the table lives
+// here in a transport-neutral package - adding a new primitive
+// happens once, every consumer picks it up. `object` is the
+// permissive bag-of-fields used inside `@example({...})`; `file` is
+// the upload-only marker that codegen maps to `*multipart.FileHeader`.
+//
+// Prefer the [IsBuiltin] / [IsWireParseable] helpers over reading
+// this map directly so the predicates stay consistent across the
+// 4+ call sites that previously duplicated the list inline.
 var BuiltinTypes = map[string]bool{
 	"string": true, "bool": true,
 	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
@@ -26,6 +30,29 @@ var BuiltinTypes = map[string]bool{
 	"any":    true,
 	"object": true,
 	"file":   true,
+}
+
+// IsBuiltin reports whether name is one of the DSL's built-in type
+// spellings (every entry in [BuiltinTypes]). Use this in code that
+// has to differentiate "user-declared type" from "builtin" - codegen
+// import resolution and semantic ref classification both reach for it.
+func IsBuiltin(name string) bool { return BuiltinTypes[name] }
+
+// IsWireParseable reports whether name is a primitive the wire-string
+// binders (`@query`, `@header`, `@cookie`, `@form`) can parse from a
+// single string. Excludes `bytes` / `any` / `object` / `file` -
+// those need their own wire format. Mirrors the codegen's
+// `queryPrims` table so semantic-time and gen-time rejections stay
+// in sync without two hardcoded lists.
+func IsWireParseable(name string) bool {
+	switch name {
+	case "string", "bool",
+		"int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return true
+	}
+	return false
 }
 
 // commonInitialisms enumerates abbreviations that should be rendered

@@ -1,0 +1,62 @@
+package orders
+
+import "shared"
+
+@prefix("/orders")
+@tags(orders)
+@middlewares(shared.RequestID, shared.RateLimit, shared.CORS, shared.AuthRequired)
+@security(bearer)
+service OrderService {
+	@doc("List orders.")
+	@errors(shared.UnauthorizedErr, shared.RateLimitedErr)
+	get ListOrders {
+		request  ListOrdersReq
+		response shared.Page<Order>
+	}
+
+	@doc("Fetch one order.")
+	@errors(OrderNotFound, shared.UnauthorizedErr, shared.MaintenanceWindow)
+	get GetOrder /{id} {
+		request  GetOrderReq
+		response Order
+	}
+
+	@doc("Create a new order.")
+	@errors(PaymentFailed, shared.UnauthorizedErr)
+	post CreateOrder / {
+		request  CreateOrderReq
+		response Order
+	}
+
+	@doc("Filter orders by status — showcases @path/@query/@header/@cookie on one DTO.")
+	get FilterOrders /by-status/{status} {
+		request  FilterOrdersReq
+		response shared.Page<Order>
+	}
+
+	@doc("Echo every @default form.")
+	post Defaults /defaults {
+		request  DefaultsShowcaseReq
+		response DefaultsShowcaseReq
+	}
+}
+
+extend service OrderService {
+	@doc("Admin cancellation. Idempotent.")
+	@middlewares(shared.BodyLimit, shared.Timeout)
+	@security(oauth2)
+	@errors(OrderNotFound, ActionDenied)
+	post CancelOrder /{id}/cancel {
+		request  GetOrderReq
+		response shared.OkResp
+	}
+
+	@doc("Admin force-ship. Idempotent.")
+	@middlewares(shared.BodyLimit, shared.Timeout)
+	@security(oauth2)
+	@errors(OrderNotFound, ActionDenied)
+	post ForceShip /{id}/ship {
+		request  GetOrderReq
+		response Order
+	}
+}

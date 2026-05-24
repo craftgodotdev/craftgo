@@ -10,7 +10,7 @@ import (
 // the bundled example/ tree. It is a lightweight smoke test: each file must
 // (1) format without diagnostics, (2) be idempotent under reformat.
 func TestFormatRealExamples(t *testing.T) {
-	root, err := filepath.Abs("../../example/design")
+	root, err := filepath.Abs("../../example")
 	if err != nil {
 		t.Skip("cannot resolve example path:", err)
 	}

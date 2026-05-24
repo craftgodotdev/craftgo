@@ -1,0 +1,35 @@
+package todos
+
+@prefix("/todos")
+@tags(todos)
+service TodoService {
+	@doc("List todos with cursor pagination, optional status filter.")
+	get ListTodos / {
+		request  ListTodosReq
+		response TodoList
+	}
+
+	@doc("Fetch one todo by id.")
+	get GetTodo /{id} {
+		request  GetTodoReq
+		response Todo
+	}
+
+	@doc("Create a new todo.")
+	post CreateTodo / {
+		request  CreateTodoReq
+		response Todo
+	}
+
+	@doc("Patch a todo. Only supplied fields are updated.")
+	patch UpdateTodo /{id} {
+		request  UpdateTodoReq
+		response Todo
+	}
+
+	@doc("Delete a todo. Idempotent.")
+	delete DeleteTodo /{id} {
+		request  GetTodoReq
+		response OkResp
+	}
+}

@@ -350,4 +350,3 @@ func screamingSnake(s string) string {
 	}
 	return strings.Join(parts, "_")
 }
-

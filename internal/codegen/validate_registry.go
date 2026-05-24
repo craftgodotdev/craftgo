@@ -111,7 +111,9 @@ var validators = []validatorEntry{
 	{"negative", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
 		return signCheck(f, a, "negative", c.uses)
 	}},
-	{"multipleOf", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return multipleOfCheck(f, a, d, c.uses) }},
+	{"multipleOf", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
+		return multipleOfCheck(f, a, d, c.uses)
+	}},
 
 	// array
 	{"minItems", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
@@ -120,11 +122,15 @@ var validators = []validatorEntry{
 	{"maxItems", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return itemsBoundCheck(f, a, d, "<=", "maxItems", c.uses)
 	}},
-	{"uniqueItems", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string { return uniqueItemsCheck(f, a, c.uses) }},
+	{"uniqueItems", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
+		return uniqueItemsCheck(f, a, c.uses)
+	}},
 
 	// file
 	{"maxSize", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c.uses) }},
-	{"mimeTypes", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return mimeTypesCheck(f, a, d, c.uses) }},
+	{"mimeTypes", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
+		return mimeTypesCheck(f, a, d, c.uses)
+	}},
 }
 
 // validatorByName returns the registry entry for `name`, or nil when the

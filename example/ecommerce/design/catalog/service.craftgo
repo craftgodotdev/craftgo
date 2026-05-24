@@ -1,0 +1,65 @@
+package catalog
+
+import "shared"
+
+@prefix("/catalog")
+@tags(catalog)
+@middlewares(shared.RequestID, shared.CORS)
+service CatalogService {
+	@doc("List products with cursor pagination.")
+	get ListProducts /products {
+		request  ListProductsReq
+		response shared.Page<Product>
+	}
+
+	@doc("Fetch one product by id.")
+	get GetProduct /products/{id} {
+		request  GetProductReq
+		response Product
+	}
+
+	@doc("List categories.")
+	get ListCategories /categories {
+		request  shared.Pagination
+		response shared.Page<Category>
+	}
+}
+
+extend service CatalogService {
+	@doc("Create a product (admin only).")
+	@middlewares(shared.AuthRequired, shared.BodyLimit)
+	@security(bearer)
+	post CreateProduct /products {
+		request  CreateProductReq
+		response Product
+	}
+
+	@doc("Delete a product (admin only).")
+	@middlewares(shared.AuthRequired, shared.BodyLimit)
+	@security(oauth2)
+	delete DeleteProduct /products/{id} {
+		request  GetProductReq
+		response shared.OkResp
+	}
+}
+
+type GetProductReq {
+	id string @path @length(1, 64)
+}
+
+type ListProductsReq {
+	cursor   string?
+	limit    int     @gte(0) @lte(100)
+	category string? @query
+	tag      string? @query
+}
+
+type CreateProductReq {
+	sku         shared.SKU
+	name        string                @length(1, 200)
+	description string?               @maxLength(5000)
+	priceCents  shared.Cents
+	currency    shared.CurrencyCode?  @default("USD")
+	categoryId  shared.NonEmptyID
+	tags        string[]?             @maxItems(20) @uniqueItems
+}

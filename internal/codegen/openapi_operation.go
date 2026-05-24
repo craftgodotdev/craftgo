@@ -81,7 +81,13 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	isMultipart := false
 	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
 	if m.Request != nil && !isPassthrough {
-		if fs, ff := collectFormBindings(m, pkg); len(ff) > 0 {
+		// pkgAlias is empty here - the OpenAPI emission path doesn't
+		// care about Go-side cast aliasing, only about which fields
+		// are file vs text. Errors from form binding (cookie array,
+		// numeric @form, ...) are surfaced by the transport gen pass;
+		// silently drop them here so a single source of truth owns
+		// the diagnostic.
+		if fs, ff, _, err := collectFormBindings(m, pkg, ""); err == nil && len(ff) > 0 {
 			isMultipart = true
 			formStrings, formFiles = fs, ff
 		}

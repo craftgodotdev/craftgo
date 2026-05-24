@@ -185,6 +185,7 @@ func (s *zapLogger) Error(msg string, fs ...Field) { s.z.Error(msg, fieldsToZap(
 func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
 }
+
 // WithContext extracts the active OpenTelemetry trace IDs and the
 // X-Request-Id stored by the RequestID middleware from ctx, then
 // returns a Logger with those fields baked in. Subsequent calls on the

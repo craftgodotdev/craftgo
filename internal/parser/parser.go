@@ -147,6 +147,21 @@ func (p *Parser) expect(k lexer.Kind) (lexer.Token, bool) {
 	return p.peek(), false
 }
 
+// rejectMixinDecorators fires a parser diagnostic for every decorator
+// the user attached to a mixin reference. The AST [ast.Mixin] has no
+// decorator slot - mixins are pure embedding - so silently dropping
+// them would surface as "my @deprecated note disappeared" later. Fire
+// at design time at the mixin reference position so the editor can
+// underline the right span.
+func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Decorator) {
+	for _, d := range decs {
+		if d == nil {
+			continue
+		}
+		p.errorf(d.Pos, "decorators are not supported on mixin references (@%s near %s); attach the decorator to the target type or to a field that uses it", d.Name, mixinPos)
+	}
+}
+
 // errorf records a diagnostic at pos. Used by every error-reporting path so
 // formatting stays uniform across productions.
 func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
@@ -508,8 +523,8 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	next := p.peekAt(1)
 	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
 		ref := p.parseNamedTypeRef()
-		_ = decs
-		_ = p.takeDoc()
+		p.rejectMixinDecorators(t.Pos, decs)
+		p.takeDoc()
 		return &ast.Mixin{Pos: t.Pos, Ref: ref}
 	}
 	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
@@ -519,8 +534,8 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
 	}
 	ref := p.parseNamedTypeRef()
-	_ = decs
-	_ = p.takeDoc()
+	p.rejectMixinDecorators(t.Pos, decs)
+	p.takeDoc()
 	return &ast.Mixin{Pos: t.Pos, Ref: ref}
 }
 
@@ -884,20 +899,34 @@ func (p *Parser) parseMethod() *ast.Method {
 // parsePath reads `/seg1/seg2/...`. A segment is either a literal (including
 // hyphenated forms like `api-v1`) or a `{param}`. To avoid swallowing the
 // method's opening brace, the `{` form is only recognised when followed
-// immediately by an identifier and a `}`.
+// immediately by an identifier-shaped token and a `}`.
+//
+// Reserved keywords (`service`, `file`, `type`, ...) and verb tokens
+// (`get`, `post`, ...) ARE accepted as parameter names — they're URL-level
+// labels, not language constructs, so collisions with the DSL keyword
+// table should not propagate to route grammar. Without this, `/logs/{service}`
+// produced a 30+ diagnostic cascade because the disambiguator bailed and
+// the parser interpreted `{` as the method body's opening brace.
 func (p *Parser) parsePath() *ast.Path {
 	pos := p.peek().Pos
 	path := &ast.Path{Pos: pos}
 	for p.peek().Kind == lexer.Slash {
 		p.advance()
 		segPos := p.peek().Pos
-		// Path param: `{ident}` - disambiguate from method body `{` by
-		// requiring an Ident immediately after the brace.
-		if p.peek().Kind == lexer.LBrace && p.peekAt(1).Kind == lexer.Ident {
+		// Path param: `{name}` - disambiguate from method body `{` by
+		// requiring an identifier-shaped token followed IMMEDIATELY by
+		// `}`. The trailing `}` lookahead matters because once we accept
+		// keywords as parameter names, `/ {request ...}` (method body
+		// opening with the `request` keyword) would otherwise look like
+		// a path-param named `request`. The 3-token shape `{ <word> }`
+		// is unambiguous - no method body starts with `<word> }`.
+		if p.peek().Kind == lexer.LBrace &&
+			isPathWordToken(p.peekAt(1).Kind) &&
+			p.peekAt(2).Kind == lexer.RBrace {
 			p.advance()
-			id, _ := p.expect(lexer.Ident)
+			nameTok := p.advance()
 			p.expect(lexer.RBrace)
-			path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Param: true, Literal: id.Text})
+			path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Param: true, Literal: nameTok.Text})
 			continue
 		}
 		if isPathWordToken(p.peek().Kind) {

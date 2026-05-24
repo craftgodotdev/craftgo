@@ -125,14 +125,7 @@ func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
 		if !ok {
 			continue
 		}
-		hasSensitive := false
-		for _, d := range f.Decorators {
-			if d != nil && d.Name == "sensitive" {
-				hasSensitive = true
-				break
-			}
-		}
-		if !hasSensitive {
+		if !ast.HasDecorator(f.Decorators, "sensitive") {
 			continue
 		}
 		for _, d := range f.Decorators {

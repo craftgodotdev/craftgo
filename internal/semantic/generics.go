@@ -88,8 +88,10 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 	for _, arg := range n.Args {
 		a.walkTypeRefGenerics(arg, typeParams)
 	}
-	// Qualified refs are handled by [analyzer.checkQualifiedRefs];
-	// we don't double-report here.
+	// Qualified refs (`pkg.Type`) are owned by the project resolver in
+	// imports.go - the per-package pass that calls this generic checker
+	// runs with skipQualifiedRefCheck=true under [AnalyzeProject], so
+	// firing again here would double-report.
 	if len(n.Name.Parts) != 1 {
 		return
 	}

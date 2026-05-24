@@ -46,7 +46,7 @@ func TestBuildCrossPkgSkipsEmptyAndCurrent(t *testing.T) {
 	cfg := &config.Config{Package: "x", Output: config.Output{Types: "./types"}}
 	proj := &semantic.Project{
 		Packages: map[string]*semantic.Package{
-			"":       {Name: ""},        // empty default group
+			"":       {Name: ""}, // empty default group
 			"design": {Name: "design"},
 			"shared": {Name: "shared"},
 		},

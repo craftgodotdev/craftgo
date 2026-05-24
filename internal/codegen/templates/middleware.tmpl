@@ -9,13 +9,6 @@ import (
 )
 
 // New{{.Name}}Middleware constructs the {{.Name}} middleware.
-{{- if .DefaultsDoc}}
-//
-// DSL-declared defaults:
-{{- range .DefaultsDoc}}
-//   - {{.}}
-{{- end}}
-{{- end}}
 //
 // craftgo never overwrites this file after the first generation, so
 // add wiring (token store, logger, rate-limit budget, ...) or change
@@ -26,7 +19,7 @@ import (
 //	svc := svccontext.NewServiceContext()
 //	svc.{{.Name}} = middleware.New{{.Name}}Middleware(/* args */)
 //	routes.RegisterRoutes(srv, svc)
-func New{{.Name}}Middleware({{.ParamList}}) server.Middleware {
+func New{{.Name}}Middleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// TODO: implement

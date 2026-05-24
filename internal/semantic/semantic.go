@@ -124,6 +124,15 @@ type Options struct {
 	// without the skip the per-package pass would fire first with
 	// the generic "no primary declaration" message.
 	skipExtendOrphanCheck bool
+
+	// skipMixinCheck disables the in-package
+	// [analyzer.checkMixins] pass so the project-level resolver
+	// can run the unified mixin expansion with cross-package
+	// scalars / enums / types in scope. Without the skip the
+	// per-package pass silently swallows qualified mixin refs
+	// (`shared.Timestamps`) and a cross-pkg field collision goes
+	// undetected.
+	skipMixinCheck bool
 }
 
 // Analyze validates the supplied AST files as a single package and returns
@@ -217,7 +226,9 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkServiceMethods()
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
-	a.checkMixins()
+	if !a.opts.skipMixinCheck {
+		a.checkMixins()
+	}
 	a.checkGenerics()
 	a.checkPathResolution()
 	a.checkCombinationRules(files)

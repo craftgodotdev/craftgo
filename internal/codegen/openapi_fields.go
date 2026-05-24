@@ -336,27 +336,13 @@ func literalToAny(e ast.Expr) (any, bool) {
 // `@nullable` is the orthogonal "value can be null when present" flag,
 // surfaced via OpenAPI's null-type entry so spec consumers know
 // `null` is a valid wire value.
-func hasNullableDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d.Name == "nullable" {
-			return true
-		}
-	}
-	return false
-}
+func hasNullableDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "nullable") }
 
 // hasSensitiveDecorator reports whether ds contains the `@sensitive`
 // marker. Sensitive fields are server-only: they get `json:"-"` in
 // the Go struct (so neither the JSON decoder nor the encoder touches
 // them) and are skipped entirely from the OpenAPI spec.
-func hasSensitiveDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d.Name == "sensitive" {
-			return true
-		}
-	}
-	return false
-}
+func hasSensitiveDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "sensitive") }
 
 // applyNullable marks a schema as nullable. We emit the OpenAPI 3.0
 // boolean form (`nullable: true`) even though our doc carries the

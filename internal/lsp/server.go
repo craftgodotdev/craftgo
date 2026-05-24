@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"go.lsp.dev/jsonrpc2"
@@ -161,7 +162,7 @@ func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req j
 				TriggerCharacters:   []string{"(", ","},
 				RetriggerCharacters: []string{","},
 			},
-			RenameProvider:             &protocol.RenameOptions{PrepareProvider: true},
+			RenameProvider: &protocol.RenameOptions{PrepareProvider: true},
 			CompletionProvider: &protocol.CompletionOptions{
 				// Generous trigger set so completion auto-fires at
 				// every transition the user is likely to want help
@@ -272,10 +273,64 @@ func (s *Server) storeDoc(u uri.URI, text string, version int32) {
 // to the client as a textDocument/publishDiagnostics notification. It does
 // not return an error - diagnostic publishing is best-effort, and a
 // failed notify is logged via the connection's done channel.
+//
+// In project mode the edit may have (in)validated diagnostics in OTHER
+// open files (e.g. adding a field to a request type clears the
+// "path segment has no matching field" error in the service file that
+// references it). To avoid stale squigglies, the resulting per-file
+// diagnostics are pushed for every open file in the same project, not
+// just the triggering URI. Single-file mode pushes only for u.
 func (s *Server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
-	diags := s.buildDiagnostics(u, src)
+	perFile, designRoot := s.buildProjectDiagnostics(u, src)
+	if designRoot == "" {
+		// Single-file fallback - the project analyser didn't run.
+		_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
+			URI:         u,
+			Diagnostics: diagsFor(perFile, uriToPath(string(u))),
+		})
+		return
+	}
+	// Always push for u (handles the "edit cleared all diags" case).
+	pushed := map[string]bool{uriToPath(string(u)): true}
 	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
 		URI:         u,
-		Diagnostics: diags,
+		Diagnostics: diagsFor(perFile, uriToPath(string(u))),
 	})
+	// Republish every OTHER open file that lives under the same design
+	// root. Empty payloads clear stale squigglies in dependent files.
+	for openURI := range s.openDocURIs() {
+		op := uriToPath(string(openURI))
+		if op == "" || pushed[op] || !strings.HasPrefix(op, designRoot) {
+			continue
+		}
+		pushed[op] = true
+		_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
+			URI:         openURI,
+			Diagnostics: diagsFor(perFile, op),
+		})
+	}
+}
+
+// diagsFor looks up a per-file partition and ALWAYS returns a non-nil
+// slice. nil JSON-marshals to `null`, which several LSP clients treat as
+// "ignore" rather than "clear diagnostics for this file" - so we have to
+// hand them an explicit `[]` to clear stale squigglies.
+func diagsFor(perFile map[string][]protocol.Diagnostic, key string) []protocol.Diagnostic {
+	if d := perFile[key]; d != nil {
+		return d
+	}
+	return []protocol.Diagnostic{}
+}
+
+// openDocURIs returns a snapshot of every currently-open document URI.
+// Used by publishDiagnostics to know which sibling files need their
+// diagnostics refreshed after a cross-file edit.
+func (s *Server) openDocURIs() map[uri.URI]struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[uri.URI]struct{}, len(s.docs))
+	for k := range s.docs {
+		out[k] = struct{}{}
+	}
+	return out
 }

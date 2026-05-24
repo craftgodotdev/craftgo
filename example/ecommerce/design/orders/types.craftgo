@@ -1,0 +1,92 @@
+package orders
+
+import "shared"
+import "catalog"
+import "customers"
+
+enum OrderStatus {
+	Pending   = "pending"
+	Paid      = "paid"
+	Shipped   = "shipped"
+	Delivered = "delivered"
+	Cancelled = "cancelled"
+}
+
+enum PaymentMethod {
+	Card    = "card"
+	Bank    = "bank"
+	Wallet  = "wallet"
+	Invoice = "invoice"
+}
+
+type LineItem {
+	product   catalog.ProductRef
+	sku       shared.SKU
+	quantity  int                @gte(1) @lte(1000)
+	unitCents shared.Cents       @lte(1000000)
+	bonusBP   shared.PercentBP?
+	note      string?            @default("") @maxLength(200)
+}
+
+type Payment {
+	method      PaymentMethod
+	cardLast4   string?           @length(4, 4) @pattern("^[0-9]{4}$")
+	referenceId shared.NonEmptyID
+	receiptURL  shared.SafeURL?
+}
+
+type Order {
+	id         shared.NonEmptyID
+	customer   customers.Customer
+	items      LineItem[]            @minItems(1) @maxItems(100)
+	payment    Payment?
+	totalCents shared.Cents          @lte(100000000)
+	status     OrderStatus
+	notes      string?               @maxLength(2000)
+	shippedAt  string?               @format(datetime)
+	currency   shared.CurrencyCode?  @default("USD")
+	tags       string[]              @minItems(1) @maxItems(10) @uniqueItems
+	grid       string[][]
+	metadata   map<string, string>?
+	extras     any?                  @example({trackingNumber: "TRK-001", carrier: "ACME"})
+	createdBy  customers.CustomerRef
+	createdAt  string                @format(datetime)
+}
+
+type GetOrderReq {
+	id string @path @length(1, 64)
+}
+
+type ListOrdersReq {
+	cursor string?
+	limit  int          @gte(0) @lte(100)
+	status OrderStatus? @query
+}
+
+type CreateOrderReq {
+	customerId shared.NonEmptyID
+	items      LineItem[]           @minItems(1) @maxItems(100)
+	notes      string?              @maxLength(2000)
+	currency   shared.CurrencyCode? @default("USD")
+	tags       string[]?            @maxItems(10) @uniqueItems
+}type FilterOrdersReq {
+	status     OrderStatus   @path
+	method     PaymentMethod @query
+	limit      int           @query @gte(0) @lte(100)
+	maxPrice   int           @query
+	idemKey    string?       @header @length(1, 128)
+	retryAfter int           @header
+	lastSeen   string?       @cookie
+	tier       int           @cookie
+}
+
+type DefaultsShowcaseReq {
+	str            string?              @default("anon")
+	num            int?                 @default(20)
+	flag           bool?                @default(true)
+	currency       shared.CurrencyCode? @default("USD")
+	status         OrderStatus?         @default(Pending)
+	tags           string[]?            @default([])
+	preset         string[]?            @default(["standard", "expedited"])
+	allowedMethods PaymentMethod[]?     @default([Card, Bank])
+}

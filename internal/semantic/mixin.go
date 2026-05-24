@@ -79,13 +79,20 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 // processMixin validates one mixin reference against the package and
 // expands its fields into seen. visited is initialised with the host
 // so a self-mixin is detected immediately as a cycle.
+//
+// In project mode the per-package pass is skipped (see
+// [Options.skipMixinCheck]); the project-level resolver runs an
+// equivalent expansion that ALSO resolves qualified mixin refs
+// (`shared.Timestamps`). When this runs per-package, qualified refs
+// are silently skipped because we have no cross-package view.
 func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fieldOrigin) {
 	if mx.Ref == nil || mx.Ref.Name == nil {
 		return
 	}
 	if len(mx.Ref.Name.Parts) != 1 {
-		// Qualified - already flagged by [analyzer.checkQualifiedRefs];
-		// skipping here avoids a duplicate diagnostic on the same span.
+		// Qualified - either rejected by [analyzer.checkQualifiedRefs]
+		// (single-package mode) or expanded by the project resolver
+		// (multi-package mode). Either way, do not fire here.
 		return
 	}
 	target := mx.Ref.Name.Parts[0]

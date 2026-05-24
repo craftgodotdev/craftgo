@@ -286,11 +286,20 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) Start(addr string) error {
 	s.addr = addr
 	s.httpSrv = &http.Server{
-		Addr:           addr,
-		Handler:        s.Handler(),
-		ReadTimeout:    s.defaultReadTimeout,
-		WriteTimeout:   s.defaultWriteTimeout,
-		MaxHeaderBytes: s.defaultMaxHeaderKB * 1024,
+		Addr:    addr,
+		Handler: s.Handler(),
+		// ReadHeaderTimeout caps the time a client may spend sending the
+		// request line + headers. Without it a slow-read client (drip-
+		// feeding 1 byte every 30s) can pin a goroutine indefinitely —
+		// the classic Slowloris attack. The full ReadTimeout below also
+		// helps but only after a request line arrives; this knob fires
+		// before the handler ever runs. 10s matches Go's
+		// http.DefaultClient default and is the floor net/http itself
+		// recommends.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       s.defaultReadTimeout,
+		WriteTimeout:      s.defaultWriteTimeout,
+		MaxHeaderBytes:    s.defaultMaxHeaderKB * 1024,
 	}
 	if err := s.httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err

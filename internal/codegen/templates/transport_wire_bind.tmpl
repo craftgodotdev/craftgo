@@ -1,0 +1,78 @@
+{{- /*
+transport_wire_bind.tmpl emits one binding block per field for every
+HTTP wire-string source: @query, @header, @cookie, @form. The seven
+named shapes cover every (array / single) × (parser / no parser) ×
+(optional / required) × (cast / no cast) combination the DSL produces.
+[renderWireBindLine] picks the shape and provides the source-extraction
+expressions; the template never branches on type primitives or source
+kind - it just slots strings.
+
+Shape catalogue:
+  - directSlice         []string, no cast → straight slice copy
+  - directSingle        single string (any cast) → Get + optional wrap
+  - arrayString         []string with cast → loop + wrapped append
+  - arrayParsed         []numeric/bool → loop + parse + wrapped append
+  - optionalStringNoCast *string → guard + addr-of raw value
+  - optionalStringCast   *Alias → guard + cast + addr-of typed value
+  - singleParsed        numeric/bool single → guard + parse + assign
+
+`SingleSource` is a Go expression yielding the raw string (e.g.
+`r.URL.Query().Get("x")`, `r.Header.Get("X")`, `c.Value`,
+`r.FormValue("x")`). `ArraySource` is the matching `[]string`
+expression (e.g. `r.URL.Query()["x"]`, `r.Header.Values("X")`,
+`r.MultipartForm.Value["x"]`); cookies have no array form so callers
+must reject array fields up front.
+
+Cookie's `if c, err := r.Cookie(name); err == nil { ... }` wrap is
+applied by the caller AFTER rendering - this template stays unaware
+of which wire source it's emitting for.
+*/ -}}
+
+{{define "directSlice" -}}
+req.{{.GoName}} = {{.ArraySource}}
+{{- end}}
+
+{{define "directSingle" -}}
+req.{{.GoName}} = {{.Wrap}}
+{{- end}}
+
+{{define "arrayString" -}}
+for _, _v := range {{.ArraySource}} {
+	req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})
+}
+{{- end}}
+
+{{define "arrayParsed" -}}
+for _, _v := range {{.ArraySource}} {
+	_n, _err := {{.ParseCall}}
+	if _err != nil {
+		http.Error(w, {{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})
+}
+{{- end}}
+
+{{define "optionalStringNoCast" -}}
+if _v := {{.SingleSource}}; _v != "" {
+	req.{{.GoName}} = &_v
+}
+{{- end}}
+
+{{define "optionalStringCast" -}}
+if _v := {{.SingleSource}}; _v != "" {
+	_w := {{.Wrap}}
+	req.{{.GoName}} = &_w
+}
+{{- end}}
+
+{{define "singleParsed" -}}
+if _v := {{.SingleSource}}; _v != "" {
+	_n, _err := {{.ParseCall}}
+	if _err != nil {
+		http.Error(w, {{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.{{.GoName}} = {{.Wrap}}
+}
+{{- end}}

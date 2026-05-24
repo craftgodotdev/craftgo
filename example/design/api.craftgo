@@ -1,8 +1,0 @@
-// File-level metadata for the OpenAPI document. The `package design`
-// declaration anchors this file in the project's "umbrella" namespace
-// — separate from the domain packages (`users`, `projects`, `tasks`,
-// `shared`) which each live in their own subfolder and declare their
-// own `package X`.
-@version("1.0.0")
-@doc("Multi-package showcase: shared request/response DTOs across services, nested type composition with pointer-optionals, validation cascading through embedded mixins.")
-package design

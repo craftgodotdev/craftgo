@@ -206,6 +206,97 @@ service S {
 	}
 }
 
+// TestParsePathParamReservedKeyword pins the path-parser fix: a URL
+// like `/logs/{service}` MUST parse as a path-param named `service`,
+// not as a literal `/logs/` followed by a method body that starts with
+// the `service` keyword. Same coverage for the `file`, `type`, and verb
+// (`get`) keywords - they're DSL constructs but legitimate URL labels.
+//
+// Before the fix this triggered a 30+ diagnostic cascade because the
+// `{` disambiguator only accepted [lexer.Ident] as the next token and
+// fell through when a keyword token appeared.
+func TestParsePathParamReservedKeyword(t *testing.T) {
+	cases := []struct {
+		name string
+		path string // the path that appears after the method name
+		want string // expected pathStr round-trip
+	}{
+		{name: "service keyword", path: "/logs/{service}", want: "/logs/{service}"},
+		{name: "file keyword", path: "/uploads/{file}", want: "/uploads/{file}"},
+		{name: "type keyword", path: "/things/{type}", want: "/things/{type}"},
+		{name: "verb get", path: "/by/{get}", want: "/by/{get}"},
+		{name: "multiple", path: "/{service}/logs/{type}", want: "/{service}/logs/{type}"},
+		{name: "mix with literal", path: "/api/{service}/v1", want: "/api/{service}/v1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := `package design
+type Req { x string }
+type Resp {}
+service S {
+    get H ` + c.path + ` {
+        request  Req
+        response Resp
+    }
+}`
+			f := parseSrc(t, src)
+			if f == nil {
+				t.Fatal("expected file")
+			}
+			var got string
+			for _, d := range f.Decls {
+				if s, ok := d.(*ast.ServiceDecl); ok && len(s.Methods()) > 0 {
+					if s.Methods()[0].Path == nil {
+						t.Fatal("path nil")
+					}
+					got = pathStr(s.Methods()[0].Path)
+				}
+			}
+			if got != c.want {
+				t.Errorf("path = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestParsePathDisambiguationKeepsMethodBody guards the regression that
+// caused the path-param fix to misread `/ { request X response Y }`
+// (empty path followed by a method body that opens with the `request`
+// keyword) as a path-param named `request`. The 3-token `{ <word> }`
+// shape is what disambiguates a path-param from a method body brace.
+func TestParsePathDisambiguationKeepsMethodBody(t *testing.T) {
+	src := `package design
+type Req { id string }
+type Resp {}
+service S {
+    get H / {
+        request  Req
+        response Resp
+    }
+}`
+	f := parseSrc(t, src)
+	if f == nil {
+		t.Fatal("expected file")
+	}
+	for _, d := range f.Decls {
+		s, ok := d.(*ast.ServiceDecl)
+		if !ok || len(s.Methods()) == 0 {
+			continue
+		}
+		m := s.Methods()[0]
+		// Path must be `/` (one empty segment) — NOT `/{request}`.
+		if m.Path == nil || len(m.Path.Segments) != 1 {
+			t.Fatalf("expected path with 1 segment, got %v", m.Path)
+		}
+		if m.Path.Segments[0].Param {
+			t.Errorf("path-param leaked: method body brace misread as `{request}`")
+		}
+		if m.Request == nil || m.Request.Name == nil || m.Request.Name.String() != "Req" {
+			t.Errorf("expected request Req, got %v", m.Request)
+		}
+	}
+}
+
 // pathStr renders a Path back to a string for assertion convenience.
 func pathStr(p *ast.Path) string {
 	var sb strings.Builder

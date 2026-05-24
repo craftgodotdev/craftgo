@@ -1,0 +1,47 @@
+package customers
+
+import "shared"
+
+type Geocode {
+	lat        shared.Latitude
+	lng        shared.Longitude
+	altitude   float64?    @gte(-500) @lte(9000)
+	capturedAt string      @format(datetime)
+}
+
+type Address {
+	street     string             @length(1, 200)
+	street2    string?            @maxLength(200)
+	city       string             @minLength(1) @maxLength(100)
+	region     string?            @maxLength(100)
+	postalCode string             @pattern("^[A-Z0-9 -]{3,12}$")
+	country    shared.CountryCode
+	geo        Geocode?
+}
+
+@requiresOneOf(email, phone)
+@mutuallyExclusive(work, personal)
+type Contact {
+	email    shared.Email?
+	phone    string?       @pattern("^\\+?[0-9 ()-]{6,20}$")
+	work     bool?
+	personal bool?
+}
+
+type Customer {
+	id             shared.NonEmptyID
+	email          shared.Email
+	name           string             @length(1, 120)
+	primaryAddress Address
+	billingAddress Address?
+	contact        Contact
+	avatar         file?              @maxSize(5MB) @mimeTypes("image/png", "image/jpeg", "image/webp")
+	loyaltyPoints  int                @nullable @gte(0) @lte(1000000)
+	bio            string?            @maxLength(500)
+	createdAt      string             @format(datetime)
+}
+
+type CustomerRef {
+	id   shared.NonEmptyID
+	name string @length(1, 120)
+}

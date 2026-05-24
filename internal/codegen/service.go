@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -139,11 +140,17 @@ func buildServiceData(svcName string, m *ast.Method, imps importPaths, crossPkg 
 	// canonical `types` import becomes unused. Drop it so the scaffold
 	// compiles. Single-cross-pkg + local-other still keeps the canonical
 	// types import for the local one.
-	if hasReq && hasResp && d.RequestPkgAlias != "types" && d.ResponsePkgAlias != "types" {
+	//
+	// Edge case: a cross-pkg generic (`shared.Page<LocalType>`) renders
+	// as `*shared.Page[types.LocalType]` — the outer alias is the cross
+	// pkg but the inner local-arg still needs the canonical `types`
+	// import. Detect that via the `types.` substring in the bare type.
+	usesLocalTypes := strings.Contains(d.RequestType, "types.") || strings.Contains(d.ResponseType, "types.")
+	if hasReq && hasResp && d.RequestPkgAlias != "types" && d.ResponsePkgAlias != "types" && !usesLocalTypes {
 		d.NeedsTypes = false
-	} else if hasReq && !hasResp && d.RequestPkgAlias != "types" {
+	} else if hasReq && !hasResp && d.RequestPkgAlias != "types" && !usesLocalTypes {
 		d.NeedsTypes = false
-	} else if !hasReq && hasResp && d.ResponsePkgAlias != "types" {
+	} else if !hasReq && hasResp && d.ResponsePkgAlias != "types" && !usesLocalTypes {
 		d.NeedsTypes = false
 	}
 	if hasPassthroughDecorator(m.Decorators) {

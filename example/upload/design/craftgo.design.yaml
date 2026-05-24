@@ -1,0 +1,15 @@
+output:
+  types:      ./internal/types
+  transport:  ./internal/transport
+  routes:     ./internal/routes
+  service:    ./internal/service
+  middleware: ./internal/middleware
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+  config:     ./config
+  main:       ./main.go
+
+openapi:
+  title:    Upload Service
+  version:  1.0.0
+  basePath: /api

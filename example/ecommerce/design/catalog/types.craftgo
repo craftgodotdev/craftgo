@@ -1,0 +1,42 @@
+package catalog
+
+import "shared"
+
+type Timestamps {
+	createdAt string @format(datetime)
+	updatedAt string @format(datetime)
+}
+
+type CategoryRef {
+	id   shared.NonEmptyID
+	name string @length(1, 200)
+}
+
+type Category {
+	Timestamps
+	shared.AuditFields
+	id     shared.NonEmptyID
+	name   string @length(1, 200)
+	slug   shared.Slug
+	parent CategoryRef?
+}
+
+@deprecated("rename to Item in v2 — kept for backward compat")
+type Product {
+	Timestamps
+	id          shared.NonEmptyID
+	sku         shared.SKU
+	name        string                  @length(1, 200)
+	description string?                 @maxLength(5000)
+	priceCents  shared.Cents            @lte(100000000)
+	currency    shared.CurrencyCode?    @default("USD")
+	category    CategoryRef
+	tags        string[]                @maxItems(20) @uniqueItems
+	bonusBP     shared.PercentBP?
+	siteUrl     shared.SafeURL?
+}
+
+type ProductRef {
+	id   shared.NonEmptyID
+	name string @length(1, 200)
+}

@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -208,14 +209,17 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 // types whose schema is inlined, not referenced. Primitives still need
 // a name fragment for generic component naming (`Page<string>` →
 // `PageOfString`) but they do not produce a separate component schema.
+// Delegates to [idents.IsBuiltin] so the codegen and the rest of the
+// pipeline share one source of truth for "is this a DSL builtin"
+// (which previously had three drifting inline lists).
 func isPrimitiveName(name string) bool {
-	switch name {
-	case "string", "bool", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "bytes", "any", "file":
-		return true
+	if !idents.IsBuiltin(name) {
+		return false
 	}
-	return false
+	// `object` is the example-only bag type and never reaches the
+	// OpenAPI schema emitter as a field; exclude it so callers don't
+	// accidentally classify a struct field as a primitive.
+	return name != "object"
 }
 
 // pascalIdent upper-cases the first rune of name. Used for simple

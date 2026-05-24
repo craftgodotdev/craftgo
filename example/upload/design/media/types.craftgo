@@ -1,0 +1,33 @@
+package media
+
+type UploadResult {
+	id        string @length(1, 64)
+	url       string @format(url) @maxLength(2048)
+	sizeBytes int    @gte(0)
+	mimeType  string @length(1, 128)
+	createdAt string @format(datetime)
+}
+
+type UploadAvatarReq {
+	userId string @path @length(1, 64)
+	image  file   @form @maxSize(5MB) @mimeTypes("image/png", "image/jpeg", "image/webp")
+}
+
+type UploadDocumentReq {
+	pdf   file    @form @maxSize(50MB) @mimeTypes("application/pdf")
+	title string  @form @length(1, 200)
+	notes string? @form @maxLength(2000)
+}
+
+type UploadAttachmentReq {
+	noteId string @path @length(1, 64)
+	blob   file   @form @maxSize(500KB) @mimeTypes("image/png", "text/plain", "application/json")
+}
+
+type GetMediaReq {
+	id string @path @length(1, 64)
+}
+
+type OkResp {
+	ok bool
+}

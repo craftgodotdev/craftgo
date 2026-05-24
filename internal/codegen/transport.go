@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -47,11 +46,11 @@ type transportData struct {
 	// without spilling to disk. Only meaningful when IsMultipart.
 	MultipartMaxMemory int64
 	PathParams         []paramBinding
-	QueryParams     []paramBinding
-	HeaderParams    []paramBinding
-	CookieParams    []paramBinding
-	FormStrings     []paramBinding
-	FormFiles       []paramBinding
+	QueryParams        []paramBinding
+	HeaderParams       []paramBinding
+	CookieParams       []paramBinding
+	FormStrings        []paramBinding
+	FormFiles          []paramBinding
 	// Response-side bindings: fields on the response struct tagged with
 	// `@header` / `@cookie`. The handler emits them onto the writer
 	// before the JSON body is encoded; the matching JSON tag on the
@@ -156,14 +155,7 @@ func GenerateTransportWith(pkg *semantic.Package, cfg *config.Config, projectRoo
 }
 
 // sortedServices returns the package's service names in deterministic order.
-func sortedServices(pkg *semantic.Package) []string {
-	out := make([]string, 0, len(pkg.Services))
-	for n := range pkg.Services {
-		out = append(out, n)
-	}
-	sort.Strings(out)
-	return out
-}
+func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Services) }
 
 // generateTransportFor emits all per-method handler files for a single
 // service. Each method becomes a separate file so that user-friendly diffs
@@ -213,6 +205,13 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarTable) (transportData, error) {
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
+	// NeedsTypes triggers the `types` import in the template. The
+	// handler body only references `types.X` for request decoding —
+	// responses pass through to the encoder unchanged — so the gate is
+	// strictly "is there a request to bind". Response-only handlers
+	// would otherwise pull in an unused import (`go build` would
+	// reject) or render the response cast via a different alias when
+	// the response type is cross-package (cf. resolveTypeRef below).
 	d := transportData{
 		Package:          ServicePackage(svcName),
 		Method:           m.Name,
@@ -221,15 +220,11 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		HasRequest:       hasReq,
 		HasResponse:      hasResp,
 		BodyVerb:         hasBodyVerb(m.Verb),
-		NeedsTypes:       hasReq || hasResp,
+		NeedsTypes:       hasReq,
 		ServiceImport:    imps.Service,
 		TypesImport:      imps.Types,
 		SvccontextImport: imps.Svccontext,
 	}
-	// Handler body only references `types.X` for request decoding;
-	// the response is passed through to the encoder, so we only need
-	// the types import when there's a request type to bind.
-	d.NeedsTypes = hasReq
 	if hasReq {
 		// Resolve the Go-side reference to the request type. Local
 		// types render as `types.<X>` (the canonical alias the
@@ -281,10 +276,17 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		d.CookieParams = nil
 	}
 	if hasReq && !d.IsPassthrough {
-		if forms, files := collectFormBindings(m, pkg); len(files) > 0 {
+		forms, files, formStrconv, ferr := collectFormBindings(m, pkg, d.RequestPkgAlias)
+		if ferr != nil {
+			return d, ferr
+		}
+		if len(files) > 0 {
 			d.IsMultipart = true
 			d.FormStrings = forms
 			d.FormFiles = files
+			if formStrconv {
+				d.NeedsStrconv = true
+			}
 			// Match the stdlib historical 32 MiB floor unless the
 			// method's `@maxBodySize` declares a higher cap. The
 			// MaxBytesReader at the route layer still enforces the
@@ -306,27 +308,13 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 	return d, nil
 }
 
-func hasPassthroughDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d.Name == "passthrough" {
-			return true
-		}
-	}
-	return false
-}
+func hasPassthroughDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "passthrough") }
 
 // hasDeprecatedDecorator reports whether `@deprecated` is declared in
 // the chain. Used by OpenAPI codegen to flag operations and schemas,
 // and by the types emitter to prepend a Go-style `// Deprecated:` line
 // (which `go vet` / `staticcheck` honour).
-func hasDeprecatedDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d.Name == "deprecated" {
-			return true
-		}
-	}
-	return false
-}
+func hasDeprecatedDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "deprecated") }
 
 // deprecatedReason returns the optional `@deprecated("...")` argument,
 // or "" when the decorator carries no message. Both forms are valid:
@@ -441,26 +429,89 @@ var queryPrims = map[string]queryPrim{
 // Without this walk, a request with a cross-package scalar field
 // auto-promoted to @path (`id shared.ID` on a `/{id}` route)
 
-func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName string) (string, bool, error) {
+// wireSource describes a binding's HTTP wire source. Different bindings
+// extract the raw string differently but share the same downstream
+// parse / cast / wrap logic, so we abstract the source extraction
+// behind these closures and dispatch through [renderWireBindLine].
+//
+// Cookie is special-cased: `r.Cookie(name)` returns (cookie, error)
+// rather than a bare string, so the renderer wraps the whole produced
+// block in `if c, err := r.Cookie(name); err == nil { ... }` when
+// cookieGuard is true. SingleExpr / arrayExpr for cookie return
+// `c.Value` / "" - the wrap supplies `c`.
+type wireSource struct {
+	kind        string
+	singleExpr  func(wireName string) string
+	arrayExpr   func(wireName string) string // "" if arrays unsupported for this source
+	cookieGuard bool
+}
+
+// querySource / headerSource / cookieSource / formSource build the
+// wireSource for each of the four supported bindings. Hot path - kept
+// allocation-free by capturing the wireName by value at the call site.
+func querySource() wireSource {
+	return wireSource{
+		kind:       "query",
+		singleExpr: func(n string) string { return fmt.Sprintf("r.URL.Query().Get(%q)", n) },
+		arrayExpr:  func(n string) string { return fmt.Sprintf("r.URL.Query()[%q]", n) },
+	}
+}
+
+func headerSource() wireSource {
+	return wireSource{
+		kind:       "header",
+		singleExpr: func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
+		arrayExpr:  func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+	}
+}
+
+func cookieSource() wireSource {
+	return wireSource{
+		kind:        "cookie",
+		singleExpr:  func(string) string { return "c.Value" },
+		arrayExpr:   func(string) string { return "" },
+		cookieGuard: true,
+	}
+}
+
+func formSource() wireSource {
+	return wireSource{
+		kind:       "form",
+		singleExpr: func(n string) string { return fmt.Sprintf("r.FormValue(%q)", n) },
+		arrayExpr:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
+	}
+}
+
+// renderWireBindLine renders the per-field binding statement for any
+// of the four HTTP wire-string sources (query / header / cookie / form).
+// The source-extraction expressions come from src; the rest of the
+// pipeline (primitive resolution, scalar / enum cast, parse + 400 on
+// failure, optional pointer wrap, array loop) is shared.
+//
+// Returns the rendered Go code, a flag indicating whether the line
+// needs `strconv` imported, and an error describing why a particular
+// field shape cannot ride the wire (cookies have no array form, maps
+// and structs ride only `@body`, etc.).
+func renderWireBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName string, src wireSource) (string, bool, error) {
 	if f.Type == nil {
 		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
 	}
 	if f.Type.Map != nil {
-		return "", false, fmt.Errorf("field %q: map types cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name)
+		return "", false, fmt.Errorf("field %q: map types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, src.kind)
 	}
 	if f.Type.Named == nil {
-		return "", false, fmt.Errorf("field %q: anonymous types cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name)
+		return "", false, fmt.Errorf("field %q: anonymous types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, src.kind)
 	}
 	if len(f.Type.Named.Args) > 0 {
-		return "", false, fmt.Errorf("field %q: generic type %s<...> cannot bind to query - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String())
+		return "", false, fmt.Errorf("field %q: generic type %s<...> cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String(), src.kind)
+	}
+	if f.Type.Array && src.arrayExpr(wireName) == "" {
+		return "", false, fmt.Errorf("field %q: arrays cannot bind to @%s - this wire format carries a single value per name", f.Name, src.kind)
 	}
 	declName := f.Type.Named.Name.String()
 	prim, ok := queryPrims[declName]
-	cast := "" // empty = no cast (plain primitive)
+	cast := ""
 	if !ok {
-		// Resolve scalar / enum to their underlying primitive and
-		// remember the cast so the parsed value lands as the typed
-		// alias (e.g. `Status` not `string`, `Cents` not `int`).
 		if pkg != nil {
 			if sc, scOk := pkg.Scalars[declName]; scOk && sc != nil {
 				if p2, pOk := queryPrims[sc.Primitive]; pOk {
@@ -486,14 +537,8 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName
 		}
 	}
 	if !ok {
-		return "", false, fmt.Errorf("field %q: type %s cannot bind to query - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f))
+		return "", false, fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f), src.kind)
 	}
-	// `cast` is non-empty when f's declared type is a scalar / enum
-	// alias - the parsed primitive value gets wrapped with `cast(...)`
-	// at every assignment point so the field lands as the typed alias
-	// (e.g. `Status` not `string`, `Cents` not `int`). pkgAlias prefixes
-	// the cast so it resolves through the matching Go import (typically
-	// `types.Status` for local declarations).
 	if cast != "" && pkgAlias != "" {
 		cast = pkgAlias + "." + cast
 	}
@@ -503,84 +548,127 @@ func renderQueryBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName
 		}
 		return cast + "(" + s + ")"
 	}
-	data := queryBindData{
+	singleSrc := src.singleExpr(wireName)
+	arraySrc := src.arrayExpr(wireName)
+	data := wireBindData{
 		DSLNameQuoted: strconv.Quote(wireName),
 		GoName:        GoFieldName(f.Name),
 		Label:         prim.label,
+		SingleSource:  singleSrc,
+		ArraySource:   arraySrc,
 	}
+	var shape string
+	needsStrconv := false
 	if f.Type.Array {
 		if prim.parser == "" {
 			if cast == "" {
-				return renderQueryBindShape("directSlice", data), false, nil
+				shape = renderWireBindShape("directSlice", data)
+			} else {
+				data.Wrap = wrap("_v")
+				shape = renderWireBindShape("arrayString", data)
 			}
-			data.Wrap = wrap("_v")
-			return renderQueryBindShape("arrayString", data), false, nil
+		} else {
+			data.ParseCall = parseCall(prim)
+			data.Wrap = wrap(castExpr(prim, "_n"))
+			shape = renderWireBindShape("arrayParsed", data)
+			needsStrconv = true
 		}
-		data.ParseCall = parseCall(prim)
-		data.Wrap = wrap(castExpr(prim, "_n"))
-		return renderQueryBindShape("arrayParsed", data), true, nil
-	}
-	// Single (non-array). Optional non-string primitives are not
-	// supported: `*int` from query would need a tri-state
-	// (absent / empty / parsed) and no clean idiom exists yet.
-	if f.Type.Optional && prim.parser != "" {
-		return "", false, fmt.Errorf("field %q: optional %s cannot bind to query — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label)
-	}
-	if prim.parser == "" {
-		if f.Type.Optional {
-			// Plain `*string`: take the address of the raw query
-			// value directly. Scalar/enum optional (`*Color`,
-			// `*UUID`): the query yields a `string`, so we must
-			// cast through the alias type and bind to a NEW
-			// variable that has the alias type — addressing the
-			// raw `string` variable would produce `*string`,
-			// which is incompatible with the field's `*<Alias>`
-			// type and refuses to compile.
-			if cast == "" {
-				return renderQueryBindShape("optionalStringNoCast", data), false, nil
+	} else {
+		// Single (non-array). Optional non-string primitives are not
+		// supported: `*int` from a wire string would need a tri-state
+		// (absent / empty / parsed) and no clean idiom exists yet.
+		if f.Type.Optional && prim.parser != "" {
+			return "", false, fmt.Errorf("field %q: optional %s cannot bind to @%s — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label, src.kind)
+		}
+		if prim.parser == "" {
+			if f.Type.Optional {
+				if cast == "" {
+					shape = renderWireBindShape("optionalStringNoCast", data)
+				} else {
+					data.Wrap = wrap("_v")
+					shape = renderWireBindShape("optionalStringCast", data)
+				}
+			} else {
+				data.Wrap = wrap(singleSrc)
+				shape = renderWireBindShape("directSingle", data)
 			}
-			data.Wrap = wrap("_v")
-			return renderQueryBindShape("optionalStringCast", data), false, nil
+		} else {
+			data.ParseCall = parseCall(prim)
+			data.Wrap = wrap(castExpr(prim, "_n"))
+			shape = renderWireBindShape("singleParsed", data)
+			needsStrconv = true
 		}
-		data.Wrap = wrap(fmt.Sprintf("r.URL.Query().Get(%s)", data.DSLNameQuoted))
-		return renderQueryBindShape("directSingle", data), false, nil
 	}
-	// numeric / bool single, gated by non-empty query value.
-	data.ParseCall = parseCall(prim)
-	data.Wrap = wrap(castExpr(prim, "_n"))
-	return renderQueryBindShape("singleParsed", data), true, nil
+	if src.cookieGuard {
+		shape = wrapCookieGuard(wireName, shape)
+	}
+	return shape, needsStrconv, nil
 }
 
-// queryBindData is the payload threaded through every named block in
-// transport_query_bind.tmpl. Fields that a particular shape does not
+// wrapCookieGuard wraps a rendered shape in the
+// `if c, err := r.Cookie(name); err == nil { ... }` prelude. Cookie
+// retrieval returns (Cookie, error); we surface a missing-cookie state
+// the same way other wire bindings handle empty values - the field
+// stays at its zero value (or nil pointer for optional shapes).
+//
+// The inner body is indented one tab so the produced code stays
+// gofmt-clean without a post-render pass.
+func wrapCookieGuard(wireName, inner string) string {
+	indented := indentLines(inner, "\t")
+	return fmt.Sprintf("if c, err := r.Cookie(%q); err == nil {\n%s\n}", wireName, indented)
+}
+
+// indentLines prepends prefix to every non-blank line of s. Used by
+// the cookie-guard wrap so the inner block sits one level deeper.
+func indentLines(s, prefix string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		if ln == "" {
+			continue
+		}
+		lines[i] = prefix + ln
+	}
+	return strings.Join(lines, "\n")
+}
+
+// wireBindData is the payload threaded through every named block in
+// transport_wire_bind.tmpl. Fields that a particular shape does not
 // reference stay empty - the template only slots what it asks for so
 // unused entries are harmless.
-type queryBindData struct {
-	DSLNameQuoted string // strconv.Quote(wireName) - drops in as a Go string literal
-	GoName        string // PascalCase request struct field
-	Wrap          string // pre-computed cast / pointer-of expression
-	ParseCall     string // pre-computed strconv parse call (with bit width baked in)
-	Label         string // primitive label for the 400 error message
+//
+// `SingleSource` / `ArraySource` are the binding-specific source
+// extraction expressions (e.g. `r.URL.Query().Get("x")` for query,
+// `c.Value` for cookie). They are supplied by the caller's
+// [wireSource]; the template stays unaware of which wire format it is
+// emitting for.
+type wireBindData struct {
+	DSLNameQuoted string
+	GoName        string
+	Wrap          string
+	ParseCall     string
+	Label         string
+	SingleSource  string
+	ArraySource   string
 }
 
-// renderQueryBindShape executes one named block from
-// transport_query_bind.tmpl. The shape name is a compile-time constant
+// renderWireBindShape executes one named block from
+// transport_wire_bind.tmpl. The shape name is a compile-time constant
 // at every call site so a typo would fail the next test run with a
 // clear "template not found" panic.
-func renderQueryBindShape(name string, data queryBindData) string {
+func renderWireBindShape(name string, data wireBindData) string {
 	var buf bytes.Buffer
-	if err := transportQueryBindTemplate.ExecuteTemplate(&buf, name, data); err != nil {
-		panic(fmt.Sprintf("codegen: render query bind shape %q: %v", name, err))
+	if err := transportWireBindTemplate.ExecuteTemplate(&buf, name, data); err != nil {
+		panic(fmt.Sprintf("codegen: render wire bind shape %q: %v", name, err))
 	}
 	return buf.String()
 }
 
-// transportQueryBindTemplate is parsed once at first use; subsequent
+// transportWireBindTemplate is parsed once at first use; subsequent
 // renders are pure ExecuteTemplate dispatches by name. The template
 // holds the catalogue of shapes (see file header comment) so adding a
-// new query primitive is a template-only change once the Go dispatcher
-// knows which name to pick.
-var transportQueryBindTemplate = tmpl("transport_query_bind.tmpl")
+// new wire-bound primitive is a template-only change once the Go
+// dispatcher knows which name to pick.
+var transportWireBindTemplate = tmpl("transport_wire_bind.tmpl")
 
 // describeFieldType renders a short human-readable form of f's type
 // for error messages - `[]Point`, `Page<Book>`, `map<string,int>`,

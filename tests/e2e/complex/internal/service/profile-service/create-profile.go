@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"fmt"
-	"strings"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/design"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"

@@ -5,14 +5,14 @@ MODULE       := github.com/craftgodotdev/craftgo
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
-DESIGN_DIR   := $(EXAMPLE_DIR)/design
+EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce
 
 GO           ?= go
 GOFLAGS      ?=
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
-SUBMODULES   := $(EXAMPLE_DIR) tests/e2e/users tests/e2e/complex tests/e2e/multi-service
+SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/users tests/e2e/complex tests/e2e/multi-service
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -100,12 +100,16 @@ lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
 E2E_DIRS := tests/e2e/users tests/e2e/complex tests/e2e/multi-service tests/e2e/cornercase
 
 .PHONY: gen
-gen: build ## Regenerate the example project from its design dir.
-	./$(BIN) gen $(DESIGN_DIR)
+gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce).
+	@for d in $(EXAMPLE_PROJECTS); do \
+		echo "→ gen $$d"; ./$(BIN) gen -f "$$d/design" -c "$$d" || exit 1; \
+	done
 
 .PHONY: gen-go
-gen-go: ## Regenerate the example without rebuilding the CLI (uses `go run`).
-	$(GO) run ./cmd/craftgo gen $(DESIGN_DIR)
+gen-go: ## Regenerate every example mini-project without rebuilding the CLI.
+	@for d in $(EXAMPLE_PROJECTS); do \
+		echo "→ gen $$d"; $(GO) run ./cmd/craftgo gen -f "$$d/design" -c "$$d" || exit 1; \
+	done
 
 .PHONY: gen-e2e
 gen-e2e: ## Regenerate every tests/e2e/* fixture from its design dir.
@@ -114,14 +118,26 @@ gen-e2e: ## Regenerate every tests/e2e/* fixture from its design dir.
 	done
 
 .PHONY: gen-all
-gen-all: gen-go gen-e2e ## Regenerate the example AND every e2e fixture.
+gen-all: gen-go gen-e2e ## Regenerate the example mini-projects AND every e2e fixture.
 
-.PHONY: example
-example: ## Run the example server (./example/main.go) on :8080.
-	cd $(EXAMPLE_DIR) && $(GO) run .
+.PHONY: example-todo
+example-todo: ## Run the todo example server.
+	cd example/todo && $(GO) run .
+
+.PHONY: example-upload
+example-upload: ## Run the upload example server.
+	cd example/upload && $(GO) run .
+
+.PHONY: example-raw
+example-raw: ## Run the raw passthrough example server.
+	cd example/raw && $(GO) run .
+
+.PHONY: example-ecommerce
+example-ecommerce: ## Run the ecommerce showcase server.
+	cd example/ecommerce && $(GO) run .
 
 .PHONY: gen-diff
-gen-diff: gen-all ## Re-gen example + e2e and fail if anything changed (drift guard for CI).
+gen-diff: gen-all ## Re-gen examples + e2e and fail if anything changed (drift guard for CI).
 	@if ! git diff --quiet -- $(EXAMPLE_DIR) $(E2E_DIRS); then \
 		echo "codegen drift detected:"; \
 		git --no-pager diff --stat -- $(EXAMPLE_DIR) $(E2E_DIRS); \
@@ -222,10 +238,10 @@ clean: ## Remove build artefacts and coverage files.
 	@find . -type f \( -name '*.test' -o -name '*.out' -o -name '*.prof' -o -name '*.cov' \) -delete
 
 .PHONY: clean-gen
-clean-gen: ## Remove regenerable artefacts under example/ and every e2e fixture (handler, routes, types, docs).
-	@for d in $(EXAMPLE_DIR) $(E2E_DIRS); do \
+clean-gen: ## Remove regenerable artefacts under every example mini-project + e2e fixture (transport, routes, types, docs).
+	@for d in $(EXAMPLE_PROJECTS) $(E2E_DIRS); do \
 		echo "→ clean $$d"; \
-		rm -rf "$$d/internal/handler" "$$d/internal/routes" "$$d/internal/types" "$$d/docs"; \
+		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/docs"; \
 	done
 
 # ---- one-shot CI surface -------------------------------------------------

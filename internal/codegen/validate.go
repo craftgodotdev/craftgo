@@ -121,11 +121,7 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 // `@format` / `@length` / `@min` / etc. validators on top of the
 // field-level chain. See [scalarInheritedDecorators].
 func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData {
-	names := make([]string, 0, len(pkg.Types))
-	for n := range pkg.Types {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	names := sortedKeys(pkg.Types)
 
 	uses := map[string]bool{}
 	regexes := newRegexRegistry()
@@ -146,12 +142,7 @@ func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData 
 	// declared validators were generated as Go field tags but never
 	// invoked — error responses round-tripped untouched even when
 	// they violated the design constraints.
-	errNames := make([]string, 0, len(pkg.Errors))
-	for n := range pkg.Errors {
-		errNames = append(errNames, n)
-	}
-	sort.Strings(errNames)
-	for _, name := range errNames {
+	for _, name := range sortedKeys(pkg.Errors) {
 		ed := pkg.Errors[name]
 		fields := errorCustomFields(ed)
 		if len(fields) == 0 {
@@ -403,15 +394,7 @@ func presenceParts(td *ast.TypeDecl, names []string) []string {
 }
 
 // lookupField finds the Field in a TypeDecl by DSL field name.
-func lookupField(td *ast.TypeDecl, name string) *ast.Field {
-	for _, m := range td.Body {
-		f, ok := m.(*ast.Field)
-		if ok && f.Name == name {
-			return f
-		}
-	}
-	return nil
-}
+func lookupField(td *ast.TypeDecl, name string) *ast.Field { return ast.FindField(td.Body, name) }
 
 // presenceExpr returns the Go expression that's true when the field
 // has a meaningful value (matching's definition):

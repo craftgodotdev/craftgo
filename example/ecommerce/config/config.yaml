@@ -1,0 +1,26 @@
+# Local runtime configuration. See example.config.yaml for the full
+# field documentation and the matching CRAFTGO_* environment variable
+# overrides. This file typically belongs in .gitignore - commit
+# example.config.yaml as the documented reference instead.
+
+server:
+  addr: ":8080"
+  handlerTimeout: 0s
+  maxBodySize: 0
+  compression:
+    enabled: false
+    minSize: 0
+    level: 0
+
+otel:
+  enabled: true
+  serviceName: ecommerce
+  exporter: none
+  endpoint: ""
+
+metrics:
+  enabled: true
+  exporter: prometheus
+  endpoint: ""
+  adminAddr: ":9090"
+  path: /metrics

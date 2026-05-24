@@ -56,7 +56,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		{{.Bind}}
 {{- end}}
 {{- range .FormStrings}}
-		req.{{.GoName}} = r.FormValue("{{.DSLName}}")
+		{{.Bind}}
 {{- end}}
 {{- range .FormFiles}}
 		if _, header, err := r.FormFile("{{.DSLName}}"); err == nil {

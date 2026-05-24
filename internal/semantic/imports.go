@@ -467,11 +467,408 @@ func isEscapingPath(p string) bool {
 	return p == ".." || p == "."
 }
 
-// diag is a thin wrapper that appends a diagnostic with End = Pos.
-// Cross-package diagnostics don't have a clean trailing position the
-// way decorator names do; the LSP renders an empty range as a single
-// column underline.
-func (r *refResolver) diag(pos lexer.Position, sev lexer.Severity, code, format string, args ...any) {
+// checkProjectFieldDefaults re-validates `@default` on fields whose
+// declared type is a qualified cross-package reference. The per-package
+// analyser DEFERS those (returns true from [defaultElemSupported]) because
+// it lacks the cross-package scalar / enum tables; this pass owns the
+// final verdict.
+//
+// Validation steps for each deferred field:
+//
+//  1. The qualified prefix must resolve to a package in the project AND
+//     the trailing symbol must be a scalar (wrapping a primitive) or
+//     an enum declared in that package. Otherwise emit
+//     [CodeDecoratorConflict] - same code the per-pkg path uses for
+//     "@default is not supported on field X".
+//  2. The literal kind must match the resolved primitive (string vs
+//     int vs float vs bool) or the enum's value set, mirroring
+//     [checkDefaultLiteral].
+//
+// Single-package projects never trigger this pass (no qualified refs
+// exist) so the legacy behaviour is unchanged.
+func (r *refResolver) checkProjectFieldDefaults() {
+	scalars, enums := r.buildProjectDecls()
+	for _, pkg := range r.proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for _, td := range pkg.Types {
+			if td == nil {
+				continue
+			}
+			r.checkBodyDefaults(td.Body, scalars, enums)
+		}
+		for _, ed := range pkg.Errors {
+			if ed == nil {
+				continue
+			}
+			r.checkBodyDefaults(ed.Body, scalars, enums)
+		}
+	}
+}
+
+// buildProjectDecls returns two project-wide lookup tables keyed by
+// the qualified DSL form (`<pkg>.<name>`) - the shape that appears
+// in a field's [ast.QualifiedIdent.Parts]. Local (single-segment)
+// decls are NOT included; the per-package pass already validates
+// those.
+func (r *refResolver) buildProjectDecls() (map[string]*ast.ScalarDecl, map[string]*ast.EnumDecl) {
+	scalars := map[string]*ast.ScalarDecl{}
+	enums := map[string]*ast.EnumDecl{}
+	for pkgName, pkg := range r.proj.Packages {
+		if pkg == nil || pkgName == "" {
+			continue
+		}
+		for sname, sd := range pkg.Scalars {
+			scalars[pkgName+"."+sname] = sd
+		}
+		for ename, ed := range pkg.Enums {
+			enums[pkgName+"."+ename] = ed
+		}
+	}
+	return scalars, enums
+}
+
+// checkBodyDefaults visits every Field with `@default` whose declared
+// type is a qualified ref (two-segment name) and validates the literal
+// against the resolved cross-package scalar / enum.
+func (r *refResolver) checkBodyDefaults(members []ast.TypeMember, scalars map[string]*ast.ScalarDecl, enums map[string]*ast.EnumDecl) {
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		r.checkOneFieldDefault(f, scalars, enums)
+	}
+}
+
+func (r *refResolver) checkOneFieldDefault(f *ast.Field, scalars map[string]*ast.ScalarDecl, enums map[string]*ast.EnumDecl) {
+	if f == nil || f.Type == nil {
+		return
+	}
+	dec := defaultDecorator(f)
+	if dec == nil {
+		return
+	}
+	// Element-of-array follows the same rule as the field itself.
+	t := f.Type
+	if t.Array {
+		t = arrayElemTypeRef(t)
+	}
+	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 2 {
+		// Per-package pass already validated this case.
+		return
+	}
+	qname := t.Named.Name.Parts[0] + "." + t.Named.Name.Parts[1]
+	if sd, ok := scalars[qname]; ok {
+		want := primKindFor(sd.Primitive)
+		if want == ArgAny {
+			// Scalar wraps something we don't classify as a primitive
+			// (custom type, generic, ...) - reject the same way the
+			// per-package pass does for unsupported wrappers.
+			r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
+				"@default is not supported on field %q: scalar %s does not wrap a primitive", f.Name, qname)
+			return
+		}
+		r.validateDefaultLiteralKind(f, dec, qname, want)
+		return
+	}
+	if ed, ok := enums[qname]; ok {
+		r.validateDefaultEnumLiteral(f, dec, ed)
+		return
+	}
+	// Resolves to neither a scalar nor an enum (could be a struct type,
+	// or simply unknown). The qualified-ref pass already flagged unknown
+	// symbols with [CodeRefUnknownPackage] / [CodeRefUnknownSymbol]; we
+	// only need to surface the @default-specific message when the
+	// symbol exists but isn't a valid @default target.
+	pkgName := t.Named.Name.Parts[0]
+	if pkg := r.proj.Packages[pkgName]; pkg != nil && packageHasSymbol(pkg, t.Named.Name.Parts[1]) {
+		r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
+			"@default is not supported on field %q: only primitives, enums, scalars (wrapping primitives), and arrays of those are allowed", f.Name)
+	}
+}
+
+// validateDefaultLiteralKind checks one positional literal against an
+// expected [ArgKind]. Multi-arg / array literals are out of scope
+// (covered by the per-package pass for array fields whose ELEMENT is
+// local; for array fields whose element is a QUALIFIED ref the loop
+// below handles each element).
+func (r *refResolver) validateDefaultLiteralKind(f *ast.Field, dec *ast.Decorator, qname string, want ArgKind) {
+	args := positionalArgs(dec)
+	// Array field: each element must match the scalar's primitive.
+	if f.Type != nil && f.Type.Array {
+		arr, ok := singleArrayLiteral(args)
+		if !ok {
+			return
+		}
+		for _, e := range arr.Elements {
+			if !exprMatchesKind(e, want) {
+				r.diag(e.ExprPos(), lexer.SeverityError, CodeDecoratorArgType,
+					"@default on field %q (%s) requires a %s literal", f.Name, qname, want)
+			}
+		}
+		return
+	}
+	if len(args) != 1 {
+		return
+	}
+	if !exprMatchesKind(args[0].Value, want) {
+		r.diag(args[0].Pos, lexer.SeverityError, CodeDecoratorArgType,
+			"@default on field %q (%s) requires a %s literal", f.Name, qname, want)
+	}
+}
+
+// validateDefaultEnumLiteral mirrors the enum branch of
+// [checkDefaultLiteral] for cross-package enum fields.
+func (r *refResolver) validateDefaultEnumLiteral(f *ast.Field, dec *ast.Decorator, ed *ast.EnumDecl) {
+	args := positionalArgs(dec)
+	// Element-wise check for array fields.
+	if f.Type != nil && f.Type.Array {
+		arr, ok := singleArrayLiteral(args)
+		if !ok {
+			return
+		}
+		for _, e := range arr.Elements {
+			r.checkEnumIdent(f, e, e.ExprPos(), ed)
+		}
+		return
+	}
+	if len(args) != 1 {
+		return
+	}
+	r.checkEnumIdent(f, args[0].Value, args[0].Pos, ed)
+}
+
+func (r *refResolver) checkEnumIdent(f *ast.Field, v ast.Expr, pos lexer.Position, ed *ast.EnumDecl) {
+	ident, ok := v.(*ast.IdentExpr)
+	if !ok {
+		r.diag(pos, lexer.SeverityError, CodeDecoratorArgValue,
+			"@default on enum field %q must reference an enum value by name (one of %s)", f.Name, enumValueList(ed))
+		return
+	}
+	if ident.Name == nil || len(ident.Name.Parts) != 1 {
+		r.diag(pos, lexer.SeverityError, CodeDecoratorArgValue,
+			"@default on enum field %q must be one of %s", f.Name, enumValueList(ed))
+		return
+	}
+	want := ident.Name.Parts[0]
+	for _, ev := range ed.EnumValues() {
+		if ev.Name == want {
+			return
+		}
+	}
+	r.diag(pos, lexer.SeverityError, CodeDecoratorArgValue,
+		"@default %q is not a value of enum %s; expected one of %s", want, ed.Name, enumValueList(ed))
+}
+
+// defaultDecorator returns the first `@default` decorator on f, or nil.
+func defaultDecorator(f *ast.Field) *ast.Decorator { return ast.FindDecorator(f.Decorators, "default") }
+
+// primKindFor is a tiny alias for [defaultPrimitiveKind] when no scalar
+// indirection is required (the scalar is already resolved upstream).
+func primKindFor(primName string) ArgKind {
+	switch primName {
+	case "string", "bytes":
+		return ArgString
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64":
+		return ArgInt
+	case "float32", "float64":
+		return ArgNumber
+	case "bool":
+		return ArgBool
+	}
+	return ArgAny
+}
+
+// singleArrayLiteral asserts that args contains exactly one ArrayLit
+// argument, returning it. Defensive guard so a bare value on an array
+// field doesn't crash the cross-pkg pass.
+func singleArrayLiteral(args []*ast.DecoratorArg) (*ast.ArrayLit, bool) {
+	if len(args) != 1 {
+		return nil, false
+	}
+	arr, ok := args[0].Value.(*ast.ArrayLit)
+	return arr, ok
+}
+
+// checkProjectMixins runs the unified mixin expansion across every
+// type and error body in every package. In project mode the
+// per-package pass is gated off (see [Options.skipMixinCheck]) because
+// qualified mixin refs (`shared.Timestamps`) can only resolve here,
+// where every package's symbol tables are visible at once.
+//
+// The expansion mirrors [analyzer.collectMixinFields]: walk a host's
+// own direct fields into a seen map keyed by field name, then walk
+// every mixin (local OR qualified) and either add its fields or fire
+// the appropriate diagnostic (cycle, conflict, non-type, arity,
+// unresolved). Conflict detection works across the local + qualified
+// mixin boundary because they share the same seen map.
+func (r *refResolver) checkProjectMixins() {
+	pkgsByName := r.proj.Packages
+	for currentPkg, pkg := range pkgsByName {
+		if pkg == nil {
+			continue
+		}
+		for _, td := range pkg.Types {
+			r.checkOneTypeMixinsProject(currentPkg, td.Name, td.Body)
+		}
+		for _, ed := range pkg.Errors {
+			r.checkOneTypeMixinsProject(currentPkg, ed.Name, ed.Body)
+		}
+	}
+}
+
+// checkOneTypeMixinsProject is the project-aware twin of
+// [analyzer.checkOneTypeMixins]. Walks host's direct fields into a
+// seen map, then resolves and expands every mixin (local OR
+// qualified). currentPkg is the host's package name; used to
+// disambiguate local-mixin lookups and as the starting label for
+// cycle detection.
+func (r *refResolver) checkOneTypeMixinsProject(currentPkg, host string, body []ast.TypeMember) {
+	seen := map[string]fieldOrigin{}
+	for _, m := range body {
+		if f, ok := m.(*ast.Field); ok {
+			if _, dup := seen[f.Name]; dup {
+				continue
+			}
+			seen[f.Name] = fieldOrigin{pos: f.Pos, from: host}
+		}
+	}
+	for _, m := range body {
+		mx, ok := m.(*ast.Mixin)
+		if !ok {
+			continue
+		}
+		r.processProjectMixin(currentPkg, host, mx, seen)
+	}
+}
+
+// processProjectMixin resolves one mixin reference - local or
+// qualified - and expands its fields. Diagnostic codes match the
+// per-package pass so IDE quickfix logic doesn't need to learn a new
+// vocabulary.
+func (r *refResolver) processProjectMixin(currentPkg, host string, mx *ast.Mixin, seen map[string]fieldOrigin) {
+	if mx.Ref == nil || mx.Ref.Name == nil {
+		return
+	}
+	parts := mx.Ref.Name.Parts
+	if len(parts) == 0 || len(parts) > 2 {
+		return
+	}
+	targetPkg := currentPkg
+	targetName := parts[0]
+	if len(parts) == 2 {
+		targetPkg = parts[0]
+		targetName = parts[1]
+	}
+	pkg := r.proj.Packages[targetPkg]
+	if pkg == nil {
+		// Qualified prefix didn't resolve - the qualified-ref check
+		// in [walkNamedRef] already fired CodeRefUnknownPackage.
+		// Silent here to avoid the duplicate.
+		return
+	}
+	td, ok := pkg.Types[targetName]
+	if !ok {
+		// Resolved to a non-type entity (enum / error / scalar /
+		// middleware) - same code as the per-package pass uses.
+		kind := ""
+		switch {
+		case pkg.Enums[targetName] != nil:
+			kind = "enum"
+		case pkg.Errors[targetName] != nil:
+			kind = "error"
+		case pkg.Scalars[targetName] != nil:
+			kind = "scalar"
+		case pkg.Middlewares[targetName] != nil:
+			kind = "middleware"
+		}
+		if kind != "" {
+			r.diag(mx.Pos, lexer.SeverityError, CodeMixinNonType,
+				"mixin %s is a %s, not a type", mx.Ref.Name.String(), kind)
+			return
+		}
+		// Truly unresolved - same diagnostic CodeRefUnknownSymbol
+		// the qualified-ref check would have fired for a regular
+		// field type. For local refs the per-package pass already
+		// fired CodeMixinUnresolved.
+		if len(parts) == 2 {
+			r.diag(mx.Pos, lexer.SeverityError, CodeMixinUnresolved,
+				"mixin %s is not declared in package %q", mx.Ref.Name.String(), targetPkg)
+		}
+		return
+	}
+	if len(mx.Ref.Args) != len(td.TypeParams) {
+		r.diag(mx.Pos, lexer.SeverityError, CodeMixinArity,
+			"mixin %s expects %d generic argument(s), got %d",
+			mx.Ref.Name.String(), len(td.TypeParams), len(mx.Ref.Args))
+		return
+	}
+	visited := map[string]bool{currentPkg + "." + host: true}
+	r.collectProjectMixinFields(targetPkg, targetName, mx.Ref.Name.String(), mx.Pos, seen, visited)
+}
+
+// collectProjectMixinFields walks the mixin target's body and any
+// nested mixins it contains, with cross-package resolution at every
+// step. visited keys are qualified names (`pkg.Type`) so a cycle that
+// crosses package boundaries is still detected.
+func (r *refResolver) collectProjectMixinFields(targetPkg, targetName, sourceLabel string, mixinPos lexer.Position, seen map[string]fieldOrigin, visited map[string]bool) {
+	qualified := targetPkg + "." + targetName
+	if visited[qualified] {
+		r.diag(mixinPos, lexer.SeverityError, CodeMixinCycle,
+			"mixin %s forms a cycle", sourceLabel)
+		return
+	}
+	visited[qualified] = true
+	defer delete(visited, qualified)
+	pkg := r.proj.Packages[targetPkg]
+	if pkg == nil {
+		return
+	}
+	td, ok := pkg.Types[targetName]
+	if !ok {
+		return
+	}
+	for _, m := range td.Body {
+		switch v := m.(type) {
+		case *ast.Field:
+			if prev, dup := seen[v.Name]; dup {
+				if prev.from == sourceLabel {
+					continue
+				}
+				diag := r.diag(mixinPos, lexer.SeverityError, CodeMixinConflict,
+					"mixin %s adds field %q, which conflicts with %s",
+					sourceLabel, v.Name, prev.from)
+				diag.Related = related(prev.pos, "first field declared here")
+				continue
+			}
+			seen[v.Name] = fieldOrigin{pos: v.Pos, from: sourceLabel}
+		case *ast.Mixin:
+			if v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			nestedParts := v.Ref.Name.Parts
+			if len(nestedParts) == 1 {
+				r.collectProjectMixinFields(targetPkg, nestedParts[0], sourceLabel, mixinPos, seen, visited)
+			} else if len(nestedParts) == 2 {
+				r.collectProjectMixinFields(nestedParts[0], nestedParts[1], sourceLabel, mixinPos, seen, visited)
+			}
+		}
+	}
+}
+
+// diag is a thin wrapper that appends a diagnostic with End = Pos
+// and returns a pointer to the freshly-stored entry so callers can
+// attach Related links inline (matching [analyzer.diag]). Cross-pkg
+// diagnostics don't have a clean trailing position the way decorator
+// names do; the LSP renders an empty range as a single column
+// underline.
+//
+// Do not retain the returned pointer past the next r.diag call;
+// slice growth invalidates it.
+func (r *refResolver) diag(pos lexer.Position, sev lexer.Severity, code, format string, args ...any) *Diagnostic {
 	r.diags = append(r.diags, Diagnostic{
 		Pos:      pos,
 		End:      pos,
@@ -479,6 +876,7 @@ func (r *refResolver) diag(pos lexer.Position, sev lexer.Severity, code, format 
 		Code:     code,
 		Msg:      fmt.Sprintf(format, args...),
 	})
+	return &r.diags[len(r.diags)-1]
 }
 
 // lastSegment returns the trailing path segment, used as the default

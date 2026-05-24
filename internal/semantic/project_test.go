@@ -489,3 +489,226 @@ func pkgNames(p *Project) []string {
 	}
 	return out
 }
+
+// ---------- @default on cross-package scalar / enum (project-level) ----------
+
+// TestAnalyzeProjectDefaultCrossPkgScalarOK covers the happy path:
+// `currency shared.CurrencyCode? @default("USD")` where the scalar
+// lives in a different package than the field. The per-package pass
+// defers the check; the project pass resolves the qualified ref and
+// validates the literal kind.
+func TestAnalyzeProjectDefaultCrossPkgScalarOK(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/scalars.craftgo": `package shared
+scalar CurrencyCode string @length(3, 3) @pattern("^[A-Z]{3}$")`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order { currency shared.CurrencyCode? @default("USD") }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("expected no diags for cross-pkg scalar @default, got: %v", diags)
+	}
+}
+
+// TestAnalyzeProjectDefaultCrossPkgScalarKindMismatch surfaces the kind
+// check that the per-package pass cannot run (lacks cross-pkg view).
+// `@default(42)` on a string-backed scalar must fire @default's argtype
+// diagnostic at project time.
+func TestAnalyzeProjectDefaultCrossPkgScalarKindMismatch(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/scalars.craftgo": `package shared
+scalar CurrencyCode string @length(3, 3)`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order { currency shared.CurrencyCode? @default(42) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeDecoratorArgType) {
+		t.Fatalf("expected %s for int literal on string scalar, got: %v", CodeDecoratorArgType, diags)
+	}
+}
+
+// TestAnalyzeProjectDefaultCrossPkgEnumOK covers @default(EnumValue) on a
+// cross-package enum field — the project pass walks the enum's value
+// set the same way the per-package pass would for local enums.
+func TestAnalyzeProjectDefaultCrossPkgEnumOK(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/enums.craftgo": `package shared
+enum Tier { Free Pro Enterprise }`,
+		"customers/types.craftgo": `package customers
+import "shared"
+type Customer { tier shared.Tier? @default(Pro) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("expected no diags for cross-pkg enum @default, got: %v", diags)
+	}
+}
+
+// TestAnalyzeProjectDefaultCrossPkgEnumUnknownValue catches the
+// "expected one of X, Y, Z" path for cross-package enums.
+func TestAnalyzeProjectDefaultCrossPkgEnumUnknownValue(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/enums.craftgo": `package shared
+enum Tier { Free Pro Enterprise }`,
+		"customers/types.craftgo": `package customers
+import "shared"
+type Customer { tier shared.Tier? @default(Ultimate) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeDecoratorArgValue) {
+		t.Fatalf("expected %s for unknown enum value, got: %v", CodeDecoratorArgValue, diags)
+	}
+}
+
+// TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget covers the
+// "you pointed @default at a struct type" case across package
+// boundaries — the cross-pkg ref resolves to a *type*, not a scalar
+// or enum, so @default should still fire decorator/conflict.
+func TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Bag { id string }`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order { bag shared.Bag? @default("nope") }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeDecoratorConflict) {
+		t.Fatalf("expected %s for @default on struct cross-pkg ref, got: %v", CodeDecoratorConflict, diags)
+	}
+}
+
+// TestAnalyzeProjectDefaultCrossPkgArrayElement covers an array field
+// whose ELEMENT type is a qualified scalar: `methods shared.CurrencyCode[]?
+// @default(["USD", "EUR"])` must validate each element against the
+// scalar's underlying primitive kind (string).
+func TestAnalyzeProjectDefaultCrossPkgArrayElement(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/scalars.craftgo": `package shared
+scalar CurrencyCode string @length(3, 3)`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order { allowed shared.CurrencyCode[]? @default(["USD", "EUR"]) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("expected no diags for cross-pkg scalar array @default, got: %v", diags)
+	}
+}
+
+// hasCode is a tiny test helper for "did any diagnostic come back with
+// this code?" — keeps assertions readable without depending on order
+// or auxiliary messages.
+func hasCode(diags []Diagnostic, code string) bool {
+	for _, d := range diags {
+		if d.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------- cross-package mixin ----------
+
+// TestAnalyzeProjectMixinCrossPkgOK covers the happy path: a type in
+// one package embeds a mixin declared in another. The expanded fields
+// land in the host's effective field set and the codegen sees them.
+func TestAnalyzeProjectMixinCrossPkgOK(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/mixins.craftgo": `package shared
+type Timestamps {
+	createdAt string @format(datetime)
+	updatedAt string @format(datetime)
+}`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order {
+	shared.Timestamps
+	id    string
+	total int
+}`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("expected no diags for cross-pkg mixin, got: %v", diags)
+	}
+}
+
+// TestAnalyzeProjectMixinCrossPkgConflict pins the conflict path:
+// a host's direct field collides with a field a cross-pkg mixin
+// would bring in.
+func TestAnalyzeProjectMixinCrossPkgConflict(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/mixins.craftgo": `package shared
+type Timestamps {
+	createdAt string @format(datetime)
+}`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order {
+	shared.Timestamps
+	createdAt string
+}`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeMixinConflict) {
+		t.Fatalf("expected %s for cross-pkg field collision, got: %v", CodeMixinConflict, diags)
+	}
+}
+
+// TestAnalyzeProjectMixinCrossPkgNonType covers the type-vs-other
+// kind check across packages. `shared.Color` is an enum; mixin'ing it
+// must fire the per-pkg-style "is a enum, not a type" diagnostic at
+// project time.
+func TestAnalyzeProjectMixinCrossPkgNonType(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/enums.craftgo": `package shared
+enum Color { Red Blue }`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order { shared.Color }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeMixinNonType) {
+		t.Fatalf("expected %s for cross-pkg enum mixin, got: %v", CodeMixinNonType, diags)
+	}
+}
+
+// TestAnalyzeProjectMixinCrossPkgCycle covers a cycle that crosses a
+// package boundary: orders.A → shared.B → orders.A. The unified
+// visited map keys by qualified name so the cycle terminates with the
+// usual diagnostic instead of recursing forever.
+func TestAnalyzeProjectMixinCrossPkgCycle(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/mixins.craftgo": `package shared
+import "orders"
+type B { orders.A }`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type A { shared.B }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeMixinCycle) {
+		t.Fatalf("expected %s for cross-pkg mixin cycle, got: %v", CodeMixinCycle, diags)
+	}
+}
+
+// TestAnalyzeProjectMixinCrossPkgUnresolved fires when the qualified
+// prefix resolves to a known package but the symbol isn't declared.
+// The per-package pass cannot tell ("symbol might live elsewhere") so
+// this responsibility falls to the project resolver.
+func TestAnalyzeProjectMixinCrossPkgUnresolved(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/scalars.craftgo": `package shared
+scalar X string`,
+		"orders/types.craftgo": `package orders
+import "shared"
+type Order { shared.MissingType }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeMixinUnresolved) {
+		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeMixinUnresolved, diags)
+	}
+}

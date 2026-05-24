@@ -80,12 +80,7 @@ func buildTypesGo(pkg *semantic.Package, crossPkg CrossPkg) string {
 	if scs := renderScalars(pkg); scs != "" {
 		parts = append(parts, scs)
 	}
-	names := make([]string, 0, len(pkg.Types))
-	for n := range pkg.Types {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedKeys(pkg.Types) {
 		parts = append(parts, renderType(pkg.Types[name]))
 	}
 	return strings.Join(parts, "\n")
@@ -99,11 +94,7 @@ func renderScalars(pkg *semantic.Package) string {
 	if len(pkg.Scalars) == 0 {
 		return ""
 	}
-	names := make([]string, 0, len(pkg.Scalars))
-	for n := range pkg.Scalars {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	names := sortedKeys(pkg.Scalars)
 	const tmpl = "// %s is a DSL scalar - alias of %s with the validators declared on it inherited by every field of this type.\ntype %s = %s\n\n"
 	parts := make([]string, len(names))
 	for i, n := range names {
@@ -433,7 +424,6 @@ func goNamedType(n *ast.NamedTypeRef) string {
 func GoFieldName(name string) string {
 	return idents.GoFieldName(name)
 }
-
 
 // jsonTag renders the JSON tag for a field. Per the project convention
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is

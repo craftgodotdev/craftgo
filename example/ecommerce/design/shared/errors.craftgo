@@ -1,0 +1,23 @@
+package shared
+
+enum MaintenanceReason {
+	Scheduled
+	Incident
+	Capacity
+}
+
+error Unauthorized UnauthorizedErr {
+	code string? @default("AUTH_REQUIRED")
+}
+
+error TooManyRequests RateLimitedErr {
+	retryAfter int     @gte(1) @lte(86400)
+	bucket     string?
+}
+
+error ServiceUnavailable MaintenanceWindow {
+	reason         MaintenanceReason
+	estimatedEndAt string             @format(datetime)
+}
+
+error Internal InternalErr

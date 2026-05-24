@@ -304,6 +304,154 @@ service S {
 	}
 }
 
+// TestGenerateTransportWireNumericAcrossSources locks the Round-2.5
+// unification: numeric / bool fields can ride @query, @header,
+// @cookie, AND @form through the same parse + 400 idiom. The only
+// difference between bindings is the source extraction (Query().Get
+// vs Header.Get vs c.Value vs FormValue) — everything else (parse
+// call, cast, error path) is shared by [renderWireBindLine].
+//
+// Without this fix `int @header` etc. either silently zeroed the
+// field at runtime (form) or rejected at semantic time (header /
+// cookie). Now they parse, with parse failures returning 400 Bad
+// Request like @query already did.
+func TestGenerateTransportWireNumericAcrossSources(t *testing.T) {
+	src := `package design
+
+scalar Cents int
+enum Priority { Low = 1  High = 2 }
+
+type Req {
+    qLimit  int      @query
+    qFlag   bool     @query
+    hCount  int      @header
+    hRatio  float64  @header
+    cTier   Priority @cookie
+    cAge    Cents    @cookie
+    fQty    int      @form
+    fFlag   bool     @form
+    upload  file     @form
+}
+
+service S {
+    post Run /run {
+        request Req
+    }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/run.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	for _, want := range []string{
+		// @query int: parse + cast.
+		`if _v := r.URL.Query().Get("qLimit"); _v != ""`,
+		`_n, _err := strconv.ParseInt(_v, 10, 64)`,
+		`req.QLimit = int(_n)`,
+		// @query bool: ParseBool.
+		`if _v := r.URL.Query().Get("qFlag"); _v != ""`,
+		`_n, _err := strconv.ParseBool(_v)`,
+		`req.QFlag = _n`,
+		// @header int: same shape, different source.
+		`if _v := r.Header.Get("hCount"); _v != ""`,
+		`req.HCount = int(_n)`,
+		// @header float64: ParseFloat with bit-width.
+		`if _v := r.Header.Get("hRatio"); _v != ""`,
+		`_n, _err := strconv.ParseFloat(_v, 64)`,
+		`req.HRatio = float64(_n)`,
+		// @cookie int-enum: wrapped in cookie guard, parse + alias cast.
+		// The codegen double-casts (`Alias(int(_n))`) because the cast
+		// pipeline runs primitive normalisation before alias wrap; both
+		// casts are required to satisfy Go's strict typing for int64
+		// → int → Priority.
+		`if c, err := r.Cookie("cTier"); err == nil {`,
+		`if _v := c.Value; _v != ""`,
+		`req.CTier = types.Priority(int(_n))`,
+		// @cookie int-scalar: same shape, scalar cast.
+		`if c, err := r.Cookie("cAge"); err == nil {`,
+		`req.CAge = types.Cents(int(_n))`,
+		// @form int: source becomes FormValue, otherwise identical.
+		`if _v := r.FormValue("fQty"); _v != ""`,
+		`req.FQty = int(_n)`,
+		// @form bool: ParseBool through FormValue.
+		`if _v := r.FormValue("fFlag"); _v != ""`,
+		`req.FFlag = _n`,
+		// @form file: still through r.FormFile, unchanged by Round 2.5.
+		`r.FormFile("upload")`,
+		// strconv import flows through to the multipart template.
+		`"strconv"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in handler:\n%s", want, got)
+		}
+	}
+}
+
+// TestGenerateTransportOptionalHeaderCookie covers the Round-1
+// extension that lets `string? @header` and `string? @cookie` bind
+// through to `*<T>` cleanly. Missing or empty wire values land the
+// field as a nil pointer; present values flow through the alias cast
+// (when the field is a typed scalar / enum) and address a new
+// alias-typed variable so the pointer carries the field's declared
+// type instead of bare `*string`.
+func TestGenerateTransportOptionalHeaderCookie(t *testing.T) {
+	src := `package design
+
+enum Color { Red  Green  Blue }
+scalar Email string @format(email)
+
+type Req {
+    auth    string? @header
+    contact Email?  @header
+    theme   Color?  @cookie
+    sid     string? @cookie
+}
+
+service S {
+    get Lookup /items { request Req }
+}`
+	pkg := analyzePkg(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/lookup.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	for _, want := range []string{
+		// Plain string header: take address of the raw value directly.
+		`if _v := r.Header.Get("auth"); _v != ""`,
+		`req.Auth = &_v`,
+		// Scalar-typed header: route through alias cast into _w.
+		`if _v := r.Header.Get("contact"); _v != ""`,
+		`_w := types.Email(_v)`,
+		`req.Contact = &_w`,
+		// Enum-typed cookie: outer cookie guard, inner non-empty guard,
+		// alias cast on c.Value.
+		`if c, err := r.Cookie("theme"); err == nil {`,
+		`if _v := c.Value; _v != ""`,
+		`_w := types.Color(_v)`,
+		`req.Theme = &_w`,
+		// Plain string cookie: outer cookie guard, inner non-empty
+		// guard, take address of inner _v.
+		`if c, err := r.Cookie("sid"); err == nil {`,
+		`req.Sid = &_v`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in handler:\n%s", want, got)
+		}
+	}
+}
+
 // TestGenerateTransportOptionalEnumScalarQuery covers the optional
 // alias-typed query binding. A field `sort Color? @query` becomes
 // `*Color` in Go; the query string yields a raw `string`, so a naive
@@ -1098,62 +1246,11 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 //   - Meta  map<string,string> → map on @query
 //   - Page  Page<Book>  → generic on @query
 //   - opt   int? @query  → optional numeric on @query (no clean idiom)
-func TestGenerateTransportRejectsBadQueryShapes(t *testing.T) {
-	cases := []struct {
-		label   string
-		dsl     string
-		want    string // substring expected in the error message
-	}{
-		{
-			label: "struct on @query",
-			dsl: `package design
-type Point { x int  y int }
-type SearchReq { filter Point @query }
-service S { get Search /search { request SearchReq } }`,
-			want: "filter",
-		},
-		{
-			label: "[]struct on @query",
-			dsl: `package design
-type Point { x int  y int }
-type SearchReq { tags Point[] @query }
-service S { get Search /search { request SearchReq } }`,
-			want: "tags",
-		},
-		{
-			label: "map on @query",
-			dsl: `package design
-type SearchReq { meta map<string,string> @query }
-service S { get Search /search { request SearchReq } }`,
-			want: "meta",
-		},
-		{
-			label: "generic on @query",
-			dsl: `package design
-type Book { id string }
-type Page<T> { items T[] }
-type SearchReq { page Page<Book> @query }
-service S { get Search /search { request SearchReq } }`,
-			want: "page",
-		},
-		{
-			label: "optional numeric on @query",
-			dsl: `package design
-type SearchReq { opt int? @query }
-service S { get Search /search { request SearchReq } }`,
-			want: "optional",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.label, func(t *testing.T) {
-			pkg := analyzePkg(t, tc.dsl)
-			err := GenerateTransport(pkg, sampleConfig(), t.TempDir())
-			if err == nil {
-				t.Fatalf("expected rejection, got nil error")
-			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("error %q missing %q", err.Error(), tc.want)
-			}
-		})
-	}
-}
+//
+// As of Round 2.5 these shapes are rejected at SEMANTIC time by
+// [semantic.checkBindingFieldType] (see `TestCodeOnBindingType` in
+// internal/semantic/decorators_test.go) so they never reach codegen.
+// The codegen layer keeps a defensive rejection in
+// [renderWireBindLine] for direct AST callers that skip semantic, but
+// the design-time test is the authoritative coverage and lives next
+// to the rule.

@@ -1,0 +1,60 @@
+package customers
+
+import "shared"
+
+@prefix("/customers")
+@tags(customers)
+@middlewares(shared.RequestID, shared.RateLimit, shared.CORS, shared.AuthRequired)
+@security(bearer)
+service CustomerService {
+	@doc("List customers.")
+	@errors(shared.UnauthorizedErr, shared.RateLimitedErr)
+	get ListCustomers / {
+		request  shared.Pagination
+		response shared.Page<Customer>
+	}
+
+	@doc("Fetch one customer.")
+	@errors(shared.UnauthorizedErr)
+	get GetCustomer /{id} {
+		request  GetCustomerReq
+		response Customer
+	}
+
+	@doc("Create a customer.")
+	post CreateCustomer / {
+		request  CreateCustomerReq
+		response Customer
+	}
+
+	@doc("Upload customer avatar (multipart, ≤5MB).")
+	post UploadAvatar /{id}/avatar {
+		request  UploadAvatarReq
+		response Customer
+	}
+
+	@doc("Delete a customer. Idempotent.")
+	@middlewares(shared.BodyLimit, shared.Timeout)
+	@security(oauth2)
+	delete DeleteCustomer /{id} {
+		request  GetCustomerReq
+		response shared.OkResp
+	}
+}
+
+type GetCustomerReq {
+	id string @path @length(1, 64)
+}
+
+type CreateCustomerReq {
+	email          shared.Email
+	name           string  @length(1, 120)
+	primaryAddress Address
+	contact        Contact
+	bio            string? @maxLength(500)
+}
+
+type UploadAvatarReq {
+	id    string @path @length(1, 64)
+	image file   @form @maxSize(5MB) @mimeTypes("image/png", "image/jpeg", "image/webp")
+}

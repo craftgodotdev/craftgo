@@ -136,10 +136,10 @@ type X {
     rng  int @gt(0) @lt(100)
 }`)
 	for _, want := range []string{
-		"v.Pos <= 0",        // @gt(0) fails when x <= 0
-		"v.Bnd >= 100",      // @lt(100) fails when x >= 100
-		"v.Rng <= 0",        // @gt(0) part of strict-both pair
-		"v.Rng >= 100",      // @lt(100) part of strict-both pair
+		"v.Pos <= 0",   // @gt(0) fails when x <= 0
+		"v.Bnd >= 100", // @lt(100) fails when x >= 100
+		"v.Rng <= 0",   // @gt(0) part of strict-both pair
+		"v.Rng >= 100", // @lt(100) part of strict-both pair
 		"must be greater than 0",
 		"must be less than 100",
 	} {

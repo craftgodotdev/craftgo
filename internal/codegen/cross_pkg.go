@@ -16,6 +16,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -205,10 +206,7 @@ func qualifyNamedRef(n *ast.NamedTypeRef, localAlias string, crossPkg CrossPkg) 
 		return ""
 	}
 	name := n.Name.String()
-	switch name {
-	case "string", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "bool", "any", "bytes", "file":
+	if idents.IsBuiltin(name) {
 		return goNamedType(n)
 	}
 	parts := n.Name.Parts
@@ -245,4 +243,3 @@ func walkCrossPkgImports(t *ast.TypeRef, crossPkg CrossPkg, set map[string]bool)
 		walkCrossPkgImports(a, crossPkg, set)
 	}
 }
-

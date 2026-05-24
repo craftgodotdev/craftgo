@@ -149,7 +149,7 @@ func TestKeywords(t *testing.T) {
 		"type": KwType, "enum": KwEnum, "error": KwError,
 		"scalar": KwScalar, "service": KwService, "extend": KwExtend,
 		"middleware": KwMiddleware, "request": KwRequest, "response": KwResponse,
-		"map": KwMap,
+		"map":  KwMap,
 		"true": KwTrue, "false": KwFalse, "null": KwNull,
 		"get": VerbGet, "post": VerbPost, "put": VerbPut, "patch": VerbPatch,
 		"delete": VerbDelete, "head": VerbHead, "options": VerbOptions,

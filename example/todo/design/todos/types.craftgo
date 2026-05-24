@@ -1,0 +1,59 @@
+package todos
+
+enum TodoStatus {
+	Open       = "open"
+	InProgress = "in_progress"
+	Done       = "done"
+}
+
+enum TodoPriority {
+	Low    = "low"
+	Medium = "medium"
+	High   = "high"
+}
+
+type Todo {
+	id        string       @length(1, 64)
+	title     string       @length(1, 200)
+	notes     string?      @maxLength(2000)
+	status    TodoStatus
+	priority  TodoPriority @default(Medium)
+	tags      string[]     @maxItems(10) @uniqueItems
+	createdAt string       @format(datetime)
+}
+
+type CreateTodoReq {
+	title    string       @length(1, 200)
+	notes    string?      @maxLength(2000)
+	status   TodoStatus
+	priority TodoPriority @default(Medium)
+	tags     string[]?    @maxItems(10) @uniqueItems
+}
+
+type UpdateTodoReq {
+	id       string        @path @length(1, 64)
+	title    string?       @length(1, 200)
+	notes    string?       @maxLength(2000)
+	status   TodoStatus?
+	priority TodoPriority?
+}
+
+type GetTodoReq {
+	id string @path @length(1, 64)
+}
+
+type ListTodosReq {
+	cursor string?
+	limit  int     @gte(0) @lte(100)
+	status TodoStatus? @query
+}
+
+type TodoList {
+	items  Todo[]
+	cursor string?
+	total  int?
+}
+
+type OkResp {
+	ok bool
+}

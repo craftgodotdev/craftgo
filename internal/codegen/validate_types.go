@@ -57,9 +57,13 @@ func isIntegerField(f *ast.Field) bool {
 }
 
 // isFileField reports whether the field's declared type is the DSL
-// `file` builtin (rendered as `*multipart.FileHeader` in Go). Array and
-// optional forms are NOT accepted - the multipart binder writes the
-// pointer directly, never wraps it.
+// `file` builtin (rendered as `*multipart.FileHeader` in Go). Array
+// and map shapes are NOT accepted - the multipart binder writes the
+// pointer directly, never wraps it. Optional `file?` IS accepted: the
+// Go type is `*multipart.FileHeader` either way (the type renderer
+// skips the pointer wrap for already-nilable types via
+// [isNilableGoType]) so `file?` and `file` produce identical wire
+// code; the `?` documents author intent without changing semantics.
 func isFileField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return false

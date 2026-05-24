@@ -99,6 +99,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	perPkgOpts.skipQualifiedRefCheck = true
 	perPkgOpts.skipMiddlewareRefCheck = true
 	perPkgOpts.skipExtendOrphanCheck = true
+	perPkgOpts.skipMixinCheck = true
 	var diags []Diagnostic
 	for name, group := range groups {
 		pkg, pkgDiags := AnalyzeWith(group, perPkgOpts)
@@ -114,6 +115,8 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectExtendOrphans()
 	r.checkProjectMiddlewareUniqueness()
 	r.checkProjectMiddlewareRefs(files)
+	r.checkProjectFieldDefaults()
+	r.checkProjectMixins()
 	return proj, r.diags
 }
 
@@ -159,6 +162,24 @@ func folderExists(designRoot, importPath string) bool {
 	return false
 }
 
+// filePos returns a representative position for diagnostics anchored
+// at the file as a whole. Falls back to line 1 column 1 for files
+// without a package decl. Test-only today, but kept on the package
+// surface because project diagnostics anchored to a whole file (e.g.
+// import-resolution, package-name conflicts) eventually need it.
+func filePos(f *ast.File) lexer.Position {
+	if f == nil {
+		return lexer.Position{}
+	}
+	if f.Package != nil {
+		return f.Package.Pos
+	}
+	for _, d := range f.Decls {
+		return d.DeclPos()
+	}
+	return lexer.Position{Line: 1, Column: 1}
+}
+
 // fileFilename extracts the filename used to parse a file. Best-effort
 // fallback to scanning the first decl when the package decl is
 // missing, so synthetic ASTs (`hand-built in tests`) still land in a
@@ -176,20 +197,4 @@ func fileFilename(f *ast.File) string {
 		}
 	}
 	return ""
-}
-
-// filePos returns a representative position for diagnostics anchored
-// at the file as a whole. Falls back to line 1 column 1 for files
-// without a package decl.
-func filePos(f *ast.File) lexer.Position {
-	if f == nil {
-		return lexer.Position{}
-	}
-	if f.Package != nil {
-		return f.Package.Pos
-	}
-	for _, d := range f.Decls {
-		return d.DeclPos()
-	}
-	return lexer.Position{Line: 1, Column: 1}
 }

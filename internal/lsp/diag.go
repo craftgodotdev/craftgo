@@ -30,66 +30,118 @@ import (
 // single-file mode. Cross-package refs in such files will be reported
 // as `decorator/ref` errors, which matches CLI behaviour.
 func (s *Server) buildDiagnostics(u uri.URI, src string) []protocol.Diagnostic {
+	perFile, _ := s.buildProjectDiagnostics(u, src)
+	target := strings.TrimSpace(uriToPath(string(u)))
+	// In project mode we partition by source filename and the caller
+	// only wants the triggering file's slice. In single-file fallback
+	// (no resolvable target) the perFile map uses the URI string as
+	// the key and the partition is whole-file - either way the lookup
+	// hits the right slot.
+	if target == "" {
+		// Untitled buffer or non-file URI: fold every bucket into one
+		// since there's no meaningful Pos.Filename to filter on.
+		var out []protocol.Diagnostic
+		for _, v := range perFile {
+			out = append(out, v...)
+		}
+		return out
+	}
+	return perFile[target]
+}
+
+// buildProjectDiagnostics runs the full project analysis once and
+// partitions the resulting diagnostics by source filename so the caller
+// can publish per-file lists. Returns (perFile, designRoot); designRoot
+// is empty when the file is outside any discoverable project (the
+// single-file fallback ran instead).
+//
+// Used by [Server.publishDiagnostics] to refresh sibling files whose
+// diagnostics may have changed because of an edit elsewhere in the
+// project (e.g. adding a field to a request type clears the
+// "path segment has no matching field" error in the service file).
+// Also feeds [Server.buildDiagnostics] - the single-file accessor -
+// so both paths share one parse + analyse pass.
+func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]protocol.Diagnostic, string) {
 	fsPath := uriToPath(string(u))
 	files, designRoot := s.collectProjectFiles(fsPath, src)
+	diags := s.analyseForLSP(u, src, fsPath, files, designRoot)
 
-	var diags []lexer.Diagnostic
-	singleFile := len(files) == 0
-	if singleFile {
-		// Fallback: parse just the buffer on its own. Use the resolved
-		// fs path when available so the per-file filter below sees a
-		// matching Pos.Filename; otherwise tag with the URI itself so
-		// the filter is a no-op.
+	// Partition by source file. Diagnostics with empty Filename land in
+	// the bucket for the triggering URI - they came from a phase that
+	// didn't tag a span (e.g. single-file fallback emits some without).
+	perFile := map[string][]protocol.Diagnostic{}
+	seen := map[string]map[string]bool{}
+	for _, d := range diags {
+		key := d.Pos.Filename
+		if key == "" {
+			key = fsPath
+		}
+		if seen[key] == nil {
+			seen[key] = map[string]bool{}
+		}
+		k := keyOf(d)
+		if seen[key][k] {
+			continue
+		}
+		seen[key][k] = true
+		perFile[key] = append(perFile[key], toLSP(d))
+	}
+	// Ensure the triggering file has at least an empty slice so the
+	// publisher always sends a clear-diagnostics notification for it,
+	// even if nothing came back.
+	if _, ok := perFile[fsPath]; !ok && fsPath != "" {
+		perFile[fsPath] = []protocol.Diagnostic{}
+	}
+	return perFile, designRoot
+}
+
+// analyseForLSP runs the parse + semantic pipeline that both LSP
+// diagnostic entry points need. When the buffer lives inside a design
+// root (`files` non-empty), every sibling .craftgo is parsed and the
+// project analyser runs so cross-package qualified refs resolve. The
+// single-file fallback parses just `src` so the LSP keeps emitting
+// useful diagnostics on untitled buffers and out-of-project files.
+func (s *Server) analyseForLSP(u uri.URI, src, fsPath string, files []projectFile, designRoot string) []lexer.Diagnostic {
+	if len(files) == 0 {
+		// Single-file fallback. Tag with the resolved fs path when
+		// available so the per-file partition above sees a matching
+		// Pos.Filename; otherwise tag with the URI itself so the
+		// bucket lookup still hits.
 		fname := fsPath
 		if fname == "" {
 			fname = string(u)
 		}
 		p := parser.New(fname, src)
 		f := p.Parse()
-		diags = append(diags, p.Diagnostics()...)
+		diags := p.Diagnostics()
 		if f != nil {
 			_, sd := semantic.Analyze([]*ast.File{f})
 			diags = append(diags, sd...)
 		}
-	} else {
-		// Project-wide: parse every file, then AnalyzeProject so cross-pkg
-		// qualified refs resolve.
-		var astFiles []*ast.File
-		for _, e := range files {
-			p := parser.New(e.path, e.src)
-			f := p.Parse()
-			diags = append(diags, p.Diagnostics()...)
-			if f != nil {
-				if f.Package == nil {
-					f.Package = &ast.PackageDecl{Name: filepath.Base(filepath.Dir(e.path))}
-				}
-				f.Package.Pos.Filename = e.path
-				astFiles = append(astFiles, f)
-			}
-		}
-		_, semDiags := semantic.AnalyzeProject(astFiles, semantic.Options{DesignRoot: designRoot})
-		diags = append(diags, semDiags...)
+		return diags
 	}
-
-	target := strings.TrimSpace(fsPath)
-	out := make([]protocol.Diagnostic, 0, len(diags))
-	seen := map[string]bool{}
-	for _, d := range diags {
-		// Filter to current file ONLY when project mode is active; in
-		// single-file fallback the parser already tagged everything
-		// with our chosen filename, and accepting blank Filename keeps
-		// us robust to phases that omit it.
-		if !singleFile && target != "" && d.Pos.Filename != "" && d.Pos.Filename != target {
+	// Project-wide: parse every file, then AnalyzeProject so qualified
+	// refs resolve. Files with no `package X` decl land in the fallback
+	// bucket the analyser uses for unrooted sources - we synthesize a
+	// folder-derived name here so the project-level resolver can still
+	// associate them with their on-disk location.
+	var diags []lexer.Diagnostic
+	astFiles := make([]*ast.File, 0, len(files))
+	for _, e := range files {
+		p := parser.New(e.path, e.src)
+		f := p.Parse()
+		diags = append(diags, p.Diagnostics()...)
+		if f == nil {
 			continue
 		}
-		key := keyOf(d)
-		if seen[key] {
-			continue
+		if f.Package == nil {
+			f.Package = &ast.PackageDecl{Name: filepath.Base(filepath.Dir(e.path))}
 		}
-		seen[key] = true
-		out = append(out, toLSP(d))
+		f.Package.Pos.Filename = e.path
+		astFiles = append(astFiles, f)
 	}
-	return out
+	_, semDiags := semantic.AnalyzeProject(astFiles, semantic.Options{DesignRoot: designRoot})
+	return append(diags, semDiags...)
 }
 
 type projectFile struct {

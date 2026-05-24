@@ -3,8 +3,8 @@ package profileservice
 import (
 	"context"
 
-	"sort"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/design"
+	"sort"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"

@@ -3,6 +3,7 @@ package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -193,48 +194,90 @@ func (a *analyzer) checkDefaultNeedsOptional(parent string, f *ast.Field) {
 	}
 }
 
-// checkBindingFieldType rejects `@path`, `@header`, and `@cookie` on a
-// field whose underlying primitive cannot ride the wire as a string.
-// Accepts:
+// checkBindingFieldType vets the type compatibility of `@path`,
+// `@header`, `@cookie`, and `@form` bindings up front so the codegen
+// never has to produce uncompilable Go.
 //
-//   - the bare `string` primitive
-//   - a [scalar Name string @...] declaration (its decorators inherit
-//     into the field's validator chain)
-//   - a string-backed enum (kind [ast.EnumBare] or [ast.EnumString])
+// Per-decorator rules (mirrors the wire-bind codegen in
+// `internal/codegen.renderWireBindLine`):
 //
-// Anything else (numeric scalars / int enums / structs / arrays / maps)
-// raises [CodeBindingType] - those flows would silently zero the field
-// at codegen time, leaving the author with a runtime gap that no
-// diagnostic explains.
+//   - `@path`              — non-optional string-shaped only. Path
+//     segments are mandatory by definition (the route matched or it
+//     didn't), so optional makes no semantic sense; numeric path
+//     params land as a string-scalar or string-enum with an explicit
+//     cast.
+//   - `@query` / `@header` / `@cookie` — string + numeric + bool +
+//     scalars/enums + arrays of those. Optional string-shaped is
+//     accepted (binder emits `*T`); optional numerics use the
+//     zero-value sentinel because tri-state pointers off a string-
+//     wire are not unambiguous.
+//   - `@form`              — same as @query plus the `file` type
+//     (multipart upload path). Arrays of file are still rejected
+//     because the binder writes a single `*multipart.FileHeader`.
+//
+// Anything outside these categories raises [CodeBindingType] with a
+// message that names the offending shape so the author can repair
+// without consulting docs.
 func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	if f.Type == nil {
 		return
 	}
-	stringOnly := map[string]bool{"path": true, "header": true, "cookie": true}
 	for _, d := range f.Decorators {
-		if !stringOnly[d.Name] {
-			continue
+		switch d.Name {
+		case "path":
+			if isStringBindingType(f.Type, a.pkg, false) {
+				continue
+			}
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+				"field %s.%s: @path requires a non-optional string-backed field (string, string scalar, or string enum) - got %s",
+				parent, f.Name, describeTypeRef(f.Type))
+			return
+		case "query", "header", "cookie":
+			// Cookie has no multi-value shape; reject arrays with
+			// the source-specific message BEFORE the general wire
+			// check (which accepts arrays for query / header).
+			if d.Name == "cookie" && f.Type.Array {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+					"field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name",
+					parent, f.Name)
+				return
+			}
+			if isWireBindingType(f.Type, a.pkg) {
+				continue
+			}
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+				"field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s",
+				parent, f.Name, d.Name, describeTypeRef(f.Type))
+			return
+		case "form":
+			if isFormBindingType(f.Type, a.pkg) {
+				continue
+			}
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+				"field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s",
+				parent, f.Name, describeTypeRef(f.Type))
+			return
 		}
-		if isStringBindingType(f.Type, a.pkg) {
-			continue
-		}
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-			"field %s.%s: @%s requires a string-backed field (string, string scalar, or string enum) - got %s",
-			parent, f.Name, d.Name, describeTypeRef(f.Type))
-		return
 	}
 }
 
-// isStringBindingType reports whether t can ride a path / header /
-// cookie wire (always a string at the protocol level). Matches:
+// isStringBindingType reports whether t is a string-shaped value
+// acceptable for `@path` (the only binding that demands string-only).
+// Matches:
 //   - the bare `string` primitive
 //   - a `scalar X string @...` declared in pkg
 //   - a bare or string-valued enum declared in pkg
 //
-// Optional / array shapes are rejected: no clean codegen idiom
-// exists for them on these wire formats yet.
-func isStringBindingType(t *ast.TypeRef, pkg *Package) bool {
-	if t == nil || t.Array || t.Optional || t.Named == nil {
+// Array / map shapes are always rejected. Optional is gated by
+// allowOptional: callers for path pass false (path is mandatory).
+// This helper is INTERNAL to the binding check - the wider
+// `@query/@header/@cookie/@form` rules accept many more shapes (see
+// [isWireBindingType] / [isFormBindingType]).
+func isStringBindingType(t *ast.TypeRef, pkg *Package, allowOptional bool) bool {
+	if t == nil || t.Array || t.Map != nil || t.Named == nil {
+		return false
+	}
+	if t.Optional && !allowOptional {
 		return false
 	}
 	name := t.Named.Name.String()
@@ -255,6 +298,103 @@ func isStringBindingType(t *ast.TypeRef, pkg *Package) bool {
 		}
 	}
 	return false
+}
+
+// isWireBindingType reports whether t is acceptable as a `@query`,
+// `@header`, or `@cookie` field. The shared set covers every primitive
+// the codegen's wire-bind shape catalogue can parse:
+//
+//   - string                              → directSingle / optionalStringNoCast
+//   - bool / int* / uint* / float*        → singleParsed
+//   - string-backed scalar / enum         → directSingle / optionalStringCast with cast
+//   - numeric scalar / int enum           → singleParsed with cast
+//   - array of any of the above           → directSlice / arrayString / arrayParsed
+//   - optional of any string-shaped item  → optionalString*
+//
+// Rejects: optional numerics (zero sentinel), maps, structs, generic
+// instantiations, and the `file` type (which only `@form` accepts).
+func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
+	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
+		return false
+	}
+	name := t.Named.Name.String()
+	if name == "file" {
+		return false
+	}
+	if t.Optional && !t.Array {
+		// Optional non-string primitives have no clean tri-state idiom.
+		if !isStringBackedName(name, pkg) {
+			return false
+		}
+	}
+	if isPrimitiveWireName(name) {
+		return true
+	}
+	if pkg == nil {
+		return false
+	}
+	if sc, ok := pkg.Scalars[name]; ok && sc != nil {
+		return isPrimitiveWireName(sc.Primitive)
+	}
+	if ed, ok := pkg.Enums[name]; ok && ed != nil {
+		for _, m := range ed.Members {
+			if v, ok := m.(*ast.EnumValue); ok {
+				switch v.Kind {
+				case ast.EnumBare, ast.EnumString, ast.EnumInt:
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// isStringBackedName reports whether name resolves (possibly via a
+// scalar / enum) to the `string` primitive. Used by [isWireBindingType]
+// to allow optional ONLY for string-shaped fields.
+func isStringBackedName(name string, pkg *Package) bool {
+	if name == "string" {
+		return true
+	}
+	if pkg == nil {
+		return false
+	}
+	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
+		return true
+	}
+	if ed, ok := pkg.Enums[name]; ok && ed != nil {
+		for _, m := range ed.Members {
+			if v, ok := m.(*ast.EnumValue); ok {
+				return v.Kind == ast.EnumBare || v.Kind == ast.EnumString
+			}
+		}
+	}
+	return false
+}
+
+// isPrimitiveWireName lists the Go builtin types the wire-bind codegen
+// can parse from a single HTTP string. Delegates to
+// [idents.IsWireParseable] so semantic-time and gen-time rejections
+// share one source of truth - the codegen's `queryPrims` table mirrors
+// the same set (semantic mustn't import codegen, so the canonical
+// table lives in the type-neutral idents package).
+func isPrimitiveWireName(name string) bool {
+	return idents.IsWireParseable(name)
+}
+
+// isFormBindingType is the wire-bind set plus the `file` type, which
+// only multipart supports. `file?` and bare `file` are equivalent
+// (the renderer drops the pointer wrap on already-nilable types);
+// `file[]` is rejected because the multipart binder writes a single
+// `*multipart.FileHeader` slot, not a slice.
+func isFormBindingType(t *ast.TypeRef, pkg *Package) bool {
+	if t == nil || t.Named == nil {
+		return false
+	}
+	if t.Named.Name.String() == "file" {
+		return !t.Array && t.Map == nil
+	}
+	return isWireBindingType(t, pkg)
 }
 
 // describeTypeRef renders a short human label for a TypeRef so binding

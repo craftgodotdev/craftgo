@@ -1,0 +1,26 @@
+package shared
+
+type Pagination {
+	cursor string?
+	limit  int     @gte(0) @lte(100)
+}
+
+type OkResp {
+	ok bool
+}
+
+type Page<T> {
+	items  T[]
+	cursor string?
+	total  int?
+}
+
+type Envelope<T> {
+	data T
+	meta string?
+}
+
+type Result<T, E> {
+	ok  T?
+	err E?
+}

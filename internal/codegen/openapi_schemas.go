@@ -3,7 +3,6 @@ package codegen
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -25,12 +24,7 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistr
 // resulting schema name uses the smart-suffix rule (`UserNotFound` →
 // `UserNotFoundErr`), matching the Go type name in errors.go.
 func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
-	names := make([]string, 0, len(pkg.Errors))
-	for n := range pkg.Errors {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedKeys(pkg.Errors) {
 		ed := pkg.Errors[name]
 		typeName := errSuffix(ed.Name)
 		s := &openapi3.Schema{
@@ -91,12 +85,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 
 // addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
 func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
-	names := make([]string, 0, len(pkg.Types))
-	for n := range pkg.Types {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedKeys(pkg.Types) {
 		td := pkg.Types[name]
 		if len(td.TypeParams) > 0 {
 			continue
@@ -111,12 +100,7 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericReg
 // the value name, string values use the literal, int values use the
 // integer.
 func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
-	names := make([]string, 0, len(pkg.Enums))
-	for n := range pkg.Enums {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedKeys(pkg.Enums) {
 		ed := pkg.Enums[name]
 		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		if firstEnumKind(ed) == ast.EnumInt {
@@ -154,12 +138,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 // generated TS clients saw only `string` / `number` and could send
 // values the server would reject.
 func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
-	names := make([]string, 0, len(pkg.Scalars))
-	for n := range pkg.Scalars {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedKeys(pkg.Scalars) {
 		sc := pkg.Scalars[name]
 		base := primitiveSchema(sc.Primitive)
 		if base == nil {

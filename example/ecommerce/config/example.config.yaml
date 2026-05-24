@@ -1,0 +1,49 @@
+# Project runtime configuration - read by main.go at boot via
+# config.Load(). Copy this file to `config.yaml`, edit the values for
+# your environment, and commit the example only (the live file
+# typically lives in `.gitignore` or is rendered from secrets/CI).
+#
+# This file is the single source of truth: per-environment overrides
+# go in `config.yaml` itself (one file per env, mounted by the
+# deployer). No environment variables are read.
+
+# Public HTTP listener.
+#
+# handlerTimeout / maxBodySize are GLOBAL DEFAULTS the framework
+# applies to every route via `srv.Use(...)`. Per-method DSL
+# decorators (`@timeout`, `@maxBodySize`) override these. Zero =
+# no global guard (per-method decorators still apply individually).
+#
+# Transport-level deadlines (http.Server.ReadTimeout / WriteTimeout
+# / IdleTimeout / ReadHeaderTimeout / MaxHeaderBytes) are NOT here
+# - set them on the underlying http.Server in main.go if the stdlib
+# defaults are not enough.
+server:
+  addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
+  handlerTimeout: 0s          # global default handler deadline; 0 = no cap
+  maxBodySize: 0              # global default body cap (bytes); 0 = no cap
+  compression:
+    enabled: false            # gzip/deflate negotiated via Accept-Encoding;
+                              # leave false when running behind a compressing
+                              # reverse proxy (nginx/envoy/cloudfront)
+    minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
+    level: 0                  # gzip level 1..9; 0 → DefaultCompression
+
+# Distributed tracing via OpenTelemetry.
+otel:
+  enabled: true               # false → middleware no-op, no spans, no traceparent header
+  serviceName: ecommerce      # surfaces in span resource attributes (service.name)
+  exporter: none              # none | stdout | otlp_grpc | otlp_http
+  endpoint: ""                # OTLP collector address; ignored for none/stdout
+                              # gRPC example: "otel-collector.observability:4317"
+                              # HTTP example: "http://collector:4318"
+
+# Metrics: OpenTelemetry meter + admin scrape listener.
+metrics:
+  enabled: true               # false → meter stays no-op; no admin listener
+  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none
+  endpoint: ""                # OTLP collector address; ignored for prometheus/none
+                              # gRPC example: "otel-collector.observability:4317"
+                              # HTTP example: "http://collector:4318"
+  adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
+  path: /metrics              # route the scrape is exposed on (prometheus only)

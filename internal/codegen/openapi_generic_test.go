@@ -170,13 +170,13 @@ func TestGenericRegistryMarkEmittedSkips(t *testing.T) {
 // OpenAPI `components.schemas` namespace.
 func TestPascalQualified(t *testing.T) {
 	cases := map[string]string{
-		"":            "",
-		"x":           "X",
-		"User":        "User",
-		"users.User":  "UsersUser",
-		"a.b.c":       "ABC",
-		"my_pkg.Foo":  "My_pkgFoo", // underscores in segments stay (PascalCase per-segment only)
-		"my-pkg.Foo":  "My-pkgFoo",
+		"":           "",
+		"x":          "X",
+		"User":       "User",
+		"users.User": "UsersUser",
+		"a.b.c":      "ABC",
+		"my_pkg.Foo": "My_pkgFoo", // underscores in segments stay (PascalCase per-segment only)
+		"my-pkg.Foo": "My-pkgFoo",
 	}
 	for in, want := range cases {
 		got := pascalQualified(in)

@@ -51,13 +51,26 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, coo
 // codegen emits a thin `http.HandlerFunc` that delegates to logic
 // without parsing, validating, or encoding anything.
 
-func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files []paramBinding) {
+// collectFormBindings walks the request type's fields and partitions
+// them into the multipart binder's two buckets: text fields (rendered
+// via [renderWireBindLine] with a [formSource]) and file fields
+// (`*multipart.FileHeader`, bound via r.FormFile in the template).
+//
+// The function ONLY produces text bindings when at least one file
+// field is present - without a file, the request has no multipart
+// handler to feed and the would-be text fields go through the JSON
+// body decoder via standard struct semantics instead.
+//
+// `needsStrconv` is true when any text field's binding line reaches
+// into the strconv package - flows through to the multipart template
+// import block.
+func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (text, files []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
-		return nil, nil
+		return nil, nil, false, nil
 	}
 	td, ok := pkg.Types[m.Request.Name.String()]
 	if !ok {
-		return nil, nil
+		return nil, nil, false, nil
 	}
 	pathSegs := map[string]bool{}
 	if m.Path != nil {
@@ -67,6 +80,13 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 			}
 		}
 	}
+	// First pass: find file fields. Without one, the handler renders
+	// as a plain JSON body decoder and we have nothing to emit here.
+	type candidate struct {
+		field *ast.Field
+		entry paramBinding
+	}
+	var nonFile []candidate
 	for _, member := range td.Body {
 		f, ok := member.(*ast.Field)
 		if !ok {
@@ -81,21 +101,10 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 		}
 		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
-			// Record the @mimeTypes allowlist (if any) so the
-			// OpenAPI multipart emitter can render
-			// `encoding[field].contentType` — without this the
-			// client SDK has no way to see what MIME types the
-			// server's runtime validator will accept.
 			for _, d := range f.Decorators {
 				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
 					continue
 				}
-				// Canonical syntax is variadic — `@mimeTypes("a",
-				// "b")`. The legacy array form `@mimeTypes(["a",
-				// "b"])` still parses (registry sets
-				// AllowArrayShortcut for back-compat); try the
-				// array branch first, fall back to collecting
-				// each positional string arg.
 				if mimes, ok := stringArrayArg(d.Args[0]); ok {
 					entry.MimeTypes = mimes
 				} else {
@@ -109,11 +118,28 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package) (strings, files [
 			files = append(files, entry)
 			continue
 		}
-		if isPlainStringField(f) {
-			strings = append(strings, entry)
-		}
+		nonFile = append(nonFile, candidate{field: f, entry: entry})
 	}
-	return strings, files
+	if len(files) == 0 {
+		// No multipart handler will be emitted; surrender the
+		// non-file fields back to the JSON body path.
+		return nil, nil, false, nil
+	}
+	// Second pass: render bindings for the text fields now that we
+	// know the handler is multipart.
+	for _, c := range nonFile {
+		line, needs, lerr := renderWireBindLine(c.field, pkg, pkgAlias, c.field.Name, formSource())
+		if lerr != nil {
+			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+			return
+		}
+		if needs {
+			needsStrconv = true
+		}
+		c.entry.Bind = line
+		text = append(text, c.entry)
+	}
+	return text, files, needsStrconv, nil
 }
 
 // collectBindings walks the request type's fields and returns per-kind
@@ -180,7 +206,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 		wireName := bindingWireName(f, bind)
 		switch bind {
 		case "path":
-			if !stringBindable(f, pkg, scalars) {
+			if !stringBindable(f, pkg, scalars, false) {
 				if auto {
 					// Auto-promoted from a path segment match - silently skip
 					// so a body field that happens to share a name with a
@@ -189,7 +215,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 					// decorator scan); auto-promotion is permissive.
 					continue
 				}
-				err = fmt.Errorf("%s.%s: @path requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @path requires a non-optional string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
 			path = append(path, paramBinding{
@@ -198,7 +224,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.PathValue(%q)", wireName), pkgAlias)),
 			})
 		case "query":
-			line, needs, lerr := renderQueryBindLine(f, pkg, pkgAlias, wireName)
+			line, needs, lerr := renderWireBindLine(f, pkg, pkgAlias, wireName, querySource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -206,44 +232,42 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 			if needs {
 				needsStrconv = true
 			}
-			query = append(query, paramBinding{
-				DSLName: wireName,
-				GoName:  GoFieldName(f.Name),
-				Bind:    line,
-			})
+			query = append(query, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
 		case "header":
-			if !stringBindable(f, pkg, scalars) {
-				err = fmt.Errorf("%s.%s: @header requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
+			line, needs, lerr := renderWireBindLine(f, pkg, pkgAlias, wireName, headerSource())
+			if lerr != nil {
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
 			}
-			header = append(header, paramBinding{
-				DSLName: wireName,
-				GoName:  GoFieldName(f.Name),
-				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.Header.Get(%q)", wireName), pkgAlias)),
-			})
+			if needs {
+				needsStrconv = true
+			}
+			header = append(header, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
 		case "cookie":
-			if !stringBindable(f, pkg, scalars) {
-				err = fmt.Errorf("%s.%s: @cookie requires a string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
+			line, needs, lerr := renderWireBindLine(f, pkg, pkgAlias, wireName, cookieSource())
+			if lerr != nil {
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
 			}
-			cookie = append(cookie, paramBinding{
-				DSLName: wireName,
-				GoName:  GoFieldName(f.Name),
-				Bind: fmt.Sprintf(`if c, err := r.Cookie(%q); err == nil {
-	req.%s = %s
-}`, wireName, GoFieldName(f.Name), stringBindCast(f, "c.Value", pkgAlias)),
-			})
+			if needs {
+				needsStrconv = true
+			}
+			cookie = append(cookie, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
 		}
 	}
 	return
 }
 
-// pathString re-renders a method's path for error messages
-// (`/books/{id}/cancel`); empty string when m has no path block.
+// collectRequestFieldImports walks every WIRE-BOUND field of the
+// method's request type (path / query / header / cookie, explicit or
+// auto-promoted) and returns the Go imports their types reach into.
+// Body fields are excluded - the JSON decoder reads them through the
+// request struct's own package and pulling that import in here would
+// surface as an unused-import build failure.
 //
-// Hot path (called per method during routes-go emission): Builder
-// keeps the per-segment append allocation-free.
-
+// Result keys the DSL package name (used as the Go alias in the
+// binder cast) to its full Go import path, ready to append to the
+// handler's extra-imports block.
 func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg CrossPkg) map[string]string {
 	out := map[string]string{}
 	if m == nil || m.Request == nil || pkg == nil || len(crossPkg) == 0 {
@@ -312,25 +336,10 @@ func bindingWireName(f *ast.Field, kind string) string {
 	return f.Name
 }
 
-// renderQueryBindLine returns the Go source that binds one field from
-// the URL query string. Shape varies by field type:
-//   - string single → `req.X = r.URL.Query().Get("x")`
-//   - numeric/bool single → `if v := ...; v != "" { parse + cast }`
-//   - []string → `req.X = r.URL.Query()["x"]`
-//   - []numeric/bool → `for ... { parse + append }`
-//   - scalar X / enum X → resolved to underlying primitive then cast
-//     (string-backed scalar/enum: `req.X = X(r.URL.Query().Get("x"))`;
-//     int-backed: parse int then `X(_n)`).
-//
-// `wireName` is the on-the-wire query parameter key — either the DSL
-// field name (default) or the explicit override from `@query("name")`.
-// Returns a non-nil error for unsupported field shapes (structs,
-// []struct, maps, generics, ...) so the codegen surfaces the
-// mistake at `craftgo gen` time instead of silently producing a
-// handler that leaves the field zero-valued. The second return
-// value is true when the rendered code references "strconv" so
-// the caller can flip the import flag once.
-
+// describeFieldType renders a short human-readable form of f's type
+// for error messages — `[]Point`, `Page<Book>`, `map<string,int>`,
+// etc. Used by the binding-rejection paths so the user sees the exact
+// shape that violated the binding contract.
 func describeFieldType(f *ast.Field) string {
 	if f == nil || f.Type == nil {
 		return "<unresolved>"
@@ -372,6 +381,11 @@ func isPlainStringField(f *ast.Field) bool {
 //   - a `scalar X string @...` declared in any reachable package
 //   - a string-backed enum (kind EnumBare or EnumString) in pkg
 //
+// Optional is accepted when allowOptional=true (header / cookie callers
+// pass true; path callers pass false because path segments are
+// mandatory by route-matching). Array / map shapes are always rejected
+// regardless.
+//
 // `scalars` is the project-wide lookup table built by
 // [BuildScalarTable]; it carries both local scalars (keyed by bare
 // name) and cross-package scalars (keyed by qualified name like
@@ -382,8 +396,11 @@ func isPlainStringField(f *ast.Field) bool {
 //
 // Mirrors `semantic.isStringBindingType` so design-time and gen-time
 // rejections agree.
-func stringBindable(f *ast.Field, pkg *semantic.Package, scalars ScalarTable) bool {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Optional || f.Type.Named == nil {
+func stringBindable(f *ast.Field, pkg *semantic.Package, scalars ScalarTable, allowOptional bool) bool {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
+		return false
+	}
+	if f.Type.Optional && !allowOptional {
 		return false
 	}
 	name := f.Type.Named.Name.String()

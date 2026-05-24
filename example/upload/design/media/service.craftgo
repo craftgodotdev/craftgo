@@ -1,0 +1,35 @@
+package media
+
+@prefix("/media")
+@tags(media)
+service MediaService {
+	@doc("Upload a user avatar (PNG/JPEG/WebP, ≤5MB).")
+	post UploadAvatar /users/{userId}/avatar {
+		request  UploadAvatarReq
+		response UploadResult
+	}
+
+	@doc("Upload a PDF document with title + optional notes.")
+	post UploadDocument /documents {
+		request  UploadDocumentReq
+		response UploadResult
+	}
+
+	@doc("Attach a small blob to a note (tight 500KB cap).")
+	post UploadAttachment /notes/{noteId}/attachments {
+		request  UploadAttachmentReq
+		response UploadResult
+	}
+
+	@doc("Get media metadata.")
+	get GetMedia /{id} {
+		request  GetMediaReq
+		response UploadResult
+	}
+
+	@doc("Delete media. Idempotent.")
+	delete DeleteMedia /{id} {
+		request  GetMediaReq
+		response OkResp
+	}
+}
