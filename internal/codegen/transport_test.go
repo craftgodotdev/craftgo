@@ -730,10 +730,12 @@ func TestGenerateRoutesMissingPackageName(t *testing.T) {
 
 // TestGenerateRoutesMultipleMiddlewares pins the chaining order: when a
 // method declares `@middlewares(A, B, C)` AND its service declares
-// `@middlewares(S)`, the generated `srv.With(...)` call lists service-
+// `@middlewares(S)`, the generated `srv.Handle` call lists service-
 // level middlewares first (outermost) followed by the method's, in
-// source order. Server.With wraps in reverse so S is the outermost
-// frame and C is closest to the handler.
+// source order. Server.Handle wraps variadic middlewares right-to-left
+// so the first arg ends up the outermost frame at runtime — the route
+// line reads top-to-bottom the same way the request flows through
+// (Auth wraps RateLimit wraps RequestCounter wraps the handler).
 func TestGenerateRoutesMultipleMiddlewares(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -761,9 +763,9 @@ service S {
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	want := `svcCtx.Auth(svcCtx.RateLimit(svcCtx.RequestCounter(transport.GetThing(svcCtx))))`
+	want := `srv.Handle("GET /v1/v1/things/{id}", transport.GetThing(svcCtx), svcCtx.Auth, svcCtx.RateLimit, svcCtx.RequestCounter)`
 	if !strings.Contains(src, want) {
-		t.Errorf("expected ordered middleware chain %q in:\n%s", want, src)
+		t.Errorf("expected variadic middleware chain %q in:\n%s", want, src)
 	}
 }
 
@@ -799,10 +801,10 @@ service S {
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	if strings.Contains(src, "svcCtx.Auth(") {
+	if strings.Contains(src, "svcCtx.Auth") {
 		t.Errorf("Auth should be cleared by @ignoreMiddleware:\n%s", src)
 	}
-	want := `svcCtx.Audit(transport.GetThing(svcCtx))`
+	want := `srv.Handle("GET /v1/v1/things/{id}", transport.GetThing(svcCtx), svcCtx.Audit)`
 	if !strings.Contains(src, want) {
 		t.Errorf("expected method-only chain %q in:\n%s", want, src)
 	}

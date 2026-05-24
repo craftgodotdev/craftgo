@@ -51,23 +51,43 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 	return names
 }
 
-// buildHandlerCall produces the Go expression that lands as the second
-// argument to `srv.Handle`. Middlewares are wrapped LEFT-TO-RIGHT so
-// the first name in the slice ends up outermost, matching how readers
-// expect to see the chain ("Auth wraps everything else"). When the
-// method declares `@timeout` or `@maxBodySize` the entire chain is
-// further wrapped in `server.WithLimits(...)` so the limits apply
-// outside any middleware - timeouts include the middleware's own
-// work, not just the handler's.
-func buildHandlerCall(m *ast.Method, mws []string) string {
+// buildHandlerCall produces the Go expression that lands as the SECOND
+// argument to `srv.Handle` — the handler itself, with `server.WithLimits`
+// applied when the method declares `@timeout` or `@maxBodySize`. The
+// middleware chain is rendered separately as variadic args by
+// [buildMiddlewareArgs] so the route line stays flat regardless of
+// chain depth (old shape nested up to 7 wraps deep per call).
+//
+// Limits wrap the handler INSIDE the middleware chain so middlewares
+// see the timeout/body-cap-bound handler — the timeout cancels the
+// downstream work, not the middleware's own bookkeeping.
+func buildHandlerCall(m *ast.Method) string {
 	core := "transport." + m.Name + "(svcCtx)"
-	for i := len(mws) - 1; i >= 0; i-- {
-		core = "svcCtx." + mws[i] + "(" + core + ")"
-	}
 	if lit, ok := methodLimitsLiteral(m); ok {
 		core = "server.WithLimits(" + core + ", " + lit + ")"
 	}
 	return core
+}
+
+// buildMiddlewareArgs produces the variadic-middleware-arg list that
+// the routes template splices after the handler. Returns the comma-
+// separated `svcCtx.A, svcCtx.B, svcCtx.C` form (no leading comma)
+// when the chain is non-empty, otherwise "" so the template skips the
+// argument entirely.
+//
+// Order matches buildHandlerCall's historical "first = outermost"
+// contract: the first name in mws is the OUTERMOST frame at runtime.
+// server.Handle's variadic wrap iterates right-to-left so this stays
+// natural to read top-to-bottom in the generated route line.
+func buildMiddlewareArgs(mws []string) string {
+	if len(mws) == 0 {
+		return ""
+	}
+	parts := make([]string, len(mws))
+	for i, name := range mws {
+		parts[i] = "svcCtx." + name
+	}
+	return strings.Join(parts, ", ")
 }
 
 // methodLimitsLiteral renders a `server.Limits{...}` Go-source struct
@@ -185,13 +205,21 @@ func extractMiddlewareNames(ds []*ast.Decorator) []string {
 }
 
 // routeEntry is one row in the routes table emitted by `routes.tmpl`.
-// HandlerCall is the fully-formed Go expression the template emits as
-// the second argument to `srv.HandleFunc` - already wrapped in any
-// service- and method-level middlewares declared via `@middlewares`.
+// HandlerCall is the bare handler expression (plus optional
+// `server.WithLimits` wrap when @timeout/@maxBodySize is declared);
+// Middlewares is the variadic-arg list (`svcCtx.A, svcCtx.B`) the
+// template splices AFTER the handler so the call reads flat:
+//
+//	srv.Handle("POST /x", handler, svcCtx.A, svcCtx.B)
+//
+// Empty Middlewares means the method opted out of the inherited
+// chain via `@ignoreMiddleware` and declared no replacement, so the
+// template skips the trailing comma + args entirely.
 type routeEntry struct {
 	Pattern     string
 	Method      string
 	HandlerCall string
+	Middlewares string
 }
 
 // routesData is the template input for `routes.tmpl`. NeedsTime tells
@@ -348,7 +376,7 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 	for _, m := range svc.Methods {
 		full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
 		mws := middlewareNames(m, svc.Primary)
-		call := buildHandlerCall(m, mws)
+		call := buildHandlerCall(m)
 		if strings.Contains(call, "time.") {
 			data.NeedsTime = true
 		}
@@ -356,6 +384,7 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 			Pattern:     httpVerb(m.Verb) + " " + full,
 			Method:      m.Name,
 			HandlerCall: call,
+			Middlewares: buildMiddlewareArgs(mws),
 		})
 	}
 	formatted, err := renderGo(tmpl("routes.tmpl"), data)

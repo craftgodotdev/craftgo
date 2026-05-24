@@ -15,10 +15,10 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("POST /api/account/signup", svcCtx.RateLimit(transport.Signup(svcCtx)))
-	srv.Handle("POST /api/account/login", svcCtx.RateLimit(transport.Login(svcCtx)))
-	srv.Handle("GET /api/account/me", svcCtx.RateLimit(svcCtx.AuthRequired(transport.Me(svcCtx))))
-	srv.Handle("POST /api/account/logout", svcCtx.RateLimit(svcCtx.AuthRequired(svcCtx.Audit(transport.Logout(svcCtx)))))
-	srv.Handle("DELETE /api/account/admin/{id}", svcCtx.RateLimit(svcCtx.BasicAuth(svcCtx.Audit(transport.DeleteAccount(svcCtx)))))
-	srv.Handle("POST /api/account/admin/reset", svcCtx.Audit(transport.Reset(svcCtx)))
+	srv.Handle("POST /api/account/signup", transport.Signup(svcCtx), svcCtx.RateLimit)
+	srv.Handle("POST /api/account/login", transport.Login(svcCtx), svcCtx.RateLimit)
+	srv.Handle("GET /api/account/me", transport.Me(svcCtx), svcCtx.RateLimit, svcCtx.AuthRequired)
+	srv.Handle("POST /api/account/logout", transport.Logout(svcCtx), svcCtx.RateLimit, svcCtx.AuthRequired, svcCtx.Audit)
+	srv.Handle("DELETE /api/account/admin/{id}", transport.DeleteAccount(svcCtx), svcCtx.RateLimit, svcCtx.BasicAuth, svcCtx.Audit)
+	srv.Handle("POST /api/account/admin/reset", transport.Reset(svcCtx), svcCtx.Audit)
 }

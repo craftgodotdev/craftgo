@@ -20,6 +20,6 @@ import (
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 {{- range .Routes}}
-	srv.Handle("{{.Pattern}}", {{.HandlerCall}})
+	srv.Handle("{{.Pattern}}", {{.HandlerCall}}{{if .Middlewares}}, {{.Middlewares}}{{end}})
 {{- end}}
 }

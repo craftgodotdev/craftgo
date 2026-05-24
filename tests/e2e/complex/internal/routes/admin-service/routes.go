@@ -15,7 +15,7 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/v1/admin/dashboard", svcCtx.AuthRequired(transport.DashboardStats(svcCtx)))
-	srv.Handle("GET /api/v1/admin/health", svcCtx.AuthRequired(transport.Health(svcCtx)))
-	srv.Handle("GET /api/v1/admin/snapshot", svcCtx.AuthRequired(svcCtx.RequestStamp(transport.Snapshot(svcCtx))))
+	srv.Handle("GET /api/v1/admin/dashboard", transport.DashboardStats(svcCtx), svcCtx.AuthRequired)
+	srv.Handle("GET /api/v1/admin/health", transport.Health(svcCtx), svcCtx.AuthRequired)
+	srv.Handle("GET /api/v1/admin/snapshot", transport.Snapshot(svcCtx), svcCtx.AuthRequired, svcCtx.RequestStamp)
 }

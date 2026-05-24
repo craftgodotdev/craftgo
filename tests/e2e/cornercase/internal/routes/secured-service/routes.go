@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/secured", svcCtx.AuthRequired(svcCtx.RateLimit(transport.ListItems(svcCtx))))
+	srv.Handle("GET /api/secured", transport.ListItems(svcCtx), svcCtx.AuthRequired, svcCtx.RateLimit)
 	srv.Handle("GET /api/secured/healthz", transport.Healthz(svcCtx))
-	srv.Handle("POST /api/secured/reset", svcCtx.BasicAuth(svcCtx.Audit(transport.Reset(svcCtx))))
-	srv.Handle("POST /api/secured/wipe", svcCtx.AuthRequired(svcCtx.RateLimit(transport.Wipe(svcCtx))))
-	srv.Handle("POST /api/secured/quarantine", svcCtx.AuthRequired(svcCtx.RateLimit(transport.Quarantine(svcCtx))))
+	srv.Handle("POST /api/secured/reset", transport.Reset(svcCtx), svcCtx.BasicAuth, svcCtx.Audit)
+	srv.Handle("POST /api/secured/wipe", transport.Wipe(svcCtx), svcCtx.AuthRequired, svcCtx.RateLimit)
+	srv.Handle("POST /api/secured/quarantine", transport.Quarantine(svcCtx), svcCtx.AuthRequired, svcCtx.RateLimit)
 }

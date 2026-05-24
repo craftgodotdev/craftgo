@@ -16,6 +16,6 @@ import (
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/admin/inventory/health", transport.Health(svcCtx))
-	srv.Handle("GET /api/admin/inventory", svcCtx.AuthRequired(transport.ListItems(svcCtx)))
-	srv.Handle("POST /api/admin/inventory/{itemId}/promote", svcCtx.AuthRequired(transport.PromoteItem(svcCtx)))
+	srv.Handle("GET /api/admin/inventory", transport.ListItems(svcCtx), svcCtx.AuthRequired)
+	srv.Handle("POST /api/admin/inventory/{itemId}/promote", transport.PromoteItem(svcCtx), svcCtx.AuthRequired)
 }

@@ -507,12 +507,13 @@ func TestCrossFolderAdminPathRoutes(t *testing.T) {
 	for _, want := range []string{
 		`"GET /api/v1/admin/dashboard"`,
 		`"GET /api/v1/admin/health"`,
-		// Service-level @middlewares wraps every method via embedded
-		// fields on ServiceContext.
-		`svcCtx.AuthRequired(transport.DashboardStats(svcCtx))`,
-		`svcCtx.AuthRequired(transport.Health(svcCtx))`,
-		// Method-level @middlewares chain on top of service-level.
-		`svcCtx.AuthRequired(svcCtx.RequestStamp(transport.Snapshot(svcCtx)))`,
+		// Service-level @middlewares flows in via the variadic-arg form
+		// on Server.Handle — first arg is outermost at runtime.
+		`transport.DashboardStats(svcCtx), svcCtx.AuthRequired`,
+		`transport.Health(svcCtx), svcCtx.AuthRequired`,
+		// Method-level @middlewares append after the service-level
+		// chain in source order.
+		`transport.Snapshot(svcCtx), svcCtx.AuthRequired, svcCtx.RequestStamp`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("expected %q in cross-folder routes.go:\n%s", want, src)
@@ -687,15 +688,15 @@ func TestMiddlewareScaffoldExists(t *testing.T) {
 }
 
 // TestSecurityRoutesGoFileWrapsHandler scans the generated routes.go to
-// confirm the codegen actually emitted the `svcCtx.AuthRequired(...)`
-// wrapper for the protected method.
+// confirm the codegen actually emitted the `svcCtx.AuthRequired`
+// middleware arg for the protected method via the variadic Handle shape.
 func TestSecurityRoutesGoFileWrapsHandler(t *testing.T) {
 	src := readGenerated(t, "internal/routes/profile-service/routes.go")
-	if !strings.Contains(src, `svcCtx.AuthRequired(transport.AdminListProfiles(svcCtx))`) {
-		t.Errorf("expected svcCtx.AuthRequired wrapper in:\n%s", src)
+	if !strings.Contains(src, `transport.AdminListProfiles(svcCtx), svcCtx.AuthRequired`) {
+		t.Errorf("expected svcCtx.AuthRequired in variadic mws of:\n%s", src)
 	}
 	// Unprotected routes must NOT carry the wrapper.
-	if strings.Contains(src, `svcCtx.AuthRequired(transport.ListProfiles(svcCtx))`) {
+	if strings.Contains(src, `transport.ListProfiles(svcCtx), svcCtx.AuthRequired`) {
 		t.Errorf("unprotected ListProfiles wrongly wrapped:\n%s", src)
 	}
 }

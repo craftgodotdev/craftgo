@@ -15,15 +15,15 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/orders/list-orders", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.ListOrders(svcCtx))))))
-	srv.Handle("GET /api/orders/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.GetOrder(svcCtx))))))
-	srv.Handle("POST /api/orders", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.CreateOrder(svcCtx))))))
-	srv.Handle("GET /api/orders/by-status/{status}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.FilterOrders(svcCtx))))))
-	srv.Handle("POST /api/orders/defaults", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.Defaults(svcCtx))))))
-	srv.Handle("POST /api/orders/{id}/cancel", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.CancelOrder(svcCtx))))))))
-	srv.Handle("POST /api/orders/{id}/ship", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.ForceShip(svcCtx))))))))
+	srv.Handle("GET /api/orders/list-orders", transport.ListOrders(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("GET /api/orders/{id}", transport.GetOrder(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("POST /api/orders", transport.CreateOrder(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("GET /api/orders/by-status/{status}", transport.FilterOrders(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("POST /api/orders/defaults", transport.Defaults(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("POST /api/orders/{id}/cancel", transport.CancelOrder(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit, svcCtx.Timeout)
+	srv.Handle("POST /api/orders/{id}/ship", transport.ForceShip(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit, svcCtx.Timeout)
 	srv.Handle("GET /api/orders/health", transport.PublicHealth(svcCtx))
-	srv.Handle("GET /api/orders/{id}/track", svcCtx.CORS(svcCtx.RequestID(transport.TrackPublic(svcCtx))))
-	srv.Handle("POST /api/orders/export", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.BulkExport(svcCtx))))))))
-	srv.Handle("POST /api/orders/{id}/replay", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.Replay(svcCtx))))))
+	srv.Handle("GET /api/orders/{id}/track", transport.TrackPublic(svcCtx), svcCtx.CORS, svcCtx.RequestID)
+	srv.Handle("POST /api/orders/export", transport.BulkExport(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit, svcCtx.Timeout)
+	srv.Handle("POST /api/orders/{id}/replay", transport.Replay(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
 }

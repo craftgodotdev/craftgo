@@ -132,10 +132,28 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 }
 
 // Handle registers an http.Handler under the same Go 1.22 pattern
-// syntax HandleFunc uses. The generated routes call this when methods
-// declare `@middlewares(...)` because middleware chains return
-// http.Handler, not http.HandlerFunc.
-func (s *Server) Handle(pattern string, h http.Handler) *Server {
+// syntax HandleFunc uses. Optional variadic middlewares wrap the
+// handler left-to-right so the FIRST entry ends up the outermost
+// frame — the order a reader scans matches the order a request
+// flows through. Order chosen so:
+//
+//	srv.Handle("POST /x", h, Auth, RateLimit, CORS)
+//
+// reads "Auth wraps RateLimit wraps CORS wraps h" — request hits
+// Auth first, response leaves CORS last.
+//
+// Variadic middlewares replaced the historical nested-call shape
+// (`svcCtx.Auth(svcCtx.RateLimit(svcCtx.CORS(h)))`) emitted by the
+// routes generator; the new shape stays flat regardless of chain
+// depth and the route line scans top-to-bottom for the same
+// outermost-first reading.
+func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
+	for i := len(mws) - 1; i >= 0; i-- {
+		if mws[i] == nil {
+			continue
+		}
+		h = mws[i](h)
+	}
 	s.mux.Handle(pattern, h)
 	return s
 }

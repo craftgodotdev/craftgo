@@ -17,7 +17,7 @@ import (
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/v1/profiles/{id}", transport.GetProfile(svcCtx))
 	srv.Handle("GET /api/v1/profiles", transport.ListProfiles(svcCtx))
-	srv.Handle("GET /api/v1/admin/profiles", svcCtx.AuthRequired(transport.AdminListProfiles(svcCtx)))
+	srv.Handle("GET /api/v1/admin/profiles", transport.AdminListProfiles(svcCtx), svcCtx.AuthRequired)
 	srv.Handle("POST /api/v1/profiles", transport.CreateProfile(svcCtx))
 	srv.Handle("PATCH /api/v1/profiles/{id}", transport.PatchProfile(svcCtx))
 }

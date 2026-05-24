@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/customers", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.ListCustomers(svcCtx))))))
-	srv.Handle("GET /api/customers/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.GetCustomer(svcCtx))))))
-	srv.Handle("POST /api/customers", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.CreateCustomer(svcCtx))))))
-	srv.Handle("POST /api/customers/{id}/avatar", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.UploadAvatar(svcCtx))))))
-	srv.Handle("DELETE /api/customers/{id}", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.DeleteCustomer(svcCtx))))))))
+	srv.Handle("GET /api/customers", transport.ListCustomers(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("GET /api/customers/{id}", transport.GetCustomer(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("POST /api/customers", transport.CreateCustomer(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("POST /api/customers/{id}/avatar", transport.UploadAvatar(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("DELETE /api/customers/{id}", transport.DeleteCustomer(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit, svcCtx.Timeout)
 }

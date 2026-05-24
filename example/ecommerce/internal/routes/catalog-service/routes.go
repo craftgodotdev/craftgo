@@ -15,9 +15,9 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/catalog/products", svcCtx.RequestID(svcCtx.CORS(transport.ListProducts(svcCtx))))
-	srv.Handle("GET /api/catalog/products/{id}", svcCtx.RequestID(svcCtx.CORS(transport.GetProduct(svcCtx))))
-	srv.Handle("GET /api/catalog/categories", svcCtx.RequestID(svcCtx.CORS(transport.ListCategories(svcCtx))))
-	srv.Handle("POST /api/catalog/products", svcCtx.RequestID(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(transport.CreateProduct(svcCtx))))))
-	srv.Handle("DELETE /api/catalog/products/{id}", svcCtx.RequestID(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(transport.DeleteProduct(svcCtx))))))
+	srv.Handle("GET /api/catalog/products", transport.ListProducts(svcCtx), svcCtx.RequestID, svcCtx.CORS)
+	srv.Handle("GET /api/catalog/products/{id}", transport.GetProduct(svcCtx), svcCtx.RequestID, svcCtx.CORS)
+	srv.Handle("GET /api/catalog/categories", transport.ListCategories(svcCtx), svcCtx.RequestID, svcCtx.CORS)
+	srv.Handle("POST /api/catalog/products", transport.CreateProduct(svcCtx), svcCtx.RequestID, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit)
+	srv.Handle("DELETE /api/catalog/products/{id}", transport.DeleteProduct(svcCtx), svcCtx.RequestID, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit)
 }
