@@ -22,4 +22,8 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/orders/defaults", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.Defaults(svcCtx))))))
 	srv.Handle("POST /api/orders/{id}/cancel", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.CancelOrder(svcCtx))))))))
 	srv.Handle("POST /api/orders/{id}/ship", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.ForceShip(svcCtx))))))))
+	srv.Handle("GET /api/orders/health", transport.PublicHealth(svcCtx))
+	srv.Handle("GET /api/orders/{id}/track", svcCtx.CORS(svcCtx.RequestID(transport.TrackPublic(svcCtx))))
+	srv.Handle("POST /api/orders/export", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(svcCtx.BodyLimit(svcCtx.Timeout(transport.BulkExport(svcCtx))))))))
+	srv.Handle("POST /api/orders/{id}/replay", svcCtx.RequestID(svcCtx.RateLimit(svcCtx.CORS(svcCtx.AuthRequired(transport.Replay(svcCtx))))))
 }

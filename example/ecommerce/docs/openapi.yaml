@@ -51,6 +51,27 @@ components:
       - auditedBy
       - auditedAt
       type: object
+    BulkExportReqBody:
+      properties:
+        cursor:
+          nullable: true
+          type: string
+        limit:
+          maximum: 100
+          minimum: 0
+          type: integer
+      required:
+      - limit
+      type: object
+    BulkExportReqQuery:
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OrderStatus'
+          nullable: true
+      type: object
+    BulkExportRespBody:
+      $ref: '#/components/schemas/OkResp'
     CancelOrderReqPath:
       properties:
         id:
@@ -99,7 +120,6 @@ components:
       type: object
     Cents:
       minimum: 0
-      multipleOf: 1
       type: integer
     Contact:
       properties:
@@ -1053,6 +1073,8 @@ components:
       - id
       - name
       type: object
+    PublicHealthRespBody:
+      $ref: '#/components/schemas/OkResp'
     RateLimitedErr:
       description: TooManyRequests error response (HTTP 429).
       properties:
@@ -1061,6 +1083,17 @@ components:
         retryAfter:
           type: integer
       type: object
+    ReplayReqPath:
+      properties:
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      type: object
+    ReplayRespBody:
+      $ref: '#/components/schemas/Order'
     SKU:
       pattern: ^[A-Z0-9-]{4,32}$
       type: string
@@ -1091,6 +1124,17 @@ components:
       - createdAt
       - updatedAt
       type: object
+    TrackPublicReqPath:
+      properties:
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      type: object
+    TrackPublicRespBody:
+      $ref: '#/components/schemas/OkResp'
     UnauthorizedErr:
       description: Unauthorized error response (HTTP 401).
       type: object
@@ -1549,6 +1593,32 @@ paths:
       - oauth2: []
       tags:
       - orders
+  /orders/{id}/replay:
+    post:
+      description: Admin replay (parent chain only).
+      operationId: Replay
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - bearer: []
+      - oauth2: []
+      tags:
+      - orders
   /orders/{id}/ship:
     post:
       description: Admin force-ship. Idempotent.
@@ -1585,6 +1655,31 @@ paths:
       security:
       - bearer: []
       - oauth2: []
+      tags:
+      - orders
+  /orders/{id}/track:
+    get:
+      description: Public order tracking by id — CORS only, no auth.
+      operationId: TrackPublic
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackPublicRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - bearer: []
       tags:
       - orders
   /orders/by-status/{status}:
@@ -1671,6 +1766,53 @@ paths:
           description: ""
       security:
       - bearer: []
+      tags:
+      - orders
+  /orders/export:
+    post:
+      description: Bulk export — admin only, extra body-limit/timeout on top of parent
+        chain.
+      operationId: BulkExport
+      parameters:
+      - in: query
+        name: status
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/OrderStatus'
+          nullable: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkExportReqBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkExportRespBody'
+          description: OK
+        default:
+          description: ""
+      security:
+      - bearer: []
+      - oauth2: []
+      tags:
+      - orders
+  /orders/health:
+    get:
+      description: Public readiness probe — bypasses every parent middleware AND security.
+      operationId: PublicHealth
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicHealthRespBody'
+          description: OK
+        default:
+          description: ""
       tags:
       - orders
   /orders/list-orders:

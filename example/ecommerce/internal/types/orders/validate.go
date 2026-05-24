@@ -148,9 +148,6 @@ func (v *LineItem) Validate() error {
 	if v.UnitCents < 0 {
 		return fmt.Errorf("unitCents: below minimum 0")
 	}
-	if v.UnitCents%1 != 0 {
-		return fmt.Errorf("unitCents: must be a multiple of 1")
-	}
 	if v.BonusBp != nil && *v.BonusBp < 0 {
 		return fmt.Errorf("bonusBP: below minimum 0")
 	}
@@ -212,9 +209,6 @@ func (v *Order) Validate() error {
 	}
 	if v.TotalCents < 0 {
 		return fmt.Errorf("totalCents: below minimum 0")
-	}
-	if v.TotalCents%1 != 0 {
-		return fmt.Errorf("totalCents: must be a multiple of 1")
 	}
 	if v.Status == "" {
 		return fmt.Errorf("status: required")

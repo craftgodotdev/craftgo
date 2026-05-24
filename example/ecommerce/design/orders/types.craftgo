@@ -69,7 +69,9 @@ type CreateOrderReq {
 	notes      string?              @maxLength(2000)
 	currency   shared.CurrencyCode? @default("USD")
 	tags       string[]?            @maxItems(10) @uniqueItems
-}type FilterOrdersReq {
+}
+
+type FilterOrdersReq {
 	status     OrderStatus   @path
 	method     PaymentMethod @query
 	limit      int           @query @gte(0) @lte(100)

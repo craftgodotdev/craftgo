@@ -89,9 +89,6 @@ func (v *CreateProductReq) Validate() error {
 	if v.PriceCents < 0 {
 		return fmt.Errorf("priceCents: below minimum 0")
 	}
-	if v.PriceCents%1 != 0 {
-		return fmt.Errorf("priceCents: must be a multiple of 1")
-	}
 	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")
 	}
@@ -171,9 +168,6 @@ func (v *Product) Validate() error {
 	}
 	if v.PriceCents < 0 {
 		return fmt.Errorf("priceCents: below minimum 0")
-	}
-	if v.PriceCents%1 != 0 {
-		return fmt.Errorf("priceCents: must be a multiple of 1")
 	}
 	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
 		return fmt.Errorf("currency: length out of range [3, 3]")

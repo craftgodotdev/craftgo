@@ -60,3 +60,54 @@ extend service OrderService {
 		response Order
 	}
 }
+
+// Second extend block — public/unauthenticated read endpoints that
+// intentionally DROP the inherited auth chain via @ignoreMiddleware.
+// Each method here exercises a different inheritance pattern.
+extend service OrderService {
+	// Pure ignore: clears EVERY inherited middleware, starts from
+	// empty. Used for the public-facing health probe that must NOT
+	// require auth or rate-limit.
+	@doc("Public readiness probe — bypasses every parent middleware AND security.")
+	@ignoreMiddleware
+	@ignoreSecurity
+	get PublicHealth /health {
+		response shared.OkResp
+	}
+
+	// Ignore + replace: clears inherited chain THEN appends fresh
+	// middleware. Useful when a public endpoint still needs SOME
+	// cross-cutting concerns (CORS for browser callers) but none of
+	// the auth/rate-limit chain.
+	@doc("Public order tracking by id — CORS only, no auth.")
+	@ignoreMiddleware
+	@middlewares(shared.CORS, shared.RequestID)
+	get TrackPublic /{id}/track {
+		request  GetOrderReq
+		response shared.OkResp
+	}
+
+	// Just append: inherits the full parent chain AND adds extras.
+	// This is the canonical "admin endpoint needs auth + extras"
+	// pattern that should produce a deep wrap (parent 4 + extra 2 = 6).
+	@doc("Bulk export — admin only, extra body-limit/timeout on top of parent chain.")
+	@middlewares(shared.BodyLimit, shared.Timeout)
+	@security(oauth2)
+	post BulkExport /export {
+		request  ListOrdersReq
+		response shared.OkResp
+	}
+}
+
+// Third extend block — different middleware combo per method to verify
+// the codegen does not bleed extends together.
+extend service OrderService {
+	// No method-level middleware; should inherit ONLY the parent
+	// chain (RequestID, RateLimit, CORS, AuthRequired).
+	@doc("Admin replay (parent chain only).")
+	@security(oauth2)
+	post Replay /{id}/replay {
+		request  GetOrderReq
+		response Order
+	}
+}

@@ -18,7 +18,7 @@ import (
 // test reads as just `src` + `expectGolden`.
 func generateOpenAPIToString(t *testing.T, src string) string {
 	t.Helper()
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ service S {
     @status(201)
     post CreateBook /books { request Book  response Book }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -193,7 +193,7 @@ service S {
     @errors(EmailTaken, OwnershipConflict)
     post UpdateUser /users/{id} { request Req  response Resp }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -258,7 +258,7 @@ type T {
     nick  string @nullable
 }
 service S { post Create /c { request T  response T } }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -741,7 +741,7 @@ type T {
     c string
 }
 service S { post Create /c { request T  response T } }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -783,7 +783,7 @@ type T {
     old   string @deprecated("use name instead")
 }
 service S { post Create /c { request T  response T } }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -826,7 +826,7 @@ service S {
         response  LegacyBook
     }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -880,7 +880,7 @@ service S {
 // computed the request URL as `/api/api/v1/foo`. After the fix path
 // keys are relative and the basePath lives only in servers[0].url.
 func TestGenerateOpenAPIBasePathNotDuplicated(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 type GetThingReq { id string @path }
 @prefix("/v1")
 service S {
@@ -916,7 +916,7 @@ service S {
 // ---------- @security cross-check ----------
 
 func TestValidateSecurityRefsHappyPath(t *testing.T) {
-	pkg := analyzePkg(t, `service S {
+	pkg := analyze(t, `service S {
     @security(bearerAuth)
     get GetUser /u {}
 }`)
@@ -934,7 +934,7 @@ func TestValidateSecurityRefsHappyPath(t *testing.T) {
 }
 
 func TestValidateSecurityRefsUnknownScheme(t *testing.T) {
-	pkg := analyzePkg(t, `service S {
+	pkg := analyze(t, `service S {
     @security(BearAuth)
     get GetUser /u {}
 }`)
@@ -960,7 +960,7 @@ func TestValidateSecurityRefsUnknownScheme(t *testing.T) {
 }
 
 func TestValidateSecurityRefsServiceLevel(t *testing.T) {
-	pkg := analyzePkg(t, `@security(typo)
+	pkg := analyze(t, `@security(typo)
 service S {
     get GetUser /u {}
 }`)
@@ -981,7 +981,7 @@ service S {
 func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
 	// When the manifest declares no schemes the cross-check is a no-op
 	// - projects that haven't migrated continue to work.
-	pkg := analyzePkg(t, `service S {
+	pkg := analyze(t, `service S {
     @security(anything)
     get GetUser /u {}
 }`)
@@ -996,7 +996,7 @@ func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
 // method-level opt-out decorator, not a security requirement, so
 // ValidateSecurityRefs should never flag it as "unknown scheme".
 func TestValidateSecurityRefsIgnoreSecurityNotChecked(t *testing.T) {
-	pkg := analyzePkg(t, `service S {
+	pkg := analyze(t, `service S {
     @ignoreSecurity
     get GetUser /u {}
 }`)
@@ -1014,7 +1014,7 @@ func TestValidateSecurityRefsIgnoreSecurityNotChecked(t *testing.T) {
 }
 
 func TestGenerateOpenAPI(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	cfg.OpenAPI.Title = "API"
@@ -1060,7 +1060,7 @@ func TestGenerateOpenAPI(t *testing.T) {
 }
 
 func TestGenerateOpenAPIDefaultsAndEmpty(t *testing.T) {
-	pkg := analyzePkg(t, "package design")
+	pkg := analyze(t, "package design")
 	root := t.TempDir()
 	cfg := sampleConfig()
 	cfg.OpenAPI.Title = ""
@@ -1080,7 +1080,7 @@ func TestGenerateOpenAPIDefaultsAndEmpty(t *testing.T) {
 }
 
 func TestGenerateOpenAPITypeShapes(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 type Bag {
     items   string[]
     meta    map<string, string>
@@ -1109,7 +1109,7 @@ type Bag {
 // as parameters. Demonstrates the "POST /resource?dry_run=true" pattern
 // with a path id baked in for good measure.
 func TestGenerateOpenAPIPostWithQueryAndPath(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type CreateReq {
     id       string  @path
@@ -1159,7 +1159,7 @@ service S {
 // TestGenerateOpenAPIGetWithBodySkipped confirms that even on a GET, a
 // `@body` decorator causes the field to be excluded from parameters.
 func TestGenerateOpenAPIGetWithBodySkipped(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type ListReq {
     id      string  @path
@@ -1193,7 +1193,7 @@ service S {
 // Header / Path bins stay inline as parameters (no <Method>Req<Kind>
 // schemas), while Body and Query DO get their own grouped schemas.
 func TestGenerateOpenAPICookieAndHeaderInline(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type CallReq {
     id        string  @path
@@ -1254,7 +1254,7 @@ service S {
 // service level + method level + the empty fallback. Confirms both the
 // string-literal and bare-identifier argument forms are accepted.
 func TestGenerateOpenAPITagsFromDecorators(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type R { ok bool }
 
@@ -1309,7 +1309,7 @@ service Bare {
 // default operationId = method name verbatim (PascalCase from DSL),
 // override = whatever string literal `@operationId("...")` supplies.
 func TestGenerateOpenAPIOperationIDDefaultAndOverride(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type R { ok bool }
 
@@ -1344,7 +1344,7 @@ service S {
 // when the value contains a space, so consumer tooling reads back the
 // exact original string.
 func TestGenerateOpenAPITagsWithSpaces(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type R { ok bool }
 
@@ -1397,7 +1397,7 @@ service S {
         response  UploadResp
     }
 }`
-	pkg := analyzePkg(t, dsl)
+	pkg := analyze(t, dsl)
 	root := t.TempDir()
 	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)

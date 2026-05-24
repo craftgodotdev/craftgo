@@ -8,8 +8,6 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
-	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -56,30 +54,10 @@ func sampleConfig() *config.Config {
 	}
 }
 
-func analyzePkg(t *testing.T, src string) *semantic.Package {
-	t.Helper()
-	p := craftparser.New("test.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
-	}
-	pkg, diags := semantic.Analyze([]*ast.File{f})
-	// Tolerate warnings — the analyser surfaces advisory diagnostics
-	// (e.g. "path has {id} but no request struct") that fixtures
-	// legitimately exercise. Only error-severity diagnostics fail
-	// the test, matching the CLI's `craftgo gen` exit semantics.
-	for _, d := range diags {
-		if d.Severity == lexer.SeverityError {
-			t.Fatalf("semantic errors: %v", diags)
-		}
-	}
-	return pkg
-}
-
 // ---------- handler ----------
 
 func TestGenerateTransportAllVerbs(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateTransport(pkg, cfg, root); err != nil {
@@ -133,7 +111,7 @@ service S {
         request   Req
     }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -203,7 +181,7 @@ type ListReq {
 service S {
     get List /items/{state} { request ListReq }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -281,7 +259,7 @@ type GetReq {
 service S {
     get Get /users/{user_id} { request GetReq }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -338,7 +316,7 @@ service S {
         request Req
     }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -416,7 +394,7 @@ type Req {
 service S {
     get Lookup /items { request Req }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -473,7 +451,7 @@ type SearchReq {
 service S {
     get Search /items { request SearchReq }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -514,7 +492,7 @@ type Req {
 service S {
     post Make /make { request Req }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -549,7 +527,7 @@ service FilesService {
         response  DownloadResp
     }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -610,7 +588,7 @@ service Catalog {
         response  ListResp
     }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -641,7 +619,7 @@ service Catalog {
 }
 
 func TestGenerateTypesNonBodyBindingsAreSkipped(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 type Req {
     id      string @path
     q       string @query
@@ -687,7 +665,7 @@ func TestGenerateTransportMissingPackageName(t *testing.T) {
 }
 
 func TestGenerateTransportHelpers(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
@@ -729,7 +707,7 @@ func TestGenerateTransportHelpersMissingPackageName(t *testing.T) {
 // entire diverging hunk inline so the user immediately sees what
 // changed instead of grepping for one missing string.
 func TestGenerateRoutesPatterns(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateRoutes(pkg, cfg, root); err != nil {
@@ -757,7 +735,7 @@ func TestGenerateRoutesMissingPackageName(t *testing.T) {
 // source order. Server.With wraps in reverse so S is the outermost
 // frame and C is closest to the handler.
 func TestGenerateRoutesMultipleMiddlewares(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type Thing { id string }
 type GetThingReq { id string @path }
@@ -795,7 +773,7 @@ service S {
 // `@middlewares(...)` it becomes "reset + replace" - the method
 // keeps only its own chain.
 func TestGenerateRoutesIgnoreMiddlewareClearsInherited(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type Thing { id string }
 type GetThingReq { id string @path }
@@ -835,7 +813,7 @@ service S {
 // the method path. A service with `@prefix("/v1") @group("admin")`
 // produces `/<basePath>/v1/admin/<method-path>`.
 func TestGenerateRoutesGroupAddsPathSegment(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type Thing { id string }
 
@@ -880,7 +858,7 @@ service S {
     @maxBodySize(1024)
     post Make /m { request Req }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -914,7 +892,7 @@ service S {
     @maxBodySize(2048)
     get Live /live {}
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -930,7 +908,7 @@ service S {
 }
 
 func TestGenerateRoutesNoBasePathNoPrefix(t *testing.T) {
-	pkg := analyzePkg(t, `package design
+	pkg := analyze(t, `package design
 
 type Req {}
 type Resp {}
@@ -964,7 +942,7 @@ service Bare {
 // ---------- logic ----------
 
 func TestGenerateServiceScaffold(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateService(pkg, cfg, root); err != nil {
@@ -1013,7 +991,7 @@ service S {
     post Pair   /p   { request PairReq    response Pair<User, Email> }
     post Mix    /m   { request Page<User> response Envelope<User> }
 }`
-	pkg := analyzePkg(t, src)
+	pkg := analyze(t, src)
 	root := t.TempDir()
 	if err := GenerateService(pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
@@ -1047,7 +1025,7 @@ service S {
 }
 
 func TestGenerateServiceSkipsExisting(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	dir := filepath.Join(root, cfg.Output.Service, "userservice")
@@ -1121,7 +1099,7 @@ func TestPathHelpers(t *testing.T) {
 // ---------- end-to-end ----------
 
 func TestGeneratePipelineEndToEnd(t *testing.T) {
-	pkg := analyzePkg(t, handlerSampleDSL)
+	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	for _, step := range []func() error{
@@ -1150,7 +1128,7 @@ service FeedService {
 }`
 
 func TestGenerateHandlerPassthrough(t *testing.T) {
-	pkg := analyzePkg(t, passthroughSampleDSL)
+	pkg := analyze(t, passthroughSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateTransport(pkg, cfg, root); err != nil {
@@ -1207,7 +1185,7 @@ service UploadService {
 }`
 
 func TestGenerateTransportMultipartFromFileField(t *testing.T) {
-	pkg := analyzePkg(t, multipartSampleDSL)
+	pkg := analyze(t, multipartSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	if err := GenerateTransport(pkg, cfg, root); err != nil {
