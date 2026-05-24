@@ -52,35 +52,21 @@ service GreeterService {
 // TestHoverDecorator confirms hover on a `@length` decorator returns
 // markdown referencing both the registry doc and the legal levels.
 func TestHoverDecorator(t *testing.T) {
-	view := parseSnapshot("test.craftgo", testDSL)
-	pos := findToken(t, view, "length")
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
-	hov := hoverForToken(view, idx, tok)
-	if hov == nil {
-		t.Fatal("expected hover for")
+	v := mustHoverAt(t, "test.craftgo", testDSL, "length")
+	if !strings.Contains(v, "@length") {
+		t.Errorf("hover should mention: %q", v)
 	}
-	v := hov.Contents
-	if !strings.Contains(v.Value, "@length") {
-		t.Errorf("hover should mention: %q", v.Value)
-	}
-	if !strings.Contains(v.Value, "field") {
-		t.Errorf("hover should mention legal level 'field': %q", v.Value)
+	if !strings.Contains(v, "field") {
+		t.Errorf("hover should mention legal level 'field': %q", v)
 	}
 }
 
 // TestHoverBuiltinType verifies hovering over `string` produces the
 // built-in primitive doc.
 func TestHoverBuiltinType(t *testing.T) {
-	view := parseSnapshot("test.craftgo", testDSL)
-	pos := findToken(t, view, "string")
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
-	hov := hoverForToken(view, idx, tok)
-	if hov == nil {
-		t.Fatal("expected hover for string")
-	}
-	v := hov.Contents
-	if !strings.Contains(v.Value, "UTF-8") {
-		t.Errorf("string hover should mention UTF-8: %q", v.Value)
+	v := mustHoverAt(t, "test.craftgo", testDSL, "string")
+	if !strings.Contains(v, "UTF-8") {
+		t.Errorf("string hover should mention UTF-8: %q", v)
 	}
 }
 
@@ -129,23 +115,12 @@ type T {
 	st Status? @default()
 }
 `
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor inside `@default(|)` - column lands between the parens.
-	pos := protocol.Position{Line: 3, Character: 20}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 20)
 	if len(items) != 3 {
 		t.Fatalf("expected 3 enum-value completions, got %d: %+v", len(items), items)
 	}
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
-	for _, want := range []string{"Active", "Inactive", "Pending"} {
-		if !got[want] {
-			t.Errorf("missing enum-value completion %q", want)
-		}
-	}
+	expectLabels(t, items, "Active", "Inactive", "Pending")
 }
 
 // TestCompletionDurationPresets covers the empty-slot case for an
@@ -158,23 +133,12 @@ service S {
 	get G /g {}
 }
 `
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor between the parens of @timeout(|).
-	pos := protocol.Position{Line: 2, Character: 10}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 10)
 	if len(items) == 0 {
 		t.Fatal("expected duration preset completions")
 	}
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
-	for _, want := range []string{"5s", "1m"} {
-		if !got[want] {
-			t.Errorf("missing duration preset %q", want)
-		}
-	}
+	expectLabels(t, items, "5s", "1m")
 }
 
 // TestCompletionDurationPartialNumber covers the digits-typed case:
@@ -187,26 +151,17 @@ service S {
 	get G /g {}
 }
 `
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after `10` - column 12 = `@timeout(10|)`.
-	pos := protocol.Position{Line: 2, Character: 12}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 12)
 	if len(items) == 0 {
 		t.Fatal("expected partial-aware duration completions")
 	}
-	got := map[string]bool{}
 	for _, it := range items {
-		got[it.Label] = true
 		if it.TextEdit == nil {
 			t.Errorf("partial completion %q must carry a TextEdit so the Int gets replaced", it.Label)
 		}
 	}
-	for _, want := range []string{"10s", "10m", "10h", "10ms"} {
-		if !got[want] {
-			t.Errorf("missing partial-suffix completion %q", want)
-		}
-	}
+	expectLabels(t, items, "10s", "10m", "10h", "10ms")
 }
 
 // TestCompletionSizePartialNumber is the byte-size analogue of the
@@ -218,22 +173,11 @@ service S {
 	get G /g {}
 }
 `
-	view := parseSnapshot("t.craftgo", src)
-	pos := protocol.Position{Line: 2, Character: 16}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 16)
 	if len(items) == 0 {
 		t.Fatal("expected partial-aware size completions")
 	}
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
-	for _, want := range []string{"10KB", "10MB", "10GB"} {
-		if !got[want] {
-			t.Errorf("missing partial-suffix completion %q", want)
-		}
-	}
+	expectLabels(t, items, "10KB", "10MB", "10GB")
 }
 
 // TestCompletionDecoratorAfterAt checks that typing `@` at field level
@@ -246,30 +190,12 @@ type T {
 	id string @
 }
 `
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after the `@` (line index 3 in 0-indexed LSP coords).
-	pos := protocol.Position{Line: 3, Character: 12}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 12)
 	if len(items) == 0 {
 		t.Fatal("expected completion items after @ at field site")
 	}
-	hasLength := false
-	hasSensitive := false
-	for _, it := range items {
-		switch it.Label {
-		case "length":
-			hasLength = true
-		case "sensitive":
-			hasSensitive = true
-		}
-	}
-	if !hasLength {
-		t.Error("expected @length in field-level completions")
-	}
-	if !hasSensitive {
-		t.Error("expected @sensitive in field-level completions")
-	}
+	expectLabels(t, items, "length", "sensitive")
 }
 
 // TestSemanticSurvivesPartialEditsViaSnapshot pins the LSP-side
@@ -475,10 +401,7 @@ func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			view := parseSnapshot("t.craftgo", c.src)
-			pos := protocol.Position{Line: uint32(c.line), Character: uint32(c.col)}
-			srv := &Server{docs: map[uri.URI]*document{}}
-			items := srv.completionsAt(view, pos, "file:///t.craftgo", c.src)
+			items := mustCompletionsAt(t, "t.craftgo", c.src, uint32(c.line), uint32(c.col))
 			if len(items) != 0 {
 				labels := make([]string, 0, len(items))
 				for _, it := range items {
@@ -503,38 +426,16 @@ func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 		"type Holder {\n" +
 		"    ref \n" +
 		"}\n"
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor sits right after `ref ` (line index 4, after the four
 	// chars of `    ` + `ref ` = 8). Line numbering is 0-based.
-	pos := protocol.Position{Line: 5, Character: 8}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 5, 8)
 	for _, it := range items {
 		if it.Label == "MissingErr" {
 			t.Errorf("error declaration leaked into type-position completions: %+v", it)
 		}
 	}
 	// Sanity: a real type IS suggested - the filter must not be over-broad.
-	gotRealType := false
-	for _, it := range items {
-		if it.Label == "RealType" {
-			gotRealType = true
-			break
-		}
-	}
-	if !gotRealType {
-		t.Errorf("expected `RealType` in type-position completions; got labels: %v", labelsOf(items))
-	}
-}
-
-// labelsOf is a tiny test helper used by completion assertions to
-// surface the candidate set in failure messages.
-func labelsOf(items []protocol.CompletionItem) []string {
-	out := make([]string, 0, len(items))
-	for _, it := range items {
-		out = append(out, it.Label)
-	}
-	return out
+	expectLabels(t, items, "RealType")
 }
 
 // TestCompletionScalarPrimitivePosition pins the bug where typing
@@ -544,20 +445,9 @@ func labelsOf(items []protocol.CompletionItem) []string {
 // without the user having to remember the keyword set.
 func TestCompletionScalarPrimitivePosition(t *testing.T) {
 	src := "package x\n\nscalar Email "
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after `scalar Email ` (line 2, col 13).
-	pos := protocol.Position{Line: 2, Character: 13}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
-	for _, want := range []string{"string", "int", "bool"} {
-		if !got[want] {
-			t.Errorf("primitive %q missing from scalar-position completions; got %v", want, labelsOf(items))
-		}
-	}
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 13)
+	expectLabels(t, items, "string", "int", "bool")
 }
 
 // TestCompletionErrorsDecoratorArgs pins the @errors arg completion -
@@ -573,20 +463,9 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 		"    @errors(\n" +
 		"    post Save /save { request Req response Resp }\n" +
 		"}\n"
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after `@errors(` - line 7, char 12.
-	pos := protocol.Position{Line: 7, Character: 12}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
-	for _, want := range []string{"UserNotFoundErr", "EmailTakenErr"} {
-		if !got[want] {
-			t.Errorf("declared error %q missing from @errors completions; got %v", want, labelsOf(items))
-		}
-	}
+	items := mustCompletionsAt(t, "t.craftgo", src, 7, 12)
+	expectLabels(t, items, "UserNotFoundErr", "EmailTakenErr")
 }
 
 // TestCompletionDecoratorOnScalarFiltersByPrimitive pins the bug where
@@ -597,33 +476,14 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 func TestCompletionDecoratorOnScalarFiltersByPrimitive(t *testing.T) {
 	src := "package x\n\n" +
 		"scalar Gmail string @\n"
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after `@` on line 2 (0-indexed), char 21.
-	pos := protocol.Position{Line: 2, Character: 21}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 21)
 	// String-applicable validators must appear.
-	for _, want := range []string{"length", "minLength", "maxLength", "pattern", "format"} {
-		if !got[want] {
-			t.Errorf("string validator %q missing from scalar-decorator completions; got %v", want, labelsOf(items))
-		}
-	}
+	expectLabels(t, items, "length", "minLength", "maxLength", "pattern", "format")
 	// Numeric-only validators must NOT appear on a string scalar.
-	for _, banned := range []string{"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf"} {
-		if got[banned] {
-			t.Errorf("number-only validator %q must NOT surface on string scalar; got %v", banned, labelsOf(items))
-		}
-	}
+	expectNoLabels(t, items, "gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf")
 	// Array-only validators must also be filtered out.
-	for _, banned := range []string{"minItems", "maxItems", "uniqueItems"} {
-		if got[banned] {
-			t.Errorf("array-only validator %q must NOT surface on string scalar; got %v", banned, labelsOf(items))
-		}
-	}
+	expectNoLabels(t, items, "minItems", "maxItems", "uniqueItems")
 }
 
 // TestCompletionFormatDecoratorArgs pins the @format arg completion -
@@ -639,21 +499,10 @@ func TestCompletionFormatDecoratorArgs(t *testing.T) {
 		"type Req {\n" +
 		"  email string @format(\n" +
 		"}\n"
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after `@format(` - line 2 (0-indexed), char 24.
 	// "  email string @format(" = 23 chars; cursor sits at 23.
-	pos := protocol.Position{Line: 2, Character: 23}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	got := map[string]bool{}
-	for _, it := range items {
-		got[it.Label] = true
-	}
-	for _, want := range []string{"email", "uuid", "url"} {
-		if !got[want] {
-			t.Errorf("format %q missing from @format completions; got %v", want, labelsOf(items))
-		}
-	}
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 23)
+	expectLabels(t, items, "email", "uuid", "url")
 }
 
 // TestCompletionStatusDecoratorArgs pins the @status arg completion -
@@ -668,22 +517,13 @@ func TestCompletionStatusDecoratorArgs(t *testing.T) {
 		"    @status(\n" +
 		"    post Save /save { request Req response Resp }\n" +
 		"}\n"
-	view := parseSnapshot("t.craftgo", src)
 	// Cursor right after `@status(` - line 5, char 12.
-	pos := protocol.Position{Line: 5, Character: 12}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
-	got := map[string]string{}
+	items := mustCompletionsAt(t, "t.craftgo", src, 5, 12)
+	expectLabels(t, items, "200", "201", "204", "400", "404", "500")
 	for _, it := range items {
-		got[it.Label] = it.Detail
-	}
-	for _, want := range []string{"200", "201", "204", "400", "404", "500"} {
-		if _, ok := got[want]; !ok {
-			t.Errorf("HTTP code %q missing from @status completions; got labels %v", want, labelsOf(items))
+		if it.Label == "201" && it.Detail != "HTTP 201 Created" {
+			t.Errorf("HTTP 201 detail = %q, want IANA reason phrase", it.Detail)
 		}
-	}
-	if got["201"] != "HTTP 201 Created" {
-		t.Errorf("HTTP 201 detail = %q, want IANA reason phrase", got["201"])
 	}
 }
 
@@ -697,10 +537,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	// sees the previous non-trivia token as KwError and drives the
 	// category-completion branch.
 	src := "package x\n\nerror "
-	view := parseSnapshot("t.craftgo", src)
-	pos := protocol.Position{Line: 2, Character: 6}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 6)
 	if len(items) != len(errorCategories) {
 		t.Fatalf("expected %d category items (one per reserved HTTP category), got %d", len(errorCategories), len(items))
 	}
@@ -739,10 +576,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 // surface the full set so client-side filtering has anything to match.
 func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	src := "package x\n\nerror Not"
-	view := parseSnapshot("t.craftgo", src)
-	pos := protocol.Position{Line: 2, Character: 9}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 9)
 	if len(items) != len(errorCategories) {
 		t.Fatalf("expected %d category items while typing, got %d", len(errorCategories), len(items))
 	}
@@ -754,10 +588,7 @@ func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 // not picking a category.
 func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 	src := "package x\n\nerror NotFound "
-	view := parseSnapshot("t.craftgo", src)
-	pos := protocol.Position{Line: 2, Character: 15}
-	srv := &Server{docs: map[uri.URI]*document{}}
-	items := srv.completionsAt(view, pos, "file:///t.craftgo", src)
+	items := mustCompletionsAt(t, "t.craftgo", src, 2, 15)
 	for _, it := range items {
 		if it.Detail != "" && strings.HasPrefix(it.Detail, "HTTP ") {
 			t.Errorf("category completions leaked into name position: got %q (%s)", it.Label, it.Detail)
@@ -1029,4 +860,79 @@ func findToken(t *testing.T, view snapshotView, needle string) protocol.Position
 	}
 	t.Fatalf("token %q not found in fixture", needle)
 	return protocol.Position{}
+}
+
+// mustHoverAt parses src, finds the first occurrence of needle, and
+// returns the hover markdown text. Collapses the
+// `parseSnapshot → findToken → tokenAt → hoverForToken → nil check`
+// 5-liner that previously opened every hover test into one call.
+// Fails when no hover is produced — tests use the return value to
+// assert on contents directly.
+func mustHoverAt(t *testing.T, path, src, needle string) string {
+	t.Helper()
+	view := parseSnapshot(path, src)
+	pos := findToken(t, view, needle)
+	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	hov := hoverForToken(view, idx, tok)
+	if hov == nil {
+		t.Fatalf("expected hover at %q", needle)
+	}
+	return hov.Contents.Value
+}
+
+// mustCompletionsAt parses src and runs the completion provider at the
+// supplied LSP-coordinate position. Bundles the `parseSnapshot →
+// &Server{} → completionsAt` 3-liner that opens every completion
+// test. The URI is synthesized from path so call sites don't repeat
+// `"file:///" + path` boilerplate.
+func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protocol.CompletionItem {
+	t.Helper()
+	view := parseSnapshot(path, src)
+	srv := &Server{docs: map[uri.URI]*document{}}
+	return srv.completionsAt(view, protocol.Position{Line: line, Character: ch}, "file:///"+path, src)
+}
+
+// labelSet collects every completion item's Label into a presence map
+// for cheap `set[name]` lookups. Used by expectLabels / expectNoLabels.
+func labelSet(items []protocol.CompletionItem) map[string]bool {
+	got := make(map[string]bool, len(items))
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	return got
+}
+
+// expectLabels asserts every want label appears in items. Replaces the
+// `got := map[string]bool{...}; for _, w := range []string{...} { ...
+// !got[w] ... }` 6-liner that previously closed every completion test.
+func expectLabels(t *testing.T, items []protocol.CompletionItem, wants ...string) {
+	t.Helper()
+	got := labelSet(items)
+	var missing []string
+	for _, w := range wants {
+		if !got[w] {
+			missing = append(missing, w)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("completion missing %d label(s): %v\ngot: %v", len(missing), missing, got)
+	}
+}
+
+// expectNoLabels is the negative-filter partner: every banned label
+// MUST NOT appear in items. Used by tests that pin "this category /
+// kind must NOT leak into this completion site" — e.g. number-only
+// validators on a string scalar.
+func expectNoLabels(t *testing.T, items []protocol.CompletionItem, banned ...string) {
+	t.Helper()
+	got := labelSet(items)
+	var leaked []string
+	for _, w := range banned {
+		if got[w] {
+			leaked = append(leaked, w)
+		}
+	}
+	if len(leaked) > 0 {
+		t.Errorf("completion unexpectedly contains %d banned label(s): %v\ngot: %v", len(leaked), leaked, got)
+	}
 }

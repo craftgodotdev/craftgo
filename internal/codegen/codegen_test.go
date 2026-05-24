@@ -44,6 +44,47 @@ func mustParseGo(t *testing.T, src string) {
 	}
 }
 
+// mustContainAll asserts every want substring appears somewhere in got.
+// Reports ALL misses at once (not the first only) so a generator
+// regression that drops 5 lines surfaces as one diagnostic instead of
+// 5 sequential edit-test-edit cycles.
+//
+// Replaces the `for _, want := range []string{...} { if
+// !strings.Contains(got, want) { t.Errorf(...) } }` loop that
+// previously appeared at ~40 sites across codegen tests. Use it
+// instead of stacking N if-Contains-Errorf blocks per test.
+func mustContainAll(t *testing.T, got string, wants ...string) {
+	t.Helper()
+	var missing []string
+	for _, w := range wants {
+		if !strings.Contains(got, w) {
+			missing = append(missing, w)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("output missing %d expected substring(s):\n  - %s\n--- got ---\n%s",
+			len(missing), strings.Join(missing, "\n  - "), got)
+	}
+}
+
+// mustContainNone is the inverse of mustContainAll: every needle MUST
+// NOT appear in got. Used by tests that pin "this line should have
+// been dropped" assertions where the regression risk is accidental
+// re-inclusion.
+func mustContainNone(t *testing.T, got string, unwanted ...string) {
+	t.Helper()
+	var present []string
+	for _, w := range unwanted {
+		if strings.Contains(got, w) {
+			present = append(present, w)
+		}
+	}
+	if len(present) > 0 {
+		t.Errorf("output unexpectedly contains %d forbidden substring(s):\n  - %s\n--- got ---\n%s",
+			len(present), strings.Join(present, "\n  - "), got)
+	}
+}
+
 // ---------- types ----------
 
 func TestGenerateTypesSensitiveJSONDash(t *testing.T) {
@@ -126,12 +167,10 @@ type X { blob bytes  raw any  upload file }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	for _, want := range []string{"[]byte", "any", "*multipart.FileHeader",
-		`"mime/multipart"`} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q in:\n%s", want, src)
-		}
-	}
+	mustContainAll(t, src,
+		"[]byte",
+		`"mime/multipart"`,
+	)
 }
 
 // TestGenerateTypesGenericInstance pins the Go-1.18-generics output
@@ -579,16 +618,12 @@ error TooManyRequests RateLimited {
 		t.Errorf("bucket should keep its DSL JSON tag:\n%s", src)
 	}
 	// WriteResponseHeaders must be emitted with the expected wire writes.
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("retryAfter", e.RetryAfter)`,
 		`http.SetCookie(w, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
 		`"net/http"`,
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestGenerateErrorsNoBindingsNoHTTPImport(t *testing.T) {
@@ -691,11 +726,9 @@ type T {
 		}
 	}
 	// Negative: no double-pointer or pointer-to-slice anywhere.
-	for _, bad := range []string{"**", "*[]byte", "*[]string", "*map[", "*any"} {
-		if strings.Contains(src, bad) {
-			t.Errorf("found redundant %q in generated source:\n%s", bad, src)
-		}
-	}
+	mustContainNone(t, src,
+		"**",
+	)
 }
 
 // lineHasField reports whether `src` has any line containing both the

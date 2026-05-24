@@ -117,3 +117,39 @@ func expectNoCode(t *testing.T, src, code string) {
 		}
 	}
 }
+
+// expectMsg analyses ONE or MORE sources and asserts at least one
+// diagnostic's message contains substr. Replaces the legacy
+// `diagsContain` pattern which forced callers to:
+//
+//	_, diags := Analyze(parseFiles(t, src))
+//	if !diagsContain(diags, "substring") { t.Errorf(...) }
+//
+// Multi-source variant lets package-name-conflict and other multi-
+// file tests stay inline. Returns the matched diagnostic so callers
+// can chain further assertions.
+func expectMsg(t *testing.T, substr string, sources ...string) *Diagnostic {
+	t.Helper()
+	_, diags := Analyze(parseFiles(t, sources...))
+	for i := range diags {
+		if strings.Contains(diags[i].Msg, substr) {
+			return &diags[i]
+		}
+	}
+	t.Fatalf("no diagnostic contained %q; got %v", substr, diags)
+	return nil
+}
+
+// expectNoMsg is the negative form — assert NO diagnostic mentions
+// substr. Useful for "this rule must NOT fire on a benign shape"
+// guards where the test author knows other diagnostics may still be
+// present.
+func expectNoMsg(t *testing.T, substr string, sources ...string) {
+	t.Helper()
+	_, diags := Analyze(parseFiles(t, sources...))
+	for _, d := range diags {
+		if strings.Contains(d.Msg, substr) {
+			t.Errorf("did not expect diagnostic mentioning %q; got %q", substr, d.Msg)
+		}
+	}
+}

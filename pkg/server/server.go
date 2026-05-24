@@ -148,13 +148,7 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 // depth and the route line scans top-to-bottom for the same
 // outermost-first reading.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
-	for i := len(mws) - 1; i >= 0; i-- {
-		if mws[i] == nil {
-			continue
-		}
-		h = mws[i](h)
-	}
-	s.mux.Handle(pattern, h)
+	s.mux.Handle(pattern, NewChain(mws...).Then(h))
 	return s
 }
 
@@ -168,21 +162,14 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 		return h
 	}
 	s.mu.Lock()
-	chain := make([]Middleware, 0, len(names))
+	chain := make(Chain, 0, len(names))
 	for _, n := range names {
 		if mw, ok := s.registeredMW[n]; ok {
 			chain = append(chain, mw)
 		}
 	}
 	s.mu.Unlock()
-	if len(chain) == 0 {
-		return h
-	}
-	var wrapped http.Handler = h
-	for i := len(chain) - 1; i >= 0; i-- {
-		wrapped = chain[i](wrapped)
-	}
-	return wrapped.ServeHTTP
+	return chain.Then(h).ServeHTTP
 }
 
 // SetDefaultReadTimeout configures the default per-method read timeout.
@@ -269,43 +256,50 @@ func (s *Server) Handler() http.Handler {
 		s.mux.Handle(s.healthPaths.Readiness, s.readinessHandler())
 		s.healthMounted = true
 	}
-	chain := append([]Middleware(nil), s.chain...)
-	cors := s.cors
-	logger := s.logger
+	// Build the chain outermost-first: Recovery wraps the user chain
+	// wraps CORS wraps the mux. CORS sits closest to the mux so it
+	// observes the final response headers; Recovery sits outermost so
+	// it catches panics from every other middleware too.
+	chain := NewChain(Recovery(s.logger)).Append(s.chain...)
+	if s.cors != nil {
+		chain = chain.Append(corsMiddleware(*s.cors))
+	}
+	inner := s.muxWithNotFoundLocked()
 	s.mu.Unlock()
+	return chain.Then(inner)
+}
 
+// muxWithNotFoundLocked returns s.mux, or — if a custom NotFound
+// handler is installed — a thin wrapper that dispatches unmatched
+// requests to it instead of the stdlib default 404.
+//
+// Caller must hold s.mu; reads s.notFound.
+func (s *Server) muxWithNotFoundLocked() http.Handler {
+	if s.notFound == nil {
+		return s.mux
+	}
 	notFound := s.notFound
-
-	var h http.Handler = s.mux
-	if notFound != nil {
-		// Wrap the mux: ask it whether the request matches a route;
-		// when the returned pattern is empty the stdlib default 404
-		// would have fired, so dispatch to the user's handler instead.
-		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if _, pattern := s.mux.Handler(r); pattern == "" {
-				notFound.ServeHTTP(w, r)
-				return
-			}
-			s.mux.ServeHTTP(w, r)
-		})
-	}
-	if cors != nil {
-		h = corsMiddleware(*cors)(h)
-	}
-	for i := len(chain) - 1; i >= 0; i-- {
-		h = chain[i](h)
-	}
-	return Recovery(logger)(h)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, pattern := s.mux.Handler(r); pattern == "" {
+			notFound.ServeHTTP(w, r)
+			return
+		}
+		s.mux.ServeHTTP(w, r)
+	})
 }
 
 // Start binds the server to addr and serves until Stop is called. The
 // handler chain is built by [Server.Handler] so the wrapping order is
 // identical between live serving and httptest-driven test runs.
 func (s *Server) Start(addr string) error {
+	// Handler() takes s.mu, so build it BEFORE we take the lock —
+	// otherwise the same goroutine deadlocks on the sync.Mutex.
+	handler := s.Handler()
+	s.mu.Lock()
 	s.addr = addr
 	s.httpSrv = &http.Server{
 		Addr:    addr,
-		Handler: s.Handler(),
+		Handler: handler,
 		// ReadHeaderTimeout caps the time a client may spend sending the
 		// request line + headers. Without it a slow-read client (drip-
 		// feeding 1 byte every 30s) can pin a goroutine indefinitely —
@@ -319,7 +313,9 @@ func (s *Server) Start(addr string) error {
 		WriteTimeout:      s.defaultWriteTimeout,
 		MaxHeaderBytes:    s.defaultMaxHeaderKB * 1024,
 	}
-	if err := s.httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	srv := s.httpSrv
+	s.mu.Unlock()
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
@@ -328,8 +324,11 @@ func (s *Server) Start(addr string) error {
 // Stop gracefully shuts down the running server. Safe to call before
 // Start (it becomes a no-op).
 func (s *Server) Stop(ctx context.Context) error {
-	if s.httpSrv == nil {
+	s.mu.Lock()
+	srv := s.httpSrv
+	s.mu.Unlock()
+	if srv == nil {
 		return nil
 	}
-	return s.httpSrv.Shutdown(ctx)
+	return srv.Shutdown(ctx)
 }

@@ -126,7 +126,7 @@ service S {
 	// `__d := value; req.Field = &__d` so the JSON decoder leaves a
 	// nil pointer alone but reports the default through the typed
 	// pointer when the field is absent.
-	for _, want := range []string{
+	mustContainAll(t, body,
 		`__d := "anon"`,
 		`req.Name = &__d`,
 		`__d := 20`,
@@ -135,11 +135,7 @@ service S {
 		`req.Ratio = &__d`,
 		`__d := true`,
 		`req.Active = &__d`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing %q in handler:\n%s", want, body)
-		}
-	}
+	)
 	// The non-defaulted `plain` field must NOT receive an assignment.
 	if strings.Contains(body, "req.Plain =") {
 		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
@@ -192,7 +188,7 @@ service S {
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	for _, want := range []string{
+	mustContainAll(t, got,
 		// path: string-backed enum cast
 		`req.State = types.Status(r.PathValue("state"))`,
 		// query string-backed enum + scalar
@@ -205,11 +201,7 @@ service S {
 		`req.Sess = c.Value`,
 		// header cast (string-backed enum)
 		`req.Role = types.Status(r.Header.Get("role"))`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in handler:\n%s", want, got)
-		}
-	}
+	)
 }
 
 // TestCollectRequestFieldImports covers the cross-package import
@@ -270,16 +262,12 @@ service S {
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	for _, want := range []string{
+	mustContainAll(t, got,
 		`r.PathValue("user_id")`,
 		`r.Header.Get("X-API-Key")`,
 		`r.Cookie("session_id")`,
 		`r.URL.Query().Get("sort_by")`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("named binding arg ignored — missing %q:\n%s", want, got)
-		}
-	}
+	)
 }
 
 // TestGenerateTransportWireNumericAcrossSources locks the Round-2.5
@@ -327,7 +315,7 @@ service S {
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	for _, want := range []string{
+	mustContainAll(t, got,
 		// @query int: parse + cast.
 		`if _v := r.URL.Query().Get("qLimit"); _v != ""`,
 		`_n, _err := strconv.ParseInt(_v, 10, 64)`,
@@ -364,11 +352,7 @@ service S {
 		`r.FormFile("upload")`,
 		// strconv import flows through to the multipart template.
 		`"strconv"`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in handler:\n%s", want, got)
-		}
-	}
+	)
 }
 
 // TestGenerateTransportOptionalHeaderCookie covers the Round-1
@@ -405,7 +389,7 @@ service S {
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	for _, want := range []string{
+	mustContainAll(t, got,
 		// Plain string header: take address of the raw value directly.
 		`if _v := r.Header.Get("auth"); _v != ""`,
 		`req.Auth = &_v`,
@@ -423,11 +407,7 @@ service S {
 		// guard, take address of inner _v.
 		`if c, err := r.Cookie("sid"); err == nil {`,
 		`req.Sid = &_v`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in handler:\n%s", want, got)
-		}
-	}
+	)
 }
 
 // TestGenerateTransportOptionalEnumScalarQuery covers the optional
@@ -464,18 +444,14 @@ service S {
 	mustParseGo(t, got)
 	// Optional enum → cast through alias type and address the new
 	// alias-typed variable.
-	for _, want := range []string{
+	mustContainAll(t, got,
 		`_w := types.Color(_v)`,
 		`req.Sort = &_w`,
 		`_w := types.Email(_v)`,
 		`req.Cc = &_w`,
 		// Plain *string still takes the address of the raw value.
 		`req.Plain = &_v`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in handler:\n%s", want, got)
-		}
-	}
+	)
 }
 
 // TestGenerateTransportDefaultEnum pins the enum-aware @default
@@ -503,14 +479,10 @@ service S {
 	}
 	body := string(out)
 	mustParseGo(t, body)
-	for _, want := range []string{
+	mustContainAll(t, body,
 		"__d := types.StatusPending",
 		"req.St = &__d",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected enum default pre-fill %q:\n%s", want, body)
-		}
-	}
+	)
 }
 
 func TestGenerateTransportResponseHeaderCookie(t *testing.T) {
@@ -599,14 +571,10 @@ service Catalog {
 	}
 	body := string(out)
 	mustParseGo(t, body)
-	for _, want := range []string{
+	mustContainAll(t, body,
 		`w.Header().Set("X-Total-Count", resp.Total)`,
 		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID})`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing wire-named binding %q:\n%s", want, body)
-		}
-	}
+	)
 	// Negative: the Go field name must NOT appear as the wire name.
 	for _, banned := range []string{
 		`w.Header().Set("total"`,
@@ -682,14 +650,10 @@ func TestGenerateTransportHelpers(t *testing.T) {
 	// writeError must dispatch on the WriteResponseHeaders interface so
 	// typed errors with @header / @cookie fields land their wire writes
 	// before the JSON body is encoded.
-	for _, want := range []string{
+	mustContainAll(t, string(out),
 		"WriteResponseHeaders(http.ResponseWriter)",
 		"hw.WriteResponseHeaders(w)",
-	} {
-		if !strings.Contains(string(out), want) {
-			t.Errorf("writeError missing %q:\n%s", want, out)
-		}
-	}
+	)
 }
 
 func TestGenerateTransportHelpersMissingPackageName(t *testing.T) {
@@ -837,14 +801,10 @@ service AdminService {
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin-service/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		`"GET /api/v1/admin/things"`,
 		`"GET /api/v1/admin/health"`,
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	)
 }
 
 // TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for
@@ -868,16 +828,12 @@ service S {
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
 	body := string(out)
 	mustParseGo(t, body)
-	for _, want := range []string{
+	mustContainAll(t, body,
 		`"time"`,
 		"server.WithLimits",
 		"Timeout: 500 * time.Millisecond",
 		"MaxBodySize: 1024",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing %q in routes:\n%s", want, body)
-		}
-	}
+	)
 }
 
 // TestGenerateRoutesPassthroughSkipsTimeout pins the passthrough
@@ -1148,20 +1104,14 @@ func TestGenerateHandlerPassthrough(t *testing.T) {
 	handler, _ := os.ReadFile(filepath.Join(hDir, "live-tail.go"))
 	hSrc := string(handler)
 	mustParseGo(t, hSrc)
-	for _, want := range []string{
+	mustContainAll(t, hSrc,
 		"l.LiveTail(w, r)",
 		"writeError(w, err)",
 		"http.HandlerFunc",
-	} {
-		if !strings.Contains(hSrc, want) {
-			t.Errorf("passthrough handler missing %q:\n%s", want, hSrc)
-		}
-	}
-	for _, banned := range []string{"server.JSON().Decode", "server.JSON().Encode", "req.Validate", "types."} {
-		if strings.Contains(hSrc, banned) {
-			t.Errorf("passthrough handler should not contain %q:\n%s", banned, hSrc)
-		}
-	}
+	)
+	mustContainNone(t, hSrc,
+		"server.JSON().Decode",
+	)
 
 	logic, _ := os.ReadFile(filepath.Join(lDir, "live-tail.go"))
 	lSrc := string(logic)
@@ -1195,16 +1145,12 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	}
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
 	mustParseGo(t, string(handler))
-	for _, want := range []string{
+	mustContainAll(t, string(handler),
 		"r.ParseMultipartForm(",
 		`r.FormValue("note")`,
 		`r.FormFile("avatar")`,
 		"req.Avatar = header",
-	} {
-		if !strings.Contains(string(handler), want) {
-			t.Errorf("multipart handler missing %q:\n%s", want, handler)
-		}
-	}
+	)
 	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
 	}

@@ -97,12 +97,9 @@ service S { get GetUser /u {} }`)
 // ---------- package name ----------
 
 func TestPackageNameMismatch(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package a
+	expectMsg(t, "conflicts", `package a
 type X {}`, `package b
-type Y {}`))
-	if !diagsContain(diags, "conflicts") {
-		t.Errorf("expected conflict, got %v", diags)
-	}
+type Y {}`)
 }
 
 func TestPackageNameMissing(t *testing.T) {
@@ -131,10 +128,7 @@ error NotFound X`,
 scalar X string`,
 	}
 	for _, src := range cases {
-		_, diags := Analyze(parseFiles(t, src))
-		if !diagsContain(diags, "duplicate top-level") {
-			t.Errorf("expected duplicate error: %s", src)
-		}
+		expectMsg(t, "duplicate top-level", src)
 	}
 }
 
@@ -149,28 +143,19 @@ middleware Foo`)
 
 	// middleware Foo + middleware Foo - duplicate within the
 	// middleware namespace.
-	_, diags := Analyze(parseFiles(t, `middleware Foo
-middleware Foo`))
-	if !diagsContain(diags, "duplicate top-level") {
-		t.Errorf("expected duplicate within middleware namespace, got %v", codes(diags))
-	}
+	expectMsg(t, "duplicate top-level", `middleware Foo
+middleware Foo`)
 }
 
 // ---------- service merge ----------
 
 func TestServicePrimaryDuplicate(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {}
-service S {}`))
-	if !diagsContain(diags, "duplicate primary service") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate primary service", `service S {}
+service S {}`)
 }
 
 func TestServiceExtendWithoutPrimary(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `extend service S { get Op /x {} }`))
-	if !diagsContain(diags, "no primary declaration") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "no primary declaration", `extend service S { get Op /x {} }`)
 }
 
 // TestServiceExtendWithServiceOnlyDecorator pins the validation that
@@ -179,12 +164,9 @@ func TestServiceExtendWithoutPrimary(t *testing.T) {
 // methods inside them, so a decorator with no method-level form has
 // nothing meaningful to do.
 func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {}
+	expectMsg(t, "not valid at method level", `service S {}
 @prefix("/x")
-extend service S { get Op /x {} }`))
-	if !diagsContain(diags, "not valid at method level") {
-		t.Errorf("got %v", diags)
-	}
+extend service S { get Op /x {} }`)
 }
 
 // TestServiceExtendDecoratorPropagatesToMethods is the happy path for
@@ -227,34 +209,22 @@ extend service S { post B /b {} }`)
 }
 
 func TestDuplicateMethodAcrossExtends(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S { get A /a {} }
-extend service S { post A /b {} }`))
-	if !diagsContain(diags, "duplicate method") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate method", `service S { get A /a {} }
+extend service S { post A /b {} }`)
 }
 
 func TestDuplicateRoute(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S { get A /x {} get B /x {} }`))
-	if !diagsContain(diags, "duplicate route") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate route", `service S { get A /x {} get B /x {} }`)
 }
 
 // ---------- field uniqueness ----------
 
 func TestFieldUniquenessType(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string  name int }`))
-	if !diagsContain(diags, "duplicate field") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate field", `type X { name string  name int }`)
 }
 
 func TestFieldUniquenessError(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `error BadRequest E { code string  code string }`))
-	if !diagsContain(diags, "duplicate field") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate field", `error BadRequest E { code string  code string }`)
 }
 
 func TestFieldUniquenessSkipsMixin(t *testing.T) {
@@ -272,31 +242,19 @@ type X { Profile  name string }`)
 // ---------- enum validation ----------
 
 func TestEnumDuplicateName(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A  A }`))
-	if !diagsContain(diags, "duplicate enum value name") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate enum value name", `enum X { A  A }`)
 }
 
 func TestEnumMixedTypes(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A  B = 1 }`))
-	if !diagsContain(diags, "mixed value types") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "mixed value types", `enum X { A  B = 1 }`)
 }
 
 func TestEnumDuplicateInt(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A = 1  B = 1 }`))
-	if !diagsContain(diags, "duplicate int value") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate int value", `enum X { A = 1  B = 1 }`)
 }
 
 func TestEnumDuplicateString(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A = "x"  B = "x" }`))
-	if !diagsContain(diags, "duplicate string value") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate string value", `enum X { A = "x"  B = "x" }`)
 }
 
 // TestCheckDecoratorScopeNilEntry exercises the defensive nil-decorator
@@ -348,87 +306,60 @@ func TestCheckNamedRefNilGuards(t *testing.T) {
 // ---------- duplicate decorators ----------
 
 func TestDuplicateDecoratorOnField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @doc("a") @doc("b") }`))
-	if !diagsContain(diags, "duplicate decorator") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate decorator", `type X { name string @doc("a") @doc("b") }`)
 }
 
 func TestDuplicateDecoratorOnType(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@deprecated
+	expectMsg(t, "duplicate decorator @deprecated on type X", `@deprecated
 @deprecated
-type X { name string }`))
-	if !diagsContain(diags, "duplicate decorator @deprecated on type X") {
-		t.Errorf("got %v", diags)
-	}
+type X { name string }`)
 }
 
 // TestDuplicateDecoratorOnMethod uses `@deprecated` (single-value,
 // idempotent) to pin the duplicate check, because `@tags` is part of
 // the repeatable set (multiple @tags decorators concat their values).
 func TestDuplicateDecoratorOnMethod(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectMsg(t, "duplicate decorator @deprecated on method S.GetUser", `service S {
 		@deprecated
 		@deprecated
 		get GetUser /u {}
-	}`))
-	if !diagsContain(diags, "duplicate decorator @deprecated on method S.GetUser") {
-		t.Errorf("got %v", diags)
-	}
+	}`)
 }
 
 // TestRepeatableDecoratorAllowedOnMethod pins the relax: multiple
 // `@tags` decorators on the same method are valid - each contributes
 // its arguments to the aggregate the codegen layer reads.
 func TestRepeatableDecoratorAllowedOnMethod(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
+	expectNoMsg(t, "duplicate decorator @tags", `service S {
 		@tags("a")
 		@tags("b")
 		get GetUser /u {}
-	}`))
-	if diagsContain(diags, "duplicate decorator @tags") {
-		t.Errorf("@tags is repeatable; expected no diag, got %v", diags)
-	}
+	}`)
 }
 
 func TestDuplicateDecoratorOnService(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@prefix("/a")
+	expectMsg(t, "duplicate decorator @prefix on service S", `@prefix("/a")
 @prefix("/b")
-service S {}`))
-	if !diagsContain(diags, "duplicate decorator @prefix on service S") {
-		t.Errorf("got %v", diags)
-	}
+service S {}`)
 }
 
 func TestDuplicateDecoratorOnEnumValue(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A @doc("a") @doc("b") }`))
-	if !diagsContain(diags, "duplicate decorator @doc on enum value X.A") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate decorator @doc on enum value X.A", `enum X { A @doc("a") @doc("b") }`)
 }
 
 func TestDuplicateDecoratorOnError(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `@doc("a")
+	expectMsg(t, "duplicate decorator @doc on error UserNotFound", `@doc("a")
 @doc("b")
-error NotFound UserNotFound`))
-	if !diagsContain(diags, "duplicate decorator @doc on error UserNotFound") {
-		t.Errorf("got %v", diags)
-	}
+error NotFound UserNotFound`)
 }
 
 func TestDuplicateDecoratorOnErrorField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `error BadRequest E { code string @doc("a") @doc("b") }`))
-	if !diagsContain(diags, "duplicate decorator @doc on field E.code") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "duplicate decorator @doc on field E.code", `error BadRequest E { code string @doc("a") @doc("b") }`)
 }
 
 func TestDuplicateDecoratorPreservesFirst(t *testing.T) {
 	// First decorator stays in the AST untouched; only the second is reported.
-	_, diags := Analyze(parseFiles(t, `type X { name string @doc("a") @doc("b") @length(1, 10) }`))
-	if len(diags) != 1 {
-		t.Fatalf("want 1 diagnostic, got %d: %v", len(diags), diags)
-	}
+	expectCodeCount(t, `type X { name string @doc("a") @doc("b") @length(1, 10) }`, CodeDecoratorDuplicate, 1)
 }
 
 func TestDecoratorUnique_NoFalsePositive(t *testing.T) {
@@ -440,24 +371,15 @@ type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 // ---------- qualified refs ----------
 
 func TestQualifiedRefInField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { user shared.User }`))
-	if !diagsContain(diags, "cross-package qualified reference") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "cross-package qualified reference", `type X { user shared.User }`)
 }
 
 func TestQualifiedRefInMethodResponse(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S { get GetUser /u { response shared.User } }`))
-	if !diagsContain(diags, "cross-package qualified reference") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "cross-package qualified reference", `service S { get GetUser /u { response shared.User } }`)
 }
 
 func TestQualifiedRefInGenericArg(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { items Page<shared.User> }`))
-	if !diagsContain(diags, "cross-package qualified reference") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "cross-package qualified reference", `type X { items Page<shared.User> }`)
 }
 
 func TestUnqualifiedRefAccepted(t *testing.T) {
@@ -468,17 +390,11 @@ type X { items Page }`)
 // ---------- combination rules ----------
 
 func TestCombinationMultipleBindings(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { id string @path @query }`))
-	if !diagsContain(diags, "@query conflicts with @path") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "@query conflicts with @path", `type X { id string @path @query }`)
 }
 
 func TestCombinationBodyAndForm(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { payload string @body @form }`))
-	if !diagsContain(diags, "@form conflicts with @body") {
-		t.Errorf("got %v", diags)
-	}
+	expectMsg(t, "@form conflicts with @body", `type X { payload string @body @form }`)
 }
 
 func TestCombinationPassthroughAccepted(t *testing.T) {

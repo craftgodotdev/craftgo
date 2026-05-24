@@ -6,17 +6,65 @@ on:
   pull_request:
 
 jobs:
-  test:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24.2'
+          cache: true
+
+      # ---- lint -------------------------------------------------------------
       - name: vet
         run: go vet ./...
-      - name: build
+
+      - name: fmt-check
+        run: |
+          diff=$(gofmt -l -s .)
+          if [ -n "$diff" ]; then
+            echo "unformatted files:"; echo "$diff"; exit 1
+          fi
+
+      # ---- build ------------------------------------------------------------
+      - name: build root (CLI + LSP)
         run: go build ./...
+
+      - name: build submodules
+        run: |
+          set -e
+          for d in example/todo example/upload example/raw example/ecommerce \
+                   tests/e2e/users tests/e2e/complex tests/e2e/multi-service; do
+            echo "→ build $d"
+            (cd "$d" && go build ./...)
+          done
+
+      # ---- generate + drift gate -------------------------------------------
+      # Regenerate every example / e2e fixture from current source. Any
+      # diff against the committed output is a codegen regression.
+      - name: generate
+        run: |
+          set -e
+          for d in example/todo example/upload example/raw example/ecommerce; do
+            echo "→ gen $d"
+            go run ./cmd/craftgo gen -f "$d/design" -c "$d"
+          done
+          for d in tests/e2e/users tests/e2e/complex tests/e2e/multi-service tests/e2e/cornercase; do
+            echo "→ gen $d"
+            go run ./cmd/craftgo gen "$d/design"
+          done
+
+      - name: drift gate (gen output must match committed)
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::generated files drifted from committed output — run \`make gen-all\` and commit the diff"
+            exit 1
+          fi
+
+      # ---- test -------------------------------------------------------------
+      # Core (lexer / parser / ast / semantic) are the language-shape
+      # packages — every line is a behaviour contract, so we enforce
+      # 100% coverage on them. The race detector runs here too.
       - name: test core with coverage
         run: |
           go test -race -coverprofile=core.cov -covermode=atomic \
@@ -24,6 +72,7 @@ jobs:
             ./internal/parser/... \
             ./internal/ast/... \
             ./internal/semantic/...
+
       - name: enforce 100% line coverage on core
         run: |
           go tool cover -func=core.cov | tee coverage.txt
@@ -34,8 +83,35 @@ jobs:
             esac
             pct=$(echo "$line" | awk '{print $NF}')
             if [ "$pct" != "100.0%" ]; then
-              echo "❌ missing coverage: $line"
+              echo "::error::missing coverage: $line"
               fail=1
             fi
           done < coverage.txt
           exit $fail
+
+      # Everything else: codegen / lsp / config / format / idents /
+      # pkg/* / cmd/*. No coverage gate — drift gate above is the
+      # primary signal for codegen, race detector covers concurrency.
+      - name: test rest (root module)
+        run: |
+          go test -race -count=1 \
+            ./internal/codegen/... \
+            ./internal/lsp/... \
+            ./internal/idents/... \
+            ./internal/format/... \
+            ./internal/config/... \
+            ./internal/bench/... \
+            ./pkg/... \
+            ./cmd/...
+
+      - name: test e2e orchestrator
+        run: go test -count=1 ./tests/e2e/...
+
+      - name: test submodules
+        run: |
+          set -e
+          for d in example/todo example/upload example/raw example/ecommerce \
+                   tests/e2e/users tests/e2e/complex tests/e2e/multi-service; do
+            echo "→ test $d"
+            (cd "$d" && go test -count=1 ./...)
+          done

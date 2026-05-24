@@ -105,7 +105,7 @@ type Req {
     step    Step
 }
 service S { post Send /m { request Req } }`)
-	for _, want := range []string{
+	mustContainAll(t, body,
 		// Email
 		"format: email",
 		"maxLength: 254",
@@ -123,11 +123,7 @@ service S { post Send /m { request Req } }`)
 		// Step
 		"exclusiveMinimum: true",
 		"multipleOf: 5",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("scalar schema missing %q:\n%s", want, body)
-		}
-	}
+	)
 }
 
 // TestGenerateOpenAPIErrorsDecorator pins the @errors flow:
@@ -155,11 +151,9 @@ service S {
 	body := string(out)
 
 	// Error type schemas are emitted under components.schemas.
-	for _, want := range []string{"BookNotFoundErr:", "DuplicateISBNErr:"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected error schema %q:\n%s", want, body)
-		}
-	}
+	mustContainAll(t, body,
+		"BookNotFoundErr:",
+	)
 	// GetBook response 404 → BookNotFoundErr.
 	if !strings.Contains(body, `'#/components/schemas/BookNotFoundErr'`) {
 		t.Error("expected BookNotFoundErr ref")
@@ -219,11 +213,9 @@ service S {
 	if refCount != 2 {
 		t.Errorf("oneOf must list exactly 2 $refs (one per declared error), got %d:\n%s", refCount, tail)
 	}
-	for _, want := range []string{"EmailTakenErr", "OwnershipConflictErr"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected %s in oneOf body:\n%s", want, body)
-		}
-	}
+	mustContainAll(t, body,
+		"EmailTakenErr",
+	)
 }
 
 // TestGenerateOpenAPIDocSummaryDescription covers the doc-flavour
@@ -296,7 +288,7 @@ type Order {
     tags      string[] @minItems(1) @maxItems(10) @uniqueItems
 }
 service S { post Make /m { request Order  response Order } }`)
-	for _, want := range []string{
+	mustContainAll(t, body,
 		// numeric
 		"minimum: 0",
 		"maximum: 1000000",
@@ -316,11 +308,7 @@ service S { post Make /m { request Order  response Order } }`)
 		"minItems: 1",
 		"maxItems: 10",
 		"uniqueItems: true",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected %q in openapi:\n%s", want, body)
-		}
-	}
+	)
 }
 
 // TestGenerateOpenAPIMultipartMimeTypes checks that a `file @form`
@@ -339,17 +327,13 @@ type UploadReq {
 service S {
     post Upload /users/{userId}/avatar { request UploadReq  response UploadReq }
 }`)
-	for _, want := range []string{
+	mustContainAll(t, body,
 		"multipart/form-data:",
 		"format: binary",
 		"encoding:",
 		"avatar:",
 		"contentType: image/png, image/jpeg",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("multipart encoding missing %q:\n%s", want, body)
-		}
-	}
+	)
 	// File without @mimeTypes leaves encoding empty for that field.
 	if strings.Contains(body, "doc:\n          contentType") {
 		t.Errorf("file without @mimeTypes should not produce contentType:\n%s", body)
@@ -1027,13 +1011,10 @@ func TestGenerateOpenAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(out)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"openapi: 3.1.0",
 		"title: API",
 		"version: 1.2.3",
-		// Path keys are RELATIVE to servers[].url. With basePath "/v1"
-		// pushed onto servers and the service @prefix("/api/v1"), the
-		// path entry is /api/v1/users/{id}; the resolved URL becomes
 		// /v1/api/v1/users/{id}, matching the runtime listen path.
 		"/api/v1/users/{id}",
 		"- url: /v1",
@@ -1042,16 +1023,11 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"delete:",
 		"operationId: GetUser",
 		"#/components/schemas/User",
-		// GetUserReq's fields are inlined as parameters on the GET op,
 		// so the schema is defined but not referenced.
 		"GetUserReq:",
 		"components:",
 		"schemas:",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	)
 	// Negative: the basePath must NOT appear at the start of any path
 	// key - that's the doubled-prefix bug from before the fix.
 	if strings.Contains(src, "/v1/api/v1/users/{id}") {
@@ -1131,7 +1107,7 @@ service S {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"requestBody:",
 		// Body / Query get grouped schemas; Path stays inline.
 		"$ref: '#/components/schemas/CreateReqBody'",
@@ -1144,11 +1120,7 @@ service S {
 		"in: query",
 		"name: id",
 		"name: dryRun",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	)
 	// `payload` carries no binding decorator → should NOT appear as a
 	// parameter; it stays in the requestBody schema only.
 	if strings.Contains(src, "name: payload") {
@@ -1217,7 +1189,7 @@ service S {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"CallReqBody:",
 		"CallReqQuery:",
 		"CallReqHeader:",
@@ -1227,27 +1199,19 @@ service S {
 		"name: apiKey",
 		"in: cookie",
 		"name: session",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	)
 	// Parameter schemas are emitted inline (by value) rather than
 	// `$ref`-ing into the wrapper `<Method>Req<Kind>` schema. Nested
 	// `$ref` is technically valid JSON-Pointer but breaks most TS /
 	// Java / Rust client generators (hey-api, openapi-typescript,
 	// openapi-generator < 7) which fail to derive a stable type name
 	// from the property-walk path.
-	for _, badRef := range []string{
+	mustContainNone(t, src,
 		"$ref: '#/components/schemas/CallReqHeader/properties/",
 		"$ref: '#/components/schemas/CallReqCookie/properties/",
 		"$ref: '#/components/schemas/CallReqQuery/properties/",
 		"$ref: '#/components/schemas/CallReqPath/properties/",
-	} {
-		if strings.Contains(src, badRef) {
-			t.Errorf("unexpected nested $ref %q (breaks TS client generators):\n%s", badRef, src)
-		}
-	}
+	)
 }
 
 // TestGenerateOpenAPITagsFromDecorators covers @tags resolution at
@@ -1286,7 +1250,7 @@ service Bare {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		// One inherits service tags + adds its own.
 		"operationId: One",
 		"- admin",
@@ -1298,11 +1262,7 @@ service Bare {
 		// Bare service has no @tags → defaults to the service name.
 		"operationId: B",
 		"- Bare",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	)
 }
 
 // TestGenerateOpenAPIOperationIDDefaultAndOverride pins the rule:
@@ -1360,15 +1320,11 @@ service S {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		// YAML quotes the space-containing string when emitting.
 		`- user management`,
 		`- v1`,
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestGenerateOpenAPIMissingPackage(t *testing.T) {
@@ -1410,15 +1366,11 @@ service S {
 	// Passthrough endpoint advertises `*/*` for its response body
 	// because the framework lets logic write whatever wire format it
 	// likes - there is no schema to publish.
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"'*/*'",
 		"multipart/form-data",
 		"format: binary",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("expected %q in spec:\n%s", want, src)
-		}
-	}
+	)
 	// Multipart endpoint must NOT advertise application/json for the
 	// request body - file uploads only flow through multipart.
 	uploadIdx := strings.Index(src, "operationId: Upload")

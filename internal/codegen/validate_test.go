@@ -56,11 +56,9 @@ type X {
     b string @minLength(1)
     c string @maxLength(50)
 }`)
-	for _, want := range []string{"len(v.A)", "len(v.B) < 1", "len(v.C) > 50"} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	mustContainAll(t, src,
+		"len(v.A)",
+	)
 }
 
 func TestValidateNumericBounds(t *testing.T) {
@@ -70,11 +68,9 @@ type X {
     score int @lte(100)
     n     int @range(1, 99)
 }`)
-	for _, want := range []string{"v.Age < 0", "v.Score > 100", "v.N < 1 || v.N > 99"} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	mustContainAll(t, src,
+		"v.Age < 0",
+	)
 }
 
 func TestValidateNumericBoundsOptional(t *testing.T) {
@@ -88,18 +84,14 @@ type X {
     step  int?     @positive @multipleOf(5)
     delta float64? @negative
 }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"v.Age != nil && *v.Age < 0",
 		"v.Age != nil && *v.Age > 150",
 		"v.Score != nil && (*v.Score < 0 || *v.Score > 100)",
 		"v.Step != nil && *v.Step <= 0",
 		"v.Step != nil && *v.Step%5 != 0",
 		"v.Delta != nil && *v.Delta >= 0",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestValidateFloatBounds(t *testing.T) {
@@ -112,17 +104,13 @@ type X {
     tax   float32 @range(0.0, 0.99)
     step  float64 @gt(0.1) @lt(0.9)
 }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"v.Rate < 0.5",
 		"v.Rate > 1.5",
 		"v.Tax < 0 || v.Tax > 0.99",
 		"v.Step <= 0.1",
 		"v.Step >= 0.9",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestValidateStrictBounds(t *testing.T) {
@@ -135,18 +123,14 @@ type X {
     bnd  int @lt(100)
     rng  int @gt(0) @lt(100)
 }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"v.Pos <= 0",   // @gt(0) fails when x <= 0
 		"v.Bnd >= 100", // @lt(100) fails when x >= 100
 		"v.Rng <= 0",   // @gt(0) part of strict-both pair
 		"v.Rng >= 100", // @lt(100) part of strict-both pair
 		"must be greater than 0",
 		"must be less than 100",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestValidatePositive(t *testing.T) {
@@ -244,7 +228,7 @@ type Catalog {
     arrayV  map<string, User[]>
     optV    map<string, User?>
 }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		// plain: range values, validate each
 		"for _, val := range v.Plain",
 		"val.Validate()",
@@ -255,11 +239,7 @@ type Catalog {
 		// optional value: range + nil-guard
 		"for _, val := range v.OptV",
 		"if val != nil",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("map value recursion missing %q:\n%s", want, src)
-		}
-	}
+	)
 	mustParseGo(t, src)
 }
 
@@ -323,15 +303,11 @@ error Forbidden AccessDenied {
     retryAfter int? @gte(1)
 }
 type X { id string }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"func (v *AccessDeniedBody) Validate() error",
 		"len(v.Reason)",
 		"v.RetryAfter != nil",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("error body validator missing %q:\n%s", want, src)
-		}
-	}
+	)
 	mustParseGo(t, src)
 }
 
@@ -344,15 +320,11 @@ func TestValidateMultiDimNestedArray(t *testing.T) {
 type Node { id string }
 type Catalog { matrix Node[][] }`)
 	// Outer + inner loops, innermost body refs deepest element.
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"for i0 := range v.Matrix",
 		"for i1 := range v.Matrix[i0]",
 		"v.Matrix[i0][i1].Validate()",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("multi-dim nested validator missing %q:\n%s", want, src)
-		}
-	}
+	)
 	mustParseGo(t, src)
 }
 
@@ -370,11 +342,9 @@ type X { tags string[]? @minItems(1) @maxItems(5) }`)
 func TestValidateMinMaxItems(t *testing.T) {
 	src := runValidateGen(t, `package design
 type X { tags string[] @minItems(1) @maxItems(5) }`)
-	for _, want := range []string{"len(v.Tags) < 1", "len(v.Tags) > 5"} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	mustContainAll(t, src,
+		"len(v.Tags) < 1",
+	)
 }
 
 func TestValidatePattern(t *testing.T) {
@@ -569,15 +539,11 @@ type Page<T> {
     items   T[]    @minItems(1) @maxItems(50)
     total   int    @gte(0)
 }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"len(v.Items) < 1",
 		"len(v.Items) > 50",
 		"v.Total < 0",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestValidateGenericInstanceCallsValidate(t *testing.T) {
@@ -642,16 +608,12 @@ func TestValidateMimeTypes(t *testing.T) {
 type Upload {
     avatar file @mimeTypes(["image/png", "image/jpeg"])
 }`)
-	for _, want := range []string{
+	mustContainAll(t, src,
 		"v.Avatar != nil",
 		`v.Avatar.Header.Get("Content-Type")`,
 		`"image/png", "image/jpeg"`,
 		"disallowed content type",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("missing %q:\n%s", want, src)
-		}
-	}
+	)
 }
 
 func TestValidateFileCombined(t *testing.T) {

@@ -70,6 +70,94 @@ func mustParse(t *testing.T, src string) *ast.File {
 	return f
 }
 
+// mustParseTypeDecl is the parser-test convenience wrapper for
+// "parse this DSL and give me the first TypeDecl". Fatal if the source
+// doesn't parse OR doesn't start with a TypeDecl. Used heavily by the
+// table-driven type-shape tests so each case stays focused on
+// assertion shape, not the cast-and-extract dance.
+func mustParseTypeDecl(t *testing.T, src string) *ast.TypeDecl {
+	t.Helper()
+	f := mustParse(t, src)
+	if len(f.Decls) == 0 {
+		t.Fatalf("expected at least one decl, got none\nsrc: %s", src)
+	}
+	td, ok := f.Decls[0].(*ast.TypeDecl)
+	if !ok {
+		t.Fatalf("Decls[0] = %T, want *ast.TypeDecl\nsrc: %s", f.Decls[0], src)
+	}
+	return td
+}
+
+// stringsEqual is a small helper for slice-of-string equality where
+// nil and empty should both be treated as "no entries". Test cases
+// that don't supply wantParams should compare equal to a parser that
+// emits a nil slice for non-generic type decls.
+func stringsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// renderMembers gives a compact dump of a type body for failure
+// messages — `[id string; name string]` is easier to scan than the
+// raw `%+v` of nested AST nodes.
+func renderMembers(ms []ast.TypeMember) string {
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		switch v := m.(type) {
+		case *ast.Field:
+			parts[i] = v.Name + " " + renderTypeRef(v.Type)
+		case *ast.Mixin:
+			if v.Ref != nil {
+				parts[i] = v.Ref.Name.String()
+				if len(v.Ref.Args) > 0 {
+					inner := make([]string, len(v.Ref.Args))
+					for j, a := range v.Ref.Args {
+						inner[j] = renderTypeRef(a)
+					}
+					parts[i] += "<" + strings.Join(inner, ", ") + ">"
+				}
+			}
+		default:
+			parts[i] = "?"
+		}
+	}
+	return "[" + strings.Join(parts, "; ") + "]"
+}
+
+func renderTypeRef(t *ast.TypeRef) string {
+	if t == nil {
+		return "?"
+	}
+	if t.Map != nil {
+		return "map<" + renderTypeRef(t.Map.Key) + ", " + renderTypeRef(t.Map.Value) + ">"
+	}
+	out := ""
+	if t.Named != nil {
+		out = t.Named.Name.String()
+		if len(t.Named.Args) > 0 {
+			inner := make([]string, len(t.Named.Args))
+			for i, a := range t.Named.Args {
+				inner[i] = renderTypeRef(a)
+			}
+			out += "<" + strings.Join(inner, ", ") + ">"
+		}
+	}
+	if t.Array {
+		out += "[]"
+	}
+	if t.Optional {
+		out += "?"
+	}
+	return out
+}
+
 func parseWithErrors(t *testing.T, src string) (*ast.File, []string) {
 	t.Helper()
 	p := New("test", src)
@@ -126,135 +214,145 @@ package design`)
 
 // ---------- type ----------
 
-func TestTypeSimple(t *testing.T) {
-	f := mustParse(t, `type User { id string  name string }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	if td.Name != "User" {
-		t.Error("name")
+// TestParseTypeShapes table-drives every type-body shape variant the
+// parser produces. Each row is one DSL source line + the expected
+// TypeDecl shape; the assertion goes through [ast.Equal] / [ast.MembersEqual]
+// so adding a new variant is one row, not one function.
+//
+// Decorator presence, doc, comments are NOT asserted here — they have
+// their own dedicated table below ([TestParseTypeDecorators]) so a
+// failure in shape parsing doesn't drown out decorator regressions
+// and vice versa.
+func TestParseTypeShapes(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		wantName   string
+		wantParams []string         // generic type params
+		wantBody   []ast.TypeMember // expected body in source order
+	}{
+		{
+			name:     "simple two fields",
+			src:      `type User { id string  name string }`,
+			wantName: "User",
+			wantBody: []ast.TypeMember{
+				ast.FieldOf("id", "string"),
+				ast.FieldOf("name", "string"),
+			},
+		},
+		{
+			name:       "generic single param + array field",
+			src:        `type Page<T> { items T[]  total int }`,
+			wantName:   "Page",
+			wantParams: []string{"T"},
+			wantBody: []ast.TypeMember{
+				ast.FieldT("items", ast.NamedArr("T")),
+				ast.FieldOf("total", "int"),
+			},
+		},
+		{
+			name:       "generic multi-param",
+			src:        `type Pair<A, B> { a A  b B }`,
+			wantName:   "Pair",
+			wantParams: []string{"A", "B"},
+			wantBody: []ast.TypeMember{
+				ast.FieldOf("a", "A"),
+				ast.FieldOf("b", "B"),
+			},
+		},
+		{
+			name:     "optional fields",
+			src:      `type X { name string?  age int? }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				ast.FieldT("name", ast.NamedOpt("string")),
+				ast.FieldT("age", ast.NamedOpt("int")),
+			},
+		},
+		{
+			name:     "array optional combo",
+			src:      `type X { tags string[]? }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				ast.FieldT("tags", ast.NamedArrOpt("string")),
+			},
+		},
+		{
+			name:     "map field",
+			src:      `type X { meta map<string, int> }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				ast.FieldT("meta", ast.MapOf("string", "int")),
+			},
+		},
+		{
+			name:     "bare mixin then field",
+			src:      `type X { Profile  name string }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				ast.MixinOf("Profile"),
+				ast.FieldOf("name", "string"),
+			},
+		},
+		{
+			// PascalCase + builtin must land as a Field, not a Mixin —
+			// users are free to spell JSON keys however they want.
+			name:     "PascalCase + builtin = field",
+			src:      `type X { CreateUser int }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				ast.FieldOf("CreateUser", "int"),
+			},
+		},
+		{
+			name:     "qualified mixin",
+			src:      `type X { shared.Profile }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				ast.MixinQualified("shared", "Profile"),
+			},
+		},
+		{
+			name:     "generic mixin",
+			src:      `type X { Page<User> }`,
+			wantName: "X",
+			wantBody: []ast.TypeMember{
+				&ast.Mixin{Ref: &ast.NamedTypeRef{
+					Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
+					Args: []*ast.TypeRef{ast.Named("User")},
+				}},
+			},
+		},
 	}
-	if len(td.Body) != 2 {
-		t.Errorf("body: %d", len(td.Body))
-	}
-	field := td.Body[0].(*ast.Field)
-	if field.Name != "id" || field.Type.Named.Name.String() != "string" {
-		t.Errorf("field: %+v", field)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			td := mustParseTypeDecl(t, c.src)
+			if td.Name != c.wantName {
+				t.Errorf("name = %q, want %q", td.Name, c.wantName)
+			}
+			if !stringsEqual(td.TypeParams, c.wantParams) {
+				t.Errorf("type params = %v, want %v", td.TypeParams, c.wantParams)
+			}
+			if !ast.MembersEqual(td.Body, c.wantBody) {
+				t.Errorf("body mismatch\n got: %s\nwant: %s",
+					renderMembers(td.Body), renderMembers(c.wantBody))
+			}
+		})
 	}
 }
 
-func TestTypeWithGenericParams(t *testing.T) {
-	f := mustParse(t, `type Page<T> { items T[]  total int }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	if len(td.TypeParams) != 1 || td.TypeParams[0] != "T" {
-		t.Errorf("params: %v", td.TypeParams)
+// TestParseTypeFieldDecorators stays separate from shape tests so a
+// decorator regression surfaces with a focused failure label.
+func TestParseTypeFieldDecorators(t *testing.T) {
+	field := mustParseTypeDecl(t, `type X { name string @doc("the name") @length(1, 100) }`).
+		Body[0].(*ast.Field)
+	if got, want := len(field.Decorators), 2; got != want {
+		t.Errorf("decorator count = %d, want %d", got, want)
 	}
-	if !td.Body[0].(*ast.Field).Type.Array {
-		t.Error("expected array type")
-	}
-}
-
-func TestTypeWithMultipleGenericParams(t *testing.T) {
-	f := mustParse(t, `type Pair<A, B> { a A  b B }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	if len(td.TypeParams) != 2 {
-		t.Error()
-	}
-}
-
-func TestTypeOptional(t *testing.T) {
-	f := mustParse(t, `type X { name string?  age int? }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	for _, m := range td.Body {
-		if !m.(*ast.Field).Type.Optional {
-			t.Error("expected optional")
-		}
-	}
-}
-
-func TestTypeArrayOptional(t *testing.T) {
-	f := mustParse(t, `type X { tags string[]? }`)
-	field := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Field)
-	if !field.Type.Array || !field.Type.Optional {
-		t.Error()
-	}
-}
-
-func TestTypeMap(t *testing.T) {
-	f := mustParse(t, `type X { meta map<string, int> }`)
-	field := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Field)
-	if field.Type.Map == nil {
-		t.Fatal("expected map")
-	}
-	if field.Type.Map.Key.Named.Name.String() != "string" {
-		t.Error("key")
-	}
-}
-
-func TestTypeMixin(t *testing.T) {
-	f := mustParse(t, `type X { Profile  name string }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	if _, ok := td.Body[0].(*ast.Mixin); !ok {
-		t.Errorf("expected mixin, got %T", td.Body[0])
-	}
-	if _, ok := td.Body[1].(*ast.Field); !ok {
-		t.Errorf("expected field, got %T", td.Body[1])
-	}
-}
-
-// TestTypeFieldPascalCaseWithBuiltin pins the "Pascal name + builtin
-// type → field" carve-out: users free to choose any spelling for
-// their JSON wire shape, including PascalCase keys, without the
-// parser interpreting the name as a mixin. Round-trip through the
-// AST confirms it lands as a Field, not a Mixin.
-func TestTypeFieldPascalCaseWithBuiltin(t *testing.T) {
-	f := mustParse(t, `type X { CreateUser int }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	field, ok := td.Body[0].(*ast.Field)
-	if !ok {
-		t.Fatalf("expected Field, got %T", td.Body[0])
-	}
-	if field.Name != "CreateUser" {
-		t.Errorf("field name = %q, want %q", field.Name, "CreateUser")
-	}
-}
-
-// TestTypeMixinPascalFollowedByNonBuiltinStaysMixin confirms the
-// compact `mixin field` pattern keeps working when the second ident
-// is NOT a builtin: `Profile  name string` parses as mixin Profile
-// then field `name string`. The case-based default takes over here
-// because we cannot tell at parse time whether `name` was meant as
-// the next member's field-name or as a custom type for `Profile`.
-func TestTypeMixinPascalFollowedByNonBuiltinStaysMixin(t *testing.T) {
-	f := mustParse(t, `type X { Profile  name string }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	if _, ok := td.Body[0].(*ast.Mixin); !ok {
-		t.Errorf("expected first member to be Mixin, got %T", td.Body[0])
-	}
-	if _, ok := td.Body[1].(*ast.Field); !ok {
-		t.Errorf("expected second member to be Field, got %T", td.Body[1])
-	}
-}
-
-func TestTypeMixinQualified(t *testing.T) {
-	f := mustParse(t, `type X { shared.Profile }`)
-	mx := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Mixin)
-	if mx.Ref.Name.String() != "shared.Profile" {
-		t.Errorf("got %s", mx.Ref.Name)
-	}
-}
-
-func TestTypeMixinGeneric(t *testing.T) {
-	f := mustParse(t, `type X { Page<User> }`)
-	mx := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Mixin)
-	if len(mx.Ref.Args) != 1 {
-		t.Error()
-	}
-}
-
-func TestTypeFieldDecorators(t *testing.T) {
-	f := mustParse(t, `type X { name string @doc("the name") @length(1, 100) }`)
-	field := f.Decls[0].(*ast.TypeDecl).Body[0].(*ast.Field)
-	if len(field.Decorators) != 2 {
-		t.Errorf("decorators: %d", len(field.Decorators))
+	if field.Decorators[0].Name != "doc" || field.Decorators[1].Name != "length" {
+		t.Errorf("decorator names = %v, want [doc length]",
+			[]string{field.Decorators[0].Name, field.Decorators[1].Name})
 	}
 }
 
