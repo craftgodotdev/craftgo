@@ -9,7 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func enumValueCheck(f *ast.Field, pkg *semantic.Package, enums EnumTable, crossPkg CrossPkg, uses map[string]bool) string {
+func enumValueCheck(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
 	if pkg == nil || f == nil || f.Type == nil {
 		return ""
 	}
@@ -23,10 +23,10 @@ func enumValueCheck(f *ast.Field, pkg *semantic.Package, enums EnumTable, crossP
 		var keyEd, valEd *ast.EnumDecl
 		var keyQual, valQual string
 		if k := f.Type.Map.Key; k != nil && k.Named != nil {
-			keyEd, keyQual = resolveEnumNamed(k.Named, pkg, enums, crossPkg, uses)
+			keyEd, keyQual = resolveEnumNamed(k.Named, pkg, r, uses)
 		}
 		if v := f.Type.Map.Value; v != nil && v.Named != nil {
-			valEd, valQual = resolveEnumNamed(v.Named, pkg, enums, crossPkg, uses)
+			valEd, valQual = resolveEnumNamed(v.Named, pkg, r, uses)
 		}
 		if keyEd == nil && valEd == nil {
 			return ""
@@ -44,7 +44,7 @@ func enumValueCheck(f *ast.Field, pkg *semantic.Package, enums EnumTable, crossP
 	if f.Type.Named == nil {
 		return ""
 	}
-	ed, qualifier := resolveEnumNamed(f.Type.Named, pkg, enums, crossPkg, uses)
+	ed, qualifier := resolveEnumNamed(f.Type.Named, pkg, r, uses)
 	if ed == nil || len(ed.EnumValues()) == 0 {
 		return ""
 	}
@@ -63,7 +63,7 @@ func enumValueCheck(f *ast.Field, pkg *semantic.Package, enums EnumTable, crossP
 // Side effect: when the ref is cross-package, the resolver also
 // registers the target's Go import path in uses, so validate.go can
 // reference `shared.ColorRed` and friends.
-func resolveEnumNamed(n *ast.NamedTypeRef, pkg *semantic.Package, enums EnumTable, crossPkg CrossPkg, uses map[string]bool) (*ast.EnumDecl, string) {
+func resolveEnumNamed(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) (*ast.EnumDecl, string) {
 	if n == nil || n.Name == nil {
 		return nil, ""
 	}
@@ -71,22 +71,13 @@ func resolveEnumNamed(n *ast.NamedTypeRef, pkg *semantic.Package, enums EnumTabl
 	if ed, ok := pkg.Enums[name]; ok {
 		return ed, ""
 	}
-	if enums == nil {
+	ed := r.LookupEnum(name)
+	if ed == nil {
 		return nil, ""
 	}
-	ed, ok := enums[name]
-	if !ok {
-		return nil, ""
-	}
-	parts := n.Name.Parts
-	if len(parts) != 2 {
-		return ed, ""
-	}
-	qualifier := parts[0] + "."
-	if crossPkg != nil {
-		if path := crossPkg[parts[0]]; path != "" {
-			uses[path] = true
-		}
+	qualifier, path := r.QualifierFor(n)
+	if path != "" {
+		uses[path] = true
 	}
 	return ed, qualifier
 }
@@ -179,7 +170,7 @@ return err
 // `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
 // the pointer-receiver Validate either way, and the cleaner form is
 // what a human would write by hand.
-func nestedValidateCall(f *ast.Field, pkg *semantic.Package, projTypes TypeTable) string {
+func nestedValidateCall(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string {
 	if pkg == nil || f.Type == nil {
 		return ""
 	}
@@ -200,8 +191,8 @@ return err
 	if f.Type.Map != nil {
 		k := f.Type.Map.Key
 		v := f.Type.Map.Value
-		keyHas := typeRefHasValidator(k, pkg, projTypes)
-		valHas := typeRefHasValidator(v, pkg, projTypes)
+		keyHas := typeRefHasValidator(k, pkg, r)
+		valHas := typeRefHasValidator(v, pkg, r)
 		if !keyHas && !valHas {
 			return ""
 		}
@@ -231,7 +222,7 @@ return err
 	if f.Type.Named == nil {
 		return ""
 	}
-	if !typeRefNamedHasValidator(f.Type.Named, pkg, projTypes) {
+	if !typeRefNamedHasValidator(f.Type.Named, pkg, r) {
 		return ""
 	}
 	switch {
@@ -259,37 +250,34 @@ return err
 // struct that carries a generated Validate() method. Map keys go
 // through scalar-decorator emission elsewhere, so this only inspects
 // the value side.
-func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, projTypes TypeTable) bool {
+func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
 	if t == nil || t.Map != nil || t.Named == nil {
 		return false
 	}
-	return typeRefNamedHasValidator(t.Named, pkg, projTypes)
+	return typeRefNamedHasValidator(t.Named, pkg, r)
 }
 
 // typeRefNamedHasValidator is the named-ref core of typeRefHasValidator,
 // shared with [nestedValidateCall] so both map-value walks and direct
 // field refs resolve qualified names the same way. A qualified ref
-// `shared.Page` lives in the project [TypeTable], not the local
-// `pkg.Types` table — without the table consult, qualified refs were
-// dropped silently (the local lookup never finds them).
-func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, projTypes TypeTable) bool {
+// `shared.Page` lives in the project [TypeTable] (via the
+// [ProjectResolver]), not the local `pkg.Types` table — without that
+// consult, qualified refs were dropped silently (the local lookup
+// never finds them).
+func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
 	if n == nil || n.Name == nil {
 		return false
 	}
 	name := n.Name.String()
 	// Local first: a single-part name resolved here matches the
-	// receiver-package lookup that pre-existed the TypeTable plumbing.
+	// receiver-package lookup that pre-existed the resolver plumbing.
 	if _, ok := pkg.Types[name]; ok {
 		return true
 	}
-	// Qualified ref → project-wide table. nil-safe: passing nil
-	// projTypes preserves the single-package behaviour callers without
-	// project context expect.
-	if projTypes != nil {
-		_, ok := projTypes[name]
-		return ok
-	}
-	return false
+	// Qualified ref → project-wide table via resolver. nil-safe:
+	// LookupType on a nil resolver returns nil, preserving the
+	// single-package behaviour for callers without project context.
+	return r.LookupType(name) != nil
 }
 
 // emitNestedForLoops produces `depth` nested `for i0 := range x` loops

@@ -98,12 +98,29 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 	return GenerateValidatorsAll(pkg, outDir, crossPkg, scalars, types, nil)
 }
 
-// GenerateValidatorsAll is the most-explicit entry point: the
-// [EnumTable] enables cross-package enum value-set checks (a field
-// typed `shared.Color` lands its `switch case shared.ColorRed, ...`
-// + the right import). Existing callers can keep passing nil for
-// the enum table; the legacy local-only behaviour is preserved.
+// GenerateValidatorsAll is the legacy explicit-tables entry point.
+// Retained for backward compatibility with tests that build tables
+// directly; new callers should prefer [GenerateValidatorsResolved],
+// which accepts a single [ProjectResolver] instead of four ad-hoc
+// tables. This wrapper assembles a resolver from the parameters and
+// delegates.
 func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable, enums EnumTable) error {
+	r := &ProjectResolver{
+		Types:    types,
+		Enums:    enums,
+		Scalars:  scalars,
+		CrossPkg: crossPkg,
+	}
+	return GenerateValidatorsResolved(pkg, outDir, r)
+}
+
+// GenerateValidatorsResolved is the canonical entry point. It takes a
+// single [ProjectResolver] carrying every cross-package lookup the
+// validator emit chain needs — scalar inheritance, generic Validate
+// dispatch, cross-pkg enum value-set checks, and the matching Go
+// import registrations. nil resolver is tolerated and degrades to
+// local-only behaviour, matching the legacy single-package shape.
+func GenerateValidatorsResolved(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -111,7 +128,7 @@ func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossP
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	data := buildValidateData(pkg, scalars, types, enums, crossPkg)
+	data := buildValidateData(pkg, r)
 	formatted, err := renderGo(tmpl("validate.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render validate.go: %w", err)
@@ -132,19 +149,19 @@ func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossP
 // field whose declared type is a scalar gains the scalar's own
 // `@format` / `@length` / `@min` / etc. validators on top of the
 // field-level chain. See [scalarInheritedDecorators].
-func buildValidateData(pkg *semantic.Package, scalars ScalarTable, projTypes TypeTable, projEnums EnumTable, crossPkg CrossPkg) validateData {
+func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	names := sortedKeys(pkg.Types)
 
 	uses := map[string]bool{}
 	regexes := newRegexRegistry()
-	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes, enums: projEnums, crossPkg: crossPkg}
+	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes, resolver: r}
 	var types []validatorType
 	for _, name := range names {
 		td := pkg.Types[name]
 		types = append(types, validatorType{
 			Name:       name,
 			TypeParams: td.TypeParams,
-			Checks:     collectChecks(td, pkg, scalars, projTypes, ctx),
+			Checks:     collectChecks(td, pkg, r, ctx),
 		})
 	}
 
@@ -166,7 +183,7 @@ func buildValidateData(pkg *semantic.Package, scalars ScalarTable, projTypes Typ
 		}
 		types = append(types, validatorType{
 			Name:   body.Name,
-			Checks: collectChecks(body, pkg, scalars, projTypes, ctx),
+			Checks: collectChecks(body, pkg, r, ctx),
 		})
 	}
 
@@ -197,22 +214,22 @@ func buildValidateData(pkg *semantic.Package, scalars ScalarTable, projTypes Typ
 //
 // Steps 2-4 are mutually exclusive: a field is either a typeParam ref,
 // an enum, a struct, or a primitive. Primitives reach none of them.
-func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, projTypes TypeTable, ctx emitCtx) []string {
+func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, ctx emitCtx) []string {
 	var out []string
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			out = append(out, fieldChecksWithScalar(v, pkg, scalars, ctx)...)
+			out = append(out, fieldChecksWithScalar(v, pkg, r.scalars(), ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
 				if call := typeParamValidateCall(v); call != "" {
 					out = append(out, call)
 				}
 				continue
 			}
-			if call := enumValueCheck(v, pkg, ctx.enums, ctx.crossPkg, ctx.uses); call != "" {
+			if call := enumValueCheck(v, pkg, r, ctx.uses); call != "" {
 				out = append(out, call)
 			}
-			if nested := nestedValidateCall(v, pkg, projTypes); nested != "" {
+			if nested := nestedValidateCall(v, pkg, r); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:

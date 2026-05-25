@@ -133,21 +133,33 @@ type helpersData struct{ Package string }
 // because they always have a project-wide cross-package table to feed
 // in.
 func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	return GenerateTransportWith(pkg, cfg, projectRoot, nil, nil)
+	return GenerateTransportResolved(pkg, cfg, projectRoot, nil)
 }
 
-// GenerateTransportWith is the full-context variant. `scalars`
-// supplies the project-wide [ScalarTable] so cross-package scalar
-// fields (`shared.ID @path`) can resolve through to their underlying
-// primitive — without it `stringBindable` only sees the local
-// `pkg.Scalars` map and rejects every cross-package binding.
+// GenerateTransportWith is the legacy explicit-tables entry. Retained
+// for backward compatibility with single-package tests that build
+// CrossPkg / ScalarTable directly. New callers should use
+// [GenerateTransportResolved] which accepts a [ProjectResolver]
+// bundling every cross-package table.
 func GenerateTransportWith(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg, scalars ScalarTable) error {
+	r := &ProjectResolver{Scalars: scalars, CrossPkg: crossPkg}
+	return GenerateTransportResolved(pkg, cfg, projectRoot, r)
+}
+
+// GenerateTransportResolved is the canonical entry point. The
+// [ProjectResolver] supplies every project-wide lookup the handler
+// emit chain may consult — scalar inheritance, cross-package
+// enum/type resolution for binding casts, and the Go import paths
+// the generated handler file needs when it emits qualified
+// identifiers. nil resolver yields the legacy single-package
+// behaviour: only `pkg`'s local symbols resolve.
+func GenerateTransportResolved(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
-		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, crossPkg, scalars); err != nil {
+		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
 			return err
 		}
 	}
@@ -160,7 +172,7 @@ func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Serv
 // generateTransportFor emits all per-method handler files for a single
 // service. Each method becomes a separate file so that user-friendly diffs
 // are produced when only one endpoint changes.
-func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg, scalars ScalarTable) error {
+func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
 	imps := importPathsFor(cfg, pkg, svcName)
 	dir := filepath.Join(projectRoot, cfg.Output.Transport, ServiceDir(svcName))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -170,7 +182,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	passthroughTpl := tmpl("transport-passthrough.tmpl")
 	multipartTpl := tmpl("transport-multipart.tmpl")
 	for _, m := range svc.Methods {
-		data, err := buildTransportData(svcName, m, imps, pkg, crossPkg, scalars)
+		data, err := buildTransportData(svcName, m, imps, pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
@@ -197,12 +209,15 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // Returns an error when collectBindings rejects an unsupported binding
 // shape (e.g. `@query` on a struct field).
 //
-// crossPkg drives cross-package request resolution: when a method
+// The resolver drives cross-package request resolution: when a method
 // declares `request foo.Cred` and `foo` lives in another DSL package,
 // the handler's Go file gets an extra import for that package and
 // the generated `var req foo.Cred` line uses the package name as the
-// Go alias.
-func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, crossPkg CrossPkg, scalars ScalarTable) (transportData, error) {
+// Go alias. Scalar inheritance for cross-package primitive bindings
+// (`shared.ID @path`) also flows through the resolver.
+func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *ProjectResolver) (transportData, error) {
+	crossPkg := r.crossPkgMap()
+	scalars := r.scalars()
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	// NeedsTypes triggers the `types` import in the template. The

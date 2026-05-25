@@ -16,19 +16,18 @@ import (
 // emitCtx is the side-channel state passed to every validator's emit
 // function. `uses` collects imports the generated Validate file needs
 // (stdlib `fmt`, `regexp`, ...; also cross-package paths when a
-// qualified enum case-list lands in the emitted source); `pkg` is
-// forwarded for validators that need the local symbol table (today
-// the enum-aware path); `enums` + `crossPkg` extend that lookup to
-// project-wide enums so a field typed `shared.Color` gets its
-// switch-case validity check + the right import; `regexes` interns
-// regex patterns into package-level vars so `regexp.MustCompile`
-// runs ONCE per process instead of per-call.
+// qualified enum case-list lands in the emitted source); `pkg` is the
+// local symbol table; `resolver` is the project-wide lookup
+// (cross-pkg enums, types, scalars, errors + import paths) — emit
+// sites that need qualified-name resolution route through it instead
+// of grabbing individual tables. `regexes` interns regex patterns
+// into package-level vars so `regexp.MustCompile` runs ONCE per
+// process instead of per-call.
 type emitCtx struct {
 	pkg      *semantic.Package
 	uses     map[string]bool
 	regexes  *regexRegistry
-	enums    EnumTable
-	crossPkg CrossPkg
+	resolver *ProjectResolver
 }
 
 // regexRegistry interns unique regex patterns and assigns each a

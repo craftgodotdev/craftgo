@@ -181,26 +181,21 @@ func validateSecurityRefs(proj *semantic.Project, cfg *config.Config, pkgNames [
 
 // genTypesPerPackage emits the four type-shape artefacts (types,
 // enums, errors, validators) into <typesDir>/<pkgName>/ for every
-// package. Cross-package field refs pick up Go imports through the
-// per-call [codegen.BuildCrossPkg] context.
+// package. Cross-package field refs pick up Go imports + qualified
+// lookups through the per-package [codegen.ProjectResolver].
 func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot string, pkgNames []string) error {
 	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
 	for _, name := range pkgNames {
 		p := proj.Packages[name]
-		cross := codegen.BuildCrossPkg(proj, cfg, name)
-		scalars := codegen.BuildScalarTable(proj, name)
-		projTypes := codegen.BuildTypeTable(proj, name)
-		projEnums := codegen.BuildEnumTable(proj, name)
+		r := codegen.BuildProjectResolver(proj, cfg, name)
 		steps := []struct {
 			label string
 			fn    func() error
 		}{
-			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, cross) }},
+			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, r.CrossPkg) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
-			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, cross) }},
-			{"validators(" + name + ")", func() error {
-				return codegen.GenerateValidatorsAll(p, typesDir, cross, scalars, projTypes, projEnums)
-			}},
+			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, r.CrossPkg) }},
+			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsResolved(p, typesDir, r) }},
 		}
 		for _, s := range steps {
 			if err := s.fn(); err != nil {
@@ -225,15 +220,14 @@ func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRo
 		if len(p.Services) == 0 {
 			continue
 		}
-		cross := codegen.BuildCrossPkg(proj, cfg, name)
-		scalars := codegen.BuildScalarTable(proj, name)
+		r := codegen.BuildProjectResolver(proj, cfg, name)
 		steps := []struct {
 			label string
 			fn    func() error
 		}{
-			{"transport(" + name + ")", func() error { return codegen.GenerateTransportWith(p, cfg, projectRoot, cross, scalars) }},
+			{"transport(" + name + ")", func() error { return codegen.GenerateTransportResolved(p, cfg, projectRoot, r) }},
 			{"transport-helpers(" + name + ")", func() error { return codegen.GenerateTransportHelpers(p, cfg, projectRoot) }},
-			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, cross) }},
+			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, r.CrossPkg) }},
 			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
 		}
 		for _, s := range steps {
