@@ -87,7 +87,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		// numeric @form, ...) are surfaced by the transport gen pass;
 		// silently drop them here so a single source of truth owns
 		// the diagnostic.
-		if fs, ff, _, err := collectFormBindings(m, pkg, ""); err == nil && len(ff) > 0 {
+		if fs, ff, _, err := collectFormBindings(m, pkg, "", nil); err == nil && len(ff) > 0 {
 			isMultipart = true
 			formStrings, formFiles = fs, ff
 		}

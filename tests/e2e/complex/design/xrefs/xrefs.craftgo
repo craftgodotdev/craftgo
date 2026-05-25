@@ -1,0 +1,151 @@
+// Package xrefs is the cross-package matrix fixture. Every `xshared.X`
+// reference here exercises one (kind × shape × binding/decorator)
+// cell of the matrix. Drift on the generated xrefs/ output is the
+// regression signal — any future change to resolver lookup,
+// validate emit, transport bind, or openapi schema that drops a
+// qualified ref will surface here first.
+//
+// Keep one field per matrix cell so a regression points cleanly at
+// the violated cell instead of a tangle of features.
+package xrefs
+
+import "xshared"
+
+// ----- ENUM matrix -----
+
+// XEnumScalar pins direct + optional + array enum field shapes.
+// Validator must emit a switch-case per shape; OpenAPI schema must
+// inline the enum values list (or $ref to the enum schema).
+type XEnumScalar {
+	flat  xshared.XColor
+	maybe xshared.XColor?
+	many  xshared.XColor[]
+}
+
+// XEnumMaps pins enum keys / values in maps. The walker must emit
+// a switch on either side independently (key-only, value-only, or
+// both). OpenAPI 3.1 should emit `propertyNames: {enum: [...]}`
+// for the enum-keyed maps — currently lossy (audit R1).
+type XEnumMaps {
+	byString map<string, xshared.XColor>          // value-only switch
+	byEnum   map<xshared.XColor, string>          // key-only switch
+	bothEnum map<xshared.XColor, xshared.XColor>  // both-side switch
+}
+
+// XEnumDefault pins `@default(Red)` on a cross-pkg enum field — the
+// enum value must be referenced by bare ident, not a string literal,
+// because enum identity is by name. Transport pre-fill must qualify
+// the constant (`xshared.XColorRed`) and register the xshared
+// import on the handler file.
+type XEnumDefault {
+	color xshared.XColor? @default(Red)
+}
+
+// ----- SCALAR matrix -----
+
+// XScalarFields pins cross-pkg scalar refs in every shape. Each
+// field inherits the scalar's @format / @length chain via the
+// project ScalarTable. The required-empty check on `flat` must
+// also resolve through the resolver — otherwise the scalar's
+// underlying primitive is not known and the check is dropped.
+type XScalarFields {
+	flat   xshared.XEmail
+	maybe  xshared.XEmail?
+	many   xshared.XEmail[]
+	stamps xshared.XTimestamp[]
+}
+
+// XScalarBindings pins SCALAR refs at WIRE binding sites. The
+// transport handler must emit qualified casts:
+//   - `req.Path = xshared.XEmail(r.PathValue("path"))`
+//   - `req.Q = xshared.XEmail(r.URL.Query().Get("q"))`
+// without resolver these casts silently degrade to bare strings
+// and the handler fails to compile.
+type XScalarBindings {
+	path  xshared.XEmail   @path
+	q     xshared.XEmail   @query
+	hdr   xshared.XEmail   @header
+	ck    xshared.XEmail   @cookie
+	num   xshared.XNodeID  @query
+}
+
+// ----- TYPE matrix -----
+
+// XTypeFields pins cross-pkg TYPE refs in every shape. Each field
+// must dispatch `v.Field.Validate()` (or per-element when nested).
+type XTypeFields {
+	flat  xshared.XOwner
+	maybe xshared.XOwner?
+	many  xshared.XOwner[]
+	byKey map<string, xshared.XOwner>
+}
+
+// XTypeMixin pins MIXIN embedding from cross-pkg. The `XAudit`
+// mixin's fields land via Go field-promotion; the host's Validate
+// must call `v.XAudit.Validate()` explicitly because Go method
+// promotion doesn't auto-invoke on the host.
+type XTypeMixin {
+	xshared.XAudit
+	id string @length(1, 64)
+}
+
+// ----- GENERIC matrix -----
+
+// XGeneric pins cross-pkg GENERIC instantiations. Each argument
+// kind exercises a different generic-arg resolution path. OpenAPI
+// must register one component per (decl, args) tuple under the
+// FastAPI-style `XBagOfFoo` naming, not bare `xshared.XBag`.
+type XGeneric {
+	ofLocal   xshared.XBag<XLocalItem>
+	ofXType   xshared.XBag<xshared.XOwner>
+	ofPrim    xshared.XBag<string>
+	ofMap     xshared.XBag<map<string, xshared.XColor>>
+}
+
+type XLocalItem { id string }
+
+// ----- ERROR + service matrix -----
+
+type XGetReq {
+	id string @path @length(1, 64)
+}
+
+// XSearchReq is the request that exercises CROSS-PACKAGE SCALAR
+// binding casts. Without resolver-aware transport gen the handler
+// for /search emits bare-string assignments (`req.Q = r.URL.Query()
+// .Get("q")`) instead of qualified casts (`req.Q = xshared.XEmail
+// (r.URL.Query().Get("q"))`) — the Go compiler then rejects with a
+// type mismatch because req.Q is `*xshared.XEmail` not `*string`.
+type XSearchReq {
+	q     xshared.XEmail   @query
+	hdr   xshared.XEmail   @header
+	ck    xshared.XEmail   @cookie
+	num   xshared.XNodeID  @query
+}
+
+@prefix("/xrefs")
+service XRefsService {
+	@doc("Pins cross-package @errors reference. xshared.XNotFound must register as a component schema AND appear in the operation's responses[404].body schema.")
+	@errors(xshared.XNotFound)
+	get GetItem /items/{id} {
+		request  XGetReq
+		response xshared.XOwner
+	}
+
+	@doc("Pins cross-package response generic. Component must be `XBagOfXOwner`, not dangling `xshared.XBag`.")
+	get ListItems /items {
+		response xshared.XBag<xshared.XOwner>
+	}
+
+	@doc("Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get(\"q\"))` (qualified cast) — bare strings fail to compile against the *xshared.XEmail field type.")
+	get Search /search {
+		request  XSearchReq
+		response xshared.XOwner
+	}
+
+	@doc("Pins cross-package enum `@default` pre-fill in transport. Body decode must seed `req.Color = &__d` with `__d := xshared.XColorRed` before JSON.Decode runs; without resolver the default literal silently drops because the local pkg.Enums miss.")
+	post PostDefault /defaults {
+		request  XEnumDefault
+		response xshared.XOwner
+	}
+}

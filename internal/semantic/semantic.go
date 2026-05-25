@@ -133,6 +133,17 @@ type Options struct {
 	// (`shared.Timestamps`) and a cross-pkg field collision goes
 	// undetected.
 	skipMixinCheck bool
+
+	// skipBindingTypeCheckQualified suppresses the per-package
+	// binding-type check (`@path / @query / @header / @cookie /
+	// @form` shape rules in [analyzer.checkBindingFieldType]) for
+	// QUALIFIED refs only — bare names still resolve locally. The
+	// per-package pass can't see another package's scalars / enums
+	// so cross-pkg refs (`shared.Email @path`) would otherwise
+	// false-reject. Project mode flips this on; the post-pass
+	// [refResolver.checkProjectBindings] re-runs the check with
+	// the full project symbol table.
+	skipBindingTypeCheckQualified bool
 }
 
 // Analyze validates the supplied AST files as a single package and returns

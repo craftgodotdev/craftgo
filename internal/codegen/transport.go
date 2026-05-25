@@ -269,10 +269,14 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			})
 		}
 		var err error
-		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg, d.RequestPkgAlias, scalars)
+		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg, d.RequestPkgAlias, r)
 		if err != nil {
 			return transportData{}, err
 		}
+		// Drop the unused crossPkg/scalars locals — collectBindings reads
+		// them off the resolver itself now.
+		_ = crossPkg
+		_ = scalars
 		// JSON body decode is only needed when at least one field is
 		// body-bound (default for body verbs unless explicitly tagged).
 		d.BodyDecode = hasBodyVerb(m.Verb) && hasUnboundField(m, pkg)
@@ -291,7 +295,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		d.CookieParams = nil
 	}
 	if hasReq && !d.IsPassthrough {
-		forms, files, formStrconv, ferr := collectFormBindings(m, pkg, d.RequestPkgAlias)
+		forms, files, formStrconv, ferr := collectFormBindings(m, pkg, d.RequestPkgAlias, r)
 		if ferr != nil {
 			return d, ferr
 		}
@@ -318,7 +322,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		d.RespHeaders, d.RespCookies = collectResponseBindings(m, pkg)
 	}
 	if hasReq {
-		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias)
+		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias, r)
 	}
 	return d, nil
 }
@@ -507,7 +511,7 @@ func formSource() wireSource {
 // needs `strconv` imported, and an error describing why a particular
 // field shape cannot ride the wire (cookies have no array form, maps
 // and structs ride only `@body`, etc.).
-func renderWireBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName string, src wireSource) (string, bool, error) {
+func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, pkgAlias, wireName string, src wireSource) (string, bool, error) {
 	if f.Type == nil {
 		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
 	}
@@ -527,6 +531,10 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName 
 	prim, ok := queryPrims[declName]
 	cast := ""
 	if !ok {
+		// Local first (cheap, matches the pre-resolver shape), then
+		// project-wide for qualified `pkg.X` refs. For cross-pkg the
+		// declName is already the full qualified name (`xshared.XEmail`),
+		// which is also the correct Go cast — no extra prefix needed.
 		if pkg != nil {
 			if sc, scOk := pkg.Scalars[declName]; scOk && sc != nil {
 				if p2, pOk := queryPrims[sc.Primitive]; pOk {
@@ -535,7 +543,18 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName 
 					cast = declName
 				}
 			}
-			if !ok {
+		}
+		if !ok {
+			if sc := r.LookupScalar(declName); sc != nil {
+				if p2, pOk := queryPrims[sc.Primitive]; pOk {
+					prim = p2
+					ok = true
+					cast = declName
+				}
+			}
+		}
+		if !ok {
+			if pkg != nil {
 				if ed, edOk := pkg.Enums[declName]; edOk && ed != nil {
 					switch firstEnumKind(ed) {
 					case ast.EnumBare, ast.EnumString:
@@ -550,11 +569,30 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, pkgAlias, wireName 
 				}
 			}
 		}
+		if !ok {
+			if ed := r.LookupEnum(declName); ed != nil {
+				switch firstEnumKind(ed) {
+				case ast.EnumBare, ast.EnumString:
+					prim = queryPrims["string"]
+					ok = true
+					cast = declName
+				case ast.EnumInt:
+					prim = queryPrims["int"]
+					ok = true
+					cast = declName
+				}
+			}
+		}
 	}
 	if !ok {
 		return "", false, fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f), src.kind)
 	}
-	if cast != "" && pkgAlias != "" {
+	// Local refs get the request-pkg alias prefix (`Email` →
+	// `xrefs.Email`). Qualified refs already carry their pkg
+	// (`xshared.XEmail`) and pass through untouched. Detect by the
+	// presence of `.` — declName from a bare `*ast.QualifiedIdent`
+	// is dotless.
+	if cast != "" && pkgAlias != "" && !strings.Contains(cast, ".") {
 		cast = pkgAlias + "." + cast
 	}
 	wrap := func(s string) string {

@@ -64,7 +64,7 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, coo
 // `needsStrconv` is true when any text field's binding line reaches
 // into the strconv package - flows through to the multipart template
 // import block.
-func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) (text, files []paramBinding, needsStrconv bool, err error) {
+func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (text, files []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
 		return nil, nil, false, nil
 	}
@@ -128,7 +128,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) 
 	// Second pass: render bindings for the text fields now that we
 	// know the handler is multipart.
 	for _, c := range nonFile {
-		line, needs, lerr := renderWireBindLine(c.field, pkg, pkgAlias, c.field.Name, formSource())
+		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, c.field.Name, formSource())
 		if lerr != nil {
 			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 			return
@@ -163,14 +163,22 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string) 
 // Unsupported binding shapes (struct/[]struct/map on @query, non-string
 // on @path/@header/@cookie) return a non-nil error. Silent skips were
 // removed in favour of fail-fast feedback at `craftgo gen` time.
-func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scalars ScalarTable) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
+func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
 		return
 	}
 	td, ok := pkg.Types[m.Request.Name.String()]
 	if !ok {
-		return
+		// Cross-package request type (`request shared.Cred`) doesn't
+		// land in pkg.Types — fall through the resolver so the
+		// handler still binds its fields.
+		if td2 := r.LookupType(m.Request.Name.String()); td2 != nil {
+			td = td2
+		} else {
+			return
+		}
 	}
+	scalars := r.scalars()
 	reqName := m.Request.Name.String()
 	pathSegs := map[string]bool{}
 	if m.Path != nil {
@@ -224,7 +232,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.PathValue(%q)", wireName), pkgAlias)),
 			})
 		case "query":
-			line, needs, lerr := renderWireBindLine(f, pkg, pkgAlias, wireName, querySource())
+			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, querySource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -234,7 +242,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 			}
 			query = append(query, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
 		case "header":
-			line, needs, lerr := renderWireBindLine(f, pkg, pkgAlias, wireName, headerSource())
+			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, headerSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -244,7 +252,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, scal
 			}
 			header = append(header, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
 		case "cookie":
-			line, needs, lerr := renderWireBindLine(f, pkg, pkgAlias, wireName, cookieSource())
+			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, cookieSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -303,6 +311,18 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		case "path", "query", "header", "cookie":
 			walkCrossPkgImports(f.Type, crossPkg, set)
 		}
+		// Body field with `@default(EnumValue)` on a cross-pkg enum
+		// emits a pre-fill line `__d := xshared.XColorRed; req.X =
+		// &__d` that references a foreign-package constant — needs
+		// the xshared import. Scalar @default with a string / int
+		// literal (`currency shared.CurrencyCode? @default("USD")`)
+		// emits `__d := "USD"` and stays self-contained: skip those
+		// to avoid registering unused imports. The trigger is "field
+		// type is a cross-pkg enum AND has @default" — that's the
+		// only shape that emits a qualified constant.
+		if isQualifiedEnumWithDefault(f, crossPkg) {
+			walkCrossPkgImports(f.Type, crossPkg, set)
+		}
 	}
 	for pkgName, path := range crossPkg {
 		if !set[path] {
@@ -311,6 +331,39 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		out[pkgName] = path
 	}
 	return out
+}
+
+// isQualifiedEnumWithDefault reports whether f's type is a
+// qualified `pkg.Name` ref AND the field carries a `@default(...)`
+// decorator. Sufficient signal that the transport pre-fill will
+// emit `pkg.NameValue` — registers the cross-pkg import. We don't
+// confirm here that pkg.Name IS an enum (vs scalar / type) — a
+// false-positive registration is harmless because the import-block
+// emitter dedups against actual usage by walking the file's other
+// refs; an over-imported entry would still surface to the user
+// as an `unused-import` build failure if the @default arg isn't
+// an IdentExpr against an enum. The walker layer already gates on
+// IdentExpr in renderDefault so the actual pre-fill stays correct.
+func isQualifiedEnumWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
+	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return false
+	}
+	parts := f.Type.Named.Name.Parts
+	if len(parts) != 2 {
+		return false
+	}
+	if _, ok := crossPkg[parts[0]]; !ok {
+		return false
+	}
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != "default" || len(d.Args) != 1 {
+			continue
+		}
+		if _, ok := d.Args[0].Value.(*ast.IdentExpr); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // bindingWireName returns the wire-side parameter name for a bound

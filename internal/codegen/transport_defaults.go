@@ -10,13 +10,18 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string) []defaultBinding {
+func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) []defaultBinding {
 	if m.Request == nil {
 		return nil
 	}
 	td, ok := pkg.Types[m.Request.Name.String()]
 	if !ok {
-		return nil
+		// Cross-package request type — fall through the resolver.
+		if td2 := r.LookupType(m.Request.Name.String()); td2 != nil {
+			td = td2
+		} else {
+			return nil
+		}
 	}
 	var out []defaultBinding
 	for _, member := range td.Body {
@@ -27,7 +32,7 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string) []de
 		if f.Type == nil || f.Type.Map != nil {
 			continue
 		}
-		lit := defaultLiteral(f, pkg, pkgAlias)
+		lit := defaultLiteral(f, pkg, r, pkgAlias)
 		if lit == "" {
 			continue
 		}
@@ -47,12 +52,12 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string) []de
 // recursively as a Go slice literal). Map / struct / generic field
 // types fall through to "" - the semantic phase has already flagged
 // the unsupported combination.
-func defaultLiteral(f *ast.Field, pkg *semantic.Package, pkgAlias string) string {
+func defaultLiteral(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
 	for _, d := range f.Decorators {
 		if d.Name != "default" || len(d.Args) != 1 {
 			continue
 		}
-		return renderDefault(f.Type, d.Args[0].Value, pkg, pkgAlias)
+		return renderDefault(f.Type, d.Args[0].Value, pkg, r, pkgAlias)
 	}
 	return ""
 }
@@ -64,7 +69,7 @@ func defaultLiteral(f *ast.Field, pkg *semantic.Package, pkgAlias string) string
 // alias of the types package used by the request struct (e.g.
 // "types") so named-type references (enums, scalars) emit as
 // `<alias>.<Name>` and stay valid in the handler's own package.
-func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, pkgAlias string) string {
+func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
 	if t == nil {
 		return ""
 	}
@@ -74,13 +79,13 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, pkgAlias s
 			return ""
 		}
 		elemT := arrayElemTypeRef(t)
-		elemGo := qualifyNamed(GoTypeRef(elemT), elemT, pkg, pkgAlias)
+		elemGo := qualifyNamed(GoTypeRef(elemT), elemT, pkg, r, pkgAlias)
 		if elemGo == "" {
 			return ""
 		}
 		parts := make([]string, 0, len(arr.Elements))
 		for _, e := range arr.Elements {
-			p := renderDefault(elemT, e, pkg, pkgAlias)
+			p := renderDefault(elemT, e, pkg, r, pkgAlias)
 			if p == "" {
 				return ""
 			}
@@ -101,24 +106,39 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, pkgAlias s
 		}
 		return "false"
 	case *ast.IdentExpr:
-		return enumDefaultConst(t, pkg, lit, pkgAlias)
+		return enumDefaultConst(t, pkg, r, lit, pkgAlias)
 	}
 	return ""
 }
 
 // qualifyNamed prefixes a Go type reference with `<pkgAlias>.` when
-// the underlying TypeRef points at a project-defined named type
-// (enum or scalar) - those constants live in the types package and
-// the handler file's package needs the alias to reach them.
-// Primitives stay bare.
-func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, pkgAlias string) string {
-	if pkgAlias == "" || goName == "" {
+// the underlying TypeRef points at a LOCAL project-defined named type
+// (enum or scalar) — those constants live in the request's types
+// package and the handler file needs the alias to reach them.
+// Primitives stay bare. CROSS-PACKAGE refs already carry their own
+// qualifier (`xshared.XColor`) and pass through untouched; without
+// this case the qualified Go name double-prefixes to
+// `<reqAlias>.xshared.XColor` and the cast fails to compile.
+func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
+	if goName == "" {
 		return goName
 	}
-	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return goName
 	}
-	name := t.Named.Name.Parts[0]
+	parts := t.Named.Name.Parts
+	// Qualified ref `pkg.X`: goName is already `pkg.X`, leave as-is.
+	if len(parts) == 2 {
+		name := t.Named.Name.String()
+		if r.LookupEnum(name) != nil || r.LookupScalar(name) != nil {
+			return goName
+		}
+		return goName
+	}
+	if pkgAlias == "" || len(parts) != 1 {
+		return goName
+	}
+	name := parts[0]
 	if _, ok := pkg.Enums[name]; ok {
 		return pkgAlias + "." + goName
 	}
@@ -158,18 +178,33 @@ func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
 // value; this function reproduces buildEnumView's dedup so the
 // const-name lookup hits the same identifier even when value names
 // differ only in case.
-func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, v *ast.IdentExpr, pkgAlias string) string {
+func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver, v *ast.IdentExpr, pkgAlias string) string {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return ""
 	}
-	if len(t.Named.Name.Parts) != 1 {
+	if v.Name == nil || len(v.Name.Parts) != 1 {
 		return ""
 	}
-	enumName := t.Named.Name.Parts[0]
-	ed, ok := pkg.Enums[enumName]
-	if !ok || v.Name == nil || len(v.Name.Parts) != 1 {
+	parts := t.Named.Name.Parts
+	var ed *ast.EnumDecl
+	var qualifier string
+	switch len(parts) {
+	case 1:
+		ed = pkg.Enums[parts[0]]
+		qualifier = pkgAlias
+	case 2:
+		ed = r.LookupEnum(t.Named.Name.String())
+		// Cross-pkg: the Go constants live in the foreign package, so
+		// the qualifier is the foreign pkg alias (`xshared`), not the
+		// caller's request-types alias.
+		qualifier = parts[0]
+	default:
 		return ""
 	}
+	if ed == nil {
+		return ""
+	}
+	enumName := ed.Name
 	valueName := v.Name.Parts[0]
 	idx := -1
 	enumVals := ed.EnumValues()
@@ -185,8 +220,8 @@ func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, v *ast.IdentExpr, p
 	}
 	resolved, _ := idents.DedupGoFieldNames(dslNames)
 	bare := enumName + resolved[idx]
-	if pkgAlias != "" {
-		return pkgAlias + "." + bare
+	if qualifier != "" {
+		return qualifier + "." + bare
 	}
 	return bare
 }

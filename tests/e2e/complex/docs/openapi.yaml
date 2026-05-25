@@ -144,6 +144,17 @@ components:
         email:
           type: string
       type: object
+    GetItemReqPath:
+      properties:
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      type: object
+    GetItemRespBody:
+      $ref: '#/components/schemas/XOwner'
     GetProfileReq:
       description: |-
         GetProfileReq carries only the path id; the handler binds it from
@@ -169,6 +180,8 @@ components:
         required_role:
           type: string
       type: object
+    ListItemsRespBody:
+      $ref: '#/components/schemas/XBagOfXOwner'
     ListProfilesResp:
       description: ListProfilesResp pages a slice of profiles back to the client.
       properties:
@@ -271,6 +284,16 @@ components:
       type: object
     PatchProfileRespBody:
       $ref: '#/components/schemas/PatchProfileResp'
+    PostDefaultReqBody:
+      properties:
+        color:
+          allOf:
+          - $ref: '#/components/schemas/XColor'
+          default: Red
+          nullable: true
+      type: object
+    PostDefaultRespBody:
+      $ref: '#/components/schemas/XOwner'
     Profile:
       description: |-
         Profile is the wire-level shape of a user profile. Notice the nesting:
@@ -328,6 +351,32 @@ components:
         retry_after:
           type: integer
       type: object
+    SearchReqCookie:
+      properties:
+        ck:
+          $ref: '#/components/schemas/XEmail'
+      required:
+      - ck
+      type: object
+    SearchReqHeader:
+      properties:
+        hdr:
+          $ref: '#/components/schemas/XEmail'
+      required:
+      - hdr
+      type: object
+    SearchReqQuery:
+      properties:
+        num:
+          $ref: '#/components/schemas/XNodeID'
+        q:
+          $ref: '#/components/schemas/XEmail'
+      required:
+      - q
+      - num
+      type: object
+    SearchRespBody:
+      $ref: '#/components/schemas/XOwner'
     SnapshotRespBody:
       $ref: '#/components/schemas/ListProfilesResp'
     StaleVersionErr:
@@ -337,6 +386,325 @@ components:
           type: integer
         expected_version:
           type: integer
+      type: object
+    XAudit:
+      description: |-
+        XAudit is a cross-package MIXIN. xrefs embeds it with bare
+        `xshared.XAudit` syntax and the resulting Go struct must:
+          - have field-promotion through the embedded type
+          - dispatch Validate on the host (`v.XAudit.Validate()`)
+          - emit `xshared.XAudit` in OpenAPI's allOf chain
+      properties:
+        createdAt:
+          $ref: '#/components/schemas/XTimestamp'
+        updatedAt:
+          $ref: '#/components/schemas/XTimestamp'
+      required:
+      - createdAt
+      - updatedAt
+      type: object
+    XBagOfMapOfStringAndXColor:
+      properties:
+        cap:
+          type: integer
+        items:
+          items:
+            additionalProperties:
+              $ref: '#/components/schemas/XColor'
+            type: object
+          type: array
+      required:
+      - items
+      - cap
+      type: object
+    XBagOfString:
+      properties:
+        cap:
+          type: integer
+        items:
+          items:
+            type: string
+          type: array
+      required:
+      - items
+      - cap
+      type: object
+    XBagOfXLocalItem:
+      properties:
+        cap:
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/XLocalItem'
+          type: array
+      required:
+      - items
+      - cap
+      type: object
+    XBagOfXOwner:
+      properties:
+        cap:
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/XOwner'
+          type: array
+      required:
+      - items
+      - cap
+      type: object
+    XColor:
+      enum:
+      - Red
+      - Green
+      - Blue
+      type: string
+    XEmail:
+      format: email
+      maxLength: 254
+      type: string
+    XEnumDefault:
+      description: |-
+        XEnumDefault pins `@default(Red)` on a cross-pkg enum field — the
+        enum value must be referenced by bare ident, not a string literal,
+        because enum identity is by name. Transport pre-fill must qualify
+        the constant (`xshared.XColorRed`) and register the xshared
+        import on the handler file.
+      properties:
+        color:
+          allOf:
+          - $ref: '#/components/schemas/XColor'
+          default: Red
+          nullable: true
+      type: object
+    XEnumMaps:
+      description: |-
+        XEnumMaps pins enum keys / values in maps. The walker must emit
+        a switch on either side independently (key-only, value-only, or
+        both). OpenAPI 3.1 should emit `propertyNames: {enum: [...]}`
+        for the enum-keyed maps — currently lossy (audit R1).
+      properties:
+        bothEnum:
+          additionalProperties:
+            $ref: '#/components/schemas/XColor'
+          type: object
+        byEnum:
+          additionalProperties:
+            type: string
+          type: object
+        byString:
+          additionalProperties:
+            $ref: '#/components/schemas/XColor'
+          type: object
+      required:
+      - byString
+      - byEnum
+      - bothEnum
+      type: object
+    XEnumScalar:
+      description: |-
+        XEnumScalar pins direct + optional + array enum field shapes.
+        Validator must emit a switch-case per shape; OpenAPI schema must
+        inline the enum values list (or $ref to the enum schema).
+      properties:
+        flat:
+          $ref: '#/components/schemas/XColor'
+        many:
+          items:
+            $ref: '#/components/schemas/XColor'
+          type: array
+        maybe:
+          allOf:
+          - $ref: '#/components/schemas/XColor'
+          nullable: true
+      required:
+      - flat
+      - many
+      type: object
+    XGeneric:
+      description: |-
+        XGeneric pins cross-pkg GENERIC instantiations. Each argument
+        kind exercises a different generic-arg resolution path. OpenAPI
+        must register one component per (decl, args) tuple under the
+        FastAPI-style `XBagOfFoo` naming, not bare `xshared.XBag`.
+      properties:
+        ofLocal:
+          $ref: '#/components/schemas/XBagOfXLocalItem'
+        ofMap:
+          $ref: '#/components/schemas/XBagOfMapOfStringAndXColor'
+        ofPrim:
+          $ref: '#/components/schemas/XBagOfString'
+        ofXType:
+          $ref: '#/components/schemas/XBagOfXOwner'
+      required:
+      - ofLocal
+      - ofXType
+      - ofPrim
+      - ofMap
+      type: object
+    XGetReq:
+      properties:
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      type: object
+    XLocalItem:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    XNodeID:
+      maximum: 1000000
+      minimum: 1
+      type: integer
+    XNotFoundErr:
+      description: NotFound error response (HTTP 404).
+      properties:
+        id:
+          type: string
+        resource:
+          type: string
+      type: object
+    XOwner:
+      description: |-
+        XOwner is a cross-package TYPE used in field positions to verify
+        recursive validate dispatch (`v.Owner.Validate()`) emits when the
+        owner field's type lives in xshared.
+      properties:
+        email:
+          $ref: '#/components/schemas/XEmail'
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      - email
+      type: object
+    XScalarBindings:
+      description: |-
+        XScalarBindings pins SCALAR refs at WIRE binding sites. The
+        transport handler must emit qualified casts:
+          - `req.Path = xshared.XEmail(r.PathValue("path"))`
+          - `req.Q = xshared.XEmail(r.URL.Query().Get("q"))`
+        without resolver these casts silently degrade to bare strings
+        and the handler fails to compile.
+      properties:
+        ck:
+          $ref: '#/components/schemas/XEmail'
+        hdr:
+          $ref: '#/components/schemas/XEmail'
+        num:
+          $ref: '#/components/schemas/XNodeID'
+        path:
+          $ref: '#/components/schemas/XEmail'
+        q:
+          $ref: '#/components/schemas/XEmail'
+      required:
+      - path
+      - q
+      - hdr
+      - ck
+      - num
+      type: object
+    XScalarFields:
+      description: |-
+        XScalarFields pins cross-pkg scalar refs in every shape. Each
+        field inherits the scalar's @format / @length chain via the
+        project ScalarTable. The required-empty check on `flat` must
+        also resolve through the resolver — otherwise the scalar's
+        underlying primitive is not known and the check is dropped.
+      properties:
+        flat:
+          $ref: '#/components/schemas/XEmail'
+        many:
+          items:
+            $ref: '#/components/schemas/XEmail'
+          type: array
+        maybe:
+          allOf:
+          - $ref: '#/components/schemas/XEmail'
+          nullable: true
+        stamps:
+          items:
+            $ref: '#/components/schemas/XTimestamp'
+          type: array
+      required:
+      - flat
+      - many
+      - stamps
+      type: object
+    XSearchReq:
+      description: |-
+        XSearchReq is the request that exercises CROSS-PACKAGE SCALAR
+        binding casts. Without resolver-aware transport gen the handler
+        for /search emits bare-string assignments (`req.Q = r.URL.Query()
+        .Get("q")`) instead of qualified casts (`req.Q = xshared.XEmail
+        (r.URL.Query().Get("q"))`) — the Go compiler then rejects with a
+        type mismatch because req.Q is `*xshared.XEmail` not `*string`.
+      properties:
+        ck:
+          $ref: '#/components/schemas/XEmail'
+        hdr:
+          $ref: '#/components/schemas/XEmail'
+        num:
+          $ref: '#/components/schemas/XNodeID'
+        q:
+          $ref: '#/components/schemas/XEmail'
+      required:
+      - q
+      - hdr
+      - ck
+      - num
+      type: object
+    XTimestamp:
+      format: datetime
+      type: string
+    XTypeFields:
+      description: |-
+        XTypeFields pins cross-pkg TYPE refs in every shape. Each field
+        must dispatch `v.Field.Validate()` (or per-element when nested).
+      properties:
+        byKey:
+          additionalProperties:
+            $ref: '#/components/schemas/XOwner'
+          type: object
+        flat:
+          $ref: '#/components/schemas/XOwner'
+        many:
+          items:
+            $ref: '#/components/schemas/XOwner'
+          type: array
+        maybe:
+          allOf:
+          - $ref: '#/components/schemas/XOwner'
+          nullable: true
+      required:
+      - flat
+      - many
+      - byKey
+      type: object
+    XTypeMixin:
+      allOf:
+      - $ref: '#/components/schemas/XAudit'
+      - properties:
+          id:
+            maxLength: 64
+            minLength: 1
+            type: string
+        required:
+        - id
+        type: object
+      description: |-
+        XTypeMixin pins MIXIN embedding from cross-pkg. The `XAudit`
+        mixin's fields land via Go field-promotion; the host's Validate
+        must call `v.XAudit.Validate()` explicitly because Go method
+        promotion doesn't auto-invoke on the host.
       type: object
   securitySchemes:
     AuthRequired:
@@ -550,5 +918,113 @@ paths:
           description: ""
       tags:
       - ProfileService
+  /xrefs/defaults:
+    post:
+      description: Pins cross-package enum `@default` pre-fill in transport. Body
+        decode must seed `req.Color = &__d` with `__d := xshared.XColorRed` before
+        JSON.Decode runs; without resolver the default literal silently drops because
+        the local pkg.Enums miss.
+      operationId: PostDefault
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostDefaultReqBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDefaultRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - XRefsService
+  /xrefs/items:
+    get:
+      description: Pins cross-package response generic. Component must be `XBagOfXOwner`,
+        not dangling `xshared.XBag`.
+      operationId: ListItems
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListItemsRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - XRefsService
+  /xrefs/items/{id}:
+    get:
+      description: Pins cross-package @errors reference. xshared.XNotFound must register
+        as a component schema AND appear in the operation's responses[404].body schema.
+      operationId: GetItem
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetItemRespBody'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XNotFoundErr'
+          description: NotFound
+        default:
+          description: ""
+      tags:
+      - XRefsService
+  /xrefs/search:
+    get:
+      description: Pins cross-package scalar BINDING casts. Handler must emit `req.Q
+        = xshared.XEmail(r.URL.Query().Get("q"))` (qualified cast) — bare strings
+        fail to compile against the *xshared.XEmail field type.
+      operationId: Search
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          $ref: '#/components/schemas/XEmail'
+      - in: query
+        name: num
+        required: true
+        schema:
+          $ref: '#/components/schemas/XNodeID'
+      - in: header
+        name: hdr
+        required: true
+        schema:
+          $ref: '#/components/schemas/XEmail'
+      - in: cookie
+        name: ck
+        required: true
+        schema:
+          $ref: '#/components/schemas/XEmail'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchRespBody'
+          description: OK
+        default:
+          description: ""
+      tags:
+      - XRefsService
 servers:
 - url: /api

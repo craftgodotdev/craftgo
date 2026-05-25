@@ -100,6 +100,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	perPkgOpts.skipMiddlewareRefCheck = true
 	perPkgOpts.skipExtendOrphanCheck = true
 	perPkgOpts.skipMixinCheck = true
+	perPkgOpts.skipBindingTypeCheckQualified = true
 	var diags []Diagnostic
 	for name, group := range groups {
 		pkg, pkgDiags := AnalyzeWith(group, perPkgOpts)
@@ -117,6 +118,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectMiddlewareRefs(files)
 	r.checkProjectFieldDefaults()
 	r.checkProjectMixins()
+	r.checkProjectBindings()
 	return proj, r.diags
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	adminserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/admin-service"
 	profileserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/profile-service"
+	xrefsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/routes/x-refs-service"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
@@ -15,4 +16,5 @@ import (
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	adminserviceroutes.RegisterRoutes(srv, svcCtx)
 	profileserviceroutes.RegisterRoutes(srv, svcCtx)
+	xrefsserviceroutes.RegisterRoutes(srv, svcCtx)
 }

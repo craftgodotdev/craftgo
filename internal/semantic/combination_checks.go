@@ -222,6 +222,16 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	if f.Type == nil {
 		return
 	}
+	// In project mode the per-package pass defers qualified-ref
+	// binding-type checks to the post-pass resolver, which has the
+	// full project symbol table. Without the skip a cross-pkg scalar
+	// like `id shared.Email @path` false-rejects because the local
+	// pkg.Scalars map can't see `shared.Email`. See
+	// [refResolver.checkProjectBindings] for the cross-pkg-aware
+	// re-check.
+	if a.opts.skipBindingTypeCheckQualified && isQualifiedTypeRef(f.Type) {
+		return
+	}
 	for _, d := range f.Decorators {
 		switch d.Name {
 		case "path":
@@ -259,6 +269,16 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			return
 		}
 	}
+}
+
+// isQualifiedTypeRef reports whether t names a cross-package symbol
+// (`pkg.Name` with 2 segments). Array / optional wrappers don't
+// affect the named ref inside — strip those down to the head ref.
+func isQualifiedTypeRef(t *ast.TypeRef) bool {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
+		return false
+	}
+	return len(t.Named.Name.Parts) >= 2
 }
 
 // isStringBindingType reports whether t is a string-shaped value

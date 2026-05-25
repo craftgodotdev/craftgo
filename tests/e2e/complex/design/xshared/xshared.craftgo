@@ -1,0 +1,68 @@
+// Package xshared exists ONLY to be referenced by the sibling `xrefs`
+// package via cross-package qualified names (`xshared.X`). It pins the
+// project's cross-package resolution contract end-to-end: a regression
+// in any of `validate`, `transport`, `openapi`, or `lsp` that drops a
+// qualified ref silently will surface as a drift on the xrefs gen
+// output (which lives under tests/e2e/complex/internal/types/xrefs/).
+package xshared
+
+// XColor exercises cross-package ENUM refs. Used by xrefs in every
+// shape — direct, optional, array, map-key, map-value — so the
+// switch-case validity check, OpenAPI enum schema, and any binding
+// cast must resolve through the resolver, not the local pkg.Enums.
+enum XColor {
+	Red
+	Green
+	Blue
+}
+
+// XEmail exercises cross-package SCALAR refs with inherited
+// validators. The @format(email) + @maxLength(254) must inherit into
+// every xrefs field typed `xshared.XEmail` (scalar inheritance walks
+// the project ScalarTable, then now via resolver.LookupScalar).
+scalar XEmail string @format(email) @maxLength(254)
+
+// XNodeID exercises a numeric cross-package scalar. The cast in
+// generated transport binding (`req.ID = xshared.XNodeID(int(_n))`)
+// must qualify the type name AND register the xshared import.
+scalar XNodeID int @gte(1) @lte(1000000)
+
+// XTimestamp is a string-backed scalar with no inherited validator —
+// used to test that mere scalar resolution works even when the
+// scalar has no decorators of its own.
+scalar XTimestamp string @format(datetime)
+
+// XOwner is a cross-package TYPE used in field positions to verify
+// recursive validate dispatch (`v.Owner.Validate()`) emits when the
+// owner field's type lives in xshared.
+type XOwner {
+	id    string  @length(1, 64)
+	email XEmail
+}
+
+// XBag is a cross-package GENERIC. xrefs instantiates it as
+// `xshared.XBag<X>` for various X — local types, primitives, and
+// xshared types — covering the qualified-generic codegen path
+// across every cell.
+type XBag<T> {
+	items T[]
+	cap   int   @gte(0) @lte(1000)
+}
+
+// XAudit is a cross-package MIXIN. xrefs embeds it with bare
+// `xshared.XAudit` syntax and the resulting Go struct must:
+//   - have field-promotion through the embedded type
+//   - dispatch Validate on the host (`v.XAudit.Validate()`)
+//   - emit `xshared.XAudit` in OpenAPI's allOf chain
+type XAudit {
+	createdAt XTimestamp
+	updatedAt XTimestamp
+}
+
+// XNotFound is a cross-package ERROR. Methods on xrefs' service
+// declare `@errors(xshared.XNotFound)` so the OpenAPI responses
+// list resolves the error schema through the project ErrorTable.
+error NotFound XNotFound {
+	resource string  @length(1, 200)
+	id       string
+}

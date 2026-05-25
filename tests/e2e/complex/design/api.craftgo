@@ -15,3 +15,10 @@ import "middlewares"
 import "profile-service"
 // `admin` holds AdminService — a separate service in its own folder.
 import "admin"
+// `xshared` + `xrefs` form the cross-package reference matrix
+// fixture. Every shape a `xshared.X` qualified ref can take is
+// exercised in xrefs; the generated output under
+// internal/types/xrefs/ is the drift gate for cross-package
+// resolution across validate / transport / openapi.
+import "xshared"
+import "xrefs"
