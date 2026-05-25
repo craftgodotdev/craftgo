@@ -56,10 +56,10 @@ type ListProductsReq {
 
 type CreateProductReq {
 	sku         shared.SKU
-	name        string                @length(1, 200)
-	description string?               @maxLength(5000)
+	name        string               @length(1, 200)
+	description string?              @maxLength(5000)
 	priceCents  shared.Cents
-	currency    shared.CurrencyCode?  @default("USD")
+	currency    shared.CurrencyCode? @default("USD")
 	categoryId  shared.NonEmptyID
-	tags        string[]?             @maxItems(20) @uniqueItems
+	tags        string[]?            @maxItems(20) @uniqueItems
 }

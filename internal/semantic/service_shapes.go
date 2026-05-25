@@ -20,10 +20,14 @@ func (a *analyzer) checkServiceMethods() {
 			} else {
 				seenName[m.Name] = m.Pos
 			}
-			key := m.Verb + " " + PathString(m.Path)
+			// Key the collision by path SHAPE — `/x/{id}` and `/x/{id1}`
+			// resolve to the same HTTP route, so the differing param
+			// name must not let them slip past. The displayed route
+			// keeps the literal form for clarity.
+			key := m.Verb + " " + PathShape(m.Path)
 			if prev, ok := seenRoute[key]; ok {
 				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateRoute,
-					"duplicate route %q", key)
+					"duplicate route %q", m.Verb+" "+PathString(m.Path))
 				d.Related = related(prev, "first declared here")
 			} else {
 				seenRoute[key] = m.Pos
@@ -51,6 +55,29 @@ func PathString(p *ast.Path) string {
 			sb.WriteByte('{')
 			sb.WriteString(s.Literal)
 			sb.WriteByte('}')
+		} else {
+			sb.WriteString(s.Literal)
+		}
+	}
+	return sb.String()
+}
+
+// PathShape is PathString with every {param} replaced by `{}`. Two
+// routes that route to the same HTTP destination have the same shape
+// even when their parameter names differ — e.g. `/u/{id}` and
+// `/u/{userId}` both reduce to `/u/{}`. Collision-detection keys
+// MUST use this rather than PathString, otherwise a parameter rename
+// silently bypasses the duplicate guard and net/http's mux panics at
+// boot when both routes try to register against the same pattern.
+func PathShape(p *ast.Path) string {
+	if p == nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, s := range p.Segments {
+		sb.WriteByte('/')
+		if s.Param {
+			sb.WriteString("{}")
 		} else {
 			sb.WriteString(s.Literal)
 		}

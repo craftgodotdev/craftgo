@@ -107,6 +107,51 @@ func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
 	}
 }
 
+// TestPathParamRenameStillCollides pins the bug where two routes
+// that differ ONLY in the path-param name (`{id}` vs `{id1}`) would
+// pass the duplicate check and crash net/http at boot. Both
+// same-service (caught by checkServiceMethods) and cross-service
+// (caught by path/collision) paths must fire.
+func TestPathParamRenameStillCollides(t *testing.T) {
+	t.Run("same service", func(t *testing.T) {
+		_, diags := Analyze(parseFiles(t, `type R {}
+service S {
+	get A /products/{id} { response R }
+	get B /products/{id1} { response R }
+}`))
+		if findCode(diags, CodeServiceDuplicateRoute) == nil {
+			t.Fatalf("rename-bypass must surface as duplicate-route; got %v", codes(diags))
+		}
+	})
+	t.Run("cross service", func(t *testing.T) {
+		_, diags := Analyze(parseFiles(t, `type R {}
+service A { get GetX /items/{id} { response R } }
+service B { get GetY /items/{itemId} { response R } }`))
+		if findCode(diags, CodePathCollision) == nil {
+			t.Fatalf("rename-bypass must surface across services; got %v", codes(diags))
+		}
+	})
+	t.Run("nested params", func(t *testing.T) {
+		// Multi-segment route with two params — different names in
+		// BOTH slots must still collapse to the same shape.
+		_, diags := Analyze(parseFiles(t, `type R {}
+service A { get GetX /u/{u}/o/{o} { response R } }
+service B { get GetY /u/{userId}/o/{orderId} { response R } }`))
+		if findCode(diags, CodePathCollision) == nil {
+			t.Fatalf("nested-param rename must collide; got %v", codes(diags))
+		}
+	})
+	t.Run("literal vs param does NOT collide", func(t *testing.T) {
+		// /products/abc and /products/{id} are different routes — net/http
+		// dispatches literals before params — so the shape gate must
+		// NOT false-positive here.
+		mustClean(t, `type R {}
+type Req { id string }
+service A { get GetX /products/abc { response R } }
+service B { get GetY /products/{id} { request Req  response R } }`)
+	})
+}
+
 // ---------- Path param consistency ----------
 
 func TestPathParamMatchesField(t *testing.T) {

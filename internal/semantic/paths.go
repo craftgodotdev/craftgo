@@ -70,7 +70,10 @@ func (a *analyzer) checkPathResolution() {
 
 			a.checkMethodPathParams(svcName, m, route)
 
-			key := routeKey{verb: verb, path: route}
+			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide — they
+			// register against the same net/http pattern at boot. The
+			// displayed route keeps the literal form for the diagnostic.
+			key := routeKey{verb: verb, path: routeShape(route)}
 			if prev, dup := seen[key]; dup && prev.service != svcName {
 				diag := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathCollision,
 					"method %s.%s resolves to %s %s, which already binds %s.%s",
@@ -85,6 +88,31 @@ func (a *analyzer) checkPathResolution() {
 			}
 		}
 	}
+}
+
+// routeShape strips parameter names from a resolved route string,
+// replacing every `{name}` segment with `{}`. Mirrors PathShape but
+// operates on the already-joined route (post-prefix, post-basePath)
+// that resolveMethodPath produces.
+func routeShape(route string) string {
+	var sb strings.Builder
+	sb.Grow(len(route))
+	i := 0
+	for i < len(route) {
+		if route[i] == '{' {
+			end := strings.IndexByte(route[i:], '}')
+			if end < 0 {
+				sb.WriteString(route[i:])
+				break
+			}
+			sb.WriteString("{}")
+			i += end + 1
+			continue
+		}
+		sb.WriteByte(route[i])
+		i++
+	}
+	return sb.String()
 }
 
 // checkBasePathFormat emits a warning when the configured basePath
