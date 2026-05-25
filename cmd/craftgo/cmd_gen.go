@@ -190,6 +190,7 @@ func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot 
 		cross := codegen.BuildCrossPkg(proj, cfg, name)
 		scalars := codegen.BuildScalarTable(proj, name)
 		projTypes := codegen.BuildTypeTable(proj, name)
+		projEnums := codegen.BuildEnumTable(proj, name)
 		steps := []struct {
 			label string
 			fn    func() error
@@ -197,7 +198,9 @@ func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot 
 			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, cross) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
 			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, cross) }},
-			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsWith(p, typesDir, cross, scalars, projTypes) }},
+			{"validators(" + name + ")", func() error {
+				return codegen.GenerateValidatorsAll(p, typesDir, cross, scalars, projTypes, projEnums)
+			}},
 		}
 		for _, s := range steps {
 			if err := s.fn(); err != nil {

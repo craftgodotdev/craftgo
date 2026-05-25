@@ -458,6 +458,94 @@ func projectFiles(t *testing.T, src map[string]string) (string, []*ast.File) {
 	return root, files
 }
 
+// TestValidateEmitsCrossPkgEnumAllShapes covers every shape a
+// cross-package enum field can take. Pre-fix all four landed as a
+// silent `return nil` — the per-package `pkg.Enums` lookup never
+// matched the qualified name and the switch-case validity check was
+// dropped. Fix routes resolution through the project-wide EnumTable
+// and registers the cross-package import on the validate.go file.
+func TestValidateEmitsCrossPkgEnumAllShapes(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/e.craftgo": `package shared
+enum Color { Red  Green  Blue }`,
+		"app/t.craftgo": `package app
+import "shared"
+type Pick {
+    one     shared.Color
+    many    shared.Color[]
+    maybe   shared.Color?
+    keyed   map<string, shared.Color>
+    keyEnum map<shared.Color, string>
+    both    map<shared.Color, shared.Color>
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
+		DesignRoot: root,
+		// Disable manifest-driven middleware-ref validation so the
+		// fixture stays minimal (no craftgo.design.yaml needed).
+	})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	appPkg := proj.Packages["app"]
+	cross := CrossPkg{"shared": "github.com/test/m/internal/types/shared"}
+	dir := t.TempDir()
+	if err := GenerateValidatorsAll(appPkg, dir, cross, nil, nil, BuildEnumTable(proj, "app")); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	// Direct field, array, optional, map value, map key, map both.
+	mustContainAll(t, src,
+		"switch v.One",
+		"shared.ColorRed, shared.ColorGreen, shared.ColorBlue",
+		"for i := range v.Many",
+		"if v.Maybe != nil",
+		"for _, val := range v.Keyed",
+		"for key := range v.KeyEnum",
+		"for key, val := range v.Both",
+		"github.com/test/m/internal/types/shared", // import registered
+	)
+	// gofmt -s simplification must not flag the output — CI's
+	// fmt-check runs `gofmt -l -s` and any rewrite there would fail.
+	mustContainNone(t, src,
+		"for key, _ := range",
+		"for _, _ := range",
+	)
+}
+
+// TestValidateWalksMapKeyUserType pins bug #5: a map keyed by a
+// user-defined type (with its own Validate method) was never walked
+// — only map values went through nestedValidateCall. Now the loop
+// emits a `for key := range m` walk and dispatches Validate on the
+// key side too.
+func TestValidateWalksMapKeyUserType(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/t.craftgo": `package shared
+type User { id string @length(1, 64) }`,
+		"app/t.craftgo": `package app
+import "shared"
+type Bag { byUser map<shared.User, string> }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	appPkg := proj.Packages["app"]
+	dir := t.TempDir()
+	if err := GenerateValidatorsAll(appPkg, dir, nil, nil, BuildTypeTable(proj, "app"), nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, src,
+		"for key := range v.ByUser",
+		"key.Validate()",
+	)
+}
+
 // TestValidateOmitsCallWhenNoTypeTable pins the legacy fallback:
 // callers that don't pass a TypeTable (single-package tests,
 // pre-TypeTable callers) keep the old behaviour — qualified refs

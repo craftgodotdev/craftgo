@@ -104,6 +104,38 @@ func BuildTypeTable(proj *semantic.Project, currentPkgName string) TypeTable {
 	return out
 }
 
+// EnumTable is the per-target-package lookup of EnumDecls reachable
+// from the package being generated. Local enums are keyed bare
+// (`Color`); cross-package enums by qualified DSL form
+// (`shared.Color`). The validator codegen consults this so a field
+// typed `color shared.Color` emits the switch-case validity check
+// — without it, the local-only `pkg.Enums` lookup missed every
+// qualified ref and the wire could carry an unknown enum value
+// without a diagnostic.
+type EnumTable map[string]*ast.EnumDecl
+
+// BuildEnumTable returns the lookup table for `currentPkgName`. Every
+// enum declared anywhere in the project is included once.
+func BuildEnumTable(proj *semantic.Project, currentPkgName string) EnumTable {
+	if proj == nil {
+		return nil
+	}
+	out := EnumTable{}
+	for pkgName, p := range proj.Packages {
+		if p == nil {
+			continue
+		}
+		for ename, ed := range p.Enums {
+			if pkgName == "" || pkgName == currentPkgName {
+				out[ename] = ed
+				continue
+			}
+			out[pkgName+"."+ename] = ed
+		}
+	}
+	return out
+}
+
 // BuildCrossPkg returns a fully-populated lookup table for every
 // non-current package in the project. The current package is
 // excluded so a self-reference (`design.Foo` inside `package design`)

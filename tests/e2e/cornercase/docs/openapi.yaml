@@ -3794,6 +3794,51 @@ components:
       required:
       - results
       type: object
+    XPkgEnum:
+      description: |-
+        XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
+        take inside a single field. Each form previously slipped past the
+        validator because the per-package `pkg.Enums` lookup is local-only;
+        the fix routes resolution through the project-wide EnumTable so
+        every shape now emits the switch-case validity check. The fixture
+        keeps drift coverage on the gen output for every shape.
+
+          - flat:      `shared.Severity` direct field   → switch wrapped by shape().
+          - many:      `shared.Severity[]`              → for-range + switch.
+          - maybe:     `shared.Severity?`               → nil-check + switch.
+          - byString:  `map<string, shared.Severity>`   → for-range value walk.
+          - byEnum:    `map<shared.Severity, string>`   → for-range key walk.
+          - bothEnum:  `map<shared.Severity, shared.Severity>` → both sides switch.
+      properties:
+        bothEnum:
+          additionalProperties:
+            $ref: '#/components/schemas/Severity'
+          type: object
+        byEnum:
+          additionalProperties:
+            type: string
+          type: object
+        byString:
+          additionalProperties:
+            $ref: '#/components/schemas/Severity'
+          type: object
+        flat:
+          $ref: '#/components/schemas/Severity'
+        many:
+          items:
+            $ref: '#/components/schemas/Severity'
+          type: array
+        maybe:
+          allOf:
+          - $ref: '#/components/schemas/Severity'
+          nullable: true
+      required:
+      - flat
+      - many
+      - byString
+      - byEnum
+      - bothEnum
+      type: object
   securitySchemes:
     AdminBearer:
       bearerFormat: JWT

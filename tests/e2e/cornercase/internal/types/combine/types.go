@@ -2,6 +2,10 @@
 
 package combine
 
+import (
+	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/shared"
+)
+
 // PageSize is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
 type PageSize = int
 
@@ -156,4 +160,26 @@ type PresenceMatrix struct {
 	BothNullable *string `json:"bothNullable,omitempty"`
 	DefValue     *string `json:"defValue,omitempty"`
 	DefNullable  *string `json:"defNullable,omitempty"`
+}
+
+// XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
+// take inside a single field. Each form previously slipped past the
+// validator because the per-package `pkg.Enums` lookup is local-only;
+// the fix routes resolution through the project-wide EnumTable so
+// every shape now emits the switch-case validity check. The fixture
+// keeps drift coverage on the gen output for every shape.
+//
+//   - flat:      `shared.Severity` direct field   → switch wrapped by shape().
+//   - many:      `shared.Severity[]`              → for-range + switch.
+//   - maybe:     `shared.Severity?`               → nil-check + switch.
+//   - byString:  `map<string, shared.Severity>`   → for-range value walk.
+//   - byEnum:    `map<shared.Severity, string>`   → for-range key walk.
+//   - bothEnum:  `map<shared.Severity, shared.Severity>` → both sides switch.
+type XPkgEnum struct {
+	Flat     shared.Severity                     `json:"flat"`
+	Many     []shared.Severity                   `json:"many"`
+	Maybe    *shared.Severity                    `json:"maybe,omitempty"`
+	ByString map[string]shared.Severity          `json:"byString"`
+	ByEnum   map[shared.Severity]string          `json:"byEnum"`
+	BothEnum map[shared.Severity]shared.Severity `json:"bothEnum"`
 }

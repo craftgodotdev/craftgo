@@ -4,6 +4,7 @@ package combine
 
 import (
 	"fmt"
+	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/shared"
 	"net/mail"
 	"regexp"
 )
@@ -162,5 +163,56 @@ func (v *PairsStr) Validate() error {
 // Validate checks every field-level constraint declared on PresenceMatrix.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PresenceMatrix) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XPkgEnum.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XPkgEnum) Validate() error {
+	switch v.Flat {
+	case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+	default:
+		return fmt.Errorf("flat: invalid Severity value")
+	}
+	for i := range v.Many {
+		switch v.Many[i] {
+		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+		default:
+			return fmt.Errorf("many: invalid Severity value")
+		}
+	}
+	if v.Maybe != nil {
+		switch *v.Maybe {
+		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+		default:
+			return fmt.Errorf("maybe: invalid Severity value")
+		}
+	}
+	for _, val := range v.ByString {
+		switch val {
+		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+		default:
+			return fmt.Errorf("byString value: invalid Severity value")
+		}
+	}
+	for key := range v.ByEnum {
+		switch key {
+		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+		default:
+			return fmt.Errorf("byEnum key: invalid Severity value")
+		}
+	}
+	for key, val := range v.BothEnum {
+		switch key {
+		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+		default:
+			return fmt.Errorf("bothEnum key: invalid Severity value")
+		}
+		switch val {
+		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
+		default:
+			return fmt.Errorf("bothEnum value: invalid Severity value")
+		}
+	}
 	return nil
 }

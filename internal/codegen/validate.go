@@ -93,8 +93,17 @@ func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg Cr
 //
 // Used by the multi-package CLI flow; single-package fixtures and
 // tests continue calling [GenerateValidators] / [GenerateValidatorsPackage]
-// which pass nil for both tables.
+// which pass nil for the tables.
 func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable) error {
+	return GenerateValidatorsAll(pkg, outDir, crossPkg, scalars, types, nil)
+}
+
+// GenerateValidatorsAll is the most-explicit entry point: the
+// [EnumTable] enables cross-package enum value-set checks (a field
+// typed `shared.Color` lands its `switch case shared.ColorRed, ...`
+// + the right import). Existing callers can keep passing nil for
+// the enum table; the legacy local-only behaviour is preserved.
+func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable, enums EnumTable) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -102,7 +111,7 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	data := buildValidateData(pkg, scalars, types)
+	data := buildValidateData(pkg, scalars, types, enums, crossPkg)
 	formatted, err := renderGo(tmpl("validate.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render validate.go: %w", err)
@@ -123,12 +132,12 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 // field whose declared type is a scalar gains the scalar's own
 // `@format` / `@length` / `@min` / etc. validators on top of the
 // field-level chain. See [scalarInheritedDecorators].
-func buildValidateData(pkg *semantic.Package, scalars ScalarTable, projTypes TypeTable) validateData {
+func buildValidateData(pkg *semantic.Package, scalars ScalarTable, projTypes TypeTable, projEnums EnumTable, crossPkg CrossPkg) validateData {
 	names := sortedKeys(pkg.Types)
 
 	uses := map[string]bool{}
 	regexes := newRegexRegistry()
-	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes}
+	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes, enums: projEnums, crossPkg: crossPkg}
 	var types []validatorType
 	for _, name := range names {
 		td := pkg.Types[name]
@@ -200,7 +209,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable,
 				}
 				continue
 			}
-			if call := enumValueCheck(v, pkg, ctx.uses); call != "" {
+			if call := enumValueCheck(v, pkg, ctx.enums, ctx.crossPkg, ctx.uses); call != "" {
 				out = append(out, call)
 			}
 			if nested := nestedValidateCall(v, pkg, projTypes); nested != "" {

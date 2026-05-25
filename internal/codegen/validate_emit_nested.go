@@ -9,35 +9,131 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func enumValueCheck(f *ast.Field, pkg *semantic.Package, uses map[string]bool) string {
-	if pkg == nil || f == nil || f.Type == nil || f.Type.Map != nil || f.Type.Named == nil {
+func enumValueCheck(f *ast.Field, pkg *semantic.Package, enums EnumTable, crossPkg CrossPkg, uses map[string]bool) string {
+	if pkg == nil || f == nil || f.Type == nil {
 		return ""
 	}
-	ed, ok := pkg.Enums[f.Type.Named.Name.String()]
-	if !ok || len(ed.EnumValues()) == 0 {
+	access := "v." + GoFieldName(f.Name)
+	// Map case: walk both sides independently. A map slot may carry
+	// an enum on either the key OR the value (or both); we only emit
+	// a range loop when at least one side resolves. Map keys / values
+	// can't be array-or-optional in the DSL, so the per-side body is
+	// always a direct switch — no shape() wrapping needed.
+	if f.Type.Map != nil {
+		var keyEd, valEd *ast.EnumDecl
+		var keyQual, valQual string
+		if k := f.Type.Map.Key; k != nil && k.Named != nil {
+			keyEd, keyQual = resolveEnumNamed(k.Named, pkg, enums, crossPkg, uses)
+		}
+		if v := f.Type.Map.Value; v != nil && v.Named != nil {
+			valEd, valQual = resolveEnumNamed(v.Named, pkg, enums, crossPkg, uses)
+		}
+		if keyEd == nil && valEd == nil {
+			return ""
+		}
+		uses["fmt"] = true
+		var stmts []string
+		if keyEd != nil {
+			stmts = append(stmts, enumSwitchBody(keyEd, keyQual, "key", f.Name+" key"))
+		}
+		if valEd != nil {
+			stmts = append(stmts, enumSwitchBody(valEd, valQual, "val", f.Name+" value"))
+		}
+		return mapRangeLoop(access, keyEd != nil, valEd != nil, strings.Join(stmts, "\n"))
+	}
+	if f.Type.Named == nil {
+		return ""
+	}
+	ed, qualifier := resolveEnumNamed(f.Type.Named, pkg, enums, crossPkg, uses)
+	if ed == nil || len(ed.EnumValues()) == 0 {
 		return ""
 	}
 	uses["fmt"] = true
-	access := "v." + GoFieldName(f.Name)
-	caseList := enumCaseList(ed)
-	msg := fmt.Sprintf(`"%s: invalid %s value"`, f.Name, ed.Name)
 	return shape(f, access, func(elem string) string {
-		return fmt.Sprintf(`switch %s {
+		return enumSwitchBody(ed, qualifier, elem, f.Name)
+	})
+}
+
+// resolveEnumNamed returns (EnumDecl, qualifier) when the named ref
+// resolves to an enum reachable from the package being generated.
+// qualifier carries the Go package prefix (e.g. `"shared."`) for
+// cross-package enums and is empty for local ones — so the emitted
+// case list stays bare for the long-standing single-package shape
+// and prefixes only when the constants live in a sibling package.
+// Side effect: when the ref is cross-package, the resolver also
+// registers the target's Go import path in uses, so validate.go can
+// reference `shared.ColorRed` and friends.
+func resolveEnumNamed(n *ast.NamedTypeRef, pkg *semantic.Package, enums EnumTable, crossPkg CrossPkg, uses map[string]bool) (*ast.EnumDecl, string) {
+	if n == nil || n.Name == nil {
+		return nil, ""
+	}
+	name := n.Name.String()
+	if ed, ok := pkg.Enums[name]; ok {
+		return ed, ""
+	}
+	if enums == nil {
+		return nil, ""
+	}
+	ed, ok := enums[name]
+	if !ok {
+		return nil, ""
+	}
+	parts := n.Name.Parts
+	if len(parts) != 2 {
+		return ed, ""
+	}
+	qualifier := parts[0] + "."
+	if crossPkg != nil {
+		if path := crossPkg[parts[0]]; path != "" {
+			uses[path] = true
+		}
+	}
+	return ed, qualifier
+}
+
+// enumSwitchBody renders the standard `switch expr { case ... default:
+// return ... }` block. Centralised so direct-field, array, optional,
+// and map-side emitters share identical output formatting.
+func enumSwitchBody(ed *ast.EnumDecl, qualifier, expr, label string) string {
+	return fmt.Sprintf(`switch %s {
 case %s:
 default:
 return fmt.Errorf(%s)
-}`, elem, caseList, msg)
-	})
+}`, expr, enumCaseList(ed, qualifier), fmt.Sprintf(`"%s: invalid %s value"`, label, ed.Name))
+}
+
+// mapRangeLoop returns the `for ... range m { body }` boilerplate
+// for a map walk. The form is gofmt -s aware: when only one side
+// is consumed it elides the second loop variable
+// (`for key := range m`, `for _, val := range m`) instead of
+// emitting `for key, _ := range m` which the simplifier would
+// rewrite — keeping `make fmt-check` clean.
+func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
+	switch {
+	case keyHas && valHas:
+		return fmt.Sprintf("for key, val := range %s {\n%s\n}", access, body)
+	case keyHas:
+		return fmt.Sprintf("for key := range %s {\n%s\n}", access, body)
+	case valHas:
+		return fmt.Sprintf("for _, val := range %s {\n%s\n}", access, body)
+	default:
+		// Defensive: callers gate on at-least-one side; an empty
+		// loop is meaningless and gofmt strips it anyway.
+		return ""
+	}
 }
 
 // enumCaseList renders the comma-separated list of fully-qualified
 // constant names matching `<EnumName><PascalCase(ValueName)>`, the same
-// naming convention `enums.go` uses.
-func enumCaseList(ed *ast.EnumDecl) string {
+// naming convention `enums.go` uses. When the enum lives in a sibling
+// DSL package, qualifier carries the Go package prefix (e.g.
+// `"shared."`) so the case list compiles against the cross-package
+// constants.
+func enumCaseList(ed *ast.EnumDecl, qualifier string) string {
 	enumVals := ed.EnumValues()
 	parts := make([]string, 0, len(enumVals))
 	for _, v := range enumVals {
-		parts = append(parts, ed.Name+GoFieldName(v.Name))
+		parts = append(parts, qualifier+ed.Name+GoFieldName(v.Name))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -93,30 +189,44 @@ func nestedValidateCall(f *ast.Field, pkg *semantic.Package, projTypes TypeTable
 return err
 }`, elem)
 	}
-	// Map: walk the values. A map value that is a user-defined type
-	// (or an array / optional thereof) carries its own Validate().
-	// Skipping the walk would leave `map<K, User>` entries unchecked
-	// and silently break the recursive-validation contract.
+	// Map: walk both keys AND values. Either side may be a user-
+	// defined type (or array / optional thereof on the value side)
+	// that carries its own Validate(). Map keys can't be array or
+	// optional in the DSL grammar, so the key side stays flat.
+	// Skipping the walk would leave `map<K, User>` / `map<UserID, V>`
+	// (where UserID is a struct-shaped type — uncommon but legal)
+	// entries unchecked and silently break the recursive-validation
+	// contract.
 	if f.Type.Map != nil {
+		k := f.Type.Map.Key
 		v := f.Type.Map.Value
-		if !typeRefHasValidator(v, pkg, projTypes) {
+		keyHas := typeRefHasValidator(k, pkg, projTypes)
+		valHas := typeRefHasValidator(v, pkg, projTypes)
+		if !keyHas && !valHas {
 			return ""
 		}
-		// Element-access expression for one map value, wrapped in
-		// optional / array shape as needed.
-		switch {
-		case v.Array:
-			depth := v.ArrayDepth
-			if depth < 1 {
-				depth = 1
-			}
-			inner := emitNestedForLoops("val", depth, body)
-			return fmt.Sprintf("for _, val := range %s {\n%s\n}", access, inner)
-		case v.Optional:
-			return fmt.Sprintf("for _, val := range %s {\nif val != nil {\n%s\n}\n}", access, body("val"))
-		default:
-			return fmt.Sprintf("for _, val := range %s {\n%s\n}", access, body("val"))
+		var stmts []string
+		if keyHas {
+			stmts = append(stmts, body("key"))
 		}
+		if valHas {
+			// Value-side shape: arrays of struct elements need nested
+			// for-loops; optionals need a nil-guard; otherwise call
+			// directly.
+			switch {
+			case v.Array:
+				depth := v.ArrayDepth
+				if depth < 1 {
+					depth = 1
+				}
+				stmts = append(stmts, emitNestedForLoops("val", depth, body))
+			case v.Optional:
+				stmts = append(stmts, fmt.Sprintf("if val != nil {\n%s\n}", body("val")))
+			default:
+				stmts = append(stmts, body("val"))
+			}
+		}
+		return mapRangeLoop(access, keyHas, valHas, strings.Join(stmts, "\n"))
 	}
 	if f.Type.Named == nil {
 		return ""
