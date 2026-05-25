@@ -34,10 +34,31 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		}}
 	}
 	if t.Map != nil {
-		return &openapi3.SchemaRef{Value: &openapi3.Schema{
+		s := &openapi3.Schema{
 			Type:                 &openapi3.Types{"object"},
 			AdditionalProperties: openapi3.AdditionalProperties{Schema: schemaForTypeRef(t.Map.Value, pkg, registry)},
-		}}
+		}
+		// R1/R2: OpenAPI 3.1's `propertyNames` constrains the object
+		// keys. JSON keys are always strings on the wire, so plain
+		// string keys carry no extra constraint — but an enum key
+		// implies a closed value-set and a scalar key carries the
+		// scalar's own validators (length / pattern / format). Without
+		// this emit `map<Color, V>` and `map<EmailID, V>` flatten to
+		// untyped string keys and the generated TS / Java client SDK
+		// accepts garbage keys.
+		//
+		// kin-openapi v0.124 doesn't model `propertyNames` natively
+		// (it's primarily an OpenAPI 3.0 library; craftgo emits the
+		// 3.1 version string and uses 3.1-only fields via Extensions).
+		// The Extensions map marshals as top-level YAML keys so the
+		// rendered output reads identically to a native field.
+		if pn := propertyNamesForMapKey(t.Map.Key, pkg); pn != nil {
+			if s.Extensions == nil {
+				s.Extensions = make(map[string]interface{})
+			}
+			s.Extensions["propertyNames"] = pn
+		}
+		return &openapi3.SchemaRef{Value: s}
 	}
 	if t.Named != nil {
 		name := t.Named.Name.String()
@@ -79,6 +100,140 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		return &openapi3.SchemaRef{Ref: "#/components/schemas/" + name}
 	}
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
+}
+
+// propertyNamesForMapKey returns the OpenAPI 3.1 `propertyNames`
+// schema constraint for a map key TypeRef, or nil when the key
+// carries no constraint beyond "must be a JSON string".
+//
+// Coverage:
+//   - enum key  → `enum: [values...]` (closed set)
+//   - scalar key with string primitive → inherits scalar's
+//     `minLength` / `maxLength` / `pattern` / `format`
+//   - bare `string` key → nil (no extra constraint)
+//   - non-string scalar key → nil (the wire serialisation would
+//     stringify, but expressing the underlying numeric constraint
+//     via propertyNames is unsupported by every common client SDK
+//     generator — emitting nothing is safer than emitting a
+//     misleading constraint)
+//
+// Resolves through the merged package (OpenAPI generation runs after
+// [mergeProjectForOpenAPI], which rewrites cross-package qualified
+// refs to bare names) so cross-pkg keys land here without a
+// project-resolver detour.
+func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Schema {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
+		return nil
+	}
+	name := t.Named.Name.String()
+	if name == "string" {
+		return nil
+	}
+	if pkg == nil {
+		return nil
+	}
+	if ed, ok := pkg.Enums[name]; ok && ed != nil {
+		values := ed.EnumValues()
+		out := make([]any, 0, len(values))
+		for _, v := range values {
+			out = append(out, v.Name)
+		}
+		return &openapi3.Schema{
+			Type: &openapi3.Types{"string"},
+			Enum: out,
+		}
+	}
+	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
+		// Inherit the scalar's own string constraints — length /
+		// pattern / format — so the map key constraint mirrors what
+		// a bare-field of the same scalar type would receive in its
+		// schema. Decorators not relevant to keys (`@gte`, `@minItems`)
+		// are filtered by the underlying string-only emit.
+		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
+		applyScalarStringDecorators(s, sc.Decorators)
+		return s
+	}
+	return nil
+}
+
+// applyScalarStringDecorators copies the string-shape constraints a
+// scalar declares (`@minLength`, `@maxLength`, `@pattern`, `@format`)
+// onto an OpenAPI schema. Centralised so the map-key `propertyNames`
+// path and the existing scalar-component emit agree on which
+// decorators are key-applicable.
+func applyScalarStringDecorators(s *openapi3.Schema, decs []*ast.Decorator) {
+	for _, d := range decs {
+		if d == nil || len(d.Args) == 0 {
+			continue
+		}
+		switch d.Name {
+		case "minLength":
+			if n, ok := intArgValue(d.Args[0]); ok {
+				v := uint64(n)
+				s.MinLength = v
+			}
+		case "maxLength":
+			if n, ok := intArgValue(d.Args[0]); ok {
+				v := uint64(n)
+				s.MaxLength = &v
+			}
+		case "length":
+			// `@length(min, max)` — two-arg form.
+			if len(d.Args) == 2 {
+				if mn, ok := intArgValue(d.Args[0]); ok {
+					s.MinLength = uint64(mn)
+				}
+				if mx, ok := intArgValue(d.Args[1]); ok {
+					v := uint64(mx)
+					s.MaxLength = &v
+				}
+			} else if n, ok := intArgValue(d.Args[0]); ok {
+				// Single-arg `@length(N)` — exact length, fold into
+				// both bounds.
+				v := uint64(n)
+				s.MinLength = v
+				s.MaxLength = &v
+			}
+		case "pattern":
+			if str, ok := stringArgValue(d.Args[0]); ok {
+				s.Pattern = str
+			}
+		case "format":
+			if str, ok := stringArgValue(d.Args[0]); ok {
+				s.Format = str
+			}
+		}
+	}
+}
+
+// intArgValue extracts the int64 value from a decorator argument when
+// the expression is an [ast.IntLit]. Returns (0, false) otherwise.
+func intArgValue(a *ast.DecoratorArg) (int64, bool) {
+	if a == nil {
+		return 0, false
+	}
+	if lit, ok := a.Value.(*ast.IntLit); ok {
+		return lit.Value, true
+	}
+	return 0, false
+}
+
+// stringArgValue extracts the string value from a decorator argument
+// when the expression is an [ast.StringLit] or an [ast.IdentExpr]
+// (some decorators accept enum-ident shortcuts for format names).
+func stringArgValue(a *ast.DecoratorArg) (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	switch v := a.Value.(type) {
+	case *ast.StringLit:
+		return v.Value, true
+	case *ast.IdentExpr:
+		if v.Name != nil && len(v.Name.Parts) > 0 {
+			return v.Name.Parts[len(v.Name.Parts)-1], true
+		}
+	}
+	return "", false
 }
 
 // instantiateGeneric builds the schema body for one generic instance

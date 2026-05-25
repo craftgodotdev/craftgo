@@ -122,21 +122,32 @@ components:
       minimum: 0
       type: integer
     Contact:
-      properties:
-        email:
-          allOf:
-          - $ref: '#/components/schemas/Email'
-          nullable: true
-        personal:
-          nullable: true
-          type: boolean
-        phone:
-          nullable: true
-          pattern: ^\+?[0-9 ()-]{6,20}$
-          type: string
-        work:
-          nullable: true
-          type: boolean
+      allOf:
+      - properties:
+          email:
+            allOf:
+            - $ref: '#/components/schemas/Email'
+            nullable: true
+          personal:
+            nullable: true
+            type: boolean
+          phone:
+            nullable: true
+            pattern: ^\+?[0-9 ()-]{6,20}$
+            type: string
+          work:
+            nullable: true
+            type: boolean
+        type: object
+      - anyOf:
+        - required:
+          - email
+        - required:
+          - phone
+      - not:
+          required:
+          - work
+          - personal
       type: object
     CountryCode:
       maxLength: 2

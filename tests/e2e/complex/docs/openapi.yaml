@@ -487,9 +487,21 @@ components:
         bothEnum:
           additionalProperties:
             $ref: '#/components/schemas/XColor'
+          propertyNames:
+            enum:
+            - Red
+            - Green
+            - Blue
+            type: string
           type: object
         byEnum:
           additionalProperties:
+            type: string
+          propertyNames:
+            enum:
+            - Red
+            - Green
+            - Blue
             type: string
           type: object
         byString:

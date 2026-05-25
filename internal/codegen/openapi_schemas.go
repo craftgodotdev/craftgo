@@ -196,6 +196,16 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 			})
 		}
 	}
+	// R3: cross-field type-level constraints render as schema-level
+	// `anyOf` (`@requiresOneOf`) and `not.required` (`@mutuallyExclusive`)
+	// fragments. These complement the runtime validator (which fires
+	// inside Validate()) by making the same contract visible to spec-
+	// driven consumers — generated TS / Java SDKs, Swagger UI, schema
+	// fuzzers. Without this emit, the API doc claims every listed
+	// field is independent but the server quietly rejects "all-absent"
+	// or "both-present" payloads.
+	crossFragments := crossFieldSchemaFragments(td.Decorators)
+
 	// Apply allOf with the mixin refs PLUS the host's own properties
 	// when at least one mixin contributed. Without mixins we keep the
 	// flat object shape so simple cases stay readable in YAML output.
@@ -206,9 +216,81 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 			Required:   s.Required,
 		}
 		mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
+		mixinRefs = append(mixinRefs, crossFragments...)
 		s.Properties = nil
 		s.Required = nil
 		s.AllOf = mixinRefs
+		return s
+	}
+	if len(crossFragments) > 0 {
+		// No mixin to host an allOf wrapper; promote the existing
+		// properties into one and append the cross-field fragments
+		// so the schema reads as "host shape AND constraint AND
+		// constraint…". This keeps the per-property metadata
+		// (descriptions, formats) intact instead of inlining them
+		// at the allOf level where it would lose the host's `type:
+		// object` marker.
+		host := &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: s.Properties,
+			Required:   s.Required,
+		}
+		s.Properties = nil
+		s.Required = nil
+		s.AllOf = append(openapi3.SchemaRefs{{Value: host}}, crossFragments...)
 	}
 	return s
+}
+
+// crossFieldSchemaFragments returns one schema-level fragment per
+// `@requiresOneOf` / `@mutuallyExclusive` on the type, ready to drop
+// into an `allOf` chain. Empty result means no cross-field
+// constraints — the caller keeps the flat object shape.
+//
+// Encoding:
+//
+//	@requiresOneOf(a, b, c) → `anyOf: [{required:[a]}, {required:[b]}, {required:[c]}]`
+//	    JSON Schema `anyOf` requires ≥1 branch to match; each branch
+//	    asserts ONE listed field is present → at least one of the
+//	    listed fields must be present.
+//
+//	@mutuallyExclusive(a, b) → `not: { required: [a, b] }`
+//	    JSON Schema `required` is conjunctive: `required:[a,b]` =
+//	    "both must be present". Negating → "must NOT have BOTH" =
+//	    at most one of a/b present.
+//
+// Both decorators may appear together on the same type (e.g. "at
+// least one of these AND no two of these"); each fragment lands
+// independently in the allOf chain so the constraints compose.
+func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
+	var out openapi3.SchemaRefs
+	for _, d := range decs {
+		switch d.Name {
+		case "requiresOneOf":
+			names := dedupeStrings(stringArrayDecoratorArg(d))
+			if len(names) == 0 {
+				continue
+			}
+			branches := make(openapi3.SchemaRefs, 0, len(names))
+			for _, n := range names {
+				branches = append(branches, &openapi3.SchemaRef{Value: &openapi3.Schema{
+					Required: []string{n},
+				}})
+			}
+			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
+				AnyOf: branches,
+			}})
+		case "mutuallyExclusive":
+			names := dedupeStrings(stringArrayDecoratorArg(d))
+			if len(names) < 2 {
+				continue
+			}
+			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
+				Not: &openapi3.SchemaRef{Value: &openapi3.Schema{
+					Required: append([]string(nil), names...),
+				}},
+			}})
+		}
+	}
+	return out
 }

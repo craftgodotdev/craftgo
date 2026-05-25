@@ -1703,6 +1703,10 @@ components:
         index:
           additionalProperties:
             $ref: '#/components/schemas/CollectionsEmail'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+            type: string
           type: object
       required:
       - index
@@ -1781,6 +1785,10 @@ components:
         index:
           additionalProperties:
             $ref: '#/components/schemas/CollectionsEmail'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+            type: string
           type: object
       required:
       - index
@@ -1917,6 +1925,28 @@ components:
       - id
       type: object
     NestedUser:
+      allOf:
+      - properties:
+          addr:
+            $ref: '#/components/schemas/NestedAddress'
+          alias:
+            nullable: true
+            type: string
+          boss:
+            allOf:
+            - $ref: '#/components/schemas/NestedUser'
+            nullable: true
+          name:
+            nullable: true
+            type: string
+        required:
+        - addr
+        type: object
+      - anyOf:
+        - required:
+          - name
+        - required:
+          - alias
       description: |-
         User couples an addr to a self-referential optional boss + an
         optional alias for the cross-field-validator showcase below.
@@ -1928,21 +1958,6 @@ components:
         `@requiresOneOf(name, alias)` rides on User to demonstrate that
         type-level cross-field validators COMPOSE with nested validation
         - the cross-field check runs AFTER every nested Validate() call.
-      properties:
-        addr:
-          $ref: '#/components/schemas/NestedAddress'
-        alias:
-          nullable: true
-          type: string
-        boss:
-          allOf:
-          - $ref: '#/components/schemas/NestedUser'
-          nullable: true
-        name:
-          nullable: true
-          type: string
-      required:
-      - addr
       type: object
     Node:
       description: |-
@@ -2686,6 +2701,29 @@ components:
       - tags
       type: object
     PairsChoice:
+      allOf:
+      - properties:
+          a:
+            nullable: true
+            type: string
+          b:
+            nullable: true
+            type: string
+          c:
+            nullable: true
+            type: string
+        type: object
+      - not:
+          required:
+          - a
+          - b
+      - anyOf:
+        - required:
+          - a
+        - required:
+          - b
+        - required:
+          - c
       description: |-
         PairsChoice puts @mutuallyExclusive and @requiresOneOf on the same
         type with overlapping field references. The semantics layer should
@@ -2697,32 +2735,29 @@ components:
         So `c` alone satisfies the file, and `a` alone or `b` alone is also
         valid; sending both `a` and `b` fails the exclusivity check even if
         `c` is absent.
-      properties:
-        a:
-          nullable: true
-          type: string
-        b:
-          nullable: true
-          type: string
-        c:
-          nullable: true
-          type: string
       type: object
     PairsContact:
+      allOf:
+      - properties:
+          email:
+            format: email
+            nullable: true
+            type: string
+          phone:
+            nullable: true
+            pattern: ^\+\d+$
+            type: string
+        type: object
+      - anyOf:
+        - required:
+          - email
+        - required:
+          - phone
       description: |-
         PairsContact pairs a type-level @requiresOneOf with two per-field
         decorator stacks. The wire payload must carry at least one of email
         / phone; when present, each field is independently validated by its
         own decorator chain.
-      properties:
-        email:
-          format: email
-          nullable: true
-          type: string
-        phone:
-          nullable: true
-          pattern: ^\+\d+$
-          type: string
       type: object
     PairsNum:
       description: |-
@@ -3813,9 +3848,23 @@ components:
         bothEnum:
           additionalProperties:
             $ref: '#/components/schemas/Severity'
+          propertyNames:
+            enum:
+            - Info
+            - Warning
+            - Error
+            - Critical
+            type: string
           type: object
         byEnum:
           additionalProperties:
+            type: string
+          propertyNames:
+            enum:
+            - Info
+            - Warning
+            - Error
+            - Critical
             type: string
           type: object
         byString:
