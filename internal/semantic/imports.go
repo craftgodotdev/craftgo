@@ -180,6 +180,23 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 	if !packageHasSymbol(target, sym) {
 		r.diag(n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
 			"package %q has no symbol %q", pkgName, sym)
+		return
+	}
+	// Arity check for qualified generic refs. The per-package generics
+	// pass (checkGenerics) skips qualified names — it only sees the
+	// local symbol table — so this is the single site that catches
+	// `shared.Page` (declared as `Page<T>`) being used without `<…>`.
+	if td := target.Types[sym]; td != nil {
+		want := len(td.TypeParams)
+		got := len(n.Args)
+		switch {
+		case want == 0 && got > 0:
+			r.diag(n.Pos, lexer.SeverityError, CodeGenericNonGeneric,
+				"%s.%s is not a generic type but received %d argument(s)", pkgName, sym, got)
+		case want > 0 && got != want:
+			r.diag(n.Pos, lexer.SeverityError, CodeGenericArity,
+				"%s.%s expects %d generic argument(s), got %d", pkgName, sym, want, got)
+		}
 	}
 }
 

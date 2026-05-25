@@ -33,6 +33,44 @@ func TestBuildCrossPkgResolves(t *testing.T) {
 	}
 }
 
+// TestBuildTypeTableKeysQualifiedAcrossPackages pins the lookup
+// shape that nestedValidateCall depends on: local types appear bare,
+// cross-package types appear under their qualified DSL form. Without
+// this the qualified-ref recursive validate call (`v.Page.Validate()`
+// for `page shared.Page<ProductRef>`) is silently dropped.
+func TestBuildTypeTableKeysQualifiedAcrossPackages(t *testing.T) {
+	proj := &semantic.Project{
+		Packages: map[string]*semantic.Package{
+			"design": {
+				Name:  "design",
+				Types: map[string]*ast.TypeDecl{"Product": {Name: "Product"}},
+			},
+			"shared": {
+				Name: "shared",
+				Types: map[string]*ast.TypeDecl{
+					"Page": {Name: "Page", TypeParams: []string{"T"}},
+				},
+			},
+		},
+	}
+	tbl := BuildTypeTable(proj, "design")
+	if _, ok := tbl["Product"]; !ok {
+		t.Errorf("local type should be keyed bare: %v", tbl)
+	}
+	if _, ok := tbl["shared.Page"]; !ok {
+		t.Errorf("cross-pkg generic must appear under qualified form: %v", tbl)
+	}
+	if _, ok := tbl["Page"]; ok {
+		t.Errorf("cross-pkg type must NOT leak under bare name (would shadow local lookups): %v", tbl)
+	}
+}
+
+func TestBuildTypeTableNilProjectReturnsNil(t *testing.T) {
+	if BuildTypeTable(nil, "any") != nil {
+		t.Error("nil project should return nil")
+	}
+}
+
 func TestBuildCrossPkgReturnsNilOnNilInputs(t *testing.T) {
 	if BuildCrossPkg(nil, &config.Config{}, "") != nil {
 		t.Error("nil project should return nil")

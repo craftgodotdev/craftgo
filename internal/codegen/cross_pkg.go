@@ -71,6 +71,39 @@ func BuildScalarTable(proj *semantic.Project, currentPkgName string) ScalarTable
 	return out
 }
 
+// TypeTable is the per-target-package lookup of TypeDecls reachable
+// from the package being generated. Mirrors [ScalarTable] but for
+// struct-shaped types: local types are keyed by bare name (`Order`),
+// cross-package types by qualified form (`shared.Page`). The codegen
+// consults the table to decide whether a field type carries its own
+// `Validate()` method — without it, qualified refs like
+// `shared.Page<T>` slipped past `pkg.Types` (local-only) and the
+// recursive validate call was silently dropped.
+type TypeTable map[string]*ast.TypeDecl
+
+// BuildTypeTable returns the lookup table for `currentPkgName`.
+// Every type declared anywhere in the project is included once,
+// qualified for cross-package entries the same way scalars are.
+func BuildTypeTable(proj *semantic.Project, currentPkgName string) TypeTable {
+	if proj == nil {
+		return nil
+	}
+	out := TypeTable{}
+	for pkgName, p := range proj.Packages {
+		if p == nil {
+			continue
+		}
+		for tname, td := range p.Types {
+			if pkgName == "" || pkgName == currentPkgName {
+				out[tname] = td
+				continue
+			}
+			out[pkgName+"."+tname] = td
+		}
+	}
+	return out
+}
+
 // BuildCrossPkg returns a fully-populated lookup table for every
 // non-current package in the project. The current package is
 // excluded so a self-reference (`design.Foo` inside `package design`)

@@ -165,14 +165,19 @@ func TestUnknownTypeRefSkipsArity(t *testing.T) {
 	}
 }
 
-// ---------- Qualified ref skipped ----------
+// ---------- Qualified ref ----------
 
-func TestQualifiedGenericRefSkipped(t *testing.T) {
-	// Qualified ref already produces a CodeQualifiedRef diag elsewhere.
+// TestQualifiedGenericRefSinglePackageMode pins the per-package
+// behaviour: a qualified ref like `shared.Page<User>` is NOT
+// resolved when Analyze runs without a project context — the
+// per-package pass can't reach into sibling packages. Arity check
+// for qualified refs lives in the project resolver (see
+// TestQualifiedGenericRefArityAcrossPackages).
+func TestQualifiedGenericRefSinglePackageMode(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X { p shared.Page<User> }
 type User {}`))
 	if findCode(diags, CodeGenericArity) != nil {
-		t.Errorf("qualified ref should defer to qualified-ref pass, got %v", codes(diags))
+		t.Errorf("per-package mode should not validate qualified-ref arity, got %v", codes(diags))
 	}
 }
 

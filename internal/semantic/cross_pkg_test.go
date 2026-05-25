@@ -5,6 +5,80 @@ import (
 	"testing"
 )
 
+// ---------- qualified generic arity (cross-package) ----------
+
+// TestQualifiedGenericRefMissingArgs pins the bug where a qualified
+// reference to a generic type without `<…>` slipped past every check
+// — checkGenerics skipped qualified refs (they're owned by the
+// project resolver), and the project resolver only verified package
+// + symbol existence, not arity. End-to-end the generic was rendered
+// as a bare unparameterised reference and compilation failed in Go.
+func TestQualifiedGenericRefMissingArgs(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Page<T> { items T[]  cursor string? }`,
+		"app/types.craftgo": `package app
+import "shared"
+type Product { id string  page shared.Page }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeGenericArity)
+	if d == nil {
+		t.Fatalf("expected %s, got %v", CodeGenericArity, codes(diags))
+	}
+	if !strings.Contains(d.Msg, "shared.Page") || !strings.Contains(d.Msg, "1") {
+		t.Errorf("msg should name shared.Page + expected arg count, got %q", d.Msg)
+	}
+}
+
+func TestQualifiedGenericRefWrongArgCount(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Pair<A, B> { left A  right B }`,
+		"app/types.craftgo": `package app
+import "shared"
+type User {}
+type Holder { p shared.Pair<User> }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeGenericArity) == nil {
+		t.Fatalf("wrong arity (1 of 2) must fire %s, got %v", CodeGenericArity, codes(diags))
+	}
+}
+
+func TestQualifiedNonGenericWithArgs(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Plain { id string }`,
+		"app/types.craftgo": `package app
+import "shared"
+type User {}
+type Holder { p shared.Plain<User> }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeGenericNonGeneric) == nil {
+		t.Fatalf("non-generic with args must fire %s, got %v", CodeGenericNonGeneric, codes(diags))
+	}
+}
+
+func TestQualifiedGenericRefCorrectArgsClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Page<T> { items T[]  cursor string? }`,
+		"app/types.craftgo": `package app
+import "shared"
+type Product { id string }
+type Catalog { page shared.Page<Product> }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeGenericArity) != nil {
+		t.Errorf("correct arity should not fire %s, got %v", CodeGenericArity, codes(diags))
+	}
+	if findCode(diags, CodeGenericNonGeneric) != nil {
+		t.Errorf("correct usage should not fire %s, got %v", CodeGenericNonGeneric, codes(diags))
+	}
+}
+
 // ---------- service collision (cross-package duplicate primary) ----------
 
 func TestServiceCollisionAcrossPackages(t *testing.T) {

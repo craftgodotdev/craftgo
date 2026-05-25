@@ -83,7 +83,7 @@ return err
 // `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
 // the pointer-receiver Validate either way, and the cleaner form is
 // what a human would write by hand.
-func nestedValidateCall(f *ast.Field, pkg *semantic.Package) string {
+func nestedValidateCall(f *ast.Field, pkg *semantic.Package, projTypes TypeTable) string {
 	if pkg == nil || f.Type == nil {
 		return ""
 	}
@@ -99,7 +99,7 @@ return err
 	// and silently break the recursive-validation contract.
 	if f.Type.Map != nil {
 		v := f.Type.Map.Value
-		if !typeRefHasValidator(v, pkg) {
+		if !typeRefHasValidator(v, pkg, projTypes) {
 			return ""
 		}
 		// Element-access expression for one map value, wrapped in
@@ -121,7 +121,7 @@ return err
 	if f.Type.Named == nil {
 		return ""
 	}
-	if _, ok := pkg.Types[f.Type.Named.Name.String()]; !ok {
+	if !typeRefNamedHasValidator(f.Type.Named, pkg, projTypes) {
 		return ""
 	}
 	switch {
@@ -149,12 +149,37 @@ return err
 // struct that carries a generated Validate() method. Map keys go
 // through scalar-decorator emission elsewhere, so this only inspects
 // the value side.
-func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package) bool {
+func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, projTypes TypeTable) bool {
 	if t == nil || t.Map != nil || t.Named == nil {
 		return false
 	}
-	_, ok := pkg.Types[t.Named.Name.String()]
-	return ok
+	return typeRefNamedHasValidator(t.Named, pkg, projTypes)
+}
+
+// typeRefNamedHasValidator is the named-ref core of typeRefHasValidator,
+// shared with [nestedValidateCall] so both map-value walks and direct
+// field refs resolve qualified names the same way. A qualified ref
+// `shared.Page` lives in the project [TypeTable], not the local
+// `pkg.Types` table — without the table consult, qualified refs were
+// dropped silently (the local lookup never finds them).
+func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, projTypes TypeTable) bool {
+	if n == nil || n.Name == nil {
+		return false
+	}
+	name := n.Name.String()
+	// Local first: a single-part name resolved here matches the
+	// receiver-package lookup that pre-existed the TypeTable plumbing.
+	if _, ok := pkg.Types[name]; ok {
+		return true
+	}
+	// Qualified ref → project-wide table. nil-safe: passing nil
+	// projTypes preserves the single-package behaviour callers without
+	// project context expect.
+	if projTypes != nil {
+		_, ok := projTypes[name]
+		return ok
+	}
+	return false
 }
 
 // emitNestedForLoops produces `depth` nested `for i0 := range x` loops

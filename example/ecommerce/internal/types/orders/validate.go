@@ -136,6 +136,9 @@ func (v *GetOrderReq) Validate() error {
 // Validate checks every field-level constraint declared on LineItem.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *LineItem) Validate() error {
+	if err := v.Product.Validate(); err != nil {
+		return err
+	}
 	if !_pattern2.MatchString(v.Sku) {
 		return fmt.Errorf("sku: does not match pattern")
 	}
@@ -190,6 +193,9 @@ func (v *Order) Validate() error {
 	}
 	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: does not match pattern")
+	}
+	if err := v.Customer.Validate(); err != nil {
+		return err
 	}
 	if len(v.Items) < 1 {
 		return fmt.Errorf("items: minItems 1")
@@ -246,6 +252,9 @@ func (v *Order) Validate() error {
 			}
 			seen[item] = struct{}{}
 		}
+	}
+	if err := v.CreatedBy.Validate(); err != nil {
+		return err
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
@@ -314,6 +323,9 @@ func (v *PaymentFailedBody) Validate() error {
 	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
 	default:
 		return fmt.Errorf("method: invalid PaymentMethod value")
+	}
+	if err := v.ChargedBy.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

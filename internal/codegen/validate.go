@@ -79,19 +79,22 @@ func GenerateValidators(pkg *semantic.Package, outDir string) error {
 // scalar inheritance is disabled in this entry point so existing
 // single-package callers keep their pre-scalar-inheritance output.
 func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
-	return GenerateValidatorsWith(pkg, outDir, crossPkg, nil)
+	return GenerateValidatorsWith(pkg, outDir, crossPkg, nil, nil)
 }
 
 // GenerateValidatorsWith is the project-aware entry point: it
 // accepts the [ScalarTable] built by [BuildScalarTable] so a field
 // typed `Email` (local scalar) or `shared.NonEmptyID` (cross-pkg
 // scalar) inherits the scalar's own decorator chain into its
-// generated Validate() body.
+// generated Validate() body. The [TypeTable] enables qualified
+// type refs (`shared.Page<T>`) to emit recursive `.Validate()`
+// calls — without it, those refs slipped past the local-only
+// `pkg.Types` lookup and the nested validate was silently dropped.
 //
 // Used by the multi-package CLI flow; single-package fixtures and
 // tests continue calling [GenerateValidators] / [GenerateValidatorsPackage]
-// which pass nil for the table.
-func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable) error {
+// which pass nil for both tables.
+func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -99,7 +102,7 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	data := buildValidateData(pkg, scalars)
+	data := buildValidateData(pkg, scalars, types)
 	formatted, err := renderGo(tmpl("validate.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render validate.go: %w", err)
@@ -120,7 +123,7 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 // field whose declared type is a scalar gains the scalar's own
 // `@format` / `@length` / `@min` / etc. validators on top of the
 // field-level chain. See [scalarInheritedDecorators].
-func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData {
+func buildValidateData(pkg *semantic.Package, scalars ScalarTable, projTypes TypeTable) validateData {
 	names := sortedKeys(pkg.Types)
 
 	uses := map[string]bool{}
@@ -132,7 +135,7 @@ func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData 
 		types = append(types, validatorType{
 			Name:       name,
 			TypeParams: td.TypeParams,
-			Checks:     collectChecks(td, pkg, scalars, ctx),
+			Checks:     collectChecks(td, pkg, scalars, projTypes, ctx),
 		})
 	}
 
@@ -154,7 +157,7 @@ func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData 
 		}
 		types = append(types, validatorType{
 			Name:   body.Name,
-			Checks: collectChecks(body, pkg, scalars, ctx),
+			Checks: collectChecks(body, pkg, scalars, projTypes, ctx),
 		})
 	}
 
@@ -185,7 +188,7 @@ func buildValidateData(pkg *semantic.Package, scalars ScalarTable) validateData 
 //
 // Steps 2-4 are mutually exclusive: a field is either a typeParam ref,
 // an enum, a struct, or a primitive. Primitives reach none of them.
-func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, ctx emitCtx) []string {
+func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable, projTypes TypeTable, ctx emitCtx) []string {
 	var out []string
 	for _, m := range td.Body {
 		switch v := m.(type) {
@@ -200,7 +203,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, scalars ScalarTable,
 			if call := enumValueCheck(v, pkg, ctx.uses); call != "" {
 				out = append(out, call)
 			}
-			if nested := nestedValidateCall(v, pkg); nested != "" {
+			if nested := nestedValidateCall(v, pkg, projTypes); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:

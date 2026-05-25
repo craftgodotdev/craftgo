@@ -387,6 +387,98 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 	}
 }
 
+// ---------- cross-package validators ----------
+
+// TestValidateEmitsQualifiedGenericCall pins the bug where a field
+// typed `shared.Page<ProductRef>` produced NO recursive validate
+// call. The local-only `pkg.Types` lookup never matched the
+// qualified name; the field slipped past nestedValidateCall silently
+// and the consuming Validate() body skipped any constraint declared
+// on the cross-package generic's element. Fix routes the resolution
+// through the project-wide TypeTable.
+func TestValidateEmitsQualifiedGenericCall(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Page<T> { items T[]  cursor string? }`,
+		"app/types.craftgo": `package app
+import "shared"
+type ProductRef { id string }
+type Product {
+    id   string
+    page shared.Page<ProductRef>
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	appPkg := proj.Packages["app"]
+	if appPkg == nil {
+		t.Fatal("app package missing from project")
+	}
+	dir := t.TempDir()
+	projTypes := BuildTypeTable(proj, "app")
+	if err := GenerateValidatorsWith(appPkg, dir, nil, nil, projTypes); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	if !strings.Contains(src, "v.Page.Validate()") {
+		t.Errorf("expected `v.Page.Validate()` emitted for qualified generic field; got:\n%s", src)
+	}
+}
+
+// projectFiles writes src to disk under a tempdir and returns the
+// parsed []*ast.File. Mirrors the semantic.projectFixture helper but
+// stays local to the codegen test package to avoid a cross-package
+// test-helper import.
+func projectFiles(t *testing.T, src map[string]string) (string, []*ast.File) {
+	t.Helper()
+	root := t.TempDir()
+	var files []*ast.File
+	for rel, content := range src {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p := craftparser.New(full, content)
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) > 0 {
+			t.Fatalf("parse %s: %v", rel, d)
+		}
+		files = append(files, f)
+	}
+	return root, files
+}
+
+// TestValidateOmitsCallWhenNoTypeTable pins the legacy fallback:
+// callers that don't pass a TypeTable (single-package tests,
+// pre-TypeTable callers) keep the old behaviour — qualified refs
+// silently skipped, no spurious compile error from a `.Validate()`
+// call on a type the local package can't reach.
+func TestValidateOmitsCallWhenNoTypeTable(t *testing.T) {
+	pkg := analyze(t, `package app
+type Product { id string }`)
+	dir := t.TempDir()
+	if err := GenerateValidators(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	// Sanity: no false-positive recursive call on a primitive field.
+	if strings.Contains(src, "v.Id.Validate()") || strings.Contains(src, "v.ID.Validate()") {
+		t.Errorf("primitive field must not get a recursive validate call:\n%s", src)
+	}
+}
+
 // ---------- cross-field validators ----------
 
 func TestValidateRequiresOneOfNullableFields(t *testing.T) {

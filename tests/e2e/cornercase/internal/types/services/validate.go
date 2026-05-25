@@ -110,6 +110,9 @@ func (v *ListUsersResp) Validate() error {
 			return err
 		}
 	}
+	if err := v.Meta.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
