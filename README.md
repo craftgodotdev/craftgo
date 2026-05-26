@@ -110,7 +110,7 @@ design/*.craftgo  ──craftgo gen──▶  internal/types/      typed structs
 
 ## Status
 
-craftgo is pre-1.0. The DSL and generated layout are stabilizing toward a 1.0 release; expect occasional breaking changes until then, called out in the [changelog](https://github.com/craftgodotdev/craftgo/blob/main/CHANGELOG.md).
+craftgo **1.0.0** is the first stable release. The DSL and generated layout follow [semantic versioning](https://semver.org) from here — breaking changes bump the major version and are documented in the [changelog](https://github.com/craftgodotdev/craftgo/blob/main/CHANGELOG.md).
 
 ## License
 

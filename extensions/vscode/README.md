@@ -1,6 +1,6 @@
 # craftgo — VSCode extension
 
-Syntax highlighting, snippets, and language configuration for [CraftGo](https://github.com/dropship-dev/craftgo) DSL files (`.craftgo`).
+Syntax highlighting, snippets, and language configuration for [CraftGo](https://github.com/craftgodotdev/craftgo) DSL files (`.craftgo`).
 
 ## Features
 

@@ -184,5 +184,5 @@ It is a single-page consolidated reference (every keyword, decorator, CLI flag, 
 
 - Read [DSL Basics](/guide/dsl-basics) to learn the syntax in depth.
 - Browse [Decorators](/guide/decorators) to see every decorator with arguments and sites.
-- Set up the [LSP](/guide/lsp) for completion, hover, and diagnostics in your editor.
+- Install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=craftgo.craftgo) (search "craftgo" in the Extensions panel) — or set up the [LSP](/guide/lsp) for another editor — for completion, hover, and live diagnostics.
 - See [Configuration](/guide/configuration) to relocate generated files or add custom config.
