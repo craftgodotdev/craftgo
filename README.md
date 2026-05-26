@@ -1,5 +1,7 @@
 # craftgo
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/craftgodotdev/craftgo)](https://goreportcard.com/report/github.com/craftgodotdev/craftgo)
+
 **Write the spec. Generate everything.**
 
 craftgo is a design-first framework for Go HTTP services. You describe your API once in a small DSL — types, validators, endpoints, errors — and `craftgo gen` produces typed structs, request validation, HTTP handlers, route wiring, and an OpenAPI 3.1 spec. The generated code is plain `net/http`: no custom router, no reflection, no runtime struct tags. It reads like code you would have written by hand.
