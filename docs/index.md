@@ -24,7 +24,7 @@ features:
 
   - icon: 📜
     title: OpenAPI 3.1
-    details: Spec is valid out of the box. Renders in Swagger UI. Feeds openapi-generator for clients in any language.
+    details: Emitted from the same source. Renders in Swagger UI and ReDoc, feeds openapi-generator for clients in any language.
 
   - icon: ✅
     title: Built-in validation
@@ -47,7 +47,7 @@ package design
 type CreateUserReq {
     name  string @length(1, 80)
     email string @format(email)
-    age   int?   @min(0) @max(150)
+    age   int?   @gte(0) @lte(150)
 }
 
 type User {

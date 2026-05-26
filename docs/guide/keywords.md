@@ -118,8 +118,8 @@ Declare a named primitive with bundled validators:
 ```craftgo
 scalar Email     string  @format(email) @maxLength(254)
 scalar OrderID   string  @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
-scalar Cents     int     @min(0) @multipleOf(2)
-scalar Latitude  float64 @min(-90) @max(90)
+scalar Cents     int     @gte(0) @multipleOf(2)
+scalar Latitude  float64 @gte(-90) @lte(90)
 ```
 
 The first form after the name is the underlying primitive (`string`, `bytes`, `int`, `int8/16/32/64`, `uint`, `uint8/16/32/64`, `float32`, `float64`, `bool`). Validators following the primitive inherit to every field of that scalar type.

@@ -12,7 +12,11 @@ Every `craftgo gen` produces `docs/openapi.yaml` with:
 - Doc comments flowing into descriptions
 - Security schemes from your config
 
-The spec is **valid OAS 3.1** and passes Spectral, Redocly, and the official parser. Use it directly with Swagger UI, ReDoc, or `openapi-generator` for client libraries in any language.
+The spec renders directly in **Swagger UI** and **ReDoc**, and feeds `openapi-generator` for client libraries in any language — the day-to-day tools accept it as-is.
+
+::: warning Strict 3.1 validators
+The document declares `openapi: 3.1.0` but currently uses the OpenAPI **3.0** `nullable: true` idiom for optional fields (3.1 replaces it with `type: [..., "null"]`). Lenient consumers (Swagger UI, ReDoc, openapi-generator) accept this, but a strict 3.1 validator — Spectral or Redocly in default config — will flag every `nullable` occurrence. Migrating the nullable emit to the 3.1 idiom is tracked for an upcoming release. If you gate CI on strict linting today, allowlist the `nullable` rule.
+:::
 
 The rest of this page walks through what's emitted and how to render or consume it.
 
@@ -29,14 +33,13 @@ Every `craftgo gen` writes `docs/openapi.yaml` covering:
 
 ## Validity
 
-The output passes:
+The output is consumed cleanly by:
 
-- [Spectral](https://stoplight.io/open-source/spectral) - `spectral lint docs/openapi.yaml`
-- [Redocly CLI](https://redocly.com/redocly-cli/) - `redocly lint docs/openapi.yaml`
-- [oasdiff](https://github.com/oasdiff/oasdiff) - for breaking-change detection between versions
-- The official OpenAPI parser used by Swagger UI
+- The official OpenAPI parser behind **Swagger UI** and **ReDoc** — renders without errors.
+- [`openapi-generator`](https://openapi-generator.tech/) and similar client generators.
+- [oasdiff](https://github.com/oasdiff/oasdiff) — breaking-change detection between versions.
 
-We test this in CI. If you find a spec that fails a standard linter, that is a bug.
+Strict structural linters ([Spectral](https://stoplight.io/open-source/spectral), [Redocly CLI](https://redocly.com/redocly-cli/)) currently report `nullable`-related findings under their default 3.1 ruleset — see the warning above. Aside from the `nullable` idiom, the structure (paths, schemas, parameters, `oneOf`/`anyOf` for cross-field constraints, `propertyNames` for map keys) is valid 3.1.
 
 ## Renders
 
@@ -82,8 +85,10 @@ becomes
 paths:
   /v1/users/{id}:
     get:
-      operationId: UserService_GetUser
+      operationId: GetUser
 ```
+
+The `operationId` is the bare method name (`GetUser`), not service-qualified.
 
 Override with `@operationId`:
 
@@ -124,7 +129,8 @@ Field-level validators map to OpenAPI keywords:
 | `@minLength(1)`, `@maxLength(80)` | same as above         |
 | `@pattern("...")`              | `pattern: ...`           |
 | `@format(email)`               | `format: email`          |
-| `@min(0)`, `@max(100)`         | `minimum: 0, maximum: 100` |
+| `@gte(0)`, `@lte(100)`         | `minimum: 0, maximum: 100` |
+| `@gt(0)`, `@lt(100)`           | `minimum: 0, exclusiveMinimum: true` / `maximum: 100, exclusiveMaximum: true` |
 | `@minItems(1)`, `@maxItems(10)` | `minItems: 1, maxItems: 10` |
 | `@uniqueItems`                 | `uniqueItems: true`      |
 | `@example("alice")`            | `example: alice`         |

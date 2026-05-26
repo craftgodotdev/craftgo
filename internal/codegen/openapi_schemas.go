@@ -196,7 +196,7 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 			})
 		}
 	}
-	// R3: cross-field type-level constraints render as schema-level
+	// Cross-field type-level constraints render as schema-level
 	// `anyOf` (`@requiresOneOf`) and `not.required` (`@mutuallyExclusive`)
 	// fragments. These complement the runtime validator (which fires
 	// inside Validate()) by making the same contract visible to spec-

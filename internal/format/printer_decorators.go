@@ -7,24 +7,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-func canonicalDecoratorName(name string) string {
-	switch name {
-	case "min":
-		return "gte"
-	case "max":
-		return "lte"
-	}
-	return name
-}
-
-// fieldHasDefault reports whether f carries a `@default(...)` decorator.
-// Used by the type-body printer to auto-add `?` to the rendered type
-// when the author hasn't marked the field optional, since `@default`
-// only fires when the value is absent.
-
 func (p *Printer) Decorator(d *ast.Decorator) {
 	p.write("@")
-	name := canonicalDecoratorName(d.Name)
+	name := d.Name
 	p.write(name)
 	// Canonical: emit parens only when there are real args. Empty
 	// `()` is stripped on save — both `@positive()` (Flag decorator

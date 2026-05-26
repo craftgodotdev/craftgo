@@ -14,7 +14,7 @@ srv.Start(":8080")                     // ListenAndServe
 Three things matter:
 
 1. `Server` wraps the standard library mux and accepts the standard middleware shape
-2. Generated routes register through `srv.Handle("VERB /path", handlerFn)` using Go 1.22+ pattern syntax
+2. Generated routes register through `srv.Handle("VERB /path", handlerFn, mws...)` using Go 1.22+ pattern syntax
 3. Logic, validation, and JSON live in plain Go - no framework runtime in the hot path
 
 If you can name a `net/http` concept, the craftgo equivalent uses it directly.
@@ -31,6 +31,15 @@ srv.Start(":8080")
 ```
 
 `Server` wraps `*http.ServeMux`. Routes register through `Handle` and `HandleFunc` using Go 1.22+ pattern syntax (`GET /users/{id}`). Middleware is plain `func(http.Handler) http.Handler`.
+
+`Handle` is variadic — `Handle(pattern, h, mws...)` — so a route can carry per-route middleware that wraps the handler outermost-first (the first middleware argument is the outermost frame, hit first on the way in). For composing a reusable stack, `server.Chain` folds a middleware list in the same order:
+
+```go
+chain := server.NewChain(server.RequestID(), server.AccessLog(logger))
+srv.Handle("GET /healthz", chain.Then(healthHandler))
+```
+
+`NewChain(...).Append(...)` returns a new chain (value semantics, safe to share a base), and `.Then(h)` / `.ThenFunc(fn)` produce the wrapped handler. Nil entries are skipped, so an optional middleware can drop into the slice without a guard.
 
 ## Built-in middleware
 
@@ -77,7 +86,7 @@ Generated handlers look like this:
 func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         var req types.CreateUserReq
-        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        if err := server.JSON().Decode(r.Body, &req); err != nil {
             http.Error(w, err.Error(), http.StatusBadRequest)
             return
         }
@@ -85,19 +94,24 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
             server.WriteValidationError(w, r, err)
             return
         }
-        s := userservice.NewService(r.Context(), svcCtx)
-        resp, err := s.CreateUser(r.Context(), &req)
+        l := service.NewCreateUserService(r.Context(), svcCtx)
+        resp, err := l.CreateUser(&req)
         if err != nil {
             writeError(w, err)
             return
         }
-        w.Header().Set("Content-Type", "application/json")
-        _ = json.NewEncoder(w).Encode(resp)
+        w.Header().Set("Content-Type", "application/json; charset=utf-8")
+        _ = server.JSON().Encode(w, resp)
     }
 }
 ```
 
-This is exactly what you would write by hand. Stdlib JSON, stdlib status codes, stdlib responses. No framework runtime in the hot path.
+This is exactly what you would write by hand: one `http.HandlerFunc`, stdlib status codes, stdlib responses. Two details to note:
+
+- **`server.JSON()`** is the swappable codec accessor — it defaults to `encoding/json` but lets you drop in `sonic`/`jsoniter` process-wide (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
+- **The logic call is `l.CreateUser(&req)`** — the request context is captured when the per-method service is constructed (`service.NewCreateUserService(r.Context(), svcCtx)`), so it isn't threaded through the method call.
+
+No framework runtime in the hot path.
 
 ## Health endpoints
 

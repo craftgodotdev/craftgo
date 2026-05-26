@@ -77,7 +77,7 @@ type validatorEntry struct {
 // correctness - names are looked up - but the table is grouped by
 // concern to make scanning easier: strings/numerics/arrays/files.
 //
-// Presence ("required") is no longer a decorator - craftgo enforces
+// Presence ("required") is not a decorator - craftgo enforces
 // "required by default" and the absence check fires automatically for
 // every non-optional field via [fieldChecksWithScalar]. The opt-out is
 // the type-level `?` suffix.

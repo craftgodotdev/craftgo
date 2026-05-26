@@ -38,8 +38,8 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 			Type:                 &openapi3.Types{"object"},
 			AdditionalProperties: openapi3.AdditionalProperties{Schema: schemaForTypeRef(t.Map.Value, pkg, registry)},
 		}
-		// R1/R2: OpenAPI 3.1's `propertyNames` constrains the object
-		// keys. JSON keys are always strings on the wire, so plain
+		// OpenAPI 3.1's `propertyNames` constrains the object keys.
+		// JSON keys are always strings on the wire, so plain
 		// string keys carry no extra constraint — but an enum key
 		// implies a closed value-set and a scalar key carries the
 		// scalar's own validators (length / pattern / format). Without

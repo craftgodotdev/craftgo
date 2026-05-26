@@ -34,24 +34,18 @@ craftgo generates:
 
 ```go
 func (v *CreateUserReq) Validate() error {
-    if v.Name == "" {
-        return errors.New("name: is required")
-    }
     if l := len(v.Name); l < 1 || l > 80 {
-        return fmt.Errorf("name: length must be between 1 and 80, got %d", l)
+        return fmt.Errorf("name: length out of range [1, 80]")
     }
-    if v.Email == "" {
-        return errors.New("email: is required")
-    }
-    if !emailRegex.MatchString(v.Email) {
-        return errors.New("email: does not match pattern")
+    if !_pattern0.MatchString(v.Email) {
+        return fmt.Errorf("email: does not match pattern")
     }
     if v.Age != nil {
         if *v.Age < 0 {
-            return fmt.Errorf("age: must be at least 0, got %d", *v.Age)
+            return fmt.Errorf("age: below minimum 0")
         }
         if *v.Age > 150 {
-            return fmt.Errorf("age: must be at most 150, got %d", *v.Age)
+            return fmt.Errorf("age: above maximum 150")
         }
     }
     return nil
@@ -60,9 +54,15 @@ func (v *CreateUserReq) Validate() error {
 
 Plain Go. No reflection. No struct tag parsing. The handler calls `req.Validate()` after JSON decode and before your business logic.
 
+::: tip Required-by-default
+A non-optional field (no `?`) is required, but craftgo only emits an explicit presence check when the field has a meaningful empty value the JSON decoder accepts (e.g. `any`, an enum). For a plain `string`, the decoder already rejects a literal `null`, and an empty `""` is a legal value unless you add `@length` / `@minLength`. That's why `name` above shows only its `@length` check, not a separate "required" line. The `@format(email)` regex is compiled once into a package-level `_pattern0` var, not per call.
+:::
+
 ## Built-in validators
 
 > **Required-by-default**: every field gets an automatic presence check unless the type carries `?`. No `@required` decorator — use `?` to opt-out, `@nullable` to keep the field mandatory while allowing JSON `null`, `@default(...)` to pre-fill when absent (auto-marks optional on save).
+
+The tables below cover validators with the examples that matter for *validation*. For the one-grid lookup of every decorator (including non-validator ones) and its legal levels, see the [Decorator Registry](/reference/decorator-registry).
 
 ### Strings
 
@@ -196,11 +196,13 @@ Generated messages follow the shape:
 <field>: <reason>
 ```
 
-Multiple failures join with `; `:
+`Validate()` is **fail-fast** — it returns the **first** violation it hits and stops, so a request with several problems surfaces one message at a time:
 
 ```
-name: is required; email: does not match pattern; age: must be at most 150, got 200
+name: length out of range [1, 80]
 ```
+
+Reason strings are fixed per validator: `length out of range [lo, hi]`, `does not match pattern`, `below minimum N`, `above maximum N`, `out of range [lo, hi]` (for `@range`), `must be a multiple of N`, `maxItems N`, `items must be unique`, etc.
 
 Customize the response by overriding `server.SetDefaultValidationFailed`:
 

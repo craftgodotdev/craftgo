@@ -159,8 +159,8 @@ const (
 	CommentLeading CommentKind = iota
 	// CommentTrailing is a comment that follows non-whitespace code on
 	// the same line as the previously emitted token, e.g. the
-	// `// 5 MiB` in `@max(5242880) // 5 MiB`. The lexer detects this
-	// via [Lexer.sawNewlineSinceLastToken].
+	// `// 5 MiB` in `@maxBodySize(5242880) // 5 MiB`. The lexer detects
+	// this via [Lexer.sawNewlineSinceLastToken].
 	CommentTrailing
 )
 

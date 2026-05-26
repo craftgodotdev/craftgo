@@ -92,18 +92,10 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	}
 }
 
-// canonicalDecoratorName migrates legacy decorator names to the
-// math-style comparison operators on format:
-//
-//	@min(N) → @gte(N)
-//	@max(N) → @lte(N)
-//
-// The legacy names are no longer in the semantic registry; without
-// this rewrite the analyzer would emit `decorator/unknown` for any
-// design that hasn't been hand-edited. Applying the rename at format
-// time lets `craftgo fmt` heal a stale file transparently — the next
-// lint pass sees only canonical names.
-
+// fieldHasDefault reports whether f carries a `@default(...)` decorator.
+// Used by the type-body printer to auto-add `?` to the rendered type
+// when the author hasn't marked the field optional, since `@default`
+// only fires when the value is absent.
 func fieldHasDefault(f *ast.Field) bool {
 	if f == nil {
 		return false

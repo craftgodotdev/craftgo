@@ -52,9 +52,9 @@ const (
 	// [LvlField] because errors are server-emitted, so request-only
 	// decorators (`@path`, `@query`, `@body`, `@form`, `@maxSize`,
 	// `@mimeTypes`) are rejected. Schema validators (`@minLength`,
-	// `@pattern`, `@min`, ...) are still accepted but contribute only
-	// to OpenAPI schema constraints - codegen does not generate a
-	// runtime `Validate()` for ErrorDecl types.
+	// `@maxLength`, `@pattern`, `@gte`, ...) are accepted but
+	// contribute only to OpenAPI schema constraints - codegen does
+	// not generate a runtime `Validate()` for ErrorDecl types.
 	LvlErrorField
 )
 
@@ -399,7 +399,7 @@ var Registry = map[string]Spec{
 	},
 	"gte": {
 		Name: "gte", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be greater than or equal to N (x >= N). Replaces @min.",
+		Doc:       "Value must be greater than or equal to N (x >= N).",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
 	},
@@ -411,7 +411,7 @@ var Registry = map[string]Spec{
 	},
 	"lte": {
 		Name: "lte", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be less than or equal to N (x <= N). Replaces @max.",
+		Doc:       "Value must be less than or equal to N (x <= N).",
 		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
 		AppliesTo: PrimNumber,
 	},

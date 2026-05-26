@@ -8,7 +8,8 @@ package semantic
 //   - `@minLength` paired with `@maxLength` on the same field - same
 //     ordering rule applied across decorators.
 //   - `@minItems` / `@maxItems` pair - likewise.
-//   - `@min` / `@max` numeric pair - likewise.
+//   - `@gte` / `@lte` numeric bound pair (and the strict `@gt` / `@lt`
+//     and mixed combinations) - the lower bound must be ≤ the upper.
 //   - `@multipleOf(0)` - divides nothing; codegen would emit a runtime
 //     %0 panic.
 //   - `@status(code)` - must be in 100..599 (HTTP status range).

@@ -158,14 +158,14 @@ An `extend` block can also carry its own method-level-applicable decorators (`@m
 
 ```craftgo
 service Users {
-    get  /healthz => Health()              // public
-    post /signup  => Signup()              // public
+    get  Healthz /healthz { response HealthResp }   // public
+    post Signup  /signup  { request SignupReq response User } // public
 }
 
 @middlewares(AuthRequired)
 extend service Users {
-    get    /users      => List()           // inherits AuthRequired
-    delete /users/{id} => Del()            // inherits
+    get    List /users      { response UserList }    // inherits AuthRequired
+    delete Del  /users/{id} { request GetUserReq response OkResp } // inherits
 }
 ```
 
@@ -182,14 +182,14 @@ A method with `@ignoreMiddleware` drops the inherited middleware chain (from pri
 ```craftgo
 @middlewares(AuthRequired, RateLimit)
 service Secured {
-    get ListItems /            => List()       // chain: [AuthRequired, RateLimit]
+    get ListItems / { response ItemList }              // chain: [AuthRequired, RateLimit]
 
     @ignoreMiddleware
-    get Healthz /healthz       => Health()     // chain: [] - no middleware
+    get Healthz /healthz { response HealthResp }       // chain: [] - no middleware
 
     @ignoreMiddleware
     @middlewares(BasicAuth, Audit)
-    post Reset /reset          => Reset()       // chain: [BasicAuth, Audit] - reset + replace
+    post Reset /reset { request ResetReq response OkResp } // chain: [BasicAuth, Audit] - reset + replace
 }
 ```
 
@@ -204,12 +204,13 @@ For a request to a method like `DeleteUser` above, the chain executes outermost-
 ```
 [runtime] Recovery (always outermost)
 [runtime] srv.Use middleware in declaration order
+[runtime] per-route mws passed to srv.Handle(pattern, h, mws...)
 [DSL]     service-level @middlewares in declaration order
 [DSL]     method-level @middlewares appended
 [handler] decode body, validate, call logic, encode response
 ```
 
-Recovery sits at the outermost position so a panic in any user middleware still surfaces as a 500 instead of crashing the server.
+Recovery sits at the outermost position so a panic in any user middleware still surfaces as a 500 instead of crashing the server. The generated `routes.go` resolves the DSL `@middlewares(...)` names through `srv.With(names, handler)` and registers via the variadic `srv.Handle(pattern, h, mws...)` — both fold their lists outermost-first (first entry = first hit on the way in). See the [Runtime API](/reference/runtime-api#chain) for composing your own chains with `server.Chain`.
 
 ## Accessing middleware values from logic
 

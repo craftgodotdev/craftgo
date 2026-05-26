@@ -186,8 +186,8 @@ A scalar is a named primitive type with validators baked in. Every field that us
 ```craftgo
 scalar Email string @format(email) @maxLength(254)
 scalar OrderID string @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
-scalar Cents int @min(0) @multipleOf(2)
-scalar Latitude float64 @min(-90) @max(90)
+scalar Cents int @gte(0) @multipleOf(2)
+scalar Latitude float64 @gte(-90) @lte(90)
 ```
 
 The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of the built-in primitives (string, bytes, int variants, float variants, bool).
@@ -202,7 +202,7 @@ type Order {
 }
 ```
 
-`Order.Validate()` runs the OrderID's `@length` and `@pattern`, the Email's `@format` and `@maxLength`, and the Cents' `@min` and `@multipleOf`. You did not repeat any of those validators on the field.
+`Order.Validate()` runs the OrderID's `@length` and `@pattern`, the Email's `@format` and `@maxLength`, and the Cents' `@gte` and `@multipleOf`. You did not repeat any of those validators on the field.
 
 ### Why scalars
 

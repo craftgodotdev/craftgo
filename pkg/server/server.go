@@ -142,11 +142,9 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 // reads "Auth wraps RateLimit wraps CORS wraps h" — request hits
 // Auth first, response leaves CORS last.
 //
-// Variadic middlewares replaced the historical nested-call shape
-// (`svcCtx.Auth(svcCtx.RateLimit(svcCtx.CORS(h)))`) emitted by the
-// routes generator; the new shape stays flat regardless of chain
-// depth and the route line scans top-to-bottom for the same
-// outermost-first reading.
+// The variadic form keeps the route line flat regardless of chain
+// depth, so it scans top-to-bottom in the same outermost-first order
+// the request actually flows through.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
 	s.mux.Handle(pattern, NewChain(mws...).Then(h))
 	return s

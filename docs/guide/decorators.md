@@ -27,23 +27,17 @@ service UserService {
 }
 ```
 
-The rest of this page lists every decorator with its sites, arguments, and effect.
+This page is the **example-driven walkthrough** — what each decorator means, with snippets and the inheritance / opt-out mechanics. For a scannable lookup table (every decorator's levels, args, and effect in one grid), see the [Decorator Registry](/reference/decorator-registry).
 
-### Removed decorators
+### Names from other tools
 
-The following decorators were dropped from the closed set and now fire `decorator/unknown` at semantic analysis time. The previous behaviour is described so existing DSL sources have a clear migration path:
+The decorator set is closed — an unknown decorator fires `decorator/unknown`. If you're coming from JSON Schema, Zod, OpenAPI, or class-validator, a few reflexes map to different spellings:
 
-| Removed             | Replacement / reason                                                                                                                                                 |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@externalDocs`     | Dropped entirely — OpenAPI `externalDocs` was opaque metadata that nothing in the runtime read. Move the URL to a `@doc("See https://...")` string if you want it on the operation description. |
-| `@examples`         | Use one or more `@example(...)` decorators instead. The map-of-named-examples form had no codegen consumer.                                                          |
-| `@example` on type / method / error | Restricted to `LvlField` — the only level whose value reaches the OpenAPI schema. Move the example onto the relevant field.                            |
-| `@security(noauth)` | Use `@ignoreSecurity` on the method instead. The `noauth` sentinel was a magic ident that hid the real intent ("opt out of inherited security").                    |
-| `@title`            | Dropped — the OpenAPI document title is now set exclusively via `craftgo.design.yaml`'s `openapi.title`, with `@version("...")` on a file overriding the version only.|
-| `@responseDoc`      | Use `@doc(...)` on the method instead — operation-level documentation now flows through a single decorator.                                                          |
-| `@required`         | Required-by-default: every field is required unless its type carries the `?` suffix.                                                                                  |
-| `@min(n)` / `@max(n)` | Renamed to `@gte(n)` / `@lte(n)` to match the strict (`@gt` / `@lt`) variants and the `@range(min, max)` closed form. |
-| `middleware Name(params)` | Middleware declarations are bare-name only; configuration lives in the generated impl file at `internal/middleware/<name>-middleware.go`. |
+| You might reach for | craftgo uses | Why |
+| ------------------- | ------------ | --- |
+| `@min(n)` / `@max(n)` | `@gte(n)` / `@lte(n)` (inclusive), `@gt` / `@lt` (strict) | One spelling for inclusive vs strict, consistent with `@range(min, max)`. |
+| `@required` | nothing — fields are **required by default** | A field is required unless its type carries `?`. Use `?` to opt out. |
+| `title` / `externalDocs` on an operation | `craftgo.design.yaml` `openapi.title`; `@doc("… https://…")` | Document-level metadata lives in the manifest, not per-decorator. |
 
 ## Sites
 
@@ -510,18 +504,18 @@ The most common reason to split a service into `extend service` blocks is the **
 ```craftgo
 service Users {
     // Public endpoints
-    get  /healthz => Health()
-    post /signup  => Signup()
-    post /login   => Login()
+    get  Healthz /healthz { response HealthResp }
+    post Signup  /signup  { request SignupReq response User }
+    post Login   /login   { request LoginReq  response Session }
 }
 
 @middlewares(AuthRequired)
 @security(Bearer)
 extend service Users {
-    get    /users      => List()       // authenticated
-    get    /users/{id} => Get()         // authenticated
-    post   /users      => Create()       // authenticated
-    delete /users/{id} => Del()          // authenticated
+    get    List   /users      { response UserList }                 // authenticated
+    get    Get    /users/{id} { request GetUserReq  response User } // authenticated
+    post   Create /users      { request CreateUserReq response User } // authenticated
+    delete Del    /users/{id} { request GetUserReq  response OkResp } // authenticated
 }
 ```
 
@@ -557,14 +551,14 @@ Opt the current method out of the inherited service-level chain for the matching
 @security(Bearer)
 @tags("internal")
 service Users {
-    get  /users => List()             // inherits all three
+    get  List /users { response UserList }                  // inherits all three
 
-    @ignoreSecurity                   // clears Bearer only
-    get  /users/{id}/avatar => Avatar()
+    @ignoreSecurity                                         // clears Bearer only
+    get  Avatar /users/{id}/avatar { request GetUserReq response Avatar }
 
-    @ignoreMiddleware                 // clears AuthRequired
-    @middlewares(BasicAuth, Audit)   // method-level chain becomes [BasicAuth, Audit]
-    post /admin/reset => Reset()
+    @ignoreMiddleware                                       // clears AuthRequired
+    @middlewares(BasicAuth, Audit)                          // method-level chain becomes [BasicAuth, Audit]
+    post Reset /admin/reset { request ResetReq response OkResp }
 }
 ```
 
@@ -683,9 +677,10 @@ Some decorator combinations are rejected by the semantic analyzer:
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.
 
-## Reference
+## See also
 
+- [Decorator Registry](/reference/decorator-registry) — the full lookup table (levels, args, effect)
 - [Validators](/guide/validators) for runtime semantics
 - [Middleware](/guide/middleware) for `@middlewares` and middleware declaration
 - [Errors](/guide/errors) for `@errors` and the category-to-status mapping
-- [AI Reference](/llms) for a single-page consolidated dump
+- [llms.md](/llms) for a single-page consolidated dump

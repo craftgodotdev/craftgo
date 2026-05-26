@@ -195,17 +195,17 @@ The `extend` block itself can declare **method-level-applicable decorators** tha
 ```craftgo
 service Users {
     // Public endpoints - no service-level decorators
-    get  /healthz => Health()
-    post /signup  => Signup()
-    post /login   => Login()
+    get  Healthz /healthz { response HealthResp }
+    post Signup  /signup  { request SignupReq  response User }
+    post Login   /login   { request LoginReq   response Session }
 }
 
 @middlewares(AuthRequired)
 @security(Bearer)
 extend service Users {
-    get    /users      => List()       // inherits AuthRequired + Bearer
-    get    /users/{id} => Get()         // inherits
-    post   /users      => Create()       // inherits
+    get  List   /users      { response UserList }                 // inherits AuthRequired + Bearer
+    get  Get    /users/{id} { request GetUserReq  response User } // inherits
+    post Create /users      { request CreateUserReq response User } // inherits
 }
 ```
 

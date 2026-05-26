@@ -156,10 +156,10 @@ curl -X POST http://localhost:8080/api/v1/users \
 ```
 
 ```
-name: must be at least 1 character; email: does not match pattern
+name: length out of range [1, 80]
 ```
 
-The validators ran without you writing any code.
+`Validate()` is fail-fast — it returns the first violation (here `name`), so fixing one surfaces the next. The validators ran without you writing any code.
 
 ## What just happened
 

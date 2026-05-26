@@ -209,15 +209,15 @@ Add methods to an existing service from a different file. The extend block can c
 
 ```craftgo
 service Users {
-    get  /healthz => Health()                 // public, no decorators
-    post /signup  => Signup()
+    get  Healthz /healthz { response HealthResp }              // public, no decorators
+    post Signup  /signup  { request SignupReq response User }
 }
 
 @middlewares(AuthRequired)
 @security(Bearer)
 extend service Users {
-    get    /users      => List()              // inherits AuthRequired + Bearer
-    delete /users/{id} => Del()
+    get    List /users      { response UserList }              // inherits AuthRequired + Bearer
+    delete Del  /users/{id} { request GetUserReq response OkResp }
 }
 ```
 
@@ -462,10 +462,10 @@ project/
 │   │   ├── validate.go
 │   │   ├── enums.go
 │   │   └── errors.go
-│   ├── handler/<svc>/                            GEN every run
+│   ├── transport/<svc>/                          GEN every run
 │   │   ├── <method>.go
 │   │   └── errors.go
-│   ├── logic/<svc>/<method>.go             GEN ONCE
+│   ├── service/<svc>/<method>.go           GEN ONCE
 │   ├── routes/routes.go                          GEN every run (umbrella)
 │   ├── routes/<svc>/routes.go                    GEN every run
 │   └── middleware/<name>-middleware.go           GEN ONCE per declared middleware
@@ -498,21 +498,21 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         req.Field = defaultValue
         // bind path/query/header/cookie/form fields
         // ...
-        if err := json.NewDecoder(r.Body).Decode(&req); err != nil { /* 400 */ }
+        if err := server.JSON().Decode(r.Body, &req); err != nil { /* 400 */ }
         if err := req.Validate(); err != nil {
             server.WriteValidationError(w, r, err)
             return
         }
-        l := logic.New<Method>Service(r.Context(), svcCtx)
-        resp, err := l.<Method>(&req)
+        l := service.New<Method>Service(r.Context(), svcCtx)
+        resp, err := l.<Method>(&req)   // ctx is captured in the service, not passed
         if err != nil { writeError(w, err); return }
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        w.Header().Set("Content-Type", "application/json; charset=utf-8")
+        server.JSON().Encode(w, resp)
     }
 }
 ```
 
-Plain Go. No reflection. Stdlib JSON. Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc))`.
+Plain Go. No reflection. JSON goes through `server.JSON()` — the swappable codec (defaults to `encoding/json`). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
 
 ## Generated logic shape
 

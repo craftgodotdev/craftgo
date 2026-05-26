@@ -348,7 +348,7 @@ service S {
 		// @form bool: ParseBool through FormValue.
 		`if _v := r.FormValue("fFlag"); _v != ""`,
 		`req.FFlag = _n`,
-		// @form file: still through r.FormFile, unchanged by Round 2.5.
+		// @form file: bound through r.FormFile.
 		`r.FormFile("upload")`,
 		// strconv import flows through to the multipart template.
 		`"strconv"`,
@@ -1173,7 +1173,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 //   - Page  Page<Book>  → generic on @query
 //   - opt   int? @query  → optional numeric on @query (no clean idiom)
 //
-// As of Round 2.5 these shapes are rejected at SEMANTIC time by
+// These shapes are rejected at SEMANTIC time by
 // [semantic.checkBindingFieldType] (see `TestCodeOnBindingType` in
 // internal/semantic/decorators_test.go) so they never reach codegen.
 // The codegen layer keeps a defensive rejection in

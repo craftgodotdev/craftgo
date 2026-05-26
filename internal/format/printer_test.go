@@ -224,35 +224,6 @@ type X {
 	}
 }
 
-// TestFormatMigratesMinMax: `@min(N)` is rewritten to `@gte(N)`
-// and `@max(N)` to `@lte(N)` on format. The semantic registry
-// doesn't recognise @min/@max; the formatter normalises them so the
-// next lint pass sees the canonical names. Existing @gte/@lte stay
-// intact, idempotently.
-func TestFormatMigratesMinMax(t *testing.T) {
-	src := `package design
-
-type X {
-	age int @min(0) @max(150)
-	bps int @gte(0) @lte(10000)
-}
-`
-	formatted, _ := Format("t.craftgo", src)
-	if !strings.Contains(formatted, "@gte(0)") || !strings.Contains(formatted, "@lte(150)") {
-		t.Errorf("@min/@max not migrated to @gte/@lte:\n%s", formatted)
-	}
-	for _, bad := range []string{"@min(", "@max("} {
-		if strings.Contains(formatted, bad) {
-			t.Errorf("legacy form %q leaked through format:\n%s", bad, formatted)
-		}
-	}
-	// Idempotent.
-	formatted2, _ := Format("t.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent:\n--first--\n%s\n--second--\n%s", formatted, formatted2)
-	}
-}
-
 // TestFormatRewritesFormatStringToIdent: `@format("email")` is
 // rewritten to `@format(email)` on save. Rule — when a decorator
 // argument names a registered identifier (format name, security
