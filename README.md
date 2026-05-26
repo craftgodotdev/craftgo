@@ -4,7 +4,7 @@
 
 craftgo is a design-first framework for Go HTTP services. You describe your API once in a small DSL — types, validators, endpoints, errors — and `craftgo gen` produces typed structs, request validation, HTTP handlers, route wiring, and an OpenAPI 3.1 spec. The generated code is plain `net/http`: no custom router, no reflection, no runtime struct tags. It reads like code you would have written by hand.
 
-📖 **Full documentation: [craftgo.dev](https://craftgo.dev)** · 🤖 **AI-ready reference: [craftgo.dev/llms](https://craftgo.dev/llms)**
+📖 **[Documentation](https://craftgodotdev.github.io/craftgo)** · 🤖 **[AI-ready reference (llms.md)](https://craftgodotdev.github.io/craftgo/llms)**
 
 ---
 
@@ -101,12 +101,12 @@ design/*.craftgo  ──craftgo gen──▶  internal/types/      typed structs
 
 | | |
 |---|---|
-| [Getting Started](https://craftgo.dev/guide/getting-started) | Build and run your first endpoint in 5 minutes |
-| [DSL Basics](https://craftgo.dev/guide/dsl-basics) | The full syntax: types, services, decorators |
-| [Decorator Registry](https://craftgo.dev/reference/decorator-registry) | Every decorator, its arguments, and where it applies |
-| [Runtime API](https://craftgo.dev/reference/runtime-api) | `pkg/server` — the `net/http` wrapper your code runs on |
-| [Codegen Output](https://craftgo.dev/reference/codegen-output) | Exactly what `craftgo gen` produces, file by file |
-| [llms.md](https://craftgo.dev/llms) | Single-page reference built for pasting into an LLM prompt |
+| [Getting Started](https://craftgodotdev.github.io/craftgo/guide/getting-started) | Build and run your first endpoint in 5 minutes |
+| [DSL Basics](https://craftgodotdev.github.io/craftgo/guide/dsl-basics) | The full syntax: types, services, decorators |
+| [Decorator Registry](https://craftgodotdev.github.io/craftgo/reference/decorator-registry) | Every decorator, its arguments, and where it applies |
+| [Runtime API](https://craftgodotdev.github.io/craftgo/reference/runtime-api) | `pkg/server` — the `net/http` wrapper your code runs on |
+| [Codegen Output](https://craftgodotdev.github.io/craftgo/reference/codegen-output) | Exactly what `craftgo gen` produces, file by file |
+| [llms.md](https://craftgodotdev.github.io/craftgo/llms) | Single-page reference built for pasting into an LLM prompt |
 
 ## Status
 

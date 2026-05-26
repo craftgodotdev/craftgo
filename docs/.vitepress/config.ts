@@ -5,6 +5,11 @@ export default defineConfig({
   title: "craftgo",
   description:
     "Design-first Go framework on net/http. Spec your API, generate everything.",
+  // GitHub Pages project site: served under https://craftgodotdev.github.io/craftgo/.
+  // The leading+trailing slashes are required; VitePress prefixes every
+  // asset URL and internal link with this base, so a wrong/missing base
+  // breaks every link on the deployed site.
+  base: "/craftgo/",
   cleanUrls: true,
   lastUpdated: true,
   ignoreDeadLinks: true,

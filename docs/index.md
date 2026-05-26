@@ -108,7 +108,7 @@ That is it. The handler decodes JSON, runs the validators, calls your code, enco
 If you use Claude, ChatGPT, Cursor, GitHub Copilot, or another LLM to draft your `.craftgo` files, paste this URL into your prompt:
 
 ```
-https://craftgo.dev/llms
+https://craftgodotdev.github.io/craftgo/llms
 ```
 
 The page is a single-file consolidated reference: every keyword, every decorator, every CLI command, the generated layout, and common patterns. Designed for AI ingestion, not human reading. Your assistant will know the spec end-to-end and stop hallucinating non-existent decorators.
@@ -116,7 +116,7 @@ The page is a single-file consolidated reference: every keyword, every decorator
 Example prompt:
 
 ```
-Read https://craftgo.dev/llms then design a craftgo DSL file for a
+Read https://craftgodotdev.github.io/craftgo/llms then design a craftgo DSL file for a
 Tasks service with create / list / get / update / delete endpoints.
 Use a Status enum (Pending / InProgress / Done) and validate the
 title with @length(1, 200).
