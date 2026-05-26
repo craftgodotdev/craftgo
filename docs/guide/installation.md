@@ -33,8 +33,15 @@ The LSP is invoked by editor extensions. You do not run it directly.
 
 ## VS Code extension
 
-Install the [craftgo extension](https://marketplace.visualstudio.com/items?itemName=craftgo.craftgo) from the marketplace, or build from source:
+Install the **craftgo** extension from the Marketplace — three equivalent ways:
 
+- In VS Code: open the Extensions panel (`Cmd/Ctrl+Shift+X`), search **craftgo**, click Install.
+- From the command line: `code --install-extension craftgo.craftgo`
+- From the web: the [Marketplace listing](https://marketplace.visualstudio.com/items?itemName=craftgo.craftgo).
+
+`.craftgo` files immediately get syntax highlighting, completion, hover, and diagnostics. The extension auto-spawns `craftgo-lsp`, so install that too (above) for the language-server features.
+
+::: details Build from source instead
 ```bash
 git clone https://github.com/craftgodotdev/craftgo
 cd craftgo/extensions/vscode
@@ -42,8 +49,7 @@ npm install
 npm run package
 code --install-extension craftgo-*.vsix
 ```
-
-Reload the window. `.craftgo` files now have syntax highlighting, completion, hover, and diagnostics.
+:::
 
 ## Runtime library
 
