@@ -175,7 +175,7 @@ No reflection. No struct tags. No middleware boilerplate. The handler is a plain
 If you draft `.craftgo` files with Claude, ChatGPT, Cursor, or any other LLM, paste this URL into your prompt:
 
 ```
-https://craftgo.dev/llms
+https://craftgodotdev.github.io/craftgo/llms
 ```
 
 It is a single-page consolidated reference (every keyword, decorator, CLI flag, and generated layout) designed for AI ingestion. Your assistant will know the full spec and stop inventing non-existent decorators.

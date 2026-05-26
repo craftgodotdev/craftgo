@@ -28,7 +28,7 @@ Full LSP-backed support. The extension speaks LSP to a separate `craftgo-lsp` bi
 ### Prerequisite: LSP server
 
 ```sh
-go install github.com/dropship-dev/craftgo/cmd/craftgo-lsp@latest
+go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest
 ```
 
 Make sure `$GOPATH/bin` is on `$PATH`. Or set `craftgo.serverPath` in VSCode settings to an absolute path.
