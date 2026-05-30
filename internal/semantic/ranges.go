@@ -19,6 +19,9 @@ package semantic
 //     presence semantics" (warning, not error).
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
@@ -44,6 +47,10 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBodyRanges(dd.Body)
 	case *ast.ScalarDecl:
 		a.checkDecoratorRanges(dd.Decorators)
+		// A scalar's bound decorators are inherited into the validator
+		// of every field that uses it, so the float-on-integer check
+		// must run on the scalar declaration as well as on plain fields.
+		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
 			a.checkDecoratorRanges(m.Decorators)
@@ -63,6 +70,7 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember) {
 		a.checkPairOrdering(f)
 		a.checkNullableRedundant(f)
 		a.checkBoundCapacity(f)
+		a.checkBoundLiteralKind(f)
 		a.checkMultipleOfTarget(f)
 	}
 }
@@ -168,6 +176,80 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 			}
 		}
 	}
+}
+
+// checkBoundLiteralKind rejects a fractional float bound on an
+// integer-typed field. Resolves the field's primitive (following a
+// local scalar to its underlying type) and defers to the shared
+// per-decorator scan.
+func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
+		return
+	}
+	prim := f.Type.Named.Name.String()
+	if sd, ok := a.pkg.Scalars[prim]; ok {
+		prim = sd.Primitive
+	}
+	a.checkIntBoundFloatLiteral(prim, fmt.Sprintf("field %q", f.Name), f.Decorators)
+}
+
+// checkIntBoundFloatLiteral rejects a fractional float bound literal
+// (`@gte(0.5)`, `@range(0.5, 10.5)`, …) on an integer-typed target.
+// codegen renders a comparison/range bound verbatim, so the literal
+// `0.5` ends up compared against the integer field value — Go rejects
+// that with "constant 0.5 truncated to integer" and the whole
+// generated package fails to build. Catching it here turns an opaque
+// downstream build error into a precise design-time diagnostic.
+//
+// Only genuinely fractional literals are rejected: an integral float
+// (`1.0`, `1e3`) renders to a whole-number Go literal and compiles
+// fine, and float-typed targets are skipped entirely because a
+// fractional bound is exactly what they are for. `@multipleOf` is not
+// included — its codegen takes the integer-only path and never emits a
+// float literal.
+func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.Decorator) {
+	if _, _, ok := intCapacity(prim); !ok {
+		return // not an integer primitive — float bounds are valid
+	}
+	for _, d := range decs {
+		if d == nil {
+			continue
+		}
+		var args []*ast.DecoratorArg
+		switch d.Name {
+		case "gt", "gte", "lt", "lte":
+			if len(d.Args) == 1 {
+				args = d.Args
+			}
+		case "range":
+			args = d.Args
+		default:
+			continue
+		}
+		for _, ag := range args {
+			fl, ok := fractionalArg(ag)
+			if !ok {
+				continue
+			}
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@%s bound %g must be a whole number on integer %s — codegen compares the bound against an integer value, so a fractional literal would not compile",
+				d.Name, fl.Value, target)
+		}
+	}
+}
+
+// fractionalArg reports a FloatLit argument whose value carries a
+// fractional part. An integral float literal renders to a whole-number
+// Go literal, so it is not flagged.
+func fractionalArg(a *ast.DecoratorArg) (*ast.FloatLit, bool) {
+	if a == nil {
+		return nil, false
+	}
+	fl, ok := a.Value.(*ast.FloatLit)
+	if !ok || fl.Value == math.Trunc(fl.Value) {
+		return nil, false
+	}
+	return fl, true
 }
 
 // checkDecoratorRanges applies value-sanity checks to each decorator
