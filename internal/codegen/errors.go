@@ -73,17 +73,19 @@ var categoryMessage = map[string]string{
 // SCREAMING_SNAKE error-code constant for every [ast.ErrorDecl] in pkg.
 // When pkg has no errors the function is a no-op.
 //
-// Equivalent to [GenerateErrorsPackage] with a nil [CrossPkg]; kept for
-// callers that don't reach across packages.
+// Equivalent to [GenerateErrorsPackage] with a nil resolver; kept for
+// single-package callers that don't reach across packages.
 func GenerateErrors(pkg *semantic.Package, outDir string) error {
 	return GenerateErrorsPackage(pkg, outDir, nil)
 }
 
 // GenerateErrorsPackage is the multi-package variant of [GenerateErrors].
-// crossPkg gives the codegen the import path for every other DSL
-// package it might reach into through a body field (e.g. an error in
-// `tasks` whose body carries a `users.UserRef`).
-func GenerateErrorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
+// The [ProjectResolver] supplies the cross-package import paths for body
+// fields (e.g. an error in `tasks` whose body carries a `users.UserRef`)
+// AND the cross-package scalar / enum resolution needed to format a
+// non-string `@header` / `@cookie` error field (`cost shared.Cents`).
+// A nil resolver falls back to local-only resolution.
+func GenerateErrorsPackage(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -94,7 +96,7 @@ func GenerateErrorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossP
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	src := buildErrorsGo(pkg, crossPkg)
+	src := buildErrorsGo(pkg, r)
 	formatted, err := format.Source([]byte(src))
 	if err != nil {
 		return fmt.Errorf("format errors.go: %w\n--- source ---\n%s", err, src)
@@ -110,7 +112,8 @@ func GenerateErrorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossP
 // surface their `<module>/<typesDir>/<pkg>` Go import paths via the
 // shared [collectImports] machinery. The result is returned
 // pre-formatting; the caller runs `go/format` to normalise whitespace.
-func buildErrorsGo(pkg *semantic.Package, crossPkg CrossPkg) string {
+func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
+	crossPkg := r.crossPkgMap()
 	names := make([]string, 0, len(pkg.Errors))
 	for n := range pkg.Errors {
 		names = append(names, n)
@@ -118,17 +121,25 @@ func buildErrorsGo(pkg *semantic.Package, crossPkg CrossPkg) string {
 	sort.Strings(names)
 
 	needsHTTP := false
+	needsStrconv := false
 	for _, name := range names {
-		hs, cs := errorResponseBindings(pkg.Errors[name])
+		hs, cs, ns := errorResponseBindings(pkg.Errors[name], pkg, r)
 		if len(hs)+len(cs) > 0 {
 			needsHTTP = true
-			break
+		}
+		if ns {
+			needsStrconv = true
 		}
 	}
 
 	imports := map[string]bool{}
 	if needsHTTP {
 		imports["net/http"] = true
+	}
+	if needsStrconv {
+		// Non-string @header / @cookie error fields format their value
+		// via strconv before writing it to the wire.
+		imports["strconv"] = true
 	}
 	for _, name := range names {
 		for _, m := range pkg.Errors[name].Body {
@@ -154,7 +165,7 @@ func buildErrorsGo(pkg *semantic.Package, crossPkg CrossPkg) string {
 		parts = append(parts, renderImports(paths))
 	}
 	for _, name := range names {
-		parts = append(parts, renderError(pkg.Errors[name]))
+		parts = append(parts, renderError(pkg, pkg.Errors[name], r))
 	}
 	return strings.Join(parts, "\n")
 }
@@ -167,14 +178,12 @@ type errorBodyField struct {
 	JSONTag string
 }
 
-// errorBinding pairs a header / cookie's DSL name (already
-// strconv.Quoted so the template can drop it verbatim) with the Go
-// field name on the error body struct. Same shape on both sides keeps
-// the template uniform regardless of which binding kind triggered the
-// emission.
+// errorBinding holds the fully-rendered Go statement that writes one
+// `@header` / `@cookie` error field onto the response (header/cookie
+// name + value formatting already baked in). The template drops Stmt
+// verbatim inside WriteResponseHeaders.
 type errorBinding struct {
-	DSLNameQuoted string
-	GoName        string
+	Stmt string
 }
 
 // errorTemplateData is the full payload handed to errors.tmpl per error.
@@ -204,8 +213,8 @@ type errorTemplateData struct {
 // when the error declares any `@header` / `@cookie` fields. The
 // constructor takes a body-struct argument iff the DSL declares ≥1
 // custom field.
-func renderError(ed *ast.ErrorDecl) string {
-	headers, cookies := errorResponseBindings(ed)
+func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) string {
+	headers, cookies, _ := errorResponseBindings(ed, pkg, r)
 	data := errorTemplateData{
 		TypeName:           errSuffix(ed.Name),
 		BodyName:           ed.Name + "Body",
@@ -254,14 +263,12 @@ func buildErrorBodyFields(fields []*ast.Field) []errorBodyField {
 }
 
 // toErrorBindings adapts the shared paramBinding shape into the
-// template's view (DSL name already quoted, Go field name preserved).
+// template's view: each binding's pre-rendered write statement lives in
+// [paramBinding.Bind].
 func toErrorBindings(in []paramBinding) []errorBinding {
 	out := make([]errorBinding, len(in))
 	for i, b := range in {
-		out[i] = errorBinding{
-			DSLNameQuoted: strconv.Quote(b.DSLName),
-			GoName:        b.GoName,
-		}
+		out[i] = errorBinding{Stmt: b.Bind}
 	}
 	return out
 }
@@ -284,11 +291,14 @@ func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
 }
 
 // errorResponseBindings walks the error body and returns the
-// `@header` / `@cookie` fields whose value should be written onto the
-// response writer instead of the JSON body. Non-plain-string fields
-// (arrays, optionals, non-string types) are skipped silently - same
-// fail-soft policy as [collectResponseBindings] for normal responses.
-func errorResponseBindings(ed *ast.ErrorDecl) (headers, cookies []paramBinding) {
+// `@header` / `@cookie` fields whose value is written onto the response
+// writer instead of the JSON body. Each entry's [paramBinding.Bind]
+// holds the fully-rendered write statement (value formatting included);
+// needsStrconv is true when any non-string field needs the strconv
+// import. The resolver `r` resolves cross-package scalars / enums to
+// their wire primitive so `cost shared.Cents @header` formats the same
+// as on the success-response path.
+func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	for _, m := range ed.Body {
 		f, ok := m.(*ast.Field)
 		if !ok {
@@ -297,18 +307,15 @@ func errorResponseBindings(ed *ast.ErrorDecl) (headers, cookies []paramBinding) 
 		if f.Name == "code" || f.Name == "message" {
 			continue
 		}
-		if !isPlainStringField(f) {
+		kind := bindingFromDecorators(f.Decorators)
+		if kind != "header" && kind != "cookie" {
 			continue
 		}
-		// Use the explicit `@header("X-Y")` / `@cookie("name")` arg
-		// when present so wire-side conventions (hyphenated HTTP
-		// header names, snake_case cookies) survive the round-trip
-		// from DSL identifier to actual response header.
-		kind := bindingFromDecorators(f.Decorators)
-		entry := paramBinding{
-			DSLName: bindingWireName(f, kind),
-			GoName:  GoFieldName(f.Name),
+		stmt, ns := renderResponseWrite(f, pkg, r, kind, "e")
+		if ns {
+			needsStrconv = true
 		}
+		entry := paramBinding{Bind: stmt}
 		switch kind {
 		case "header":
 			headers = append(headers, entry)
@@ -316,7 +323,7 @@ func errorResponseBindings(ed *ast.ErrorDecl) (headers, cookies []paramBinding) 
 			cookies = append(cookies, entry)
 		}
 	}
-	return headers, cookies
+	return headers, cookies, needsStrconv
 }
 
 // isResponseBoundField reports whether f carries `@header` or `@cookie`

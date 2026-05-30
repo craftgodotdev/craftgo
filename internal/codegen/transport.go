@@ -329,7 +329,11 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		}
 	}
 	if hasResp {
-		d.RespHeaders, d.RespCookies = collectResponseBindings(m, pkg)
+		var respStrconv bool
+		d.RespHeaders, d.RespCookies, respStrconv = collectResponseBindings(m, pkg, r)
+		if respStrconv {
+			d.NeedsStrconv = true
+		}
 	}
 	if hasReq {
 		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias, r)
@@ -789,13 +793,6 @@ func castExpr(p queryPrim, varName string) string {
 	}
 	return fmt.Sprintf("%s(%s)", p.goType, varName)
 }
-
-// isPlainStringField reports whether f is a non-array, non-optional
-// `string`. Used internally for the auto-promotion safety check (a
-// body field that happens to share a name with a path segment is
-// silently skipped instead of producing a hard error). Path / header /
-// cookie binding goes through [stringBindable] which additionally
-// accepts string scalars and string-backed enums.
 
 func GenerateTransportHelpers(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {

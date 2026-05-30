@@ -124,6 +124,9 @@ func (v *PaginatedResp) Validate() error {
 			return fmt.Errorf("items: length out of range [1, 64]")
 		}
 	}
+	if l := len(v.TraceID); l < 1 || l > 64 {
+		return fmt.Errorf("traceId: length out of range [1, 64]")
+	}
 	return nil
 }
 
@@ -201,5 +204,11 @@ func (v *UserRef) Validate() error {
 	if len(v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on RateLimitedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *RateLimitedBody) Validate() error {
 	return nil
 }

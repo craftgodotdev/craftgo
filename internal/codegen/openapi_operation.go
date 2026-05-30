@@ -160,7 +160,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		desc := successDescription(successCode)
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
 	}
-	addErrorResponses(op, m, pkg)
+	addErrorResponses(op, m, pkg, registry)
 	return op
 }
 
@@ -244,7 +244,7 @@ func passthroughStatus(m *ast.Method) string {
 // the schemas merge into a `oneOf` list. Without this merge the second
 // `op.Responses.Set(...)` call would overwrite the first and the lost
 // error would be invisible to OpenAPI consumers.
-func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package) {
+func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
 	names := errorRefsFromDecorators(m.Decorators)
 	if len(names) == 0 {
 		return
@@ -254,6 +254,8 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 	type byStatus struct {
 		refs       []string
 		categories []string
+		headers    []*ast.Field
+		cookies    []*ast.Field
 	}
 	grouped := map[string]*byStatus{}
 	var statusOrder []string
@@ -272,6 +274,12 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		}
 		entry.refs = append(entry.refs, "#/components/schemas/"+typeName)
 		entry.categories = append(entry.categories, ed.Category)
+		// An error's @header / @cookie body fields are written onto the
+		// response by the generated WriteResponseHeaders, so document
+		// them as response.headers — mirroring the success-response path.
+		hs, cs := errorHeaderCookieFields(ed)
+		entry.headers = append(entry.headers, hs...)
+		entry.cookies = append(entry.cookies, cs...)
 	}
 	for _, status := range statusOrder {
 		entry := grouped[status]
@@ -286,13 +294,37 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 			}
 			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}}
 		}
-		op.Responses.Set(status, &openapi3.ResponseRef{Value: &openapi3.Response{
+		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
 				"application/json": &openapi3.MediaType{Schema: schema},
 			},
-		}})
+		}
+		if h := buildResponseHeaders(entry.headers, entry.cookies, pkg, registry); len(h) > 0 {
+			resp.Headers = h
+		}
+		op.Responses.Set(status, &openapi3.ResponseRef{Value: resp})
 	}
+}
+
+// errorHeaderCookieFields partitions an error declaration's body into
+// its @header and @cookie fields — the ones the runtime writes onto the
+// response via WriteResponseHeaders rather than into the JSON body.
+// Mirrors [binResponseFields] for the error path.
+func errorHeaderCookieFields(ed *ast.ErrorDecl) (headers, cookies []*ast.Field) {
+	for _, member := range ed.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		switch bindingFromDecorators(f.Decorators) {
+		case "header":
+			headers = append(headers, f)
+		case "cookie":
+			cookies = append(cookies, f)
+		}
+	}
+	return headers, cookies
 }
 
 // errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`

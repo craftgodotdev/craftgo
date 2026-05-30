@@ -62,10 +62,10 @@ func (e *{{.TypeName}}) HTTPStatus() int { return {{.Status}} }
 // encoded so values reach the wire in a single response.
 func (e *{{.TypeName}}) WriteResponseHeaders(w http.ResponseWriter) {
 {{- range .Headers}}
-	w.Header().Set({{.DSLNameQuoted}}, e.{{.GoName}})
+	{{.Stmt}}
 {{- end}}
 {{- range .Cookies}}
-	http.SetCookie(w, &http.Cookie{Name: {{.DSLNameQuoted}}, Value: e.{{.GoName}}})
+	{{.Stmt}}
 {{- end}}
 }
 {{end -}}

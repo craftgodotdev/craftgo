@@ -626,6 +626,83 @@ error TooManyRequests RateLimited {
 	)
 }
 
+// TestGenerateErrorsResponseBindingsNonString pins the non-string
+// @header / @cookie formatting on the error path: int / bool values are
+// rendered via strconv (and the strconv import is pulled in), mirroring
+// the success-response writer.
+func TestGenerateErrorsResponseBindingsNonString(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar Cents int
+error TooManyRequests RateLimited {
+    retryAfter int   @header("Retry-After")
+    cost       Cents @header("X-Cost")
+    throttled  bool  @cookie("throttled")
+}`)
+	dir := t.TempDir()
+	if err := GenerateErrors(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, src,
+		`"net/http"`,
+		`"strconv"`,
+		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
+		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
+		// A numeric scalar resolves to its primitive (int) and formats
+		// the same as a plain int field — proving local scalar
+		// resolution works on the error path too.
+		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
+		`http.SetCookie(w, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
+	)
+}
+
+// TestGenerateErrorsCrossPkgScalarHeader pins the cross-package scalar
+// resolution on the error path. A non-string scalar imported from
+// another package (shared.Cents → int) must resolve through the
+// ProjectResolver and format via strconv.FormatInt — NOT the broken
+// string(int) conversion the local-only path would emit (wrong runtime
+// value + a go vet diagnostic). This exercises the resolver that
+// GenerateErrorsPackage threads through; the local-scalar test above
+// would pass even without it.
+func TestGenerateErrorsCrossPkgScalarHeader(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/types.craftgo": `package shared
+scalar Cents int @gte(0)`,
+		"app/errors.craftgo": `package app
+import "shared"
+error TooManyRequests RateLimited {
+    cost shared.Cents @header("X-Cost")
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	appPkg := proj.Packages["app"]
+	if appPkg == nil {
+		t.Fatal("app package missing from project")
+	}
+	dir := t.TempDir()
+	r := BuildProjectResolver(proj, newFixtureConfig(), "app")
+	if err := GenerateErrorsPackage(appPkg, dir, r); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "app", "errors.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	if !strings.Contains(src, `w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`) {
+		t.Errorf("cross-pkg int scalar should format via strconv.FormatInt; got:\n%s", src)
+	}
+	if strings.Contains(src, `string(e.Cost)`) {
+		t.Errorf("cross-pkg int scalar must NOT use string(int) (wrong value + go vet flags it):\n%s", src)
+	}
+}
+
 func TestGenerateErrorsNoBindingsNoHTTPImport(t *testing.T) {
 	// Without @header / @cookie fields, errors.go must NOT carry a
 	// `net/http` import or a WriteResponseHeaders method.

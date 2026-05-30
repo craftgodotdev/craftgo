@@ -336,17 +336,19 @@ A field with no binding decorator falls back to:
 - `body` for body verbs (POST / PUT / PATCH)
 - `query` for non-body verbs (GET / DELETE / HEAD / OPTIONS)
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body — the JSON tag is automatically `json:"-"` so the same field doesn't double up. The explicit-name argument applies here too:
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body — the JSON tag is automatically `json:"-"` so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {
     items   shared.ID[]
-    count   string  @header("X-Total-Count")   // emitted on the wire as X-Total-Count
-    session string  @cookie("session_id")       // emitted as Set-Cookie: session_id=...
+    count   int      @header("X-Total-Count")   // strconv.Itoa → X-Total-Count: 42
+    nextURL string?  @header("X-Next")           // only written when present
+    active  bool     @cookie("active")           // Set-Cookie: active=true
+    session string   @cookie("session_id")       // Set-Cookie: session_id=...
 }
 
 error TooManyRequests RateLimitedErr {
-    retryAfter string  @header("Retry-After")   // error responses can ship custom headers
+    retryAfter int  @header("Retry-After")       // error responses can ship custom headers
 }
 ```
 

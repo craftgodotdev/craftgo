@@ -175,6 +175,76 @@ service S {
 	}
 }
 
+// TestGenerateOpenAPIErrorResponseHeaders pins that an error type's
+// @header field is documented on its OpenAPI error response (with the
+// field's typed schema), matching the runtime WriteResponseHeaders —
+// so the spec and the wire agree for error headers too, not just
+// success responses.
+func TestGenerateOpenAPIErrorResponseHeaders(t *testing.T) {
+	src := `package design
+error TooManyRequests RateLimited {
+    retryAfter int @header("Retry-After")
+}
+type Req { id string }
+type Res { id string }
+service S {
+    @errors(RateLimited)
+    get Get /things/{id} { request Req  response Res }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+	mustContainAll(t, body, `"429":`, "headers:", "Retry-After:")
+	// The header carries the field's typed schema (int → integer), not a
+	// string default. Assert the integer schema sits under Retry-After.
+	if i := strings.Index(body, "Retry-After:"); i >= 0 {
+		if !strings.Contains(body[i:min(i+80, len(body))], "type: integer") {
+			t.Errorf("Retry-After header should carry an integer schema:\n%s", body[i:min(i+120, len(body))])
+		}
+	}
+}
+
+// TestGenerateOpenAPITypeSchemaExcludesHeaderFields pins that @header /
+// @cookie fields are dropped from a type's component schema — they ride
+// on response headers / cookies (json:"-"), never the JSON body. Before
+// this, the component listed them as required body props, so generated
+// clients (e.g. @hey-api/openapi-ts) emitted a type with a field the
+// wire never carries.
+func TestGenerateOpenAPITypeSchemaExcludesHeaderFields(t *testing.T) {
+	src := `package design
+type ListResp {
+    items string
+    total int    @header("X-Total-Count")
+    sess  string @cookie("sid")
+}
+type Req { id string }
+service S {
+    get List /items { request Req  response ListResp }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+	// The value is documented as a response header, not a body property.
+	if !strings.Contains(body, "X-Total-Count:") {
+		t.Errorf("expected X-Total-Count response header in spec:\n%s", body)
+	}
+	// @header / @cookie field names must NOT appear as body schema
+	// properties (indented one level under `properties:`).
+	for _, banned := range []string{"\n        total:", "\n        sess:"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("header/cookie field leaked into a body schema (%q):\n%s", banned, body)
+		}
+	}
+}
+
 // TestGenerateOpenAPISuccessStatusDefaults pins the verb-aware default
 // success status on the OpenAPI side so the spec agrees with the
 // generated handler: POST with a body → 201, GET → 200, and a bodiless

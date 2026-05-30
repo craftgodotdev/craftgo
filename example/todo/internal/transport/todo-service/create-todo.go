@@ -16,7 +16,10 @@ import (
 func CreateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateTodoReq
-		req.Priority = types.TodoPriorityMedium
+		{
+			__d := types.TodoPriorityMedium
+			req.Priority = &__d
+		}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
