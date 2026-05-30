@@ -178,6 +178,47 @@ func TestMinExceedsMax(t *testing.T) {
 	expectDiag(t, `type X { score int @gte(100) @lte(10) }`, CodeDecoratorRange)
 }
 
+func TestFractionalBoundOnIntRejected(t *testing.T) {
+	// A fractional float bound on an integer field renders to a Go
+	// float literal compared against an int, which fails to compile
+	// ("constant 0.5 truncated to integer"). Reject it at design time
+	// across @gt/@gte/@lt/@lte and both @range positions.
+	d := expectDiag(t, `type X { count int @gte(0.5) }`, CodeDecoratorTypeMismatch)
+	expectMessage(t, d, "whole number", "count")
+	expectDiag(t, `type X { count int @lte(10.5) }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `type X { count int @gt(0.5) }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `type X { count int @lt(9.5) }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `type X { count int @range(0.5, 10) }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `type X { count int @range(0, 10.5) }`, CodeDecoratorTypeMismatch)
+	// A field typed through a local integer scalar resolves to the same
+	// primitive and is rejected too.
+	expectDiag(t, `scalar Count int
+type X { n Count @gte(0.5) }`, CodeDecoratorTypeMismatch)
+}
+
+func TestFractionalBoundOnScalarRejected(t *testing.T) {
+	// A scalar's bounds are inherited into every field that uses it, so
+	// a fractional bound on an integer scalar is caught on the scalar
+	// declaration itself.
+	expectDiag(t, `scalar Half int @gte(0.5)`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `scalar Half uint8 @range(0.5, 9)`, CodeDecoratorTypeMismatch)
+}
+
+func TestFractionalBoundOnFloatOK(t *testing.T) {
+	// Float-typed targets are exactly what fractional bounds are for.
+	mustClean(t, `type X { ratio float64 @gte(0.5) @lte(1.5) }`)
+	mustClean(t, `type X { ratio float32 @range(0.1, 0.9) }`)
+	mustClean(t, `scalar Half float64 @gte(0.5)`)
+}
+
+func TestIntegralFloatBoundOnIntOK(t *testing.T) {
+	// An integral float literal renders to a whole-number Go literal
+	// (`1.0` → `1`), so it compiles fine and is not flagged — the check
+	// targets only genuinely fractional values.
+	mustClean(t, `type X { count int @gte(1.0) @lte(10.0) }`)
+	mustClean(t, `type X { count int @range(0.0, 100.0) }`)
+}
+
 func TestMinMaxOnlyOneSide(t *testing.T) {
 	// Solo decorator is unconstrained - pair ordering only fires when
 	// both halves are present.
