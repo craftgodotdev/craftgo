@@ -139,7 +139,7 @@ service S {
     @errors(BookNotFound)
     get GetBook /books/{id} { request BookReq  response Book }
     @errors(DuplicateISBN)
-    @status(201)
+    @status(202)
     post CreateBook /books { request Book  response Book }
 }`
 	pkg := analyze(t, src)
@@ -158,17 +158,52 @@ service S {
 	if !strings.Contains(body, `'#/components/schemas/BookNotFoundErr'`) {
 		t.Error("expected BookNotFoundErr ref")
 	}
-	// CreateBook overrides success to 201 via @status.
-	if !strings.Contains(body, `"201":`) {
-		t.Errorf("expected @status(201) override:\n%s", body)
+	// CreateBook overrides its success status via @status(202); 202 is a
+	// code the POST verb default (201) would never produce, so this
+	// proves the override is honored rather than coinciding with the
+	// default.
+	if !strings.Contains(body, `"202":`) {
+		t.Errorf("expected @status(202) override:\n%s", body)
 	}
-	// 201 response carries the IANA reason phrase, not the hardcoded "OK".
-	if !strings.Contains(body, `description: Created`) {
-		t.Errorf("expected `description: Created` for 201 response:\n%s", body)
+	// 202 response carries the IANA reason phrase, not the hardcoded "OK".
+	if !strings.Contains(body, `description: Accepted`) {
+		t.Errorf("expected `description: Accepted` for 202 response:\n%s", body)
 	}
 	// CreateBook also registers 409 (Conflict) for DuplicateISBN.
 	if !strings.Contains(body, `"409":`) {
 		t.Errorf("expected 409 Conflict response:\n%s", body)
+	}
+}
+
+// TestGenerateOpenAPISuccessStatusDefaults pins the verb-aware default
+// success status on the OpenAPI side so the spec agrees with the
+// generated handler: POST with a body → 201, GET → 200, and a bodiless
+// method → 204, none of them carrying an explicit @status.
+func TestGenerateOpenAPISuccessStatusDefaults(t *testing.T) {
+	src := `package design
+type Req { id string }
+type Res { id string }
+service S {
+    post Create /things { request Req  response Res }
+    get Get /things/{id} { request Req  response Res }
+    delete Remove /things/{id} { request Req }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+
+	// POST that returns a body defaults to 201 Created.
+	mustContainAll(t, body, `"201":`, "description: Created")
+	// GET keeps 200 OK; the bodiless DELETE is 204 No Content.
+	mustContainAll(t, body, `"200":`, `"204":`, "description: No Content")
+	// The default path must not leak the generic "OK" onto the 201/204
+	// responses (a regression guard for the IANA reason-phrase lookup).
+	if strings.Count(body, "description: OK") != 1 {
+		t.Errorf("expected exactly one `description: OK` (the GET 200):\n%s", body)
 	}
 }
 

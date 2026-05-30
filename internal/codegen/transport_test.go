@@ -93,6 +93,80 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 	}
 }
 
+// TestGenerateTransportSuccessStatus pins the verb-aware success status.
+// A POST that returns a body defaults to 201 Created (written before the
+// body is encoded); GET/PUT keep the implicit 200 (no explicit
+// WriteHeader — the encoder already produces 200); a bodiless method is
+// 204; and @status(N) overrides the verb default.
+func TestGenerateTransportSuccessStatus(t *testing.T) {
+	src := `package design
+type Req { id string }
+type Res { id string }
+@prefix("/api")
+service S {
+    post Create /things {
+        request  Req
+        response Res
+    }
+    get Get /things/{id} {
+        request  Req
+        response Res
+    }
+    put Replace /things/{id} {
+        request  Req
+        response Res
+    }
+    @status(202)
+    post Enqueue /things/enqueue {
+        request  Req
+        response Res
+    }
+    delete Remove /things/{id} {
+        request  Req
+    }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	read := func(fn string) string {
+		out, err := os.ReadFile(filepath.Join(root, "internal/transport/s", fn))
+		if err != nil {
+			t.Fatalf("missing %s: %v", fn, err)
+		}
+		mustParseGo(t, string(out))
+		return string(out)
+	}
+
+	// POST + body → 201 Created, written before the body encode.
+	create := read("create.go")
+	if !strings.Contains(create, "w.WriteHeader(http.StatusCreated)") {
+		t.Errorf("POST should write 201:\n%s", create)
+	}
+	if i, j := strings.Index(create, "WriteHeader(http.StatusCreated)"), strings.Index(create, "Encode(w, resp)"); i < 0 || j < 0 || i > j {
+		t.Errorf("201 must be written before the body encode:\n%s", create)
+	}
+
+	// GET / PUT + body → implicit 200, no explicit WriteHeader.
+	for _, fn := range []string{"get.go", "replace.go"} {
+		body := read(fn)
+		if strings.Contains(body, "w.WriteHeader(") {
+			t.Errorf("%s should not write an explicit status (implicit 200):\n%s", fn, body)
+		}
+	}
+
+	// @status(202) overrides the POST default.
+	if enqueue := read("enqueue.go"); !strings.Contains(enqueue, "w.WriteHeader(http.StatusAccepted)") {
+		t.Errorf("@status(202) should write 202:\n%s", enqueue)
+	}
+
+	// No response body → 204 No Content regardless of verb.
+	if remove := read("remove.go"); !strings.Contains(remove, "w.WriteHeader(http.StatusNoContent)") {
+		t.Errorf("bodiless handler should write 204:\n%s", remove)
+	}
+}
+
 // TestGenerateTransportDefaults pins the? @default pre-fill emission. The
 // handler must assign each declared default BEFORE the JSON decode so
 // fields absent from the body keep the DSL value; explicit fields in

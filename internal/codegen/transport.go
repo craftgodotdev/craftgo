@@ -3,6 +3,7 @@ package codegen
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -65,10 +66,19 @@ type transportData struct {
 	Defaults []defaultBinding
 	// NeedsStrconv tells the template to import "strconv" when at
 	// least one bound field needed string→int/float/bool parsing.
-	NeedsStrconv     bool
-	ServiceImport    string
-	TypesImport      string
-	SvccontextImport string
+	NeedsStrconv bool
+	// SuccessStatus is the resolved HTTP success code for this method
+	// (see [methodSuccessStatus]). SuccessStatusExpr is the Go source
+	// the template emits in `w.WriteHeader(...)` — an `http.StatusXxx`
+	// constant for the standard codes, falling back to the decimal
+	// literal. The response branch only writes the header when the code
+	// is not the implicit 200 the encoder already produces; the
+	// no-response branch always writes it (defaulting to 204).
+	SuccessStatus     int
+	SuccessStatusExpr string
+	ServiceImport     string
+	TypesImport       string
+	SvccontextImport  string
 	// ExtraTypesImports lists Go imports for cross-package request
 	// types. Empty for the common case where request lives in the
 	// service's own package.
@@ -324,7 +334,37 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 	if hasReq {
 		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias, r)
 	}
+	// Resolve the success status once so the handler's WriteHeader and
+	// the OpenAPI response key stay in lockstep. Passthrough handlers
+	// write their own status, so the field is ignored by that template.
+	d.SuccessStatus = methodSuccessStatus(m)
+	d.SuccessStatusExpr = statusConstExpr(d.SuccessStatus)
 	return d, nil
+}
+
+// statusConstExpr renders an HTTP status code as the Go source the
+// transport template drops into `w.WriteHeader(...)`. Standard 2xx
+// success codes map to their `net/http` constant so the generated code
+// reads like hand-written code; any other code (an unusual `@status`
+// override) falls back to the decimal literal, which always compiles.
+func statusConstExpr(code int) string {
+	switch code {
+	case http.StatusOK:
+		return "http.StatusOK"
+	case http.StatusCreated:
+		return "http.StatusCreated"
+	case http.StatusAccepted:
+		return "http.StatusAccepted"
+	case http.StatusNonAuthoritativeInfo:
+		return "http.StatusNonAuthoritativeInfo"
+	case http.StatusNoContent:
+		return "http.StatusNoContent"
+	case http.StatusResetContent:
+		return "http.StatusResetContent"
+	case http.StatusPartialContent:
+		return "http.StatusPartialContent"
+	}
+	return strconv.Itoa(code)
 }
 
 func hasPassthroughDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "passthrough") }

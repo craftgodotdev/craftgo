@@ -228,12 +228,12 @@ paths:
               $ref: '#/components/schemas/CreateUserReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateUserRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       tags:

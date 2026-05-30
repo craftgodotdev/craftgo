@@ -238,12 +238,12 @@ paths:
               type: object
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadDocumentRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       tags:
@@ -274,12 +274,12 @@ paths:
               type: object
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadAttachmentRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       tags:
@@ -310,12 +310,12 @@ paths:
               type: object
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadAvatarRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       tags:

@@ -122,7 +122,9 @@ func validProfile(name string) types.CreateProfileReq {
 func TestComplexCreateAndGet(t *testing.T) {
 	ts, _ := boot(t)
 	status, body := httpJSON(t, ts, http.MethodPost, "/api/v1/profiles", validProfile("alice"))
-	if status != http.StatusOK {
+	// POST that returns a body now defaults to 201 Created (verb-aware
+	// success status).
+	if status != http.StatusCreated {
 		t.Fatalf("CreateProfile status %d: %s", status, body)
 	}
 	var created types.Profile
@@ -252,7 +254,7 @@ func TestComplexGetMissingReturns404(t *testing.T) {
 func TestComplexDuplicateEmailReturns409(t *testing.T) {
 	ts, _ := boot(t)
 	first := validProfile("alice")
-	if status, _ := httpJSON(t, ts, http.MethodPost, "/api/v1/profiles", first); status != http.StatusOK {
+	if status, _ := httpJSON(t, ts, http.MethodPost, "/api/v1/profiles", first); status != http.StatusCreated {
 		t.Fatalf("first create failed: %d", status)
 	}
 	// Second request with the same email should hit the duplicate path.

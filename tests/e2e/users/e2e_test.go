@@ -70,7 +70,9 @@ func TestE2ECreateAndGet(t *testing.T) {
 		Tags: []string{"admin", "ops"},
 		Meta: map[string]string{"team": "core"},
 	})
-	if status != http.StatusOK {
+	// POST that returns a body now defaults to 201 Created (verb-aware
+	// success status).
+	if status != http.StatusCreated {
 		t.Fatalf("CreateUser status %d: %s", status, body)
 	}
 	var created types.User

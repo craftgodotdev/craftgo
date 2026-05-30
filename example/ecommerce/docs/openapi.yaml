@@ -1271,12 +1271,12 @@ paths:
               $ref: '#/components/schemas/CreateProductReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateProductRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       security:
@@ -1382,12 +1382,12 @@ paths:
               $ref: '#/components/schemas/CreateCustomerReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateCustomerRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       security:
@@ -1476,12 +1476,12 @@ paths:
               type: object
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadAvatarRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       security:
@@ -1499,12 +1499,12 @@ paths:
               $ref: '#/components/schemas/CreateOrderReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateOrderRespBody'
-          description: OK
+          description: Created
         "401":
           content:
             application/json:
@@ -1579,12 +1579,12 @@ paths:
           minLength: 1
           type: string
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CancelOrderRespBody'
-          description: OK
+          description: Created
         "403":
           content:
             application/json:
@@ -1617,12 +1617,12 @@ paths:
           minLength: 1
           type: string
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReplayRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       security:
@@ -1643,12 +1643,12 @@ paths:
           minLength: 1
           type: string
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ForceShipRespBody'
-          description: OK
+          description: Created
         "403":
           content:
             application/json:
@@ -1767,12 +1767,12 @@ paths:
               $ref: '#/components/schemas/DefaultsReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DefaultsRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       security:
@@ -1798,12 +1798,12 @@ paths:
               $ref: '#/components/schemas/BulkExportReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkExportRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       security:
