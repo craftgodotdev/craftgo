@@ -4,6 +4,7 @@ package todoservice
 
 import (
 	"context"
+	"slices"
 
 	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
 
@@ -32,9 +33,48 @@ func NewListTodosService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// ListTodos is the service entry point. Replace the
-// TODO with the real implementation.
+// ListTodos is the service entry point. Returns a small demo page; a
+// real service would read from svcCtx's store. req here is already
+// decoded AND validated by the generated handler — req.Tag, for
+// example, passed the Tag scalar's @length / @pattern checks, so we can
+// use it without re-validating.
 func (l *ListTodosService) ListTodos(req *types.ListTodosReq) (*types.TodoList, error) {
-	// TODO: implement
-	return nil, nil
+	all := []types.Todo{
+		{
+			ID:        "t1",
+			Title:     "Write the design",
+			Status:    types.TodoStatusDone,
+			Priority:  ptr(types.TodoPriorityHigh),
+			Tags:      []string{"docs"},
+			CreatedAt: "2024-01-01T00:00:00Z",
+		},
+		{
+			ID:        "t2",
+			Title:     "Generate the handlers",
+			Status:    types.TodoStatusInProgress,
+			Priority:  ptr(types.TodoPriorityMedium),
+			Tags:      []string{"build"},
+			CreatedAt: "2024-01-02T00:00:00Z",
+		},
+	}
+	// Honour the validated query filters: ?tag= keeps only matching todos,
+	// ?limit= caps the page size.
+	items := make([]types.Todo, 0, len(all))
+	for _, t := range all {
+		if req.Tag != nil && !slices.Contains(t.Tags, string(*req.Tag)) {
+			continue
+		}
+		items = append(items, t)
+	}
+	if req.Limit > 0 && len(items) > req.Limit {
+		items = items[:req.Limit]
+	}
+	// Total and TookMs are emitted on response headers (X-Total-Count and
+	// X-Response-Time) via their @header tags, not in the JSON body.
+	// TookMs is a scalar (Millis = int) and formats just like the int.
+	return &types.TodoList{Items: items, Total: len(items), TookMs: 7}, nil
 }
+
+// ptr returns a pointer to v — a tiny helper for setting optional (T?)
+// fields like Priority in a struct literal.
+func ptr[T any](v T) *T { return &v }

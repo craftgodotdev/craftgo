@@ -8,7 +8,10 @@ components:
           nullable: true
           type: string
         priority:
-          $ref: '#/components/schemas/TodoPriority'
+          allOf:
+          - $ref: '#/components/schemas/TodoPriority'
+          default: Medium
+          nullable: true
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -25,7 +28,6 @@ components:
       required:
       - title
       - status
-      - priority
       type: object
     CreateTodoReqBody:
       properties:
@@ -34,7 +36,10 @@ components:
           nullable: true
           type: string
         priority:
-          $ref: '#/components/schemas/TodoPriority'
+          allOf:
+          - $ref: '#/components/schemas/TodoPriority'
+          default: Medium
+          nullable: true
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -51,7 +56,6 @@ components:
       required:
       - title
       - status
-      - priority
       type: object
     CreateTodoRespBody:
       $ref: '#/components/schemas/Todo'
@@ -99,6 +103,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/TodoStatus'
           nullable: true
+        tag:
+          allOf:
+          - $ref: '#/components/schemas/Tag'
+          nullable: true
       required:
       - limit
       type: object
@@ -115,11 +123,28 @@ components:
           allOf:
           - $ref: '#/components/schemas/TodoStatus'
           nullable: true
+        tag:
+          allOf:
+          - $ref: '#/components/schemas/Tag'
+          nullable: true
       required:
       - limit
       type: object
     ListTodosRespBody:
-      $ref: '#/components/schemas/TodoList'
+      properties:
+        cursor:
+          nullable: true
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/Todo'
+          type: array
+      required:
+      - items
+      type: object
+    Millis:
+      minimum: 0
+      type: integer
     OkResp:
       properties:
         ok:
@@ -127,6 +152,11 @@ components:
       required:
       - ok
       type: object
+    Tag:
+      maxLength: 40
+      minLength: 1
+      pattern: ^[a-z0-9-]+$
+      type: string
     Todo:
       properties:
         createdAt:
@@ -141,7 +171,10 @@ components:
           nullable: true
           type: string
         priority:
-          $ref: '#/components/schemas/TodoPriority'
+          allOf:
+          - $ref: '#/components/schemas/TodoPriority'
+          default: Medium
+          nullable: true
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -158,7 +191,6 @@ components:
       - id
       - title
       - status
-      - priority
       - tags
       - createdAt
       type: object
@@ -171,9 +203,6 @@ components:
           items:
             $ref: '#/components/schemas/Todo'
           type: array
-        total:
-          nullable: true
-          type: integer
       required:
       - items
       type: object
@@ -274,6 +303,12 @@ paths:
           allOf:
           - $ref: '#/components/schemas/TodoStatus'
           nullable: true
+      - in: query
+        name: tag
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/Tag'
+          nullable: true
       responses:
         "200":
           content:
@@ -281,6 +316,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListTodosRespBody'
           description: OK
+          headers:
+            X-Response-Time:
+              description: |-
+                tookMs is a SCALAR-typed (Millis = int) header: it resolves to its
+                underlying primitive and formats the same as a plain int.
+              schema:
+                $ref: '#/components/schemas/Millis'
+            X-Total-Count:
+              description: |-
+                total rides the X-Total-Count response header instead of the JSON
+                body — a non-string @header value the generated handler formats
+                with strconv.Itoa. A classic pagination pattern (GitHub, Stripe).
+              schema:
+                type: integer
         default:
           description: ""
       tags:

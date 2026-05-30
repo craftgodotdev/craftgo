@@ -32,6 +32,10 @@ func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			_w := types.TodoStatus(_v)
 			req.Status = &_w
 		}
+		if _v := r.URL.Query().Get("tag"); _v != "" {
+			_w := types.Tag(_v)
+			req.Tag = &_w
+		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
@@ -42,6 +46,8 @@ func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
+		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Total))
+		w.Header().Set("X-Response-Time", strconv.FormatInt(int64(resp.TookMs), 10))
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = server.JSON().Encode(w, resp)
 	}

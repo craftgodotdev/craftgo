@@ -174,6 +174,18 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 			if hasSensitiveDecorator(v.Decorators) {
 				continue
 			}
+			// `@header` / `@cookie` fields ride on the response writer
+			// (or bind from a request header) and carry `json:"-"`, so
+			// they never appear in the JSON body. Excluding them keeps
+			// this component schema consistent with the per-operation
+			// `<Method>RespBody` / `<Method>ReqBody` schemas and the
+			// error schemas, all of which already skip them — otherwise
+			// generated clients see the value as a required body field
+			// that the wire never carries.
+			switch bindingFromDecorators(v.Decorators) {
+			case "header", "cookie":
+				continue
+			}
 			ref := schemaForTypeRef(v.Type, pkg, registry)
 			applyFieldMetadata(v, ref)
 			s.Properties[v.Name] = ref

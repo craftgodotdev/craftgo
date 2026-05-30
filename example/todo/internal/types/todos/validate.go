@@ -4,7 +4,14 @@ package todos
 
 import (
 	"fmt"
+	"regexp"
 	"time"
+)
+
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+var (
+	_pattern0 = regexp.MustCompile(`^[a-z0-9-]+$`)
 )
 
 // Validate checks every field-level constraint declared on CreateTodoReq.
@@ -24,13 +31,12 @@ func (v *CreateTodoReq) Validate() error {
 	default:
 		return fmt.Errorf("status: invalid TodoStatus value")
 	}
-	if v.Priority == "" {
-		return fmt.Errorf("priority: required")
-	}
-	switch v.Priority {
-	case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
-	default:
-		return fmt.Errorf("priority: invalid TodoPriority value")
+	if v.Priority != nil {
+		switch *v.Priority {
+		case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
+		default:
+			return fmt.Errorf("priority: invalid TodoPriority value")
+		}
 	}
 	if v.Tags != nil {
 		if len(v.Tags) > 10 {
@@ -74,6 +80,12 @@ func (v *ListTodosReq) Validate() error {
 			return fmt.Errorf("status: invalid TodoStatus value")
 		}
 	}
+	if v.Tag != nil && (len(*v.Tag) < 1 || len(*v.Tag) > 40) {
+		return fmt.Errorf("tag: length out of range [1, 40]")
+	}
+	if v.Tag != nil && !_pattern0.MatchString(*v.Tag) {
+		return fmt.Errorf("tag: does not match pattern")
+	}
 	return nil
 }
 
@@ -103,13 +115,12 @@ func (v *Todo) Validate() error {
 	default:
 		return fmt.Errorf("status: invalid TodoStatus value")
 	}
-	if v.Priority == "" {
-		return fmt.Errorf("priority: required")
-	}
-	switch v.Priority {
-	case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
-	default:
-		return fmt.Errorf("priority: invalid TodoPriority value")
+	if v.Priority != nil {
+		switch *v.Priority {
+		case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
+		default:
+			return fmt.Errorf("priority: invalid TodoPriority value")
+		}
 	}
 	if len(v.Tags) > 10 {
 		return fmt.Errorf("tags: maxItems 10")
@@ -136,6 +147,9 @@ func (v *TodoList) Validate() error {
 		if err := v.Items[i0].Validate(); err != nil {
 			return err
 		}
+	}
+	if v.TookMs < 0 {
+		return fmt.Errorf("tookMs: below minimum 0")
 	}
 	return nil
 }

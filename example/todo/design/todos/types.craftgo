@@ -1,5 +1,16 @@
 package todos
 
+// Millis is a scalar over int — used below for a non-string @header
+// value (X-Response-Time), demonstrating that scalar-typed header
+// fields format through their underlying primitive (strconv.Itoa).
+scalar Millis int @gte(0)
+
+// Tag is a scalar over string used as a request query filter. Its
+// @length / @pattern validators are inherited by any field typed Tag,
+// so a `@query`-bound request field is validated automatically — a bad
+// ?tag= value is rejected with 400 before the handler runs.
+scalar Tag string @length(1, 40) @pattern("^[a-z0-9-]+$")
+
 enum TodoStatus {
 	Open       = "open"
 	InProgress = "in_progress"
@@ -13,21 +24,21 @@ enum TodoPriority {
 }
 
 type Todo {
-	id        string       @length(1, 64)
-	title     string       @length(1, 200)
-	notes     string?      @maxLength(2000)
+	id        string        @length(1, 64)
+	title     string        @length(1, 200)
+	notes     string?       @maxLength(2000)
 	status    TodoStatus
-	priority  TodoPriority @default(Medium)
-	tags      string[]     @maxItems(10) @uniqueItems
-	createdAt string       @format(datetime)
+	priority  TodoPriority? @default(Medium)
+	tags      string[]      @maxItems(10) @uniqueItems
+	createdAt string        @format(datetime)
 }
 
 type CreateTodoReq {
-	title    string       @length(1, 200)
-	notes    string?      @maxLength(2000)
+	title    string        @length(1, 200)
+	notes    string?       @maxLength(2000)
 	status   TodoStatus
-	priority TodoPriority @default(Medium)
-	tags     string[]?    @maxItems(10) @uniqueItems
+	priority TodoPriority? @default(Medium)
+	tags     string[]?     @maxItems(10) @uniqueItems
 }
 
 type UpdateTodoReq {
@@ -43,15 +54,25 @@ type GetTodoReq {
 }
 
 type ListTodosReq {
-	cursor string?
-	limit  int     @gte(0) @lte(100)
+	cursor string?     @query
+	limit  int         @query @gte(0) @lte(100)
 	status TodoStatus? @query
+	// tag is a SCALAR (Tag) filter bound from the query string. The
+	// scalar's inherited @length / @pattern run during req.Validate(),
+	// so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
+	tag    Tag?        @query
 }
 
 type TodoList {
 	items  Todo[]
 	cursor string?
-	total  int?
+	// total rides the X-Total-Count response header instead of the JSON
+	// body — a non-string @header value the generated handler formats
+	// with strconv.Itoa. A classic pagination pattern (GitHub, Stripe).
+	total  int     @header("X-Total-Count")
+	// tookMs is a SCALAR-typed (Millis = int) header: it resolves to its
+	// underlying primitive and formats the same as a plain int.
+	tookMs Millis  @header("X-Response-Time")
 }
 
 type OkResp {

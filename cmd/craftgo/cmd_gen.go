@@ -194,7 +194,7 @@ func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot 
 		}{
 			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, r.CrossPkg) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
-			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, r.CrossPkg) }},
+			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, r) }},
 			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsResolved(p, typesDir, r) }},
 		}
 		for _, s := range steps {

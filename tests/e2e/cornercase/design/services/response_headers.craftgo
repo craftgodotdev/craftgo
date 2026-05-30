@@ -1,32 +1,40 @@
 // response_headers.craftgo exercises @header / @cookie on the
-// response side. The runtime already routes those fields through
-// http.Header.Set / http.SetCookie before encoding the JSON body;
-// what was missing is the OpenAPI emission picking them out of the
-// response type and surfacing them as response.headers entries.
+// response side. Those fields are routed through http.Header.Set /
+// http.SetCookie before the JSON body is encoded, and the OpenAPI
+// emitter surfaces them as response.headers entries instead of body
+// properties.
 //
-// Without this fixture, the failure mode is silent: code lints fine
-// and tests pass, but client generators read the spec, see the
-// header field as part of the JSON body, and refuse / mis-route
-// the value at runtime.
+// It also exercises NON-string header / cookie values: the generated
+// writer formats int / bool / enum (and scalars of those) to their
+// wire string via strconv, mirroring the request-side binder. Without
+// this, a non-string @header field used to pass design-time checks and
+// then vanish — written to neither the body nor a header.
 package services
 
 import "shared"
 
-// PaginatedResp carries a JSON list plus two response-only fields:
-// `X-Total-Count` advertises the count to clients implementing
-// virtual scrolling, and the `session` cookie refreshes the auth
-// token without forcing a separate /refresh round trip. Both fields
-// stay out of the JSON body via runtime header/cookie writers.
-//
-// `count` is a string on the wire because @header / @cookie
-// codegen only accepts string-backed shapes - the runtime writer
-// http.Header.Set takes a string, so non-string typed fields would
-// need a per-type formatter that the framework deliberately keeps
-// out of the binding layer.
+// PaginatedResp carries a JSON list plus response-only fields:
+// `X-Total-Count` advertises the total (a non-string int, formatted via
+// strconv.Itoa), `X-Next-Page` is an optional header (nil-guarded so an
+// absent value writes no header at all), `has_more` is a bool cookie
+// (strconv.FormatBool), and the `session` cookie refreshes the auth
+// token without a separate /refresh round trip. All four stay out of
+// the JSON body via the runtime header/cookie writers.
 type PaginatedResp {
-	items   shared.ID[]
-	count   string      @header("X-Total-Count")
-	session string      @cookie("session_id")
+	items    shared.ID[]
+	count    int       @header("X-Total-Count")
+	traceId  shared.ID @header("X-Trace-Id")    // string scalar → string(...)
+	nextPage string?   @header("X-Next-Page")
+	hasMore  bool      @cookie("has_more")
+	session  string    @cookie("session_id")
+}
+
+// RateLimited surfaces the back-off hint on a non-string `Retry-After`
+// response header — exercising @header value formatting on the error
+// path (errorResponseBindings) the same way PaginatedResp does for the
+// success path.
+error TooManyRequests RateLimited {
+	retryAfter int @header("Retry-After")
 }
 
 // HeaderEchoService demonstrates that the JSON body schema and the
@@ -35,6 +43,7 @@ type PaginatedResp {
 @prefix("/header-echo")
 service HeaderEchoService {
 	@doc("List items with the total surfaced via response header and the auth cookie refreshed in passing.")
+	@errors(RateLimited)
 	get ListItems / {
 		response PaginatedResp
 	}

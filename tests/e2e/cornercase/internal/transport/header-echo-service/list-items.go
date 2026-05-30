@@ -5,6 +5,7 @@ package headerechoservice
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/header-echo-service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/svccontext"
@@ -20,7 +21,12 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		w.Header().Set("X-Total-Count", resp.Count)
+		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Count))
+		w.Header().Set("X-Trace-Id", string(resp.TraceID))
+		if resp.NextPage != nil {
+			w.Header().Set("X-Next-Page", *resp.NextPage)
+		}
+		http.SetCookie(w, &http.Cookie{Name: "has_more", Value: strconv.FormatBool(resp.HasMore)})
 		http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.Session})
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = server.JSON().Encode(w, resp)

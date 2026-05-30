@@ -80,10 +80,10 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 {{- if .HasResponse}}
 {{- range .RespHeaders}}
-		w.Header().Set("{{.DSLName}}", resp.{{.GoName}})
+		{{.Bind}}
 {{- end}}
 {{- range .RespCookies}}
-		http.SetCookie(w, &http.Cookie{Name: "{{.DSLName}}", Value: resp.{{.GoName}}})
+		{{.Bind}}
 {{- end}}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 {{- if ne .SuccessStatus 200}}

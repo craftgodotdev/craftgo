@@ -740,11 +740,6 @@ components:
       description: |-
         CookieReq drives the cookie binder. Same explicit-name wart — the
         runtime fetches the cookie named `session`, not `session_id`.
-      properties:
-        session:
-          type: string
-      required:
-      - session
       type: object
     CounterReq:
       description: CounterReq wraps NumberCounter for the AddCounter POST.
@@ -1442,11 +1437,6 @@ components:
         `stringBindable` predicate checks `f.Type.Optional` and bails. To
         keep the package generating we drop the `?`; the binder treats an
         absent header as the empty string.
-      properties:
-        traceId:
-          type: string
-      required:
-      - traceId
       type: object
     HeaderReq:
       description: |-
@@ -1454,11 +1444,6 @@ components:
         `@header("X-API-Key")` argument names the wire-side header so the
         generated handler reads from the canonical HTTP name rather than
         the Go field's PascalCase form (`r.Header.Get("X-API-Key")`).
-      properties:
-        apiKey:
-          type: string
-      required:
-      - apiKey
       type: object
     HealthResp:
       description: |-
@@ -2608,30 +2593,20 @@ components:
       type: object
     PaginatedResp:
       description: |-
-        PaginatedResp carries a JSON list plus two response-only fields:
-        `X-Total-Count` advertises the count to clients implementing
-        virtual scrolling, and the `session` cookie refreshes the auth
-        token without forcing a separate /refresh round trip. Both fields
-        stay out of the JSON body via runtime header/cookie writers.
-
-        `count` is a string on the wire because @header / @cookie
-        codegen only accepts string-backed shapes - the runtime writer
-        http.Header.Set takes a string, so non-string typed fields would
-        need a per-type formatter that the framework deliberately keeps
-        out of the binding layer.
+        PaginatedResp carries a JSON list plus response-only fields:
+        `X-Total-Count` advertises the total (a non-string int, formatted via
+        strconv.Itoa), `X-Next-Page` is an optional header (nil-guarded so an
+        absent value writes no header at all), `has_more` is a bool cookie
+        (strconv.FormatBool), and the `session` cookie refreshes the auth
+        token without a separate /refresh round trip. All four stay out of
+        the JSON body via the runtime header/cookie writers.
       properties:
-        count:
-          type: string
         items:
           items:
             $ref: '#/components/schemas/ID'
           type: array
-        session:
-          type: string
       required:
       - items
-      - count
-      - session
       type: object
     Pagination:
       description: |-
@@ -3098,6 +3073,9 @@ components:
       properties:
         retryAfter:
           type: integer
+      type: object
+    RateLimitedErr:
+      description: TooManyRequests error response (HTTP 429).
       type: object
     RecordNotFoundErr:
       description: NotFound error response (HTTP 404).
@@ -4655,12 +4633,28 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: session_id'
+              description: 'Sets cookies: has_more, session_id'
+              schema:
+                type: string
+            X-Next-Page:
               schema:
                 type: string
             X-Total-Count:
               schema:
-                type: string
+                type: integer
+            X-Trace-Id:
+              schema:
+                $ref: '#/components/schemas/ID'
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitedErr'
+          description: TooManyRequests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
         default:
           description: ""
       tags:

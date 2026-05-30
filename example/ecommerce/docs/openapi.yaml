@@ -510,14 +510,6 @@ components:
       type: string
     FilterOrdersReq:
       properties:
-        idemKey:
-          maxLength: 128
-          minLength: 1
-          nullable: true
-          type: string
-        lastSeen:
-          nullable: true
-          type: string
         limit:
           maximum: 100
           minimum: 0
@@ -526,19 +518,13 @@ components:
           type: integer
         method:
           $ref: '#/components/schemas/PaymentMethod'
-        retryAfter:
-          type: integer
         status:
           $ref: '#/components/schemas/OrderStatus'
-        tier:
-          type: integer
       required:
       - status
       - method
       - limit
       - maxPrice
-      - retryAfter
-      - tier
       type: object
     FilterOrdersReqCookie:
       properties:

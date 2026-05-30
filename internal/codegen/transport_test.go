@@ -660,6 +660,61 @@ service Catalog {
 	}
 }
 
+// TestGenerateTransportResponseHeaderNonString pins the non-string
+// response @header / @cookie formatting: int / float / bool / enum
+// values are rendered to their wire string via strconv, optional
+// headers are nil-guarded, and array headers emit one Header().Add per
+// element. Plain strings still pass through untouched.
+func TestGenerateTransportResponseHeaderNonString(t *testing.T) {
+	src := `package design
+enum Tier { Free = "free"  Pro = "pro" }
+scalar Cents int
+scalar SKU   string
+type StatsResp {
+    items    string
+    count    int      @header("X-Total-Count")
+    ratio    float64  @header("X-Ratio")
+    tier     Tier     @header("X-Tier")
+    price    Cents    @header("X-Price")
+    sku      SKU      @header("X-SKU")
+    nextPage string?  @header("X-Next-Page")
+    labels   string[] @header("X-Label")
+    active   bool     @cookie("flag")
+    plain    string   @cookie("plain")
+}
+service S {
+    get Stats /stats { response StatsResp }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/stats.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	mustParseGo(t, body)
+	mustContainAll(t, body,
+		`"strconv"`,
+		`w.Header().Set("X-Total-Count", strconv.Itoa(resp.Count))`,
+		`w.Header().Set("X-Ratio", strconv.FormatFloat(resp.Ratio, 'g', -1, 64))`,
+		`w.Header().Set("X-Tier", string(resp.Tier))`,
+		// Numeric scalar → cast to int64 then strconv; string scalar →
+		// string() conversion.
+		`w.Header().Set("X-Price", strconv.FormatInt(int64(resp.Price), 10))`,
+		`w.Header().Set("X-SKU", string(resp.Sku))`,
+		`if resp.NextPage != nil {`,
+		`w.Header().Set("X-Next-Page", *resp.NextPage)`,
+		`for _, _v := range resp.Labels {`,
+		`w.Header().Add("X-Label", _v)`,
+		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active)})`,
+		// Plain string still writes the value directly (no conversion).
+		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain})`,
+	)
+}
+
 func TestGenerateTypesNonBodyBindingsAreSkipped(t *testing.T) {
 	pkg := analyze(t, `package design
 type Req {

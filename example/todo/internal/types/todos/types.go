@@ -2,12 +2,18 @@
 
 package todos
 
+// Millis is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
+type Millis = int
+
+// Tag is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
+type Tag = string
+
 type CreateTodoReq struct {
-	Title    string       `json:"title"`
-	Notes    *string      `json:"notes,omitempty"`
-	Status   TodoStatus   `json:"status"`
-	Priority TodoPriority `json:"priority"`
-	Tags     []string     `json:"tags,omitempty"`
+	Title    string        `json:"title"`
+	Notes    *string       `json:"notes,omitempty"`
+	Status   TodoStatus    `json:"status"`
+	Priority *TodoPriority `json:"priority,omitempty"`
+	Tags     []string      `json:"tags,omitempty"`
 }
 
 type GetTodoReq struct {
@@ -15,9 +21,13 @@ type GetTodoReq struct {
 }
 
 type ListTodosReq struct {
-	Cursor *string     `json:"cursor,omitempty"`
-	Limit  int         `json:"limit"`
+	Cursor *string     `json:"-"`
+	Limit  int         `json:"-"`
 	Status *TodoStatus `json:"-"`
+	// tag is a SCALAR (Tag) filter bound from the query string. The
+	// scalar's inherited @length / @pattern run during req.Validate(),
+	// so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
+	Tag *Tag `json:"-"`
 }
 
 type OkResp struct {
@@ -25,19 +35,25 @@ type OkResp struct {
 }
 
 type Todo struct {
-	ID        string       `json:"id"`
-	Title     string       `json:"title"`
-	Notes     *string      `json:"notes,omitempty"`
-	Status    TodoStatus   `json:"status"`
-	Priority  TodoPriority `json:"priority"`
-	Tags      []string     `json:"tags"`
-	CreatedAt string       `json:"createdAt"`
+	ID        string        `json:"id"`
+	Title     string        `json:"title"`
+	Notes     *string       `json:"notes,omitempty"`
+	Status    TodoStatus    `json:"status"`
+	Priority  *TodoPriority `json:"priority,omitempty"`
+	Tags      []string      `json:"tags"`
+	CreatedAt string        `json:"createdAt"`
 }
 
 type TodoList struct {
 	Items  []Todo  `json:"items"`
 	Cursor *string `json:"cursor,omitempty"`
-	Total  *int    `json:"total,omitempty"`
+	// total rides the X-Total-Count response header instead of the JSON
+	// body — a non-string @header value the generated handler formats
+	// with strconv.Itoa. A classic pagination pattern (GitHub, Stripe).
+	Total int `json:"-"`
+	// tookMs is a SCALAR-typed (Millis = int) header: it resolves to its
+	// underlying primitive and formats the same as a plain int.
+	TookMs Millis `json:"-"`
 }
 
 type UpdateTodoReq struct {

@@ -107,21 +107,20 @@ type ListUsersResp struct {
 	Meta  shared.Pagination `json:"meta"`
 }
 
-// PaginatedResp carries a JSON list plus two response-only fields:
-// `X-Total-Count` advertises the count to clients implementing
-// virtual scrolling, and the `session` cookie refreshes the auth
-// token without forcing a separate /refresh round trip. Both fields
-// stay out of the JSON body via runtime header/cookie writers.
-//
-// `count` is a string on the wire because @header / @cookie
-// codegen only accepts string-backed shapes - the runtime writer
-// http.Header.Set takes a string, so non-string typed fields would
-// need a per-type formatter that the framework deliberately keeps
-// out of the binding layer.
+// PaginatedResp carries a JSON list plus response-only fields:
+// `X-Total-Count` advertises the total (a non-string int, formatted via
+// strconv.Itoa), `X-Next-Page` is an optional header (nil-guarded so an
+// absent value writes no header at all), `has_more` is a bool cookie
+// (strconv.FormatBool), and the `session` cookie refreshes the auth
+// token without a separate /refresh round trip. All four stay out of
+// the JSON body via the runtime header/cookie writers.
 type PaginatedResp struct {
-	Items   []shared.ID `json:"items"`
-	Count   string      `json:"-"`
-	Session string      `json:"-"`
+	Items    []shared.ID `json:"items"`
+	Count    int         `json:"-"`
+	TraceID  shared.ID   `json:"-"`
+	NextPage *string     `json:"-"`
+	HasMore  bool        `json:"-"`
+	Session  string      `json:"-"`
 }
 
 // Project carries the cross-package `shared.ID` scalar (Go field

@@ -9,33 +9,34 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, cookies []paramBinding) {
+// collectResponseBindings walks the response type's fields and renders
+// the `@header` / `@cookie` writers. Each entry's [paramBinding.Bind]
+// holds the fully-rendered Go statement (formatting handled per type),
+// so the template only drops it verbatim. needsStrconv is true when any
+// non-string value needs the strconv import. The resolver `r` resolves
+// cross-package scalars / enums to their wire primitive.
+func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	if m.Response == nil || m.Response.Type == nil {
-		return nil, nil
+		return nil, nil, false
 	}
 	td, ok := pkg.Types[m.Response.Type.Name.String()]
 	if !ok {
-		return nil, nil
+		return nil, nil, false
 	}
 	for _, member := range td.Body {
 		f, ok := member.(*ast.Field)
 		if !ok {
 			continue
 		}
-		if !isPlainStringField(f) {
+		kind := bindingFromDecorators(f.Decorators)
+		if kind != "header" && kind != "cookie" {
 			continue
 		}
-		// HTTP header / cookie names live in a different character
-		// set than DSL field names (hyphens, mixed case): `apiKey
-		// string @header("X-API-Key")` declares a Go field `ApiKey`
-		// that must reach the wire as the canonical `X-API-Key`.
-		// bindingWireName returns the explicit decorator arg when
-		// present and falls back to the field name otherwise.
-		kind := bindingFromDecorators(f.Decorators)
-		entry := paramBinding{
-			DSLName: bindingWireName(f, kind),
-			GoName:  GoFieldName(f.Name),
+		stmt, ns := renderResponseWrite(f, pkg, r, kind, "resp")
+		if ns {
+			needsStrconv = true
 		}
+		entry := paramBinding{Bind: stmt}
 		switch kind {
 		case "header":
 			headers = append(headers, entry)
@@ -43,7 +44,147 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package) (headers, coo
 			cookies = append(cookies, entry)
 		}
 	}
-	return headers, cookies
+	return headers, cookies, needsStrconv
+}
+
+// renderResponseWrite builds the Go statement that writes field f onto
+// the response as a `@header` or `@cookie`. accessVar names the struct
+// the value is read from — `resp` for a normal response, `e` for an
+// error. Non-string values are formatted via strconv (HTTP headers and
+// cookies are string-valued on the wire); optional fields are
+// nil-guarded; array headers emit one `Header().Add` per element
+// (cookies are guaranteed non-array by the semantic layer). The
+// returned statement may span several lines — gofmt, run over the whole
+// generated file, normalises the indentation.
+func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, kind, accessVar string) (stmt string, needsStrconv bool) {
+	prim, declName := wirePrimName(f, pkg, r)
+	wire := bindingWireName(f, kind)
+	field := accessVar + "." + GoFieldName(f.Name)
+
+	set := func(valueExpr string) string {
+		if kind == "cookie" {
+			return fmt.Sprintf("http.SetCookie(w, &http.Cookie{Name: %q, Value: %s})", wire, valueExpr)
+		}
+		return fmt.Sprintf("w.Header().Set(%q, %s)", wire, valueExpr)
+	}
+
+	switch {
+	case f.Type != nil && f.Type.Array:
+		// Header arrays write one line per element; @cookie arrays are
+		// rejected at semantic time so this branch is header-only.
+		expr, ns := formatToString(prim, declName, "_v")
+		return fmt.Sprintf("for _, _v := range %s {\nw.Header().Add(%q, %s)\n}", field, wire, expr), ns
+	case f.Type != nil && f.Type.Optional:
+		// Optional is restricted to string-backed types by the wire
+		// check, so the nil-guarded value is safe to deref + format.
+		expr, ns := formatToString(prim, declName, "*"+field)
+		return fmt.Sprintf("if %s != nil {\n%s\n}", field, set(expr)), ns
+	default:
+		expr, ns := formatToString(prim, declName, field)
+		return set(expr), ns
+	}
+}
+
+// wirePrimName resolves a field's declared type to the underlying wire
+// primitive ("string", "bool", "int", "int64", "uint32", "float64",
+// ...) used to format it onto a response header / cookie. It follows a
+// local or cross-package scalar to its primitive and maps an enum to
+// "int" (int-backed) or "string" (bare / string-backed). declName is
+// the field's own type name — it differs from prim for scalars and
+// enums and drives the Go conversion in [formatToString]. An
+// unresolvable type (a cross-package symbol with no resolver) falls
+// back to "string": the field already passed the wire-binding check, so
+// it wraps some string/number/bool, and a wrong guess surfaces as a
+// compile error rather than a silent drop.
+func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim, declName string) {
+	if f.Type == nil || f.Type.Named == nil {
+		return "string", ""
+	}
+	declName = f.Type.Named.Name.String()
+	if _, ok := queryPrims[declName]; ok {
+		return declName, declName
+	}
+	if pkg != nil {
+		if sc, ok := pkg.Scalars[declName]; ok && sc != nil {
+			if _, ok := queryPrims[sc.Primitive]; ok {
+				return sc.Primitive, declName
+			}
+		}
+		if ed, ok := pkg.Enums[declName]; ok && ed != nil {
+			return enumWirePrim(ed), declName
+		}
+	}
+	if r != nil {
+		if sc := r.LookupScalar(declName); sc != nil {
+			if _, ok := queryPrims[sc.Primitive]; ok {
+				return sc.Primitive, declName
+			}
+		}
+		if ed := r.LookupEnum(declName); ed != nil {
+			return enumWirePrim(ed), declName
+		}
+	}
+	return "string", declName
+}
+
+// enumWirePrim maps an enum to the wire primitive its values serialise
+// as: int-backed enums format as integers, bare / string-backed enums
+// as their string value.
+func enumWirePrim(ed *ast.EnumDecl) string {
+	if firstEnumKind(ed) == ast.EnumInt {
+		return "int"
+	}
+	return "string"
+}
+
+// formatToString returns the Go expression that renders `access` (a
+// value of the field's declared type) as the string written onto a
+// header / cookie, plus whether it needs the strconv import. Plain
+// strings pass through untouched; every other primitive goes through
+// strconv with the minimal conversion for its width. `named` marks a
+// scalar / enum wrapping the primitive, which needs an explicit
+// conversion the bare primitive does not.
+func formatToString(prim, declName, access string) (expr string, needsStrconv bool) {
+	named := declName != prim
+	switch prim {
+	case "string":
+		if named {
+			return "string(" + access + ")", false
+		}
+		return access, false
+	case "bool":
+		if named {
+			return "strconv.FormatBool(bool(" + access + "))", true
+		}
+		return "strconv.FormatBool(" + access + ")", true
+	case "int":
+		if named {
+			return "strconv.FormatInt(int64(" + access + "), 10)", true
+		}
+		return "strconv.Itoa(" + access + ")", true
+	case "int8", "int16", "int32":
+		return "strconv.FormatInt(int64(" + access + "), 10)", true
+	case "int64":
+		if named {
+			return "strconv.FormatInt(int64(" + access + "), 10)", true
+		}
+		return "strconv.FormatInt(" + access + ", 10)", true
+	case "uint", "uint8", "uint16", "uint32":
+		return "strconv.FormatUint(uint64(" + access + "), 10)", true
+	case "uint64":
+		if named {
+			return "strconv.FormatUint(uint64(" + access + "), 10)", true
+		}
+		return "strconv.FormatUint(" + access + ", 10)", true
+	case "float32":
+		return "strconv.FormatFloat(float64(" + access + "), 'g', -1, 32)", true
+	case "float64":
+		if named {
+			return "strconv.FormatFloat(float64(" + access + "), 'g', -1, 64)", true
+		}
+		return "strconv.FormatFloat(" + access + ", 'g', -1, 64)", true
+	}
+	return access, false
 }
 
 // hasPassthroughDecorator reports whether `@passthrough` is declared
@@ -420,13 +561,6 @@ func describeFieldType(f *ast.Field) string {
 // parseCall renders the strconv.ParseX(_v, ...) expression for a
 // numeric / bool primitive. Bool ignores bits; ParseFloat takes only
 // (s, bits); ParseInt / ParseUint take (s, base, bits).
-
-func isPlainStringField(f *ast.Field) bool {
-	if f.Type == nil || f.Type.Array || f.Type.Optional {
-		return false
-	}
-	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
-}
 
 // stringBindable reports whether f's type can ride a path / header /
 // cookie wire (always a string at the protocol level). Matches:

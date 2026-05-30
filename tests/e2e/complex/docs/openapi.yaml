@@ -212,15 +212,9 @@ components:
           type: string
         id:
           type: string
-        idempotencyKey:
-          type: string
-        sessionToken:
-          type: string
       required:
       - id
       - dryRun
-      - idempotencyKey
-      - sessionToken
       - displayName
       type: object
     PatchProfileReqBody:
@@ -607,10 +601,6 @@ components:
         without resolver these casts silently degrade to bare strings
         and the handler fails to compile.
       properties:
-        ck:
-          $ref: '#/components/schemas/XEmail'
-        hdr:
-          $ref: '#/components/schemas/XEmail'
         num:
           $ref: '#/components/schemas/XNodeID'
         path:
@@ -620,8 +610,6 @@ components:
       required:
       - path
       - q
-      - hdr
-      - ck
       - num
       type: object
     XScalarFields:
@@ -660,18 +648,12 @@ components:
         (r.URL.Query().Get("q"))`) — the Go compiler then rejects with a
         type mismatch because req.Q is `*xshared.XEmail` not `*string`.
       properties:
-        ck:
-          $ref: '#/components/schemas/XEmail'
-        hdr:
-          $ref: '#/components/schemas/XEmail'
         num:
           $ref: '#/components/schemas/XNodeID'
         q:
           $ref: '#/components/schemas/XEmail'
       required:
       - q
-      - hdr
-      - ck
       - num
       type: object
     XTimestamp:
