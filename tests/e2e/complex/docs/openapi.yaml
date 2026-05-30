@@ -830,12 +830,12 @@ paths:
               $ref: '#/components/schemas/CreateProfileReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateProfileRespBody'
-          description: OK
+          description: Created
         "409":
           content:
             application/json:
@@ -944,12 +944,12 @@ paths:
               $ref: '#/components/schemas/PostDefaultReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PostDefaultRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       tags:

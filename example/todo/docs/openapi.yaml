@@ -295,12 +295,12 @@ paths:
               $ref: '#/components/schemas/CreateTodoReqBody'
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateTodoRespBody'
-          description: OK
+          description: Created
         default:
           description: ""
       tags:

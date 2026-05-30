@@ -31,6 +31,7 @@ func EchoTeam(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusCreated)
 		_ = server.JSON().Encode(w, resp)
 	}
 }

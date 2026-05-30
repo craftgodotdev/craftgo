@@ -79,9 +79,12 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 {{- if .HasResponse}}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+{{- if ne .SuccessStatus 200}}
+		w.WriteHeader({{.SuccessStatusExpr}})
+{{- end}}
 		_ = server.JSON().Encode(w, resp)
 {{- else}}
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader({{.SuccessStatusExpr}})
 {{- end}}
 	}
 }

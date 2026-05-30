@@ -127,9 +127,9 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	if isPassthrough {
 		op.Parameters = passthroughPathParams(m)
 	}
-	successCode := successStatus(m)
 	switch {
 	case isPassthrough:
+		successCode := passthroughStatus(m)
 		desc := successDescription(successCode)
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
@@ -138,6 +138,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 			},
 		}})
 	case m.Response != nil && m.Response.Type != nil:
+		successCode := strconv.Itoa(methodSuccessStatus(m))
 		desc := successDescription(successCode)
 		resp := &openapi3.Response{
 			Description: &desc,
@@ -155,12 +156,9 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		}
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
 	default:
-		fallback := "204"
-		if successCode != "200" {
-			fallback = successCode
-		}
-		desc := successDescription(fallback)
-		op.Responses.Set(fallback, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
+		successCode := strconv.Itoa(methodSuccessStatus(m))
+		desc := successDescription(successCode)
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
 	}
 	addErrorResponses(op, m, pkg)
 	return op
@@ -182,18 +180,54 @@ func successDescription(code string) string {
 	return "OK"
 }
 
-// successStatus returns the HTTP status code key for the success
-// response. `@status(N)` overrides the default; otherwise body verbs
-// without a response default to 204 elsewhere, and everything else
-// to 200 here.
-func successStatus(m *ast.Method) string {
+// statusOverride returns the explicit `@status(N)` code declared on the
+// method, if any. The value is range-validated (100..599) by the
+// semantic layer, so codegen can trust it.
+func statusOverride(m *ast.Method) (int, bool) {
 	for _, d := range m.Decorators {
 		if d.Name != "status" || len(d.Args) == 0 {
 			continue
 		}
 		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
-			return strconv.FormatInt(i.Value, 10)
+			return int(i.Value), true
 		}
+	}
+	return 0, false
+}
+
+// methodSuccessStatus resolves the success status code for a
+// non-passthrough method. The transport handler and the OpenAPI spec
+// both call this so they always agree on the same code. `@status(N)`
+// wins; otherwise the default is verb-aware:
+//
+//   - no response body           → 204 No Content
+//   - POST returning a body       → 201 Created
+//   - any other verb with a body  → 200 OK
+//
+// The "no body → 204" rule deliberately takes precedence over the verb
+// default: a POST that returns nothing is 204, not 201.
+func methodSuccessStatus(m *ast.Method) int {
+	if code, ok := statusOverride(m); ok {
+		return code
+	}
+	if m.Response == nil || m.Response.Type == nil {
+		return http.StatusNoContent
+	}
+	if strings.EqualFold(m.Verb, "post") {
+		return http.StatusCreated
+	}
+	return http.StatusOK
+}
+
+// passthroughStatus is the success code documented for a `@passthrough`
+// operation. The handler writes the response itself, so codegen cannot
+// know the real status: `@status(N)` documents it explicitly, otherwise
+// we fall back to 200. The verb-aware default is intentionally NOT
+// applied here — a passthrough POST may write any status, and 201 would
+// frequently be wrong.
+func passthroughStatus(m *ast.Method) string {
+	if code, ok := statusOverride(m); ok {
+		return strconv.Itoa(code)
 	}
 	return "200"
 }

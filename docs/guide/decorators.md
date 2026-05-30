@@ -587,16 +587,26 @@ get GetUser /users/{id} { ... }
 
 ### `@status(code)`
 
-Override the default success status code (200 for methods with a response, 204 for methods without).
+Override the success status code. By default it is chosen from the verb and response:
+
+| Method | Default success status |
+| -------- | -------- |
+| `POST` returning a body | `201 Created` |
+| `GET` / `PUT` / `PATCH` / `DELETE` returning a body | `200 OK` |
+| any method with no response body | `204 No Content` |
+
+`@status(code)` overrides that default — for example a `POST` that updates rather than creates:
 
 | Sites | method |
 | -------- | -------- |
 | Args  | `(int)` |
 
 ```craftgo
-@status(201)
-post CreateUser /users { ... }
+@status(200)
+post SearchUsers /users/search { ... }
 ```
+
+The generated handler writes the code with `w.WriteHeader` (only when it differs from the implicit `200`), and the OpenAPI spec lists the same code as the success response — the two never drift.
 
 ### `@errors(E1, E2, ...)`
 
