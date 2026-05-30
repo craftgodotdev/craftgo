@@ -24,6 +24,9 @@ func GenerateOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
+	if err := checkOperationIDUniqueness(pkg); err != nil {
+		return err
+	}
 	dest := filepath.Join(projectRoot, cfg.Output.OpenAPI)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err

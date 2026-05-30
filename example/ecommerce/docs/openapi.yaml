@@ -75,15 +75,6 @@ components:
       type: object
     BulkExportRespBody:
       $ref: '#/components/schemas/OkResp'
-    CancelOrderReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     CancelOrderRespBody:
       $ref: '#/components/schemas/OkResp'
     Category:
@@ -513,26 +504,8 @@ components:
           - array
           - "null"
       type: object
-    DeleteCustomerReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     DeleteCustomerRespBody:
       $ref: '#/components/schemas/OkResp'
-    DeleteProductReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     DeleteProductRespBody:
       $ref: '#/components/schemas/OkResp'
     Email:
@@ -560,9 +533,8 @@ components:
     FilterOrdersReqCookie:
       properties:
         lastSeen:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         tier:
           type: integer
       required:
@@ -573,9 +545,8 @@ components:
         idemKey:
           maxLength: 128
           minLength: 1
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         retryAfter:
           type: integer
       required:
@@ -605,15 +576,6 @@ components:
       type: object
     FilterOrdersRespBody:
       $ref: '#/components/schemas/PageOfOrder'
-    ForceShipReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     ForceShipRespBody:
       $ref: '#/components/schemas/Order'
     Geocode:
@@ -645,15 +607,6 @@ components:
       required:
       - id
       type: object
-    GetCustomerReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     GetCustomerRespBody:
       $ref: '#/components/schemas/Customer'
     GetOrderReq:
@@ -665,27 +618,9 @@ components:
       required:
       - id
       type: object
-    GetOrderReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     GetOrderRespBody:
       $ref: '#/components/schemas/Order'
     GetProductReq:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
-    GetProductReqPath:
       properties:
         id:
           maxLength: 64
@@ -734,9 +669,8 @@ components:
     ListCategoriesReqQuery:
       properties:
         cursor:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         limit:
           maximum: 100
           minimum: 0
@@ -749,9 +683,8 @@ components:
     ListCustomersReqQuery:
       properties:
         cursor:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         limit:
           maximum: 100
           minimum: 0
@@ -764,17 +697,16 @@ components:
     ListOrdersReq:
       properties:
         cursor:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         limit:
           maximum: 100
           minimum: 0
           type: integer
         status:
-          anyOf:
+          allOf:
           - $ref: '#/components/schemas/OrderStatus'
-          - type: "null"
+          nullable: true
       required:
       - limit
       type: object
@@ -800,21 +732,18 @@ components:
     ListProductsReq:
       properties:
         category:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         cursor:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
         limit:
           maximum: 100
           minimum: 0
           type: integer
         tag:
-          type:
-          - string
-          - "null"
+          nullable: true
+          type: string
       required:
       - limit
       type: object
@@ -1146,15 +1075,6 @@ components:
         retryAfter:
           type: integer
       type: object
-    ReplayReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     ReplayRespBody:
       $ref: '#/components/schemas/Order'
     SKU:
@@ -1187,15 +1107,6 @@ components:
       - createdAt
       - updatedAt
       type: object
-    TrackPublicReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     TrackPublicRespBody:
       $ref: '#/components/schemas/OkResp'
     UnauthorizedErr:
@@ -1221,15 +1132,6 @@ components:
           type: string
       required:
       - image
-      type: object
-    UploadAvatarReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     UploadAvatarRespBody:
       $ref: '#/components/schemas/Customer'

@@ -20,13 +20,6 @@ components:
       required:
       - id
       type: object
-    GetBookReqPath:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
     GetBookRespBody:
       $ref: '#/components/schemas/Book'
 info:
