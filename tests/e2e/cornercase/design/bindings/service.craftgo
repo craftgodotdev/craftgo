@@ -68,6 +68,22 @@ service BindingsService {
 		response Item
 	}
 
+	// EchoWire pins the explicit-name binder forms across ALL four
+	// parameter locations at once. Every field renames its wire
+	// identity via the decorator argument, distinct from the Go field
+	// name, so the emitted OpenAPI parameter name MUST equal the wire
+	// name the runtime binder reads (r.PathValue("user_id"),
+	// r.Header.Get("X-Trace-Id"), r.Cookie("session_id"),
+	// r.URL.Query().Get("search_q")) — never the DSL field name. Guards
+	// the request-param regression: a spec that advertised the field
+	// name would make a generated client send a parameter the server
+	// never reads, so the binding would silently fail.
+	@doc("Echo wire-renamed params. Path, query, header, and cookie each use an explicit @decorator(\"wire-name\") distinct from the Go field name.")
+	get EchoWire /wire/{user_id} {
+		request  WireRenameReq
+		response Item
+	}
+
 	// QueryIntProbe / PathIntProbe are kept as commented stubs so the
 	// diagnostic-capture trail stays in-source. Uncomment together
 	// with their request types (QueryIntReq / PathIntReq in
@@ -125,6 +141,19 @@ type AddItemReq {
 	name  string  @length(1, 200)
 	price int     @gte(0) @lte(1000000)
 	notes string? @maxLength(2000)
+}
+
+// WireRenameReq combines explicit-name bindings in all four parameter
+// locations. Each field's wire name (the decorator argument) differs
+// from its Go field name on purpose so the OpenAPI parameter name and
+// the runtime binder stay provably in lock-step. Header/cookie fields
+// stay non-optional (the binder rejects `string? @header`); the query
+// field is optional to also cover the optional-param wire-name path.
+type WireRenameReq {
+	userId  string  @path("user_id") @length(1, 64)
+	apiKey  string  @header("X-API-Key")
+	session string  @cookie("session_id")
+	q       string? @query("search_q")
 }
 
 // ---------------------------------------------------------------

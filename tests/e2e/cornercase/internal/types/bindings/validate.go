@@ -255,6 +255,15 @@ func (v *UserAvatar) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on WireRenameReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *WireRenameReq) Validate() error {
+	if l := len(v.UserID); l < 1 || l > 64 {
+		return fmt.Errorf("userId: length out of range [1, 64]")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on AccessDeniedBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccessDeniedBody) Validate() error {

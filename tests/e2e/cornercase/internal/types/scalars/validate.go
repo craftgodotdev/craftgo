@@ -84,6 +84,38 @@ func (v *Bag) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on ConstrainedBox.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ConstrainedBox[T]) Validate() error {
+	if vv, ok := any(&v.Item).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return err
+		}
+	}
+	if v.Count != nil && *v.Count < 1 {
+		return fmt.Errorf("count: below minimum 1")
+	}
+	if v.Count != nil && *v.Count > 100 {
+		return fmt.Errorf("count: above maximum 100")
+	}
+	if len(v.Label) > 64 {
+		return fmt.Errorf("label: length greater than 64")
+	}
+	if _, _err := time.Parse(time.RFC3339, v.Stamp); _err != nil {
+		return fmt.Errorf("stamp: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ConstrainedBoxHost.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ConstrainedBoxHost) Validate() error {
+	if err := v.Box.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on CreateOrderReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateOrderReq) Validate() error {

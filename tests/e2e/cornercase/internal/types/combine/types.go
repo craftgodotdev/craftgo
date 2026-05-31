@@ -141,14 +141,15 @@ type PairsStr struct {
 //	defValue     string? @default("d")           → *string  optional + pre-fill (the `?` is mandatory under @default)
 //	defNullable  string? @nullable @default("d") → *string  optional + nullable + pre-fill
 //
-// Wire contract diffs row-by-row:
+// Wire contract diffs row-by-row (OpenAPI 3.1: null rides the `type`
+// list, so a nullable string is `type: [string, "null"]`):
 //
-//	plain:        required[] yes, nullable: false
-//	optional:     required[] no,  nullable: true
-//	nullable:     required[] yes, nullable: true
-//	bothNullable: required[] no,  nullable: true
-//	defValue:     required[] no,  nullable: true,  default: "d"
-//	defNullable:  required[] no,  nullable: true,  default: "d"
+//	plain:        required[] yes, type: string
+//	optional:     required[] no,  type: [string, "null"]
+//	nullable:     required[] yes, type: [string, "null"]
+//	bothNullable: required[] no,  type: [string, "null"]
+//	defValue:     required[] no,  type: [string, "null"], default: "d"
+//	defNullable:  required[] no,  type: [string, "null"], default: "d"
 //
 // The `bothNullable` and `defNullable` rows trip the "redundant
 // @nullable on `T?`" warning (the optionality already permits null);

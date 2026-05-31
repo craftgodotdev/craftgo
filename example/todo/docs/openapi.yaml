@@ -5,21 +5,23 @@ components:
       properties:
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         priority:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoPriority'
+          - type: "null"
           default: Medium
-          nullable: true
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
           items:
             type: string
           maxItems: 10
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
           uniqueItems: true
         title:
           maxLength: 200
@@ -33,21 +35,23 @@ components:
       properties:
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         priority:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoPriority'
+          - type: "null"
           default: Medium
-          nullable: true
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
           items:
             type: string
           maxItems: 10
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
           uniqueItems: true
         title:
           maxLength: 200
@@ -93,48 +97,51 @@ components:
     ListTodosReq:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
           type: integer
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoStatus'
-          nullable: true
+          - type: "null"
         tag:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Tag'
-          nullable: true
+          - type: "null"
       required:
       - limit
       type: object
     ListTodosReqQuery:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
           type: integer
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoStatus'
-          nullable: true
+          - type: "null"
         tag:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Tag'
-          nullable: true
+          - type: "null"
       required:
       - limit
       type: object
     ListTodosRespBody:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         items:
           items:
             $ref: '#/components/schemas/Todo'
@@ -168,13 +175,14 @@ components:
           type: string
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         priority:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoPriority'
+          - type: "null"
           default: Medium
-          nullable: true
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -197,8 +205,9 @@ components:
     TodoList:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         items:
           items:
             $ref: '#/components/schemas/Todo'
@@ -226,21 +235,23 @@ components:
           type: string
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         priority:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoPriority'
-          nullable: true
+          - type: "null"
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoStatus'
-          nullable: true
+          - type: "null"
         title:
           maxLength: 200
           minLength: 1
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - id
       type: object
@@ -248,21 +259,23 @@ components:
       properties:
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         priority:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoPriority'
-          nullable: true
+          - type: "null"
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoStatus'
-          nullable: true
+          - type: "null"
         title:
           maxLength: 200
           minLength: 1
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       type: object
     UpdateTodoReqPath:
       properties:
@@ -288,8 +301,9 @@ paths:
       - in: query
         name: cursor
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: query
         name: limit
         required: true
@@ -300,15 +314,15 @@ paths:
       - in: query
         name: status
         schema:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/TodoStatus'
-          nullable: true
+          - type: "null"
       - in: query
         name: tag
         schema:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Tag'
-          nullable: true
+          - type: "null"
       responses:
         "200":
           content:
