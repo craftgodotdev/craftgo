@@ -15,32 +15,40 @@ components:
       properties:
         b:
           anyOf:
-            - $ref: "#/components/schemas/B"
-            - type: "null"
+          - $ref: '#/components/schemas/B'
+          - type: "null"
         id:
           type: string
       required:
-        - id
+      - id
       type: object
     AccessDeniedErr:
+      description: Forbidden error response (HTTP 403).
+      properties:
+        reason:
+          type: string
+        retryAfter:
+          type: integer
+      type: object
+    AccessRevokedErr:
       allOf:
-        - $ref: "#/components/schemas/AuditTrail"
-        - properties:
-            reason:
-              type: string
-          type: object
+      - $ref: '#/components/schemas/AuditTrail'
+      - properties:
+          reason:
+            type: string
+        type: object
       description: Forbidden error response (HTTP 403).
       type: object
     AccountLoginResp:
       description: AccountLoginResp wraps the session token returned by Login.
       properties:
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
         token:
           type: string
       required:
-        - id
-        - token
+      - id
+      - token
       type: object
     AccountProfile:
       description: |-
@@ -51,40 +59,40 @@ components:
         email:
           type: string
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
       required:
-        - id
-        - email
+      - id
+      - email
       type: object
     AccountServiceResetRespBody:
-      $ref: "#/components/schemas/ID"
+      $ref: '#/components/schemas/ID'
     AddBoundaryReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberBoundary"
+          $ref: '#/components/schemas/NumberBoundary'
       required:
-        - body
+      - body
       type: object
     AddBoundaryRespBody:
-      $ref: "#/components/schemas/BoundaryReq"
+      $ref: '#/components/schemas/BoundaryReq'
     AddCounterReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberCounter"
+          $ref: '#/components/schemas/NumberCounter'
       required:
-        - body
+      - body
       type: object
     AddCounterRespBody:
-      $ref: "#/components/schemas/CounterReq"
+      $ref: '#/components/schemas/CounterReq'
     AddExactReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberExact"
+          $ref: '#/components/schemas/NumberExact'
       required:
-        - body
+      - body
       type: object
     AddExactRespBody:
-      $ref: "#/components/schemas/ExactReq"
+      $ref: '#/components/schemas/ExactReq'
     AddItemReq:
       description: |-
         AddItemReq is the canonical JSON body for the POST /items
@@ -99,15 +107,15 @@ components:
         notes:
           maxLength: 2000
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         price:
           maximum: 1000000
           minimum: 0
           type: integer
       required:
-        - name
-        - price
+      - name
+      - price
       type: object
     AddItemReqBody:
       properties:
@@ -118,58 +126,58 @@ components:
         notes:
           maxLength: 2000
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         price:
           maximum: 1000000
           minimum: 0
           type: integer
       required:
-        - name
-        - price
+      - name
+      - price
       type: object
     AddItemRespBody:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     AddMixedReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberMixed"
+          $ref: '#/components/schemas/NumberMixed'
       required:
-        - body
+      - body
       type: object
     AddMixedRespBody:
-      $ref: "#/components/schemas/MixedReq"
+      $ref: '#/components/schemas/MixedReq'
     AddOptionalReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberOptional"
+          $ref: '#/components/schemas/NumberOptional'
       required:
-        - body
+      - body
       type: object
     AddOptionalRespBody:
-      $ref: "#/components/schemas/OptionalReq"
+      $ref: '#/components/schemas/OptionalReq'
     AddPriceReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberPrice"
+          $ref: '#/components/schemas/NumberPrice'
       required:
-        - body
+      - body
       type: object
     AddPriceRespBody:
-      $ref: "#/components/schemas/PriceReq"
+      $ref: '#/components/schemas/PriceReq'
     AddUnsignedReqBody:
       properties:
         body:
-          $ref: "#/components/schemas/NumberUnsigned"
+          $ref: '#/components/schemas/NumberUnsigned'
       required:
-        - body
+      - body
       type: object
     AddUnsignedRespBody:
-      $ref: "#/components/schemas/UnsignedReq"
+      $ref: '#/components/schemas/UnsignedReq'
     AdminInventoryServiceHealthRespBody:
-      $ref: "#/components/schemas/HealthResp"
+      $ref: '#/components/schemas/HealthResp'
     AdminInventoryServiceListItemsRespBody:
-      $ref: "#/components/schemas/InventoryListResp"
+      $ref: '#/components/schemas/InventoryListResp'
     AllFormats:
       description: |-
         AllFormats holds one field per supported @format(name). Each
@@ -254,24 +262,24 @@ components:
           minLength: 36
           type: string
       required:
-        - email
-        - url
-        - uri
-        - uuid
-        - datetime
-        - date
-        - timeField
-        - phone
-        - hostname
-        - ipv4
-        - ipv6
-        - cidr
-        - mac
-        - creditcard
-        - base64
-        - base64url
-        - hexcolor
-        - jsonField
+      - email
+      - url
+      - uri
+      - uuid
+      - datetime
+      - date
+      - timeField
+      - phone
+      - hostname
+      - ipv4
+      - ipv6
+      - cidr
+      - mac
+      - creditcard
+      - base64
+      - base64url
+      - hexcolor
+      - jsonField
       type: object
     Arr_BoundsBasic:
       description: |-
@@ -291,7 +299,7 @@ components:
           type: array
           uniqueItems: true
       required:
-        - tags
+      - tags
       type: object
     Arr_EmptyExact:
       description: |-
@@ -306,7 +314,7 @@ components:
           maxItems: 0
           type: array
       required:
-        - always_empty
+      - always_empty
       type: object
     Arr_MinZero:
       description: |-
@@ -320,7 +328,7 @@ components:
             type: string
           type: array
       required:
-        - items
+      - items
       type: object
     Arr_OptionalBound:
       description: |-
@@ -334,8 +342,8 @@ components:
             type: string
           minItems: 1
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     Arr_PlainInts:
       description: |-
@@ -349,7 +357,7 @@ components:
             type: integer
           type: array
       required:
-        - scores
+      - scores
       type: object
     Arr_PlainStrings:
       description: |-
@@ -362,7 +370,7 @@ components:
             type: string
           type: array
       required:
-        - codes
+      - codes
       type: object
     Arr_Tag2D:
       description: |-
@@ -375,11 +383,11 @@ components:
         grid:
           items:
             items:
-              $ref: "#/components/schemas/CollectionsTag"
+              $ref: '#/components/schemas/CollectionsTag'
             type: array
           type: array
       required:
-        - grid
+      - grid
       type: object
     Arr_Tag2DOptional:
       description: |-
@@ -390,11 +398,11 @@ components:
         grid:
           items:
             items:
-              $ref: "#/components/schemas/CollectionsTag"
+              $ref: '#/components/schemas/CollectionsTag'
             type: array
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     Arr_Tag3D:
       description: |-
@@ -406,12 +414,12 @@ components:
           items:
             items:
               items:
-                $ref: "#/components/schemas/CollectionsTag"
+                $ref: '#/components/schemas/CollectionsTag'
               type: array
             type: array
           type: array
       required:
-        - cube
+      - cube
       type: object
     Arr_TagSlice:
       description: |-
@@ -423,13 +431,13 @@ components:
       properties:
         tags:
           items:
-            $ref: "#/components/schemas/CollectionsTag"
+            $ref: '#/components/schemas/CollectionsTag'
           maxItems: 10
           minItems: 1
           type: array
           uniqueItems: true
       required:
-        - tags
+      - tags
       type: object
     ArrayBoundsReqBody:
       properties:
@@ -441,10 +449,10 @@ components:
           type: array
           uniqueItems: true
       required:
-        - tags
+      - tags
       type: object
     ArrayBoundsRespBody:
-      $ref: "#/components/schemas/Arr_BoundsBasic"
+      $ref: '#/components/schemas/Arr_BoundsBasic'
     ArrayOfGenericInstance:
       description: |-
         ArrayOfGenericInstance probes the array wrapper around a generic
@@ -455,10 +463,10 @@ components:
       properties:
         pages:
           items:
-            $ref: "#/components/schemas/PageOfScalarsOrder"
+            $ref: '#/components/schemas/PageOfScalarsOrder'
           type: array
       required:
-        - pages
+      - pages
       type: object
     AsyncJobResp:
       description: |-
@@ -466,12 +474,12 @@ components:
         later" envelope. Pairs with `@status(202)` on the trigger method.
       properties:
         jobId:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
         queued:
           type: boolean
       required:
-        - jobId
-        - queued
+      - jobId
+      - queued
       type: object
     Audit:
       description: |-
@@ -489,9 +497,9 @@ components:
           format: datetime
           type: string
       required:
-        - createdAt
-        - updatedAt
-        - createdBy
+      - createdAt
+      - updatedAt
+      - createdBy
       type: object
     AuditFields:
       description: |-
@@ -506,8 +514,8 @@ components:
           format: datetime
           type: string
       required:
-        - createdAt
-        - updatedAt
+      - createdAt
+      - updatedAt
       type: object
     AuditTrail:
       description: |-
@@ -526,18 +534,18 @@ components:
           format: datetime
           type: string
       required:
-        - actor
-        - at
+      - actor
+      - at
       type: object
     Audited:
       allOf:
-        - $ref: "#/components/schemas/AuditFields"
-        - properties:
-            id:
-              $ref: "#/components/schemas/ScalarsUUID"
-          required:
-            - id
-          type: object
+      - $ref: '#/components/schemas/AuditFields'
+      - properties:
+          id:
+            $ref: '#/components/schemas/ScalarsUUID'
+        required:
+        - id
+        type: object
       description: |-
         Audited is the mixin SITE. The bare `AuditFields` identifier on
         its own line embeds AuditFields's two fields into Audited's body;
@@ -548,9 +556,9 @@ components:
     AuditedPage:
       properties:
         page:
-          $ref: "#/components/schemas/PageWithAuditOfScalarsOrder"
+          $ref: '#/components/schemas/PageWithAuditOfScalarsOrder'
       required:
-        - page
+      - page
       type: object
     AuthRequiredErr:
       description: Unauthorized error response (HTTP 401).
@@ -562,12 +570,12 @@ components:
       properties:
         a:
           anyOf:
-            - $ref: "#/components/schemas/A"
-            - type: "null"
+          - $ref: '#/components/schemas/A'
+          - type: "null"
         id:
           type: string
       required:
-        - id
+      - id
       type: object
     Bag:
       description: |-
@@ -577,27 +585,27 @@ components:
       properties:
         tags:
           items:
-            $ref: "#/components/schemas/ScalarsTag"
+            $ref: '#/components/schemas/ScalarsTag'
           maxItems: 10
           minItems: 1
           type: array
       required:
-        - tags
+      - tags
       type: object
     BanUserReqBody:
       properties:
         email:
-          $ref: "#/components/schemas/SharedEmail"
+          $ref: '#/components/schemas/SharedEmail'
       required:
-        - email
+      - email
       type: object
     BanUserRespBody:
-      $ref: "#/components/schemas/ServicesUser"
+      $ref: '#/components/schemas/ServicesUser'
     BindingsColor:
       enum:
-        - Red
-        - Green
-        - Blue
+      - Red
+      - Green
+      - Blue
       type: string
     BindingsUUID:
       format: uuid
@@ -611,15 +619,15 @@ components:
         payload:
           type: string
       required:
-        - payload
+      - payload
       type: object
     BoundaryReq:
       description: BoundaryReq wraps NumberBoundary (type-capacity edges).
       properties:
         body:
-          $ref: "#/components/schemas/NumberBoundary"
+          $ref: '#/components/schemas/NumberBoundary'
       required:
-        - body
+      - body
       type: object
     CancelJobReq:
       description: |-
@@ -628,9 +636,9 @@ components:
         body.
       properties:
         jobId:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
       required:
-        - jobId
+      - jobId
       type: object
     Catalog:
       description: |-
@@ -642,10 +650,10 @@ components:
       properties:
         users:
           additionalProperties:
-            $ref: "#/components/schemas/NestedUser"
+            $ref: '#/components/schemas/NestedUser'
           type: object
       required:
-        - users
+      - users
       type: object
     Cents:
       maximum: 1000000000
@@ -666,8 +674,8 @@ components:
           minLength: 1
           type: string
       required:
-        - street
-        - city
+      - street
+      - city
       type: object
     CollectionsEmail:
       format: email
@@ -686,20 +694,20 @@ components:
         the inherited format check.
       properties:
         email:
-          $ref: "#/components/schemas/CollectionsEmail"
+          $ref: '#/components/schemas/CollectionsEmail'
         name:
           maxLength: 80
           minLength: 1
           type: string
       required:
-        - name
-        - email
+      - name
+      - email
       type: object
     CombineColor:
       enum:
-        - Red
-        - Green
-        - Blue
+      - Red
+      - Green
+      - Blue
       type: string
     CombineConstraintsReqBody:
       properties:
@@ -720,12 +728,12 @@ components:
           minLength: 3
           type: string
       required:
-        - email1
-        - email2
-        - codeID
+      - email1
+      - email2
+      - codeID
       type: object
     CombineConstraintsRespBody:
-      $ref: "#/components/schemas/Str_Combos"
+      $ref: '#/components/schemas/Str_Combos'
     ConflictErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -738,9 +746,9 @@ components:
         registers `ConstrainedBox<Order>` and emits its component schema.
       properties:
         box:
-          $ref: "#/components/schemas/ConstrainedBoxOfScalarsOrder"
+          $ref: '#/components/schemas/ConstrainedBoxOfScalarsOrder'
       required:
-        - box
+      - box
       type: object
     ConstrainedBoxOfScalarsOrder:
       description: |-
@@ -766,10 +774,10 @@ components:
           maximum: 100
           minimum: 1
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         item:
-          $ref: "#/components/schemas/ScalarsOrder"
+          $ref: '#/components/schemas/ScalarsOrder'
         label:
           maxLength: 64
           type: string
@@ -777,9 +785,9 @@ components:
           format: datetime
           type: string
       required:
-        - item
-        - label
-        - stamp
+      - item
+      - label
+      - stamp
       type: object
     CookieReq:
       description: |-
@@ -790,9 +798,9 @@ components:
       description: CounterReq wraps NumberCounter for the AddCounter POST.
       properties:
         body:
-          $ref: "#/components/schemas/NumberCounter"
+          $ref: '#/components/schemas/NumberCounter'
       required:
-        - body
+      - body
       type: object
     CreateJobReq:
       description: |-
@@ -806,8 +814,8 @@ components:
         payload:
           type: string
       required:
-        - kind
-        - payload
+      - kind
+      - payload
       type: object
     CreateJobReqBody:
       properties:
@@ -817,11 +825,11 @@ components:
         payload:
           type: string
       required:
-        - kind
-        - payload
+      - kind
+      - payload
       type: object
     CreateJobRespBody:
-      $ref: "#/components/schemas/AsyncJobResp"
+      $ref: '#/components/schemas/AsyncJobResp'
     CreateOrderReq:
       description: |-
         CreateOrderReq is a full-shape POST body that drives every Order
@@ -829,35 +837,35 @@ components:
         the cornercase fixture can keep the request DTO simple.
       properties:
         order:
-          $ref: "#/components/schemas/ScalarsOrder"
+          $ref: '#/components/schemas/ScalarsOrder'
       required:
-        - order
+      - order
       type: object
     CreateOrderReqBody:
       properties:
         order:
-          $ref: "#/components/schemas/ScalarsOrder"
+          $ref: '#/components/schemas/ScalarsOrder'
       required:
-        - order
+      - order
       type: object
     CreateOrderRespBody:
-      $ref: "#/components/schemas/EnvelopeOfScalarsOrder"
+      $ref: '#/components/schemas/EnvelopeOfScalarsOrder'
     CreateUserReqBody:
       properties:
         email:
-          $ref: "#/components/schemas/SharedEmail"
+          $ref: '#/components/schemas/SharedEmail'
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
         name:
           minLength: 1
           type: string
       required:
-        - id
-        - email
-        - name
+      - id
+      - email
+      - name
       type: object
     CreateUserRespBody:
-      $ref: "#/components/schemas/ServicesUser"
+      $ref: '#/components/schemas/ServicesUser'
     Cube:
       description: |-
         Cube is the 3-D slice of nested case. Three nested for-loops
@@ -867,12 +875,12 @@ components:
           items:
             items:
               items:
-                $ref: "#/components/schemas/Node"
+                $ref: '#/components/schemas/Node'
               type: array
             type: array
           type: array
       required:
-        - space
+      - space
       type: object
     DefaultsBoundary:
       description: |-
@@ -887,20 +895,20 @@ components:
         flag:
           default: true
           type:
-            - boolean
-            - "null"
+          - boolean
+          - "null"
         negOne:
           default: -1
           exclusiveMaximum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         zero:
           default: 0
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
       type: object
     DefaultsCollection:
       description: |-
@@ -930,14 +938,14 @@ components:
       properties:
         arr:
           default:
-            - 1
-            - 2
-            - 3
+          - 1
+          - 2
+          - 3
           items:
             type: integer
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     DefaultsConflict:
       description: |-
@@ -955,8 +963,8 @@ components:
             validator's failure case.
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     DefaultsEnum:
       description: |-
@@ -965,8 +973,8 @@ components:
       properties:
         c:
           anyOf:
-            - $ref: "#/components/schemas/CombineColor"
-            - type: "null"
+          - $ref: '#/components/schemas/CombineColor'
+          - type: "null"
           default: Red
       type: object
     DefaultsScalar:
@@ -976,24 +984,24 @@ components:
       properties:
         size:
           anyOf:
-            - $ref: "#/components/schemas/PageSize"
-            - type: "null"
+          - $ref: '#/components/schemas/PageSize'
+          - type: "null"
           default: 20
       type: object
     DeleteAccountReq:
       description: DeleteAccountReq is path-bound by id; no body.
       properties:
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
       required:
-        - id
+      - id
       type: object
     DeleteAccountRespBody:
-      $ref: "#/components/schemas/ID"
+      $ref: '#/components/schemas/ID'
     DeleteItemRespBody:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     DeleteUserRespBody:
-      $ref: "#/components/schemas/ServicesUser"
+      $ref: '#/components/schemas/ServicesUser'
     DuplicateKeyErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -1006,76 +1014,76 @@ components:
       properties:
         b:
           anyOf:
-            - $ref: "#/components/schemas/B"
-            - type: "null"
+          - $ref: '#/components/schemas/B'
+          - type: "null"
         id:
           type: string
       required:
-        - id
+      - id
       type: object
     EchoARespBody:
-      $ref: "#/components/schemas/A"
+      $ref: '#/components/schemas/A'
     EchoBReqBody:
       properties:
         a:
           anyOf:
-            - $ref: "#/components/schemas/A"
-            - type: "null"
+          - $ref: '#/components/schemas/A'
+          - type: "null"
         id:
           type: string
       required:
-        - id
+      - id
       type: object
     EchoBRespBody:
-      $ref: "#/components/schemas/B"
+      $ref: '#/components/schemas/B'
     EchoBoundaryReqBody:
       properties:
         flag:
           default: true
           type:
-            - boolean
-            - "null"
+          - boolean
+          - "null"
         negOne:
           default: -1
           exclusiveMaximum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         zero:
           default: 0
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
       type: object
     EchoBoundaryRespBody:
-      $ref: "#/components/schemas/DefaultsBoundary"
+      $ref: '#/components/schemas/DefaultsBoundary'
     EchoCatalogReqBody:
       properties:
         users:
           additionalProperties:
-            $ref: "#/components/schemas/NestedUser"
+            $ref: '#/components/schemas/NestedUser'
           type: object
       required:
-        - users
+      - users
       type: object
     EchoCatalogRespBody:
-      $ref: "#/components/schemas/Catalog"
+      $ref: '#/components/schemas/Catalog'
     EchoCollectionReqBody:
       properties:
         arr:
           default:
-            - 1
-            - 2
-            - 3
+          - 1
+          - 2
+          - 3
           items:
             type: integer
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     EchoCollectionRespBody:
-      $ref: "#/components/schemas/DefaultsCollection"
+      $ref: '#/components/schemas/DefaultsCollection'
     EchoConflictReqBody:
       properties:
         empty:
@@ -1085,138 +1093,138 @@ components:
             validator's failure case.
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     EchoConflictRespBody:
-      $ref: "#/components/schemas/DefaultsConflict"
+      $ref: '#/components/schemas/DefaultsConflict'
     EchoCubeReqBody:
       properties:
         space:
           items:
             items:
               items:
-                $ref: "#/components/schemas/Node"
+                $ref: '#/components/schemas/Node'
               type: array
             type: array
           type: array
       required:
-        - space
+      - space
       type: object
     EchoCubeRespBody:
-      $ref: "#/components/schemas/Cube"
+      $ref: '#/components/schemas/Cube'
     EchoEnumReqBody:
       properties:
         c:
           anyOf:
-            - $ref: "#/components/schemas/CombineColor"
-            - type: "null"
+          - $ref: '#/components/schemas/CombineColor'
+          - type: "null"
           default: Red
       type: object
     EchoEnumRespBody:
-      $ref: "#/components/schemas/DefaultsEnum"
+      $ref: '#/components/schemas/DefaultsEnum'
     EchoListPageReqBody:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/NestedOrder"
+            $ref: '#/components/schemas/NestedOrder'
           type: array
         meta:
           anyOf:
-            - $ref: "#/components/schemas/NestedAddress"
-            - type: "null"
+          - $ref: '#/components/schemas/NestedAddress'
+          - type: "null"
       required:
-        - items
+      - items
       type: object
     EchoListPageRespBody:
-      $ref: "#/components/schemas/ListPage"
+      $ref: '#/components/schemas/ListPage'
     EchoMatrixReqBody:
       properties:
         grid:
           items:
             items:
-              $ref: "#/components/schemas/Node"
+              $ref: '#/components/schemas/Node'
             type: array
           type: array
       required:
-        - grid
+      - grid
       type: object
     EchoMatrixRespBody:
-      $ref: "#/components/schemas/Matrix"
+      $ref: '#/components/schemas/Matrix'
     EchoNodeReqBody:
       properties:
         children:
           items:
-            $ref: "#/components/schemas/Node"
+            $ref: '#/components/schemas/Node'
           type: array
         id:
           minLength: 1
           type: string
       required:
-        - id
-        - children
+      - id
+      - children
       type: object
     EchoNodeRespBody:
-      $ref: "#/components/schemas/Node"
+      $ref: '#/components/schemas/Node'
     EchoOrgReqBody:
       properties:
         teams:
           items:
-            $ref: "#/components/schemas/Team"
+            $ref: '#/components/schemas/Team'
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     EchoOrgRespBody:
-      $ref: "#/components/schemas/Org"
+      $ref: '#/components/schemas/Org'
     EchoPersonReqBody:
       properties:
         home:
-          $ref: "#/components/schemas/Home"
+          $ref: '#/components/schemas/Home'
       required:
-        - home
+      - home
       type: object
     EchoPersonRespBody:
-      $ref: "#/components/schemas/Person"
+      $ref: '#/components/schemas/Person'
     EchoPresenceReqBody:
       properties:
         bothNullable:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         defNullable:
           default: d
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         defValue:
           default: d
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         nullable:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         optional:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         plain:
           type: string
       required:
-        - plain
-        - nullable
+      - plain
+      - nullable
       type: object
     EchoPresenceRespBody:
-      $ref: "#/components/schemas/PresenceMatrix"
+      $ref: '#/components/schemas/PresenceMatrix'
     EchoReqBody:
       properties:
         bio:
           maxLength: 500
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         code:
           pattern: ^[A-Z]{2,4}$
           type: string
@@ -1229,112 +1237,82 @@ components:
           maxLength: 100
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         name:
           maxLength: 80
           minLength: 1
           type: string
       required:
-        - name
-        - email
-        - code
+      - name
+      - email
+      - code
       type: object
     EchoRespBody:
-      $ref: "#/components/schemas/Str_EchoResp"
+      $ref: '#/components/schemas/Str_EchoResp'
     EchoScalarReqBody:
       properties:
         size:
           anyOf:
-            - $ref: "#/components/schemas/PageSize"
-            - type: "null"
+          - $ref: '#/components/schemas/PageSize'
+          - type: "null"
           default: 20
       type: object
     EchoScalarRespBody:
-      $ref: "#/components/schemas/DefaultsScalar"
+      $ref: '#/components/schemas/DefaultsScalar'
     EchoTeamReqBody:
       properties:
         members:
           items:
-            $ref: "#/components/schemas/NestedUser"
+            $ref: '#/components/schemas/NestedUser'
           maxItems: 50
           minItems: 1
           type: array
       required:
-        - members
+      - members
       type: object
     EchoTeamRespBody:
-      $ref: "#/components/schemas/Team"
+      $ref: '#/components/schemas/Team'
     EchoUserReqBody:
       properties:
         addr:
-          $ref: "#/components/schemas/NestedAddress"
+          $ref: '#/components/schemas/NestedAddress'
         alias:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         boss:
           anyOf:
-            - $ref: "#/components/schemas/NestedUser"
-            - type: "null"
+          - $ref: '#/components/schemas/NestedUser'
+          - type: "null"
         name:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       required:
-        - addr
+      - addr
       type: object
     EchoUserRespBody:
-      $ref: "#/components/schemas/NestedUser"
-    EchoWireReqCookie:
-      properties:
-        session:
-          type: string
-      required:
-        - session
-      type: object
-    EchoWireReqHeader:
-      properties:
-        apiKey:
-          type: string
-      required:
-        - apiKey
-      type: object
-    EchoWireReqPath:
-      properties:
-        userId:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-        - userId
-      type: object
-    EchoWireReqQuery:
-      properties:
-        q:
-          type:
-            - string
-            - "null"
-      type: object
+      $ref: '#/components/schemas/NestedUser'
     EchoWireRespBody:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     EchoWrappedReq:
       description: EchoWrappedReq carries the nested generic for round-tripping.
       properties:
         payload:
-          $ref: "#/components/schemas/Wrapped"
+          $ref: '#/components/schemas/Wrapped'
       required:
-        - payload
+      - payload
       type: object
     EchoWrappedReqBody:
       properties:
         payload:
-          $ref: "#/components/schemas/Wrapped"
+          $ref: '#/components/schemas/Wrapped'
       required:
-        - payload
+      - payload
       type: object
     EchoWrappedRespBody:
-      $ref: "#/components/schemas/Wrapped"
+      $ref: '#/components/schemas/Wrapped'
     EmailTakenErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -1349,11 +1327,11 @@ components:
         payload:
           type: string
       required:
-        - kind
-        - payload
+      - kind
+      - payload
       type: object
     EnqueueJobRespBody:
-      $ref: "#/components/schemas/AsyncJobResp"
+      $ref: '#/components/schemas/AsyncJobResp'
     EntitlementsAuditTrail:
       description: |-
         EntitlementsAuditTrail records the auth scheme that gated an
@@ -1366,8 +1344,8 @@ components:
         actor:
           type: string
       required:
-        - actor
-        - action
+      - actor
+      - action
       type: object
     EnvelopeOfScalarsOrder:
       description: |-
@@ -1376,21 +1354,21 @@ components:
         emits a parametric Validate() receiver for it.
       properties:
         data:
-          $ref: "#/components/schemas/ScalarsOrder"
+          $ref: '#/components/schemas/ScalarsOrder'
         meta:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       required:
-        - data
+      - data
       type: object
     ExactReq:
       description: ExactReq wraps NumberExact (exact-match shapes).
       properties:
         body:
-          $ref: "#/components/schemas/NumberExact"
+          $ref: '#/components/schemas/NumberExact'
       required:
-        - body
+      - body
       type: object
     FormFileReq:
       description: |-
@@ -1407,8 +1385,8 @@ components:
           minLength: 1
           type: string
       required:
-        - id
-        - file
+      - id
+      - file
       type: object
     Furniture:
       description: |-
@@ -1422,11 +1400,11 @@ components:
           minimum: 0
           type: integer
       required:
-        - name
-        - weight
+      - name
+      - weight
       type: object
     GetAuditedRespBody:
-      $ref: "#/components/schemas/Audited"
+      $ref: '#/components/schemas/Audited'
     GetItemReq:
       description: |-
         GetItemReq is the path-only DTO reused by GetItem and DeleteItem.
@@ -1434,24 +1412,24 @@ components:
         "lookup by id" handle.
       properties:
         id:
-          $ref: "#/components/schemas/BindingsUUID"
+          $ref: '#/components/schemas/BindingsUUID'
       required:
-        - id
+      - id
       type: object
     GetItemRespBody:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     GetOrderReq:
       description: |-
         GetOrderReq pins a UUID-typed path parameter. The scalar's
         @format(uuid) inherits onto the field-level @path binding.
       properties:
         id:
-          $ref: "#/components/schemas/ScalarsUUID"
+          $ref: '#/components/schemas/ScalarsUUID'
       required:
-        - id
+      - id
       type: object
     GetOrderRespBody:
-      $ref: "#/components/schemas/ScalarsOrder"
+      $ref: '#/components/schemas/ScalarsOrder'
     GetUserReq:
       description: |-
         GetUserReq is the workaround for the cross-package-scalar bug.
@@ -1473,18 +1451,18 @@ components:
           minLength: 1
           type: string
       required:
-        - id
+      - id
       type: object
     GetUserRespBody:
-      $ref: "#/components/schemas/ServicesUser"
+      $ref: '#/components/schemas/ServicesUser'
     HeaderEchoServiceListItemsRespBody:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/ID"
+            $ref: '#/components/schemas/ID'
           type: array
       required:
-        - items
+      - items
       type: object
     HeaderOptionalReq:
       description: |-
@@ -1510,10 +1488,10 @@ components:
         ok:
           type: boolean
       required:
-        - ok
+      - ok
       type: object
     HealthzRespBody:
-      $ref: "#/components/schemas/HealthResp"
+      $ref: '#/components/schemas/HealthResp'
     Home:
       description: |-
         Home owns a slice of nested Rooms. The slice variant tests that
@@ -1522,10 +1500,10 @@ components:
       properties:
         rooms:
           items:
-            $ref: "#/components/schemas/Room"
+            $ref: '#/components/schemas/Room'
           type: array
       required:
-        - rooms
+      - rooms
       type: object
     ID:
       maxLength: 64
@@ -1555,13 +1533,13 @@ components:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/ID"
+            $ref: '#/components/schemas/ID'
           type: array
         total:
           type: integer
       required:
-        - items
-        - total
+      - items
+      - total
       type: object
     Item:
       description: |-
@@ -1569,7 +1547,7 @@ components:
         resolves to a single item.
       properties:
         id:
-          $ref: "#/components/schemas/BindingsUUID"
+          $ref: '#/components/schemas/BindingsUUID'
         name:
           maxLength: 200
           minLength: 1
@@ -1578,9 +1556,9 @@ components:
           minimum: 0
           type: integer
       required:
-        - id
-        - name
-        - price
+      - id
+      - name
+      - price
       type: object
     ItemList:
       description: |-
@@ -1591,18 +1569,18 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         items:
           items:
-            $ref: "#/components/schemas/Item"
+            $ref: '#/components/schemas/Item'
           type: array
         total:
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
       required:
-        - items
+      - items
       type: object
     ListOrdersReq:
       description: |-
@@ -1620,25 +1598,15 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         limit:
-          $ref: "#/components/schemas/Cents"
+          $ref: '#/components/schemas/Cents'
       required:
-        - limit
-      type: object
-    ListOrdersReqQuery:
-      properties:
-        cursor:
-          nullable: true
-          type: string
-        limit:
-          $ref: "#/components/schemas/Cents"
-      required:
-        - limit
+      - limit
       type: object
     ListOrdersRespBody:
-      $ref: "#/components/schemas/OrderPage"
+      $ref: '#/components/schemas/OrderPage'
     ListPage:
       description: |-
         ListPage simulates the "page wrapper" pattern: an array of one
@@ -1647,37 +1615,31 @@ components:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/NestedOrder"
+            $ref: '#/components/schemas/NestedOrder'
           type: array
         meta:
           anyOf:
-            - $ref: "#/components/schemas/NestedAddress"
-            - type: "null"
+          - $ref: '#/components/schemas/NestedAddress'
+          - type: "null"
       required:
-        - items
+      - items
       type: object
     ListProjectsRespBody:
-      $ref: "#/components/schemas/ProjectsResp"
+      $ref: '#/components/schemas/ProjectsResp'
     ListUsersReq:
       allOf:
-        - $ref: "#/components/schemas/Pagination"
-        - properties:
-            query:
-              type:
-                - string
-                - "null"
-          type: object
+      - $ref: '#/components/schemas/Pagination'
+      - properties:
+          query:
+            type:
+            - string
+            - "null"
+        type: object
       description: |-
         ListUsersReq embeds `shared.Pagination` cross-package. The
         implicit mixin form makes the limit / cursor / total fields land
         at the request root, and the optional `query` slot adds the free-
         text filter on top.
-      type: object
-    ListUsersReqQuery:
-      properties:
-        query:
-          nullable: true
-          type: string
       type: object
     ListUsersResp:
       description: |-
@@ -1689,20 +1651,20 @@ components:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/ServicesUser"
+            $ref: '#/components/schemas/ServicesUser'
           type: array
         meta:
-          $ref: "#/components/schemas/Pagination"
+          $ref: '#/components/schemas/Pagination'
       required:
-        - items
-        - meta
+      - items
+      - meta
       type: object
     ListUsersRespBody:
-      $ref: "#/components/schemas/ListUsersResp"
+      $ref: '#/components/schemas/ListUsersResp'
     LoginRespBody:
-      $ref: "#/components/schemas/AccountLoginResp"
+      $ref: '#/components/schemas/AccountLoginResp'
     LogoutRespBody:
-      $ref: "#/components/schemas/ID"
+      $ref: '#/components/schemas/ID'
     Map_ArrayValue:
       description: |-
         Map_ArrayValue stacks an array INSIDE a map value: each value is a
@@ -1713,11 +1675,11 @@ components:
         buckets:
           additionalProperties:
             items:
-              $ref: "#/components/schemas/CollectionsTag"
+              $ref: '#/components/schemas/CollectionsTag'
             type: array
           type: object
       required:
-        - buckets
+      - buckets
       type: object
     Map_Bounds:
       description: |-
@@ -1732,7 +1694,7 @@ components:
           minItems: 1
           type: object
       required:
-        - counts
+      - counts
       type: object
     Map_KeyAndValue:
       description: |-
@@ -1744,14 +1706,14 @@ components:
       properties:
         index:
           additionalProperties:
-            $ref: "#/components/schemas/CollectionsEmail"
+            $ref: '#/components/schemas/CollectionsEmail'
           propertyNames:
             maxLength: 64
             minLength: 1
             type: string
           type: object
       required:
-        - index
+      - index
       type: object
     Map_Optional:
       description: |-
@@ -1765,8 +1727,8 @@ components:
           additionalProperties:
             type: integer
           type:
-            - object
-            - "null"
+          - object
+          - "null"
       type: object
     Map_Plain:
       description: |-
@@ -1779,7 +1741,7 @@ components:
             type: integer
           type: object
       required:
-        - counts
+      - counts
       type: object
     Map_ScalarValue:
       description: |-
@@ -1790,10 +1752,10 @@ components:
       properties:
         labels:
           additionalProperties:
-            $ref: "#/components/schemas/CollectionsTag"
+            $ref: '#/components/schemas/CollectionsTag'
           type: object
       required:
-        - labels
+      - labels
       type: object
     Map_StructAddress:
       description: |-
@@ -1803,10 +1765,10 @@ components:
       properties:
         addresses:
           additionalProperties:
-            $ref: "#/components/schemas/CollectionsAddress"
+            $ref: '#/components/schemas/CollectionsAddress'
           type: object
       required:
-        - addresses
+      - addresses
       type: object
     Map_StructValue:
       description: |-
@@ -1818,37 +1780,37 @@ components:
       properties:
         users:
           additionalProperties:
-            $ref: "#/components/schemas/CollectionsUser"
+            $ref: '#/components/schemas/CollectionsUser'
           type: object
       required:
-        - users
+      - users
       type: object
     MapKeyValueReqBody:
       properties:
         index:
           additionalProperties:
-            $ref: "#/components/schemas/CollectionsEmail"
+            $ref: '#/components/schemas/CollectionsEmail'
           propertyNames:
             maxLength: 64
             minLength: 1
             type: string
           type: object
       required:
-        - index
+      - index
       type: object
     MapKeyValueRespBody:
-      $ref: "#/components/schemas/Map_KeyAndValue"
+      $ref: '#/components/schemas/Map_KeyAndValue'
     MapStructReqBody:
       properties:
         users:
           additionalProperties:
-            $ref: "#/components/schemas/CollectionsUser"
+            $ref: '#/components/schemas/CollectionsUser'
           type: object
       required:
-        - users
+      - users
       type: object
     MapStructRespBody:
-      $ref: "#/components/schemas/Map_StructValue"
+      $ref: '#/components/schemas/Map_StructValue'
     MapValueGeneric:
       description: |-
         MapValueGeneric verifies that generic instances ride the `map<K, V>`
@@ -1858,10 +1820,10 @@ components:
       properties:
         bucket:
           additionalProperties:
-            $ref: "#/components/schemas/PageOfScalarsOrder"
+            $ref: '#/components/schemas/PageOfScalarsOrder'
           type: object
       required:
-        - bucket
+      - bucket
       type: object
     Matrix:
       description: |-
@@ -1871,11 +1833,11 @@ components:
         grid:
           items:
             items:
-              $ref: "#/components/schemas/Node"
+              $ref: '#/components/schemas/Node'
             type: array
           type: array
       required:
-        - grid
+      - grid
       type: object
     MaybeOfScalarsOrder:
       description: |-
@@ -1884,8 +1846,8 @@ components:
       properties:
         value:
           anyOf:
-            - $ref: "#/components/schemas/ScalarsOrder"
-            - type: "null"
+          - $ref: '#/components/schemas/ScalarsOrder'
+          - type: "null"
       type: object
     MaybeOrder:
       description: |-
@@ -1896,19 +1858,19 @@ components:
         while walking through substitution.
       properties:
         hit:
-          $ref: "#/components/schemas/MaybeOfScalarsOrder"
+          $ref: '#/components/schemas/MaybeOfScalarsOrder'
       required:
-        - hit
+      - hit
       type: object
     MeRespBody:
-      $ref: "#/components/schemas/AccountProfile"
+      $ref: '#/components/schemas/AccountProfile'
     MixedReq:
       description: MixedReq wraps NumberMixed (mixed strict/inclusive).
       properties:
         body:
-          $ref: "#/components/schemas/NumberMixed"
+          $ref: '#/components/schemas/NumberMixed'
       required:
-        - body
+      - body
       type: object
     Money:
       description: |-
@@ -1926,22 +1888,22 @@ components:
           minLength: 3
           type: string
       required:
-        - amount
-        - currency
+      - amount
+      - currency
       type: object
     MultiDimReqBody:
       properties:
         grid:
           items:
             items:
-              $ref: "#/components/schemas/CollectionsTag"
+              $ref: '#/components/schemas/CollectionsTag'
             type: array
           type: array
       required:
-        - grid
+      - grid
       type: object
     MultiDimRespBody:
-      $ref: "#/components/schemas/Arr_Tag2D"
+      $ref: '#/components/schemas/Arr_Tag2D'
     NestedAddress:
       description: |-
         Address is the simplest leaf nested type. The two string fields
@@ -1955,8 +1917,8 @@ components:
           minLength: 1
           type: string
       required:
-        - street
-        - city
+      - street
+      - city
       type: object
     NestedOrder:
       description: |-
@@ -1968,33 +1930,33 @@ components:
           minLength: 1
           type: string
       required:
-        - id
+      - id
       type: object
     NestedUser:
       allOf:
-        - properties:
-            addr:
-              $ref: "#/components/schemas/NestedAddress"
-            alias:
-              type:
-                - string
-                - "null"
-            boss:
-              anyOf:
-                - $ref: "#/components/schemas/NestedUser"
-                - type: "null"
-            name:
-              type:
-                - string
-                - "null"
-          required:
-            - addr
-          type: object
-        - anyOf:
-            - required:
-                - name
-            - required:
-                - alias
+      - properties:
+          addr:
+            $ref: '#/components/schemas/NestedAddress'
+          alias:
+            type:
+            - string
+            - "null"
+          boss:
+            anyOf:
+            - $ref: '#/components/schemas/NestedUser'
+            - type: "null"
+          name:
+            type:
+            - string
+            - "null"
+        required:
+        - addr
+        type: object
+      - anyOf:
+        - required:
+          - name
+        - required:
+          - alias
       description: |-
         User couples an addr to a self-referential optional boss + an
         optional alias for the cross-field-validator showcase below.
@@ -2015,14 +1977,14 @@ components:
       properties:
         children:
           items:
-            $ref: "#/components/schemas/Node"
+            $ref: '#/components/schemas/Node'
           type: array
         id:
           minLength: 1
           type: string
       required:
-        - id
-        - children
+      - id
+      - children
       type: object
     NonEmpty:
       minLength: 1
@@ -2035,7 +1997,7 @@ components:
       description: NotFound error response (HTTP 404).
       properties:
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
         resource:
           type: string
       type: object
@@ -2084,14 +2046,14 @@ components:
           minimum: 0
           type: integer
       required:
-        - int8Full
-        - int8Range
-        - int16Full
-        - int32Full
-        - uint8Range
-        - uint8Full
-        - uint16Full
-        - uint32Full
+      - int8Full
+      - int8Range
+      - int16Full
+      - int32Full
+      - uint8Range
+      - uint8Full
+      - uint16Full
+      - uint32Full
       type: object
     NumberCounter:
       description: |-
@@ -2144,7 +2106,7 @@ components:
           exclusiveMaximum: 0
           type: integer
         posInt:
-          description: "@positive / @negative — flag decorators (no parens)."
+          description: '@positive / @negative — flag decorators (no parens).'
           exclusiveMinimum: 0
           type: integer
         posInt64:
@@ -2178,33 +2140,33 @@ components:
           minimum: -1000000000
           type: integer
         stepInt:
-          description: "@multipleOf on int."
+          description: '@multipleOf on int.'
           multipleOf: 5
           type: integer
         stepInt64:
           multipleOf: 100
           type: integer
       required:
-        - rangeInt
-        - gteLteInt
-        - gtLtInt
-        - rangeInt8
-        - gteLteInt8
-        - gtLtInt8
-        - rangeInt16
-        - gteLteInt16
-        - gtLtInt16
-        - rangeInt32
-        - gteLteInt32
-        - gtLtInt32
-        - rangeInt64
-        - gteLteInt64
-        - gtLtInt64
-        - posInt
-        - negInt
-        - posInt64
-        - stepInt
-        - stepInt64
+      - rangeInt
+      - gteLteInt
+      - gtLtInt
+      - rangeInt8
+      - gteLteInt8
+      - gtLtInt8
+      - rangeInt16
+      - gteLteInt16
+      - gtLtInt16
+      - rangeInt32
+      - gteLteInt32
+      - gtLtInt32
+      - rangeInt64
+      - gteLteInt64
+      - gtLtInt64
+      - posInt
+      - negInt
+      - posInt64
+      - stepInt
+      - stepInt64
       type: object
     NumberExact:
       description: |-
@@ -2229,9 +2191,9 @@ components:
           minimum: 0.5
           type: number
       required:
-        - exactly5
-        - exactly0
-        - exactlyHalf
+      - exactly5
+      - exactly0
+      - exactlyHalf
       type: object
     NumberMixed:
       description: NumberMixed exercises mixed strict/inclusive pair combinations.
@@ -2262,11 +2224,11 @@ components:
           exclusiveMinimum: -100
           type: integer
       required:
-        - gtLte
-        - gteLt
-        - negRange
-        - negStrict
-        - floatGtLte
+      - gtLte
+      - gteLt
+      - negRange
+      - negStrict
+      - floatGtLte
       type: object
     NumberOptional:
       description: |-
@@ -2276,14 +2238,14 @@ components:
         defaultFloat:
           default: 3.14
           type:
-            - number
-            - "null"
+          - number
+          - "null"
         defaultInt:
           default: 42
-          description: "Defaults: @default fills in the value when the field is absent."
+          description: 'Defaults: @default fills in the value when the field is absent.'
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         defaultStep:
           default: 10
           description: |-
@@ -2292,8 +2254,8 @@ components:
           maximum: 100
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         maybeInt:
           description: |-
             4-state: optional + nullable. Numbers wire shape: missing key,
@@ -2301,14 +2263,14 @@ components:
           maximum: 100
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         nullableFloat:
           maximum: 1
           minimum: 0
           type:
-            - number
-            - "null"
+          - number
+          - "null"
         nullableInt:
           description: |-
             @nullable on a non-optional numeric — forces a pointer in
@@ -2316,14 +2278,14 @@ components:
           maximum: 100
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         optFloat:
           maximum: 1
           minimum: 0
           type:
-            - number
-            - "null"
+          - number
+          - "null"
         optInt:
           description: |-
             Bare optional ints/floats with bound — the decoder treats
@@ -2331,17 +2293,17 @@ components:
           maximum: 100
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         optUint:
           maximum: 1000
           minimum: 0
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
       required:
-        - nullableInt
-        - nullableFloat
+      - nullableInt
+      - nullableFloat
       type: object
     NumberPrice:
       description: |-
@@ -2372,7 +2334,7 @@ components:
           exclusiveMinimum: 0
           type: number
         posFloat:
-          description: "@positive / @negative on floats."
+          description: '@positive / @negative on floats.'
           exclusiveMinimum: 0
           type: number
         rangeF32:
@@ -2386,15 +2348,15 @@ components:
           minimum: 0.1
           type: number
       required:
-        - rangeF32
-        - gteLteF32
-        - gtLtF32
-        - rangeF64
-        - gteLteF64
-        - gtLtF64
-        - posFloat
-        - negFloat
-        - posF32
+      - rangeF32
+      - gteLteF32
+      - gtLtF32
+      - rangeF64
+      - gteLteF64
+      - gtLtF64
+      - posFloat
+      - negFloat
+      - posF32
       type: object
     NumberUnsigned:
       description: |-
@@ -2475,22 +2437,22 @@ components:
           minimum: 0
           type: integer
       required:
-        - rangeUint
-        - gteLteUint
-        - gtLtUint
-        - rangeUint8
-        - gteLteUint8
-        - gtLtUint8
-        - rangeUint16
-        - gteLteUint16
-        - gtLtUint16
-        - rangeUint32
-        - gteLteUint32
-        - gtLtUint32
-        - rangeUint64
-        - gteLteUint64
-        - gtLtUint64
-        - posUint
+      - rangeUint
+      - gteLteUint
+      - gtLtUint
+      - rangeUint8
+      - gteLteUint8
+      - gtLtUint8
+      - rangeUint16
+      - gteLteUint16
+      - gtLtUint16
+      - rangeUint32
+      - gteLteUint32
+      - gtLtUint32
+      - rangeUint64
+      - gteLteUint64
+      - gtLtUint64
+      - posUint
       type: object
     OptionalPage:
       description: |-
@@ -2502,16 +2464,16 @@ components:
       properties:
         maybePage:
           anyOf:
-            - $ref: "#/components/schemas/PageOfScalarsOrder"
-            - type: "null"
+          - $ref: '#/components/schemas/PageOfScalarsOrder'
+          - type: "null"
       type: object
     OptionalReq:
       description: OptionalReq wraps NumberOptional (presence axes).
       properties:
         body:
-          $ref: "#/components/schemas/NumberOptional"
+          $ref: '#/components/schemas/NumberOptional'
       required:
-        - body
+      - body
       type: object
     OrderPage:
       description: |-
@@ -2521,9 +2483,9 @@ components:
         generic body's loop.
       properties:
         page:
-          $ref: "#/components/schemas/PageOfScalarsOrder"
+          $ref: '#/components/schemas/PageOfScalarsOrder'
       required:
-        - page
+      - page
       type: object
     Org:
       description: |-
@@ -2534,10 +2496,10 @@ components:
       properties:
         teams:
           items:
-            $ref: "#/components/schemas/Team"
+            $ref: '#/components/schemas/Team'
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     PageOfEnvelopeOfScalarsOrder:
       description: |-
@@ -2547,17 +2509,17 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         items:
           items:
-            $ref: "#/components/schemas/EnvelopeOfScalarsOrder"
+            $ref: '#/components/schemas/EnvelopeOfScalarsOrder'
           type: array
         total:
           type: integer
       required:
-        - items
-        - total
+      - items
+      - total
       type: object
     PageOfPrimitiveHost:
       description: |-
@@ -2569,9 +2531,9 @@ components:
         scalar called `String`.
       properties:
         rows:
-          $ref: "#/components/schemas/PageOfString"
+          $ref: '#/components/schemas/PageOfString'
       required:
-        - rows
+      - rows
       type: object
     PageOfProductRef:
       description: |-
@@ -2581,17 +2543,17 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         items:
           items:
-            $ref: "#/components/schemas/ProductRef"
+            $ref: '#/components/schemas/ProductRef'
           type: array
         total:
           type: integer
       required:
-        - items
-        - total
+      - items
+      - total
       type: object
     PageOfScalarsOrder:
       description: |-
@@ -2601,17 +2563,17 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         items:
           items:
-            $ref: "#/components/schemas/ScalarsOrder"
+            $ref: '#/components/schemas/ScalarsOrder'
           type: array
         total:
           type: integer
       required:
-        - items
-        - total
+      - items
+      - total
       type: object
     PageOfString:
       description: |-
@@ -2621,8 +2583,8 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         items:
           items:
             type: string
@@ -2630,8 +2592,8 @@ components:
         total:
           type: integer
       required:
-        - items
-        - total
+      - items
+      - total
       type: object
     PageSize:
       maximum: 100
@@ -2639,18 +2601,18 @@ components:
       type: integer
     PageWithAuditOfScalarsOrder:
       allOf:
-        - $ref: "#/components/schemas/AuditFields"
-        - properties:
+      - $ref: '#/components/schemas/AuditFields'
+      - properties:
+          items:
             items:
-              items:
-                $ref: "#/components/schemas/ScalarsOrder"
-              type: array
-            total:
-              type: integer
-          required:
-            - items
-            - total
-          type: object
+              $ref: '#/components/schemas/ScalarsOrder'
+            type: array
+          total:
+            type: integer
+        required:
+        - items
+        - total
+        type: object
       description: |-
         GenericWithMixin pins mixin substitution through generics: a
         generic body that embeds a mixin must NOT silently drop the
@@ -2672,10 +2634,10 @@ components:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/ID"
+            $ref: '#/components/schemas/ID'
           type: array
       required:
-        - items
+      - items
       type: object
     Pagination:
       description: |-
@@ -2693,19 +2655,19 @@ components:
       properties:
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         limit:
           default: 20
           maximum: 100
           minimum: 1
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
         total:
           type:
-            - integer
-            - "null"
+          - integer
+          - "null"
       type: object
     PairOfScalarsOrderAndProductRef:
       description: |-
@@ -2714,12 +2676,12 @@ components:
         arguments at the concrete site.
       properties:
         left:
-          $ref: "#/components/schemas/ScalarsOrder"
+          $ref: '#/components/schemas/ScalarsOrder'
         right:
-          $ref: "#/components/schemas/ProductRef"
+          $ref: '#/components/schemas/ProductRef'
       required:
-        - left
-        - right
+      - left
+      - right
       type: object
     PairUserOrder:
       description: |-
@@ -2729,13 +2691,12 @@ components:
         types so the fixture stays self-contained.
       properties:
         pair:
-          $ref: "#/components/schemas/PairOfScalarsOrderAndProductRef"
+          $ref: '#/components/schemas/PairOfScalarsOrderAndProductRef'
       required:
-        - pair
+      - pair
       type: object
     PairsArr:
-      description:
-        "PairsArr stacks the array-level decorators (@minItems, @maxItems,\n@uniqueItems).
+      description: "PairsArr stacks the array-level decorators (@minItems, @maxItems,\n@uniqueItems).
         Per-element constraints belong on a scalar: declare\nthe element type as a
         named scalar and the validator walker emits\nthe inner checks automatically
         through scalar leaf inheritance —\nno explicit per-element decorator required.\n\n\tscalar
@@ -2750,35 +2711,35 @@ components:
           type: array
           uniqueItems: true
       required:
-        - tags
+      - tags
       type: object
     PairsChoice:
       allOf:
-        - properties:
-            a:
-              type:
-                - string
-                - "null"
-            b:
-              type:
-                - string
-                - "null"
-            c:
-              type:
-                - string
-                - "null"
-          type: object
-        - not:
-            required:
-              - a
-              - b
-        - anyOf:
-            - required:
-                - a
-            - required:
-                - b
-            - required:
-                - c
+      - properties:
+          a:
+            type:
+            - string
+            - "null"
+          b:
+            type:
+            - string
+            - "null"
+          c:
+            type:
+            - string
+            - "null"
+        type: object
+      - not:
+          required:
+          - a
+          - b
+      - anyOf:
+        - required:
+          - a
+        - required:
+          - b
+        - required:
+          - c
       description: |-
         PairsChoice puts @mutuallyExclusive and @requiresOneOf on the same
         type with overlapping field references. The semantics layer should
@@ -2793,23 +2754,23 @@ components:
       type: object
     PairsContact:
       allOf:
-        - properties:
-            email:
-              format: email
-              type:
-                - string
-                - "null"
-            phone:
-              pattern: ^\+\d+$
-              type:
-                - string
-                - "null"
-          type: object
-        - anyOf:
-            - required:
-                - email
-            - required:
-                - phone
+      - properties:
+          email:
+            format: email
+            type:
+            - string
+            - "null"
+          phone:
+            pattern: ^\+\d+$
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - required:
+          - email
+        - required:
+          - phone
       description: |-
         PairsContact pairs a type-level @requiresOneOf with two per-field
         decorator stacks. The wire payload must carry at least one of email
@@ -2830,7 +2791,7 @@ components:
           multipleOf: 5
           type: integer
       required:
-        - score
+      - score
       type: object
     PairsStr:
       description: |-
@@ -2848,7 +2809,7 @@ components:
           pattern: ^.*@example\.com$
           type: string
       required:
-        - email
+      - email
       type: object
     PathEnumReq:
       description: |-
@@ -2857,9 +2818,9 @@ components:
         value outside the enum's declared set.
       properties:
         c:
-          $ref: "#/components/schemas/BindingsColor"
+          $ref: '#/components/schemas/BindingsColor'
       required:
-        - c
+      - c
       type: object
     PathExplicitNameReq:
       description: |-
@@ -2874,7 +2835,7 @@ components:
           minLength: 1
           type: string
       required:
-        - userId
+      - userId
       type: object
     PathScalarReq:
       description: |-
@@ -2884,9 +2845,9 @@ components:
         fires at request time.
       properties:
         id:
-          $ref: "#/components/schemas/BindingsUUID"
+          $ref: '#/components/schemas/BindingsUUID'
       required:
-        - id
+      - id
       type: object
     PathStringReq:
       description: |-
@@ -2899,7 +2860,7 @@ components:
           minLength: 1
           type: string
       required:
-        - id
+      - id
       type: object
     Percent:
       maximum: 1
@@ -2912,9 +2873,9 @@ components:
         cascade carries the deepest violation back to the top.
       properties:
         home:
-          $ref: "#/components/schemas/Home"
+          $ref: '#/components/schemas/Home'
       required:
-        - home
+      - home
       type: object
     PresenceMatrix:
       description: |-
@@ -2945,39 +2906,39 @@ components:
       properties:
         bothNullable:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         defNullable:
           default: d
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         defValue:
           default: d
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         nullable:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         optional:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         plain:
           type: string
       required:
-        - plain
-        - nullable
+      - plain
+      - nullable
       type: object
     PriceReq:
       description: PriceReq wraps NumberPrice (float surface).
       properties:
         body:
-          $ref: "#/components/schemas/NumberPrice"
+          $ref: '#/components/schemas/NumberPrice'
       required:
-        - body
+      - body
       type: object
     ProductPage:
       description: |-
@@ -2986,20 +2947,20 @@ components:
         clashes in the Validate generator.
       properties:
         page:
-          $ref: "#/components/schemas/PageOfProductRef"
+          $ref: '#/components/schemas/PageOfProductRef'
       required:
-        - page
+      - page
       type: object
     ProductRef:
       description: ProductRef exercises NonEmpty + Cents on a smaller surface.
       properties:
         price:
-          $ref: "#/components/schemas/Cents"
+          $ref: '#/components/schemas/Cents'
         sku:
-          $ref: "#/components/schemas/NonEmpty"
+          $ref: '#/components/schemas/NonEmpty'
       required:
-        - sku
-        - price
+      - sku
+      - price
       type: object
     Project:
       description: |-
@@ -3009,16 +2970,16 @@ components:
         qualified and the bare type-reference paths in one DTO.
       properties:
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
         name:
           minLength: 1
           type: string
         owner:
-          $ref: "#/components/schemas/UserRef"
+          $ref: '#/components/schemas/UserRef'
       required:
-        - id
-        - name
-        - owner
+      - id
+      - name
+      - owner
       type: object
     ProjectsResp:
       description: |-
@@ -3030,10 +2991,10 @@ components:
       properties:
         items:
           items:
-            $ref: "#/components/schemas/Project"
+            $ref: '#/components/schemas/Project'
           type: array
       required:
-        - items
+      - items
       type: object
     PromoteItemReq:
       description: |-
@@ -3050,8 +3011,8 @@ components:
           minimum: 1
           type: integer
       required:
-        - itemId
-        - slot
+      - itemId
+      - slot
       type: object
     PromoteItemReqBody:
       properties:
@@ -3060,12 +3021,12 @@ components:
           minimum: 1
           type: integer
       required:
-        - slot
+      - slot
       type: object
     PromoteItemRespBody:
-      $ref: "#/components/schemas/EntitlementsAuditTrail"
+      $ref: '#/components/schemas/EntitlementsAuditTrail'
     QuarantineRespBody:
-      $ref: "#/components/schemas/HealthResp"
+      $ref: '#/components/schemas/HealthResp'
     QueryArrayIntReq:
       description: |-
         QueryArrayIntReq drives the `[]int @query` shape. Each repeated
@@ -3076,8 +3037,8 @@ components:
           items:
             type: integer
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     QueryArrayStringReq:
       description: |-
@@ -3090,8 +3051,8 @@ components:
           items:
             type: string
           type:
-            - array
-            - "null"
+          - array
+          - "null"
       type: object
     QueryBoolReq:
       description: |-
@@ -3103,7 +3064,7 @@ components:
         active:
           type: boolean
       required:
-        - active
+      - active
       type: object
     QueryEnumReq:
       description: |-
@@ -3113,8 +3074,8 @@ components:
       properties:
         c:
           anyOf:
-            - $ref: "#/components/schemas/BindingsColor"
-            - type: "null"
+          - $ref: '#/components/schemas/BindingsColor'
+          - type: "null"
       type: object
     QueryIntRequiredReq:
       description: |-
@@ -3125,7 +3086,7 @@ components:
           minimum: 1
           type: integer
       required:
-        - page
+      - page
       type: object
     QueryRequiredReq:
       description: |-
@@ -3138,7 +3099,7 @@ components:
           minimum: 1
           type: integer
       required:
-        - limit
+      - limit
       type: object
     QueryStringReq:
       description: |-
@@ -3148,8 +3109,8 @@ components:
       properties:
         q:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     RateLimitExceededErr:
       description: TooManyRequests error response (HTTP 429).
@@ -3166,9 +3127,9 @@ components:
     RecursiveHost:
       properties:
         root:
-          $ref: "#/components/schemas/TreeOfScalarsOrder"
+          $ref: '#/components/schemas/TreeOfScalarsOrder'
       required:
-        - root
+      - root
       type: object
     Room:
       description: |-
@@ -3178,10 +3139,10 @@ components:
       properties:
         furniture:
           items:
-            $ref: "#/components/schemas/Furniture"
+            $ref: '#/components/schemas/Furniture'
           type: array
       required:
-        - furniture
+      - furniture
       type: object
     ScalarsEmail:
       format: email
@@ -3195,24 +3156,24 @@ components:
         the inherited checks WITHOUT any per-field decorator.
       properties:
         amount:
-          $ref: "#/components/schemas/Cents"
+          $ref: '#/components/schemas/Cents'
         country:
-          $ref: "#/components/schemas/ISO3"
+          $ref: '#/components/schemas/ISO3'
         email:
-          $ref: "#/components/schemas/ScalarsEmail"
+          $ref: '#/components/schemas/ScalarsEmail'
         id:
-          $ref: "#/components/schemas/ScalarsUUID"
+          $ref: '#/components/schemas/ScalarsUUID'
         rate:
-          $ref: "#/components/schemas/Percent"
+          $ref: '#/components/schemas/Percent'
         tag:
-          $ref: "#/components/schemas/ScalarsTag"
+          $ref: '#/components/schemas/ScalarsTag'
       required:
-        - id
-        - email
-        - amount
-        - rate
-        - tag
-        - country
+      - id
+      - email
+      - amount
+      - rate
+      - tag
+      - country
       type: object
     ScalarsTag:
       maxLength: 20
@@ -3232,58 +3193,34 @@ components:
       properties:
         keywords:
           items:
-            $ref: "#/components/schemas/ScalarsTag"
+            $ref: '#/components/schemas/ScalarsTag'
           type:
-            - array
-            - "null"
+          - array
+          - "null"
         limit:
           anyOf:
-            - $ref: "#/components/schemas/Cents"
-            - type: "null"
+          - $ref: '#/components/schemas/Cents'
+          - type: "null"
           default: 20
       type: object
-    SearchItemsReqQuery:
-      properties:
-        active:
-          type: boolean
-        cursor:
-          nullable: true
-          type: string
-        ids:
-          items:
-            type: integer
-          nullable: true
-          type: array
-        limit:
-          maximum: 100
-          minimum: 1
-          type: integer
-        sort:
-          allOf:
-            - $ref: "#/components/schemas/BindingsColor"
-          nullable: true
-      required:
-        - limit
-        - active
-      type: object
     SearchItemsRespBody:
-      $ref: "#/components/schemas/ItemList"
+      $ref: '#/components/schemas/ItemList'
     SearchProductsReqBody:
       properties:
         keywords:
           items:
-            $ref: "#/components/schemas/ScalarsTag"
+            $ref: '#/components/schemas/ScalarsTag'
           type:
-            - array
-            - "null"
+          - array
+          - "null"
         limit:
           anyOf:
-            - $ref: "#/components/schemas/Cents"
-            - type: "null"
+          - $ref: '#/components/schemas/Cents'
+          - type: "null"
           default: 20
       type: object
     SearchProductsRespBody:
-      $ref: "#/components/schemas/ProductPage"
+      $ref: '#/components/schemas/ProductPage'
     SearchReq:
       description: |-
         SearchReq mixes every supported @query shape in one struct. Note
@@ -3296,46 +3233,46 @@ components:
           type: boolean
         cursor:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         ids:
           items:
             type: integer
           type:
-            - array
-            - "null"
+          - array
+          - "null"
         limit:
           maximum: 100
           minimum: 1
           type: integer
         sort:
           anyOf:
-            - $ref: "#/components/schemas/BindingsColor"
-            - type: "null"
+          - $ref: '#/components/schemas/BindingsColor'
+          - type: "null"
       required:
-        - limit
-        - active
+      - limit
+      - active
       type: object
     SecuredServiceListItemsRespBody:
-      $ref: "#/components/schemas/InventoryListResp"
+      $ref: '#/components/schemas/InventoryListResp'
     SecuredServiceResetRespBody:
-      $ref: "#/components/schemas/HealthResp"
+      $ref: '#/components/schemas/HealthResp'
     ServicesUser:
       allOf:
-        - $ref: "#/components/schemas/Audit"
-        - properties:
-            email:
-              $ref: "#/components/schemas/SharedEmail"
-            id:
-              $ref: "#/components/schemas/ID"
-            name:
-              minLength: 1
-              type: string
-          required:
-            - id
-            - email
-            - name
-          type: object
+      - $ref: '#/components/schemas/Audit'
+      - properties:
+          email:
+            $ref: '#/components/schemas/SharedEmail'
+          id:
+            $ref: '#/components/schemas/ID'
+          name:
+            minLength: 1
+            type: string
+        required:
+        - id
+        - email
+        - name
+        type: object
       description: |-
         User is the full entity. Embeds `shared.Audit` via the implicit
         CROSS-PACKAGE MIXIN form (`shared.Audit` alone on a body line is
@@ -3345,17 +3282,17 @@ components:
       type: object
     Severity:
       enum:
-        - Info
-        - Warning
-        - Error
-        - Critical
+      - Info
+      - Warning
+      - Error
+      - Critical
       type: string
     SharedEmail:
       format: email
       maxLength: 254
       type: string
     SignupRespBody:
-      $ref: "#/components/schemas/ID"
+      $ref: '#/components/schemas/ID'
     Str_Combos:
       description: |-
         Str_Combos stacks length + pattern + format on a single field so
@@ -3380,9 +3317,9 @@ components:
           minLength: 3
           type: string
       required:
-        - email1
-        - email2
-        - codeID
+      - email1
+      - email2
+      - codeID
       type: object
     Str_Default:
       description: |-
@@ -3396,8 +3333,8 @@ components:
           maxLength: 100
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     Str_EchoReq:
       description: |-
@@ -3409,8 +3346,8 @@ components:
         bio:
           maxLength: 500
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         code:
           pattern: ^[A-Z]{2,4}$
           type: string
@@ -3423,16 +3360,16 @@ components:
           maxLength: 100
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         name:
           maxLength: 80
           minLength: 1
           type: string
       required:
-        - name
-        - email
-        - code
+      - name
+      - email
+      - code
       type: object
     Str_EchoResp:
       description: |-
@@ -3443,8 +3380,8 @@ components:
         bio:
           maxLength: 500
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         code:
           pattern: ^[A-Z]{2,4}$
           type: string
@@ -3461,10 +3398,10 @@ components:
           minLength: 1
           type: string
       required:
-        - name
-        - email
-        - code
-        - greeting
+      - name
+      - email
+      - code
+      - greeting
       type: object
     Str_Lengths:
       description: |-
@@ -3495,11 +3432,11 @@ components:
           maxLength: 100
           type: string
       required:
-        - zeroLower
-        - nonEmpty
-        - exact
-        - onlyMin
-        - onlyMax
+      - zeroLower
+      - nonEmpty
+      - exact
+      - onlyMin
+      - onlyMax
       type: object
     Str_Nullable:
       description: |-
@@ -3511,10 +3448,10 @@ components:
         tag:
           maxLength: 50
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       required:
-        - tag
+      - tag
       type: object
     Str_Optionals:
       description: |-
@@ -3528,24 +3465,24 @@ components:
           maxLength: 80
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         lenOpt:
           maxLength: 100
           minLength: 1
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         mailOpt:
           format: email
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         pattOpt:
           pattern: ^[A-Z]{2,4}$
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     Str_Patterns:
       description: |-
@@ -3566,9 +3503,9 @@ components:
           pattern: ^[A-Z]{2,4}$
           type: string
       required:
-        - upper
-        - intlNum
-        - phoneUS
+      - upper
+      - intlNum
+      - phoneUS
       type: object
     Str_UTF8:
       description: |-
@@ -3588,23 +3525,23 @@ components:
           minLength: 1
           type: string
       required:
-        - vnName
-        - jaName
+      - vnName
+      - jaName
       type: object
     TagSliceReqBody:
       properties:
         tags:
           items:
-            $ref: "#/components/schemas/CollectionsTag"
+            $ref: '#/components/schemas/CollectionsTag'
           maxItems: 10
           minItems: 1
           type: array
           uniqueItems: true
       required:
-        - tags
+      - tags
       type: object
     TagSliceRespBody:
-      $ref: "#/components/schemas/Arr_TagSlice"
+      $ref: '#/components/schemas/Arr_TagSlice'
     Team:
       description: |-
         Team gates `members` with both the array-level bound decorators
@@ -3617,12 +3554,12 @@ components:
       properties:
         members:
           items:
-            $ref: "#/components/schemas/NestedUser"
+            $ref: '#/components/schemas/NestedUser'
           maxItems: 50
           minItems: 1
           type: array
       required:
-        - members
+      - members
       type: object
     TreeOfScalarsOrder:
       description: |-
@@ -3637,13 +3574,13 @@ components:
       properties:
         kids:
           items:
-            $ref: "#/components/schemas/TreeOfScalarsOrder"
+            $ref: '#/components/schemas/TreeOfScalarsOrder'
           type: array
         val:
-          $ref: "#/components/schemas/ScalarsOrder"
+          $ref: '#/components/schemas/ScalarsOrder'
       required:
-        - val
-        - kids
+      - val
+      - kids
       type: object
     URL:
       format: url
@@ -3652,25 +3589,25 @@ components:
       description: UnsignedReq wraps NumberUnsigned.
       properties:
         body:
-          $ref: "#/components/schemas/NumberUnsigned"
+          $ref: '#/components/schemas/NumberUnsigned'
       required:
-        - body
+      - body
       type: object
     UploadAvatarReqBody:
       properties:
         caption:
           maxLength: 280
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         file:
           format: binary
           type: string
       required:
-        - file
+      - file
       type: object
     UploadAvatarRespBody:
-      $ref: "#/components/schemas/UserAvatar"
+      $ref: '#/components/schemas/UserAvatar'
     UploadReq:
       description: |-
         UploadReq pairs the path-bound id with the form-file upload. The
@@ -3683,8 +3620,8 @@ components:
         caption:
           maxLength: 280
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         file:
           format: binary
           type: string
@@ -3693,8 +3630,8 @@ components:
           minLength: 1
           type: string
       required:
-        - id
-        - file
+      - id
+      - file
       type: object
     UserAvatar:
       description: |-
@@ -3711,8 +3648,8 @@ components:
           maxLength: 2048
           type: string
       required:
-        - url
-        - key
+      - url
+      - key
       type: object
     UserRef:
       description: |-
@@ -3730,12 +3667,12 @@ components:
         local-scalar `GetUserReq` below as a workaround.
       properties:
         email:
-          $ref: "#/components/schemas/SharedEmail"
+          $ref: '#/components/schemas/SharedEmail'
         id:
-          $ref: "#/components/schemas/ID"
+          $ref: '#/components/schemas/ID'
       required:
-        - id
-        - email
+      - id
+      - email
       type: object
     ValidateAllFormatsReqBody:
       properties:
@@ -3816,27 +3753,27 @@ components:
           minLength: 36
           type: string
       required:
-        - email
-        - url
-        - uri
-        - uuid
-        - datetime
-        - date
-        - timeField
-        - phone
-        - hostname
-        - ipv4
-        - ipv6
-        - cidr
-        - mac
-        - creditcard
-        - base64
-        - base64url
-        - hexcolor
-        - jsonField
+      - email
+      - url
+      - uri
+      - uuid
+      - datetime
+      - date
+      - timeField
+      - phone
+      - hostname
+      - ipv4
+      - ipv6
+      - cidr
+      - mac
+      - creditcard
+      - base64
+      - base64url
+      - hexcolor
+      - jsonField
       type: object
     ValidateAllFormatsRespBody:
-      $ref: "#/components/schemas/AllFormats"
+      $ref: '#/components/schemas/AllFormats'
     ValidateArrReqBody:
       properties:
         tags:
@@ -3847,42 +3784,42 @@ components:
           type: array
           uniqueItems: true
       required:
-        - tags
+      - tags
       type: object
     ValidateArrRespBody:
-      $ref: "#/components/schemas/PairsArr"
+      $ref: '#/components/schemas/PairsArr'
     ValidateChoiceReqBody:
       properties:
         a:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         b:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         c:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     ValidateChoiceRespBody:
-      $ref: "#/components/schemas/PairsChoice"
+      $ref: '#/components/schemas/PairsChoice'
     ValidateContactReqBody:
       properties:
         email:
           format: email
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         phone:
           pattern: ^\+\d+$
           type:
-            - string
-            - "null"
+          - string
+          - "null"
       type: object
     ValidateContactRespBody:
-      $ref: "#/components/schemas/PairsContact"
+      $ref: '#/components/schemas/PairsContact'
     ValidateNumReqBody:
       properties:
         score:
@@ -3892,10 +3829,10 @@ components:
           multipleOf: 5
           type: integer
       required:
-        - score
+      - score
       type: object
     ValidateNumRespBody:
-      $ref: "#/components/schemas/PairsNum"
+      $ref: '#/components/schemas/PairsNum'
     ValidateStrReqBody:
       properties:
         email:
@@ -3905,12 +3842,12 @@ components:
           pattern: ^.*@example\.com$
           type: string
       required:
-        - email
+      - email
       type: object
     ValidateStrRespBody:
-      $ref: "#/components/schemas/PairsStr"
+      $ref: '#/components/schemas/PairsStr'
     WipeRespBody:
-      $ref: "#/components/schemas/HealthResp"
+      $ref: '#/components/schemas/HealthResp'
     WireRenameReq:
       description: |-
         WireRenameReq combines explicit-name bindings in all four parameter
@@ -3922,14 +3859,14 @@ components:
       properties:
         q:
           type:
-            - string
-            - "null"
+          - string
+          - "null"
         userId:
           maxLength: 64
           minLength: 1
           type: string
       required:
-        - userId
+      - userId
       type: object
     Wrapped:
       description: |-
@@ -3938,9 +3875,9 @@ components:
         that is itself a generic instance.
       properties:
         results:
-          $ref: "#/components/schemas/PageOfEnvelopeOfScalarsOrder"
+          $ref: '#/components/schemas/PageOfEnvelopeOfScalarsOrder'
       required:
-        - results
+      - results
       type: object
     XPkgEnum:
       description: |-
@@ -3960,13 +3897,13 @@ components:
       properties:
         bothEnum:
           additionalProperties:
-            $ref: "#/components/schemas/Severity"
+            $ref: '#/components/schemas/Severity'
           propertyNames:
             enum:
-              - Info
-              - Warning
-              - Error
-              - Critical
+            - Info
+            - Warning
+            - Error
+            - Critical
             type: string
           type: object
         byEnum:
@@ -3974,32 +3911,32 @@ components:
             type: string
           propertyNames:
             enum:
-              - Info
-              - Warning
-              - Error
-              - Critical
+            - Info
+            - Warning
+            - Error
+            - Critical
             type: string
           type: object
         byString:
           additionalProperties:
-            $ref: "#/components/schemas/Severity"
+            $ref: '#/components/schemas/Severity'
           type: object
         flat:
-          $ref: "#/components/schemas/Severity"
+          $ref: '#/components/schemas/Severity'
         many:
           items:
-            $ref: "#/components/schemas/Severity"
+            $ref: '#/components/schemas/Severity'
           type: array
         maybe:
           anyOf:
-            - $ref: "#/components/schemas/Severity"
-            - type: "null"
+          - $ref: '#/components/schemas/Severity'
+          - type: "null"
       required:
-        - flat
-        - many
-        - byString
-        - byEnum
-        - bothEnum
+      - flat
+      - many
+      - byString
+      - byEnum
+      - bothEnum
       type: object
   securitySchemes:
     AdminBearer:
@@ -4027,36 +3964,35 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListProjectsRespBody"
+                $ref: '#/components/schemas/ListProjectsRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - ProjectService
+      - ProjectService
   /account/admin/{id}:
     delete:
-      description:
-        "Delete an account — admin-only. Chain: [RateLimit, BasicAuth,
-        Audit]."
+      description: 'Delete an account — admin-only. Chain: [RateLimit, BasicAuth,
+        Audit].'
       operationId: DeleteAccount
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            $ref: "#/components/schemas/ID"
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeleteAccountRespBody"
+                $ref: '#/components/schemas/DeleteAccountRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - account
-        - admin
+      - account
+      - admin
   /account/admin/reset:
     post:
       description: Hard reset — bypasses BasicAuth, uses its own minimal chain.
@@ -4066,13 +4002,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AccountServiceResetRespBody"
+                $ref: '#/components/schemas/AccountServiceResetRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - account
-        - admin
+      - account
+      - admin
   /account/login:
     post:
       description: Log in — public, only inherits rate limiting.
@@ -4082,16 +4018,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LoginRespBody"
+                $ref: '#/components/schemas/LoginRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - account
+      - account
   /account/logout:
     post:
-      description:
-        Logout — inherits RateLimit + AuthRequired. Also appends Audit
+      description: Logout — inherits RateLimit + AuthRequired. Also appends Audit
         at method level.
       operationId: Logout
       responses:
@@ -4099,14 +4034,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LogoutRespBody"
+                $ref: '#/components/schemas/LogoutRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - account
-        - authenticated
-        - audited
+      - account
+      - authenticated
+      - audited
   /account/me:
     get:
       description: Get the current user — inherits RateLimit + AuthRequired.
@@ -4116,13 +4051,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MeRespBody"
+                $ref: '#/components/schemas/MeRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - account
-        - authenticated
+      - account
+      - authenticated
   /account/signup:
     post:
       description: Sign up — public, only inherits rate limiting.
@@ -4132,12 +4067,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SignupRespBody"
+                $ref: '#/components/schemas/SignupRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - account
+      - account
   /admin/inventory:
     get:
       description: List inventory items. Inherits auth + tags from the extend block.
@@ -4147,51 +4082,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminInventoryServiceListItemsRespBody"
+                $ref: '#/components/schemas/AdminInventoryServiceListItemsRespBody'
           description: OK
         default:
           description: ""
       security:
-        - AdminBearer: []
+      - AdminBearer: []
       tags:
-        - admin
+      - admin
   /admin/inventory/{itemId}/promote:
     post:
-      description:
-        Promote an item to the featured slot. Inherits the same auth chain
+      description: Promote an item to the featured slot. Inherits the same auth chain
         plus a method-level admin scope.
       operationId: PromoteItem
       parameters:
-        - in: path
-          name: itemId
-          required: true
-          schema:
-            minLength: 1
-            type: string
+      - in: path
+        name: itemId
+        required: true
+        schema:
+          minLength: 1
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PromoteItemReqBody"
+              $ref: '#/components/schemas/PromoteItemReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PromoteItemRespBody"
+                $ref: '#/components/schemas/PromoteItemRespBody'
           description: Created
         default:
           description: ""
       security:
-        - AdminBearer: []
-        - AdminWriteScope: []
+      - AdminBearer: []
+      - AdminWriteScope: []
       tags:
-        - admin
+      - admin
   /admin/inventory/health:
     get:
-      description:
-        Liveness probe. Public on purpose - operators hit this before secrets
+      description: Liveness probe. Public on purpose - operators hit this before secrets
         are loaded.
       operationId: AdminInventoryServiceHealth
       responses:
@@ -4199,16 +4132,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminInventoryServiceHealthRespBody"
+                $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - AdminInventoryService
+      - AdminInventoryService
   /bindings/health:
     get:
-      description:
-        Health probe. No request, no response — just a 200 OK when the
+      description: Health probe. No request, no response — just a 200 OK when the
         service is reachable, plus the rate-limit 429 envelope.
       operationId: BindingsServiceHealth
       responses:
@@ -4218,170 +4150,165 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RateLimitExceededErr"
+                $ref: '#/components/schemas/RateLimitExceededErr'
           description: TooManyRequests
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
   /bindings/items:
     get:
-      description:
-        Search items. Demonstrates the full @query matrix — optional string
+      description: Search items. Demonstrates the full @query matrix — optional string
         cursor, required int limit, optional enum sort, repeated int ids, required
         bool active.
       operationId: SearchItems
       parameters:
-        - in: query
-          name: cursor
-          schema:
-            type:
-              - string
-              - "null"
-        - in: query
-          name: limit
-          required: true
-          schema:
-            maximum: 100
-            minimum: 1
+      - in: query
+        name: cursor
+        schema:
+          type:
+          - string
+          - "null"
+      - in: query
+        name: limit
+        required: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+      - in: query
+        name: sort
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/BindingsColor'
+          - type: "null"
+      - in: query
+        name: ids
+        schema:
+          items:
             type: integer
-        - in: query
-          name: sort
-          schema:
-            anyOf:
-              - $ref: "#/components/schemas/BindingsColor"
-              - type: "null"
-        - in: query
-          name: ids
-          schema:
-            items:
-              type: integer
-            type:
-              - array
-              - "null"
-        - in: query
-          name: active
-          required: true
-          schema:
-            type: boolean
+          type:
+          - array
+          - "null"
+      - in: query
+        name: active
+        required: true
+        schema:
+          type: boolean
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SearchItemsRespBody"
+                $ref: '#/components/schemas/SearchItemsRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
     post:
-      description:
-        Create a new item. Surfaces DuplicateKey (409) on unique-constraint
+      description: Create a new item. Surfaces DuplicateKey (409) on unique-constraint
         conflict and InvalidInput (400) on validation failure.
       operationId: AddItem
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddItemReqBody"
+              $ref: '#/components/schemas/AddItemReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddItemRespBody"
+                $ref: '#/components/schemas/AddItemRespBody'
           description: Created
         "400":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/InvalidInputErr"
+                $ref: '#/components/schemas/InvalidInputErr'
           description: BadRequest
         "409":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DuplicateKeyErr"
+                $ref: '#/components/schemas/DuplicateKeyErr'
           description: Conflict
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
   /bindings/items/{id}:
     delete:
-      description:
-        Delete an item. Idempotent. Surfaces RecordNotFound (404) for unknown
+      description: Delete an item. Idempotent. Surfaces RecordNotFound (404) for unknown
         ids and AccessDenied (403) when the caller lacks permission.
       operationId: DeleteItem
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            $ref: "#/components/schemas/BindingsUUID"
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/BindingsUUID'
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeleteItemRespBody"
+                $ref: '#/components/schemas/DeleteItemRespBody'
           description: OK
         "403":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AccessDeniedErr"
+                $ref: '#/components/schemas/AccessDeniedErr'
           description: Forbidden
         "404":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RecordNotFoundErr"
+                $ref: '#/components/schemas/RecordNotFoundErr'
           description: NotFound
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
     get:
-      description:
-        Fetch one item by id. The path placeholder lands as the UUID scalar
+      description: Fetch one item by id. The path placeholder lands as the UUID scalar
         alias; the inherited @format(uuid) validator rejects malformed ids at the
         boundary.
       operationId: GetItem
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            $ref: "#/components/schemas/BindingsUUID"
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/BindingsUUID'
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GetItemRespBody"
+                $ref: '#/components/schemas/GetItemRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
   /bindings/users/{id}/avatar:
     post:
-      description:
-        Upload a user avatar. Demonstrates the path + multipart-form combo
+      description: Upload a user avatar. Demonstrates the path + multipart-form combo
         — id from /users/{id}/avatar, file via multipart/form-data with @maxSize +
         @mimeTypes validation.
       operationId: UploadAvatar
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 64
-            minLength: 1
-            type: string
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
       requestBody:
         content:
           multipart/form-data:
@@ -4396,7 +4323,7 @@ paths:
                   format: binary
                   type: string
               required:
-                - file
+              - file
               type: object
         required: true
       responses:
@@ -4404,53 +4331,52 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UploadAvatarRespBody"
+                $ref: '#/components/schemas/UploadAvatarRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
   /bindings/wire/{user_id}:
     get:
-      description:
-        Echo wire-renamed params. Path, query, header, and cookie each
+      description: Echo wire-renamed params. Path, query, header, and cookie each
         use an explicit @decorator("wire-name") distinct from the Go field name.
       operationId: EchoWire
       parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-            maxLength: 64
-            minLength: 1
-            type: string
-        - in: query
-          name: search_q
-          schema:
-            type:
-              - string
-              - "null"
-        - in: header
-          name: X-API-Key
-          required: true
-          schema:
-            type: string
-        - in: cookie
-          name: session_id
-          required: true
-          schema:
-            type: string
+      - in: path
+        name: user_id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      - in: query
+        name: search_q
+        schema:
+          type:
+          - string
+          - "null"
+      - in: header
+        name: X-API-Key
+        required: true
+        schema:
+          type: string
+      - in: cookie
+        name: session_id
+        required: true
+        schema:
+          type: string
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoWireRespBody"
+                $ref: '#/components/schemas/EchoWireRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - bindings
+      - bindings
   /collections/array-bounds:
     post:
       description: |-
@@ -4461,19 +4387,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ArrayBoundsReqBody"
+              $ref: '#/components/schemas/ArrayBoundsReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ArrayBoundsRespBody"
+                $ref: '#/components/schemas/ArrayBoundsRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - collections
+      - collections
   /collections/map-key-value:
     post:
       description: MapKeyValue is the scalar-on-both-sides map case.
@@ -4482,19 +4408,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MapKeyValueReqBody"
+              $ref: '#/components/schemas/MapKeyValueReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MapKeyValueRespBody"
+                $ref: '#/components/schemas/MapKeyValueRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - collections
+      - collections
   /collections/map-struct:
     post:
       description: |-
@@ -4506,19 +4432,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MapStructReqBody"
+              $ref: '#/components/schemas/MapStructReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MapStructRespBody"
+                $ref: '#/components/schemas/MapStructRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - collections
+      - collections
   /collections/multi-dim:
     post:
       description: |-
@@ -4529,19 +4455,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MultiDimReqBody"
+              $ref: '#/components/schemas/MultiDimReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MultiDimRespBody"
+                $ref: '#/components/schemas/MultiDimRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - collections
+      - collections
   /collections/tag-slice:
     post:
       description: |-
@@ -4553,69 +4479,66 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TagSliceReqBody"
+              $ref: '#/components/schemas/TagSliceReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TagSliceRespBody"
+                $ref: '#/components/schemas/TagSliceRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - collections
+      - collections
   /combine/defaults/boundary:
     post:
-      description:
-        Echo the boundary-default matrix. Smoke tests assert that the pre-fill
+      description: Echo the boundary-default matrix. Smoke tests assert that the pre-fill
         happens before req.Validate() so the defaulted values land in the response.
       operationId: EchoBoundary
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoBoundaryReqBody"
+              $ref: '#/components/schemas/EchoBoundaryReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoBoundaryRespBody"
+                $ref: '#/components/schemas/EchoBoundaryRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/defaults/collection:
     post:
-      description:
-        Echo the array / map default shapes. The map<,>?-with-object-default
+      description: Echo the array / map default shapes. The map<,>?-with-object-default
         field is expected to be rejected at codegen time.
       operationId: EchoCollection
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoCollectionReqBody"
+              $ref: '#/components/schemas/EchoCollectionReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoCollectionRespBody"
+                $ref: '#/components/schemas/EchoCollectionRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/defaults/conflict:
     post:
-      description:
-        Echo the deliberate default-vs-validator clash. The empty-string
+      description: Echo the deliberate default-vs-validator clash. The empty-string
         default would fail @minLength(1) — if codegen accepts the design, the handler
         will reject the pre-filled value.
       operationId: EchoConflict
@@ -4623,92 +4546,88 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoConflictReqBody"
+              $ref: '#/components/schemas/EchoConflictReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoConflictRespBody"
+                $ref: '#/components/schemas/EchoConflictRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/defaults/enum:
     post:
-      description:
-        Echo the enum default. Missing c on the wire results in c=Red after
+      description: Echo the enum default. Missing c on the wire results in c=Red after
         pre-fill.
       operationId: EchoEnum
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoEnumReqBody"
+              $ref: '#/components/schemas/EchoEnumReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoEnumRespBody"
+                $ref: '#/components/schemas/EchoEnumRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/defaults/scalar:
     post:
-      description:
-        Echo the scalar default. Missing size on the wire results in size=20
+      description: Echo the scalar default. Missing size on the wire results in size=20
         after pre-fill, and the scalar's @gte/@lte bounds still apply.
       operationId: EchoScalar
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoScalarReqBody"
+              $ref: '#/components/schemas/EchoScalarReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoScalarRespBody"
+                $ref: '#/components/schemas/EchoScalarRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/pairs/arr:
     post:
-      description:
-        Validate stacked array decorators (minItems + maxItems + uniqueItems
+      description: Validate stacked array decorators (minItems + maxItems + uniqueItems
         + each(@length)). Outer bounds plus per-element check.
       operationId: ValidateArr
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateArrReqBody"
+              $ref: '#/components/schemas/ValidateArrReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateArrRespBody"
+                $ref: '#/components/schemas/ValidateArrRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/pairs/choice:
     post:
-      description:
-        Validate orthogonal @mutuallyExclusive + @requiresOneOf. Sending
+      description: Validate orthogonal @mutuallyExclusive + @requiresOneOf. Sending
         only c is valid; sending a+b fails exclusivity; sending nothing fails the
         one-of.
       operationId: ValidateChoice
@@ -4716,117 +4635,112 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateChoiceReqBody"
+              $ref: '#/components/schemas/ValidateChoiceReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateChoiceRespBody"
+                $ref: '#/components/schemas/ValidateChoiceRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/pairs/contact:
     post:
-      description:
-        Validate per-field decorators under a type-level @requiresOneOf.
+      description: Validate per-field decorators under a type-level @requiresOneOf.
         Sending neither field fails the cross-field check; sending one passes.
       operationId: ValidateContact
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateContactReqBody"
+              $ref: '#/components/schemas/ValidateContactReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateContactRespBody"
+                $ref: '#/components/schemas/ValidateContactRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/pairs/num:
     post:
-      description:
-        Validate stacked numeric decorators (range + multipleOf + gt +
+      description: Validate stacked numeric decorators (range + multipleOf + gt +
         lte). All four fire in declaration order.
       operationId: ValidateNum
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateNumReqBody"
+              $ref: '#/components/schemas/ValidateNumReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateNumRespBody"
+                $ref: '#/components/schemas/ValidateNumRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/pairs/str:
     post:
-      description:
-        Validate stacked string decorators (length + format + pattern).
+      description: Validate stacked string decorators (length + format + pattern).
         The handler fails any of the three independently.
       operationId: ValidateStr
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateStrReqBody"
+              $ref: '#/components/schemas/ValidateStrReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateStrRespBody"
+                $ref: '#/components/schemas/ValidateStrRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /combine/presence:
     post:
-      description:
-        "Echo the presence-state matrix. Smoke tests assert that plain
-        is in required[], optional / nullable / bothNullable produce a 'type: [string,
-        null]' (OpenAPI 3.1 null), and the default rows surface a default key in
-        OpenAPI."
+      description: 'Echo the presence-state matrix. Smoke tests assert that plain
+        is in required[], optional / nullable / bothNullable produce a ''type: [string,
+        null]'' (OpenAPI 3.1 null), and the default rows surface a default key in
+        OpenAPI.'
       operationId: EchoPresence
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoPresenceReqBody"
+              $ref: '#/components/schemas/EchoPresenceReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoPresenceRespBody"
+                $ref: '#/components/schemas/EchoPresenceRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - combine
+      - combine
   /header-echo:
     get:
-      description:
-        List items with the total surfaced via response header and the
+      description: List items with the total surfaced via response header and the
         auth cookie refreshed in passing.
       operationId: HeaderEchoServiceListItems
       responses:
@@ -4834,11 +4748,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HeaderEchoServiceListItemsRespBody"
+                $ref: '#/components/schemas/HeaderEchoServiceListItemsRespBody'
           description: OK
           headers:
             Set-Cookie:
-              description: "Sets cookies: has_more, session_id"
+              description: 'Sets cookies: has_more, session_id'
               schema:
                 type: string
             X-Next-Page:
@@ -4849,12 +4763,12 @@ paths:
                 type: integer
             X-Trace-Id:
               schema:
-                $ref: "#/components/schemas/ID"
+                $ref: '#/components/schemas/ID'
         "429":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RateLimitedErr"
+                $ref: '#/components/schemas/RateLimitedErr'
           description: TooManyRequests
           headers:
             Retry-After:
@@ -4863,7 +4777,7 @@ paths:
         default:
           description: ""
       tags:
-        - HeaderEchoService
+      - HeaderEchoService
   /jobs:
     post:
       description: Create a job; the row is persisted before the response returns.
@@ -4872,59 +4786,58 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateJobReqBody"
+              $ref: '#/components/schemas/CreateJobReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateJobRespBody"
+                $ref: '#/components/schemas/CreateJobRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - StatusCodesService
+      - StatusCodesService
   /jobs/{jobId}:
     delete:
       description: Cancel a queued job. No body on success - 204 keeps the wire silent.
       operationId: CancelJob
       parameters:
-        - in: path
-          name: jobId
-          required: true
-          schema:
-            $ref: "#/components/schemas/ID"
+      - in: path
+        name: jobId
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
       responses:
         "204":
           description: No Content
         default:
           description: ""
       tags:
-        - StatusCodesService
+      - StatusCodesService
   /jobs/enqueue:
     post:
-      description:
-        Enqueue a job for async processing; returns once accepted by the
+      description: Enqueue a job for async processing; returns once accepted by the
         queue.
       operationId: EnqueueJob
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EnqueueJobReqBody"
+              $ref: '#/components/schemas/EnqueueJobReqBody'
         required: true
       responses:
         "202":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EnqueueJobRespBody"
+                $ref: '#/components/schemas/EnqueueJobRespBody'
           description: Accepted
         default:
           description: ""
       tags:
-        - StatusCodesService
+      - StatusCodesService
   /nested/a:
     post:
       description: Mutual recursion entry - request A traverses A → B → A → ...
@@ -4933,19 +4846,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoAReqBody"
+              $ref: '#/components/schemas/EchoAReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoARespBody"
+                $ref: '#/components/schemas/EchoARespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/b:
     post:
       description: Mutual recursion entry - request B traverses B → A → B → ...
@@ -4954,42 +4867,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoBReqBody"
+              $ref: '#/components/schemas/EchoBReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoBRespBody"
+                $ref: '#/components/schemas/EchoBRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/catalog:
     post:
-      description:
-        Map of nested - validates map presence but does NOT recurse into
+      description: Map of nested - validates map presence but does NOT recurse into
         values (map-value validators are not yet wired through the codegen walker).
       operationId: EchoCatalog
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoCatalogReqBody"
+              $ref: '#/components/schemas/EchoCatalogReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoCatalogRespBody"
+                $ref: '#/components/schemas/EchoCatalogRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/cube:
     post:
       description: 3-D slice of nested.
@@ -4998,19 +4910,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoCubeReqBody"
+              $ref: '#/components/schemas/EchoCubeReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoCubeRespBody"
+                $ref: '#/components/schemas/EchoCubeRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/list-page:
     post:
       description: Generic-instantiation-like page envelope.
@@ -5019,19 +4931,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoListPageReqBody"
+              $ref: '#/components/schemas/EchoListPageReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoListPageRespBody"
+                $ref: '#/components/schemas/EchoListPageRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/matrix:
     post:
       description: 2-D slice of nested.
@@ -5040,19 +4952,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoMatrixReqBody"
+              $ref: '#/components/schemas/EchoMatrixReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoMatrixRespBody"
+                $ref: '#/components/schemas/EchoMatrixRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/node:
     post:
       description: Recursive tree node.
@@ -5061,19 +4973,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoNodeReqBody"
+              $ref: '#/components/schemas/EchoNodeReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoNodeRespBody"
+                $ref: '#/components/schemas/EchoNodeRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/org:
     post:
       description: Optional slice of nested.
@@ -5082,42 +4994,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoOrgReqBody"
+              $ref: '#/components/schemas/EchoOrgReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoOrgRespBody"
+                $ref: '#/components/schemas/EchoOrgRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/person:
     post:
-      description:
-        Deep chain - Person → Home → Room → Furniture exercises the four-level
+      description: Deep chain - Person → Home → Room → Furniture exercises the four-level
         cascade.
       operationId: EchoPerson
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoPersonReqBody"
+              $ref: '#/components/schemas/EchoPersonReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoPersonRespBody"
+                $ref: '#/components/schemas/EchoPersonRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/team:
     post:
       description: Slice of nested with array-level bounds.
@@ -5126,19 +5037,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoTeamReqBody"
+              $ref: '#/components/schemas/EchoTeamReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoTeamRespBody"
+                $ref: '#/components/schemas/EchoTeamRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /nested/user:
     post:
       description: Plain nested - User has an Address. Validates recursively.
@@ -5147,19 +5058,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoUserReqBody"
+              $ref: '#/components/schemas/EchoUserReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoUserRespBody"
+                $ref: '#/components/schemas/EchoUserRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - nested
+      - nested
   /numbers/boundary:
     post:
       operationId: AddBoundary
@@ -5167,19 +5078,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddBoundaryReqBody"
+              $ref: '#/components/schemas/AddBoundaryReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddBoundaryRespBody"
+                $ref: '#/components/schemas/AddBoundaryRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /numbers/counter:
     post:
       operationId: AddCounter
@@ -5187,19 +5098,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddCounterReqBody"
+              $ref: '#/components/schemas/AddCounterReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddCounterRespBody"
+                $ref: '#/components/schemas/AddCounterRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /numbers/exact:
     post:
       operationId: AddExact
@@ -5207,19 +5118,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddExactReqBody"
+              $ref: '#/components/schemas/AddExactReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddExactRespBody"
+                $ref: '#/components/schemas/AddExactRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /numbers/mixed:
     post:
       operationId: AddMixed
@@ -5227,19 +5138,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddMixedReqBody"
+              $ref: '#/components/schemas/AddMixedReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddMixedRespBody"
+                $ref: '#/components/schemas/AddMixedRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /numbers/optional:
     post:
       operationId: AddOptional
@@ -5247,19 +5158,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddOptionalReqBody"
+              $ref: '#/components/schemas/AddOptionalReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddOptionalRespBody"
+                $ref: '#/components/schemas/AddOptionalRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /numbers/price:
     post:
       operationId: AddPrice
@@ -5267,19 +5178,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddPriceReqBody"
+              $ref: '#/components/schemas/AddPriceReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddPriceRespBody"
+                $ref: '#/components/schemas/AddPriceRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /numbers/unsigned:
     post:
       operationId: AddUnsigned
@@ -5287,164 +5198,158 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AddUnsignedReqBody"
+              $ref: '#/components/schemas/AddUnsignedReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AddUnsignedRespBody"
+                $ref: '#/components/schemas/AddUnsignedRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - NumbersService
+      - NumbersService
   /scalars/audited/{id}:
     get:
-      description:
-        Read audited record. Response type uses the mixin pattern (AuditFields
+      description: Read audited record. Response type uses the mixin pattern (AuditFields
         embedded into Audited).
       operationId: GetAudited
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            $ref: "#/components/schemas/ScalarsUUID"
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/ScalarsUUID'
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GetAuditedRespBody"
+                $ref: '#/components/schemas/GetAuditedRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - scalars
+      - scalars
   /scalars/orders:
     get:
-      description:
-        List orders with cursor pagination. Demonstrates a generic-instance
+      description: List orders with cursor pagination. Demonstrates a generic-instance
         response (Page<Order>) — codegen emits the parametric struct and substitutes
         T=Order at the concrete site.
       operationId: ListOrders
       parameters:
-        - in: query
-          name: cursor
-          schema:
-            type:
-              - string
-              - "null"
-        - in: query
-          name: limit
-          required: true
-          schema:
-            $ref: "#/components/schemas/Cents"
+      - in: query
+        name: cursor
+        schema:
+          type:
+          - string
+          - "null"
+      - in: query
+        name: limit
+        required: true
+        schema:
+          $ref: '#/components/schemas/Cents'
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListOrdersRespBody"
+                $ref: '#/components/schemas/ListOrdersRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - scalars
+      - scalars
     post:
-      description:
-        Create an order from a full payload. Every scalar-typed field on
+      description: Create an order from a full payload. Every scalar-typed field on
         Order runs its inherited validators.
       operationId: CreateOrder
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateOrderReqBody"
+              $ref: '#/components/schemas/CreateOrderReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateOrderRespBody"
+                $ref: '#/components/schemas/CreateOrderRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - scalars
+      - scalars
   /scalars/orders/{id}:
     get:
-      description:
-        Fetch one order by id. Path-bound id is a UUID scalar so the per-field
+      description: Fetch one order by id. Path-bound id is a UUID scalar so the per-field
         decorator chain reduces to @path; the inherited @format(uuid) check runs in
         req.Validate().
       operationId: GetOrder
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            $ref: "#/components/schemas/ScalarsUUID"
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/ScalarsUUID'
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GetOrderRespBody"
+                $ref: '#/components/schemas/GetOrderRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - scalars
+      - scalars
   /scalars/search:
     post:
-      description:
-        Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request
+      description: Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request
         DTO — per-element @pattern fires once per item.
       operationId: SearchProducts
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SearchProductsReqBody"
+              $ref: '#/components/schemas/SearchProductsReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SearchProductsRespBody"
+                $ref: '#/components/schemas/SearchProductsRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - scalars
+      - scalars
   /scalars/wrapped:
     post:
-      description:
-        Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>>
+      description: Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>>
         end-to-end through transport + OpenAPI.
       operationId: EchoWrapped
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoWrappedReqBody"
+              $ref: '#/components/schemas/EchoWrappedReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoWrappedRespBody"
+                $ref: '#/components/schemas/EchoWrappedRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - scalars
+      - scalars
   /secured:
     get:
       description: Normal authenticated endpoint - inherits everything from service-level.
@@ -5454,14 +5359,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SecuredServiceListItemsRespBody"
+                $ref: '#/components/schemas/SecuredServiceListItemsRespBody'
           description: OK
         default:
           description: ""
       security:
-        - AdminBearer: []
+      - AdminBearer: []
       tags:
-        - internal
+      - internal
   /secured/healthz:
     get:
       description: Liveness probe - public on purpose.
@@ -5471,16 +5376,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthzRespBody"
+                $ref: '#/components/schemas/HealthzRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - monitoring
+      - monitoring
   /secured/quarantine:
     post:
-      description:
-        Locks a tenant; array-form security is functionally equal to the
+      description: Locks a tenant; array-form security is functionally equal to the
         comma form.
       operationId: Quarantine
       responses:
@@ -5488,20 +5392,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/QuarantineRespBody"
+                $ref: '#/components/schemas/QuarantineRespBody'
           description: Created
         default:
           description: ""
       security:
-        - AdminBearer: []
-        - AdminBearer: []
-          MFA: []
+      - AdminBearer: []
+      - AdminBearer: []
+        MFA: []
       tags:
-        - internal
+      - internal
   /secured/reset:
     post:
-      description:
-        Admin-only reset; uses its own middleware chain instead of the
+      description: Admin-only reset; uses its own middleware chain instead of the
         service default.
       operationId: SecuredServiceReset
       responses:
@@ -5509,18 +5412,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SecuredServiceResetRespBody"
+                $ref: '#/components/schemas/SecuredServiceResetRespBody'
           description: Created
         default:
           description: ""
       security:
-        - AdminBearer: []
+      - AdminBearer: []
       tags:
-        - internal
+      - internal
   /secured/wipe:
     post:
-      description:
-        Destructive admin op - requires AdminBearer AND MFA on top of the
+      description: Destructive admin op - requires AdminBearer AND MFA on top of the
         service-level inheritance.
       operationId: Wipe
       responses:
@@ -5528,43 +5430,41 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WipeRespBody"
+                $ref: '#/components/schemas/WipeRespBody'
           description: Created
         default:
           description: ""
       security:
-        - AdminBearer: []
-        - AdminBearer: []
-          MFA: []
+      - AdminBearer: []
+      - AdminBearer: []
+        MFA: []
       tags:
-        - internal
+      - internal
   /strings/combos:
     post:
-      description:
-        Exercise stacked length + pattern + format decorators on a single
+      description: Exercise stacked length + pattern + format decorators on a single
         field. The request body's three lines each layer the full validator menu.
       operationId: CombineConstraints
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CombineConstraintsReqBody"
+              $ref: '#/components/schemas/CombineConstraintsReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CombineConstraintsRespBody"
+                $ref: '#/components/schemas/CombineConstraintsRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - strings
+      - strings
   /strings/echo:
     post:
-      description:
-        Echo a request that carries one field per interesting validator
+      description: Echo a request that carries one field per interesting validator
         shape (length, pattern, format, optional, default). Logic just returns the
         payload after Validate() so smoke tests can assert the round-trip preserves
         wire fidelity.
@@ -5573,23 +5473,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EchoReqBody"
+              $ref: '#/components/schemas/EchoReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EchoRespBody"
+                $ref: '#/components/schemas/EchoRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - strings
+      - strings
   /strings/formats:
     post:
-      description:
-        Validate every @format(name) in the catalogue. The request body
+      description: Validate every @format(name) in the catalogue. The request body
         is AllFormats — one field per format — so a malformed value in any slot fails
         the boundary check.
       operationId: ValidateAllFormats
@@ -5597,139 +5496,139 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateAllFormatsReqBody"
+              $ref: '#/components/schemas/ValidateAllFormatsReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateAllFormatsRespBody"
+                $ref: '#/components/schemas/ValidateAllFormatsRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - strings
+      - strings
   /users:
     get:
       operationId: ListUsers
       parameters:
-        - in: query
-          name: query
-          schema:
-            type:
-              - string
-              - "null"
+      - in: query
+        name: query
+        schema:
+          type:
+          - string
+          - "null"
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListUsersRespBody"
+                $ref: '#/components/schemas/ListUsersRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - UserService
+      - UserService
     post:
       operationId: CreateUser
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateUserReqBody"
+              $ref: '#/components/schemas/CreateUserReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateUserRespBody"
+                $ref: '#/components/schemas/CreateUserRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - UserService
+      - UserService
   /users/{id}:
     delete:
       operationId: DeleteUser
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 64
-            minLength: 1
-            type: string
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeleteUserRespBody"
+                $ref: '#/components/schemas/DeleteUserRespBody'
           description: OK
         "404":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NotFoundErr"
+                $ref: '#/components/schemas/NotFoundErr'
           description: NotFound
         "409":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConflictErr"
+                $ref: '#/components/schemas/ConflictErr'
           description: Conflict
         default:
           description: ""
       tags:
-        - UserService
+      - UserService
     get:
       operationId: GetUser
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 64
-            minLength: 1
-            type: string
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GetUserRespBody"
+                $ref: '#/components/schemas/GetUserRespBody'
           description: OK
         default:
           description: ""
       tags:
-        - UserService
+      - UserService
   /users/{id}/ban:
     post:
       operationId: BanUser
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            $ref: "#/components/schemas/ID"
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BanUserReqBody"
+              $ref: '#/components/schemas/BanUserReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BanUserRespBody"
+                $ref: '#/components/schemas/BanUserRespBody'
           description: Created
         default:
           description: ""
       tags:
-        - UserService
+      - UserService
 servers:
-  - url: /api
+- url: /api

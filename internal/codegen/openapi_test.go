@@ -271,6 +271,29 @@ service BService { get Lookup /b { response R } }`
 	}
 }
 
+// TestGenerateOpenAPIComponentNameCollisionErrors pins that a name
+// clash in the flat components/schemas namespace fails generation
+// instead of silently overwriting one schema with the other. Here a
+// user-declared `PageOfOrder` collides with the generic instance
+// `Page<Order>` (also named `PageOfOrder`); the same guard covers
+// `<Method>ReqBody`/`RespBody` vs type clashes.
+func TestGenerateOpenAPIComponentNameCollisionErrors(t *testing.T) {
+	src := `package design
+type Order { id string }
+type PageOfOrder { hijacked string }
+type Page<T> { items T[] }
+type Resp { real Page<Order>  fake PageOfOrder }
+service S { get Get /g { response Resp } }`
+	pkg := analyze(t, src)
+	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected a duplicate-component-schema error, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate component schema") || !strings.Contains(err.Error(), "PageOfOrder") {
+		t.Errorf("error should name the colliding component; got: %v", err)
+	}
+}
+
 // TestGenerateOpenAPITypeSchemaExcludesHeaderFields pins that @header /
 // @cookie fields are dropped from a type's component schema — they ride
 // on response headers / cookies (json:"-"), never the JSON body. Before

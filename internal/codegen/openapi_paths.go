@@ -11,15 +11,15 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	counts := methodNameCounts(pkg)
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
 			full := methodFullPath("", svc.Primary, m)
 			base := operationBaseName(svcName, m, counts)
-			addRequestBodySchema(doc, m, pkg, registry, base)
-			addPerOperationResponseSchema(doc, m, pkg, registry, base)
+			addRequestBodySchema(doc, m, pkg, registry, base, names)
+			addPerOperationResponseSchema(doc, m, pkg, registry, base, names)
 			item := doc.Paths.Value(full)
 			if item == nil {
 				item = &openapi3.PathItem{}
@@ -160,13 +160,13 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 // header/cookie params are emitted inline by [paramsFromBins], so no
 // `<base>Req{Query,Header,Cookie,Path}` components are registered (they
 // would be orphaned — never $ref'd — and only bloat the spec).
-func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) {
+func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
 	if m.Request == nil {
 		return
 	}
 	bins := binRequestFields(m, pkg)
 	if len(bins.body) > 0 {
-		doc.Components.Schemas[base+"ReqBody"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg, registry)}
+		names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg, registry)})
 	}
 }
 
@@ -177,7 +177,7 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 // JSON-body fields end up in the schema (the wire form the runtime
 // serialises). The matching response.headers map is emitted by
 // buildOperation.
-func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) {
+func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
 	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
@@ -194,14 +194,14 @@ func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic
 				respName = registry.register(decl, m.Response.Type.Args)
 			}
 		}
-		doc.Components.Schemas[base+"RespBody"] = &openapi3.SchemaRef{
+		names.put(doc, base+"RespBody", &openapi3.SchemaRef{
 			Ref: "#/components/schemas/" + respName,
-		}
+		})
 		return
 	}
-	doc.Components.Schemas[base+"RespBody"] = &openapi3.SchemaRef{
+	names.put(doc, base+"RespBody", &openapi3.SchemaRef{
 		Value: schemaFromFields(bins.body, pkg, registry),
-	}
+	})
 }
 
 // binResponseFields partitions the response type's fields the same way

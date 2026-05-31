@@ -66,13 +66,6 @@ components:
       required:
       - limit
       type: object
-    BulkExportReqQuery:
-      properties:
-        status:
-          anyOf:
-          - $ref: '#/components/schemas/OrderStatus'
-          - type: "null"
-      type: object
     BulkExportRespBody:
       $ref: '#/components/schemas/OkResp'
     CancelOrderRespBody:
@@ -530,50 +523,6 @@ components:
       - limit
       - maxPrice
       type: object
-    FilterOrdersReqCookie:
-      properties:
-        lastSeen:
-          nullable: true
-          type: string
-        tier:
-          type: integer
-      required:
-      - tier
-      type: object
-    FilterOrdersReqHeader:
-      properties:
-        idemKey:
-          maxLength: 128
-          minLength: 1
-          nullable: true
-          type: string
-        retryAfter:
-          type: integer
-      required:
-      - retryAfter
-      type: object
-    FilterOrdersReqPath:
-      properties:
-        status:
-          $ref: '#/components/schemas/OrderStatus'
-      required:
-      - status
-      type: object
-    FilterOrdersReqQuery:
-      properties:
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        maxPrice:
-          type: integer
-        method:
-          $ref: '#/components/schemas/PaymentMethod'
-      required:
-      - method
-      - limit
-      - maxPrice
-      type: object
     FilterOrdersRespBody:
       $ref: '#/components/schemas/PageOfOrder'
     ForceShipRespBody:
@@ -666,51 +615,11 @@ components:
       - quantity
       - unitCents
       type: object
-    ListCategoriesReqQuery:
-      properties:
-        cursor:
-          nullable: true
-          type: string
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-      required:
-      - limit
-      type: object
     ListCategoriesRespBody:
       $ref: '#/components/schemas/PageOfCategory'
-    ListCustomersReqQuery:
-      properties:
-        cursor:
-          nullable: true
-          type: string
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-      required:
-      - limit
-      type: object
     ListCustomersRespBody:
       $ref: '#/components/schemas/PageOfCustomer'
     ListOrdersReq:
-      properties:
-        cursor:
-          nullable: true
-          type: string
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        status:
-          allOf:
-          - $ref: '#/components/schemas/OrderStatus'
-          nullable: true
-      required:
-      - limit
-      type: object
-    ListOrdersReqQuery:
       properties:
         cursor:
           type:
@@ -730,24 +639,6 @@ components:
     ListOrdersRespBody:
       $ref: '#/components/schemas/PageOfOrder'
     ListProductsReq:
-      properties:
-        category:
-          nullable: true
-          type: string
-        cursor:
-          nullable: true
-          type: string
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        tag:
-          nullable: true
-          type: string
-      required:
-      - limit
-      type: object
-    ListProductsReqQuery:
       properties:
         category:
           type:

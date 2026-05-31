@@ -79,26 +79,6 @@ components:
     ListTodosReq:
       properties:
         cursor:
-          nullable: true
-          type: string
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        status:
-          allOf:
-          - $ref: '#/components/schemas/TodoStatus'
-          nullable: true
-        tag:
-          allOf:
-          - $ref: '#/components/schemas/Tag'
-          nullable: true
-      required:
-      - limit
-      type: object
-    ListTodosReqQuery:
-      properties:
-        cursor:
           type:
           - string
           - "null"
