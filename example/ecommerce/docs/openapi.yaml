@@ -16,24 +16,26 @@ components:
         country:
           $ref: '#/components/schemas/CountryCode'
         geo:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Geocode'
-          nullable: true
+          - type: "null"
         postalCode:
           pattern: ^[A-Z0-9 -]{3,12}$
           type: string
         region:
           maxLength: 100
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         street:
           maxLength: 200
           minLength: 1
           type: string
         street2:
           maxLength: 200
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - street
       - city
@@ -54,8 +56,9 @@ components:
     BulkExportReqBody:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
@@ -66,9 +69,9 @@ components:
     BulkExportReqQuery:
       properties:
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
-          nullable: true
+          - type: "null"
       type: object
     BulkExportRespBody:
       $ref: '#/components/schemas/OkResp'
@@ -95,9 +98,9 @@ components:
             minLength: 1
             type: string
           parent:
-            allOf:
+            anyOf:
             - $ref: '#/components/schemas/CategoryRef'
-            nullable: true
+            - type: "null"
           slug:
             $ref: '#/components/schemas/Slug'
         required:
@@ -125,19 +128,22 @@ components:
       allOf:
       - properties:
           email:
-            allOf:
+            anyOf:
             - $ref: '#/components/schemas/Email'
-            nullable: true
+            - type: "null"
           personal:
-            nullable: true
-            type: boolean
+            type:
+            - boolean
+            - "null"
           phone:
-            nullable: true
             pattern: ^\+?[0-9 ()-]{6,20}$
-            type: string
+            type:
+            - string
+            - "null"
           work:
-            nullable: true
-            type: boolean
+            type:
+            - boolean
+            - "null"
         type: object
       - anyOf:
         - required:
@@ -158,8 +164,9 @@ components:
       properties:
         bio:
           maxLength: 500
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         contact:
           $ref: '#/components/schemas/Contact'
         email:
@@ -180,8 +187,9 @@ components:
       properties:
         bio:
           maxLength: 500
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         contact:
           $ref: '#/components/schemas/Contact'
         email:
@@ -203,10 +211,10 @@ components:
     CreateOrderReq:
       properties:
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         customerId:
           $ref: '#/components/schemas/NonEmptyID'
         items:
@@ -217,14 +225,16 @@ components:
           type: array
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         tags:
           items:
             type: string
           maxItems: 10
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
           uniqueItems: true
       required:
       - customerId
@@ -233,10 +243,10 @@ components:
     CreateOrderReqBody:
       properties:
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         customerId:
           $ref: '#/components/schemas/NonEmptyID'
         items:
@@ -247,14 +257,16 @@ components:
           type: array
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         tags:
           items:
             type: string
           maxItems: 10
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
           uniqueItems: true
       required:
       - customerId
@@ -267,14 +279,15 @@ components:
         categoryId:
           $ref: '#/components/schemas/NonEmptyID'
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         description:
           maxLength: 5000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         name:
           maxLength: 200
           minLength: 1
@@ -287,8 +300,9 @@ components:
           items:
             type: string
           maxItems: 20
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
           uniqueItems: true
       required:
       - sku
@@ -301,14 +315,15 @@ components:
         categoryId:
           $ref: '#/components/schemas/NonEmptyID'
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         description:
           maxLength: 5000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         name:
           maxLength: 200
           minLength: 1
@@ -321,8 +336,9 @@ components:
           items:
             type: string
           maxItems: 20
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
           uniqueItems: true
       required:
       - sku
@@ -341,16 +357,18 @@ components:
       properties:
         avatar:
           format: binary
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         billingAddress:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Address'
-          nullable: true
+          - type: "null"
         bio:
           maxLength: 500
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         contact:
           $ref: '#/components/schemas/Contact'
         createdAt:
@@ -363,8 +381,9 @@ components:
         loyaltyPoints:
           maximum: 1000000
           minimum: 0
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         name:
           maxLength: 120
           minLength: 1
@@ -397,44 +416,50 @@ components:
         allowedMethods:
           items:
             $ref: '#/components/schemas/PaymentMethod'
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         flag:
           default: true
-          nullable: true
-          type: boolean
+          type:
+          - boolean
+          - "null"
         num:
           default: 20
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         preset:
           default:
           - standard
           - expedited
           items:
             type: string
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
+          - type: "null"
           default: Pending
-          nullable: true
         str:
           default: anon
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         tags:
           default: []
           items:
             type: string
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
       type: object
     DefaultsRespBody:
       $ref: '#/components/schemas/DefaultsShowcaseReq'
@@ -443,44 +468,50 @@ components:
         allowedMethods:
           items:
             $ref: '#/components/schemas/PaymentMethod'
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         flag:
           default: true
-          nullable: true
-          type: boolean
+          type:
+          - boolean
+          - "null"
         num:
           default: 20
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         preset:
           default:
           - standard
           - expedited
           items:
             type: string
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
+          - type: "null"
           default: Pending
-          nullable: true
         str:
           default: anon
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         tags:
           default: []
           items:
             type: string
-          nullable: true
-          type: array
+          type:
+          - array
+          - "null"
       type: object
     DeleteCustomerReqPath:
       properties:
@@ -529,8 +560,9 @@ components:
     FilterOrdersReqCookie:
       properties:
         lastSeen:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         tier:
           type: integer
       required:
@@ -541,8 +573,9 @@ components:
         idemKey:
           maxLength: 128
           minLength: 1
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         retryAfter:
           type: integer
       required:
@@ -588,8 +621,9 @@ components:
         altitude:
           maximum: 9000
           minimum: -500
-          nullable: true
-          type: number
+          type:
+          - number
+          - "null"
         capturedAt:
           format: datetime
           type: string
@@ -672,14 +706,15 @@ components:
     LineItem:
       properties:
         bonusBP:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/PercentBP'
-          nullable: true
+          - type: "null"
         note:
           default: ""
           maxLength: 200
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         product:
           $ref: '#/components/schemas/ProductRef'
         quantity:
@@ -699,8 +734,9 @@ components:
     ListCategoriesReqQuery:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
@@ -713,8 +749,9 @@ components:
     ListCustomersReqQuery:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
@@ -727,32 +764,34 @@ components:
     ListOrdersReq:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
           type: integer
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
-          nullable: true
+          - type: "null"
       required:
       - limit
       type: object
     ListOrdersReqQuery:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
           type: integer
         status:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
-          nullable: true
+          - type: "null"
       required:
       - limit
       type: object
@@ -761,36 +800,42 @@ components:
     ListProductsReq:
       properties:
         category:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
           type: integer
         tag:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - limit
       type: object
     ListProductsReqQuery:
       properties:
         category:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
           type: integer
         tag:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - limit
       type: object
@@ -834,14 +879,13 @@ components:
         createdBy:
           $ref: '#/components/schemas/CustomerRef'
         currency:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/CurrencyCode'
+          - type: "null"
           default: USD
-          nullable: true
         customer:
           $ref: '#/components/schemas/Customer'
-        extras:
-          nullable: true
+        extras: {}
         grid:
           items:
             items:
@@ -859,20 +903,23 @@ components:
         metadata:
           additionalProperties:
             type: string
-          nullable: true
-          type: object
+          type:
+          - object
+          - "null"
         notes:
           maxLength: 2000
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         payment:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Payment'
-          nullable: true
+          - type: "null"
         shippedAt:
           format: datetime
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         status:
           $ref: '#/components/schemas/OrderStatus'
         tags:
@@ -909,60 +956,77 @@ components:
     PageOfCategory:
       properties:
         cursor:
-          type: string
+          type:
+          - string
+          - "null"
         items:
           items:
             $ref: '#/components/schemas/Category'
           type: array
         total:
-          type: integer
+          type:
+          - integer
+          - "null"
       required:
       - items
       type: object
     PageOfCustomer:
       properties:
         cursor:
-          type: string
+          type:
+          - string
+          - "null"
         items:
           items:
             $ref: '#/components/schemas/Customer'
           type: array
         total:
-          type: integer
+          type:
+          - integer
+          - "null"
       required:
       - items
       type: object
     PageOfOrder:
       properties:
         cursor:
-          type: string
+          type:
+          - string
+          - "null"
         items:
           items:
             $ref: '#/components/schemas/Order'
           type: array
         total:
-          type: integer
+          type:
+          - integer
+          - "null"
       required:
       - items
       type: object
     PageOfProduct:
       properties:
         cursor:
-          type: string
+          type:
+          - string
+          - "null"
         items:
           items:
             $ref: '#/components/schemas/Product'
           type: array
         total:
-          type: integer
+          type:
+          - integer
+          - "null"
       required:
       - items
       type: object
     Pagination:
       properties:
         cursor:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         limit:
           maximum: 100
           minimum: 0
@@ -975,15 +1039,16 @@ components:
         cardLast4:
           maxLength: 4
           minLength: 4
-          nullable: true
           pattern: ^[0-9]{4}$
-          type: string
+          type:
+          - string
+          - "null"
         method:
           $ref: '#/components/schemas/PaymentMethod'
         receiptURL:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/SafeURL'
-          nullable: true
+          - type: "null"
         referenceId:
           $ref: '#/components/schemas/NonEmptyID'
       required:
@@ -1014,20 +1079,21 @@ components:
       - $ref: '#/components/schemas/Timestamps'
       - properties:
           bonusBP:
-            allOf:
+            anyOf:
             - $ref: '#/components/schemas/PercentBP'
-            nullable: true
+            - type: "null"
           category:
             $ref: '#/components/schemas/CategoryRef'
           currency:
-            allOf:
+            anyOf:
             - $ref: '#/components/schemas/CurrencyCode'
+            - type: "null"
             default: USD
-            nullable: true
           description:
             maxLength: 5000
-            nullable: true
-            type: string
+            type:
+            - string
+            - "null"
           id:
             $ref: '#/components/schemas/NonEmptyID'
           name:
@@ -1037,9 +1103,9 @@ components:
           priceCents:
             $ref: '#/components/schemas/Cents'
           siteUrl:
-            allOf:
+            anyOf:
             - $ref: '#/components/schemas/SafeURL'
-            nullable: true
+            - type: "null"
           sku:
             $ref: '#/components/schemas/SKU'
           tags:
@@ -1189,8 +1255,9 @@ paths:
       - in: query
         name: cursor
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: query
         name: limit
         required: true
@@ -1217,8 +1284,9 @@ paths:
       - in: query
         name: cursor
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: query
         name: limit
         required: true
@@ -1229,13 +1297,15 @@ paths:
       - in: query
         name: category
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: query
         name: tag
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       responses:
         "200":
           content:
@@ -1324,8 +1394,9 @@ paths:
       - in: query
         name: cursor
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: query
         name: limit
         required: true
@@ -1712,8 +1783,9 @@ paths:
         schema:
           maxLength: 128
           minLength: 1
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: header
         name: retryAfter
         required: true
@@ -1722,8 +1794,9 @@ paths:
       - in: cookie
         name: lastSeen
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: cookie
         name: tier
         required: true
@@ -1774,9 +1847,9 @@ paths:
       - in: query
         name: status
         schema:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
-          nullable: true
+          - type: "null"
       requestBody:
         content:
           application/json:
@@ -1820,8 +1893,9 @@ paths:
       - in: query
         name: cursor
         schema:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       - in: query
         name: limit
         required: true
@@ -1832,9 +1906,9 @@ paths:
       - in: query
         name: status
         schema:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/OrderStatus'
-          nullable: true
+          - type: "null"
       responses:
         "200":
           content:

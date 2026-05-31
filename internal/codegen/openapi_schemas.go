@@ -151,14 +151,32 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
 	}
 }
 
-// schemaForType builds the openapi3.Schema for one TypeDecl. Only Field
-// members are emitted; mixin expansion is a forward-looking concern.
+// schemaForType builds the openapi3.Schema for one top-level TypeDecl.
+// It is the no-substitution entry point onto [schemaFromTypeDecl]; the
+// generic-instance path ([instantiateGeneric]) shares the exact same
+// body-walk with a populated substitution map.
 //
 // `@deprecated` propagates to OpenAPI in two places: type-level marks
 // the entire schema as deprecated; field-level marks only that
 // property. Tools like Swagger UI render deprecated entries with a
 // strikethrough so consumers can spot them at a glance.
 func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
+	return schemaFromTypeDecl(td, nil, pkg, registry)
+}
+
+// schemaFromTypeDecl walks a TypeDecl body into an object schema. When
+// subst is nil the field types are emitted verbatim (the top-level
+// [schemaForType] case); when subst maps each of the decl's type-params
+// to a concrete argument every field type is run through
+// [substituteTypeRef] first (the concrete generic-instance case driven
+// by [instantiateGeneric]). Routing both through one walk guarantees a
+// `Page<Order>` instance inherits the SAME field-level metadata
+// (@gte/@default/@format/@example/@nullable/@deprecated…), type-level
+// description, @deprecated flag, @header/@cookie exclusion, mixin
+// allOf-flattening, and @requiresOneOf/@mutuallyExclusive fragments that
+// a non-generic type of the same shape carries — otherwise generic
+// instances silently ship to clients as unconstrained objects.
+func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
@@ -186,7 +204,11 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 			case "header", "cookie":
 				continue
 			}
-			ref := schemaForTypeRef(v.Type, pkg, registry)
+			ft := v.Type
+			if subst != nil {
+				ft = substituteTypeRef(v.Type, subst)
+			}
+			ref := schemaForTypeRef(ft, pkg, registry)
 			applyFieldMetadata(v, ref)
 			s.Properties[v.Name] = ref
 			if fieldIsRequired(v) {

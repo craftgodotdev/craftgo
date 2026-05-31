@@ -5,8 +5,9 @@ components:
       description: CreateUserReq is the body for POST /users.
       properties:
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         meta:
           additionalProperties:
             type: string
@@ -27,8 +28,9 @@ components:
     CreateUserReqBody:
       properties:
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         meta:
           additionalProperties:
             type: string
@@ -113,8 +115,9 @@ components:
         update too.
       properties:
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         id:
           type: string
         meta:
@@ -138,8 +141,9 @@ components:
     UpdateUserReqBody:
       properties:
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         meta:
           additionalProperties:
             type: string
@@ -170,8 +174,9 @@ components:
       description: User is the wire-level shape of a stored user.
       properties:
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         id:
           type: string
         meta:
