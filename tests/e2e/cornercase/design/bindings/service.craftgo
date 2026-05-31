@@ -117,20 +117,23 @@ type GetItemReq {
 // shape on the wire, so the optional binder works just like for
 // plain strings).
 type SearchReq {
-	cursor string?  @query
-	limit  int      @query @gte(1) @lte(100)
-	sort   Color?   @query
-	ids    int[]?   @query
-	active bool     @query
+	cursor string? @query
+	limit  int     @query @gte(1) @lte(100)
+	sort   Color?  @query
+	ids    int[]?  @query
+	active bool    @query
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The
 // id is auto-bound to the `{id}` segment of /users/{id}/avatar; the
 // file rides the multipart body and runs @maxSize + @mimeTypes at
-// validate time.
+// validate time. `caption` is an OPTIONAL form field — it proves the
+// multipart schema's required[] lists only the mandatory `file`, not
+// the optional text field (and never the path-bound `id`).
 type UploadReq {
-	id     string @path @length(1, 64)
-	file   file   @form @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
+	id      string  @path @length(1, 64)
+	file    file    @form @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
+	caption string? @form @maxLength(280)
 }
 
 // AddItemReq is the canonical JSON body for the POST /items

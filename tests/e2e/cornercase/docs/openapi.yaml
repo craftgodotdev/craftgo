@@ -3723,6 +3723,11 @@ components:
       type: object
     UploadAvatarReqBody:
       properties:
+        caption:
+          maxLength: 280
+          type:
+          - string
+          - "null"
         file:
           format: binary
           type: string
@@ -3745,8 +3750,15 @@ components:
         UploadReq pairs the path-bound id with the form-file upload. The
         id is auto-bound to the `{id}` segment of /users/{id}/avatar; the
         file rides the multipart body and runs @maxSize + @mimeTypes at
-        validate time.
+        validate time. `caption` is an OPTIONAL form field — it proves the
+        multipart schema's required[] lists only the mandatory `file`, not
+        the optional text field (and never the path-bound `id`).
       properties:
+        caption:
+          maxLength: 280
+          type:
+          - string
+          - "null"
         file:
           format: binary
           type: string
@@ -4442,9 +4454,13 @@ paths:
                 contentType: image/png, image/jpeg
             schema:
               properties:
+                caption:
+                  type: string
                 file:
                   format: binary
                   type: string
+              required:
+              - file
               type: object
         required: true
       responses:

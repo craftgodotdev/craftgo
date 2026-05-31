@@ -447,6 +447,47 @@ service S {
 	}
 }
 
+// TestGenerateOpenAPIMultipartRequired pins that the multipart
+// form-data schema lists every NON-optional form/file field under
+// `required[]` and omits optional (`?`) ones. Before this the schema
+// carried `properties` but no `required`, so a generated client treated
+// a mandatory file upload as optional and let the caller omit a file the
+// server's validator then rejected with a 400 — a spec↔runtime drift.
+func TestGenerateOpenAPIMultipartRequired(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type UploadReq {
+    userId  string  @path
+    avatar  file    @form
+    caption string? @form
+}
+service S {
+    post Upload /users/{userId}/avatar { request UploadReq  response UploadReq }
+}`)
+	i := strings.Index(body, "multipart/form-data:")
+	if i < 0 {
+		t.Fatalf("no multipart body:\n%s", body)
+	}
+	// Scope to the schema-level `required:` block (the first one after
+	// the media type; the requestBody-level `required: true` comes later).
+	block := body[i:]
+	r := strings.Index(block, "required:")
+	if r < 0 {
+		t.Fatalf("multipart schema has no required[]:\n%s", block)
+	}
+	reqList := block[r:min(r+48, len(block))]
+	if !strings.Contains(reqList, "- avatar") {
+		t.Errorf("required file `avatar` must be listed under multipart required[]:\n%s", reqList)
+	}
+	// `userId` is path-bound (not in the body) and `caption` is optional
+	// (`?`) — neither may appear in the multipart required list.
+	if strings.Contains(reqList, "caption") {
+		t.Errorf("optional form field `caption` must NOT be in multipart required[]:\n%s", reqList)
+	}
+	if strings.Contains(reqList, "userId") {
+		t.Errorf("path-bound `userId` must NOT be in multipart required[]:\n%s", reqList)
+	}
+}
+
 // TestGenerateOpenAPIMixinFlatten checks that embedded mixins
 // surface in the host schema via OpenAPI's allOf composition so
 // generated TS clients see every field — including those inherited

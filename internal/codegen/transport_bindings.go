@@ -240,7 +240,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		if pathSegs[f.Name] {
 			continue
 		}
-		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name)}
+		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name), Required: fieldIsRequired(f)}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
 			for _, d := range f.Decorators {
 				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {

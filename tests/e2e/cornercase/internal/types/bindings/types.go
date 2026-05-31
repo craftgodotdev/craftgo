@@ -181,10 +181,13 @@ type SearchReq struct {
 // UploadReq pairs the path-bound id with the form-file upload. The
 // id is auto-bound to the `{id}` segment of /users/{id}/avatar; the
 // file rides the multipart body and runs @maxSize + @mimeTypes at
-// validate time.
+// validate time. `caption` is an OPTIONAL form field — it proves the
+// multipart schema's required[] lists only the mandatory `file`, not
+// the optional text field (and never the path-bound `id`).
 type UploadReq struct {
-	ID   string                `json:"-"`
-	File *multipart.FileHeader `json:"file"`
+	ID      string                `json:"-"`
+	File    *multipart.FileHeader `json:"file"`
+	Caption *string               `json:"caption,omitempty"`
 }
 
 // UserAvatar is the UploadAvatar response. Carries the resolved URL

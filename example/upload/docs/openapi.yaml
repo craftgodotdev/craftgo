@@ -237,6 +237,9 @@ paths:
                   type: string
                 title:
                   type: string
+              required:
+              - title
+              - pdf
               type: object
         required: true
       responses:
@@ -273,6 +276,8 @@ paths:
                 blob:
                   format: binary
                   type: string
+              required:
+              - blob
               type: object
         required: true
       responses:
@@ -309,6 +314,8 @@ paths:
                 image:
                   format: binary
                   type: string
+              required:
+              - image
               type: object
         required: true
       responses:
