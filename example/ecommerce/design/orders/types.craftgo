@@ -48,7 +48,7 @@ type Order {
 	tags       string[]              @minItems(1) @maxItems(10) @uniqueItems
 	grid       string[][]
 	metadata   map<string, string>?
-	extras     any?                  @example({trackingNumber: "TRK-001", carrier: "ACME"})
+	extras     any?                  @doc("Free-form provider payload, e.g. { trackingNumber, carrier }.")
 	createdBy  customers.CustomerRef
 	createdAt  string                @format(datetime)
 }

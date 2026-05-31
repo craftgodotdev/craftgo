@@ -96,7 +96,33 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 			"@%s never accepts arguments — drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
 			d.Name, d.Name)
 	}
+	a.checkExampleArg(d)
 	a.checkPositionalArgs(site, d, spec)
+}
+
+// checkExampleArg restricts @example to a literal value (string / int /
+// float / bool / null) or an array of those. An object `{k: v}` arg is
+// rejected: a struct example is composed from each field's own @example
+// by OpenAPI tooling, so the object-literal form only adds JSON-in-DSL
+// syntax with no benefit — and the emitter silently dropped it anyway.
+// For a free-form `any` / `map` field (no sub-fields to compose from),
+// describe the expected shape with @doc instead. A literal or array
+// lands in DecoratorArg.Value; an object (or nested @decorator) leaves
+// Value nil, which is the signature we reject.
+func (a *analyzer) checkExampleArg(d *ast.Decorator) {
+	if d == nil || d.Name != "example" {
+		return
+	}
+	for _, ag := range d.Args {
+		if ag == nil || ag.Named {
+			continue
+		}
+		if ag.Value == nil {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
+				"@example takes a literal (string/int/float/bool) or an array of those, not an object — a struct example is composed from each field's own @example; for a free-form any/map field, describe the shape with @doc")
+			return
+		}
+	}
 }
 
 // positionalArgs splits d.Args into positional vs named. Object and

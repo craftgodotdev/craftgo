@@ -705,7 +705,9 @@ components:
           default: USD
         customer:
           $ref: '#/components/schemas/Customer'
-        extras: {}
+        extras:
+          description: Free-form provider payload, e.g. { trackingNumber, carrier
+            }.
         grid:
           items:
             items:

@@ -35,17 +35,22 @@ func parseSnapshot(filename, src string) snapshotView {
 // hit token may be EOF for cursors past the last real token; callers
 // should check Kind to filter that out.
 func (v snapshotView) tokenAt(line, character uint32) (int, lexer.Token) {
-	target := lexer.Position{Line: int(line) + 1, Column: int(character) + 1}
+	// Resolve the editor's UTF-16 (line, character) to a byte offset and
+	// match tokens by their byte span. This sidesteps two unit mismatches
+	// the old line/column compare carried: the LSP character is UTF-16
+	// while the lexer column is runes, and `Column + len(Text)` mixed a
+	// rune column with a byte length. Byte offsets are exact for any of
+	// these — every Token carries Pos.Offset and its byte length is
+	// len(Text).
+	off := offsetFromLSP(v.src, line, character)
 	best := -1
 	for i, t := range v.tokens {
 		if t.Kind == lexer.EOF {
 			continue
 		}
-		if t.Pos.Line != target.Line {
-			continue
-		}
-		end := t.Pos.Column + len(t.Text)
-		if t.Pos.Column <= target.Column && target.Column <= end {
+		start := t.Pos.Offset
+		end := start + len(t.Text)
+		if start <= off && off <= end {
 			best = i
 		}
 	}
@@ -53,6 +58,17 @@ func (v snapshotView) tokenAt(line, character uint32) (int, lexer.Token) {
 		return -1, lexer.Token{}
 	}
 	return best, v.tokens[best]
+}
+
+// isUnderDesignRoot reports whether file path p lives inside dir,
+// requiring a path-separator boundary after the prefix so a sibling like
+// `/proj/design2` or `/proj/design_backup` does NOT match the design root
+// `/proj/design` (which a bare strings.HasPrefix would).
+func isUnderDesignRoot(p, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
 }
 
 // rangeOf returns the LSP range covering t.

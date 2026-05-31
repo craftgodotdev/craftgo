@@ -40,14 +40,15 @@ func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req j
 // implement whole-document formatting without exchanging diff hunks.
 func wholeDocumentRange(src string) protocol.Range {
 	lines := strings.Count(src, "\n")
-	lastLineLen := 0
+	lastLine := src
 	if i := strings.LastIndexByte(src, '\n'); i >= 0 {
-		lastLineLen = len(src) - i - 1
-	} else {
-		lastLineLen = len(src)
+		lastLine = src[i+1:]
 	}
+	// LSP character offsets are UTF-16 code units, not bytes — a last line
+	// holding multi-byte UTF-8 (Vietnamese, CJK, emoji) would otherwise
+	// over-shoot and the formatting TextEdit would target the wrong range.
 	return protocol.Range{
 		Start: protocol.Position{Line: 0, Character: 0},
-		End:   protocol.Position{Line: uint32(lines), Character: uint32(lastLineLen)},
+		End:   protocol.Position{Line: uint32(lines), Character: uint32(utf16Len(lastLine))},
 	}
 }

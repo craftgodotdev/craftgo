@@ -64,7 +64,9 @@ type Arr_PlainInts struct {
 
 // Arr_PlainStrings is the string-array baseline. No per-element
 // constraints — the generated validator should be the bare presence
-// check on `v.Codes` (slice == nil) only.
+// check on `v.Codes` (slice == nil) only. `codes` also carries an
+// array-of-scalar @example, the one non-scalar example form that stays
+// legal (object examples are rejected — see semantic checkExampleArg).
 type Arr_PlainStrings struct {
 	Codes []string `json:"codes"`
 }

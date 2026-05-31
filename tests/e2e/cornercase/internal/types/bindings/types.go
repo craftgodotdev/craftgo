@@ -182,8 +182,13 @@ type SearchReq struct {
 // id is auto-bound to the `{id}` segment of /users/{id}/avatar; the
 // file rides the multipart body and runs @maxSize + @mimeTypes at
 // validate time. `caption` is an OPTIONAL form field — it proves the
-// multipart schema's required[] lists only the mandatory `file`, not
-// the optional text field (and never the path-bound `id`).
+// multipart schema's required[] lists only the mandatory file, not the
+// optional text field (and never the path-bound `id`).
+//
+// Both form fields use an EXPLICIT `@form("wire_name")` distinct from
+// the Go field name, so the multipart property name and the runtime
+// r.FormFile / r.FormValue key both equal the wire name (`avatar_file`
+// / `note`), not the field name (`file` / `caption`).
 type UploadReq struct {
 	ID      string                `json:"-"`
 	File    *multipart.FileHeader `json:"file"`

@@ -28,10 +28,10 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		var req types.UploadReq
 		req.ID = r.PathValue("id")
-		if _v := r.FormValue("caption"); _v != "" {
+		if _v := r.FormValue("note"); _v != "" {
 			req.Caption = &_v
 		}
-		if _, header, err := r.FormFile("file"); err == nil {
+		if _, header, err := r.FormFile("avatar_file"); err == nil {
 			req.File = header
 		}
 		if err := req.Validate(); err != nil {

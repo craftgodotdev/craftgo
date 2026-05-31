@@ -103,6 +103,27 @@ func TestArgsScopeNilEntry(t *testing.T) {
 	}
 }
 
+// TestExampleRejectsObject pins that @example only accepts a literal or
+// an array of literals — an object {k: v} arg is rejected. A struct
+// example is composed from each field's own @example; the object form
+// only added JSON-in-DSL syntax and was silently dropped by the emitter.
+func TestExampleRejectsObject(t *testing.T) {
+	expectError(t, `type X { meta any? @example({a: 1, b: "x"}) }`, CodeDecoratorArgType)
+}
+
+// TestExampleAcceptsLiteralsAndArrays confirms the kept forms: scalar
+// literals and arrays of scalars (the one non-scalar form that stays
+// legal after the object-example rejection).
+func TestExampleAcceptsLiteralsAndArrays(t *testing.T) {
+	mustClean(t, `type X {
+		s   string   @example("alice")
+		i   int      @example(30)
+		f   float64  @example(0.5)
+		b   bool     @example(true)
+		arr string[] @example(["GET", "POST"])
+	}`)
+}
+
 // ---------- Enum value-set ----------
 
 func TestArgValueFormatAccepted(t *testing.T) {
@@ -265,7 +286,8 @@ func TestFlagDecoratorBareForm(t *testing.T) {
 
 func TestExampleSingleArg(t *testing.T) {
 	mustClean(t, `type X { name string @example("foo") }`)
-	mustClean(t, `type X { user object? @example({a: 1, b: 2}) }`)
+	// Object-form @example is rejected (see TestExampleRejectsObject); a
+	// struct example is composed from each field's own @example instead.
 }
 
 func TestExampleArityWrong(t *testing.T) {

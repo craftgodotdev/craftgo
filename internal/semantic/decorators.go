@@ -314,7 +314,7 @@ var Registry = map[string]Spec{
 	"example": {
 		Name:   "example",
 		Levels: LvlField,
-		Doc:    "Example value rendered in the OpenAPI schema for this field. Argument may be a literal (string / int / float / bool) OR a `{k: v}` object.",
+		Doc:    "Example value rendered in the OpenAPI schema for this field. Argument is a literal (string / int / float / bool / null) or an array of those. Object examples are not accepted — a struct example is composed from each field's own @example; document a free-form any/map field's shape with @doc.",
 		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
 	// ---- OpenAPI file-header metadata ----
