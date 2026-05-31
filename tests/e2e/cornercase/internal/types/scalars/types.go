@@ -64,6 +64,35 @@ type Bag struct {
 	Tags []Tag `json:"tags"`
 }
 
+// ConstrainedBox<T> is the field-metadata regression fixture. Unlike
+// the other generics above (whose own body fields carry no validator
+// decorators), every non-parametric field here is decorated:
+//
+//   - count  @gte/@lte/@default → numeric bounds + a server-fill default
+//   - label  @maxLength         → string length cap
+//   - stamp  @format            → string format hint
+//
+// Before the schemaForType/instantiateGeneric unification, the concrete
+// `ConstrainedBoxOfScalarsOrder` component walked the body WITHOUT
+// applyFieldMetadata, so it advertised bare `integer`/`string` and
+// dropped every bound, default, and format — hey-api / openapi-generator
+// then emitted unconstrained client types. The instance component MUST
+// now carry minimum/maximum/default/maxLength/format on these fields,
+// plus this decl's own description (generic instances inherit it the
+// same way a non-generic type would).
+type ConstrainedBox[T any] struct {
+	Item  T      `json:"item"`
+	Count *int   `json:"count,omitempty"`
+	Label string `json:"label"`
+	Stamp string `json:"stamp"`
+}
+
+// ConstrainedBoxHost anchors the instantiation so the generic pre-pass
+// registers `ConstrainedBox<Order>` and emits its component schema.
+type ConstrainedBoxHost struct {
+	Box ConstrainedBox[Order] `json:"box"`
+}
+
 // CreateOrderReq is a full-shape POST body that drives every Order
 // field through the validator. Note: id is supplied client-side so
 // the cornercase fixture can keep the request DTO simple.

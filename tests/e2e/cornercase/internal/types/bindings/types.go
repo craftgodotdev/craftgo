@@ -194,3 +194,16 @@ type UserAvatar struct {
 	URL string `json:"url"`
 	Key string `json:"key"`
 }
+
+// WireRenameReq combines explicit-name bindings in all four parameter
+// locations. Each field's wire name (the decorator argument) differs
+// from its Go field name on purpose so the OpenAPI parameter name and
+// the runtime binder stay provably in lock-step. Header/cookie fields
+// stay non-optional (the binder rejects `string? @header`); the query
+// field is optional to also cover the optional-param wire-name path.
+type WireRenameReq struct {
+	UserID  string  `json:"-"`
+	APIKey  string  `json:"-"`
+	Session string  `json:"-"`
+	Q       *string `json:"-"`
+}

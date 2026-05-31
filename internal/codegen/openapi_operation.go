@@ -447,7 +447,17 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 			ref := schemaForTypeRef(f.Type, pkg, registry)
 			applyFieldMetadata(f, ref)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
-				Name:     f.Name,
+				// Wire name, NOT the DSL field name: an explicit
+				// `@header("X-Trace-Id")` / `@cookie("session_id")` /
+				// `@query(..)` / `@path(..)` argument overrides the
+				// field name. The runtime binder reads the same wire
+				// name via [bindingWireName] (r.Header.Get("X-Trace-Id"),
+				// r.PathValue("user_id"), ...), so emitting f.Name here
+				// instead would advertise a parameter the server never
+				// reads — a generated client would send `trace` while
+				// the handler looks for `X-Trace-Id`, and the binding
+				// silently fails.
+				Name:     bindingWireName(f, in),
 				In:       in,
 				Required: required,
 				Schema:   ref,

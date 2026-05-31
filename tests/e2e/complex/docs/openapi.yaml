@@ -11,16 +11,17 @@ components:
           minLength: 1
           type: string
         coords:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/Coords'
-          nullable: true
+          - type: "null"
         country:
           maxLength: 2
           minLength: 2
           type: string
         postal:
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
         street:
           maxLength: 200
           minLength: 1
@@ -43,8 +44,9 @@ components:
         phone:
           maxLength: 20
           minLength: 7
-          nullable: true
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - email
       type: object
@@ -77,8 +79,9 @@ components:
           minItems: 1
           type: array
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         contacts:
           $ref: '#/components/schemas/ContactInfo'
         displayName:
@@ -110,8 +113,9 @@ components:
           minItems: 1
           type: array
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         contacts:
           $ref: '#/components/schemas/ContactInfo'
         displayName:
@@ -281,10 +285,10 @@ components:
     PostDefaultReqBody:
       properties:
         color:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/XColor'
+          - type: "null"
           default: Red
-          nullable: true
       type: object
     PostDefaultRespBody:
       $ref: '#/components/schemas/XOwner'
@@ -301,8 +305,9 @@ components:
           minItems: 1
           type: array
         age:
-          nullable: true
-          type: integer
+          type:
+          - integer
+          - "null"
         contacts:
           $ref: '#/components/schemas/ContactInfo'
         displayName:
@@ -398,8 +403,15 @@ components:
       - updatedAt
       type: object
     XBagOfMapOfStringAndXColor:
+      description: |-
+        XBag is a cross-package GENERIC. xrefs instantiates it as
+        `xshared.XBag<X>` for various X — local types, primitives, and
+        xshared types — covering the qualified-generic codegen path
+        across every cell.
       properties:
         cap:
+          maximum: 1000
+          minimum: 0
           type: integer
         items:
           items:
@@ -412,8 +424,15 @@ components:
       - cap
       type: object
     XBagOfString:
+      description: |-
+        XBag is a cross-package GENERIC. xrefs instantiates it as
+        `xshared.XBag<X>` for various X — local types, primitives, and
+        xshared types — covering the qualified-generic codegen path
+        across every cell.
       properties:
         cap:
+          maximum: 1000
+          minimum: 0
           type: integer
         items:
           items:
@@ -424,8 +443,15 @@ components:
       - cap
       type: object
     XBagOfXLocalItem:
+      description: |-
+        XBag is a cross-package GENERIC. xrefs instantiates it as
+        `xshared.XBag<X>` for various X — local types, primitives, and
+        xshared types — covering the qualified-generic codegen path
+        across every cell.
       properties:
         cap:
+          maximum: 1000
+          minimum: 0
           type: integer
         items:
           items:
@@ -436,8 +462,15 @@ components:
       - cap
       type: object
     XBagOfXOwner:
+      description: |-
+        XBag is a cross-package GENERIC. xrefs instantiates it as
+        `xshared.XBag<X>` for various X — local types, primitives, and
+        xshared types — covering the qualified-generic codegen path
+        across every cell.
       properties:
         cap:
+          maximum: 1000
+          minimum: 0
           type: integer
         items:
           items:
@@ -466,10 +499,10 @@ components:
         import on the handler file.
       properties:
         color:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/XColor'
+          - type: "null"
           default: Red
-          nullable: true
       type: object
     XEnumMaps:
       description: |-
@@ -520,9 +553,9 @@ components:
             $ref: '#/components/schemas/XColor'
           type: array
         maybe:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/XColor'
-          nullable: true
+          - type: "null"
       required:
       - flat
       - many
@@ -627,9 +660,9 @@ components:
             $ref: '#/components/schemas/XEmail'
           type: array
         maybe:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/XEmail'
-          nullable: true
+          - type: "null"
         stamps:
           items:
             $ref: '#/components/schemas/XTimestamp'
@@ -675,9 +708,9 @@ components:
             $ref: '#/components/schemas/XOwner'
           type: array
         maybe:
-          allOf:
+          anyOf:
           - $ref: '#/components/schemas/XOwner'
-          nullable: true
+          - type: "null"
       required:
       - flat
       - many

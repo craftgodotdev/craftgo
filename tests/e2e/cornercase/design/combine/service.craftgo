@@ -16,7 +16,7 @@ package combine
 @prefix("/combine")
 @tags(combine)
 service CombineService {
-	@doc("Echo the presence-state matrix. Smoke tests assert that plain is in required[], optional / nullable / bothNullable produce nullable: true, and the default rows surface a default key in OpenAPI.")
+	@doc("Echo the presence-state matrix. Smoke tests assert that plain is in required[], optional / nullable / bothNullable produce a 'type: [string, null]' (OpenAPI 3.1 null), and the default rows surface a default key in OpenAPI.")
 	post EchoPresence /presence {
 		request  PresenceMatrix
 		response PresenceMatrix

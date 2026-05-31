@@ -120,8 +120,8 @@ service S { post Send /m { request Req } }`)
 		// Cents
 		"minimum: 0",
 		"maximum: 1000000",
-		// Step
-		"exclusiveMinimum: true",
+		// Step — @gt(0) is the 3.1 numeric exclusive bound, not a boolean
+		"exclusiveMinimum: 0",
 		"multipleOf: 5",
 	)
 }
@@ -369,8 +369,8 @@ service S { post Create /c { request T  response T } }`
 	if !strings.Contains(src2, "example: 30") {
 		t.Errorf("expected int example:\n%s", src2)
 	}
-	if !strings.Contains(src2, "nullable: true") {
-		t.Errorf("expected nullable: true on field:\n%s", src2)
+	if !strings.Contains(src2, `- "null"`) {
+		t.Errorf("expected 3.1 null type entry on @nullable field:\n%s", src2)
 	}
 }
 
@@ -399,8 +399,10 @@ service S { post Make /m { request Order  response Order } }`)
 		"maximum: 1000000",
 		"minimum: 1",
 		"maximum: 999",
-		"exclusiveMinimum: true",
-		"exclusiveMaximum: true",
+		// 3.1: exclusive bounds are the numeric limit (@gt(0)/@positive
+		// → exclusiveMinimum: 0; @lt(100) → exclusiveMaximum: 100).
+		"exclusiveMinimum: 0",
+		"exclusiveMaximum: 100",
 		"multipleOf: 5",
 		// string
 		"minLength: 1",
@@ -499,6 +501,47 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
+// TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata pins the H4
+// fix: a concrete generic instance must inherit the SAME field-level
+// validator metadata (@gte/@lte/@default/@maxLength/@format) and the
+// type-level description that a non-generic type of the same shape
+// carries. Before schemaForType and instantiateGeneric were unified
+// onto one body-walk ([schemaFromTypeDecl]), the instance dropped every
+// constraint and the description, so a client generated from the spec
+// saw an unconstrained object even though the runtime validator still
+// enforced the bounds — a silent spec↔runtime contract drift.
+func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Order { id string }
+// Box wraps a value with a bounded count and a formatted stamp.
+type Box<T> {
+    item  T
+    count int?   @gte(1) @lte(100) @default(10)
+    label string @maxLength(64)
+    stamp string @format(datetime)
+}
+type Host { box Box<Order> }
+service S { get Get /things { response Host } }`)
+
+	idx := strings.Index(body, "BoxOfOrder:")
+	if idx < 0 {
+		t.Fatalf("expected BoxOfOrder component schema:\n%s", body)
+	}
+	block := body[idx:min(idx+700, len(body))]
+	for _, want := range []string{
+		"minimum: 1",                             // @gte(1)
+		"maximum: 100",                           // @lte(100)
+		"default: 10",                            // @default(10)
+		"maxLength: 64",                          // @maxLength(64)
+		"format: datetime",                       // @format(datetime)
+		"Box wraps a value with a bounded count", // type-level description
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("BoxOfOrder must carry %q (H4: generic instances inherit field/type metadata):\n%s", want, block)
+		}
+	}
+}
+
 // TestGenerateOpenAPIGenericInstanceMixinFlatten pins mixin
 // preservation through generic substitution: a mixin reference inside
 // the generic body must surface in the instance component via the
@@ -551,10 +594,11 @@ service S { get Get /trees { response Forest } }`)
 }
 
 // TestGenerateOpenAPIGenericOptionalWraps pins the
-// `Page<User>?` → `allOf: [$ref:PageOfUser] + nullable: true` shape.
-// Without the wrapper, client codegen (`openapi-typescript`, ...) types
-// the field as required-and-non-null even though the server may send
-// `null` because the wire decoder accepts both.
+// `Page<User>?` → `anyOf: [$ref:PageOfUser, {type: null}]` shape (the
+// OpenAPI 3.1 "ref OR null" idiom). Without the wrapper, client codegen
+// (`openapi-typescript`, ...) types the field as required-and-non-null
+// even though the server may send `null` because the wire decoder
+// accepts both.
 func TestGenerateOpenAPIGenericOptionalWraps(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -566,14 +610,14 @@ service S { get Get /h { response Holder } }`)
 		t.Fatal("Holder missing")
 	}
 	tail := body[idx : idx+400]
-	if !strings.Contains(tail, "allOf:") {
-		t.Errorf("Holder.page should use allOf wrapper for optional ref:\n%s", tail)
+	if !strings.Contains(tail, "anyOf:") {
+		t.Errorf("Holder.page should use anyOf wrapper for optional ref:\n%s", tail)
 	}
 	if !strings.Contains(tail, "$ref: '#/components/schemas/PageOfOrder'") {
 		t.Errorf("Holder.page should $ref the generic instance:\n%s", tail)
 	}
-	if !strings.Contains(tail, "nullable: true") {
-		t.Errorf("Holder.page should be nullable:\n%s", tail)
+	if !strings.Contains(tail, `type: "null"`) {
+		t.Errorf("Holder.page should compose with the 3.1 null type:\n%s", tail)
 	}
 }
 
@@ -792,10 +836,10 @@ service S { @errors(BookNotFound) get GetBook /b/{id} { request BookReq  respons
 
 // TestGenerateOpenAPIOptionalRefNullable checks that an optional
 // struct-typed field (`boss User?`) emits nullable in the component
-// schema. Bare `$ref` carries no nullable flag; OpenAPI 3.0 expresses
-// "ref OR null" via `allOf: [$ref] + nullable: true`. Without the
-// wrapper, TS client generators type the field as required `User`
-// and refuse `null` even though the server accepts it.
+// schema. Bare `$ref` carries no nullable flag; OpenAPI 3.1 expresses
+// "ref OR null" via `anyOf: [$ref, {type: null}]`. Without the wrapper,
+// TS client generators type the field as required `User` and refuse
+// `null` even though the server accepts it.
 func TestGenerateOpenAPIOptionalRefNullable(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Inner { id string }
@@ -808,20 +852,19 @@ service S { post Create /c { request T  response T } }`)
 	if !strings.Contains(body, "$ref: '#/components/schemas/Inner'") {
 		t.Errorf("plain ref missing:\n%s", body)
 	}
-	// Optional Inner wraps in allOf + nullable.
-	if !strings.Contains(body, "nullable: true") {
-		t.Errorf("optional ref should carry nullable:\n%s", body)
+	// Optional Inner wraps in anyOf with the 3.1 null type.
+	if !strings.Contains(body, `type: "null"`) {
+		t.Errorf("optional ref should carry the 3.1 null type:\n%s", body)
 	}
-	if !strings.Contains(body, "allOf:") {
-		t.Errorf("optional ref should use allOf wrapper:\n%s", body)
+	if !strings.Contains(body, "anyOf:") {
+		t.Errorf("optional ref should use anyOf wrapper:\n%s", body)
 	}
 }
 
-// TestGenerateOpenAPIOptionalEmitsNullable: a `T?` field produces
-// `nullable: true` in OpenAPI so spec consumers accept JSON `null`
-// for it. The `?` field is also dropped from `required[]`; an
-// `@nullable` field stays in required. Both forms agree on
-// `nullable: true`.
+// TestGenerateOpenAPIOptionalEmitsNullable: a `T?` field produces a
+// 3.1 `type: [string, "null"]` in OpenAPI so spec consumers accept JSON
+// `null` for it. The `?` field is also dropped from `required[]`; an
+// `@nullable` field stays in required. Both forms add the null type.
 func TestGenerateOpenAPIOptionalEmitsNullable(t *testing.T) {
 	src := `package design
 type T {
@@ -838,10 +881,10 @@ service S { post Create /c { request T  response T } }`
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	out := string(body)
 
-	// Both `a` (T?) and `b` (@nullable) emit nullable: true. The
+	// Both `a` (T?) and `b` (@nullable) add a `"null"` type entry. The
 	// per-operation `CreateReqBody` doubles each, so total = 4.
-	if got := strings.Count(out, "nullable: true"); got < 4 {
-		t.Errorf("expected nullable: true for T? and @nullable in BOTH T and CreateReqBody (got %d):\n%s", got, out)
+	if got := strings.Count(out, `- "null"`); got < 4 {
+		t.Errorf("expected the 3.1 null type for T? and @nullable in BOTH T and CreateReqBody (got %d):\n%s", got, out)
 	}
 	// required[]: c stays (plain), b stays (@nullable), a goes (T?).
 	// CreateReqBody mirrors the same shape, so each marker doubles.
@@ -886,7 +929,7 @@ service S { post Create /c { request T  response T } }`
 	for _, want := range []string{
 		"example: alice",
 		"default: 18",
-		"nullable: true",
+		`- "null"`,
 		"deprecated: true",
 		"The display name",
 	} {

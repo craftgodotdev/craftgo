@@ -19,7 +19,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	if ref.Value == nil {
 		return
 	}
-	// Optional-ref wrapper (allOf:[$ref] + nullable: true). Cosmetic
+	// Optional-ref wrapper (anyOf:[$ref, {type:null}]). Cosmetic
 	// metadata like description/example would land on the wrapper, which
 	// tooling renders inconsistently - some UI generators show it next
 	// to the field, others let the $ref's own description win. We drop
@@ -27,7 +27,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	// description should alias the type (`type Manager = User`). But
 	// `default` carries runtime semantics (server fills in when the
 	// field is absent), so it stays on the wrapper regardless.
-	if isAllOfRefWrapper(ref.Value) {
+	if isNullableRefWrapper(ref.Value) {
 		if def, ok := defaultValue(f.Decorators); ok {
 			ref.Value.Default = def
 		}
@@ -57,51 +57,62 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	applyPatternFormat(f.Decorators, ref.Value)
 }
 
-// isAllOfRefWrapper recognises the `allOf: [{$ref}] + nullable: true`
-// shape that schemaForTypeRef emits for an optional named-type field.
-// The wrapper is the OpenAPI 3.0 idiom for "ref OR null"; metadata on
-// the wrapper is interpreted inconsistently by clients, so callers
-// branch on this signature to avoid stamping description/example on it.
-func isAllOfRefWrapper(s *openapi3.Schema) bool {
-	if s == nil || len(s.AllOf) != 1 || s.AllOf[0].Ref == "" {
+// isNullableRefWrapper recognises the `anyOf: [{$ref}, {type: null}]`
+// shape that schemaForTypeRef emits for an optional named-type (or
+// optional generic-instance) field — the OpenAPI 3.1 idiom for "ref OR
+// null" (3.1 dropped the `nullable` keyword, and a bare $ref still can
+// not carry sibling validators portably). Metadata on the wrapper is
+// interpreted inconsistently by clients, so callers branch on this
+// signature to avoid stamping description/example on it.
+func isNullableRefWrapper(s *openapi3.Schema) bool {
+	if s == nil || len(s.AnyOf) != 2 || s.Type != nil || len(s.Properties) != 0 {
 		return false
 	}
-	return s.Type == nil && len(s.Properties) == 0
+	return s.AnyOf[0].Ref != "" && isNullTypeSchema(s.AnyOf[1].Value)
+}
+
+// isNullTypeSchema reports whether s is exactly the 3.1 null sentinel
+// (`type: "null"` with no other shape) used as the second branch of a
+// nullable-ref wrapper's anyOf.
+func isNullTypeSchema(s *openapi3.Schema) bool {
+	return s != nil && s.Type != nil && s.Type.Is("null")
 }
 
 // applyNumericConstraints translates the numeric comparison decorators
-// onto an OpenAPI schema. The mapping uses 3.0-style booleans for
-// exclusive bounds because the kin-openapi validator we run against
-// rejects 3.1's `{minimum: N, exclusiveMinimum: N}` shape — see the
-// note on [applyNullable] for the same compatibility caveat.
+// onto an OpenAPI schema using the OpenAPI 3.1 (JSON Schema 2020-12)
+// keyword shapes:
 //
 //	@gte(N) → minimum: N
-//	@gt(N)  → minimum: N, exclusiveMinimum: true
+//	@gt(N)  → exclusiveMinimum: N        (a NUMBER, not a boolean)
 //	@lte(N) → maximum: N
-//	@lt(N)  → maximum: N, exclusiveMaximum: true
+//	@lt(N)  → exclusiveMaximum: N        (a NUMBER, not a boolean)
 //	@range(lo, hi) → minimum: lo, maximum: hi (both inclusive)
 //	@multipleOf(N) → multipleOf: N
-//	@positive → minimum: 0, exclusiveMinimum: true
-//	@negative → maximum: 0, exclusiveMaximum: true
+//	@positive → exclusiveMinimum: 0
+//	@negative → exclusiveMaximum: 0
 //
-// Without this wiring, client generators (hey-api, openapi-typescript,
-// openapi-generator) see the field as an unbounded `number` and produce
-// types that allow values the server will reject at validate time.
+// In 3.1 the exclusive bounds ARE the numeric limit (they replace the
+// 3.0 `minimum: N + exclusiveMinimum: true` pair). kin-openapi still
+// models `ExclusiveMin/Max` as the 3.0 booleans, so the numeric form is
+// emitted through Extensions, which marshal as raw schema keywords. A
+// 3.1 validator / client generator (hey-api, openapi-typescript,
+// openapi-generator >=7) rejects the boolean form with
+// "'exclusiveMinimum' value must be a number". craftgo never runs
+// kin-openapi's own (3.0-era) validator on the emitted doc, so its
+// lagging support for the numeric form does not apply.
+//
+// Without this wiring, client generators see the field as an unbounded
+// `number` and produce types that allow values the server rejects at
+// validate time.
 func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 	if s == nil {
 		return
 	}
-	setMin := func(v float64, exclusive bool) {
-		s.Min = &v
-		if exclusive {
-			s.ExclusiveMin = true
+	setExclusive := func(key string, v float64) {
+		if s.Extensions == nil {
+			s.Extensions = make(map[string]interface{})
 		}
-	}
-	setMax := func(v float64, exclusive bool) {
-		s.Max = &v
-		if exclusive {
-			s.ExclusiveMax = true
-		}
+		s.Extensions[key] = v
 	}
 	for _, d := range ds {
 		if d == nil {
@@ -110,35 +121,31 @@ func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 		switch d.Name {
 		case "gte":
 			if v, ok := numericArgValue(d, 0); ok {
-				setMin(v, false)
+				s.Min = &v
 			}
 		case "gt":
 			if v, ok := numericArgValue(d, 0); ok {
-				setMin(v, true)
+				setExclusive("exclusiveMinimum", v)
 			}
 		case "lte":
 			if v, ok := numericArgValue(d, 0); ok {
-				setMax(v, false)
+				s.Max = &v
 			}
 		case "lt":
 			if v, ok := numericArgValue(d, 0); ok {
-				setMax(v, true)
+				setExclusive("exclusiveMaximum", v)
 			}
 		case "range":
 			if lo, ok := numericArgValue(d, 0); ok {
-				setMin(lo, false)
+				s.Min = &lo
 			}
 			if hi, ok := numericArgValue(d, 1); ok {
-				setMax(hi, false)
+				s.Max = &hi
 			}
 		case "positive":
-			zero := 0.0
-			s.Min = &zero
-			s.ExclusiveMin = true
+			setExclusive("exclusiveMinimum", 0)
 		case "negative":
-			zero := 0.0
-			s.Max = &zero
-			s.ExclusiveMax = true
+			setExclusive("exclusiveMaximum", 0)
 		case "multipleOf":
 			if v, ok := numericArgValue(d, 0); ok && v != 0 {
 				s.MultipleOf = &v
@@ -344,16 +351,28 @@ func hasNullableDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds
 // them) and are skipped entirely from the OpenAPI spec.
 func hasSensitiveDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "sensitive") }
 
-// applyNullable marks a schema as nullable. We emit the OpenAPI 3.0
-// boolean form (`nullable: true`) even though our doc carries the
-// `openapi: 3.1.0` header - kin-openapi 0.124's validator rejects the
-// 3.1 canonical `type: [<base>, null]` array (it doesn't recognise
-// "null" as a valid type entry). Once kin-openapi catches up, this
-// helper can switch to appending "null" onto Schema.Type without any
-// caller change.
+// applyNullable marks a value schema as nullable using the OpenAPI 3.1
+// canonical form: it appends "null" to the schema's `type` list
+// (`type: [string, "null"]`). OpenAPI 3.1 REMOVED the 3.0 boolean
+// `nullable: true` keyword, so emitting it inside a doc that declares
+// `openapi: 3.1.0` makes every 3.1-aware client generator (hey-api,
+// openapi-typescript, openapi-generator >=7, Swagger UI 3.1) silently
+// drop the null union — `bio string @nullable` then types as `string`
+// on the client instead of `string | null`.
+//
+// Only typed value schemas pass through here; named-ref nullability has
+// no `type` list to extend and is handled in [schemaForTypeRef] via the
+// `anyOf: [{$ref}, {type: null}]` wrapper instead.
+//
+// craftgo never runs kin-openapi's `T.Validate()` on the emitted doc,
+// so that library's lagging rejection of the 3.1 null-array form does
+// not apply here.
 func applyNullable(s *openapi3.Schema) {
-	if s != nil {
-		s.Nullable = true
+	if s == nil || s.Type == nil {
+		return
+	}
+	if !s.Type.Includes("null") {
+		*s.Type = append(*s.Type, "null")
 	}
 }
 

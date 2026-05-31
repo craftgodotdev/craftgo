@@ -69,14 +69,10 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 			if generic, ok := pkg.Types[name]; ok && len(generic.TypeParams) > 0 {
 				if registry != nil {
 					componentName := registry.register(generic, t.Named.Args)
-					// Optional generic instance keeps the same allOf
-					// wrapper trick as plain named refs - bare `$ref`
-					// has no `nullable` companion in OpenAPI 3.0.
+					// Optional generic instance composes with the 3.1
+					// null type exactly like a plain named ref.
 					if t.Optional {
-						return &openapi3.SchemaRef{Value: &openapi3.Schema{
-							AllOf:    openapi3.SchemaRefs{{Ref: "#/components/schemas/" + componentName}},
-							Nullable: true,
-						}}
+						return nullableRef(componentName)
 					}
 					return &openapi3.SchemaRef{Ref: "#/components/schemas/" + componentName}
 				}
@@ -85,21 +81,30 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 				return &openapi3.SchemaRef{Value: instantiateGeneric(generic, t.Named.Args, pkg, nil)}
 			}
 		}
-		// Bare `$ref` doesn't carry the nullable flag; the OpenAPI 3.0
-		// idiom for "ref OR null" is `allOf: [$ref] + nullable: true`.
-		// Without this wrapper, optional struct fields (`boss User?`)
-		// emit a plain `$ref` and TS client generators type the field
-		// as required `User`, refusing `null` even though the server
-		// accepts it.
+		// Optional named ref → 3.1 "ref OR null" wrapper (see nullableRef).
 		if t.Optional {
-			return &openapi3.SchemaRef{Value: &openapi3.Schema{
-				AllOf:    openapi3.SchemaRefs{{Ref: "#/components/schemas/" + name}},
-				Nullable: true,
-			}}
+			return nullableRef(name)
 		}
 		return &openapi3.SchemaRef{Ref: "#/components/schemas/" + name}
 	}
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
+}
+
+// nullableRef builds the OpenAPI 3.1 "ref OR null" wrapper —
+// `anyOf: [{$ref}, {type: null}]` — for an optional named-type or
+// generic-instance field. A bare `$ref` can not portably carry a
+// nullable marker (3.1 removed the `nullable` keyword), so an optional
+// struct field (`boss User?`) must compose the ref with the null type;
+// without it TS client generators type the field as required `User` and
+// refuse the `null` the server may send. [isNullableRefWrapper] is the
+// matching recogniser used when stamping field-level metadata.
+func nullableRef(refName string) *openapi3.SchemaRef {
+	return &openapi3.SchemaRef{Value: &openapi3.Schema{
+		AnyOf: openapi3.SchemaRefs{
+			{Ref: "#/components/schemas/" + refName},
+			{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}},
+		},
+	}}
 }
 
 // propertyNamesForMapKey returns the OpenAPI 3.1 `propertyNames`
@@ -262,49 +267,17 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 			subst[p] = args[i]
 		}
 	}
-	s := &openapi3.Schema{
-		Type:       &openapi3.Types{"object"},
-		Properties: openapi3.Schemas{},
-	}
-	var mixinRefs openapi3.SchemaRefs
-	for _, m := range decl.Body {
-		switch v := m.(type) {
-		case *ast.Field:
-			if hasSensitiveDecorator(v.Decorators) {
-				continue
-			}
-			s.Properties[v.Name] = schemaForTypeRef(substituteTypeRef(v.Type, subst), pkg, registry)
-			if fieldIsRequired(v) {
-				s.Required = append(s.Required, v.Name)
-			}
-		case *ast.Mixin:
-			// Embedded mixin inside a generic body. The mixin name
-			// itself does not undergo substitution: only TypeRef args
-			// (i.e. the `T` in `items: T[]`) participate in substitution.
-			// A mixin named after a type-param (`type X<Y> { Y }`) is
-			// disallowed at the DSL level - mixins are always
-			// PascalCase identifiers resolved against the package's
-			// type table.
-			if v == nil || v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-				Ref: "#/components/schemas/" + v.Ref.Name.String(),
-			})
-		}
-	}
-	if len(mixinRefs) > 0 {
-		host := &openapi3.Schema{
-			Type:       &openapi3.Types{"object"},
-			Properties: s.Properties,
-			Required:   s.Required,
-		}
-		mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
-		s.Properties = nil
-		s.Required = nil
-		s.AllOf = mixinRefs
-	}
-	return s
+	// Delegate to the shared body-walk with a populated substitution
+	// map. This is the ONLY behavioural difference from a top-level
+	// type: every field type is substituted (T -> the concrete arg)
+	// before emission. Everything else — per-field validator metadata,
+	// the type-level description / @deprecated flag, @header/@cookie
+	// exclusion, mixin allOf-flattening, and cross-field fragments — is
+	// applied identically, so a `Page<Order>` instance carries the same
+	// constraints the `Page<T>` decl declared. (Mixin names are never
+	// substituted: only TypeRef args participate; a mixin named after a
+	// type-param is disallowed at the DSL level.)
+	return schemaFromTypeDecl(decl, subst, pkg, registry)
 }
 
 // substituteTypeRef walks t and swaps every NamedTypeRef whose Name is
