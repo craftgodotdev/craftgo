@@ -17,7 +17,7 @@ func EchoScalar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsScalar
 		{
-			__d := 20
+			__d := types.PageSize(20)
 			req.Size = &__d
 		}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {

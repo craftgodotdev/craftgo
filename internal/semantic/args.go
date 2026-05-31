@@ -104,11 +104,11 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 // float / bool / null) or an array of those. An object `{k: v}` arg is
 // rejected: a struct example is composed from each field's own @example
 // by OpenAPI tooling, so the object-literal form only adds JSON-in-DSL
-// syntax with no benefit — and the emitter silently dropped it anyway.
-// For a free-form `any` / `map` field (no sub-fields to compose from),
-// describe the expected shape with @doc instead. A literal or array
-// lands in DecoratorArg.Value; an object (or nested @decorator) leaves
-// Value nil, which is the signature we reject.
+// syntax with no benefit. For a free-form `any` / `map` field (no
+// sub-fields to compose from), describe the expected shape with @doc
+// instead. A literal or array lands in DecoratorArg.Value; an object
+// (or nested @decorator) leaves Value nil, which is the signature this
+// check rejects.
 func (a *analyzer) checkExampleArg(d *ast.Decorator) {
 	if d == nil || d.Name != "example" {
 		return

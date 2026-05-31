@@ -11,9 +11,8 @@ type CreateUserReq struct {
 }
 
 // DeleteUserReq is the path-bound input for DELETE /users/{id}. It
-// mirrors GetUserReq - keeping the shape separate makes the binding
-// intent explicit at each call site and leaves room for future
-// soft-delete query flags without touching the read path.
+// mirrors GetUserReq as a separate shape so each binding site is
+// explicit.
 type DeleteUserReq struct {
 	ID string `json:"id"`
 }
@@ -30,9 +29,8 @@ type GetUserReq struct {
 }
 
 // UpdateUserReq is the request for PUT /users/{id}. The path-bound `id`
-// is required by the semantic phase to match the {id} segment; the body
-// fields mirror CreateUserReq so a JSON body shaped for create works for
-// update too.
+// matches the {id} segment; the body fields mirror CreateUserReq so a
+// create-shaped JSON body works for update too.
 type UpdateUserReq struct {
 	ID   string            `json:"-"`
 	Name string            `json:"name"`

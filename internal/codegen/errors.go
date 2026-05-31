@@ -200,6 +200,7 @@ type errorTemplateData struct {
 	Status             int
 	HasBody            bool
 	BodyFields         []errorBodyField
+	BodyMixins         []string
 	HasResponseHeaders bool
 	Headers            []errorBinding
 	Cookies            []errorBinding
@@ -225,11 +226,12 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) s
 		DSLName:            ed.Name,
 		Status:             categoryStatus[ed.Category],
 		BodyFields:         buildErrorBodyFields(errorCustomFields(ed)),
+		BodyMixins:         errorBodyMixins(ed),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
 		Headers:            toErrorBindings(headers),
 		Cookies:            toErrorBindings(cookies),
 	}
-	data.HasBody = len(data.BodyFields) > 0
+	data.HasBody = len(data.BodyFields) > 0 || len(data.BodyMixins) > 0
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
 		panic(fmt.Sprintf("codegen: render error %s: %v", ed.Name, err))
@@ -278,6 +280,26 @@ func toErrorBindings(in []paramBinding) []errorBinding {
 // unexported `code` / `message` metadata fields by virtue of Go's
 // case-sensitive identifiers (DSL `code` → exported Go `Code`,
 // distinct from the unexported framework field).
+// errorBodyMixins returns each mixin embedded in the error body as a Go
+// embed line target (bare or `pkg.Name` qualified). The error body
+// struct embeds them exactly like a regular type does, so the server can
+// populate the promoted fields the OpenAPI `allOf` advertises — without
+// this the body struct carries only its own fields and the
+// spec-conformant 4xx body could never be produced. (Errors are
+// server-built responses, so there is no Validate() to thread; the embed
+// alone closes the spec/struct gap.)
+func errorBodyMixins(ed *ast.ErrorDecl) []string {
+	var out []string
+	for _, m := range ed.Body {
+		mx, ok := m.(*ast.Mixin)
+		if !ok || mx == nil || mx.Ref == nil || mx.Ref.Name == nil {
+			continue
+		}
+		out = append(out, mx.Ref.Name.String())
+	}
+	return out
+}
+
 func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
 	var out []*ast.Field
 	for _, m := range ed.Body {

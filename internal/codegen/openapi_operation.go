@@ -100,7 +100,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		if hasBodyVerb(m.Verb) {
 			switch {
 			case isMultipart:
-				op.RequestBody = multipartRequestBody(formStrings, formFiles)
+				op.RequestBody = multipartRequestBody(formStrings, formFiles, pkg, registry)
 			case len(bins.body) > 0:
 				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 					Required: true,
@@ -393,7 +393,7 @@ func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 // runtime validator will accept, so users would upload an arbitrary
 // file and get a 400 from the validator instead of a typed rejection
 // at SDK call time.
-func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef {
+func multipartRequestBody(forms, files []paramBinding, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
 	// required lists every non-optional form/file field so a generated
 	// client mirrors the server's validator (a non-`?` `file @form` field
@@ -402,9 +402,19 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 	// handler then rejects with a 400.
 	var required []string
 	for _, f := range forms {
-		props[f.DSLName] = &openapi3.SchemaRef{Value: &openapi3.Schema{
-			Type: &openapi3.Types{"string"},
-		}}
+		// Build the field's real schema (type + `@maxLength` /
+		// nullability / ...) the same way the JSON body component does,
+		// instead of a bare `{type: string}` that drops every constraint
+		// from the SERVED schema while the unused `<Name>ReqBody`
+		// component kept them.
+		var ref *openapi3.SchemaRef
+		if f.Field != nil {
+			ref = schemaForTypeRef(f.Field.Type, pkg, registry)
+			applyFieldMetadata(f.Field, ref)
+		} else {
+			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+		}
+		props[f.DSLName] = ref
 		if f.Required {
 			required = append(required, f.DSLName)
 		}

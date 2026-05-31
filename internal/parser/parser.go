@@ -269,7 +269,10 @@ func (p *Parser) parseArray() ast.Expr {
 	pos := p.advance().Pos
 	arr := &ast.ArrayLit{Pos: pos}
 	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
-		arr.Elements = append(arr.Elements, p.parseValue())
+		// parseValueOrArray (not parseValue) so a NESTED array literal
+		// like `[["a", "b"], ["c"]]` parses — parseValue has no `[` case
+		// and would record a diagnostic on the inner bracket.
+		arr.Elements = append(arr.Elements, p.parseValueOrArray())
 		if p.peek().Kind == lexer.Comma {
 			p.advance()
 		}
@@ -902,11 +905,11 @@ func (p *Parser) parseMethod() *ast.Method {
 // immediately by an identifier-shaped token and a `}`.
 //
 // Reserved keywords (`service`, `file`, `type`, ...) and verb tokens
-// (`get`, `post`, ...) ARE accepted as parameter names — they're URL-level
+// (`get`, `post`, ...) are accepted as parameter names — they're URL-level
 // labels, not language constructs, so collisions with the DSL keyword
-// table should not propagate to route grammar. Without this, `/logs/{service}`
-// produced a 30+ diagnostic cascade because the disambiguator bailed and
-// the parser interpreted `{` as the method body's opening brace.
+// table do not propagate to route grammar (`/logs/{service}` is a path-param
+// named `service`, not a literal `/logs/` plus a method body opened by the
+// `service` keyword).
 func (p *Parser) parsePath() *ast.Path {
 	pos := p.peek().Pos
 	path := &ast.Path{Pos: pos}

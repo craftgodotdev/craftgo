@@ -522,6 +522,13 @@ func (l *Lexer) skipWhitespaceAndComments() {
 				l.advance()
 			}
 			line := l.src[start:l.offset]
+			// CRLF files leave a trailing '\r' before the '\n' the scan
+			// stops at; drop it so doc comments (and the OpenAPI
+			// descriptions built from them) don't carry a stray carriage
+			// return.
+			if len(line) > 0 && line[len(line)-1] == '\r' {
+				line = line[:len(line)-1]
+			}
 			if len(line) > 0 && line[0] == ' ' {
 				line = line[1:]
 			}

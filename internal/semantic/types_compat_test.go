@@ -160,19 +160,18 @@ func TestScalarTypeMismatch(t *testing.T) {
 func TestScalarUnknownPrimitiveRejected(t *testing.T) {
 	// A scalar's primitive slot must hold a built-in identifier.
 	// Typos like `scalar Weird unknownPrim` or self-references like
-	// `scalar Check Check` used to be silently accepted - the
-	// generated Go would compile but the inherited validators
-	// vanished. The check now flags the bad primitive at design
-	// time so the surprise lands before `craftgo gen`.
+	// `scalar Check Check` are flagged at design time: without the
+	// check the generated Go compiles but the inherited validators
+	// vanish.
 	d := expectDiag(t, `scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Weird", "unknownPrim")
 }
 
 func TestScalarSelfReferenceRejected(t *testing.T) {
-	// Regression: `scalar Name Name` declares a scalar that aliases
-	// itself - syntactically a noun in the primitive slot, but
-	// semantically meaningless (infinite recursion if the codegen
-	// ever tried to resolve the underlying primitive).
+	// `scalar Name Name` declares a scalar that aliases itself -
+	// syntactically a noun in the primitive slot, but semantically
+	// meaningless (infinite recursion if the codegen ever tried to
+	// resolve the underlying primitive).
 	d := expectDiag(t, `scalar Check Check`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Check")
 }

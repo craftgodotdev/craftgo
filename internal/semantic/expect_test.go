@@ -119,15 +119,10 @@ func expectNoCode(t *testing.T, src, code string) {
 }
 
 // expectMsg analyses ONE or MORE sources and asserts at least one
-// diagnostic's message contains substr. Replaces the legacy
-// `diagsContain` pattern which forced callers to:
-//
-//	_, diags := Analyze(parseFiles(t, src))
-//	if !diagsContain(diags, "substring") { t.Errorf(...) }
-//
-// Multi-source variant lets package-name-conflict and other multi-
-// file tests stay inline. Returns the matched diagnostic so callers
-// can chain further assertions.
+// diagnostic's message contains substr. The multi-source variant lets
+// package-name-conflict and other multi-file tests stay inline.
+// Returns the matched diagnostic so callers can chain further
+// assertions.
 func expectMsg(t *testing.T, substr string, sources ...string) *Diagnostic {
 	t.Helper()
 	_, diags := Analyze(parseFiles(t, sources...))

@@ -48,6 +48,28 @@ func (v *User) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Priority.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Priority) Validate() error {
+	switch v {
+	case PriorityLow, PriorityMed, PriorityHigh:
+	default:
+		return fmt.Errorf("Priority: invalid Priority value")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Role.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Role) Validate() error {
+	switch v {
+	case RoleAdmin, RoleUser, RoleGuest:
+	default:
+		return fmt.Errorf("Role: invalid Role value")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on ValidationFailedBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ValidationFailedBody) Validate() error {

@@ -7,12 +7,11 @@ import (
 
 // ---------- qualified generic arity (cross-package) ----------
 
-// TestQualifiedGenericRefMissingArgs pins the bug where a qualified
-// reference to a generic type without `<…>` slipped past every check
-// — checkGenerics skipped qualified refs (they're owned by the
-// project resolver), and the project resolver only verified package
-// + symbol existence, not arity. End-to-end the generic was rendered
-// as a bare unparameterised reference and compilation failed in Go.
+// TestQualifiedGenericRefMissingArgs pins that a qualified reference
+// to a generic type without `<…>` fires a generic-arity diagnostic.
+// checkGenerics skips qualified refs (the project resolver owns them),
+// so the project resolver is the single site that checks arity for a
+// qualified generic ref.
 func TestQualifiedGenericRefMissingArgs(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -111,9 +110,8 @@ service Foo { get Y /y { response R } }`,
 }
 
 func TestServiceCollisionSinglePackageStillUsesDuplicateCode(t *testing.T) {
-	// In-package duplicates keep firing CodeServiceDuplicate (not the
-	// new collision code) so existing tests / IDE quickfixes don't
-	// shift.
+	// In-package duplicates fire CodeServiceDuplicate, not the
+	// cross-package collision code.
 	root, files := projectFixture(t, map[string]string{
 		"svc.craftgo": `package x
 type R { ok bool }
@@ -466,8 +464,8 @@ middleware X`,
 	}
 }
 
-// TestNullableOnOptionalStillWarns confirms the existing redundancy
-// warning survives the new conflict-with-required branch.
+// TestNullableOnOptionalStillWarns confirms `@nullable` on a `T?`
+// field produces the redundancy warning.
 func TestNullableOnOptionalStillWarns(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type T { name string? @nullable }`))
@@ -496,10 +494,10 @@ type T {
 }`)
 }
 
-// TestErrorNameRejectedAsFieldType pins the bug fix: declaring a field
-// whose type is an `error` name (e.g. `field ref MissingErr` where
-// `error NotFound MissingErr` lives in the same package) MUST raise
-// a diagnostic - errors are reserved for `@errors(...)`.
+// TestErrorNameRejectedAsFieldType pins that declaring a field whose
+// type is an `error` name (e.g. `field ref MissingErr` where
+// `error NotFound MissingErr` lives in the same package) raises a
+// diagnostic - errors are reserved for `@errors(...)`.
 func TestErrorNameRejectedAsFieldType(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 error NotFound MissingErr

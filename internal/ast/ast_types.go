@@ -17,10 +17,9 @@ func (q *QualifiedIdent) String() string { return strings.Join(q.Parts, ".") }
 // Array and Optional are independent suffix flags so `T[]?` is legal.
 //
 // `ArrayDepth` is the number of trailing `[]` suffixes parsed (0 =
-// not an array). The legacy `Array bool` is kept as a derived
-// convenience for the wide set of call sites that only care
-// whether the field is "any kind of array" - it equals
-// `ArrayDepth > 0` after every parse.
+// not an array). `Array bool` is a derived convenience for call
+// sites that only care whether the field is "any kind of array" -
+// it equals `ArrayDepth > 0` after every parse.
 type TypeRef struct {
 	Pos      Pos
 	Map      *MapType

@@ -26,8 +26,7 @@
 //   - Tabs for indentation (Go-ecosystem convention; editors render the
 //     visual width via their own settings).
 //   - Field rows inside a type body are column-aligned by name and type
-//     so decorator chains line up - this is the single most-read shape
-//     in any service definition and aligning it pays for itself.
+//     so decorator chains line up.
 //   - The `request` / `response` lines inside a method body share a
 //     two-space alignment so the type column matches.
 package format

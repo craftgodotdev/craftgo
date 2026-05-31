@@ -52,10 +52,22 @@ type regexVar struct {
 // TypeParams is non-empty for generic decls - the template uses it to
 // build the receiver suffix `[T any, ...]` so the method is declared on
 // the parametric type itself, e.g. `func (v *Page[T]) Validate() error`.
+//
+// PtrReceiver picks the receiver form. Structs / generics / error
+// bodies validate through a `*T` receiver, which matches the rest of
+// the generated API and lets the generic type-assertion probe
+// `any(&elem)` find them. Scalars and enums are defined types whose
+// Validate() takes a VALUE receiver `func (v Email) Validate()` so the
+// body can cast the receiver to its primitive (`string(v)`) and so a
+// non-addressable map-range copy (`for _, val := range m {
+// val.Validate() }`) can call it. A value-receiver method is in both
+// the `T` and `*T` method sets, so the `any(&elem)` probe still
+// resolves it for generic instances.
 type validatorType struct {
-	Name       string
-	TypeParams []string
-	Checks     []string
+	Name        string
+	TypeParams  []string
+	Checks      []string
+	PtrReceiver bool
 }
 
 // GenerateValidators writes `validate.go` next to `types.go`. The file
@@ -64,8 +76,7 @@ type validatorType struct {
 // `req.Validate()` uniformly.
 //
 // Equivalent to [GenerateValidatorsPackage] with a nil [CrossPkg]
-// context - kept for backward compatibility with single-package
-// callers and tests.
+// context, for single-package callers and tests.
 func GenerateValidators(pkg *semantic.Package, outDir string) error {
 	return GenerateValidatorsPackage(pkg, outDir, nil)
 }
@@ -75,9 +86,8 @@ func GenerateValidators(pkg *semantic.Package, outDir string) error {
 // package alias used in pkg's field types so `req.User.Validate()`
 // can dispatch to the sibling package's validator.
 //
-// Equivalent to [GenerateValidatorsWith] with a nil scalar table -
-// scalar inheritance is disabled in this entry point so existing
-// single-package callers keep their pre-scalar-inheritance output.
+// Equivalent to [GenerateValidatorsWith] with a nil scalar table:
+// scalar inheritance is disabled in this entry point.
 func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
 	return GenerateValidatorsWith(pkg, outDir, crossPkg, nil, nil)
 }
@@ -86,10 +96,9 @@ func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg Cr
 // accepts the [ScalarTable] built by [BuildScalarTable] so a field
 // typed `Email` (local scalar) or `shared.NonEmptyID` (cross-pkg
 // scalar) inherits the scalar's own decorator chain into its
-// generated Validate() body. The [TypeTable] enables qualified
-// type refs (`shared.Page<T>`) to emit recursive `.Validate()`
-// calls — without it, those refs slipped past the local-only
-// `pkg.Types` lookup and the nested validate was silently dropped.
+// generated Validate() body. The [TypeTable] resolves qualified
+// type refs (`shared.Page<T>`), which the local-only `pkg.Types`
+// lookup cannot reach, so they emit recursive `.Validate()` calls.
 //
 // Used by the multi-package CLI flow; single-package fixtures and
 // tests continue calling [GenerateValidators] / [GenerateValidatorsPackage]
@@ -98,12 +107,10 @@ func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg Cross
 	return GenerateValidatorsAll(pkg, outDir, crossPkg, scalars, types, nil)
 }
 
-// GenerateValidatorsAll is the legacy explicit-tables entry point.
-// Retained for backward compatibility with tests that build tables
-// directly; new callers should prefer [GenerateValidatorsResolved],
-// which accepts a single [ProjectResolver] instead of four ad-hoc
-// tables. This wrapper assembles a resolver from the parameters and
-// delegates.
+// GenerateValidatorsAll is the explicit-tables entry point for tests
+// that build tables directly; [GenerateValidatorsResolved] accepts a
+// single [ProjectResolver] instead of four ad-hoc tables. This wrapper
+// assembles a resolver from the parameters and delegates.
 func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable, enums EnumTable) error {
 	r := &ProjectResolver{
 		Types:    types,
@@ -159,18 +166,51 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	for _, name := range names {
 		td := pkg.Types[name]
 		types = append(types, validatorType{
-			Name:       name,
-			TypeParams: td.TypeParams,
-			Checks:     collectChecks(td, pkg, r, ctx),
+			Name:        name,
+			TypeParams:  td.TypeParams,
+			Checks:      collectChecks(td, pkg, r, ctx),
+			PtrReceiver: true,
+		})
+	}
+
+	// Scalar / enum Validate() methods. Each constrained scalar
+	// (`scalar Email string @format(email)`) and every enum gets ONE
+	// Validate() method carrying the value-set / format / range checks
+	// declared on the type. Fields typed as that scalar / enum then
+	// dispatch through `v.Field.Validate()` (see [nestedValidateCall]),
+	// so the checks are declared once rather than inlined at every use
+	// site. Generic instances (`Page[Email]` / `Page[Color]`) validate
+	// their elements through the runtime `interface{ Validate() error }`
+	// probe, which only finds a method when one actually exists on the
+	// element type.
+	for _, name := range sortedKeys(pkg.Scalars) {
+		sd := pkg.Scalars[name]
+		if !scalarDeclHasValidators(sd) {
+			continue
+		}
+		types = append(types, validatorType{
+			Name:        name,
+			Checks:      scalarValidateChecks(sd, ctx),
+			PtrReceiver: false,
+		})
+	}
+	for _, name := range sortedKeys(pkg.Enums) {
+		ed := pkg.Enums[name]
+		checks := enumValidateChecks(ed)
+		if len(checks) > 0 {
+			uses["fmt"] = true
+		}
+		types = append(types, validatorType{
+			Name:        name,
+			Checks:      checks,
+			PtrReceiver: false,
 		})
 	}
 
 	// Errors with a custom body get their own `<Name>Body` Validate()
 	// so per-field decorators (`@minLength`, `@format`, `@gte` ...) on
-	// error-body fields actually fire at runtime. Without this the
-	// declared validators were generated as Go field tags but never
-	// invoked — error responses round-tripped untouched even when
-	// they violated the design constraints.
+	// error-body fields fire at runtime, the same as any other type's
+	// fields.
 	for _, name := range sortedKeys(pkg.Errors) {
 		ed := pkg.Errors[name]
 		fields := errorCustomFields(ed)
@@ -182,8 +222,9 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 			body.Body = append(body.Body, fl)
 		}
 		types = append(types, validatorType{
-			Name:   body.Name,
-			Checks: collectChecks(body, pkg, r, ctx),
+			Name:        body.Name,
+			Checks:      collectChecks(body, pkg, r, ctx),
+			PtrReceiver: true,
 		})
 	}
 
@@ -209,26 +250,31 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 //
 //  1. Decorator-driven validators (registry dispatch in validate_registry.go).
 //  2. Generic type-parameter fields → runtime type-assertion path.
-//  3. Enum-typed fields → auto switch-case validity check.
-//  4. User-defined struct fields → recursive `field.Validate()` call.
+//  3. Fields whose type carries a Validate() — user structs, generic
+//     instances, enums, and constrained scalars → recursive
+//     `field.Validate()` call (see [nestedValidateCall]).
 //
-// Steps 2-4 are mutually exclusive: a field is either a typeParam ref,
-// an enum, a struct, or a primitive. Primitives reach none of them.
+// Steps 2-3 are mutually exclusive: a field is either a typeParam ref,
+// a Validate()-carrying named type, or a plain primitive. Primitives
+// reach neither.
 func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, ctx emitCtx) []string {
 	var out []string
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			out = append(out, fieldChecksWithScalar(v, pkg, r.scalars(), ctx)...)
+			out = append(out, fieldChecksWithScalar(v, pkg, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
 				if call := typeParamValidateCall(v); call != "" {
 					out = append(out, call)
 				}
 				continue
 			}
-			if call := enumValueCheck(v, pkg, r, ctx.uses); call != "" {
-				out = append(out, call)
-			}
+			// Enum value-set checks and scalar format/range/length
+			// checks both dispatch through nestedValidateCall: the
+			// constraints live on the scalar's / enum's own Validate()
+			// method, and the field calls it (`v.Status.Validate()`).
+			// This keeps the check declared once and lets generic
+			// instances over a scalar / enum validate their elements.
 			if nested := nestedValidateCall(v, pkg, r); nested != "" {
 				out = append(out, nested)
 			}
@@ -236,12 +282,11 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 			// Embedded mixin: Go's field-promotion exposes the
 			// embedded fields directly on the host, but the
 			// embedded type's own Validate() method only fires
-			// when the host calls it. Without this dispatch the
-			// host's Validate() silently skipped every check
-			// declared on the mixin's fields, leaving validators
-			// effectively dead. The embedded field's Go name is
-			// the last segment of the mixin reference
-			// (`shared.Audit` embeds as `Audit`).
+			// when the host calls it, so the host dispatches to it
+			// explicitly to run the checks declared on the mixin's
+			// fields. The embedded field's Go name is the last
+			// segment of the mixin reference (`shared.Audit`
+			// embeds as `Audit`).
 			if call := mixinValidateCall(v); call != "" {
 				out = append(out, call)
 			}

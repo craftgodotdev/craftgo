@@ -37,10 +37,9 @@ func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 }
 
 // writeTrailing emits a `// note` after the just-written close brace
-// when the decl carries a trailing doc captured by the parser. Multiple
-// lines are joined with a space — multi-line trailing comments on a
-// single closing line are rare; the AST exposes []string for symmetry
-// with Doc rather than because we expect more than one entry.
+// when the decl carries a trailing doc captured by the parser. The AST
+// holds []string for symmetry with Doc; multiple lines are joined with
+// a single space.
 func (p *Printer) writeTrailing(td []string) {
 	if len(td) == 0 {
 		return
@@ -52,14 +51,11 @@ func (p *Printer) writeTrailing(td []string) {
 // writeSourceTrailing emits the trailing `// comment` captured from the
 // source line, but ONLY when no decorator on the same line already
 // emitted it via its own TrailingDoc. The lexer attaches a line-trailing
-// comment to BOTH the last decorator's TrailingDoc AND the source-scan
-// map (p.trailing, built by scanTrailingComments), so any decl that
-// prints its decorators must suppress the source-scan copy here.
-// Otherwise the same `// note` is written twice and DOUBLES on every
-// subsequent format pass — `craftgo fmt` becomes non-idempotent and
-// format-on-save balloons the comment (1→2→4→8…). All three decorated
-// print sites (fields, enum values, scalars) route through here so the
-// guard can never drift out of sync again.
+// comment to BOTH the last decorator's TrailingDoc AND the source line
+// map (p.trailing), so a decl that prints its decorators suppresses the
+// map copy here to keep the comment from being written twice. All three
+// decorated print sites (fields, enum values, scalars) route through
+// here.
 func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
 	if decoratorCarriesTrailing {
 		return

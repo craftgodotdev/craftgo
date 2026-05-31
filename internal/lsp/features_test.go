@@ -202,10 +202,9 @@ type T {
 // resilience contract: while a user is mid-typing (`extend `,
 // `service `, `type `, etc.) the parser may produce decls that are
 // only partially populated. The full pipeline - parser → semantic
-// analyzer → LSP diagnostics - must complete without panicking; a
+// analyzer → LSP diagnostics - must complete without panicking, since a
 // nil-pointer dereference in any stage crashes the whole language
-// server (a previous regression panicked at semantic.collectDecls
-// when the parser passed a typed-nil ServiceDecl through).
+// server.
 func TestSemanticSurvivesPartialEditsViaSnapshot(t *testing.T) {
 	cases := []string{
 		"package x\nextend ",
@@ -370,11 +369,10 @@ func keys(m map[string]string) []string {
 }
 
 // TestCompletionSuppressedAfterOpenBrace pins the "no auto-suggest
-// right after `{`" rule. The cursor sitting between `{` and `}`
-// without any in-progress identifier was popping the project-wide
-// decl list - noisy and unhelpful since the user hasn't signalled
-// what they want yet. Manual invocation or typing a character should
-// still surface relevant items via the other branches.
+// right after `{`" rule. A cursor between `{` and `}` without any
+// in-progress identifier returns no completions, since the user has
+// not signalled what they want yet. Manual invocation or typing a
+// character still surfaces relevant items via the other branches.
 func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	cases := []struct {
 		label string
@@ -438,11 +436,11 @@ func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 	expectLabels(t, items, "RealType")
 }
 
-// TestCompletionScalarPrimitivePosition pins the bug where typing
-// `scalar Email <cursor>` returned keyword completions instead of
-// the primitive set. The `scalar Name <primitive>` position is the
-// ONLY legal place to put a builtin, so the LSP must surface it
-// without the user having to remember the keyword set.
+// TestCompletionScalarPrimitivePosition checks that typing
+// `scalar Email <cursor>` offers the primitive set rather than the
+// keyword list. The `scalar Name <primitive>` slot is the ONLY legal
+// place to put a builtin, so the LSP surfaces it without the user
+// having to remember the keyword set.
 func TestCompletionScalarPrimitivePosition(t *testing.T) {
 	src := "package x\n\nscalar Email "
 	// Cursor right after `scalar Email ` (line 2, col 13).
@@ -468,9 +466,9 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 	expectLabels(t, items, "UserNotFoundErr", "EmailTakenErr")
 }
 
-// TestCompletionDecoratorOnScalarFiltersByPrimitive pins the bug where
-// `scalar Gmail string @<cursor>` listed `@gt` even though @gt only
-// applies to numeric types. The completion popup must intersect the
+// TestCompletionDecoratorOnScalarFiltersByPrimitive checks that
+// `scalar Gmail string @<cursor>` does not list `@gt`, which only
+// applies to numeric types. The completion popup intersects the
 // scalar's primitive with each decorator's AppliesTo so the user
 // only sees decorators the semantic phase would later accept.
 func TestCompletionDecoratorOnScalarFiltersByPrimitive(t *testing.T) {
@@ -683,12 +681,10 @@ type Holder {
 
 // findToken locates the first occurrence of needle in src and returns
 // its 0-indexed LSP position at the start of the token.
-// TestDefinitionPrefersKindFromDecoratorContext pins the LSP fix for
-// cross-namespace ambiguity: when an identifier names both a middleware
-// AND a same-named error decl, a click inside `@middlewares(...)` jumps
-// to the middleware decl - not the error decl declared earlier in the
-// file. Without this preference, the linear scan would always return
-// whichever decl appeared first in source order.
+// TestDefinitionPrefersKindFromDecoratorContext pins cross-namespace
+// disambiguation: when an identifier names both a middleware AND a
+// same-named error decl, a click inside `@middlewares(...)` jumps to
+// the middleware decl, not the error decl declared earlier in the file.
 func TestDefinitionPrefersKindFromDecoratorContext(t *testing.T) {
 	src := `package x
 error Forbidden AuthRequired { reason string }
@@ -776,13 +772,12 @@ type Holder { g Greeter }
 	}
 }
 
-// TestDefinitionKindAwareAcrossFiles pins the cross-file branch of
-// the context-aware lookup. The original report was that a click on
-// `AuthRequired` in `@middlewares(AuthRequired)` jumped to the same-
-// named error decl - even after the in-file fix - because the
-// project-wide `findDeclAcross` was still kind-blind. Here the
-// middleware lives in one virtual file, the error in another, and
-// the cursor in a third (the import-only `services` file).
+// TestDefinitionKindAwareAcrossFiles pins the cross-file branch of the
+// context-aware lookup: a click on `AuthRequired` in
+// `@middlewares(AuthRequired)` must resolve to the middleware decl, not
+// a same-named error decl in another file. Here the middleware lives in
+// one virtual file, the error in another, and the cursor in a third
+// (the import-only `services` file).
 func TestDefinitionKindAwareAcrossFiles(t *testing.T) {
 	mwFile := `package shared
 middleware AuthRequired
@@ -863,11 +858,10 @@ func findToken(t *testing.T, view snapshotView, needle string) protocol.Position
 }
 
 // mustHoverAt parses src, finds the first occurrence of needle, and
-// returns the hover markdown text. Collapses the
+// returns the hover markdown text. It bundles the
 // `parseSnapshot → findToken → tokenAt → hoverForToken → nil check`
-// 5-liner that previously opened every hover test into one call.
-// Fails when no hover is produced — tests use the return value to
-// assert on contents directly.
+// sequence into one call. Fails when no hover is produced — tests use
+// the return value to assert on contents directly.
 func mustHoverAt(t *testing.T, path, src, needle string) string {
 	t.Helper()
 	view := parseSnapshot(path, src)
@@ -902,9 +896,9 @@ func labelSet(items []protocol.CompletionItem) map[string]bool {
 	return got
 }
 
-// expectLabels asserts every want label appears in items. Replaces the
+// expectLabels asserts every want label appears in items, bundling the
 // `got := map[string]bool{...}; for _, w := range []string{...} { ...
-// !got[w] ... }` 6-liner that previously closed every completion test.
+// !got[w] ... }` check that closes every completion test.
 func expectLabels(t *testing.T, items []protocol.CompletionItem, wants ...string) {
 	t.Helper()
 	got := labelSet(items)

@@ -10,10 +10,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
-// AdminListProfiles is the auth-gated demo. The `@middlewares`
-// decorator wraps the handler with AuthRequired at gen time;
-// unauthenticated callers get a 401 from the middleware before the
-// handler runs.
+// AdminListProfiles is auth-gated. The `@middlewares` decorator
+// wraps the handler with AuthRequired at gen time; unauthenticated
+// callers get a 401 from the middleware before the handler runs.
 // AdminListProfiles returns the http.HandlerFunc for the
 // GET AdminListProfiles endpoint.
 func AdminListProfiles(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

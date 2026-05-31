@@ -10,9 +10,10 @@ enum Color {
 }
 
 // PageSize is a numeric scalar — every field of this type inherits
-// the @gte/@lte bounds. Used in DefaultScalar below to verify that the
-// @default literal threads through the scalar alias without losing the
-// inherited validators.
+// the @gte/@lte bounds, carried on PageSize.Validate(). Used in
+// DefaultScalar below to verify that the @default literal threads
+// through the scalar's defined type without losing the inherited
+// validators.
 scalar PageSize int @gte(1) @lte(100)
 
 // DefaultsBoundary parks each default literal AT or near the validator
@@ -28,12 +29,9 @@ type DefaultsBoundary {
 	negOne int?  @default(-1)  @lt(0)
 }
 
-// DefaultsConflict pins the case where the default literal WOULD fail
-// the per-field validator if the user accepted the pre-fill. The
-// semantics layer should ideally surface a warning so the user knows
-// the pre-fill yields an immediately-invalid value; if the layer is
-// silent, the generated code emits the default and then rejects it at
-// req.Validate() — a footgun.
+// DefaultsConflict exercises a default literal that fails the per-field
+// validator. Codegen accepts the design: the generated code emits the
+// default and then rejects the pre-filled value at req.Validate().
 type DefaultsConflict {
 	// Empty string default + @minLength(1). The pre-fill IS the
 	// validator's failure case.
@@ -74,7 +72,9 @@ type DefaultsEnum {
 }
 
 // DefaultsScalar uses a numeric-scalar default. The literal is a plain
-// int — the codegen widens it to the scalar alias via cast.
+// int — the codegen casts it to the scalar's defined type
+// (`PageSize(20)`) so the pointer pre-fill `__d := PageSize(20)` keeps
+// the field's `*PageSize` type.
 type DefaultsScalar {
 	size PageSize? @default(20)
 }

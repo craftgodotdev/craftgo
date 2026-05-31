@@ -57,11 +57,9 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	}
 	for _, f := range files {
 		for _, d := range f.Decls {
-			// Defensive: the parser is supposed to drop typed-nil
-			// pointers before they reach the AST, but mid-typing
-			// edits in the LSP have surfaced regressions before - a
-			// nil decl here used to crash the entire analyse. Skip
-			// instead.
+			// Defensive: the parser drops typed-nil pointers before
+			// they reach the AST, but mid-typing edits in the LSP can
+			// surface a nil decl here. Skip it rather than dereference.
 			if d == nil {
 				continue
 			}

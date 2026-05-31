@@ -4,19 +4,14 @@ package xrefs
 
 import (
 	"fmt"
-	"github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/xshared"
-	"net/mail"
-	"time"
 )
 
 // Validate checks every field-level constraint declared on XEnumDefault.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XEnumDefault) Validate() error {
 	if v.Color != nil {
-		switch *v.Color {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("color: invalid XColor value")
+		if err := v.Color.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -26,29 +21,21 @@ func (v *XEnumDefault) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XEnumMaps) Validate() error {
 	for _, val := range v.ByString {
-		switch val {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("byString value: invalid XColor value")
+		if err := val.Validate(); err != nil {
+			return err
 		}
 	}
 	for key := range v.ByEnum {
-		switch key {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("byEnum key: invalid XColor value")
+		if err := key.Validate(); err != nil {
+			return err
 		}
 	}
 	for key, val := range v.BothEnum {
-		switch key {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("bothEnum key: invalid XColor value")
+		if err := key.Validate(); err != nil {
+			return err
 		}
-		switch val {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("bothEnum value: invalid XColor value")
+		if err := val.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -57,23 +44,17 @@ func (v *XEnumMaps) Validate() error {
 // Validate checks every field-level constraint declared on XEnumScalar.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XEnumScalar) Validate() error {
-	switch v.Flat {
-	case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-	default:
-		return fmt.Errorf("flat: invalid XColor value")
+	if err := v.Flat.Validate(); err != nil {
+		return err
 	}
 	if v.Maybe != nil {
-		switch *v.Maybe {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("maybe: invalid XColor value")
+		if err := v.Maybe.Validate(); err != nil {
+			return err
 		}
 	}
-	for i := range v.Many {
-		switch v.Many[i] {
-		case xshared.XColorRed, xshared.XColorGreen, xshared.XColorBlue:
-		default:
-			return fmt.Errorf("many: invalid XColor value")
+	for i0 := range v.Many {
+		if err := v.Many[i0].Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -115,35 +96,20 @@ func (v *XLocalItem) Validate() error {
 // Validate checks every field-level constraint declared on XScalarBindings.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XScalarBindings) Validate() error {
-	if _, _err := mail.ParseAddress(v.Path); _err != nil {
-		return fmt.Errorf("path: not a valid email")
+	if err := v.Path.Validate(); err != nil {
+		return err
 	}
-	if len(v.Path) > 254 {
-		return fmt.Errorf("path: length greater than 254")
+	if err := v.Q.Validate(); err != nil {
+		return err
 	}
-	if _, _err := mail.ParseAddress(v.Q); _err != nil {
-		return fmt.Errorf("q: not a valid email")
+	if err := v.Hdr.Validate(); err != nil {
+		return err
 	}
-	if len(v.Q) > 254 {
-		return fmt.Errorf("q: length greater than 254")
+	if err := v.Ck.Validate(); err != nil {
+		return err
 	}
-	if _, _err := mail.ParseAddress(v.Hdr); _err != nil {
-		return fmt.Errorf("hdr: not a valid email")
-	}
-	if len(v.Hdr) > 254 {
-		return fmt.Errorf("hdr: length greater than 254")
-	}
-	if _, _err := mail.ParseAddress(v.Ck); _err != nil {
-		return fmt.Errorf("ck: not a valid email")
-	}
-	if len(v.Ck) > 254 {
-		return fmt.Errorf("ck: length greater than 254")
-	}
-	if v.Num < 1 {
-		return fmt.Errorf("num: below minimum 1")
-	}
-	if v.Num > 1000000 {
-		return fmt.Errorf("num: above maximum 1000000")
+	if err := v.Num.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -151,31 +117,22 @@ func (v *XScalarBindings) Validate() error {
 // Validate checks every field-level constraint declared on XScalarFields.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XScalarFields) Validate() error {
-	if _, _err := mail.ParseAddress(v.Flat); _err != nil {
-		return fmt.Errorf("flat: not a valid email")
-	}
-	if len(v.Flat) > 254 {
-		return fmt.Errorf("flat: length greater than 254")
+	if err := v.Flat.Validate(); err != nil {
+		return err
 	}
 	if v.Maybe != nil {
-		if _, _err := mail.ParseAddress(*v.Maybe); _err != nil {
-			return fmt.Errorf("maybe: not a valid email")
+		if err := v.Maybe.Validate(); err != nil {
+			return err
 		}
-	}
-	if v.Maybe != nil && len(*v.Maybe) > 254 {
-		return fmt.Errorf("maybe: length greater than 254")
 	}
 	for i0 := range v.Many {
-		if _, _err := mail.ParseAddress(v.Many[i0]); _err != nil {
-			return fmt.Errorf("many: not a valid email")
-		}
-		if len(v.Many[i0]) > 254 {
-			return fmt.Errorf("many: length greater than 254")
+		if err := v.Many[i0].Validate(); err != nil {
+			return err
 		}
 	}
 	for i0 := range v.Stamps {
-		if _, _err := time.Parse(time.RFC3339, v.Stamps[i0]); _err != nil {
-			return fmt.Errorf("stamps: not a valid RFC 3339 datetime")
+		if err := v.Stamps[i0].Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -184,29 +141,17 @@ func (v *XScalarFields) Validate() error {
 // Validate checks every field-level constraint declared on XSearchReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XSearchReq) Validate() error {
-	if _, _err := mail.ParseAddress(v.Q); _err != nil {
-		return fmt.Errorf("q: not a valid email")
+	if err := v.Q.Validate(); err != nil {
+		return err
 	}
-	if len(v.Q) > 254 {
-		return fmt.Errorf("q: length greater than 254")
+	if err := v.Hdr.Validate(); err != nil {
+		return err
 	}
-	if _, _err := mail.ParseAddress(v.Hdr); _err != nil {
-		return fmt.Errorf("hdr: not a valid email")
+	if err := v.Ck.Validate(); err != nil {
+		return err
 	}
-	if len(v.Hdr) > 254 {
-		return fmt.Errorf("hdr: length greater than 254")
-	}
-	if _, _err := mail.ParseAddress(v.Ck); _err != nil {
-		return fmt.Errorf("ck: not a valid email")
-	}
-	if len(v.Ck) > 254 {
-		return fmt.Errorf("ck: length greater than 254")
-	}
-	if v.Num < 1 {
-		return fmt.Errorf("num: below minimum 1")
-	}
-	if v.Num > 1000000 {
-		return fmt.Errorf("num: above maximum 1000000")
+	if err := v.Num.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

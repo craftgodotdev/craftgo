@@ -2,29 +2,29 @@
 
 package scalars
 
-// Cents is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
-type Cents = int
+// Cents is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Cents int
 
-// Email is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Email = string
+// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Email string
 
-// ISO3 is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type ISO3 = string
+// ISO3 is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type ISO3 string
 
-// NonEmpty is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type NonEmpty = string
+// NonEmpty is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type NonEmpty string
 
-// Percent is a DSL scalar - alias of float64 with the validators declared on it inherited by every field of this type.
-type Percent = float64
+// Percent is a DSL scalar over float64; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Percent float64
 
-// Tag is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Tag = string
+// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Tag string
 
-// URL is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type URL = string
+// URL is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type URL string
 
-// UUID is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type UUID = string
+// UUID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type UUID string
 
 // ArrayOfGenericInstance probes the array wrapper around a generic
 // instance: `Page<Order>[]` must render `items: { $ref: PageOfOrder }`,
@@ -64,7 +64,7 @@ type Bag struct {
 	Tags []Tag `json:"tags"`
 }
 
-// ConstrainedBox<T> is the field-metadata regression fixture. Unlike
+// ConstrainedBox<T> exercises field metadata on a generic body. Unlike
 // the other generics above (whose own body fields carry no validator
 // decorators), every non-parametric field here is decorated:
 //
@@ -72,14 +72,10 @@ type Bag struct {
 //   - label  @maxLength         → string length cap
 //   - stamp  @format            → string format hint
 //
-// Before the schemaForType/instantiateGeneric unification, the concrete
-// `ConstrainedBoxOfScalarsOrder` component walked the body WITHOUT
-// applyFieldMetadata, so it advertised bare `integer`/`string` and
-// dropped every bound, default, and format — hey-api / openapi-generator
-// then emitted unconstrained client types. The instance component MUST
-// now carry minimum/maximum/default/maxLength/format on these fields,
-// plus this decl's own description (generic instances inherit it the
-// same way a non-generic type would).
+// The concrete `ConstrainedBoxOfScalarsOrder` component carries
+// minimum/maximum/default/maxLength/format on these fields, plus this
+// decl's own description (generic instances inherit it the same way a
+// non-generic type would).
 type ConstrainedBox[T any] struct {
 	Item  T      `json:"item"`
 	Count *int   `json:"count,omitempty"`
@@ -111,6 +107,26 @@ type EchoWrappedReq struct {
 type Envelope[T any] struct {
 	Data T       `json:"data"`
 	Meta *string `json:"meta,omitempty"`
+}
+
+// GenericOverEnum is the enum counterpart: `Page<Priority>` rejects
+// elements outside the declared value set, resolving through the enum's
+// generated `switch` Validate().
+type GenericOverEnum struct {
+	Levels Page[Priority] `json:"levels"`
+}
+
+// GenericOverScalar exercises a generic instantiated over a
+// CONSTRAINED SCALAR. `Page<Email>` / `Page<Cents>` substitute T with a
+// scalar that carries @format / @maxLength / @gte / @lte. The
+// parametric Page[T].Validate() reaches each element through the
+// runtime `interface{ Validate() error }` probe, which resolves because
+// scalars emit as DEFINED Go types with their own Validate() method
+// (not bare aliases). The instance components (`PageOfScalarsEmail`,
+// `PageOfCents`) carry the element constraints via the element $ref.
+type GenericOverScalar struct {
+	Emails  Page[Email] `json:"emails"`
+	Amounts Page[Cents] `json:"amounts"`
 }
 
 // GetOrderReq pins a UUID-typed path parameter. The scalar's
@@ -151,9 +167,8 @@ type Maybe[T any] struct {
 
 // MaybeOrder exercises the `T?` substitution path inside the generic
 // body. The `Maybe<T>` decl has `value T?` so substituting T=Order
-// produces a field with nullable optional Order - the emitter must
-// preserve the `?` in the generated schema, not silently strip it
-// while walking through substitution.
+// yields a nullable-optional Order field, preserving the `?` through
+// substitution.
 type MaybeOrder struct {
 	Hit Maybe[Order] `json:"hit"`
 }
@@ -213,13 +228,12 @@ type PageOfPrimitiveHost struct {
 	Rows Page[string] `json:"rows"`
 }
 
-// GenericWithMixin pins mixin substitution through generics: a
-// generic body that embeds a mixin must NOT silently drop the
-// mixin's fields during instantiation. `PageWithAudit<T>` mixes
-// `AuditFields` inside its body; the substituted
-// `PageWithAudit<Order>` component must list `createdAt` /
-// `updatedAt` (from AuditFields) in addition to its own `items` /
-// `total`.
+// GenericWithMixin exercises mixin substitution through generics: a
+// generic body that embeds a mixin carries the mixin's fields through
+// instantiation. `PageWithAudit<T>` mixes `AuditFields` inside its
+// body; the substituted `PageWithAudit<Order>` component lists
+// `createdAt` / `updatedAt` (from AuditFields) in addition to its own
+// `items` / `total`.
 type PageWithAudit[T any] struct {
 	AuditFields
 	Items []T `json:"items"`
@@ -261,6 +275,20 @@ type RecursiveHost struct {
 	Root Tree[Order] `json:"root"`
 }
 
+// ScalarFieldOverrides exercises a field-level decorator STACKED on a
+// SCALAR-typed field. The scalar carries its own bounds (on its
+// Validate()); the field NARROWS them further. Because scalars are
+// DEFINED Go types (`type Cents int`), the generated validator
+// derefs+casts the scalar to its primitive and runs each stacked
+// decorator: `amount` rejects > 500 (Cents alone allows up to 1e9),
+// `discount` the optional variant, `code` rejects len > 5 (Tag alone
+// allows up to 20).
+type ScalarFieldOverrides struct {
+	Amount   Cents  `json:"amount"`
+	Discount *Cents `json:"discount,omitempty"`
+	Code     Tag    `json:"code"`
+}
+
 // Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
 // The keywords field is `Tag[]?` so the wire may omit it entirely; when
 // present every element runs Tag's @pattern check. The limit field
@@ -272,13 +300,11 @@ type Search struct {
 }
 
 // Tree<T> is the marquee recursive-generic test: the body references
-// `Tree<T>` itself through the `kids` field. Pre-refactor inlining
-// would infinite-loop substituting T=Order. Post-refactor the
-// instance registers as `TreeOfOrder`, emits its body, hits
-// `kids: Tree<T>[]` substituted to `Tree<Order>[]`, asks the
-// registry for the component name, finds `TreeOfOrder` is already
-// registered, and emits `$ref:TreeOfOrder` - the cycle terminates
-// as a reference.
+// `Tree<T>` itself through the `kids` field. The instance registers
+// as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted
+// to `Tree<Order>[]`, asks the registry for the component name, finds
+// `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` — the
+// cycle terminates as a reference.
 type Tree[T any] struct {
 	Val  T         `json:"val"`
 	Kids []Tree[T] `json:"kids"`

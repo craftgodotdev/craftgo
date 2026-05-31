@@ -116,6 +116,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectExtendOrphans()
 	r.checkProjectMiddlewareUniqueness()
 	r.checkProjectMiddlewareRefs(files)
+	r.checkProjectErrorRefs(files)
 	r.checkProjectFieldDefaults()
 	r.checkProjectMixins()
 	r.checkProjectBindings()

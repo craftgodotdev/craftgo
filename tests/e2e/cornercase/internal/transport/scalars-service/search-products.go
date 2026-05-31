@@ -17,7 +17,7 @@ func SearchProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Search
 		{
-			__d := 20
+			__d := types.Cents(20)
 			req.Limit = &__d
 		}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {

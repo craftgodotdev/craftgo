@@ -30,11 +30,11 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 	return string(out)
 }
 
-// TestGenerateOpenAPIEnumSchemasEmitted pins the bug fix: every field
+// TestGenerateOpenAPIEnumSchemasEmitted checks that every field
 // referencing an enum type produces a `$ref` whose target schema
 // lives under components.schemas. Both string-based and int-based
 // enums are exercised. The full YAML goes through a golden snapshot;
-// regressions surface as a diff hunk pointing at the divergent line.
+// a mismatch surfaces as a diff hunk pointing at the divergent line.
 // TestGenerateOpenAPISensitiveFieldOmitted asserts that `@sensitive`
 // fields are skipped entirely from the OpenAPI spec - not present in
 // schema.properties, not listed under required, not surfaced as a
@@ -85,9 +85,8 @@ service S { post Send /m { request Req } }`)
 
 // TestGenerateOpenAPIScalarFullConstraints checks that every scalar
 // decorator family (format / length / pattern / numeric bounds /
-// multipleOf) flows into the component schema. If only `@format`
-// reached OpenAPI, generated TS clients would lose validators the
-// runtime still enforces — a silent spec/runtime drift.
+// multipleOf) flows into the component schema, so generated TS clients
+// keep every validator the runtime enforces.
 func TestGenerateOpenAPIScalarFullConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Email     string @format(email) @maxLength(254)
@@ -208,10 +207,10 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIMethodNameCollision pins that two services sharing
-// a method name no longer collide: their operationId and the
+// TestGenerateOpenAPIMethodNameCollision checks that two services sharing
+// a method name do not collide: their operationId and the
 // <Method>ReqBody/RespBody component schemas are service-prefixed and
-// unique, a unique method name stays bare (no churn), and an explicit
+// unique, a unique method name stays bare, and an explicit
 // @operationId still overrides the operationId (while its component
 // names follow the collision-free base so they never clash).
 func TestGenerateOpenAPIMethodNameCollision(t *testing.T) {
@@ -294,12 +293,11 @@ service S { get Get /g { response Resp } }`
 	}
 }
 
-// TestGenerateOpenAPITypeSchemaExcludesHeaderFields pins that @header /
+// TestGenerateOpenAPITypeSchemaExcludesHeaderFields checks that @header /
 // @cookie fields are dropped from a type's component schema — they ride
-// on response headers / cookies (json:"-"), never the JSON body. Before
-// this, the component listed them as required body props, so generated
-// clients (e.g. @hey-api/openapi-ts) emitted a type with a field the
-// wire never carries.
+// on response headers / cookies (json:"-"), never the JSON body, so a
+// generated client (e.g. @hey-api/openapi-ts) does not emit a type with
+// a field the wire never carries.
 func TestGenerateOpenAPITypeSchemaExcludesHeaderFields(t *testing.T) {
 	src := `package design
 type ListResp {
@@ -363,11 +361,10 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPISameStatusErrorsMerge pins the @errors merge:
-// two error decls sharing one HTTP status (e.g. both Conflict) must
-// render as `oneOf` so neither vanishes from the spec. Before the
-// merge, the second op.Responses.Set call overwrote the first and the
-// earlier error became invisible to OpenAPI consumers.
+// TestGenerateOpenAPISameStatusErrorsMerge checks the @errors merge:
+// two error decls sharing one HTTP status (e.g. both Conflict) render
+// as `oneOf` so neither vanishes from the spec — without the merge a
+// second op.Responses.Set call overwrites the first.
 func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
 	src := `package design
 error Conflict EmailTaken { email string }
@@ -431,8 +428,7 @@ service S {
 }
 
 // TestGenerateOpenAPIExampleNullable covers the field-side metadata
-// pair (@example/@nullable). Aliases on enum values were removed -
-// the API surface insisted on canonical wire vocabulary.
+// pair (@example/@nullable).
 func TestGenerateOpenAPIExampleNullable(t *testing.T) {
 	src := `package design
 type T {
@@ -533,12 +529,11 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIMultipartRequired pins that the multipart
+// TestGenerateOpenAPIMultipartRequired checks that the multipart
 // form-data schema lists every NON-optional form/file field under
-// `required[]` and omits optional (`?`) ones. Before this the schema
-// carried `properties` but no `required`, so a generated client treated
-// a mandatory file upload as optional and let the caller omit a file the
-// server's validator then rejected with a 400 — a spec↔runtime drift.
+// `required[]` and omits optional (`?`) ones, so a generated client
+// mirrors the server's validator instead of treating a mandatory file
+// upload as optional.
 func TestGenerateOpenAPIMultipartRequired(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq {
@@ -628,15 +623,13 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata pins the H4
-// fix: a concrete generic instance must inherit the SAME field-level
-// validator metadata (@gte/@lte/@default/@maxLength/@format) and the
-// type-level description that a non-generic type of the same shape
-// carries. Before schemaForType and instantiateGeneric were unified
-// onto one body-walk ([schemaFromTypeDecl]), the instance dropped every
-// constraint and the description, so a client generated from the spec
-// saw an unconstrained object even though the runtime validator still
-// enforced the bounds — a silent spec↔runtime contract drift.
+// TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata checks that a
+// concrete generic instance inherits the SAME field-level validator
+// metadata (@gte/@lte/@default/@maxLength/@format) and the type-level
+// description that a non-generic type of the same shape carries.
+// schemaForType and instantiateGeneric share one body-walk
+// ([schemaFromTypeDecl]), so the instance keeps every constraint and
+// the description the runtime validator also enforces.
 func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -669,12 +662,10 @@ service S { get Get /things { response Host } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericInstanceMixinFlatten pins mixin
+// TestGenerateOpenAPIGenericInstanceMixinFlatten checks mixin
 // preservation through generic substitution: a mixin reference inside
-// the generic body must surface in the instance component via the
+// the generic body surfaces in the instance component via the
 // `allOf` composition, identical to the non-generic mixin emission.
-// An earlier walker dropped mixin members during instantiation -
-// `Page<Order>` would lose audit fields its template inherited.
 func TestGenerateOpenAPIGenericInstanceMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Audit { createdAt string  updatedAt string }
@@ -695,12 +686,12 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
-// TestGenerateOpenAPIRecursiveGenericTerminatesViaRef pins the
+// TestGenerateOpenAPIRecursiveGenericTerminatesViaRef checks the
 // termination guarantee for self-referential generics like
-// `type Tree<T> = { val: T, kids: Tree<T>[] }`. Pre-refactor the
-// inlining path would infinite-loop; post-refactor the registry
+// `type Tree<T> = { val: T, kids: Tree<T>[] }`. The registry
 // short-circuits by returning the already-registered component name
-// when the substituted body re-encounters the same instance.
+// when the substituted body re-encounters the same instance, so
+// emission terminates instead of inlining forever.
 func TestGenerateOpenAPIRecursiveGenericTerminatesViaRef(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Leaf { id string }
@@ -1133,11 +1124,10 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIBasePathNotDuplicated regression-tests the bug
-// where `basePath: /api` produced path keys like `/api/v1/foo` AND a
-// servers[0].url of `/api`, so spec resolvers (kin-openapi, swagger-cli)
-// computed the request URL as `/api/api/v1/foo`. After the fix path
-// keys are relative and the basePath lives only in servers[0].url.
+// TestGenerateOpenAPIBasePathNotDuplicated checks that `basePath: /api`
+// keeps path keys relative and puts the basePath only in
+// servers[0].url, so spec resolvers (kin-openapi, swagger-cli) compute
+// `/api/v1/foo` rather than the doubled `/api/api/v1/foo`.
 func TestGenerateOpenAPIBasePathNotDuplicated(t *testing.T) {
 	pkg := analyze(t, `package design
 type GetThingReq { id string @path }
@@ -1304,7 +1294,7 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"schemas:",
 	)
 	// Negative: the basePath must NOT appear at the start of any path
-	// key - that's the doubled-prefix bug from before the fix.
+	// key - that would be a doubled prefix.
 	if strings.Contains(src, "/v1/api/v1/users/{id}") {
 		t.Errorf("path key still has duplicated basePath:\n%s", src)
 	}
@@ -1405,12 +1395,9 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIGetWithBodySkipped confirms that even on a GET, a
-// `@body` decorator causes the field to be excluded from parameters.
-// Note: @body on a non-body verb (the former "GET with body skipped"
-// case) is now rejected at semantic time — see
-// TestBodyFormOnNonBodyVerbRejected in internal/semantic. It can no
-// longer be authored, so there is no codegen behaviour left to assert.
+// @body / @form on a non-body verb is rejected at semantic time — see
+// TestBodyFormOnNonBodyVerbRejected in internal/semantic — so there is
+// no codegen behaviour for the "GET with body" case to assert here.
 
 // TestGenerateOpenAPICookieAndHeaderInline pins the rule that path /
 // query / header / cookie bins stay inline as parameters; only the body
@@ -1629,5 +1616,57 @@ service S {
 	}
 	if !strings.Contains(uploadBlock, "multipart/form-data") {
 		t.Errorf("Upload op missing multipart/form-data:\n%s", uploadBlock)
+	}
+}
+
+// TestGenerateOpenAPISecurityArrayRegistersSchemes checks that the
+// array form @security([A, B]) (the AND form) registers BOTH schemes
+// under components.securitySchemes, not just bare-ident @security(A).
+func TestGenerateOpenAPISecurityArrayRegistersSchemes(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Req { id string }
+service S {
+    @security([Bearer, ApiKey])
+    get Get /x { request Req }
+}`)
+	mustContainAll(t, body, "Bearer:", "ApiKey:")
+}
+
+// TestGenerateOpenAPIErrorSchemaRequired checks that an error schema
+// lists its non-optional fields under required[] (an optional field
+// stays out).
+func TestGenerateOpenAPIErrorSchemaRequired(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+error Conflict DuplicateKey { resource string  detail string? }
+type Req { id string }
+type Res { ok bool }
+service S {
+    @errors(DuplicateKey)
+    post Make /m { request Req  response Res }
+}`)
+	i := strings.Index(body, "DuplicateKeyErr:")
+	if i < 0 {
+		t.Fatalf("error schema missing:\n%s", body)
+	}
+	block := body[i:min(i+300, len(body))]
+	r := strings.Index(block, "required:")
+	if r < 0 || !strings.Contains(block[r:], "- resource") {
+		t.Errorf("required[] must list non-optional `resource`:\n%s", block)
+	}
+	if r >= 0 && strings.Contains(block[r:min(r+50, len(block))], "detail") {
+		t.Errorf("optional `detail` must not be in required[]:\n%s", block)
+	}
+}
+
+// TestGenerateOpenAPIMapItemsConstraints checks that @minItems/
+// @maxItems on a map emit the OBJECT keywords minProperties/maxProperties
+// (entry count), never the array-only minItems/maxItems.
+func TestGenerateOpenAPIMapItemsConstraints(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type T { counts map<string, int> @minItems(1) @maxItems(50) }
+service S { post Make /m { request T } }`)
+	mustContainAll(t, body, "minProperties: 1", "maxProperties: 50")
+	if strings.Contains(body, "minItems") || strings.Contains(body, "maxItems") {
+		t.Errorf("map size must use min/maxProperties, not min/maxItems:\n%s", body)
 	}
 }

@@ -12,7 +12,8 @@ import (
 )
 
 // GetItem drives the path-scalar binder: id lands as the UUID
-// alias, the inherited @format(uuid) fires during req.Validate().
+// scalar type, the inherited @format(uuid) fires (via UUID.Validate())
+// during req.Validate().
 // GetItem returns the http.HandlerFunc for the
 // GET GetItem endpoint.
 func GetItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

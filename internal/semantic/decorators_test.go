@@ -295,12 +295,11 @@ func TestCodeOnExtendOrphan(t *testing.T) {
 	expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
 }
 
-// TestExtendServiceDecoratorsPropagate pins the relax of the previous
-// "extend service must not have service-level decorators" rule: an
-// `extend service` block can now carry its own decorators which the
-// merge step prepends to every method's chain inside that block. This
-// is the mechanism that lets one logical service split into public
-// and authenticated sub-blocks via decorators-on-extend.
+// TestExtendServiceDecoratorsPropagate pins that an `extend service`
+// block can carry its own decorators which the merge step prepends to
+// every method's chain inside that block. This lets one logical service
+// split into public and authenticated sub-blocks via
+// decorators-on-extend.
 func TestExtendServiceDecoratorsPropagate(t *testing.T) {
 	pkg, diags := Analyze(parseFiles(t, `middleware Auth
 service S { get Pub /pub {} }
@@ -415,8 +414,8 @@ type X { p Page<string> @query }`, "@query requires"},
 }
 
 func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
-	// Sanity: the new check must NOT fire for the well-formed shapes
-	// codegen has always accepted.
+	// Sanity: the binding-type check must NOT fire for well-formed
+	// shapes (plain string on @path / @header / @cookie).
 	mustClean(t, `type X { id string @path  auth string @header  sid string @cookie }`)
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
 }
@@ -441,10 +440,10 @@ service S { post Make /things { request Req } }`)
 service S { put Replace /things { request Req } }`)
 }
 
-// TestBindingTypeWireAccepts pins the Round-2.5 unification: every
-// HTTP wire-string source (@query, @header, @cookie, @form) accepts
-// the same primitive / scalar / enum / array set. The runtime codegen
-// then emits the matching parse + cast path. file is @form-only.
+// TestBindingTypeWireAccepts pins that every HTTP wire-string source
+// (@query, @header, @cookie, @form) accepts the same primitive /
+// scalar / enum / array set. The runtime codegen then emits the
+// matching parse + cast path. file is @form-only.
 func TestBindingTypeWireAccepts(t *testing.T) {
 	cases := []struct {
 		label string
@@ -472,10 +471,10 @@ type X { a Priority @query  b Priority @header  c Priority @cookie  d Priority @
 }
 
 func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
-	// `code` / `message` are no longer reserved DSL names - they
-	// coexist with the framework's unexported `code` / `message`
-	// metadata via Go's case-sensitive identifier rule (DSL `code` →
-	// exported `Code`, distinct from the lowercase framework field).
+	// `code` / `message` are not reserved DSL names - they coexist
+	// with the framework's unexported `code` / `message` metadata via
+	// Go's case-sensitive identifier rule (DSL `code` → exported
+	// `Code`, distinct from the lowercase framework field).
 	mustClean(t, `error NotFound E {
     code string? @default("E_404")
     message string? @default("Gone")

@@ -4,6 +4,8 @@ package shared
 
 import (
 	"fmt"
+	"net/mail"
+	"net/url"
 	"regexp"
 	"time"
 )
@@ -14,20 +16,18 @@ import (
 // literal so regexes containing a backtick, backslash, or quote still
 // produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile("^[A-Za-z0-9_-]+$")
+	_pattern0 = regexp.MustCompile("^[A-Z]{2}$")
+	_pattern1 = regexp.MustCompile("^[A-Z]{3}$")
+	_pattern2 = regexp.MustCompile("^[A-Za-z0-9_-]+$")
+	_pattern3 = regexp.MustCompile("^[A-Z0-9-]{4,32}$")
+	_pattern4 = regexp.MustCompile("^[a-z][a-z0-9-]*$")
 )
 
 // Validate checks every field-level constraint declared on AuditFields.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AuditFields) Validate() error {
-	if len(v.AuditedBy) < 1 {
-		return fmt.Errorf("auditedBy: length less than 1")
-	}
-	if len(v.AuditedBy) > 128 {
-		return fmt.Errorf("auditedBy: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.AuditedBy) {
-		return fmt.Errorf("auditedBy: does not match pattern")
+	if err := v.AuditedBy.Validate(); err != nil {
+		return err
 	}
 	if _, _err := time.Parse(time.RFC3339, v.AuditedAt); _err != nil {
 		return fmt.Errorf("auditedAt: not a valid RFC 3339 datetime")
@@ -97,16 +97,157 @@ func (v *Result[T, E]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Cents.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Cents) Validate() error {
+	if int(v) < 0 {
+		return fmt.Errorf("Cents: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on CountryCode.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v CountryCode) Validate() error {
+	if l := len(string(v)); l < 2 || l > 2 {
+		return fmt.Errorf("CountryCode: length out of range [2, 2]")
+	}
+	if !_pattern0.MatchString(string(v)) {
+		return fmt.Errorf("CountryCode: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on CurrencyCode.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v CurrencyCode) Validate() error {
+	if l := len(string(v)); l < 3 || l > 3 {
+		return fmt.Errorf("CurrencyCode: length out of range [3, 3]")
+	}
+	if !_pattern1.MatchString(string(v)) {
+		return fmt.Errorf("CurrencyCode: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Email.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Email) Validate() error {
+	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+		return fmt.Errorf("Email: not a valid email")
+	}
+	if len(string(v)) > 254 {
+		return fmt.Errorf("Email: length greater than 254")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Latitude.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Latitude) Validate() error {
+	if float64(v) < -90 {
+		return fmt.Errorf("Latitude: below minimum -90")
+	}
+	if float64(v) > 90 {
+		return fmt.Errorf("Latitude: above maximum 90")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Longitude.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Longitude) Validate() error {
+	if float64(v) < -180 {
+		return fmt.Errorf("Longitude: below minimum -180")
+	}
+	if float64(v) > 180 {
+		return fmt.Errorf("Longitude: above maximum 180")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on NonEmptyID.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v NonEmptyID) Validate() error {
+	if len(string(v)) < 1 {
+		return fmt.Errorf("NonEmptyID: length less than 1")
+	}
+	if len(string(v)) > 128 {
+		return fmt.Errorf("NonEmptyID: length greater than 128")
+	}
+	if !_pattern2.MatchString(string(v)) {
+		return fmt.Errorf("NonEmptyID: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PercentBP.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v PercentBP) Validate() error {
+	if int(v) < 0 {
+		return fmt.Errorf("PercentBP: below minimum 0")
+	}
+	if int(v) > 10000 {
+		return fmt.Errorf("PercentBP: above maximum 10000")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on SKU.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v SKU) Validate() error {
+	if !_pattern3.MatchString(string(v)) {
+		return fmt.Errorf("SKU: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on SafeURL.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v SafeURL) Validate() error {
+	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+		return fmt.Errorf("SafeURL: not a valid URL")
+	}
+	if len(string(v)) > 2048 {
+		return fmt.Errorf("SafeURL: length greater than 2048")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Slug.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Slug) Validate() error {
+	if len(string(v)) < 1 {
+		return fmt.Errorf("Slug: length less than 1")
+	}
+	if len(string(v)) > 64 {
+		return fmt.Errorf("Slug: length greater than 64")
+	}
+	if !_pattern4.MatchString(string(v)) {
+		return fmt.Errorf("Slug: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on MaintenanceReason.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v MaintenanceReason) Validate() error {
+	switch v {
+	case MaintenanceReasonScheduled, MaintenanceReasonIncident, MaintenanceReasonCapacity:
+	default:
+		return fmt.Errorf("MaintenanceReason: invalid MaintenanceReason value")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on MaintenanceWindowBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MaintenanceWindowBody) Validate() error {
 	if v.Reason == "" {
 		return fmt.Errorf("reason: required")
 	}
-	switch v.Reason {
-	case MaintenanceReasonScheduled, MaintenanceReasonIncident, MaintenanceReasonCapacity:
-	default:
-		return fmt.Errorf("reason: invalid MaintenanceReason value")
+	if err := v.Reason.Validate(); err != nil {
+		return err
 	}
 	if _, _err := time.Parse(time.RFC3339, v.EstimatedEndAt); _err != nil {
 		return fmt.Errorf("estimatedEndAt: not a valid RFC 3339 datetime")

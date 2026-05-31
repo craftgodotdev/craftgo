@@ -55,6 +55,13 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 					continue
 				}
 				s.Properties[v.Name] = schemaForTypeRef(v.Type, pkg, registry)
+				// Non-optional error fields belong in required[] — same
+				// model as type schemas. Without this a generated client
+				// types every error field as optional even though the
+				// runtime always emits it.
+				if fieldIsRequired(v) {
+					s.Required = append(s.Required, v.Name)
+				}
 			case *ast.Mixin:
 				// Embedded mixin: same `allOf: [$ref]` shape that
 				// `schemaForType` uses for TypeDecl, so error schemas
@@ -133,10 +140,10 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) 
 //   - `@positive` / `@negative` → strict bound at 0
 //   - `@multipleOf(N)` → multipleOf
 //
-// Without these the OpenAPI spec collapsed every scalar back to its
-// bare primitive — the runtime validator enforced the rules but
-// generated TS clients saw only `string` / `number` and could send
-// values the server would reject.
+// Carrying these keeps the spec from collapsing every scalar back to
+// its bare primitive, so generated TS clients see the same
+// `string` / `number` constraints the runtime validator enforces
+// rather than values the server would reject.
 func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
 	for _, name := range sortedKeys(pkg.Scalars) {
 		sc := pkg.Scalars[name]

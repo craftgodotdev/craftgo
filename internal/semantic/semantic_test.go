@@ -160,7 +160,7 @@ func TestServiceExtendWithoutPrimary(t *testing.T) {
 
 // TestServiceExtendWithServiceOnlyDecorator pins the validation that
 // a service-only decorator like `@prefix` is rejected when it lands on
-// an `extend service` block - those blocks now propagate decorators to
+// an `extend service` block - those blocks propagate decorators to
 // methods inside them, so a decorator with no method-level form has
 // nothing meaningful to do.
 func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
@@ -169,9 +169,9 @@ func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
 extend service S { get Op /x {} }`)
 }
 
-// TestServiceExtendDecoratorPropagatesToMethods is the happy path for
-// the extend-service decorator relax: a method-level-applicable
-// decorator on the extend block reaches every method inside.
+// TestServiceExtendDecoratorPropagatesToMethods is the happy path:
+// a method-level-applicable decorator on the extend block reaches
+// every method inside.
 func TestServiceExtendDecoratorPropagatesToMethods(t *testing.T) {
 	pkg, diags := Analyze(parseFiles(t, `middleware Auth
 service S { get A /a {} }
@@ -326,9 +326,9 @@ func TestDuplicateDecoratorOnMethod(t *testing.T) {
 	}`)
 }
 
-// TestRepeatableDecoratorAllowedOnMethod pins the relax: multiple
-// `@tags` decorators on the same method are valid - each contributes
-// its arguments to the aggregate the codegen layer reads.
+// TestRepeatableDecoratorAllowedOnMethod pins that multiple `@tags`
+// decorators on the same method are valid - each contributes its
+// arguments to the aggregate the codegen layer reads.
 func TestRepeatableDecoratorAllowedOnMethod(t *testing.T) {
 	expectNoMsg(t, "duplicate decorator @tags", `service S {
 		@tags("a")

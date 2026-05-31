@@ -56,25 +56,15 @@ type EntitlementsAuditTrail struct {
 	Action string `json:"action"`
 }
 
-// GetUserReq is the workaround for the cross-package-scalar bug.
-//
-// Originally `id shared.ID @path`, but `isStringBindingType` /
-// `stringBindable` look up scalar declarations in the CURRENT
-// package only (`pkg.Scalars[name]`). The qualified name
-// `"shared.ID"` misses the map and the check falls through with
-// `@path requires a string-backed field ... - got shared.ID`,
-// even though `shared.ID` IS a `scalar ID string`. So @path /
-// @header / @cookie / @query all refuse cross-package scalars
-// across the entire binding surface.
-//
-// The local-string-with-length workaround replays shared.ID's
-// validator stack manually — the bug is recorded in the report.
+// GetUserReq is the path-only request for GetUser / DeleteUser. The
+// `id` field is a local `string @path` that replays shared.ID's length
+// cap inline via @length(1, 64).
 type GetUserReq struct {
 	ID string `json:"-"`
 }
 
-// HealthResp is a minimal envelope for the liveness probe - a bare
-// boolean would force a wrapper anyway, so we make it explicit.
+// HealthResp is a minimal envelope for the liveness probe - a single
+// boolean field wrapped in a response struct.
 type HealthResp struct {
 	Ok bool `json:"ok"`
 }
@@ -134,10 +124,9 @@ type Project struct {
 }
 
 // ProjectsResp wraps a slice in an envelope so the response shape
-// stays inside what `parseNamedTypeRef` accepts. The brick wall
-// the original spec hit: `response Project[]` won't parse — the
-// method body's `response` slot is a NamedTypeRef and never sees
-// the array-suffix branch.
+// stays inside what `parseNamedTypeRef` accepts: the method body's
+// `response` slot is a NamedTypeRef and never sees the array-suffix
+// branch, so `response Project[]` does not parse.
 type ProjectsResp struct {
 	Items []Project `json:"items"`
 }
@@ -165,16 +154,8 @@ type User struct {
 
 // UserRef is the lightweight handle: id + email. Used as a BODY
 // request (POST CreateUser, POST BanUser) and as the owner field
-// of services.Project.
-//
-// NOTE: UserRef cannot ride a GET request unchanged. `email
-// shared.Email` is a cross-package scalar; the query-bind path in
-// `collectBindings` looks up scalar declarations in the current
-// package only (`pkg.Scalars[declName]`) and falls through with
-// `type shared.Email cannot bind to query`. The transport
-// generator never resolves the scalar across the import edge —
-// recorded as a bug in the report. The path-only GetUser uses the
-// local-scalar `GetUserReq` below as a workaround.
+// of services.Project. Both fields are cross-package scalars
+// (`shared.ID`, `shared.Email`) resolved across the import edge.
 type UserRef struct {
 	ID    shared.ID    `json:"id"`
 	Email shared.Email `json:"email"`

@@ -2,8 +2,8 @@
 
 package design
 
-// Address is a postal address. Country is the ISO 3166-1 alpha-2 code so
-// the length validator pins it to exactly two characters.
+// Address is a postal address. Country is the ISO 3166-1 alpha-2 code,
+// so the length validator pins it to exactly two characters.
 type Address struct {
 	Street  string  `json:"street"`
 	City    string  `json:"city"`
@@ -71,9 +71,9 @@ type PatchProfileResp struct {
 	DisplayName    string `json:"displayName"`
 }
 
-// Profile is the wire-level shape of a user profile. Notice the nesting:
-// Profile contains ContactInfo, plus a slice of Addresses, each of which
-// optionally embeds a Coords value.
+// Profile is the wire-level shape of a user profile, nesting a
+// ContactInfo plus a slice of Addresses, each of which optionally
+// embeds a Coords value.
 type Profile struct {
 	ID          string            `json:"id"`
 	DisplayName string            `json:"displayName"`

@@ -5,27 +5,9 @@
 // uniqueness at semantic time so two packages cannot accidentally
 // claim the same name.
 //
-// The interesting axis here is the THREE FORMS of middleware
-// declaration:
-//
-//   - `middleware Name` — bare, no parameters. AuthRequired is the
-//     canonical example: behaviour is fixed, no caller-supplied
-//     knobs.
-//   - `middleware Name(p: T = default, ...)` — parametric, with
-//     compile-time defaults baked into the contract. RateLimit
-//     declares its steady-state rate and burst allowance here so
-//     callers see the policy without reading the impl.
-//   - `middleware Name(p: int = 500ms)` — parametric with an INT
-//     parameter taking a DURATION-LITERAL default. The semantic
-//     analyser accepts `*ast.DurationLit` AND `*ast.IntLit` for
-//     decorator slots typed `ArgDuration`, but middleware param
-//     TYPES are validated against [BuiltinTypes] only — `duration`
-//     as a spelling is rejected with
-//     `unknown type "duration" (no built-in primitive ...)`.
-//     The least-bad workaround: declare the param as `int` and let
-//     the duration literal land in the default slot. The bug is
-//     recorded in the report — there is no DSL-level path that
-//     types the field as a Go time.Duration.
+// All five declarations use the bare `middleware Name` form (no
+// parameters): the DSL reserves the name and the per-middleware
+// behaviour lives in the generated impl file.
 package shared
 
 // AuthRequired enforces a Bearer token on every request flowing

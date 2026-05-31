@@ -24,7 +24,7 @@ var (
 {{range .Types}}
 // Validate checks every field-level constraint declared on {{.Name}}.
 // Returns the first violation; nil when the value satisfies the contract.
-func (v *{{.Name}}{{if .TypeParams}}[{{range $i, $p := .TypeParams}}{{if $i}}, {{end}}{{$p}}{{end}}]{{end}}) Validate() error {
+func (v {{if .PtrReceiver}}*{{end}}{{.Name}}{{if .TypeParams}}[{{range $i, $p := .TypeParams}}{{if $i}}, {{end}}{{$p}}{{end}}]{{end}}) Validate() error {
 {{- range .Checks}}
 	{{.}}
 {{- end}}

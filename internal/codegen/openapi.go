@@ -21,10 +21,9 @@ import (
 // schemaNames guards the flat `components/schemas` namespace during
 // OpenAPI assembly. A user-declared type whose name collides with a
 // generated name — a per-operation `<Method>ReqBody`/`RespBody` or a
-// generic-instance component (`PageOfOrder`) — would otherwise silently
-// overwrite one schema with the other (Go map last-writer-wins),
-// producing a spec that disagrees with the code. put records the
-// collision instead of clobbering so [buildOpenAPIDoc] can fail loudly.
+// generic-instance component (`PageOfOrder`) — records the collision in
+// dups instead of overwriting one schema with the other (Go map
+// last-writer-wins) so [buildOpenAPIDoc] fails loudly.
 type schemaNames struct{ dups []string }
 
 func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef) {

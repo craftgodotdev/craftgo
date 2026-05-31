@@ -37,11 +37,11 @@ type Config struct {
 
 	// Package is the Go import path prefix every generated file uses
 	// for its imports - the equivalent of <module>/<relPathFromGoMod>
-	// for the project root. NOT loaded from YAML: populated at gen
-	// time by [ResolveModulePath] which walks up from the project
+	// for the project root. Not loaded from YAML: populated at gen
+	// time by [ResolveModulePath], which walks up from the project
 	// root looking for a go.mod and computes the effective import
-	// path. Keeps the manifest free of a redundant field that would
-	// otherwise drift from go.mod's `module` line.
+	// path. The manifest carries no module field; go.mod's `module`
+	// line is the sole source of truth.
 	Package string `yaml:"-"`
 }
 
@@ -247,9 +247,10 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// validate is a no-op now that every required field has either a default
-// or is populated post-Load (Package via go.mod). Kept as a hook for
-// future required keys so callers don't have to be re-wired.
+// validate checks required manifest fields. Every required field has
+// either a default or is populated post-Load (Package via go.mod), so
+// there is nothing to reject; it stays as a hook for future required
+// keys without re-wiring callers.
 func (c *Config) validate() error { return nil }
 
 // applyDefaults fills in any blank optional path with the framework's

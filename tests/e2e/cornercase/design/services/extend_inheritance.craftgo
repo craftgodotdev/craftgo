@@ -1,11 +1,10 @@
-// extend_inheritance.craftgo pins the "extend service decorator
-// propagation" mechanism that solves the 50/50-auth case: one
-// logical service splits into a public primary block and one or
-// more `extend service` blocks that each carry their own
-// method-level-applicable decorators. The merge step prepends the
-// extend block's decorators to every method inside, so authoring
-// a single `@middlewares(Auth)` on the block reaches every method
-// without per-method repetition.
+// extend_inheritance.craftgo exercises the "extend service decorator
+// propagation" mechanism: one logical service splits into a public
+// primary block and one or more `extend service` blocks that each
+// carry their own method-level-applicable decorators. The merge step
+// prepends the extend block's decorators to every method inside, so a
+// single `@middlewares(Auth)` on the block reaches every method without
+// per-method repetition.
 package services
 
 import "shared"
@@ -30,17 +29,16 @@ service AdminInventoryService {
 	}
 }
 
-// HealthResp is a minimal envelope for the liveness probe - a bare
-// boolean would force a wrapper anyway, so we make it explicit.
+// HealthResp is a minimal envelope for the liveness probe - a single
+// boolean field wrapped in a response struct.
 type HealthResp {
 	ok bool
 }
 
 // `extend service AdminInventoryService` adds authenticated
-// endpoints that share the `@middlewares(AuthRequired)` chain.
-// Without the propagation step, each method below would need
-// `@middlewares(AuthRequired)` written explicitly - this is the
-// verbosity the relax is designed to eliminate.
+// endpoints that share the `@middlewares(AuthRequired)` chain. The
+// block-level decorators propagate to every method inside, so no
+// method below repeats `@middlewares(AuthRequired)`.
 @middlewares(AuthRequired)
 @tags("admin")
 @security(AdminBearer)

@@ -170,7 +170,7 @@ func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
 
 // checkDefaultNeedsOptional warns when a field carries `@default(...)` but
 // its type does not have the `?` (optional) suffix. `@default` only fires
-// when the value is absent from the request payload; in the new
+// when the value is absent from the request payload; under the
 // "required by default" model a non-optional field is always considered
 // mandatory by OpenAPI consumers, which contradicts the default's intent.
 //

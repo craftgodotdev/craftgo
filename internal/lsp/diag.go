@@ -248,19 +248,17 @@ func keyOf(d lexer.Diagnostic) string {
 
 // toLSP converts an internal [lexer.Diagnostic] to the LSP wire shape.
 // The Range degenerates to a zero-length cursor when End is the zero
-// position - every diagnostic still gets a clickable location that way.
+// position so every diagnostic still gets a clickable location.
 //
 // Related links (collision "first declared here", import-cycle path,
 // etc.) ride along via DiagnosticRelatedInformation so the editor's
-// quick-peek surfaces the partner location with a clickable jump -
-// without this surfacing they would be lost between the analyzer and
-// the IDE.
-// toLSP converts an internal diagnostic to the LSP shape. srcByFile maps
-// a diagnostic's source filename to that file's text so positions land on
-// UTF-16 code-unit columns (the LSP unit) rather than the lexer's rune
-// columns — they differ on any line carrying supplementary runes. A
-// missing entry (empty string) degrades to a rune→unit copy via
-// [utf16Position], which is correct for the BMP.
+// quick-peek surfaces the partner location with a clickable jump.
+//
+// srcByFile maps a diagnostic's source filename to that file's text so
+// positions land on UTF-16 code-unit columns (the LSP unit) rather than
+// the lexer's rune columns — they differ on any line carrying
+// supplementary runes. A missing entry (empty string) degrades to a
+// rune→unit copy via [utf16Position], which is correct for the BMP.
 func toLSP(d lexer.Diagnostic, srcByFile map[string]string) protocol.Diagnostic {
 	end := d.End
 	if !end.IsValid() {

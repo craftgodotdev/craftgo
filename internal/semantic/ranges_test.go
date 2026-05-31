@@ -332,3 +332,22 @@ func TestRangeHelpersTolerateBadShape(t *testing.T) {
 		t.Errorf("defensive helpers should not diag on bad shape, got %v", a.diags)
 	}
 }
+
+// ---------- @uniqueItems comparability ----------
+
+func TestUniqueItemsNonComparableRejected(t *testing.T) {
+	// Element not usable as a Go map key → reject (else non-compiling Go
+	// / runtime hash panic / spec-says-unique-but-validator-drops).
+	expectDiag(t, `type T { twoD string[][] @uniqueItems }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `type T { a any[] @uniqueItems }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, "type NC { rows string[] }\ntype T { s NC[] @uniqueItems }", CodeDecoratorTypeMismatch)
+	expectDiag(t, "type Page<X> { items X[]  total int }\ntype T { p Page<string>[] @uniqueItems }", CodeDecoratorTypeMismatch)
+}
+
+func TestUniqueItemsComparableOK(t *testing.T) {
+	// Comparable element types stay legal.
+	mustClean(t, `type T { tags string[] @uniqueItems  nums int[] @uniqueItems }`)
+	mustClean(t, "scalar Tag string @minLength(1)\ntype T { tags Tag[] @uniqueItems }")
+	mustClean(t, "enum Color { Red  Blue }\ntype T { cs Color[] @uniqueItems }")
+	mustClean(t, "type Pt { x int  y int }\ntype T { pts Pt[] @uniqueItems }")
+}

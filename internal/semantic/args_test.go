@@ -106,7 +106,7 @@ func TestArgsScopeNilEntry(t *testing.T) {
 // TestExampleRejectsObject pins that @example only accepts a literal or
 // an array of literals — an object {k: v} arg is rejected. A struct
 // example is composed from each field's own @example; the object form
-// only added JSON-in-DSL syntax and was silently dropped by the emitter.
+// adds only JSON-in-DSL syntax with no emitter effect.
 func TestExampleRejectsObject(t *testing.T) {
 	expectError(t, `type X { meta any? @example({a: 1, b: "x"}) }`, CodeDecoratorArgType)
 }
@@ -235,7 +235,7 @@ service S {}`, CodeDecoratorArgType)
 
 func TestSecurityRejectsNamedArg(t *testing.T) {
 	// `@security` is a variadic ident list - named args (including the
-	// historical `scopes: [...]` form) are rejected.
+	// `scopes: [...]` form) are rejected.
 	expectDiag(t, `@security(oauth2, scopes: ["read"])
 service S {}`, CodeDecoratorArgType)
 }
@@ -252,10 +252,7 @@ func TestSecurityDuplicateIdentAccepted(t *testing.T) {
 	// argument-shape checker only enforces ident-typed positional
 	// args, not uniqueness. Codegen emits `{A: []string{}}` once
 	// because the OpenAPI SecurityRequirement is a map keyed by
-	// scheme name, so the duplicate collapses naturally. Pinning
-	// the accept-and-collapse behaviour here so a future
-	// deduplication-with-warning policy is an explicit choice, not
-	// a silent regression.
+	// scheme name, so the duplicate collapses naturally.
 	mustClean(t, `@security(bearerAuth, bearerAuth)
 service S {}`)
 }
@@ -295,7 +292,7 @@ func TestExampleArityWrong(t *testing.T) {
 }
 
 func TestExampleRejectsNamedArg(t *testing.T) {
-	// Named args are no longer accepted on any decorator.
+	// Named args are rejected on every decorator.
 	expectDiag(t, `type X { name string @example(value: "a") }`, CodeDecoratorArgType)
 }
 

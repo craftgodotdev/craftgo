@@ -18,12 +18,12 @@
 //   - Generic instantiation: arg arity, non-generic-with-args, and
 //     type-parameter scoping.
 //
-// Cross-package qualified-ref resolution is not yet supported: the
-// analyser uses a folder-merge import model and rejects qualified
-// names. Richer path resolution against [config.OpenAPI].BasePath is
-// also pending. Diagnostics carry stable [lexer.Diagnostic.Code]
-// identifiers (`decorator/arity`, `mixin/conflict`, `generic/arity`,
-// …) so the LSP and docs site can reference each rule individually.
+// Single-package [Analyze] uses a folder-merge import model and rejects
+// qualified names; [AnalyzeProject] resolves cross-package qualified
+// refs against the project's package set. Diagnostics carry stable
+// [lexer.Diagnostic.Code] identifiers (`decorator/arity`,
+// `mixin/conflict`, `generic/arity`, …) so the LSP and docs site can
+// reference each rule individually.
 package semantic
 
 import (
@@ -39,7 +39,7 @@ type Diagnostic = lexer.Diagnostic
 
 // Package is the merged result of analysing one or more [ast.File] from the
 // same logical package. The maps are keyed by the unqualified declaration
-// name; cross-package references are resolved later (currently out of scope).
+// name; cross-package references are resolved by [AnalyzeProject].
 type Package struct {
 	// Name is the package name agreed on by every file with a `package`
 	// declaration. Empty when no file has one.

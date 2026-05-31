@@ -2,20 +2,15 @@ package codegen
 
 // Project-wide symbol resolver for the codegen layer.
 //
-// Background: craftgo's codegen runs per-DSL-package, but a field
-// can reference a symbol from a sibling package via `import "shared"`
-// + `shared.Foo`. The naive lookup `pkg.Types[name]` is local-only:
-// when `name` is the qualified `"shared.Foo"`, the map miss returns
-// silently and emit/validation/spec code drops the reference. This
-// has bitten the project ~9 times across validate, transport,
-// transport-defaults, openapi paths, openapi typeref, openapi
-// generic registry, lsp completion, lsp lookup, and the path-param
-// semantic check — every time as the SAME anti-pattern.
+// Codegen runs per-DSL-package, but a field can reference a symbol
+// from a sibling package via `import "shared"` + `shared.Foo`. The
+// local-only lookup `pkg.Types[name]` misses the qualified
+// `"shared.Foo"` key and the reference is dropped.
 //
 // [ProjectResolver] bundles every per-package lookup table a
-// generator needs into one struct so the future fix at each site is
-// a single line (`r.LookupEnum(name)` instead of `pkg.Enums[name]`)
-// and the caller plumbing is one parameter instead of four.
+// generator needs into one struct, so each site calls
+// `r.LookupEnum(name)` instead of `pkg.Enums[name]` and the caller
+// plumbing is one parameter instead of four.
 //
 // Local entries are keyed bare (`Order`), cross-package entries
 // qualified (`shared.Order`) — matching the keying contract of
@@ -23,10 +18,9 @@ package codegen
 // composes from.
 //
 // nil-tolerant: every method returns the zero result when the
-// receiver is nil, so single-package fixtures and legacy callers
-// without project context keep working unchanged. This mirrors the
-// `nil` ScalarTable / TypeTable / EnumTable handling that already
-// runs through the codebase.
+// receiver is nil, so single-package fixtures and callers without
+// project context work unchanged — mirroring the `nil`
+// ScalarTable / TypeTable / EnumTable handling elsewhere.
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -67,11 +61,9 @@ func BuildErrorTable(proj *semantic.Project, currentPkgName string) ErrorTable {
 
 // MiddlewareTable is the per-target-package lookup of MiddlewareDecls
 // reachable from the package being generated. Same keying contract as
-// the other tables. Used by future cross-pkg middleware-ref checks;
-// today middleware refs are validated at the semantic layer already
-// but the table is included for symmetry so a future codegen-side
-// rule (e.g. emit middleware-registration scaffold per project) has
-// the same plumbed lookup as everything else.
+// the other tables, included for symmetry with the codegen-side
+// lookups so a cross-pkg middleware rule has the same plumbed lookup
+// as everything else.
 type MiddlewareTable map[string]*ast.MiddlewareDecl
 
 // BuildMiddlewareTable returns the lookup table for `currentPkgName`.

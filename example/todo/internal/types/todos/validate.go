@@ -29,16 +29,12 @@ func (v *CreateTodoReq) Validate() error {
 	if v.Status == "" {
 		return fmt.Errorf("status: required")
 	}
-	switch v.Status {
-	case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
-	default:
-		return fmt.Errorf("status: invalid TodoStatus value")
+	if err := v.Status.Validate(); err != nil {
+		return err
 	}
 	if v.Priority != nil {
-		switch *v.Priority {
-		case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
-		default:
-			return fmt.Errorf("priority: invalid TodoPriority value")
+		if err := v.Priority.Validate(); err != nil {
+			return err
 		}
 	}
 	if v.Tags != nil {
@@ -77,17 +73,14 @@ func (v *ListTodosReq) Validate() error {
 		return fmt.Errorf("limit: above maximum 100")
 	}
 	if v.Status != nil {
-		switch *v.Status {
-		case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
-		default:
-			return fmt.Errorf("status: invalid TodoStatus value")
+		if err := v.Status.Validate(); err != nil {
+			return err
 		}
 	}
-	if v.Tag != nil && (len(*v.Tag) < 1 || len(*v.Tag) > 40) {
-		return fmt.Errorf("tag: length out of range [1, 40]")
-	}
-	if v.Tag != nil && !_pattern0.MatchString(*v.Tag) {
-		return fmt.Errorf("tag: does not match pattern")
+	if v.Tag != nil {
+		if err := v.Tag.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -113,16 +106,12 @@ func (v *Todo) Validate() error {
 	if v.Status == "" {
 		return fmt.Errorf("status: required")
 	}
-	switch v.Status {
-	case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
-	default:
-		return fmt.Errorf("status: invalid TodoStatus value")
+	if err := v.Status.Validate(); err != nil {
+		return err
 	}
 	if v.Priority != nil {
-		switch *v.Priority {
-		case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
-		default:
-			return fmt.Errorf("priority: invalid TodoPriority value")
+		if err := v.Priority.Validate(); err != nil {
+			return err
 		}
 	}
 	if len(v.Tags) > 10 {
@@ -151,8 +140,8 @@ func (v *TodoList) Validate() error {
 			return err
 		}
 	}
-	if v.TookMs < 0 {
-		return fmt.Errorf("tookMs: below minimum 0")
+	if err := v.TookMs.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -170,18 +159,57 @@ func (v *UpdateTodoReq) Validate() error {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	if v.Status != nil {
-		switch *v.Status {
-		case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
-		default:
-			return fmt.Errorf("status: invalid TodoStatus value")
+		if err := v.Status.Validate(); err != nil {
+			return err
 		}
 	}
 	if v.Priority != nil {
-		switch *v.Priority {
-		case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
-		default:
-			return fmt.Errorf("priority: invalid TodoPriority value")
+		if err := v.Priority.Validate(); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Millis.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Millis) Validate() error {
+	if int(v) < 0 {
+		return fmt.Errorf("Millis: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Tag.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Tag) Validate() error {
+	if l := len(string(v)); l < 1 || l > 40 {
+		return fmt.Errorf("Tag: length out of range [1, 40]")
+	}
+	if !_pattern0.MatchString(string(v)) {
+		return fmt.Errorf("Tag: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on TodoPriority.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v TodoPriority) Validate() error {
+	switch v {
+	case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
+	default:
+		return fmt.Errorf("TodoPriority: invalid TodoPriority value")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on TodoStatus.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v TodoStatus) Validate() error {
+	switch v {
+	case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
+	default:
+		return fmt.Errorf("TodoStatus: invalid TodoStatus value")
 	}
 	return nil
 }

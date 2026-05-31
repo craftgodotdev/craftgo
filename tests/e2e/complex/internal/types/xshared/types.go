@@ -2,37 +2,36 @@
 
 package xshared
 
-// XEmail is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type XEmail = string
+// XEmail is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type XEmail string
 
-// XNodeID is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
-type XNodeID = int
+// XNodeID is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type XNodeID int
 
-// XTimestamp is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type XTimestamp = string
+// XTimestamp is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type XTimestamp string
 
-// XAudit is a cross-package MIXIN. xrefs embeds it with bare
-// `xshared.XAudit` syntax and the resulting Go struct must:
-//   - have field-promotion through the embedded type
-//   - dispatch Validate on the host (`v.XAudit.Validate()`)
-//   - emit `xshared.XAudit` in OpenAPI's allOf chain
+// XAudit is a cross-package mixin. xrefs embeds it with bare
+// `xshared.XAudit` syntax; the resulting Go struct:
+//   - promotes fields through the embedded type
+//   - dispatches Validate on the host (`v.XAudit.Validate()`)
+//   - emits `xshared.XAudit` in OpenAPI's allOf chain
 type XAudit struct {
 	CreatedAt XTimestamp `json:"createdAt"`
 	UpdatedAt XTimestamp `json:"updatedAt"`
 }
 
-// XBag is a cross-package GENERIC. xrefs instantiates it as
+// XBag is a cross-package generic. xrefs instantiates it as
 // `xshared.XBag<X>` for various X — local types, primitives, and
-// xshared types — covering the qualified-generic codegen path
-// across every cell.
+// xshared types — covering the qualified-generic codegen path.
 type XBag[T any] struct {
 	Items []T `json:"items"`
 	Cap   int `json:"cap"`
 }
 
-// XOwner is a cross-package TYPE used in field positions to verify
-// recursive validate dispatch (`v.Owner.Validate()`) emits when the
-// owner field's type lives in xshared.
+// XOwner is a cross-package type used in field positions, exercising
+// recursive validate dispatch (`v.Owner.Validate()`) when the owner
+// field's type lives in xshared.
 type XOwner struct {
 	ID    string `json:"id"`
 	Email XEmail `json:"email"`

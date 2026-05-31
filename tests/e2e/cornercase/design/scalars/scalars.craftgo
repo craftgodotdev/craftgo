@@ -23,9 +23,8 @@
 //   Composed         `scalar X SomeOtherScalar` — the parser admits
 //                    the second token as any Ident, so it compiles
 //                    syntactically; semantic analysis rejects it as
-//                    a non-builtin primitive. We INCLUDE the
-//                    declaration commented out to record the exact
-//                    failure mode for future grammar work.
+//                    a non-builtin primitive. Kept commented to
+//                    record the failure mode.
 package scalars
 
 // Email centralises the canonical email-shape contract. Every field

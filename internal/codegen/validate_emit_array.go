@@ -10,7 +10,11 @@ import (
 )
 
 func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
-	if f.Type == nil || !f.Type.Array || len(d.Args) != 1 {
+	// Applies to arrays (element count) and maps (entry count) — both
+	// answer to len(). Anything else has no countable size, so the check
+	// is a no-op (the OpenAPI side likewise emits min/maxProperties only
+	// for the map shape).
+	if f.Type == nil || len(d.Args) != 1 || (!f.Type.Array && f.Type.Map == nil) {
 		return ""
 	}
 	n, ok := intArg(d.Args[0])
@@ -108,11 +112,15 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 // upload is allowed by this decorator; drop the `?` suffix on the field
 // type to force presence (required-by-default).
 func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
-	if !isFileField(f) || len(d.Args) != 1 {
+	if !isFileField(f) || len(d.Args) == 0 {
 		return ""
 	}
-	mimes, ok := stringArrayArg(d.Args[0])
-	if !ok || len(mimes) == 0 {
+	// Accept BOTH `@mimeTypes(["a","b"])` (array literal) and the
+	// variadic `@mimeTypes("a","b","c")` form.
+	// stringArrayDecoratorArg handles both shapes, matching the
+	// transport binder.
+	mimes := stringArrayDecoratorArg(d)
+	if len(mimes) == 0 {
 		return ""
 	}
 	uses["fmt"] = true

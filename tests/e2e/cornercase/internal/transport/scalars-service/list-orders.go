@@ -17,7 +17,7 @@ import (
 func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
-		req.Limit = 20
+		req.Limit = types.Cents(20)
 		if _v := r.URL.Query().Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}

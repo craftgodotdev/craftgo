@@ -74,9 +74,9 @@ type X {
 }
 
 func TestValidateNumericBoundsOptional(t *testing.T) {
-	// Regression: `T?` numeric fields must still emit @min/@max/@range/
-	// @positive/@negative/@multipleOf checks, nil-guarded so the deref
-	// runs only when a value is present.
+	// `T?` numeric fields emit @min/@max/@range/@positive/@negative/
+	// @multipleOf checks, nil-guarded so the deref runs only when a
+	// value is present.
 	src := runValidateGen(t, `package design
 type X {
     age   int?     @gte(0) @lte(150)
@@ -95,9 +95,8 @@ type X {
 }
 
 func TestValidateFloatBounds(t *testing.T) {
-	// Float bound literals (FloatLit) must produce checks alongside
-	// integer bounds (IntLit). Without this the integer-only path
-	// would silently skip `@gte(0.5)` etc.
+	// Float bound literals (FloatLit) produce checks alongside integer
+	// bounds (IntLit), so `@gte(0.5)` etc. emit a check.
 	src := runValidateGen(t, `package design
 type X {
     rate  float64 @gte(0.5) @lte(1.5)
@@ -162,9 +161,9 @@ type X { count int @multipleOf(5) }`)
 
 func TestValidateMultipleOfRejectsFloat(t *testing.T) {
 	// Float fields with @multipleOf are rejected at semantic time
-	// because Go's `%` operator is integer-only — accepting them
-	// silently would leave the runtime validator inconsistent with
-	// the OpenAPI side that still emits `multipleOf: 0.5`.
+	// because Go's `%` operator is integer-only, keeping the runtime
+	// validator consistent with the OpenAPI side that emits
+	// `multipleOf: 0.5`.
 	src := tryRunValidateGen(t, `package design
 type X { ratio float64 @multipleOf(2) }`)
 	if src != "" && strings.Contains(src, "v.Ratio%") {
@@ -174,8 +173,8 @@ type X { ratio float64 @multipleOf(2) }`)
 
 // tryRunValidateGen mirrors [runValidateGen] but returns "" instead
 // of fatal-ing when the analyzer rejects the source. Used by negative
-// tests that pin "this design no longer compiles" without bringing
-// the test process down.
+// tests that pin "this design is rejected" without bringing the test
+// process down.
 func tryRunValidateGen(t *testing.T, src string) string {
 	t.Helper()
 	pkg, diags := semantic.Analyze([]*ast.File{mustParse(t, src)})
@@ -279,9 +278,8 @@ type X {
 
 func TestValidateMixinCascade(t *testing.T) {
 	// Embedded mixins inherit field-promotion in Go but their own
-	// Validate() doesn't fire automatically — without an explicit
-	// call from the host, decorators declared on mixin fields never
-	// validated.
+	// Validate() doesn't fire automatically — the host emits an
+	// explicit call so decorators declared on mixin fields validate.
 	src := runValidateGen(t, `package design
 type Audit { createdAt string @format(datetime) }
 type User { Audit  id string }`)
@@ -292,11 +290,10 @@ type User { Audit  id string }`)
 }
 
 func TestValidateErrorBody(t *testing.T) {
-	// Error declarations with custom body fields must carry a
-	// Validate() method just like regular types. Without it the
-	// declared decorators on body fields became Go struct tags with
-	// no runtime enforcement — clients could receive error payloads
-	// that violate the design contract.
+	// Error declarations with custom body fields carry a Validate()
+	// method just like regular types, so the declared decorators on
+	// body fields are enforced at runtime rather than living only as
+	// Go struct tags.
 	src := runValidateGen(t, `package design
 error Forbidden AccessDenied {
     reason   string @minLength(1) @maxLength(200)
@@ -389,13 +386,12 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 
 // ---------- cross-package validators ----------
 
-// TestValidateEmitsQualifiedGenericCall pins the bug where a field
-// typed `shared.Page<ProductRef>` produced NO recursive validate
-// call. The local-only `pkg.Types` lookup never matched the
-// qualified name; the field slipped past nestedValidateCall silently
-// and the consuming Validate() body skipped any constraint declared
-// on the cross-package generic's element. Fix routes the resolution
-// through the project-wide TypeTable.
+// TestValidateEmitsQualifiedGenericCall checks that a field typed
+// `shared.Page<ProductRef>` emits a recursive validate call. The
+// local-only `pkg.Types` lookup never matches the qualified name, so
+// resolution routes through the project-wide TypeTable and the
+// consuming Validate() body validates the cross-package generic's
+// element.
 func TestValidateEmitsQualifiedGenericCall(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -459,11 +455,11 @@ func projectFiles(t *testing.T, src map[string]string) (string, []*ast.File) {
 }
 
 // TestValidateEmitsCrossPkgEnumAllShapes covers every shape a
-// cross-package enum field can take. Pre-fix all four landed as a
-// silent `return nil` — the per-package `pkg.Enums` lookup never
-// matched the qualified name and the switch-case validity check was
-// dropped. Fix routes resolution through the project-wide EnumTable
-// and registers the cross-package import on the validate.go file.
+// cross-package enum field can take. The per-package `pkg.Enums`
+// lookup never matches the qualified name, so resolution routes
+// through the project-wide EnumTable and registers the cross-package
+// import on the validate.go file, emitting the switch-case validity
+// check for each shape.
 func TestValidateEmitsCrossPkgEnumAllShapes(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/e.craftgo": `package shared
@@ -496,30 +492,42 @@ type Pick {
 	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// Direct field, array, optional, map value, map key, map both.
+	// Every shape dispatches through the enum's own Validate()
+	// (generated in the shared package), so app's validate.go carries
+	// the loop / nil-guard scaffolding plus a `.Validate()` call, not
+	// an inlined switch. The value-set check lives once in shared, and
+	// a generic instance over shared.Color picks it up the same way.
 	mustContainAll(t, src,
-		"switch v.One",
-		"shared.ColorRed, shared.ColorGreen, shared.ColorBlue",
-		"for i := range v.Many",
-		"if v.Maybe != nil",
-		"for _, val := range v.Keyed",
-		"for key := range v.KeyEnum",
-		"for key, val := range v.Both",
-		"github.com/test/m/internal/types/shared", // import registered
+		"if err := v.One.Validate(); err != nil",      // direct field
+		"for i0 := range v.Many",                      // array
+		"if err := v.Many[i0].Validate(); err != nil", //   per-element
+		"if v.Maybe != nil",                           // optional
+		"if err := v.Maybe.Validate(); err != nil",    //   inside guard
+		"for _, val := range v.Keyed",                 // map value
+		"for key := range v.KeyEnum",                  // map key
+		"for key, val := range v.Both",                // map both
+		"if err := key.Validate(); err != nil",
+		"if err := val.Validate(); err != nil",
 	)
-	// gofmt -s simplification must not flag the output — CI's
-	// fmt-check runs `gofmt -l -s` and any rewrite there would fail.
+	// The cross-package enum's constants and value-set switch live in
+	// shared's validate.go, so app neither inlines the switch nor needs
+	// the shared import (it calls a method on a value whose type is
+	// already declared in app's types.go). gofmt -s simplification must
+	// also not flag the map loops — CI's fmt-check runs `gofmt -l -s`
+	// and any rewrite there would fail.
 	mustContainNone(t, src,
+		"switch v.One",
+		"shared.ColorRed",
+		"github.com/test/m/internal/types/shared",
 		"for key, _ := range",
 		"for _, _ := range",
 	)
 }
 
-// TestValidateWalksMapKeyUserType pins bug #5: a map keyed by a
-// user-defined type (with its own Validate method) was never walked
-// — only map values went through nestedValidateCall. Now the loop
-// emits a `for key := range m` walk and dispatches Validate on the
-// key side too.
+// TestValidateWalksMapKeyUserType covers a map keyed by a
+// user-defined type (with its own Validate method): the loop emits a
+// `for key := range m` walk and dispatches Validate on the key side
+// as well as the value side.
 func TestValidateWalksMapKeyUserType(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/t.craftgo": `package shared
@@ -546,11 +554,10 @@ type Bag { byUser map<shared.User, string> }`,
 	)
 }
 
-// TestValidateOmitsCallWhenNoTypeTable pins the legacy fallback:
-// callers that don't pass a TypeTable (single-package tests,
-// pre-TypeTable callers) keep the old behaviour — qualified refs
-// silently skipped, no spurious compile error from a `.Validate()`
-// call on a type the local package can't reach.
+// TestValidateOmitsCallWhenNoTypeTable covers the single-package
+// fallback: callers that don't pass a TypeTable skip qualified refs,
+// so no spurious compile error arises from a `.Validate()` call on a
+// type the local package can't reach.
 func TestValidateOmitsCallWhenNoTypeTable(t *testing.T) {
 	pkg := analyze(t, `package app
 type Product { id string }`)
@@ -620,14 +627,24 @@ func TestValidateEnumValueSwitchEmitted(t *testing.T) {
 	src := runValidateGen(t, `package design
 enum Status { Active  Inactive  Pending }
 type User { status Status }`)
-	if !strings.Contains(src, "switch v.Status {") {
-		t.Errorf("expected switch on enum field:\n%s", src)
+	// The value-set switch lives on the enum's OWN Validate() method
+	// (`func (v Status) Validate()`), and the field dispatches through
+	// it, keeping the check declared once across every use site and
+	// letting generic instances over the enum validate too.
+	if !strings.Contains(src, "func (v Status) Validate() error {") {
+		t.Errorf("expected enum Validate() method:\n%s", src)
+	}
+	if !strings.Contains(src, "switch v {") {
+		t.Errorf("expected switch on enum receiver:\n%s", src)
 	}
 	if !strings.Contains(src, "case StatusActive, StatusInactive, StatusPending:") {
 		t.Errorf("expected case list with enum constants:\n%s", src)
 	}
 	if !strings.Contains(src, "invalid Status value") {
 		t.Errorf("expected enum error message:\n%s", src)
+	}
+	if !strings.Contains(src, "if err := v.Status.Validate(); err != nil {") {
+		t.Errorf("expected enum field to dispatch through Validate():\n%s", src)
 	}
 }
 
@@ -655,11 +672,16 @@ func TestValidateEnumArrayValidates(t *testing.T) {
 	src := runValidateGen(t, `package design
 enum Tag { A  B  C }
 type Box { tags Tag[] }`)
-	if !strings.Contains(src, "for i := range v.Tags {") {
+	// Array-of-enum loops and dispatches each element through the
+	// enum's Validate(); the value-set switch lives on Tag.Validate().
+	if !strings.Contains(src, "for i0 := range v.Tags {") {
 		t.Errorf("expected loop on enum array:\n%s", src)
 	}
-	if !strings.Contains(src, "switch v.Tags[i] {") {
-		t.Errorf("expected per-element switch:\n%s", src)
+	if !strings.Contains(src, "if err := v.Tags[i0].Validate(); err != nil {") {
+		t.Errorf("expected per-element Validate() dispatch:\n%s", src)
+	}
+	if !strings.Contains(src, "func (v Tag) Validate() error {") {
+		t.Errorf("expected enum Validate() method carrying the switch:\n%s", src)
 	}
 }
 
@@ -667,11 +689,17 @@ func TestValidateEnumOptionalNilGuard(t *testing.T) {
 	src := runValidateGen(t, `package design
 enum Pri { Low  High }
 type T { p Pri? }`)
+	// Optional enum: nil-guard then dispatch. The value method has a
+	// value receiver, so calling it on the *Pri pointer auto-derefs —
+	// no explicit `*v.P` deref is emitted in the host.
 	if !strings.Contains(src, "if v.P != nil {") {
 		t.Errorf("expected nil-guard on optional enum:\n%s", src)
 	}
-	if !strings.Contains(src, "switch *v.P {") {
-		t.Errorf("expected pointer-deref switch on optional enum:\n%s", src)
+	if !strings.Contains(src, "if err := v.P.Validate(); err != nil {") {
+		t.Errorf("expected Validate() dispatch inside the nil-guard:\n%s", src)
+	}
+	if strings.Contains(src, "switch *v.P {") {
+		t.Errorf("did not expect an inline pointer-deref switch in the host:\n%s", src)
 	}
 }
 
@@ -683,16 +711,22 @@ func TestValidateEnumMultipleDecorators(t *testing.T) {
 enum Sev { Low  High }
 type Alert { level Sev @doc("severity") @deprecated }`)
 	if !strings.Contains(src, `v.Level == ""`) {
-		t.Errorf("expected check:\n%s", src)
+		t.Errorf("expected required-presence check:\n%s", src)
 	}
-	if !strings.Contains(src, "switch v.Level {") {
-		t.Errorf("expected auto enum-value switch:\n%s", src)
+	// The auto value-set switch lives on Sev.Validate(); the field
+	// dispatches through it.
+	if !strings.Contains(src, "switch v {") {
+		t.Errorf("expected auto enum-value switch on the enum receiver:\n%s", src)
 	}
-	// @doc / @deprecated produce no runtime code - the body should
-	// only have the two checks above (plus return nil).
+	if !strings.Contains(src, "if err := v.Level.Validate(); err != nil {") {
+		t.Errorf("expected enum field to dispatch through Validate():\n%s", src)
+	}
+	// @doc / @deprecated produce no runtime code. The file holds
+	// exactly two error returns: the required-presence check in
+	// Alert.Validate and the value-set rejection in Sev.Validate.
 	count := strings.Count(src, "return fmt.Errorf")
 	if count != 2 {
-		t.Errorf("expected exactly 2 error returns in Alert.Validate, got %d:\n%s", count, src)
+		t.Errorf("expected exactly 2 error returns total, got %d:\n%s", count, src)
 	}
 }
 
@@ -728,7 +762,7 @@ type Page<T> {
 
 func TestValidateGenericInstanceCallsValidate(t *testing.T) {
 	// A non-generic struct that embeds a generic instance (`Page[Book]`)
-	// must call .Validate() on it directly. The generic decl now has a
+	// calls .Validate() on it directly. The generic decl has a
 	// Validate() method so the call type-checks at the concrete site.
 	src := runValidateGen(t, `package design
 type Book { id string }
@@ -764,9 +798,7 @@ type Upload { avatar file @maxSize(1024) }`)
 func TestValidateMaxSizeRejectsNonFile(t *testing.T) {
 	// @maxSize on a non-file field is rejected by the semantic
 	// analyser (decorator/typemismatch). The check fires at semantic
-	// time so the IDE surfaces it before the user runs `craftgo gen`
-	// - a silent codegen-time skip would leave the misuse undetected
-	// until the developer noticed the missing validator.
+	// time so the IDE surfaces it before the user runs `craftgo gen`.
 	p := craftparser.New("test.craftgo", `package design
 type X { name string @maxSize(1024) }`)
 	f := p.Parse()
@@ -831,4 +863,39 @@ func itoaSimple(n int) string {
 		sb.WriteByte(stack[i])
 	}
 	return sb.String()
+}
+
+// TestValidateMapItemsBound covers @minItems/@maxItems on a map: they
+// emit a runtime len() entry-count check.
+func TestValidateMapItemsBound(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X { counts map<string, int> @minItems(1) @maxItems(10) }`)
+	mustContainAll(t, src, "len(v.Counts) < 1", "len(v.Counts) > 10")
+}
+
+// TestValidateNullableNestedNilGuarded covers a @nullable nested
+// struct / enum / generic-instance field: it lowers to a Go pointer,
+// so Validate() nil-guards it — decoding JSON null (or omitting the
+// field) would otherwise nil-deref and PANIC the handler.
+func TestValidateNullableNestedNilGuarded(t *testing.T) {
+	src := runValidateGen(t, `package design
+type Inner { name string @minLength(1) }
+enum Color { Red  Green  Blue }
+type Page<T> { items T[]  total int }
+type Host {
+    sNull Inner @nullable
+    eNull Color @nullable
+    gNull Page<Inner> @nullable
+}`)
+	mustContainAll(t, src,
+		"if v.SNull != nil {",
+		"if v.GNull != nil {",
+		"if v.ENull != nil {",
+		// Enum dispatches through its value-receiver Validate() inside
+		// the nil-guard; the deref is implicit, no inline switch.
+		"if err := v.ENull.Validate(); err != nil {",
+	)
+	if strings.Contains(src, "switch *v.ENull {") {
+		t.Errorf("did not expect an inline pointer-deref switch for @nullable enum:\n%s", src)
+	}
 }

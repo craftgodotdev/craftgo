@@ -2,11 +2,11 @@
 
 package shared
 
-// Email is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Email = string
+// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Email string
 
-// ID is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type ID = string
+// ID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type ID string
 
 // Audit captures the create/update bookkeeping every persistent
 // entity carries. Embedded into top-level types via the implicit
@@ -21,11 +21,9 @@ type Audit struct {
 // AuditTrail is the canonical "who-did-what-when" mixin shape.
 // Declared as a regular type so other decls can embed it (the
 // language has no separate `mixin` keyword - any type member that
-// is a bare ident becomes a mixin reference). Embedded into a
-// regular type works (covered elsewhere); embedded into an error
-// body must flatten the same way - generated TS clients reading
-// the error envelope need the `actor` / `at` fields to be part of
-// the error schema, not silently dropped.
+// is a bare ident becomes a mixin reference). It is embedded both
+// into regular types and into an error body (AccessRevoked below),
+// flattening its `actor` / `at` fields into the host schema.
 type AuditTrail struct {
 	Actor string `json:"actor"`
 	At    string `json:"at"`

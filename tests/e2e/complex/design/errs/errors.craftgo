@@ -4,19 +4,18 @@ package design
 // locate the addressed id. Maps to HTTP 404 / USER-style code.
 error NotFound ProfileNotFound
 
-// DuplicateEmail is the canonical 409 surfaced when CreateProfile would
-// land on an email already taken. Echoes the offending email back so the
-// client can show a precise message. `code` is declared explicitly so it
+// DuplicateEmail is the 409 surfaced when CreateProfile lands on an
+// email already taken. Echoes the offending email back so the client
+// can show a precise message. `code` is declared explicitly so it
 // surfaces on the wire (the framework's internal `code` is unexported).
 error Conflict DuplicateEmail {
 	code  string? @default("DUPLICATE_EMAIL")
 	email string
 }
 
-// ProfileValidationFailed is the 422 we return when business-rule
+// ProfileValidationFailed is the 422 returned when business-rule
 // validation (cross-field, async, third-party) rejects an otherwise
-// schema-valid request. The `fields` slice gives the client an actionable
-// list of which paths failed.
+// schema-valid request. The `fields` slice lists which paths failed.
 error UnprocessableEntity ProfileValidationFailed {
 	code   string?  @default("PROFILE_VALIDATION_FAILED")
 	fields string[]

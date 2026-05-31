@@ -29,11 +29,9 @@ type B struct {
 	A  *A     `json:"a,omitempty"`
 }
 
-// Catalog stores users by string key. Map values are NOT recursed
-// into by the v1 codegen (see nestedValidateCall in
-// internal/codegen/validate_emit.go - maps are explicitly skipped).
-// This entry pins that behaviour so a regression surfaces in the
-// inspection step.
+// Catalog stores users by string key. The generator walks the map per
+// entry, emitting a `val.Validate()` call so each User's nested fields
+// are validated.
 type Catalog struct {
 	Users map[string]User `json:"users"`
 }

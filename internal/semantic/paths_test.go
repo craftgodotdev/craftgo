@@ -107,11 +107,12 @@ func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
 	}
 }
 
-// TestPathParamRenameStillCollides pins the bug where two routes
-// that differ ONLY in the path-param name (`{id}` vs `{id1}`) would
-// pass the duplicate check and crash net/http at boot. Both
-// same-service (caught by checkServiceMethods) and cross-service
-// (caught by path/collision) paths must fire.
+// TestPathParamRenameStillCollides pins that two routes differing
+// ONLY in the path-param name (`{id}` vs `{id1}`) are flagged as a
+// collision (net/http registers both against the same pattern and
+// panics at boot otherwise). Both same-service (caught by
+// checkServiceMethods) and cross-service (caught by path/collision)
+// paths must fire.
 func TestPathParamRenameStillCollides(t *testing.T) {
 	t.Run("same service", func(t *testing.T) {
 		_, diags := Analyze(parseFiles(t, `type R {}

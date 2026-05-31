@@ -97,13 +97,11 @@ func TestHTTPMiddlewareDisabledOmitsTraceparent(t *testing.T) {
 	}
 }
 
-// TestOTLPHTTPExporterHitsEndpointURL is the regression guard for the
-// OTLP HTTP endpoint fix: WithOTLPHTTPExporter must parse the FULL URL
-// (scheme + host + port) and actually POST spans there. The earlier code
-// passed the whole URL to WithEndpoint (which wants a bare host:port), so
-// the scheme leaked into the host and the exporter never connected.
-// Pointing it at a local test collector and asserting the collector is
-// hit on /v1/traces proves the URL is parsed and dialed correctly.
+// TestOTLPHTTPExporterHitsEndpointURL pins the endpoint contract:
+// WithOTLPHTTPExporter parses the FULL URL (scheme + host + port) and
+// POSTs spans there. Pointing it at a local test collector and
+// asserting the collector is hit on /v1/traces proves the URL is
+// parsed and dialed correctly.
 func TestOTLPHTTPExporterHitsEndpointURL(t *testing.T) {
 	hit := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -139,5 +137,20 @@ func TestOTLPHTTPExporterHitsEndpointURL(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("OTLP collector was never hit — endpoint URL not parsed/connected correctly")
+	}
+}
+
+// TestOTLPgRPCExporterAcceptsHostPortAndURL pins the address contract:
+// the gRPC exporter accepts a bare host:port (plaintext) AND a full
+// URL whose scheme selects TLS (https://) — both construct cleanly.
+func TestOTLPgRPCExporterAcceptsHostPortAndURL(t *testing.T) {
+	ctx := context.Background()
+	for _, addr := range []string{"collector:4317", "http://collector:4317", "https://collector:4317"} {
+		tp, err := Init(WithOTLPgRPCExporter(ctx, addr))
+		if err != nil {
+			t.Fatalf("grpc exporter for %q: %v", addr, err)
+		}
+		_ = tp.Shutdown(ctx)
+		Disable()
 	}
 }

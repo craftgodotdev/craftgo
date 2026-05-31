@@ -11,8 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// No method-level middleware; should inherit ONLY the parent
-// chain (RequestID, RateLimit, CORS, AuthRequired).
+// No method-level middleware; inherits only the parent chain
+// (RequestID, RateLimit, CORS, AuthRequired).
 // Replay returns the http.HandlerFunc for the
 // POST Replay endpoint.
 func Replay(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -6,8 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/shared"
 )
 
-// PageSize is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
-type PageSize = int
+// PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type PageSize int
 
 // DefaultsBoundary parks each default literal AT or near the validator
 // boundary so the pre-fill / validate ordering is visible.
@@ -51,12 +51,9 @@ type DefaultsCollection struct {
 	Arr []int `json:"arr,omitempty"`
 }
 
-// DefaultsConflict pins the case where the default literal WOULD fail
-// the per-field validator if the user accepted the pre-fill. The
-// semantics layer should ideally surface a warning so the user knows
-// the pre-fill yields an immediately-invalid value; if the layer is
-// silent, the generated code emits the default and then rejects it at
-// req.Validate() — a footgun.
+// DefaultsConflict exercises a default literal that fails the per-field
+// validator. Codegen accepts the design: the generated code emits the
+// default and then rejects the pre-filled value at req.Validate().
 type DefaultsConflict struct {
 	// Empty string default + @minLength(1). The pre-fill IS the
 	// validator's failure case.
@@ -70,7 +67,9 @@ type DefaultsEnum struct {
 }
 
 // DefaultsScalar uses a numeric-scalar default. The literal is a plain
-// int — the codegen widens it to the scalar alias via cast.
+// int — the codegen casts it to the scalar's defined type
+// (`PageSize(20)`) so the pointer pre-fill `__d := PageSize(20)` keeps
+// the field's `*PageSize` type.
 type DefaultsScalar struct {
 	Size *PageSize `json:"size,omitempty"`
 }
@@ -164,11 +163,9 @@ type PresenceMatrix struct {
 }
 
 // XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
-// take inside a single field. Each form previously slipped past the
-// validator because the per-package `pkg.Enums` lookup is local-only;
-// the fix routes resolution through the project-wide EnumTable so
-// every shape now emits the switch-case validity check. The fixture
-// keeps drift coverage on the gen output for every shape.
+// take inside a single field. Resolution routes through the
+// project-wide EnumTable, so every shape emits the switch-case
+// validity check.
 //
 //   - flat:      `shared.Severity` direct field   → switch wrapped by shape().
 //   - many:      `shared.Severity[]`              → for-range + switch.

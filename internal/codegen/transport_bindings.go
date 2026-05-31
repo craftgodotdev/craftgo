@@ -243,10 +243,10 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		// Wire name honours an explicit `@form("field_name")` arg (same
 		// rule as the path/query/header/cookie binders via bindingWireName)
 		// so the generated r.FormFile / r.FormValue key and the multipart
-		// schema property name both match what the client sends. Without
-		// it the field name leaked through and `@form("avatar_file")`
-		// silently bound to `avatarFile`.
-		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: GoFieldName(f.Name), Required: fieldIsRequired(f)}
+		// schema property name both match what the client sends, rather
+		// than falling back to the Go field name (`@form("avatar_file")`
+		// binds to `avatar_file`, not `avatarFile`).
+		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: GoFieldName(f.Name), Required: fieldIsRequired(f), Field: f}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
 			for _, d := range f.Decorators {
 				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
@@ -300,16 +300,16 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 //     auto-binds without a decorator).
 //  3. For non-body verbs (GET / DELETE / HEAD / OPTIONS) any leftover
 //     unbound field defaults to `query` - the README's "Default
-//     binding theo verb" rule wired up at last.
+//     binding by verb" rule.
 //
-// Path / header / cookie still require string-typed fields (URLs and
-// HTTP headers carry strings on the wire). Query supports the full
+// Path / header / cookie require string-typed fields (URLs and HTTP
+// headers carry strings on the wire). Query supports the full
 // numeric / float / bool / array matrix; the per-field [Bind] is
 // pre-rendered Go that the handler template emits verbatim.
 //
 // Unsupported binding shapes (struct/[]struct/map on @query, non-string
-// on @path/@header/@cookie) return a non-nil error. Silent skips were
-// removed in favour of fail-fast feedback at `craftgo gen` time.
+// on @path/@header/@cookie) return a non-nil error so the misuse is
+// flagged at `craftgo gen` time rather than skipped.
 func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
 	if m.Request == nil {
 		return
@@ -458,16 +458,15 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		case "path", "query", "header", "cookie":
 			walkCrossPkgImports(f.Type, crossPkg, set)
 		}
-		// Body field with `@default(EnumValue)` on a cross-pkg enum
-		// emits a pre-fill line `__d := xshared.XColorRed; req.X =
-		// &__d` that references a foreign-package constant — needs
-		// the xshared import. Scalar @default with a string / int
-		// literal (`currency shared.CurrencyCode? @default("USD")`)
-		// emits `__d := "USD"` and stays self-contained: skip those
-		// to avoid registering unused imports. The trigger is "field
-		// type is a cross-pkg enum AND has @default" — that's the
-		// only shape that emits a qualified constant.
-		if isQualifiedEnumWithDefault(f, crossPkg) {
+		// Body field with `@default(...)` on a cross-pkg enum OR scalar
+		// emits a pre-fill line that references the foreign package and
+		// so needs its import. Enum: `__d := xshared.XColorRed`. Scalar:
+		// `__d := shared.CurrencyCode("USD")` — the literal is CAST to
+		// the scalar's defined Go type (scalars are defined types, not
+		// aliases), so the cast references the foreign package and the
+		// import is required. The trigger is "field type is a cross-pkg
+		// named ref AND has @default".
+		if isQualifiedNamedWithDefault(f, crossPkg) {
 			walkCrossPkgImports(f.Type, crossPkg, set)
 		}
 	}
@@ -480,18 +479,17 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 	return out
 }
 
-// isQualifiedEnumWithDefault reports whether f's type is a
-// qualified `pkg.Name` ref AND the field carries a `@default(...)`
-// decorator. Sufficient signal that the transport pre-fill will
-// emit `pkg.NameValue` — registers the cross-pkg import. We don't
-// confirm here that pkg.Name IS an enum (vs scalar / type) — a
-// false-positive registration is harmless because the import-block
-// emitter dedups against actual usage by walking the file's other
-// refs; an over-imported entry would still surface to the user
-// as an `unused-import` build failure if the @default arg isn't
-// an IdentExpr against an enum. The walker layer already gates on
-// IdentExpr in renderDefault so the actual pre-fill stays correct.
-func isQualifiedEnumWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
+// isQualifiedNamedWithDefault reports whether f's type is a qualified
+// `pkg.Name` ref AND the field carries a `@default(...)` decorator.
+// Sufficient signal that the transport pre-fill will emit a
+// foreign-package reference — either an enum const (`pkg.NameValue`)
+// or a scalar cast (`pkg.Name(literal)`) — so the cross-pkg import is
+// registered. A false-positive registration is harmless: the
+// import-block emitter dedups against actual usage, and a genuinely
+// unused entry would surface as an `unused-import` build failure (the
+// renderDefault layer only emits a qualified reference when the arg
+// resolves to an enum const or a scalar cast).
+func isQualifiedNamedWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
 	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return false
 	}
@@ -506,9 +504,7 @@ func isQualifiedEnumWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
 		if d == nil || d.Name != "default" || len(d.Args) != 1 {
 			continue
 		}
-		if _, ok := d.Args[0].Value.(*ast.IdentExpr); ok {
-			return true
-		}
+		return true
 	}
 	return false
 }
@@ -582,10 +578,9 @@ func describeFieldType(f *ast.Field) string {
 // `scalars` is the project-wide lookup table built by
 // [BuildScalarTable]; it carries both local scalars (keyed by bare
 // name) and cross-package scalars (keyed by qualified name like
-// "shared.ID"). Without consulting it, every cross-package scalar
-// binding was rejected — a `shared.ID @path` field hit the catch-all
-// "@path requires a string-backed field" error even though
-// `shared.ID` IS a string scalar.
+// "shared.ID"). Consulting it lets a cross-package scalar binding
+// (`shared.ID @path`, where `shared.ID` is a string scalar) pass the
+// string-backed check.
 //
 // Mirrors `semantic.isStringBindingType` so design-time and gen-time
 // rejections agree.

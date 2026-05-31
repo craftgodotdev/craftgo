@@ -6,6 +6,8 @@ components:
       properties:
         reason:
           $ref: '#/components/schemas/SuspensionReason'
+      required:
+      - reason
       type: object
     Address:
       properties:
@@ -678,6 +680,9 @@ components:
           type: string
         reason:
           $ref: '#/components/schemas/MaintenanceReason'
+      required:
+      - reason
+      - estimatedEndAt
       type: object
     NonEmptyID:
       maxLength: 128
@@ -884,6 +889,9 @@ components:
           $ref: '#/components/schemas/CustomerRef'
         method:
           $ref: '#/components/schemas/PaymentMethod'
+      required:
+      - method
+      - chargedBy
       type: object
     PaymentMethod:
       enum:
@@ -967,6 +975,8 @@ components:
           type: string
         retryAfter:
           type: integer
+      required:
+      - retryAfter
       type: object
     ReplayRespBody:
       $ref: '#/components/schemas/Order'

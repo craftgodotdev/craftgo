@@ -36,12 +36,11 @@ func parseSnapshot(filename, src string) snapshotView {
 // should check Kind to filter that out.
 func (v snapshotView) tokenAt(line, character uint32) (int, lexer.Token) {
 	// Resolve the editor's UTF-16 (line, character) to a byte offset and
-	// match tokens by their byte span. This sidesteps two unit mismatches
-	// the old line/column compare carried: the LSP character is UTF-16
-	// while the lexer column is runes, and `Column + len(Text)` mixed a
-	// rune column with a byte length. Byte offsets are exact for any of
-	// these — every Token carries Pos.Offset and its byte length is
-	// len(Text).
+	// match tokens by their byte span. Byte offsets avoid the unit
+	// mismatches a line/column compare carries (the LSP character is
+	// UTF-16 while the lexer column is runes, and `Column + len(Text)`
+	// would mix a rune column with a byte length): every Token carries
+	// Pos.Offset and its byte length is len(Text).
 	off := offsetFromLSP(v.src, line, character)
 	best := -1
 	for i, t := range v.tokens {

@@ -5,14 +5,13 @@ package semantic
 //
 // The placement check (see [analyzer.checkDecoratorPlacement]) reads
 // [Registry] to decide whether `@name` may appear at a given declaration
-// site. The same data is intended to back LSP completion, hover docs, and
-// the README's compatibility table - so adding a decorator means adding
-// one entry here, not editing several files.
+// site. The same data backs LSP completion, hover docs, and the README's
+// compatibility table - so adding a decorator means adding one entry
+// here, not editing several files.
 //
-// Argument-shape validation (arity, value types, enum sets) lives in a
-// follow-up pass; today [Spec] only carries placement and a one-line doc
-// string. The struct is laid out with future fields in mind so the JSON
-// schema for the LSP can be derived without further churn.
+// [Spec] carries placement, a one-line doc string, and the positional
+// argument shape ([ArgsRule]); the argument-shape pass validates arity,
+// value types, and enum sets against it.
 
 import "strings"
 
@@ -277,8 +276,7 @@ type Spec struct {
 	//     decorator is written with empty `()`. Warning only — the
 	//     formatter rewrites it on save.
 	//
-	// The invariant is `Flag == true ⇒ Args.Max == 0`. A future check
-	// in init() enforces this.
+	// The invariant is `Flag == true ⇒ Args.Max == 0`.
 	Flag bool
 }
 
@@ -532,14 +530,11 @@ var Registry = map[string]Spec{
 	"operationId": {Name: "operationId", Levels: LvlMethod, Doc: "Override OpenAPI operationId.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI. Args: variadic error idents or a single array literal.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}},
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
-	// NOTE: `@consumes`, `@produces`, `@accepts` are not in the
-	// registry. craftgo's transport hardcodes `application/json` for
-	// both request decode and response encode, so accepting those
-	// decorators would parse but produce no runtime / spec effect.
-	// Multi-codec content negotiation is a planned feature — when a
-	// real `CodecRegistry` dispatch path lands, the decorators come
-	// back paired with it. Until then keep the surface small and
-	// honest.
+	// `@consumes`, `@produces`, `@accepts` are not in the registry.
+	// craftgo's transport hardcodes `application/json` for both request
+	// decode and response encode, so accepting those decorators would
+	// parse but produce no runtime / spec effect. The registry keeps
+	// only decorators with a real effect.
 
 	// ---- Method behavior ----
 	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly.", Flag: true},

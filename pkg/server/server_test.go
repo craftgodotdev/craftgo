@@ -124,12 +124,11 @@ type stringError string
 func (e stringError) Error() string { return string(e) }
 
 // TestWithLimitsTimeoutPanicReachesRecovery pins the timeout/panic
-// contract: a panic inside a `@timeout`-wrapped handler must still
-// propagate to the outer Recovery middleware instead of being
-// swallowed by goroutine isolation the way [http.TimeoutHandler]
-// used to do. The handler panics immediately - well before the
-// deadline - so the 500 must reach the client and the panic must
-// be logged.
+// contract: a panic inside a `@timeout`-wrapped handler propagates to
+// the outer Recovery middleware rather than being swallowed by
+// goroutine isolation (as [http.TimeoutHandler] does). The handler
+// panics immediately - well before the deadline - so the 500 must
+// reach the client and the panic must be logged.
 func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
 	logger := newTestServer(t).logger
 	core := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {

@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -148,8 +149,8 @@ enum Mixed {
 }
 
 func TestSemanticImportsParsedNotResolved(t *testing.T) {
-	// Imports are accepted at the parse level; cross-package resolution
-	// is future work. This test pins the current behaviour.
+	// Imports are accepted at the parse level; single-package Analyze
+	// does not resolve them across packages.
 	files := parseFileMap(t, map[string]string{
 		"a.craftgo": `package design
 import "shared/types"
@@ -185,3 +186,53 @@ service S {
 		t.Errorf("PathString = %q", got)
 	}
 }
+
+// TestErrorsTypoRejectedProjectMode pins that an @errors typo is
+// rejected in project (multi-package) mode, where the per-package
+// decorator-ref check is skipped (it defers cross-package resolution).
+func TestErrorsTypoRejectedProjectMode(t *testing.T) {
+	files := parseFileMap(t, map[string]string{
+		"svc.craftgo": `package design
+
+type Req { id string }
+type Res { ok bool }
+
+service S {
+    @errors(RealNotFound)
+    get OK /a { request Req  response Res }
+    @errors(NonExistentErr)
+    get Bad /b { request Req  response Res }
+}
+`,
+	})
+	// Exercise the project-level error-ref check directly: the per-package
+	// pass skips @errors in project mode (it defers cross-package
+	// resolution), so checkProjectErrorRefs is the only validator. A real
+	// multi-package AnalyzeProject run needs an on-disk design root, so we
+	// hand-build the project here — the valid-qualified-ref converse is
+	// covered by the ecommerce e2e fixture instead.
+	r := &refResolver{proj: &Project{Packages: map[string]*Package{
+		"design": {Name: "design", Errors: map[string]*ast.ErrorDecl{
+			"RealNotFound": {Category: "NotFound", Name: "RealNotFound"},
+		}},
+	}}}
+	r.checkProjectErrorRefs(files)
+	refs := 0
+	for _, d := range r.diags {
+		if d.Code == CodeDecoratorRef {
+			refs++
+			if !strings.Contains(d.Msg, "NonExistentErr") {
+				t.Errorf("unexpected @errors ref diag: %s", d.Msg)
+			}
+		}
+	}
+	if refs != 1 {
+		t.Errorf("expected exactly 1 @errors ref diag (the typo); the valid @errors(RealNotFound) must resolve. got %d", refs)
+	}
+}
+
+// Note: the converse — a VALID cross-package @errors(shared.X) must NOT
+// be rejected — is covered by the ecommerce e2e fixture (it uses
+// `@errors(shared.UnauthorizedErr)` and gens cleanly through
+// checkProjectErrorRefs). parseFileMap can't simulate the real package
+// directories that import resolution needs, so it isn't unit-tested here.

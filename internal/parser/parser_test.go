@@ -13,8 +13,7 @@ import (
 // TestCaptureDocPropagatesDoc covers the if-true branch of
 // [Parser.captureDoc]: when the peeked token carries doc-comment
 // lines, captureDoc must copy them onto pendingDoc so the next decl
-// picks them up. The earlier coverage gap was because most parser
-// fixtures elide doc comments.
+// picks them up.
 func TestCaptureDocPropagatesDoc(t *testing.T) {
 	src := `// Foo is the canonical example.
 // Two-line doc.
@@ -1022,5 +1021,29 @@ func TestGoldenSample(t *testing.T) {
 	}
 	if len(f.Decls) < 8 {
 		t.Errorf("decls: %d", len(f.Decls))
+	}
+}
+
+// TestParseNestedArrayLiteral confirms array elements parse via
+// parseValueOrArray, so a nested array literal parses cleanly instead of
+// erroring on the inner '['.
+func TestParseNestedArrayLiteral(t *testing.T) {
+	p := New("test", `package design
+type X { f string @example([["a", "b"], ["c"]]) }`)
+	file := p.Parse()
+	if d := p.Diagnostics(); len(d) > 0 {
+		t.Fatalf("nested array literal should parse cleanly, got: %v", d)
+	}
+	td := file.Decls[0].(*ast.TypeDecl)
+	fld := td.Body[0].(*ast.Field)
+	outer, ok := fld.Decorators[0].Args[0].Value.(*ast.ArrayLit)
+	if !ok {
+		t.Fatalf("@example arg is not an ArrayLit: %T", fld.Decorators[0].Args[0].Value)
+	}
+	if len(outer.Elements) != 2 {
+		t.Fatalf("outer array len = %d, want 2", len(outer.Elements))
+	}
+	if _, ok := outer.Elements[0].(*ast.ArrayLit); !ok {
+		t.Errorf("first element should be a nested ArrayLit, got %T", outer.Elements[0])
 	}
 }

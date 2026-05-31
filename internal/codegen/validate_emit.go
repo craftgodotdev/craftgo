@@ -30,12 +30,16 @@ func shape(f *ast.Field, access string, body func(elem string) string) string {
 	switch {
 	case f.Type != nil && f.Type.Array:
 		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
-	case f.Type != nil && f.Type.Optional:
-		// Parenthesise the dereferenced access so callers can prefix
-		// it with operators (`len(...)` / `&` / method calls) without
-		// running into Go's precedence rules. `(*v.Avatar).Validate()`
-		// works; `*v.Avatar.Validate()` parses as `*(v.Avatar.Validate())`
-		// and tries to deref the returned `error`.
+	case goFieldIsPointer(f):
+		// The Go field is *T — from `?` (optional) OR `@nullable`
+		// (required-but-nullable). Key on the actual pointer-ness, not
+		// just the `?` suffix: a `@nullable` enum/scalar field lowers to
+		// *T too, and the old `f.Type.Optional`-only branch emitted
+		// `switch v.F` on a *T (compile error) and never nil-guarded
+		// (nil deref panic). Nil-guard, then deref. Parenthesise the
+		// deref so callers can prefix operators (`len(...)`, `&`, method
+		// calls) without Go precedence surprises — `(*v.Avatar).Validate()`
+		// works; `*v.Avatar.Validate()` parses as `*(v.Avatar.Validate())`.
 		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body("(*"+access+")"))
 	default:
 		return body(access)

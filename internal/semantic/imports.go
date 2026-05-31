@@ -207,9 +207,8 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 //   - Primary lives in a SIBLING package → the message names that
 //     package and explains the per-package extend rule. The fix is
 //     unambiguous (declare the extend inside the owning package).
-//   - Primary doesn't exist anywhere → the original
-//     "no primary declaration" message keeps the same code so
-//     existing tests / IDE quickfixes don't break.
+//   - Primary doesn't exist anywhere → the "no primary declaration"
+//     message under the same [CodeServiceExtendOrphan] code.
 //
 // The per-package pass is muted under [Options.skipExtendOrphanCheck]
 // when [AnalyzeProject] runs, so this is the single emit site in
@@ -433,6 +432,65 @@ func (r *refResolver) middlewareRefResolves(value string, declared map[string]bo
 	return declared[value]
 }
 
+// checkProjectErrorRefs validates every `@errors(...)` target against the
+// project-wide error table. The per-package pass skips @errors along with
+// the other cross-package decorator refs (middleware / security) because
+// a target may be qualified (`shared.UnauthorizedErr`) and resolve in
+// another package; without this project-level pass a typo like
+// `@errors(NotFounds)` slips silently to codegen, which then emits no
+// response for it. Mirrors [checkProjectMiddlewareRefs].
+func (r *refResolver) checkProjectErrorRefs(files []*ast.File) {
+	declared := map[string]bool{}
+	for _, pkg := range r.proj.Packages {
+		for name := range pkg.Errors {
+			declared[name] = true
+		}
+	}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			s, ok := d.(*ast.ServiceDecl)
+			if !ok {
+				continue
+			}
+			r.checkErrorDecorators(s.Decorators, declared)
+			for _, m := range s.Methods() {
+				r.checkErrorDecorators(m.Decorators, declared)
+			}
+		}
+	}
+}
+
+func (r *refResolver) checkErrorDecorators(decs []*ast.Decorator, declared map[string]bool) {
+	for _, d := range decs {
+		if d == nil || d.Name != "errors" {
+			continue
+		}
+		for _, arg := range collectIdentOrStringArgs(d) {
+			if r.errorRefResolves(arg.value, declared) {
+				continue
+			}
+			r.diag(arg.pos, lexer.SeverityError, CodeDecoratorRef,
+				"@errors: %q is not a declared error type in any package", arg.value)
+		}
+	}
+}
+
+// errorRefResolves mirrors [middlewareRefResolves] for error types: a
+// qualified `pkg.Name` resolves against that package's error table, a
+// bare name against the project-wide declared set.
+func (r *refResolver) errorRefResolves(value string, declared map[string]bool) bool {
+	if dot := strings.LastIndexByte(value, '.'); dot >= 0 {
+		pkgName, bare := value[:dot], value[dot+1:]
+		pkg := r.proj.Packages[pkgName]
+		if pkg == nil {
+			return false
+		}
+		_, ok := pkg.Errors[bare]
+		return ok
+	}
+	return declared[value]
+}
+
 // packageHasSymbol reports whether sym is declared in pkg's symbol
 // tables. We accept any kind (type, enum, error, scalar) - DSL
 // resolution doesn't distinguish at the reference site.
@@ -501,8 +559,8 @@ func isEscapingPath(p string) bool {
 //     int vs float vs bool) or the enum's value set, mirroring
 //     [checkDefaultLiteral].
 //
-// Single-package projects never trigger this pass (no qualified refs
-// exist) so the legacy behaviour is unchanged.
+// Single-package projects never trigger this pass — no qualified refs
+// exist for it to re-validate.
 func (r *refResolver) checkProjectFieldDefaults() {
 	scalars, enums := r.buildProjectDecls()
 	for _, pkg := range r.proj.Packages {

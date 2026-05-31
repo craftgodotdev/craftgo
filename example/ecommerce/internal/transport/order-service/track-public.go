@@ -11,8 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Ignore + replace: clears inherited chain THEN appends fresh
-// middleware. Useful when a public endpoint still needs SOME
+// Ignore + replace: clears the inherited chain then appends fresh
+// middleware, for a public endpoint that still needs some
 // cross-cutting concerns (CORS for browser callers) but none of
 // the auth/rate-limit chain.
 // TrackPublic returns the http.HandlerFunc for the

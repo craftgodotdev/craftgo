@@ -10,8 +10,9 @@ package bindings
 @tags(bindings)
 service BindingsService {
 	// GetItem drives the path-scalar binder: id lands as the UUID
-	// alias, the inherited @format(uuid) fires during req.Validate().
-	@doc("Fetch one item by id. The path placeholder lands as the UUID scalar alias; the inherited @format(uuid) validator rejects malformed ids at the boundary.")
+	// scalar type, the inherited @format(uuid) fires (via UUID.Validate())
+	// during req.Validate().
+	@doc("Fetch one item by id. The path placeholder lands as the UUID scalar type; the inherited @format(uuid) validator rejects malformed ids at the boundary.")
 	get GetItem /items/{id} {
 		request  GetItemReq
 		response Item
@@ -68,16 +69,13 @@ service BindingsService {
 		response Item
 	}
 
-	// EchoWire pins the explicit-name binder forms across ALL four
+	// EchoWire exercises the explicit-name binder forms across ALL four
 	// parameter locations at once. Every field renames its wire
 	// identity via the decorator argument, distinct from the Go field
-	// name, so the emitted OpenAPI parameter name MUST equal the wire
-	// name the runtime binder reads (r.PathValue("user_id"),
-	// r.Header.Get("X-Trace-Id"), r.Cookie("session_id"),
-	// r.URL.Query().Get("search_q")) — never the DSL field name. Guards
-	// the request-param regression: a spec that advertised the field
-	// name would make a generated client send a parameter the server
-	// never reads, so the binding would silently fail.
+	// name, so the emitted OpenAPI parameter name equals the wire name
+	// the runtime binder reads (r.PathValue("user_id"),
+	// r.Header.Get("X-API-Key"), r.Cookie("session_id"),
+	// r.URL.Query().Get("search_q")) — never the DSL field name.
 	@doc("Echo wire-renamed params. Path, query, header, and cookie each use an explicit @decorator(\"wire-name\") distinct from the Go field name.")
 	get EchoWire /wire/{user_id} {
 		request  WireRenameReq

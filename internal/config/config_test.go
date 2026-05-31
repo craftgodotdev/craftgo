@@ -17,8 +17,8 @@ func writeFile(t *testing.T, path, content string) {
 
 // TestLoadDefaults pins the empty-manifest behaviour: with no keys set
 // every Output.* path falls back to its framework default. Package is
-// no longer a manifest field - it is resolved from go.mod at gen time
-// - so an empty manifest is now a valid input.
+// not a manifest field - it is resolved from go.mod at gen time - so an
+// empty manifest is a valid input.
 func TestLoadDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, Filename)
@@ -62,9 +62,8 @@ func TestLoadFullOverride(t *testing.T) {
 }
 
 // TestLoadIgnoresStrayPackageKey: a `package:` key in the manifest
-// is silently dropped (no struct field consumes it) so existing
-// projects load cleanly. The truth-source for module path is
-// exclusively go.mod.
+// is ignored (no struct field consumes it) so such manifests load
+// cleanly. The sole source of truth for the module path is go.mod.
 func TestLoadIgnoresStrayPackageKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, Filename)

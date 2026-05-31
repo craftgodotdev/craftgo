@@ -9,8 +9,8 @@ import (
 
 // "😀" (U+1F600) is a supplementary character: 4 UTF-8 bytes, 1 rune, but
 // TWO UTF-16 code units. "é" (U+00E9) is BMP: 2 UTF-8 bytes, 1 rune, 1
-// UTF-16 unit. These are the two cases the byte/rune/UTF-16 confusions
-// drifted on.
+// UTF-16 unit. These are the two cases where byte, rune, and UTF-16 unit
+// counts diverge.
 
 func TestUTF16Len(t *testing.T) {
 	cases := []struct {

@@ -2,38 +2,38 @@
 
 package shared
 
-// Cents is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
-type Cents = int
+// Cents is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Cents int
 
-// CountryCode is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type CountryCode = string
+// CountryCode is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type CountryCode string
 
-// CurrencyCode is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type CurrencyCode = string
+// CurrencyCode is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type CurrencyCode string
 
-// Email is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Email = string
+// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Email string
 
-// Latitude is a DSL scalar - alias of float64 with the validators declared on it inherited by every field of this type.
-type Latitude = float64
+// Latitude is a DSL scalar over float64; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Latitude float64
 
-// Longitude is a DSL scalar - alias of float64 with the validators declared on it inherited by every field of this type.
-type Longitude = float64
+// Longitude is a DSL scalar over float64; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Longitude float64
 
-// NonEmptyID is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type NonEmptyID = string
+// NonEmptyID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type NonEmptyID string
 
-// PercentBP is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
-type PercentBP = int
+// PercentBP is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type PercentBP int
 
-// SKU is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type SKU = string
+// SKU is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type SKU string
 
-// SafeURL is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type SafeURL = string
+// SafeURL is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type SafeURL string
 
-// Slug is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Slug = string
+// Slug is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Slug string
 
 type AuditFields struct {
 	AuditedBy NonEmptyID `json:"auditedBy"`

@@ -21,13 +21,28 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
 		doc.Components.SecuritySchemes = openapi3.SecuritySchemes{}
 	}
 	collect := func(ds []*ast.Decorator, into map[string]bool) {
+		add := func(e ast.Expr) {
+			if id, ok := e.(*ast.IdentExpr); ok {
+				into[id.Name.String()] = true
+			}
+		}
 		for _, d := range ds {
 			if d.Name != "security" {
 				continue
 			}
 			for _, a := range d.Args {
-				if id, ok := a.Value.(*ast.IdentExpr); ok {
-					into[id.Name.String()] = true
+				// Mirror securityFromDecorators: an arg is either a bare
+				// scheme ident OR an array of them (`@security([A, B])`,
+				// the AND form). The array case was missing, so its
+				// schemes were never registered and the operation's
+				// security $ref'd a scheme absent from components.
+				switch v := a.Value.(type) {
+				case *ast.IdentExpr:
+					add(v)
+				case *ast.ArrayLit:
+					for _, el := range v.Elements {
+						add(el)
+					}
 				}
 			}
 		}
@@ -69,21 +84,32 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 	}
 	declared := cfg.OpenAPI.SecuritySchemes
 	collect := func(svcName, scope string, ds []*ast.Decorator, dst map[string]bool) {
+		check := func(e ast.Expr) {
+			id, ok := e.(*ast.IdentExpr)
+			if !ok {
+				return
+			}
+			name := id.Name.String()
+			if _, exists := declared[name]; exists {
+				return
+			}
+			dst[svcName+"/"+scope+"/"+name] = true
+		}
 		for _, d := range ds {
 			if d.Name != "security" {
 				continue
 			}
 			for _, a := range d.Args {
-				id, ok := a.Value.(*ast.IdentExpr)
-				if !ok {
-					continue
+				// Validate both the bare-ident and array (`@security([A,B])`)
+				// forms, matching securityFromDecorators / addSecuritySchemes.
+				switch v := a.Value.(type) {
+				case *ast.IdentExpr:
+					check(v)
+				case *ast.ArrayLit:
+					for _, el := range v.Elements {
+						check(el)
+					}
 				}
-				name := id.Name.String()
-				if _, exists := declared[name]; exists {
-					continue
-				}
-				key := svcName + "/" + scope + "/" + name
-				dst[key] = true
 			}
 		}
 	}

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -83,20 +84,34 @@ func WithStdoutExporter() Option {
 	}
 }
 
-// WithOTLPgRPCExporter pushes spans to an OTLP collector via gRPC. By
-// default the connection is INSECURE (plain-text, no TLS) so collectors
-// on the local k8s network work out of the box; supply
-// `otlptracegrpc.WithTLSCredentials(...)` to override for cross-cluster
-// traffic. addr is the collector's `host:port`
-// (e.g. `"otel-collector.observability:4317"`).
+// WithOTLPgRPCExporter pushes spans to an OTLP collector via gRPC. addr
+// may be either:
+//
+//   - a bare `host:port` (e.g. `"otel-collector.observability:4317"`) —
+//     connects INSECURE (plain-text), the convention for collectors on
+//     a trusted local network; or
+//   - a full URL whose SCHEME selects transport security —
+//     `http://host:4317` (plaintext) or `https://host:4317` (TLS).
+//
+// The URL form lets a project enable TLS straight from config.yaml
+// (`endpoint: https://...`) instead of needing code; pass
+// `otlptracegrpc.WithTLSCredentials(...)` in opts for custom certs.
 func WithOTLPgRPCExporter(ctx context.Context, addr string, opts ...otlptracegrpc.Option) Option {
 	return func(c *config) {
 		if c.err != nil {
 			return
 		}
-		base := []otlptracegrpc.Option{
-			otlptracegrpc.WithEndpoint(addr),
-			otlptracegrpc.WithInsecure(),
+		var base []otlptracegrpc.Option
+		if strings.Contains(addr, "://") {
+			// URL form — WithEndpointURL parses host/port and derives
+			// insecure-vs-TLS from the scheme.
+			base = []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(addr)}
+		} else {
+			// Bare host:port form — plaintext (insecure).
+			base = []otlptracegrpc.Option{
+				otlptracegrpc.WithEndpoint(addr),
+				otlptracegrpc.WithInsecure(),
+			}
 		}
 		exp, err := otlptracegrpc.New(ctx, append(base, opts...)...)
 		if err != nil {
@@ -117,11 +132,8 @@ func WithOTLPgRPCExporter(ctx context.Context, addr string, opts ...otlptracegrp
 // certificate.
 //
 // The endpoint is wired via [otlptracehttp.WithEndpointURL], which
-// parses scheme + host + port + path. The earlier code passed the whole
-// URL to WithEndpoint (which expects a bare `host:port`), so the scheme
-// leaked into the host and the exporter silently failed to connect; it
-// also hardcoded WithInsecure(), forcing plaintext even for an https
-// endpoint. Both are fixed by deriving everything from the URL.
+// parses scheme + host + port + path so the scheme drives transport
+// security and the host/port land correctly.
 func WithOTLPHTTPExporter(ctx context.Context, endpoint string, opts ...otlptracehttp.Option) Option {
 	return func(c *config) {
 		if c.err != nil {
@@ -217,8 +229,9 @@ type Config struct {
 	//   - otlp_http: a full URL WITH scheme - the scheme picks transport
 	//     security: `http://collector:4318` (plaintext) or
 	//     `https://collector.example.com` (TLS).
-	//   - otlp_grpc: a bare `host:port` (e.g. `collector:4317`); the gRPC
-	//     exporter connects insecurely by default.
+	//   - otlp_grpc: a bare `host:port` (e.g. `collector:4317`, plaintext)
+	//     OR a full URL whose scheme picks security
+	//     (`https://collector:4317` for TLS).
 	Endpoint string `yaml:"endpoint"`
 }
 

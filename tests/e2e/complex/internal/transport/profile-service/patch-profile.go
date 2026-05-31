@@ -11,10 +11,10 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/complex/svccontext"
 )
 
-// PatchProfile is the every-binding-kind end-to-end demo. It echoes
+// PatchProfile exercises every binding kind end-to-end. It echoes
 // path id, query dryRun, header X-Idempotency-Key, cookie session,
-// and a body displayName so the e2e test can verify that each value
-// arrived through the matching part of the HTTP request.
+// and a body displayName so each value's transport binding is
+// verifiable.
 // PatchProfile returns the http.HandlerFunc for the
 // PATCH PatchProfile endpoint.
 func PatchProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

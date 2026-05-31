@@ -45,14 +45,10 @@ func mustParseGo(t *testing.T, src string) {
 }
 
 // mustContainAll asserts every want substring appears somewhere in got.
-// Reports ALL misses at once (not the first only) so a generator
-// regression that drops 5 lines surfaces as one diagnostic instead of
-// 5 sequential edit-test-edit cycles.
-//
-// Replaces the `for _, want := range []string{...} { if
-// !strings.Contains(got, want) { t.Errorf(...) } }` loop that
-// previously appeared at ~40 sites across codegen tests. Use it
-// instead of stacking N if-Contains-Errorf blocks per test.
+// Reports ALL misses at once (not the first only) so a generator change
+// that drops 5 lines surfaces as one diagnostic instead of 5 sequential
+// edit-test-edit cycles. Use it instead of stacking N
+// if-Contains-Errorf blocks per test.
 func mustContainAll(t *testing.T, got string, wants ...string) {
 	t.Helper()
 	var missing []string
@@ -173,10 +169,9 @@ type X { blob bytes  raw any  upload file }`)
 	)
 }
 
-// TestGenerateTypesGenericInstance pins the Go-1.18-generics output
+// TestGenerateTypesGenericInstance checks the Go-1.18-generics output
 // shape: a generic decl renders with type-parameter brackets, and
-// references to it use Go generic syntax `Name[Arg1, Arg2]` rather
-// than the legacy "OfArg1AndArg2" rename convention.
+// references to it use Go generic syntax `Name[Arg1, Arg2]`.
 func TestGenerateTypesGenericInstance(t *testing.T) {
 	pkg := analyze(t, `package design
 type User {}
@@ -190,7 +185,7 @@ type UserOrgPair { p Pair<User, Org> }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// Generic decl now lands as a Go generic struct.
+	// Generic decl lands as a Go generic struct.
 	if !strings.Contains(src, "type Pair[A any, B any] struct") {
 		t.Errorf("expected `type Pair[A any, B any] struct` in:\n%s", src)
 	}
@@ -853,5 +848,29 @@ func TestErrSuffix(t *testing.T) {
 		if got := errSuffix(in); got != want {
 			t.Errorf("%q → %q want %q", in, got, want)
 		}
+	}
+}
+
+// TestGenerateErrorsEmbedsMixin checks that a mixin embedded in an error
+// body is embedded in the generated Go body struct, so the server can
+// populate the fields the OpenAPI allOf advertises and produce the
+// spec-conformant 4xx response.
+func TestGenerateErrorsEmbedsMixin(t *testing.T) {
+	pkg := analyze(t, `package design
+type Audit { actor string  at string @format(datetime) }
+error Forbidden Denied {
+    Audit
+    reason string
+}`)
+	dir := t.TempDir()
+	if err := GenerateErrors(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	norm := strings.Join(strings.Fields(src), " ")
+	if !strings.Contains(norm, "type DeniedBody struct { Audit") {
+		t.Errorf("error body must embed the Audit mixin:\n%s", src)
 	}
 }

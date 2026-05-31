@@ -19,8 +19,8 @@ import (
 // the upload-only marker that codegen maps to `*multipart.FileHeader`.
 //
 // Prefer the [IsBuiltin] / [IsWireParseable] helpers over reading
-// this map directly so the predicates stay consistent across the
-// 4+ call sites that previously duplicated the list inline.
+// this map directly so the predicates stay consistent across every
+// call site.
 var BuiltinTypes = map[string]bool{
 	"string": true, "bool": true,
 	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,

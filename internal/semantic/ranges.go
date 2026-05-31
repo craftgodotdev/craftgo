@@ -76,16 +76,15 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember) {
 		a.checkBoundLiteralKind(f)
 		a.checkMultipleOfTarget(f)
 		a.checkNegativeOnUnsigned(f)
+		a.checkUniqueItemsComparable(f)
 	}
 }
 
 // checkMultipleOfTarget rejects `@multipleOf` on float-typed fields.
-// Go's `%` operator is integer-only; the existing codegen drops the
-// check silently for float fields, which left the OpenAPI side
-// (`multipleOf: 0.5`) inconsistent with the runtime side (no check).
-// Approximating modulo for floats requires a tolerance argument the
-// DSL doesn't carry, so the safer fix is to reject at semantic time
-// and let users layer a custom check inside their service handler.
+// Go's `%` operator is integer-only, and approximating modulo for
+// floats requires a tolerance argument the DSL doesn't carry, so the
+// combination is rejected at semantic time. Users layer a custom check
+// inside their service handler instead.
 func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
@@ -119,10 +118,9 @@ func unsignedPrim(prim string) bool {
 // checkNegativeOnUnsigned rejects `@negative` on an unsigned-integer
 // field. The validator emits a `value >= 0` rejection, which fires for
 // EVERY value of a `uint*` (always >= 0) — the field could never
-// validate. Catch the contradiction at semantic time instead of
-// generating an always-failing validator. Resolves through a named
-// scalar so `count Quantity @negative` (scalar Quantity uint) is caught
-// the same way a bare `count uint @negative` is.
+// validate. Resolves through a named scalar so `count Quantity
+// @negative` (scalar Quantity uint) is caught the same way a bare
+// `count uint @negative` is.
 func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
@@ -145,6 +143,107 @@ func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 				"@negative cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or drop @negative", prim)
 		}
 	}
+}
+
+// checkUniqueItemsComparable rejects `@uniqueItems` on an array whose
+// element type is NOT comparable (usable as a Go map key). The runtime
+// dedupe loop builds `map[Elem]struct{}`, so a slice / map / `any` /
+// `bytes` element — or a struct/generic transitively containing one —
+// produces either non-compiling Go (`invalid map key type`) or a runtime
+// `hash of unhashable type` panic, while the OpenAPI side still
+// advertises `uniqueItems: true`. Catching it at design time keeps the
+// generated validator compiling and the spec honest. Element types that
+// can't be resolved in this package (cross-package qualified refs) are
+// conservatively allowed to avoid false rejections.
+func (a *analyzer) checkUniqueItemsComparable(f *ast.Field) {
+	if f == nil || f.Type == nil || !f.Type.Array {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != "uniqueItems" {
+			continue
+		}
+		elem := peelOneArray(f.Type)
+		if !a.typeRefComparable(elem, map[string]bool{}) {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@uniqueItems requires comparable elements (usable as a map key) — %s is not (a slice / map / `any`, or a struct/generic containing one). Restructure the element into a comparable shape, or drop @uniqueItems.",
+				describeTypeRef(elem))
+			return
+		}
+	}
+}
+
+// peelOneArray returns the element type after stripping ONE array
+// dimension: `Tag[]` -> `Tag` (comparable scalar), `Tag[][]` -> `Tag[]`
+// (still an array, hence non-comparable). Mirrors the codegen
+// arrayElemType peel so the comparability verdict matches what the
+// validator emits. Optional is cleared on the element.
+func peelOneArray(t *ast.TypeRef) *ast.TypeRef {
+	clone := *t
+	clone.Optional = false
+	if clone.ArrayDepth > 0 {
+		clone.ArrayDepth--
+	}
+	if clone.ArrayDepth == 0 {
+		clone.Array = false
+	}
+	return &clone
+}
+
+// typeRefComparable reports whether values of t are usable as a Go map
+// key. Arrays / maps / `any` / `bytes` are not; a named struct or generic
+// instance is comparable only when EVERY member is. `seen` guards against
+// recursive types (a cycle is treated as comparable along the back-edge).
+func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool {
+	if t == nil {
+		return false
+	}
+	if t.Array || t.Map != nil {
+		return false
+	}
+	if t.Named == nil || t.Named.Name == nil {
+		return false
+	}
+	name := t.Named.Name.String()
+	switch name {
+	case "any", "bytes", "file":
+		return false
+	case "string", "bool",
+		"int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return true
+	}
+	if sc, ok := a.pkg.Scalars[name]; ok {
+		return sc.Primitive != "bytes"
+	}
+	if _, ok := a.pkg.Enums[name]; ok {
+		return true
+	}
+	if td, ok := a.pkg.Types[name]; ok {
+		if seen[name] {
+			return true
+		}
+		seen[name] = true
+		for _, m := range td.Body {
+			switch v := m.(type) {
+			case *ast.Field:
+				if !a.typeRefComparable(v.Type, seen) {
+					return false
+				}
+			case *ast.Mixin:
+				if v.Ref != nil && v.Ref.Name != nil {
+					if !a.typeRefComparable(&ast.TypeRef{Named: v.Ref}, seen) {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}
+	// Unresolved here (cross-package qualified ref or bare generic
+	// type-param) — conservatively comparable to avoid a false reject.
+	return true
 }
 
 // intCapacity returns the value range a Go integer primitive can hold.

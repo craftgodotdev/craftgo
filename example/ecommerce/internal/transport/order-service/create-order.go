@@ -8,6 +8,7 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/order-service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
@@ -17,7 +18,7 @@ func CreateOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateOrderReq
 		{
-			__d := "USD"
+			__d := shared.CurrencyCode("USD")
 			req.Currency = &__d
 		}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {

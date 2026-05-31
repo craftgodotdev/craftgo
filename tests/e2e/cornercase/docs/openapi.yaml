@@ -29,6 +29,8 @@ components:
           type: string
         retryAfter:
           type: integer
+      required:
+      - reason
       type: object
     AccessRevokedErr:
       allOf:
@@ -36,6 +38,8 @@ components:
       - properties:
           reason:
             type: string
+        required:
+        - reason
         type: object
       description: Forbidden error response (HTTP 403).
       type: object
@@ -304,8 +308,8 @@ components:
     Arr_EmptyExact:
       description: |-
         Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
-        semantically "this slice must always be empty". The lower-bound
-        dead-code wart from Arr_MinZero applies here too; the upper bound
+        semantically "this slice must always be empty". The dead-code
+        lower-bound check from Arr_MinZero applies here too; the upper bound
         (`> 0`) is the meaningful check that actually rejects values.
       properties:
         always_empty:
@@ -318,10 +322,9 @@ components:
       type: object
     Arr_MinZero:
       description: |-
-        Arr_MinZero pins the lower bound at ZERO. The generator currently
-        emits `if len(v.Items) < 0 { ... }` which is DEAD CODE (lengths are
-        never negative). Captured here so the e2e snapshot pins the
-        suboptimal output and a future cleanup is detectable.
+        Arr_MinZero pins the lower bound at ZERO. The generator emits
+        `if len(v.Items) < 0 { ... }`, which is dead code (lengths are never
+        negative).
       properties:
         items:
           items:
@@ -380,11 +383,9 @@ components:
       type: object
     Arr_Tag2D:
       description: |-
-        Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator must
-        emit doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's
-        three validators; an earlier scalar-leaves walker emitted only the
-        outer loop and ran validators on the inner slice (which did not
-        compile).
+        Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+        doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
+        validators.
       properties:
         grid:
           items:
@@ -528,11 +529,9 @@ components:
         AuditTrail is the canonical "who-did-what-when" mixin shape.
         Declared as a regular type so other decls can embed it (the
         language has no separate `mixin` keyword - any type member that
-        is a bare ident becomes a mixin reference). Embedded into a
-        regular type works (covered elsewhere); embedded into an error
-        body must flatten the same way - generated TS clients reading
-        the error envelope need the `actor` / `at` fields to be part of
-        the error schema, not silently dropped.
+        is a bare ident becomes a mixin reference). It is embedded both
+        into regular types and into an error body (AccessRevoked below),
+        flattening its `actor` / `at` fields into the host schema.
       properties:
         actor:
           type: string
@@ -571,6 +570,8 @@ components:
       properties:
         realm:
           type: string
+      required:
+      - realm
       type: object
     B:
       properties:
@@ -648,11 +649,9 @@ components:
       type: object
     Catalog:
       description: |-
-        Catalog stores users by string key. Map values are NOT recursed
-        into by the v1 codegen (see nestedValidateCall in
-        internal/codegen/validate_emit.go - maps are explicitly skipped).
-        This entry pins that behaviour so a regression surfaces in the
-        inspection step.
+        Catalog stores users by string key. The generator walks the map per
+        entry, emitting a `val.Validate()` call so each User's nested fields
+        are validated.
       properties:
         users:
           additionalProperties:
@@ -668,8 +667,8 @@ components:
     CollectionsAddress:
       description: |-
         Address is a struct used as a map VALUE in maps.craftgo. The two
-        fields carry length validators so we can see whether the generator
-        recurses into struct values when iterating a map.
+        fields carry length validators that fire when the generator recurses
+        into struct values during map iteration.
       properties:
         city:
           maxLength: 100
@@ -695,9 +694,9 @@ components:
     CollectionsUser:
       description: |-
         User is a struct used as a map VALUE in maps.craftgo. The `email`
-        field is typed as the `Email` scalar above so map iteration would
-        need to recurse through TWO layers (struct field → scalar) to fire
-        the inherited format check.
+        field is typed as the `Email` scalar above, so map iteration recurses
+        through TWO layers (struct field → scalar) to fire the inherited
+        format check.
       properties:
         email:
           $ref: '#/components/schemas/CollectionsEmail'
@@ -745,6 +744,8 @@ components:
       properties:
         reason:
           type: string
+      required:
+      - reason
       type: object
     ConstrainedBoxHost:
       description: |-
@@ -758,7 +759,7 @@ components:
       type: object
     ConstrainedBoxOfScalarsOrder:
       description: |-
-        ConstrainedBox<T> is the field-metadata regression fixture. Unlike
+        ConstrainedBox<T> exercises field metadata on a generic body. Unlike
         the other generics above (whose own body fields carry no validator
         decorators), every non-parametric field here is decorated:
 
@@ -766,14 +767,10 @@ components:
           - label  @maxLength         → string length cap
           - stamp  @format            → string format hint
 
-        Before the schemaForType/instantiateGeneric unification, the concrete
-        `ConstrainedBoxOfScalarsOrder` component walked the body WITHOUT
-        applyFieldMetadata, so it advertised bare `integer`/`string` and
-        dropped every bound, default, and format — hey-api / openapi-generator
-        then emitted unconstrained client types. The instance component MUST
-        now carry minimum/maximum/default/maxLength/format on these fields,
-        plus this decl's own description (generic instances inherit it the
-        same way a non-generic type would).
+        The concrete `ConstrainedBoxOfScalarsOrder` component carries
+        minimum/maximum/default/maxLength/format on these fields, plus this
+        decl's own description (generic instances inherit it the same way a
+        non-generic type would).
       properties:
         count:
           default: 10
@@ -797,8 +794,8 @@ components:
       type: object
     CookieReq:
       description: |-
-        CookieReq drives the cookie binder. Same explicit-name wart — the
-        runtime fetches the cookie named `session`, not `session_id`.
+        CookieReq drives the cookie binder with an explicit wire name — the
+        runtime fetches the cookie named `session_id`.
       type: object
     CounterReq:
       description: CounterReq wraps NumberCounter for the AddCounter POST.
@@ -955,12 +952,9 @@ components:
       type: object
     DefaultsConflict:
       description: |-
-        DefaultsConflict pins the case where the default literal WOULD fail
-        the per-field validator if the user accepted the pre-fill. The
-        semantics layer should ideally surface a warning so the user knows
-        the pre-fill yields an immediately-invalid value; if the layer is
-        silent, the generated code emits the default and then rejects it at
-        req.Validate() — a footgun.
+        DefaultsConflict exercises a default literal that fails the per-field
+        validator. Codegen accepts the design: the generated code emits the
+        default and then rejects the pre-filled value at req.Validate().
       properties:
         empty:
           default: ""
@@ -986,7 +980,9 @@ components:
     DefaultsScalar:
       description: |-
         DefaultsScalar uses a numeric-scalar default. The literal is a plain
-        int — the codegen widens it to the scalar alias via cast.
+        int — the codegen casts it to the scalar's defined type
+        (`PageSize(20)`) so the pointer pre-fill `__d := PageSize(20)` keeps
+        the field's `*PageSize` type.
       properties:
         size:
           anyOf:
@@ -1015,6 +1011,9 @@ components:
           type: string
         resource:
           type: string
+      required:
+      - key
+      - resource
       type: object
     EchoAReqBody:
       properties:
@@ -1324,6 +1323,8 @@ components:
       properties:
         email:
           type: string
+      required:
+      - email
       type: object
     EnqueueJobReqBody:
       properties:
@@ -1409,6 +1410,36 @@ components:
       - name
       - weight
       type: object
+    GenericOverEnum:
+      description: |-
+        GenericOverEnum is the enum counterpart: `Page<Priority>` rejects
+        elements outside the declared value set, resolving through the enum's
+        generated `switch` Validate().
+      properties:
+        levels:
+          $ref: '#/components/schemas/PageOfPriority'
+      required:
+      - levels
+      type: object
+    GenericOverScalar:
+      description: |-
+        GenericOverScalar exercises a generic instantiated over a
+        CONSTRAINED SCALAR. `Page<Email>` / `Page<Cents>` substitute T with a
+        scalar that carries @format / @maxLength / @gte / @lte. The
+        parametric Page[T].Validate() reaches each element through the
+        runtime `interface{ Validate() error }` probe, which resolves because
+        scalars emit as DEFINED Go types with their own Validate() method
+        (not bare aliases). The instance components (`PageOfScalarsEmail`,
+        `PageOfCents`) carry the element constraints via the element $ref.
+      properties:
+        amounts:
+          $ref: '#/components/schemas/PageOfCents'
+        emails:
+          $ref: '#/components/schemas/PageOfScalarsEmail'
+      required:
+      - emails
+      - amounts
+      type: object
     GetAuditedRespBody:
       $ref: '#/components/schemas/Audited'
     GetItemReq:
@@ -1438,19 +1469,9 @@ components:
       $ref: '#/components/schemas/ScalarsOrder'
     GetUserReq:
       description: |-
-        GetUserReq is the workaround for the cross-package-scalar bug.
-
-        Originally `id shared.ID @path`, but `isStringBindingType` /
-        `stringBindable` look up scalar declarations in the CURRENT
-        package only (`pkg.Scalars[name]`). The qualified name
-        `"shared.ID"` misses the map and the check falls through with
-        `@path requires a string-backed field ... - got shared.ID`,
-        even though `shared.ID` IS a `scalar ID string`. So @path /
-        @header / @cookie / @query all refuse cross-package scalars
-        across the entire binding surface.
-
-        The local-string-with-length workaround replays shared.ID's
-        validator stack manually — the bug is recorded in the report.
+        GetUserReq is the path-only request for GetUser / DeleteUser. The
+        `id` field is a local `string @path` that replays shared.ID's length
+        cap inline via @length(1, 64).
       properties:
         id:
           maxLength: 64
@@ -1472,12 +1493,9 @@ components:
       type: object
     HeaderOptionalReq:
       description: |-
-        HeaderOptionalReq probes the optional-header path. NOTE: codegen
-        currently rejects `string? @header` outright with "@header
-        requires a string-backed field ... got string?" — the
-        `stringBindable` predicate checks `f.Type.Optional` and bails. To
-        keep the package generating we drop the `?`; the binder treats an
-        absent header as the empty string.
+        HeaderOptionalReq exercises a required header bound to an explicit
+        wire name (`X-Trace-Id`). The binder treats an absent header as the
+        empty string.
       type: object
     HeaderReq:
       description: |-
@@ -1488,8 +1506,8 @@ components:
       type: object
     HealthResp:
       description: |-
-        HealthResp is a minimal envelope for the liveness probe - a bare
-        boolean would force a wrapper anyway, so we make it explicit.
+        HealthResp is a minimal envelope for the liveness probe - a single
+        boolean field wrapped in a response struct.
       properties:
         ok:
           type: boolean
@@ -1529,6 +1547,8 @@ components:
           type: array
         trace:
           type: string
+      required:
+      - errors
       type: object
     InventoryListResp:
       description: |-
@@ -1696,8 +1716,8 @@ components:
         counts:
           additionalProperties:
             type: integer
-          maxItems: 100
-          minItems: 1
+          maxProperties: 100
+          minProperties: 1
           type: object
       required:
       - counts
@@ -1723,11 +1743,9 @@ components:
       type: object
     Map_Optional:
       description: |-
-        Map_Optional is the optional-map case. Outer nil-guard wraps any
-        inner iteration. Today's generator treats `map<K, V>?` like the
-        non-optional case for bound checks (len(nil) is 0, so a @minItems
-        on an optional map would falsely reject the nil case — but this
-        fixture has no bounds, so the gap is not exercised here).
+        Map_Optional is the optional-map case. The field carries no bounds,
+        so its validator reduces to an outer nil-guard around any inner
+        iteration.
       properties:
         counts:
           additionalProperties:
@@ -1766,8 +1784,8 @@ components:
     Map_StructAddress:
       description: |-
         Map_StructAddress is the second struct-valued map case, with
-        Address as the value. Same KNOWN GAP as Map_StructValue: the
-        per-value `street` / `city` validators stay un-fired today.
+        Address as the value. Each entry's `street` / `city` validators fire
+        through the per-entry `val.Validate()` call.
       properties:
         addresses:
           additionalProperties:
@@ -1778,11 +1796,9 @@ components:
       type: object
     Map_StructValue:
       description: |-
-        Map_StructValue is the struct-valued map. KNOWN GAP: today's
-        generator does NOT recurse into User to validate its `name` /
-        `email` fields; only field-level validators on the MAP itself fire.
-        The `email` scalar's @format(email) is therefore unenforced inside
-        this map.
+        Map_StructValue is the struct-valued map. The generator emits a
+        per-entry `val.Validate()` call so each User's `name` / `email`
+        fields are validated, including the `email` scalar's @format(email).
       properties:
         users:
           additionalProperties:
@@ -1859,9 +1875,8 @@ components:
       description: |-
         MaybeOrder exercises the `T?` substitution path inside the generic
         body. The `Maybe<T>` decl has `value T?` so substituting T=Order
-        produces a field with nullable optional Order - the emitter must
-        preserve the `?` in the generated schema, not silently strip it
-        while walking through substitution.
+        yields a nullable-optional Order field, preserving the `?` through
+        substitution.
       properties:
         hit:
           $ref: '#/components/schemas/MaybeOfScalarsOrder'
@@ -2006,6 +2021,9 @@ components:
           $ref: '#/components/schemas/ID'
         resource:
           type: string
+      required:
+      - resource
+      - id
       type: object
     NumberBoundary:
       description: |-
@@ -2507,6 +2525,26 @@ components:
           - array
           - "null"
       type: object
+    PageOfCents:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/Cents'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
     PageOfEnvelopeOfScalarsOrder:
       description: |-
         Page<T> is the canonical cursor-pagination envelope. T-typed
@@ -2541,6 +2579,26 @@ components:
       required:
       - rows
       type: object
+    PageOfPriority:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/Priority'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
     PageOfProductRef:
       description: |-
         Page<T> is the canonical cursor-pagination envelope. T-typed
@@ -2554,6 +2612,26 @@ components:
         items:
           items:
             $ref: '#/components/schemas/ProductRef'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    PageOfScalarsEmail:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsEmail'
           type: array
         total:
           type: integer
@@ -2620,13 +2698,12 @@ components:
         - total
         type: object
       description: |-
-        GenericWithMixin pins mixin substitution through generics: a
-        generic body that embeds a mixin must NOT silently drop the
-        mixin's fields during instantiation. `PageWithAudit<T>` mixes
-        `AuditFields` inside its body; the substituted
-        `PageWithAudit<Order>` component must list `createdAt` /
-        `updatedAt` (from AuditFields) in addition to its own `items` /
-        `total`.
+        GenericWithMixin exercises mixin substitution through generics: a
+        generic body that embeds a mixin carries the mixin's fields through
+        instantiation. `PageWithAudit<T>` mixes `AuditFields` inside its
+        body; the substituted `PageWithAudit<Order>` component lists
+        `createdAt` / `updatedAt` (from AuditFields) in addition to its own
+        `items` / `total`.
       type: object
     PaginatedResp:
       description: |-
@@ -2832,9 +2909,8 @@ components:
       description: |-
         PathExplicitNameReq exercises the `@path("user_id")` form where the
         DSL field name (`userId`) differs from the URL placeholder
-        (`{user_id}`). NOTE: the codegen currently ignores the decorator
-        argument and emits `r.PathValue("userId")` regardless — flagged in
-        the report as a wart, the runtime binding will not match.
+        (`{user_id}`). The codegen binds against the explicit wire name so
+        the generated handler reads `r.PathValue("user_id")`.
       properties:
         userId:
           maxLength: 64
@@ -2946,6 +3022,12 @@ components:
       required:
       - body
       type: object
+    Priority:
+      enum:
+      - low
+      - medium
+      - high
+      type: string
     ProductPage:
       description: |-
         ProductPage instantiates Page<ProductRef> — separate scalar set
@@ -2990,10 +3072,9 @@ components:
     ProjectsResp:
       description: |-
         ProjectsResp wraps a slice in an envelope so the response shape
-        stays inside what `parseNamedTypeRef` accepts. The brick wall
-        the original spec hit: `response Project[]` won't parse — the
-        method body's `response` slot is a NamedTypeRef and never sees
-        the array-suffix branch.
+        stays inside what `parseNamedTypeRef` accepts: the method body's
+        `response` slot is a NamedTypeRef and never sees the array-suffix
+        branch, so `response Project[]` does not parse.
       properties:
         items:
           items:
@@ -3123,6 +3204,8 @@ components:
       properties:
         retryAfter:
           type: integer
+      required:
+      - retryAfter
       type: object
     RateLimitedErr:
       description: TooManyRequests error response (HTTP 429).
@@ -3149,6 +3232,29 @@ components:
           type: array
       required:
       - furniture
+      type: object
+    ScalarFieldOverrides:
+      description: |-
+        ScalarFieldOverrides exercises a field-level decorator STACKED on a
+        SCALAR-typed field. The scalar carries its own bounds (on its
+        Validate()); the field NARROWS them further. Because scalars are
+        DEFINED Go types (`type Cents int`), the generated validator
+        derefs+casts the scalar to its primitive and runs each stacked
+        decorator: `amount` rejects > 500 (Cents alone allows up to 1e9),
+        `discount` the optional variant, `code` rejects len > 5 (Tag alone
+        allows up to 20).
+      properties:
+        amount:
+          $ref: '#/components/schemas/Cents'
+        code:
+          $ref: '#/components/schemas/ScalarsTag'
+        discount:
+          anyOf:
+          - $ref: '#/components/schemas/Cents'
+          - type: "null"
+      required:
+      - amount
+      - code
       type: object
     ScalarsEmail:
       format: email
@@ -3499,9 +3605,8 @@ components:
             not a regex quantifier.
           - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
           - A regex containing a literal BACKTICK. The validator emits the
-            pattern as a %q-quoted Go string, so a backtick survives; the old
-            raw-string (`...`) emission would have closed the literal early
-            and produced non-compiling Go.
+            pattern as a %q-quoted Go string, so a backtick survives in the
+            generated literal.
       properties:
         codeSpan:
           pattern: ^`[^`]+`$
@@ -3578,13 +3683,11 @@ components:
     TreeOfScalarsOrder:
       description: |-
         Tree<T> is the marquee recursive-generic test: the body references
-        `Tree<T>` itself through the `kids` field. Pre-refactor inlining
-        would infinite-loop substituting T=Order. Post-refactor the
-        instance registers as `TreeOfOrder`, emits its body, hits
-        `kids: Tree<T>[]` substituted to `Tree<Order>[]`, asks the
-        registry for the component name, finds `TreeOfOrder` is already
-        registered, and emits `$ref:TreeOfOrder` - the cycle terminates
-        as a reference.
+        `Tree<T>` itself through the `kids` field. The instance registers
+        as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted
+        to `Tree<Order>[]`, asks the registry for the component name, finds
+        `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` — the
+        cycle terminates as a reference.
       properties:
         kids:
           items:
@@ -3674,16 +3777,8 @@ components:
       description: |-
         UserRef is the lightweight handle: id + email. Used as a BODY
         request (POST CreateUser, POST BanUser) and as the owner field
-        of services.Project.
-
-        NOTE: UserRef cannot ride a GET request unchanged. `email
-        shared.Email` is a cross-package scalar; the query-bind path in
-        `collectBindings` looks up scalar declarations in the current
-        package only (`pkg.Scalars[declName]`) and falls through with
-        `type shared.Email cannot bind to query`. The transport
-        generator never resolves the scalar across the import edge —
-        recorded as a bug in the report. The path-only GetUser uses the
-        local-scalar `GetUserReq` below as a workaround.
+        of services.Project. Both fields are cross-package scalars
+        (`shared.ID`, `shared.Email`) resolved across the import edge.
       properties:
         email:
           $ref: '#/components/schemas/SharedEmail'
@@ -3901,11 +3996,9 @@ components:
     XPkgEnum:
       description: |-
         XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
-        take inside a single field. Each form previously slipped past the
-        validator because the per-package `pkg.Enums` lookup is local-only;
-        the fix routes resolution through the project-wide EnumTable so
-        every shape now emits the switch-case validity check. The fixture
-        keeps drift coverage on the gen output for every shape.
+        take inside a single field. Resolution routes through the
+        project-wide EnumTable, so every shape emits the switch-case
+        validity check.
 
           - flat:      `shared.Severity` direct field   → switch wrapped by shape().
           - many:      `shared.Severity[]`              → for-range + switch.
@@ -4294,8 +4387,7 @@ paths:
       - bindings
     get:
       description: Fetch one item by id. The path placeholder lands as the UUID scalar
-        alias; the inherited @format(uuid) validator rejects malformed ids at the
-        boundary.
+        type; the inherited @format(uuid) validator rejects malformed ids at the boundary.
       operationId: GetItem
       parameters:
       - in: path
@@ -4340,7 +4432,10 @@ paths:
                   format: binary
                   type: string
                 note:
-                  type: string
+                  maxLength: 280
+                  type:
+                  - string
+                  - "null"
               required:
               - avatar_file
               type: object

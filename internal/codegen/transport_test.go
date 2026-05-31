@@ -167,8 +167,8 @@ service S {
 	}
 }
 
-// TestGenerateTransportDefaults pins the? @default pre-fill emission. The
-// handler must assign each declared default BEFORE the JSON decode so
+// TestGenerateTransportDefaults pins the @default pre-fill emission. The
+// handler assigns each declared default BEFORE the JSON decode so
 // fields absent from the body keep the DSL value; explicit fields in
 // the body still overwrite via the standard decoder semantics.
 func TestGenerateTransportDefaults(t *testing.T) {
@@ -344,17 +344,15 @@ service S {
 	)
 }
 
-// TestGenerateTransportWireNumericAcrossSources locks the Round-2.5
-// unification: numeric / bool fields can ride @query, @header,
+// TestGenerateTransportWireNumericAcrossSources covers the unified
+// wire binding: numeric / bool fields can ride @query, @header,
 // @cookie, AND @form through the same parse + 400 idiom. The only
 // difference between bindings is the source extraction (Query().Get
 // vs Header.Get vs c.Value vs FormValue) — everything else (parse
 // call, cast, error path) is shared by [renderWireBindLine].
 //
-// Without this fix `int @header` etc. either silently zeroed the
-// field at runtime (form) or rejected at semantic time (header /
-// cookie). Now they parse, with parse failures returning 400 Bad
-// Request like @query already did.
+// `int @header` etc. parse the wire value, with parse failures
+// returning 400 Bad Request the same way @query does.
 func TestGenerateTransportWireNumericAcrossSources(t *testing.T) {
 	src := `package design
 
@@ -429,13 +427,12 @@ service S {
 	)
 }
 
-// TestGenerateTransportOptionalHeaderCookie covers the Round-1
-// extension that lets `string? @header` and `string? @cookie` bind
-// through to `*<T>` cleanly. Missing or empty wire values land the
-// field as a nil pointer; present values flow through the alias cast
-// (when the field is a typed scalar / enum) and address a new
-// alias-typed variable so the pointer carries the field's declared
-// type instead of bare `*string`.
+// TestGenerateTransportOptionalHeaderCookie covers `string? @header`
+// and `string? @cookie` binding through to `*<T>`. Missing or empty
+// wire values land the field as a nil pointer; present values flow
+// through the alias cast (when the field is a typed scalar / enum) and
+// address a new alias-typed variable so the pointer carries the
+// field's declared type instead of bare `*string`.
 func TestGenerateTransportOptionalHeaderCookie(t *testing.T) {
 	src := `package design
 
@@ -488,8 +485,8 @@ service S {
 // alias-typed query binding. A field `sort Color? @query` becomes
 // `*Color` in Go; the query string yields a raw `string`, so a naive
 // `req.Sort = &_v` is a `*string` and refuses to compile against the
-// `*Color` field. The fix routes the raw string through the alias cast
-// into a fresh variable and addresses THAT variable.
+// `*Color` field. The binder routes the raw string through the alias
+// cast into a fresh variable and addresses THAT variable.
 func TestGenerateTransportOptionalEnumScalarQuery(t *testing.T) {
 	src := `package design
 
@@ -616,10 +613,11 @@ service FilesService {
 
 // TestGenerateTransportResponseHeaderCookieNamedArg pins the
 // explicit-name override on the response side. `@header("X-Y-Z")` /
-// `@cookie("session_id")` must drive the wire name, not the Go field
-// name - identical to the request-side behaviour. Without this fix
-// `count string @header("X-Total-Count")` emitted
-// `w.Header().Set("count", ...)`, losing the canonical HTTP name.
+// `@cookie("session_id")` drive the wire name, not the Go field name -
+// identical to the request-side behaviour. So
+// `count string @header("X-Total-Count")` emits
+// `w.Header().Set("X-Total-Count", ...)`, keeping the canonical HTTP
+// name.
 func TestGenerateTransportResponseHeaderCookieNamedArg(t *testing.T) {
 	src := `package design
 type ListReq { q string @query }
@@ -1287,9 +1285,8 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 
 // TestGenerateTransportFormExplicitWireName pins that an explicit
 // @form("wire_name") sets the runtime r.FormFile / r.FormValue key, not
-// the Go field name. Before the fix the field name leaked through and
-// the explicit name was silently dropped (so a client posting under the
-// declared wire name would never bind).
+// the Go field name, so a client posting under the declared wire name
+// binds.
 func TestGenerateTransportFormExplicitWireName(t *testing.T) {
 	pkg := analyze(t, `package design
 type UploadReq {

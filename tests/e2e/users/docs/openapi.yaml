@@ -53,9 +53,8 @@ components:
     DeleteUserReq:
       description: |-
         DeleteUserReq is the path-bound input for DELETE /users/{id}. It
-        mirrors GetUserReq - keeping the shape separate makes the binding
-        intent explicit at each call site and leaves room for future
-        soft-delete query flags without touching the read path.
+        mirrors GetUserReq as a separate shape so each binding site is
+        explicit.
       properties:
         id:
           type: string
@@ -95,9 +94,8 @@ components:
     UpdateUserReq:
       description: |-
         UpdateUserReq is the request for PUT /users/{id}. The path-bound `id`
-        is required by the semantic phase to match the {id} segment; the body
-        fields mirror CreateUserReq so a JSON body shaped for create works for
-        update too.
+        matches the {id} segment; the body fields mirror CreateUserReq so a
+        create-shaped JSON body works for update too.
       properties:
         age:
           type:
@@ -183,6 +181,8 @@ components:
           items:
             type: string
           type: array
+      required:
+      - fields
       type: object
 info:
   title: E2E API
@@ -225,8 +225,8 @@ paths:
     delete:
       description: |-
         DeleteUser removes a user identified by the URL id. The path
-        parameter binds onto the request struct so the handler can act
-        on it instead of receiving an opaque {id}.
+        parameter binds onto the request struct so the handler receives
+        it as a field.
       operationId: DeleteUser
       parameters:
       - in: path

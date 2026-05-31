@@ -4,14 +4,13 @@ package services
 
 import (
 	"fmt"
-	"net/mail"
 )
 
 // Validate checks every field-level constraint declared on AccountLoginResp.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccountLoginResp) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -19,8 +18,8 @@ func (v *AccountLoginResp) Validate() error {
 // Validate checks every field-level constraint declared on AccountProfile.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccountProfile) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -28,8 +27,8 @@ func (v *AccountProfile) Validate() error {
 // Validate checks every field-level constraint declared on AsyncJobResp.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AsyncJobResp) Validate() error {
-	if l := len(v.JobID); l < 1 || l > 64 {
-		return fmt.Errorf("jobId: length out of range [1, 64]")
+	if err := v.JobID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -37,8 +36,8 @@ func (v *AsyncJobResp) Validate() error {
 // Validate checks every field-level constraint declared on CancelJobReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CancelJobReq) Validate() error {
-	if l := len(v.JobID); l < 1 || l > 64 {
-		return fmt.Errorf("jobId: length out of range [1, 64]")
+	if err := v.JobID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -55,8 +54,8 @@ func (v *CreateJobReq) Validate() error {
 // Validate checks every field-level constraint declared on DeleteAccountReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DeleteAccountReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -86,8 +85,8 @@ func (v *HealthResp) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *InventoryListResp) Validate() error {
 	for i0 := range v.Items {
-		if l := len(v.Items[i0]); l < 1 || l > 64 {
-			return fmt.Errorf("items: length out of range [1, 64]")
+		if err := v.Items[i0].Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -120,12 +119,12 @@ func (v *ListUsersResp) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PaginatedResp) Validate() error {
 	for i0 := range v.Items {
-		if l := len(v.Items[i0]); l < 1 || l > 64 {
-			return fmt.Errorf("items: length out of range [1, 64]")
+		if err := v.Items[i0].Validate(); err != nil {
+			return err
 		}
 	}
-	if l := len(v.TraceID); l < 1 || l > 64 {
-		return fmt.Errorf("traceId: length out of range [1, 64]")
+	if err := v.TraceID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -133,8 +132,8 @@ func (v *PaginatedResp) Validate() error {
 // Validate checks every field-level constraint declared on Project.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Project) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if len(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
@@ -177,14 +176,11 @@ func (v *User) Validate() error {
 	if err := v.Audit.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
-	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
 	if len(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
@@ -195,14 +191,11 @@ func (v *User) Validate() error {
 // Validate checks every field-level constraint declared on UserRef.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UserRef) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
-	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

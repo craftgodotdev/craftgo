@@ -4,7 +4,6 @@ package combine
 
 import (
 	"fmt"
-	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/shared"
 	"net/mail"
 	"regexp"
 )
@@ -50,10 +49,8 @@ func (v *DefaultsConflict) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsEnum) Validate() error {
 	if v.C != nil {
-		switch *v.C {
-		case ColorRed, ColorGreen, ColorBlue:
-		default:
-			return fmt.Errorf("c: invalid Color value")
+		if err := v.C.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -62,11 +59,10 @@ func (v *DefaultsEnum) Validate() error {
 // Validate checks every field-level constraint declared on DefaultsScalar.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsScalar) Validate() error {
-	if v.Size != nil && *v.Size < 1 {
-		return fmt.Errorf("size: below minimum 1")
-	}
-	if v.Size != nil && *v.Size > 100 {
-		return fmt.Errorf("size: above maximum 100")
+	if v.Size != nil {
+		if err := v.Size.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -172,50 +168,59 @@ func (v *PresenceMatrix) Validate() error {
 // Validate checks every field-level constraint declared on XPkgEnum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XPkgEnum) Validate() error {
-	switch v.Flat {
-	case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-	default:
-		return fmt.Errorf("flat: invalid Severity value")
+	if err := v.Flat.Validate(); err != nil {
+		return err
 	}
-	for i := range v.Many {
-		switch v.Many[i] {
-		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-		default:
-			return fmt.Errorf("many: invalid Severity value")
+	for i0 := range v.Many {
+		if err := v.Many[i0].Validate(); err != nil {
+			return err
 		}
 	}
 	if v.Maybe != nil {
-		switch *v.Maybe {
-		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-		default:
-			return fmt.Errorf("maybe: invalid Severity value")
+		if err := v.Maybe.Validate(); err != nil {
+			return err
 		}
 	}
 	for _, val := range v.ByString {
-		switch val {
-		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-		default:
-			return fmt.Errorf("byString value: invalid Severity value")
+		if err := val.Validate(); err != nil {
+			return err
 		}
 	}
 	for key := range v.ByEnum {
-		switch key {
-		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-		default:
-			return fmt.Errorf("byEnum key: invalid Severity value")
+		if err := key.Validate(); err != nil {
+			return err
 		}
 	}
 	for key, val := range v.BothEnum {
-		switch key {
-		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-		default:
-			return fmt.Errorf("bothEnum key: invalid Severity value")
+		if err := key.Validate(); err != nil {
+			return err
 		}
-		switch val {
-		case shared.SeverityInfo, shared.SeverityWarning, shared.SeverityError, shared.SeverityCritical:
-		default:
-			return fmt.Errorf("bothEnum value: invalid Severity value")
+		if err := val.Validate(); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PageSize.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v PageSize) Validate() error {
+	if int(v) < 1 {
+		return fmt.Errorf("PageSize: below minimum 1")
+	}
+	if int(v) > 100 {
+		return fmt.Errorf("PageSize: above maximum 100")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Color.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Color) Validate() error {
+	switch v {
+	case ColorRed, ColorGreen, ColorBlue:
+	default:
+		return fmt.Errorf("Color: invalid Color value")
 	}
 	return nil
 }

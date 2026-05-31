@@ -9,79 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func enumValueCheck(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
-	if pkg == nil || f == nil || f.Type == nil {
-		return ""
-	}
-	access := "v." + GoFieldName(f.Name)
-	// Map case: walk both sides independently. A map slot may carry
-	// an enum on either the key OR the value (or both); we only emit
-	// a range loop when at least one side resolves. Map keys / values
-	// can't be array-or-optional in the DSL, so the per-side body is
-	// always a direct switch — no shape() wrapping needed.
-	if f.Type.Map != nil {
-		var keyEd, valEd *ast.EnumDecl
-		var keyQual, valQual string
-		if k := f.Type.Map.Key; k != nil && k.Named != nil {
-			keyEd, keyQual = resolveEnumNamed(k.Named, pkg, r, uses)
-		}
-		if v := f.Type.Map.Value; v != nil && v.Named != nil {
-			valEd, valQual = resolveEnumNamed(v.Named, pkg, r, uses)
-		}
-		if keyEd == nil && valEd == nil {
-			return ""
-		}
-		uses["fmt"] = true
-		var stmts []string
-		if keyEd != nil {
-			stmts = append(stmts, enumSwitchBody(keyEd, keyQual, "key", f.Name+" key"))
-		}
-		if valEd != nil {
-			stmts = append(stmts, enumSwitchBody(valEd, valQual, "val", f.Name+" value"))
-		}
-		return mapRangeLoop(access, keyEd != nil, valEd != nil, strings.Join(stmts, "\n"))
-	}
-	if f.Type.Named == nil {
-		return ""
-	}
-	ed, qualifier := resolveEnumNamed(f.Type.Named, pkg, r, uses)
-	if ed == nil || len(ed.EnumValues()) == 0 {
-		return ""
-	}
-	uses["fmt"] = true
-	return shape(f, access, func(elem string) string {
-		return enumSwitchBody(ed, qualifier, elem, f.Name)
-	})
-}
-
-// resolveEnumNamed returns (EnumDecl, qualifier) when the named ref
-// resolves to an enum reachable from the package being generated.
-// qualifier carries the Go package prefix (e.g. `"shared."`) for
-// cross-package enums and is empty for local ones — so the emitted
-// case list stays bare for the long-standing single-package shape
-// and prefixes only when the constants live in a sibling package.
-// Side effect: when the ref is cross-package, the resolver also
-// registers the target's Go import path in uses, so validate.go can
-// reference `shared.ColorRed` and friends.
-func resolveEnumNamed(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) (*ast.EnumDecl, string) {
-	if n == nil || n.Name == nil {
-		return nil, ""
-	}
-	name := n.Name.String()
-	if ed, ok := pkg.Enums[name]; ok {
-		return ed, ""
-	}
-	ed := r.LookupEnum(name)
-	if ed == nil {
-		return nil, ""
-	}
-	qualifier, path := r.QualifierFor(n)
-	if path != "" {
-		uses[path] = true
-	}
-	return ed, qualifier
-}
-
 // enumSwitchBody renders the standard `switch expr { case ... default:
 // return ... }` block. Centralised so direct-field, array, optional,
 // and map-side emitters share identical output formatting.
@@ -183,11 +110,10 @@ return err
 	// Map: walk both keys AND values. Either side may be a user-
 	// defined type (or array / optional thereof on the value side)
 	// that carries its own Validate(). Map keys can't be array or
-	// optional in the DSL grammar, so the key side stays flat.
-	// Skipping the walk would leave `map<K, User>` / `map<UserID, V>`
-	// (where UserID is a struct-shaped type — uncommon but legal)
-	// entries unchecked and silently break the recursive-validation
-	// contract.
+	// optional in the DSL grammar, so the key side stays flat. The
+	// walk keeps `map<K, User>` / `map<UserID, V>` (where UserID is a
+	// struct-shaped type — uncommon but legal) entries checked,
+	// upholding the recursive-validation contract.
 	if f.Type.Map != nil {
 		k := f.Type.Map.Key
 		v := f.Type.Map.Value
@@ -236,9 +162,14 @@ return err
 			depth = 1
 		}
 		return emitNestedForLoops(access, depth, body)
-	case f.Type.Optional:
-		// access is already `*Type`. Method dispatch auto-resolves
-		// through the pointer; no explicit deref needed.
+	case goFieldIsPointer(f):
+		// The Go field is a *Type — nil-guard before dispatching
+		// Validate(), or a nil receiver panics. This covers BOTH `?`
+		// (optional) AND `@nullable` (required-but-nullable): both lower
+		// to *Type, so keying on the actual pointer-ness — not just the
+		// `?` suffix — is what keeps `{"f":null}` / an omitted field from
+		// crashing the handler. Method dispatch resolves through the
+		// pointer, so no explicit deref is needed.
 		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body(access))
 	default:
 		return body(access)
@@ -261,9 +192,8 @@ func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 // shared with [nestedValidateCall] so both map-value walks and direct
 // field refs resolve qualified names the same way. A qualified ref
 // `shared.Page` lives in the project [TypeTable] (via the
-// [ProjectResolver]), not the local `pkg.Types` table — without that
-// consult, qualified refs were dropped silently (the local lookup
-// never finds them).
+// [ProjectResolver]), not the local `pkg.Types` table, so qualified
+// refs consult the resolver to resolve.
 func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
 	if n == nil || n.Name == nil {
 		return false
@@ -271,13 +201,31 @@ func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *Pro
 	name := n.Name.String()
 	// Local first: a single-part name resolved here matches the
 	// receiver-package lookup that pre-existed the resolver plumbing.
+	// Structs and enums always carry a Validate(); a scalar carries
+	// one only when it declares at least one validator decorator —
+	// matching exactly when [buildValidateData] emits the method.
 	if _, ok := pkg.Types[name]; ok {
 		return true
 	}
-	// Qualified ref → project-wide table via resolver. nil-safe:
-	// LookupType on a nil resolver returns nil, preserving the
+	if _, ok := pkg.Enums[name]; ok {
+		return true
+	}
+	if sd, ok := pkg.Scalars[name]; ok {
+		return scalarDeclHasValidators(sd)
+	}
+	// Qualified ref → project-wide tables via resolver. nil-safe:
+	// the Lookup* helpers on a nil resolver return nil, preserving the
 	// single-package behaviour for callers without project context.
-	return r.LookupType(name) != nil
+	if r.LookupType(name) != nil {
+		return true
+	}
+	if r.LookupEnum(name) != nil {
+		return true
+	}
+	if sd := r.LookupScalar(name); sd != nil {
+		return scalarDeclHasValidators(sd)
+	}
+	return false
 }
 
 // emitNestedForLoops produces `depth` nested `for i0 := range x` loops

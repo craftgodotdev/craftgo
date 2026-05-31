@@ -36,10 +36,10 @@ func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 // (`@requiresOneOf` / `@mutuallyExclusive`) — these never cross
 // package boundaries (their targets are same-type field names) so
 // they're safe to validate in the per-package pass that
-// [AnalyzeProject] runs with `skipMiddlewareRefCheck=true`. Without
-// this separation, typoed field names slipped through to codegen,
-// which substituted a literal `false` for the unknown name and
-// produced a silently-broken validator that never fires.
+// [AnalyzeProject] runs with `skipMiddlewareRefCheck=true`. A typoed
+// field name otherwise reaches codegen, which substitutes a literal
+// `false` for the unknown name and produces a validator that never
+// fires.
 func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {

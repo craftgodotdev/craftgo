@@ -13,10 +13,10 @@ import (
 )
 
 // onDefinition answers `textDocument/definition`. The cursor must sit on
-// an identifier that names a top-level declaration; we walk the file's
-// declarations and return the location of the matching name. Cross-file
-// resolution is not implemented - callers receive an empty list and the
-// editor falls back to its own workspace-symbol lookup.
+// an identifier that names a top-level declaration. The lookup checks the
+// current file first, then every `.craftgo` file under the design root so
+// a qualified `pkg.Name` or a bare name declared in a sibling package
+// resolves. A cursor that names nothing returns an empty list.
 func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DefinitionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -189,16 +189,14 @@ func qualifiedNameAt(view snapshotView, idx int) string {
 }
 
 // onReferences answers `textDocument/references`. The walker visits
-// every `.craftgo` file under the design root so a reference search
-// is project-wide, not buffer-only - the previous single-file
-// behaviour silently lost references in multi-file projects and made
-// "find all usages" unusable for any real codebase.
+// every `.craftgo` file under the design root so a reference search is
+// project-wide, not buffer-only.
 //
 // Detection is purely token-based: every Ident token whose text
 // matches the symbol's name counts. String literals (decorator args
 // like `@pattern("X")`) are not scanned because their content lives
-// inside a single String token, so cross-namespace collisions with
-// literal text remain a non-issue.
+// inside a single String token, so literal text never collides with
+// identifier references.
 func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.ReferenceParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {

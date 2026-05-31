@@ -1,7 +1,7 @@
 package design
 
 // Primary ProfileService declaration. The @prefix lives here and only
-// here — the `extend service` blocks in sibling files inherit it
+// here; the `extend service` blocks in sibling files inherit it
 // because the semantic phase merges every contribution into one
 // logical service.
 @prefix("/v1")

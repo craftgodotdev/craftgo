@@ -1,13 +1,13 @@
 package design
 
-// Profile and the matching request/response shapes. ContactInfo lives in
-// `contacts/`, Address lives next to this file but pulls in Coords from
-// `geo/` — proves transitive imports survive gen.
+// Profile and the matching request/response shapes. ContactInfo lives
+// in `contacts/`; Address lives next to this file but pulls in Coords
+// from `geo/`, exercising transitive imports through gen.
 import "contacts"
 
-// Profile is the wire-level shape of a user profile. Notice the nesting:
-// Profile contains ContactInfo, plus a slice of Addresses, each of which
-// optionally embeds a Coords value.
+// Profile is the wire-level shape of a user profile, nesting a
+// ContactInfo plus a slice of Addresses, each of which optionally
+// embeds a Coords value.
 type Profile {
 	id          string
 	displayName string              @length(1, 50)

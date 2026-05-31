@@ -114,10 +114,8 @@ func (r *genericRegistry) markEmitted(name string) {
 //	Page<Order[]>         → PageOfOrderArray  (array of named)
 //	Page<Order?>          → PageOfOrderOrNull (optional named)
 //
-// Deep nesting produces a long name on purpose. Cf. memory record
-// `project-generic-naming` - accepting long names is the explicit
-// design choice because the alternative (truncation + hash) sacrifices
-// readability and tooling support.
+// Deep nesting produces a long but fully readable name; the name is
+// never truncated or hashed, so it stays stable and tooling-friendly.
 func genericComponentName(decl *ast.TypeDecl, args []*ast.TypeRef) string {
 	var b strings.Builder
 	b.WriteString(pascalIdent(decl.Name))
@@ -210,8 +208,7 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 // a name fragment for generic component naming (`Page<string>` →
 // `PageOfString`) but they do not produce a separate component schema.
 // Delegates to [idents.IsBuiltin] so the codegen and the rest of the
-// pipeline share one source of truth for "is this a DSL builtin"
-// (which previously had three drifting inline lists).
+// pipeline share one source of truth for "is this a DSL builtin".
 func isPrimitiveName(name string) bool {
 	if !idents.IsBuiltin(name) {
 		return false

@@ -4,21 +4,7 @@ package catalog
 
 import (
 	"fmt"
-	"net/url"
-	"regexp"
 	"time"
-)
-
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
-var (
-	_pattern0 = regexp.MustCompile("^[A-Za-z0-9_-]+$")
-	_pattern1 = regexp.MustCompile("^[a-z][a-z0-9-]*$")
-	_pattern2 = regexp.MustCompile("^[A-Z0-9-]{4,32}$")
-	_pattern3 = regexp.MustCompile("^[A-Z]{3}$")
 )
 
 // Validate checks every field-level constraint declared on Category.
@@ -30,26 +16,14 @@ func (v *Category) Validate() error {
 	if err := v.AuditFields.Validate(); err != nil {
 		return err
 	}
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
-	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
-	if len(v.Slug) < 1 {
-		return fmt.Errorf("slug: length less than 1")
-	}
-	if len(v.Slug) > 64 {
-		return fmt.Errorf("slug: length greater than 64")
-	}
-	if !_pattern1.MatchString(v.Slug) {
-		return fmt.Errorf("slug: does not match pattern")
+	if err := v.Slug.Validate(); err != nil {
+		return err
 	}
 	if v.Parent != nil {
 		if err := v.Parent.Validate(); err != nil {
@@ -62,14 +36,8 @@ func (v *Category) Validate() error {
 // Validate checks every field-level constraint declared on CategoryRef.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CategoryRef) Validate() error {
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
-	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -80,8 +48,8 @@ func (v *CategoryRef) Validate() error {
 // Validate checks every field-level constraint declared on CreateProductReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateProductReq) Validate() error {
-	if !_pattern2.MatchString(v.Sku) {
-		return fmt.Errorf("sku: does not match pattern")
+	if err := v.Sku.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -89,23 +57,16 @@ func (v *CreateProductReq) Validate() error {
 	if v.Description != nil && len(*v.Description) > 5000 {
 		return fmt.Errorf("description: length greater than 5000")
 	}
-	if v.PriceCents < 0 {
-		return fmt.Errorf("priceCents: below minimum 0")
+	if err := v.PriceCents.Validate(); err != nil {
+		return err
 	}
-	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
-		return fmt.Errorf("currency: length out of range [3, 3]")
+	if v.Currency != nil {
+		if err := v.Currency.Validate(); err != nil {
+			return err
+		}
 	}
-	if v.Currency != nil && !_pattern3.MatchString(*v.Currency) {
-		return fmt.Errorf("currency: does not match pattern")
-	}
-	if len(v.CategoryID) < 1 {
-		return fmt.Errorf("categoryId: length less than 1")
-	}
-	if len(v.CategoryID) > 128 {
-		return fmt.Errorf("categoryId: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.CategoryID) {
-		return fmt.Errorf("categoryId: does not match pattern")
+	if err := v.CategoryID.Validate(); err != nil {
+		return err
 	}
 	if v.Tags != nil {
 		if len(v.Tags) > 20 {
@@ -151,17 +112,11 @@ func (v *Product) Validate() error {
 	if err := v.Timestamps.Validate(); err != nil {
 		return err
 	}
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
-	}
-	if !_pattern2.MatchString(v.Sku) {
-		return fmt.Errorf("sku: does not match pattern")
+	if err := v.Sku.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -169,14 +124,19 @@ func (v *Product) Validate() error {
 	if v.Description != nil && len(*v.Description) > 5000 {
 		return fmt.Errorf("description: length greater than 5000")
 	}
-	if v.PriceCents < 0 {
-		return fmt.Errorf("priceCents: below minimum 0")
+	{
+		_sv := int(v.PriceCents)
+		if _sv > 100000000 {
+			return fmt.Errorf("priceCents: above maximum 100000000")
+		}
 	}
-	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
-		return fmt.Errorf("currency: length out of range [3, 3]")
+	if err := v.PriceCents.Validate(); err != nil {
+		return err
 	}
-	if v.Currency != nil && !_pattern3.MatchString(*v.Currency) {
-		return fmt.Errorf("currency: does not match pattern")
+	if v.Currency != nil {
+		if err := v.Currency.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := v.Category.Validate(); err != nil {
 		return err
@@ -193,19 +153,15 @@ func (v *Product) Validate() error {
 			seen[item] = struct{}{}
 		}
 	}
-	if v.BonusBp != nil && *v.BonusBp < 0 {
-		return fmt.Errorf("bonusBP: below minimum 0")
-	}
-	if v.BonusBp != nil && *v.BonusBp > 10000 {
-		return fmt.Errorf("bonusBP: above maximum 10000")
-	}
-	if v.SiteURL != nil {
-		if _u, _err := url.Parse(*v.SiteURL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
-			return fmt.Errorf("siteUrl: not a valid URL")
+	if v.BonusBp != nil {
+		if err := v.BonusBp.Validate(); err != nil {
+			return err
 		}
 	}
-	if v.SiteURL != nil && len(*v.SiteURL) > 2048 {
-		return fmt.Errorf("siteUrl: length greater than 2048")
+	if v.SiteURL != nil {
+		if err := v.SiteURL.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -213,14 +169,8 @@ func (v *Product) Validate() error {
 // Validate checks every field-level constraint declared on ProductRef.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ProductRef) Validate() error {
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
-	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")

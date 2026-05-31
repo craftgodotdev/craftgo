@@ -132,6 +132,14 @@ type paramBinding struct {
 	// missing one. Unused by the wire-param bindings (path/query/...),
 	// which carry the required flag on the OpenAPI parameter directly.
 	Required bool
+	// Field is the source AST field, set by [collectFormBindings] so
+	// [multipartRequestBody] can build the SAME constrained schema
+	// (`@maxLength`, nullability, ...) the JSON body component carries
+	// instead of a bare `{type: string}`. Without it a generated client
+	// sees the served multipart text field as an unconstrained string
+	// and skips the limits the server's validator still enforces. nil for
+	// wire-param bindings.
+	Field *ast.Field
 }
 
 // helpersData is the template input for `handler_helpers.tmpl`.
@@ -154,11 +162,10 @@ func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 	return GenerateTransportResolved(pkg, cfg, projectRoot, nil)
 }
 
-// GenerateTransportWith is the legacy explicit-tables entry. Retained
-// for backward compatibility with single-package tests that build
-// CrossPkg / ScalarTable directly. New callers should use
-// [GenerateTransportResolved] which accepts a [ProjectResolver]
-// bundling every cross-package table.
+// GenerateTransportWith is the explicit-tables entry for single-package
+// tests that build CrossPkg / ScalarTable directly.
+// [GenerateTransportResolved] accepts a [ProjectResolver] bundling
+// every cross-package table.
 func GenerateTransportWith(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg, scalars ScalarTable) error {
 	r := &ProjectResolver{Scalars: scalars, CrossPkg: crossPkg}
 	return GenerateTransportResolved(pkg, cfg, projectRoot, r)
@@ -291,8 +298,8 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		if err != nil {
 			return transportData{}, err
 		}
-		// Drop the unused crossPkg/scalars locals — collectBindings reads
-		// them off the resolver itself now.
+		// collectBindings reads crossPkg/scalars off the resolver
+		// itself, so the locals are unused here.
 		_ = crossPkg
 		_ = scalars
 		// JSON body decode is only needed when at least one field is
@@ -496,9 +503,6 @@ var queryPrims = map[string]queryPrim{
 // reads them through the request struct's own package, so no
 // extra import is needed at the handler-file level. Including them
 // would emit unused `import` statements that `go build` rejects.
-//
-// Without this walk, a request with a cross-package scalar field
-// auto-promoted to @path (`id shared.ID` on a `/{id}` route)
 
 // wireSource describes a binding's HTTP wire source. Different bindings
 // extract the raw string differently but share the same downstream

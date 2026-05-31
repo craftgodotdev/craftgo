@@ -414,3 +414,16 @@ func TestGoldenSample(t *testing.T) {
 		t.Errorf("expected no diagnostics, got %d: %v", len(d), d)
 	}
 }
+
+// TestLineCommentStripsCarriageReturn pins that a CRLF doc comment
+// does not carry a trailing '\r' into the token Doc (which becomes the
+// OpenAPI description).
+func TestLineCommentStripsCarriageReturn(t *testing.T) {
+	tok := New("", "// hello\r\nfoo").Next()
+	if tok.Text != "foo" {
+		t.Fatalf("expected `foo` token, got %q", tok.Text)
+	}
+	if len(tok.Doc) != 1 || tok.Doc[0] != "hello" {
+		t.Errorf("CRLF comment must not leave a trailing CR; got Doc %q", tok.Doc)
+	}
+}

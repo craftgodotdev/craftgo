@@ -1,14 +1,14 @@
 package design
 
-// AdminService lives in its own folder (design/admin/) — proves that a
-// service defined far from `api.craftgo` still produces the same routes
-// it would if declared inline. The CLI's import resolver merges this
-// file into the package, then route gen stitches:
+// AdminService lives in its own folder (design/admin/); a service
+// defined apart from `api.craftgo` produces the same routes it would
+// inline. The import resolver merges this file into the package, then
+// route gen stitches:
 //
 //   basePath(/api) + @prefix(/v1) + @group(admin) + method-path(/dashboard)
 //
 // → `/api/v1/admin/dashboard`. The service-level @middlewares wraps
-// every method without needing the decorator on each one individually.
+// every method without the decorator on each one individually.
 @prefix("/v1")
 @group("admin")
 @middlewares(AuthRequired)

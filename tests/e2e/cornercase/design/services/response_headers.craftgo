@@ -6,9 +6,7 @@
 //
 // It also exercises NON-string header / cookie values: the generated
 // writer formats int / bool / enum (and scalars of those) to their
-// wire string via strconv, mirroring the request-side binder. Without
-// this, a non-string @header field used to pass design-time checks and
-// then vanish — written to neither the body nor a header.
+// wire string via strconv, mirroring the request-side binder.
 package services
 
 import "shared"

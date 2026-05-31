@@ -87,9 +87,8 @@ type NumberPrice {
 	posFloat  float64 @positive
 	negFloat  float64 @negative
 	posF32    float32 @positive
-	// @multipleOf on float is now rejected at semantic time — Go's
-	// modulus operator is integer-only, so the older "silently drop
-	// the check" path was a spec/runtime mismatch.
+	// @multipleOf on float is rejected at semantic time — Go's
+	// modulus operator is integer-only.
 	// stepFloat float64 @multipleOf(0.5)
 }
 

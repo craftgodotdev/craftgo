@@ -110,9 +110,8 @@ type Str_Optionals struct {
 //     not a regex quantifier.
 //   - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
 //   - A regex containing a literal BACKTICK. The validator emits the
-//     pattern as a %q-quoted Go string, so a backtick survives; the old
-//     raw-string (`...`) emission would have closed the literal early
-//     and produced non-compiling Go.
+//     pattern as a %q-quoted Go string, so a backtick survives in the
+//     generated literal.
 type Str_Patterns struct {
 	Upper    string `json:"upper"`
 	IntlNum  string `json:"intlNum"`

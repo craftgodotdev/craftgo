@@ -85,12 +85,11 @@ scalar Cents int @gte(0) @multipleOf(1)
 `,
 		},
 		{
-			// Regression: a scalar / enum value / field carrying BOTH a
-			// decorator AND a line-trailing `// comment` must not
-			// duplicate the comment. The lexer stores it on the last
-			// decorator's TrailingDoc AND the source-scan map, so a
-			// missing guard doubled it on every format pass
-			// (non-idempotent — format-on-save ballooned the comment).
+			// A scalar / enum value / field carrying BOTH a decorator
+			// AND a line-trailing `// comment` must not duplicate the
+			// comment. The lexer stores it on the last decorator's
+			// TrailingDoc AND the source line map, so the printer keeps
+			// exactly one copy across format passes (idempotency).
 			name: "decorated trailing comments",
 			src: `package x
 
@@ -195,12 +194,12 @@ service S {
 	}
 }
 
-// TestFormatDecoratedTrailingCommentSingle pins the double-emit fix
-// directly: a SINGLE format pass over a scalar / enum value that carries
-// both a decorator and a line-trailing comment must keep exactly one
-// copy of the comment. The idempotency table catches the doubling
-// indirectly (each pass doubles again); this guards the stronger
-// invariant that even the first format never duplicates.
+// TestFormatDecoratedTrailingCommentSingle checks that a SINGLE format
+// pass over a scalar / enum value that carries both a decorator and a
+// line-trailing comment keeps exactly one copy of the comment. The
+// idempotency table catches a doubling across passes indirectly; this
+// guards the stronger invariant that even the first format does not
+// duplicate.
 func TestFormatDecoratedTrailingCommentSingle(t *testing.T) {
 	src := `package x
 
@@ -222,8 +221,9 @@ enum Color {
 	}
 }
 
-// TestFormatExampleFiles runs the formatter on the real example files and
-// asserts they roundtrip cleanly with no diagnostics.
+// TestFormatPreservesParse formats a file with a file-level decorator
+// and asserts the output re-parses with the same package name and the
+// decorator intact.
 func TestFormatPreservesParse(t *testing.T) {
 	src := `@version("1.0")
 package design

@@ -9,6 +9,7 @@ const ErrCodeAccessRevoked = "ACCESS_REVOKED"
 // User code instantiates this struct and hands it to NewAccessRevokedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type AccessRevokedBody struct {
+	AuditTrail
 	Reason string `json:"reason"`
 }
 

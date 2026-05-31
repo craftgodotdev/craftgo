@@ -2,11 +2,11 @@
 
 package todos
 
-// Millis is a DSL scalar - alias of int with the validators declared on it inherited by every field of this type.
-type Millis = int
+// Millis is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Millis int
 
-// Tag is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Tag = string
+// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Tag string
 
 type CreateTodoReq struct {
 	Title    string        `json:"title"`
@@ -24,7 +24,7 @@ type ListTodosReq struct {
 	Cursor *string     `json:"-"`
 	Limit  int         `json:"-"`
 	Status *TodoStatus `json:"-"`
-	// tag is a SCALAR (Tag) filter bound from the query string. The
+	// tag is a scalar (Tag) filter bound from the query string. The
 	// scalar's inherited @length / @pattern run during req.Validate(),
 	// so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
 	Tag *Tag `json:"-"`
@@ -49,9 +49,9 @@ type TodoList struct {
 	Cursor *string `json:"cursor,omitempty"`
 	// total rides the X-Total-Count response header instead of the JSON
 	// body — a non-string @header value the generated handler formats
-	// with strconv.Itoa. A classic pagination pattern (GitHub, Stripe).
+	// with strconv.Itoa.
 	Total int `json:"-"`
-	// tookMs is a SCALAR-typed (Millis = int) header: it resolves to its
+	// tookMs is a scalar-typed (Millis = int) header: it resolves to its
 	// underlying primitive and formats the same as a plain int.
 	TookMs Millis `json:"-"`
 }

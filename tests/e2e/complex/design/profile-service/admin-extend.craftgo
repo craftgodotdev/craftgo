@@ -1,13 +1,12 @@
 package design
 
 // Second `extend service` block — admin-only methods. A single service
-// can be split across as many extend files as the project wants; the
-// semantic phase merges them in source order.
+// can be split across as many extend files as needed; the semantic
+// phase merges them in source order.
 extend service ProfileService {
-	// AdminListProfiles is the auth-gated demo. The `@middlewares`
-	// decorator wraps the handler with AuthRequired at gen time;
-	// unauthenticated callers get a 401 from the middleware before the
-	// handler runs.
+	// AdminListProfiles is auth-gated. The `@middlewares` decorator
+	// wraps the handler with AuthRequired at gen time; unauthenticated
+	// callers get a 401 from the middleware before the handler runs.
 	@middlewares(AuthRequired)
 	@security(AuthRequired)
 	get AdminListProfiles /admin/profiles {

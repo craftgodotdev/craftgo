@@ -11,11 +11,11 @@ import (
 // Validate checks every field-level constraint declared on XAudit.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XAudit) Validate() error {
-	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
-		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
+	if err := v.CreatedAt.Validate(); err != nil {
+		return err
 	}
-	if _, _err := time.Parse(time.RFC3339, v.UpdatedAt); _err != nil {
-		return fmt.Errorf("updatedAt: not a valid RFC 3339 datetime")
+	if err := v.UpdatedAt.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -45,11 +45,52 @@ func (v *XOwner) Validate() error {
 	if l := len(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XEmail.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v XEmail) Validate() error {
+	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+		return fmt.Errorf("XEmail: not a valid email")
+	}
+	if len(string(v)) > 254 {
+		return fmt.Errorf("XEmail: length greater than 254")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XNodeID.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v XNodeID) Validate() error {
+	if int(v) < 1 {
+		return fmt.Errorf("XNodeID: below minimum 1")
+	}
+	if int(v) > 1000000 {
+		return fmt.Errorf("XNodeID: above maximum 1000000")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XTimestamp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v XTimestamp) Validate() error {
+	if _, _err := time.Parse(time.RFC3339, string(v)); _err != nil {
+		return fmt.Errorf("XTimestamp: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XColor.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v XColor) Validate() error {
+	switch v {
+	case XColorRed, XColorGreen, XColorBlue:
+	default:
+		return fmt.Errorf("XColor: invalid XColor value")
 	}
 	return nil
 }

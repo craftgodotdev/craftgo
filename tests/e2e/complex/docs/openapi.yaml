@@ -3,8 +3,8 @@ components:
   schemas:
     Address:
       description: |-
-        Address is a postal address. Country is the ISO 3166-1 alpha-2 code so
-        the length validator pins it to exactly two characters.
+        Address is a postal address. Country is the ISO 3166-1 alpha-2 code,
+        so the length validator pins it to exactly two characters.
       properties:
         city:
           maxLength: 100
@@ -147,6 +147,8 @@ components:
       properties:
         email:
           type: string
+      required:
+      - email
       type: object
     GetItemRespBody:
       $ref: '#/components/schemas/XOwner'
@@ -167,6 +169,8 @@ components:
       properties:
         required_role:
           type: string
+      required:
+      - required_role
       type: object
     ListItemsRespBody:
       $ref: '#/components/schemas/XBagOfXOwner'
@@ -250,9 +254,9 @@ components:
       $ref: '#/components/schemas/XOwner'
     Profile:
       description: |-
-        Profile is the wire-level shape of a user profile. Notice the nesting:
-        Profile contains ContactInfo, plus a slice of Addresses, each of which
-        optionally embeds a Coords value.
+        Profile is the wire-level shape of a user profile, nesting a
+        ContactInfo plus a slice of Addresses, each of which optionally
+        embeds a Coords value.
       properties:
         addresses:
           items:
@@ -299,12 +303,16 @@ components:
           items:
             type: string
           type: array
+      required:
+      - fields
       type: object
     RateLimitedErr:
       description: TooManyRequests error response (HTTP 429).
       properties:
         retry_after:
           type: integer
+      required:
+      - retry_after
       type: object
     SearchRespBody:
       $ref: '#/components/schemas/XOwner'
@@ -317,14 +325,17 @@ components:
           type: integer
         expected_version:
           type: integer
+      required:
+      - expected_version
+      - actual_version
       type: object
     XAudit:
       description: |-
-        XAudit is a cross-package MIXIN. xrefs embeds it with bare
-        `xshared.XAudit` syntax and the resulting Go struct must:
-          - have field-promotion through the embedded type
-          - dispatch Validate on the host (`v.XAudit.Validate()`)
-          - emit `xshared.XAudit` in OpenAPI's allOf chain
+        XAudit is a cross-package mixin. xrefs embeds it with bare
+        `xshared.XAudit` syntax; the resulting Go struct:
+          - promotes fields through the embedded type
+          - dispatches Validate on the host (`v.XAudit.Validate()`)
+          - emits `xshared.XAudit` in OpenAPI's allOf chain
       properties:
         createdAt:
           $ref: '#/components/schemas/XTimestamp'
@@ -336,10 +347,9 @@ components:
       type: object
     XBagOfMapOfStringAndXColor:
       description: |-
-        XBag is a cross-package GENERIC. xrefs instantiates it as
+        XBag is a cross-package generic. xrefs instantiates it as
         `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path
-        across every cell.
+        xshared types — covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -357,10 +367,9 @@ components:
       type: object
     XBagOfString:
       description: |-
-        XBag is a cross-package GENERIC. xrefs instantiates it as
+        XBag is a cross-package generic. xrefs instantiates it as
         `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path
-        across every cell.
+        xshared types — covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -376,10 +385,9 @@ components:
       type: object
     XBagOfXLocalItem:
       description: |-
-        XBag is a cross-package GENERIC. xrefs instantiates it as
+        XBag is a cross-package generic. xrefs instantiates it as
         `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path
-        across every cell.
+        xshared types — covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -395,10 +403,9 @@ components:
       type: object
     XBagOfXOwner:
       description: |-
-        XBag is a cross-package GENERIC. xrefs instantiates it as
+        XBag is a cross-package generic. xrefs instantiates it as
         `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path
-        across every cell.
+        xshared types — covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -424,11 +431,11 @@ components:
       type: string
     XEnumDefault:
       description: |-
-        XEnumDefault pins `@default(Red)` on a cross-pkg enum field — the
-        enum value must be referenced by bare ident, not a string literal,
-        because enum identity is by name. Transport pre-fill must qualify
-        the constant (`xshared.XColorRed`) and register the xshared
-        import on the handler file.
+        XEnumDefault exercises `@default(Red)` on a cross-pkg enum field:
+        the enum value is referenced by bare ident, not a string literal,
+        since enum identity is by name. Transport pre-fill qualifies the
+        constant (`xshared.XColorRed`) and registers the xshared import on
+        the handler file.
       properties:
         color:
           anyOf:
@@ -438,10 +445,8 @@ components:
       type: object
     XEnumMaps:
       description: |-
-        XEnumMaps pins enum keys / values in maps. The walker must emit
-        a switch on either side independently (key-only, value-only, or
-        both). OpenAPI 3.1 should emit `propertyNames: {enum: [...]}`
-        for the enum-keyed maps — currently lossy (audit R1).
+        XEnumMaps exercises enum keys / values in maps. The walker emits a
+        switch on either side independently (key-only, value-only, or both).
       properties:
         bothEnum:
           additionalProperties:
@@ -474,9 +479,9 @@ components:
       type: object
     XEnumScalar:
       description: |-
-        XEnumScalar pins direct + optional + array enum field shapes.
-        Validator must emit a switch-case per shape; OpenAPI schema must
-        inline the enum values list (or $ref to the enum schema).
+        XEnumScalar exercises direct + optional + array enum field shapes.
+        The validator emits a switch-case per shape; the OpenAPI schema
+        inlines the enum values list (or $refs the enum schema).
       properties:
         flat:
           $ref: '#/components/schemas/XColor'
@@ -494,9 +499,9 @@ components:
       type: object
     XGeneric:
       description: |-
-        XGeneric pins cross-pkg GENERIC instantiations. Each argument
-        kind exercises a different generic-arg resolution path. OpenAPI
-        must register one component per (decl, args) tuple under the
+        XGeneric exercises cross-pkg generic instantiations. Each argument
+        kind takes a different generic-arg resolution path. OpenAPI
+        registers one component per (decl, args) tuple under the
         FastAPI-style `XBagOfFoo` naming, not bare `xshared.XBag`.
       properties:
         ofLocal:
@@ -540,12 +545,15 @@ components:
           type: string
         resource:
           type: string
+      required:
+      - resource
+      - id
       type: object
     XOwner:
       description: |-
-        XOwner is a cross-package TYPE used in field positions to verify
-        recursive validate dispatch (`v.Owner.Validate()`) emits when the
-        owner field's type lives in xshared.
+        XOwner is a cross-package type used in field positions, exercising
+        recursive validate dispatch (`v.Owner.Validate()`) when the owner
+        field's type lives in xshared.
       properties:
         email:
           $ref: '#/components/schemas/XEmail'
@@ -559,12 +567,10 @@ components:
       type: object
     XScalarBindings:
       description: |-
-        XScalarBindings pins SCALAR refs at WIRE binding sites. The
-        transport handler must emit qualified casts:
+        XScalarBindings exercises scalar refs at wire binding sites. The
+        transport handler emits qualified casts:
           - `req.Path = xshared.XEmail(r.PathValue("path"))`
           - `req.Q = xshared.XEmail(r.URL.Query().Get("q"))`
-        without resolver these casts silently degrade to bare strings
-        and the handler fails to compile.
       properties:
         num:
           $ref: '#/components/schemas/XNodeID'
@@ -579,11 +585,10 @@ components:
       type: object
     XScalarFields:
       description: |-
-        XScalarFields pins cross-pkg scalar refs in every shape. Each
-        field inherits the scalar's @format / @length chain via the
-        project ScalarTable. The required-empty check on `flat` must
-        also resolve through the resolver — otherwise the scalar's
-        underlying primitive is not known and the check is dropped.
+        XScalarFields exercises cross-pkg scalar refs in every shape. Each
+        field inherits the scalar's @format / @length chain via the project
+        ScalarTable, and the required-empty check on `flat` resolves the
+        scalar's underlying primitive through the resolver.
       properties:
         flat:
           $ref: '#/components/schemas/XEmail'
@@ -606,12 +611,10 @@ components:
       type: object
     XSearchReq:
       description: |-
-        XSearchReq is the request that exercises CROSS-PACKAGE SCALAR
-        binding casts. Without resolver-aware transport gen the handler
-        for /search emits bare-string assignments (`req.Q = r.URL.Query()
-        .Get("q")`) instead of qualified casts (`req.Q = xshared.XEmail
-        (r.URL.Query().Get("q"))`) — the Go compiler then rejects with a
-        type mismatch because req.Q is `*xshared.XEmail` not `*string`.
+        XSearchReq exercises cross-package scalar binding casts. The /search
+        handler emits qualified casts (`req.Q = xshared.XEmail(r.URL.Query()
+        .Get("q"))`) so the assignment type-checks against the
+        `*xshared.XEmail` field.
       properties:
         num:
           $ref: '#/components/schemas/XNodeID'
@@ -626,8 +629,8 @@ components:
       type: string
     XTypeFields:
       description: |-
-        XTypeFields pins cross-pkg TYPE refs in every shape. Each field
-        must dispatch `v.Field.Validate()` (or per-element when nested).
+        XTypeFields exercises cross-pkg type refs in every shape. Each field
+        dispatches `v.Field.Validate()` (or per-element when nested).
       properties:
         byKey:
           additionalProperties:
@@ -660,10 +663,10 @@ components:
         - id
         type: object
       description: |-
-        XTypeMixin pins MIXIN embedding from cross-pkg. The `XAudit`
+        XTypeMixin exercises mixin embedding from cross-pkg. The `XAudit`
         mixin's fields land via Go field-promotion; the host's Validate
-        must call `v.XAudit.Validate()` explicitly because Go method
-        promotion doesn't auto-invoke on the host.
+        calls `v.XAudit.Validate()` explicitly since Go method promotion
+        doesn't auto-invoke on the host.
       type: object
   securitySchemes:
     AuthRequired:
@@ -708,10 +711,9 @@ paths:
   /v1/admin/profiles:
     get:
       description: |-
-        AdminListProfiles is the auth-gated demo. The `@middlewares`
-        decorator wraps the handler with AuthRequired at gen time;
-        unauthenticated callers get a 401 from the middleware before the
-        handler runs.
+        AdminListProfiles is auth-gated. The `@middlewares` decorator
+        wraps the handler with AuthRequired at gen time; unauthenticated
+        callers get a 401 from the middleware before the handler runs.
       operationId: AdminListProfiles
       responses:
         "200":
@@ -834,10 +836,10 @@ paths:
       - ProfileService
     patch:
       description: |-
-        PatchProfile is the every-binding-kind end-to-end demo. It echoes
+        PatchProfile exercises every binding kind end-to-end. It echoes
         path id, query dryRun, header X-Idempotency-Key, cookie session,
-        and a body displayName so the e2e test can verify that each value
-        arrived through the matching part of the HTTP request.
+        and a body displayName so each value's transport binding is
+        verifiable.
       operationId: PatchProfile
       parameters:
       - in: path

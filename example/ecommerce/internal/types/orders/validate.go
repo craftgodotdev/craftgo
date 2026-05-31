@@ -4,7 +4,6 @@ package orders
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"time"
 )
@@ -15,23 +14,14 @@ import (
 // literal so regexes containing a backtick, backslash, or quote still
 // produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile("^[A-Za-z0-9_-]+$")
-	_pattern1 = regexp.MustCompile("^[A-Z]{3}$")
-	_pattern2 = regexp.MustCompile("^[A-Z0-9-]{4,32}$")
-	_pattern3 = regexp.MustCompile("^[0-9]{4}$")
+	_pattern0 = regexp.MustCompile("^[0-9]{4}$")
 )
 
 // Validate checks every field-level constraint declared on CreateOrderReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateOrderReq) Validate() error {
-	if len(v.CustomerID) < 1 {
-		return fmt.Errorf("customerId: length less than 1")
-	}
-	if len(v.CustomerID) > 128 {
-		return fmt.Errorf("customerId: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.CustomerID) {
-		return fmt.Errorf("customerId: does not match pattern")
+	if err := v.CustomerID.Validate(); err != nil {
+		return err
 	}
 	if len(v.Items) < 1 {
 		return fmt.Errorf("items: minItems 1")
@@ -47,11 +37,10 @@ func (v *CreateOrderReq) Validate() error {
 	if v.Notes != nil && len(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
-	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
-		return fmt.Errorf("currency: length out of range [3, 3]")
-	}
-	if v.Currency != nil && !_pattern1.MatchString(*v.Currency) {
-		return fmt.Errorf("currency: does not match pattern")
+	if v.Currency != nil {
+		if err := v.Currency.Validate(); err != nil {
+			return err
+		}
 	}
 	if v.Tags != nil {
 		if len(v.Tags) > 10 {
@@ -73,24 +62,19 @@ func (v *CreateOrderReq) Validate() error {
 // Validate checks every field-level constraint declared on DefaultsShowcaseReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsShowcaseReq) Validate() error {
-	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
-		return fmt.Errorf("currency: length out of range [3, 3]")
-	}
-	if v.Currency != nil && !_pattern1.MatchString(*v.Currency) {
-		return fmt.Errorf("currency: does not match pattern")
-	}
-	if v.Status != nil {
-		switch *v.Status {
-		case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
-		default:
-			return fmt.Errorf("status: invalid OrderStatus value")
+	if v.Currency != nil {
+		if err := v.Currency.Validate(); err != nil {
+			return err
 		}
 	}
-	for i := range v.AllowedMethods {
-		switch v.AllowedMethods[i] {
-		case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
-		default:
-			return fmt.Errorf("allowedMethods: invalid PaymentMethod value")
+	if v.Status != nil {
+		if err := v.Status.Validate(); err != nil {
+			return err
+		}
+	}
+	for i0 := range v.AllowedMethods {
+		if err := v.AllowedMethods[i0].Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -102,18 +86,14 @@ func (v *FilterOrdersReq) Validate() error {
 	if v.Status == "" {
 		return fmt.Errorf("status: required")
 	}
-	switch v.Status {
-	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
-	default:
-		return fmt.Errorf("status: invalid OrderStatus value")
+	if err := v.Status.Validate(); err != nil {
+		return err
 	}
 	if v.Method == "" {
 		return fmt.Errorf("method: required")
 	}
-	switch v.Method {
-	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
-	default:
-		return fmt.Errorf("method: invalid PaymentMethod value")
+	if err := v.Method.Validate(); err != nil {
+		return err
 	}
 	if v.Limit < 0 {
 		return fmt.Errorf("limit: below minimum 0")
@@ -142,8 +122,8 @@ func (v *LineItem) Validate() error {
 	if err := v.Product.Validate(); err != nil {
 		return err
 	}
-	if !_pattern2.MatchString(v.Sku) {
-		return fmt.Errorf("sku: does not match pattern")
+	if err := v.Sku.Validate(); err != nil {
+		return err
 	}
 	if v.Quantity < 1 {
 		return fmt.Errorf("quantity: below minimum 1")
@@ -151,14 +131,19 @@ func (v *LineItem) Validate() error {
 	if v.Quantity > 1000 {
 		return fmt.Errorf("quantity: above maximum 1000")
 	}
-	if v.UnitCents < 0 {
-		return fmt.Errorf("unitCents: below minimum 0")
+	{
+		_sv := int(v.UnitCents)
+		if _sv > 1000000 {
+			return fmt.Errorf("unitCents: above maximum 1000000")
+		}
 	}
-	if v.BonusBp != nil && *v.BonusBp < 0 {
-		return fmt.Errorf("bonusBP: below minimum 0")
+	if err := v.UnitCents.Validate(); err != nil {
+		return err
 	}
-	if v.BonusBp != nil && *v.BonusBp > 10000 {
-		return fmt.Errorf("bonusBP: above maximum 10000")
+	if v.BonusBp != nil {
+		if err := v.BonusBp.Validate(); err != nil {
+			return err
+		}
 	}
 	if v.Note != nil && len(*v.Note) > 200 {
 		return fmt.Errorf("note: length greater than 200")
@@ -176,10 +161,8 @@ func (v *ListOrdersReq) Validate() error {
 		return fmt.Errorf("limit: above maximum 100")
 	}
 	if v.Status != nil {
-		switch *v.Status {
-		case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
-		default:
-			return fmt.Errorf("status: invalid OrderStatus value")
+		if err := v.Status.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -188,14 +171,8 @@ func (v *ListOrdersReq) Validate() error {
 // Validate checks every field-level constraint declared on Order.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Order) Validate() error {
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
-	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if err := v.Customer.Validate(); err != nil {
 		return err
@@ -216,16 +193,20 @@ func (v *Order) Validate() error {
 			return err
 		}
 	}
-	if v.TotalCents < 0 {
-		return fmt.Errorf("totalCents: below minimum 0")
+	{
+		_sv := int(v.TotalCents)
+		if _sv > 100000000 {
+			return fmt.Errorf("totalCents: above maximum 100000000")
+		}
+	}
+	if err := v.TotalCents.Validate(); err != nil {
+		return err
 	}
 	if v.Status == "" {
 		return fmt.Errorf("status: required")
 	}
-	switch v.Status {
-	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
-	default:
-		return fmt.Errorf("status: invalid OrderStatus value")
+	if err := v.Status.Validate(); err != nil {
+		return err
 	}
 	if v.Notes != nil && len(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
@@ -235,11 +216,10 @@ func (v *Order) Validate() error {
 			return fmt.Errorf("shippedAt: not a valid RFC 3339 datetime")
 		}
 	}
-	if v.Currency != nil && (len(*v.Currency) < 3 || len(*v.Currency) > 3) {
-		return fmt.Errorf("currency: length out of range [3, 3]")
-	}
-	if v.Currency != nil && !_pattern1.MatchString(*v.Currency) {
-		return fmt.Errorf("currency: does not match pattern")
+	if v.Currency != nil {
+		if err := v.Currency.Validate(); err != nil {
+			return err
+		}
 	}
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
@@ -271,33 +251,55 @@ func (v *Payment) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method: required")
 	}
-	switch v.Method {
-	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
-	default:
-		return fmt.Errorf("method: invalid PaymentMethod value")
+	if err := v.Method.Validate(); err != nil {
+		return err
 	}
 	if v.CardLast4 != nil && (len(*v.CardLast4) < 4 || len(*v.CardLast4) > 4) {
 		return fmt.Errorf("cardLast4: length out of range [4, 4]")
 	}
-	if v.CardLast4 != nil && !_pattern3.MatchString(*v.CardLast4) {
+	if v.CardLast4 != nil && !_pattern0.MatchString(*v.CardLast4) {
 		return fmt.Errorf("cardLast4: does not match pattern")
 	}
-	if len(v.ReferenceID) < 1 {
-		return fmt.Errorf("referenceId: length less than 1")
-	}
-	if len(v.ReferenceID) > 128 {
-		return fmt.Errorf("referenceId: length greater than 128")
-	}
-	if !_pattern0.MatchString(v.ReferenceID) {
-		return fmt.Errorf("referenceId: does not match pattern")
+	if err := v.ReferenceID.Validate(); err != nil {
+		return err
 	}
 	if v.ReceiptURL != nil {
-		if _u, _err := url.Parse(*v.ReceiptURL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
-			return fmt.Errorf("receiptURL: not a valid URL")
+		if err := v.ReceiptURL.Validate(); err != nil {
+			return err
 		}
 	}
-	if v.ReceiptURL != nil && len(*v.ReceiptURL) > 2048 {
-		return fmt.Errorf("receiptURL: length greater than 2048")
+	return nil
+}
+
+// Validate checks every field-level constraint declared on OrderStatus.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v OrderStatus) Validate() error {
+	switch v {
+	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
+	default:
+		return fmt.Errorf("OrderStatus: invalid OrderStatus value")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PaymentMethod.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v PaymentMethod) Validate() error {
+	switch v {
+	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
+	default:
+		return fmt.Errorf("PaymentMethod: invalid PaymentMethod value")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on SuspensionReason.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v SuspensionReason) Validate() error {
+	switch v {
+	case SuspensionReasonPolicyViolation, SuspensionReasonPaymentFailure, SuspensionReasonOperatorAction:
+	default:
+		return fmt.Errorf("SuspensionReason: invalid SuspensionReason value")
 	}
 	return nil
 }
@@ -308,10 +310,8 @@ func (v *ActionDeniedBody) Validate() error {
 	if v.Reason == "" {
 		return fmt.Errorf("reason: required")
 	}
-	switch v.Reason {
-	case SuspensionReasonPolicyViolation, SuspensionReasonPaymentFailure, SuspensionReasonOperatorAction:
-	default:
-		return fmt.Errorf("reason: invalid SuspensionReason value")
+	if err := v.Reason.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -322,10 +322,8 @@ func (v *PaymentFailedBody) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method: required")
 	}
-	switch v.Method {
-	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
-	default:
-		return fmt.Errorf("method: invalid PaymentMethod value")
+	if err := v.Method.Validate(); err != nil {
+		return err
 	}
 	if err := v.ChargedBy.Validate(); err != nil {
 		return err

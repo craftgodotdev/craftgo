@@ -1,10 +1,7 @@
 // status_codes.craftgo exercises the `@status(N)` override on
 // success responses. The OpenAPI emitter looks up the IANA reason
 // phrase for N (`Created` for 201, `Accepted` for 202, `No Content`
-// for 204) and uses it as the response `description`. Without the
-// lookup every success response gets the generic `OK` placeholder,
-// which is wrong for non-200 codes and surfaces in Swagger UI /
-// generated TS clients as misleading documentation.
+// for 204) and uses it as the response `description`.
 package services
 
 import "shared"
@@ -26,10 +23,8 @@ type CreateJobReq {
 
 // StatusCodesService demonstrates each non-200 success category the
 // emitter handles distinctly: 201 (Created), 202 (Accepted), and 204
-// (No Content). Anyone touching the response-description logic should
-// regenerate this fixture and verify the YAML carries the IANA reason
-// phrase for each code; a regression that re-introduces hardcoded
-// `OK` shows up in the diff immediately.
+// (No Content). The generated YAML carries the IANA reason phrase as
+// each response's description.
 @prefix("/jobs")
 service StatusCodesService {
 	@doc("Create a job; the row is persisted before the response returns.")

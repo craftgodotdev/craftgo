@@ -93,14 +93,8 @@ func (v *Arr_PlainStrings) Validate() error {
 func (v *Arr_Tag2D) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
-			if len(v.Grid[i0][i1]) < 1 {
-				return fmt.Errorf("grid: length less than 1")
-			}
-			if len(v.Grid[i0][i1]) > 20 {
-				return fmt.Errorf("grid: length greater than 20")
-			}
-			if !_pattern0.MatchString(v.Grid[i0][i1]) {
-				return fmt.Errorf("grid: does not match pattern")
+			if err := v.Grid[i0][i1].Validate(); err != nil {
+				return err
 			}
 		}
 	}
@@ -112,14 +106,8 @@ func (v *Arr_Tag2D) Validate() error {
 func (v *Arr_Tag2DOptional) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
-			if len(v.Grid[i0][i1]) < 1 {
-				return fmt.Errorf("grid: length less than 1")
-			}
-			if len(v.Grid[i0][i1]) > 20 {
-				return fmt.Errorf("grid: length greater than 20")
-			}
-			if !_pattern0.MatchString(v.Grid[i0][i1]) {
-				return fmt.Errorf("grid: does not match pattern")
+			if err := v.Grid[i0][i1].Validate(); err != nil {
+				return err
 			}
 		}
 	}
@@ -132,14 +120,8 @@ func (v *Arr_Tag3D) Validate() error {
 	for i0 := range v.Cube {
 		for i1 := range v.Cube[i0] {
 			for i2 := range v.Cube[i0][i1] {
-				if len(v.Cube[i0][i1][i2]) < 1 {
-					return fmt.Errorf("cube: length less than 1")
-				}
-				if len(v.Cube[i0][i1][i2]) > 20 {
-					return fmt.Errorf("cube: length greater than 20")
-				}
-				if !_pattern0.MatchString(v.Cube[i0][i1][i2]) {
-					return fmt.Errorf("cube: does not match pattern")
+				if err := v.Cube[i0][i1][i2].Validate(); err != nil {
+					return err
 				}
 			}
 		}
@@ -150,17 +132,6 @@ func (v *Arr_Tag3D) Validate() error {
 // Validate checks every field-level constraint declared on Arr_TagSlice.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Arr_TagSlice) Validate() error {
-	for i0 := range v.Tags {
-		if len(v.Tags[i0]) < 1 {
-			return fmt.Errorf("tags: length less than 1")
-		}
-		if len(v.Tags[i0]) > 20 {
-			return fmt.Errorf("tags: length greater than 20")
-		}
-		if !_pattern0.MatchString(v.Tags[i0]) {
-			return fmt.Errorf("tags: does not match pattern")
-		}
-	}
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
 	}
@@ -176,22 +147,21 @@ func (v *Arr_TagSlice) Validate() error {
 			seen[item] = struct{}{}
 		}
 	}
+	for i0 := range v.Tags {
+		if err := v.Tags[i0].Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // Validate checks every field-level constraint declared on Map_ArrayValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_ArrayValue) Validate() error {
-	for _, val0 := range v.Buckets {
-		for i1 := range val0 {
-			if len(val0[i1]) < 1 {
-				return fmt.Errorf("buckets: length less than 1")
-			}
-			if len(val0[i1]) > 20 {
-				return fmt.Errorf("buckets: length greater than 20")
-			}
-			if !_pattern0.MatchString(val0[i1]) {
-				return fmt.Errorf("buckets: does not match pattern")
+	for _, val := range v.Buckets {
+		for i0 := range val {
+			if err := val[i0].Validate(); err != nil {
+				return err
 			}
 		}
 	}
@@ -201,26 +171,24 @@ func (v *Map_ArrayValue) Validate() error {
 // Validate checks every field-level constraint declared on Map_Bounds.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_Bounds) Validate() error {
+	if len(v.Counts) < 1 {
+		return fmt.Errorf("counts: minItems 1")
+	}
+	if len(v.Counts) > 100 {
+		return fmt.Errorf("counts: maxItems 100")
+	}
 	return nil
 }
 
 // Validate checks every field-level constraint declared on Map_KeyAndValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_KeyAndValue) Validate() error {
-	for k0 := range v.Index {
-		if len(k0) < 1 {
-			return fmt.Errorf("index: length less than 1")
+	for key, val := range v.Index {
+		if err := key.Validate(); err != nil {
+			return err
 		}
-		if len(k0) > 64 {
-			return fmt.Errorf("index: length greater than 64")
-		}
-	}
-	for _, val0 := range v.Index {
-		if _, _err := mail.ParseAddress(val0); _err != nil {
-			return fmt.Errorf("index: not a valid email")
-		}
-		if len(val0) > 254 {
-			return fmt.Errorf("index: length greater than 254")
+		if err := val.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -241,15 +209,9 @@ func (v *Map_Plain) Validate() error {
 // Validate checks every field-level constraint declared on Map_ScalarValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_ScalarValue) Validate() error {
-	for _, val0 := range v.Labels {
-		if len(val0) < 1 {
-			return fmt.Errorf("labels: length less than 1")
-		}
-		if len(val0) > 20 {
-			return fmt.Errorf("labels: length greater than 20")
-		}
-		if !_pattern0.MatchString(val0) {
-			return fmt.Errorf("labels: does not match pattern")
+	for _, val := range v.Labels {
+		if err := val.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -283,11 +245,47 @@ func (v *User) Validate() error {
 	if l := len(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Email.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Email) Validate() error {
+	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+		return fmt.Errorf("Email: not a valid email")
+	}
+	if len(string(v)) > 254 {
+		return fmt.Errorf("Email: length greater than 254")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on NonEmptyID.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v NonEmptyID) Validate() error {
+	if len(string(v)) < 1 {
+		return fmt.Errorf("NonEmptyID: length less than 1")
+	}
+	if len(string(v)) > 64 {
+		return fmt.Errorf("NonEmptyID: length greater than 64")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Tag.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Tag) Validate() error {
+	if len(string(v)) < 1 {
+		return fmt.Errorf("Tag: length less than 1")
+	}
+	if len(string(v)) > 20 {
+		return fmt.Errorf("Tag: length greater than 20")
+	}
+	if !_pattern0.MatchString(string(v)) {
+		return fmt.Errorf("Tag: does not match pattern")
 	}
 	return nil
 }

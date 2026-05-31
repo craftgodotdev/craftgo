@@ -11,16 +11,13 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/cornercase/svccontext"
 )
 
-// EchoWire pins the explicit-name binder forms across ALL four
+// EchoWire exercises the explicit-name binder forms across ALL four
 // parameter locations at once. Every field renames its wire
 // identity via the decorator argument, distinct from the Go field
-// name, so the emitted OpenAPI parameter name MUST equal the wire
-// name the runtime binder reads (r.PathValue("user_id"),
-// r.Header.Get("X-Trace-Id"), r.Cookie("session_id"),
-// r.URL.Query().Get("search_q")) — never the DSL field name. Guards
-// the request-param regression: a spec that advertised the field
-// name would make a generated client send a parameter the server
-// never reads, so the binding would silently fail.
+// name, so the emitted OpenAPI parameter name equals the wire name
+// the runtime binder reads (r.PathValue("user_id"),
+// r.Header.Get("X-API-Key"), r.Cookie("session_id"),
+// r.URL.Query().Get("search_q")) — never the DSL field name.
 // EchoWire returns the http.HandlerFunc for the
 // GET EchoWire endpoint.
 func EchoWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

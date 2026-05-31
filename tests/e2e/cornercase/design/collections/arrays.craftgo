@@ -63,11 +63,9 @@ type Arr_TagSlice {
 	tags Tag[] @minItems(1) @maxItems(10) @uniqueItems
 }
 
-// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator must
-// emit doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's
-// three validators; an earlier scalar-leaves walker emitted only the
-// outer loop and ran validators on the inner slice (which did not
-// compile).
+// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+// doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
+// validators.
 type Arr_Tag2D {
 	grid Tag[][]
 }
@@ -86,17 +84,16 @@ type Arr_Tag2DOptional {
 	grid Tag[][]?
 }
 
-// Arr_MinZero pins the lower bound at ZERO. The generator currently
-// emits `if len(v.Items) < 0 { ... }` which is DEAD CODE (lengths are
-// never negative). Captured here so the e2e snapshot pins the
-// suboptimal output and a future cleanup is detectable.
+// Arr_MinZero pins the lower bound at ZERO. The generator emits
+// `if len(v.Items) < 0 { ... }`, which is dead code (lengths are never
+// negative).
 type Arr_MinZero {
 	items string[] @minItems(0)
 }
 
 // Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
-// semantically "this slice must always be empty". The lower-bound
-// dead-code wart from Arr_MinZero applies here too; the upper bound
+// semantically "this slice must always be empty". The dead-code
+// lower-bound check from Arr_MinZero applies here too; the upper bound
 // (`> 0`) is the meaningful check that actually rejects values.
 type Arr_EmptyExact {
 	always_empty string[] @minItems(0) @maxItems(0)

@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -173,7 +172,7 @@ func validatorByName(name string) *validatorEntry {
 // existing type predicates (`isStringOrOptString`,
 // `isNumericField`, ...) match without special-casing scalar-typed
 // fields throughout the emitter set.
-func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTable, ctx emitCtx) []string {
+func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, ctx emitCtx) []string {
 	access := "v." + GoFieldName(f.Name)
 	uses := ctx.uses
 	var out []string
@@ -209,18 +208,26 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 		}
 	}
 
-	// Scalar inheritance: walk the field's TypeRef recursively to
-	// find every reachable scalar leaf, then emit one wrapped check
-	// per scalar decorator per leaf. Handles arbitrary depth - flat
-	// scalar (`email Email`), array (`tags Tag[]`), map (`m
-	// map<Tag, V>`), nested array (`tags Tag[][]` once the AST is
-	// extended), and nested map (`m map<K, map<Kʹ, Tag>>`) all flow
-	// through the same code path.
-	for _, leaf := range findScalarLeaves(f.Type, access, 0, scalars) {
-		out = append(out, leaf.emitChecks(f, ctx)...)
-	}
+	// A constrained scalar carries its `@format` / `@length` / `@min`
+	// checks on its OWN Validate() method; the field dispatches through
+	// `v.Field.Validate()` (see [nestedValidateCall] and
+	// [scalarValidateChecks]). Routing through the scalar's own method
+	// keeps the check declared once and reaches scalar elements inside a
+	// generic instance, whose Validate() is parametric.
 
-	// Field-level decorators run on the original field type.
+	// Field-level decorators (the ones declared on THIS field, on top of
+	// any the scalar type already carries). When the field's type is a
+	// scalar, route them through scalarFieldLevelChecks: a defined-type
+	// scalar (`type Cents int`) fails the numeric/string type-guards, so
+	// emitting against the raw field would not match any validator. The
+	// helper casts the value to its primitive in a local first. Non-scalar
+	// fields keep the direct path.
+	if prim := scalarFieldPrimitive(f, ctx); prim != "" {
+		if blk := scalarFieldLevelChecks(f, access, prim, ctx); blk != "" {
+			out = append(out, blk)
+		}
+		return out
+	}
 	for _, d := range f.Decorators {
 		v := validatorByName(d.Name)
 		if v == nil {
@@ -231,168 +238,6 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, scalars ScalarTa
 		}
 	}
 	return out
-}
-
-// scalarLeaf describes one scalar reached after walking a chain of
-// wrappers (Map / Array / Optional) from a field's root TypeRef.
-// Each leaf is a self-contained emit unit: the declaration to walk
-// (`decl`), the Go expression that accesses one leaf value
-// (`access`), whether the leaf is optional (so the synth field
-// keeps the pointer flag and `optionalGuard` produces the nil
-// check), and a `wrap` closure that nests the per-decorator emit
-// body inside the matching for-range / if-not-nil loops.
-//
-// Each scalar decorator on `decl` produces its own wrapped emit so
-// the generated source mirrors the single-validator-per-loop shape
-// the rest of the validator emitters use.
-type scalarLeaf struct {
-	decl     *ast.ScalarDecl
-	access   string
-	optional bool
-	wrap     func(body string) string
-}
-
-// emitChecks runs every scalar decorator through the validator
-// dispatcher and returns one wrapped emission for the whole leaf.
-// All non-empty bodies are concatenated BEFORE the wrap so a map
-// with `@minLength @maxLength` on its key plus `@format @maxLength`
-// on its value emits exactly two for-loops (one per side) instead
-// of one loop per decorator. Empty body strings (when a validator's
-// type-guard rejects) are dropped silently.
-func (l *scalarLeaf) emitChecks(f *ast.Field, ctx emitCtx) []string {
-	synth := scalarLeafSynthField(f, l.decl, l.optional)
-	var bodies []string
-	for _, d := range l.decl.Decorators {
-		v := validatorByName(d.Name)
-		if v == nil {
-			continue
-		}
-		body := v.emit(synth, l.access, d, ctx)
-		if body == "" {
-			continue
-		}
-		bodies = append(bodies, body)
-	}
-	if len(bodies) == 0 {
-		return nil
-	}
-	return []string{l.wrap(strings.Join(bodies, "\n"))}
-}
-
-// findScalarLeaves walks t recursively, returning every scalar
-// reachable through any combination of Map / Array / Optional
-// wrappers. The function is value-side complete: it handles
-// nested-map (`map<K, map<Kʹ, Tag>>`), array-inside-map
-// (`map<K, Tag[]>`), and once the AST supports it, multi-array
-// (`Tag[][]`) - every path is one base case (the Named leaf) plus
-// three recursion arms (Map / Array / Optional).
-//
-//   - baseExpr is the Go expression naming the current node
-//     (e.g. `v.Tags`, or `val0` after entering a map's value).
-//   - depth is incremented at each recursion to keep loop
-//     variable names unique across nested layers.
-func findScalarLeaves(t *ast.TypeRef, baseExpr string, depth int, scalars ScalarTable) []scalarLeaf {
-	if t == nil {
-		return nil
-	}
-	// Map: walk both sides. Map keys can themselves be scalars
-	// (typically flat, since Go forbids slice / map keys); map
-	// values can be ANY TypeRef including a nested map / array.
-	if t.Map != nil {
-		var out []scalarLeaf
-		keyVar := fmt.Sprintf("k%d", depth)
-		valVar := fmt.Sprintf("val%d", depth)
-		// Key side. Walk the Map.Key TypeRef with the key loop
-		// variable as the new base expression. Wrap result with
-		// the outer `for k := range baseExpr` form (no value
-		// binding so unused-variable lint stays quiet - Go's
-		// for-range key-only form omits the value automatically).
-		for _, leaf := range findScalarLeaves(t.Map.Key, keyVar, depth+1, scalars) {
-			inner := leaf.wrap
-			outer := baseExpr
-			leaf.wrap = func(body string) string {
-				return fmt.Sprintf("for %s := range %s {\n%s\n}", keyVar, outer, inner(body))
-			}
-			out = append(out, leaf)
-		}
-		// Value side. Walk Map.Value with the value loop variable
-		// as base. Wrap with `for _, val := range baseExpr` so the
-		// blank-identifier key avoids unused-variable issues.
-		for _, leaf := range findScalarLeaves(t.Map.Value, valVar, depth+1, scalars) {
-			inner := leaf.wrap
-			outer := baseExpr
-			leaf.wrap = func(body string) string {
-				return fmt.Sprintf("for _, %s := range %s {\n%s\n}", valVar, outer, inner(body))
-			}
-			out = append(out, leaf)
-		}
-		return out
-	}
-	// Array: peel ONE bracket per recursion layer so multi-array
-	// (`Tag[][]`) builds nested for-loops naturally - the inner
-	// recursion sees a TypeRef whose ArrayDepth has been
-	// decremented by one. Each layer wraps the inner emit with
-	// `for iN := range <prev>`.
-	if t.Array || t.ArrayDepth > 0 {
-		idxVar := fmt.Sprintf("i%d", depth)
-		elemExpr := baseExpr + "[" + idxVar + "]"
-		inner := *t
-		// Strip one array dimension. Optional on the OUTER slice
-		// (`T[]?`) doesn't propagate to the element - for-range
-		// handles nil slice silently - so we drop it here.
-		if inner.ArrayDepth > 0 {
-			inner.ArrayDepth--
-		}
-		if inner.ArrayDepth == 0 {
-			inner.Array = false
-		}
-		inner.Optional = false
-		var out []scalarLeaf
-		for _, leaf := range findScalarLeaves(&inner, elemExpr, depth+1, scalars) {
-			innerWrap := leaf.wrap
-			outer := baseExpr
-			leaf.wrap = func(body string) string {
-				return fmt.Sprintf("for %s := range %s {\n%s\n}", idxVar, outer, innerWrap(body))
-			}
-			out = append(out, leaf)
-		}
-		return out
-	}
-	// Leaf: a Named TypeRef. The optional flag rides on the leaf
-	// so the synth field keeps it (the validator's `optionalGuard`
-	// produces the nil-check + deref). Pure-leaf optional isn't a
-	// Map/Array; baseExpr is the field's full path.
-	if t.Named != nil && t.Named.Name != nil {
-		if sd := scalars[t.Named.Name.String()]; sd != nil {
-			return []scalarLeaf{{
-				decl:     sd,
-				access:   baseExpr,
-				optional: t.Optional,
-				wrap:     func(body string) string { return body },
-			}}
-		}
-	}
-	return nil
-}
-
-// scalarLeafSynthField builds the synth field used by emit
-// helpers when validating one leaf value. The declared type is
-// the scalar's underlying primitive; Array / Map flags are off so
-// per-element predicates (`isStringOrOptString`, `isNumericField`,
-// ...) accept the field; Optional is set to leaf.optional so
-// `optionalGuard` / `stringValueExpr` / `numericValueExpr` produce
-// the right nil-guard + deref against the leaf's access expr.
-func scalarLeafSynthField(f *ast.Field, sd *ast.ScalarDecl, optional bool) *ast.Field {
-	cp := *f
-	cp.Type = &ast.TypeRef{
-		Pos:      f.Type.Pos,
-		Optional: optional,
-		Named: &ast.NamedTypeRef{
-			Pos:  f.Type.Pos,
-			Name: &ast.QualifiedIdent{Pos: f.Type.Pos, Parts: []string{scalarPrimitiveDSL(sd.Primitive)}},
-		},
-	}
-	return &cp
 }
 
 // scalarPrimitiveDSL maps a scalar's DSL primitive token to the

@@ -4,6 +4,7 @@ package shared
 
 import (
 	"fmt"
+	"net/mail"
 	"time"
 )
 
@@ -52,6 +53,38 @@ func (v *Pagination) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Email.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Email) Validate() error {
+	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+		return fmt.Errorf("Email: not a valid email")
+	}
+	if len(string(v)) > 254 {
+		return fmt.Errorf("Email: length greater than 254")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ID.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v ID) Validate() error {
+	if l := len(string(v)); l < 1 || l > 64 {
+		return fmt.Errorf("ID: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Severity.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Severity) Validate() error {
+	switch v {
+	case SeverityInfo, SeverityWarning, SeverityError, SeverityCritical:
+	default:
+		return fmt.Errorf("Severity: invalid Severity value")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on AccessRevokedBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccessRevokedBody) Validate() error {
@@ -67,8 +100,8 @@ func (v *ConflictErrBody) Validate() error {
 // Validate checks every field-level constraint declared on NotFoundErrBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *NotFoundErrBody) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
-		return fmt.Errorf("id: length out of range [1, 64]")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

@@ -2,18 +2,18 @@
 
 package collections
 
-// Email is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Email = string
+// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Email string
 
-// NonEmptyID is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type NonEmptyID = string
+// NonEmptyID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type NonEmptyID string
 
-// Tag is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type Tag = string
+// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Tag string
 
 // Address is a struct used as a map VALUE in maps.craftgo. The two
-// fields carry length validators so we can see whether the generator
-// recurses into struct values when iterating a map.
+// fields carry length validators that fire when the generator recurses
+// into struct values during map iteration.
 type Address struct {
 	Street string `json:"street"`
 	City   string `json:"city"`
@@ -31,17 +31,16 @@ type Arr_BoundsBasic struct {
 }
 
 // Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
-// semantically "this slice must always be empty". The lower-bound
-// dead-code wart from Arr_MinZero applies here too; the upper bound
+// semantically "this slice must always be empty". The dead-code
+// lower-bound check from Arr_MinZero applies here too; the upper bound
 // (`> 0`) is the meaningful check that actually rejects values.
 type Arr_EmptyExact struct {
 	AlwaysEmpty []string `json:"always_empty"`
 }
 
-// Arr_MinZero pins the lower bound at ZERO. The generator currently
-// emits `if len(v.Items) < 0 { ... }` which is DEAD CODE (lengths are
-// never negative). Captured here so the e2e snapshot pins the
-// suboptimal output and a future cleanup is detectable.
+// Arr_MinZero pins the lower bound at ZERO. The generator emits
+// `if len(v.Items) < 0 { ... }`, which is dead code (lengths are never
+// negative).
 type Arr_MinZero struct {
 	Items []string `json:"items"`
 }
@@ -71,11 +70,9 @@ type Arr_PlainStrings struct {
 	Codes []string `json:"codes"`
 }
 
-// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator must
-// emit doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's
-// three validators; an earlier scalar-leaves walker emitted only the
-// outer loop and ran validators on the inner slice (which did not
-// compile).
+// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+// doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
+// validators.
 type Arr_Tag2D struct {
 	Grid [][]Tag `json:"grid"`
 }
@@ -127,11 +124,9 @@ type Map_KeyAndValue struct {
 	Index map[NonEmptyID]Email `json:"index"`
 }
 
-// Map_Optional is the optional-map case. Outer nil-guard wraps any
-// inner iteration. Today's generator treats `map<K, V>?` like the
-// non-optional case for bound checks (len(nil) is 0, so a @minItems
-// on an optional map would falsely reject the nil case — but this
-// fixture has no bounds, so the gap is not exercised here).
+// Map_Optional is the optional-map case. The field carries no bounds,
+// so its validator reduces to an outer nil-guard around any inner
+// iteration.
 type Map_Optional struct {
 	Counts map[string]int `json:"counts,omitempty"`
 }
@@ -152,25 +147,23 @@ type Map_ScalarValue struct {
 }
 
 // Map_StructAddress is the second struct-valued map case, with
-// Address as the value. Same KNOWN GAP as Map_StructValue: the
-// per-value `street` / `city` validators stay un-fired today.
+// Address as the value. Each entry's `street` / `city` validators fire
+// through the per-entry `val.Validate()` call.
 type Map_StructAddress struct {
 	Addresses map[string]Address `json:"addresses"`
 }
 
-// Map_StructValue is the struct-valued map. KNOWN GAP: today's
-// generator does NOT recurse into User to validate its `name` /
-// `email` fields; only field-level validators on the MAP itself fire.
-// The `email` scalar's @format(email) is therefore unenforced inside
-// this map.
+// Map_StructValue is the struct-valued map. The generator emits a
+// per-entry `val.Validate()` call so each User's `name` / `email`
+// fields are validated, including the `email` scalar's @format(email).
 type Map_StructValue struct {
 	Users map[string]User `json:"users"`
 }
 
 // User is a struct used as a map VALUE in maps.craftgo. The `email`
-// field is typed as the `Email` scalar above so map iteration would
-// need to recurse through TWO layers (struct field → scalar) to fire
-// the inherited format check.
+// field is typed as the `Email` scalar above, so map iteration recurses
+// through TWO layers (struct field → scalar) to fire the inherited
+// format check.
 type User struct {
 	Name  string `json:"name"`
 	Email Email  `json:"email"`

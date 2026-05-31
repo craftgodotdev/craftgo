@@ -12,8 +12,8 @@ import (
 )
 
 // DeleteUser removes a user identified by the URL id. The path
-// parameter binds onto the request struct so the handler can act
-// on it instead of receiving an opaque {id}.
+// parameter binds onto the request struct so the handler receives
+// it as a field.
 // DeleteUser returns the http.HandlerFunc for the
 // DELETE DeleteUser endpoint.
 func DeleteUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -3,9 +3,6 @@ package ast
 // EachField calls fn for every Field directly declared in body, in
 // source order. Mixin members are skipped — they're embedded type
 // references, not fields with their own decorator chain or shape.
-// This collapses the `for _, m := range td.Body { f, ok := m.(*Field);
-// if !ok { continue } ... }` pattern that previously appeared at 10+
-// call sites across codegen and semantic.
 //
 // The callback may return false to stop iteration early (useful for
 // "find first matching field" lookups). Returning true continues.

@@ -10,9 +10,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Pure ignore: clears EVERY inherited middleware, starts from
-// empty. Used for the public-facing health probe that must NOT
-// require auth or rate-limit.
+// Pure ignore: clears every inherited middleware, starting from
+// empty, for a public-facing health probe that requires neither
+// auth nor rate-limit.
 // PublicHealth returns the http.HandlerFunc for the
 // GET PublicHealth endpoint.
 func PublicHealth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

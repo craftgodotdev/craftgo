@@ -6,12 +6,10 @@
 // because the source declaration lives in another folder.
 //
 // ProjectService keeps the surface minimal: a single `list`
-// endpoint. NOTE: the original task asked for `response Project[]`
-// (bare array). The grammar wires `response` through
-// `parseNamedTypeRef` (NOT `parseTypeRef`), so the `[]` suffix
-// cannot appear — every list endpoint has to wrap the slice in an
-// envelope DTO. The cornercase is recorded in the comment on
-// `ProjectsResp` below.
+// endpoint. The grammar wires `response` through `parseNamedTypeRef`
+// (NOT `parseTypeRef`), so a bare-array `response Project[]` cannot
+// appear — every list endpoint wraps the slice in an envelope DTO
+// (`ProjectsResp` below).
 package services
 
 import "shared"
@@ -27,10 +25,9 @@ type Project {
 }
 
 // ProjectsResp wraps a slice in an envelope so the response shape
-// stays inside what `parseNamedTypeRef` accepts. The brick wall
-// the original spec hit: `response Project[]` won't parse — the
-// method body's `response` slot is a NamedTypeRef and never sees
-// the array-suffix branch.
+// stays inside what `parseNamedTypeRef` accepts: the method body's
+// `response` slot is a NamedTypeRef and never sees the array-suffix
+// branch, so `response Project[]` does not parse.
 type ProjectsResp {
 	items Project[]
 }

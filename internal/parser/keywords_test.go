@@ -206,15 +206,11 @@ service S {
 	}
 }
 
-// TestParsePathParamReservedKeyword pins the path-parser fix: a URL
-// like `/logs/{service}` MUST parse as a path-param named `service`,
-// not as a literal `/logs/` followed by a method body that starts with
-// the `service` keyword. Same coverage for the `file`, `type`, and verb
+// TestParsePathParamReservedKeyword pins that a URL like
+// `/logs/{service}` parses as a path-param named `service`, not as a
+// literal `/logs/` followed by a method body that starts with the
+// `service` keyword. Same coverage for the `file`, `type`, and verb
 // (`get`) keywords - they're DSL constructs but legitimate URL labels.
-//
-// Before the fix this triggered a 30+ diagnostic cascade because the
-// `{` disambiguator only accepted [lexer.Ident] as the next token and
-// fell through when a keyword token appeared.
 func TestParsePathParamReservedKeyword(t *testing.T) {
 	cases := []struct {
 		name string
@@ -259,11 +255,11 @@ service S {
 	}
 }
 
-// TestParsePathDisambiguationKeepsMethodBody guards the regression that
-// caused the path-param fix to misread `/ { request X response Y }`
-// (empty path followed by a method body that opens with the `request`
-// keyword) as a path-param named `request`. The 3-token `{ <word> }`
-// shape is what disambiguates a path-param from a method body brace.
+// TestParsePathDisambiguationKeepsMethodBody pins that `/ { request X
+// response Y }` (empty path followed by a method body that opens with
+// the `request` keyword) parses the body, not a path-param named
+// `request`. The 3-token `{ <word> }` shape is what disambiguates a
+// path-param from a method body brace.
 func TestParsePathDisambiguationKeepsMethodBody(t *testing.T) {
 	src := `package design
 type Req { id string }

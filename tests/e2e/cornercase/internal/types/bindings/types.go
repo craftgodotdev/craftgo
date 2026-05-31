@@ -6,8 +6,8 @@ import (
 	"mime/multipart"
 )
 
-// UUID is a DSL scalar - alias of string with the validators declared on it inherited by every field of this type.
-type UUID = string
+// UUID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type UUID string
 
 // AddItemReq is the canonical JSON body for the POST /items
 // endpoint. Every field is body-bound (no per-field decorators) so
@@ -26,8 +26,8 @@ type BodyExplicitReq struct {
 	Payload string `json:"payload"`
 }
 
-// CookieReq drives the cookie binder. Same explicit-name wart — the
-// runtime fetches the cookie named `session`, not `session_id`.
+// CookieReq drives the cookie binder with an explicit wire name — the
+// runtime fetches the cookie named `session_id`.
 type CookieReq struct {
 	Session string `json:"-"`
 }
@@ -48,12 +48,9 @@ type GetItemReq struct {
 	ID UUID `json:"-"`
 }
 
-// HeaderOptionalReq probes the optional-header path. NOTE: codegen
-// currently rejects `string? @header` outright with "@header
-// requires a string-backed field ... got string?" — the
-// `stringBindable` predicate checks `f.Type.Optional` and bails. To
-// keep the package generating we drop the `?`; the binder treats an
-// absent header as the empty string.
+// HeaderOptionalReq exercises a required header bound to an explicit
+// wire name (`X-Trace-Id`). The binder treats an absent header as the
+// empty string.
 type HeaderOptionalReq struct {
 	TraceID string `json:"-"`
 }
@@ -93,9 +90,8 @@ type PathEnumReq struct {
 
 // PathExplicitNameReq exercises the `@path("user_id")` form where the
 // DSL field name (`userId`) differs from the URL placeholder
-// (`{user_id}`). NOTE: the codegen currently ignores the decorator
-// argument and emits `r.PathValue("userId")` regardless — flagged in
-// the report as a wart, the runtime binding will not match.
+// (`{user_id}`). The codegen binds against the explicit wire name so
+// the generated handler reads `r.PathValue("user_id")`.
 type PathExplicitNameReq struct {
 	UserID string `json:"-"`
 }

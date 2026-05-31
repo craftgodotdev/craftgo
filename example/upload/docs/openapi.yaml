@@ -195,11 +195,16 @@ paths:
             schema:
               properties:
                 notes:
-                  type: string
+                  maxLength: 2000
+                  type:
+                  - string
+                  - "null"
                 pdf:
                   format: binary
                   type: string
                 title:
+                  maxLength: 200
+                  minLength: 1
                   type: string
               required:
               - title

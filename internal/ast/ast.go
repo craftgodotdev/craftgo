@@ -26,12 +26,10 @@ type CommentKind = lexer.CommentKind
 
 // astMarker is the body of every marker method (`declNode`,
 // `typeMember`, `exprNode`). Marker methods exist only to seal a Go
-// interface - they have no behaviour. An empty body (`{}`) would be
-// idiomatic but produces 0 statements, which `go tool cover` reports
-// as 0.0%-covered even when callers exercise the method. Calling a
-// tiny named helper that performs one no-op assignment gives every
-// marker a measurable statement so the 100% core-coverage CI gate
-// stays satisfied.
+// interface - they have no behaviour. Its one no-op assignment gives
+// each marker a measurable statement, so `go tool cover` records the
+// method as covered when callers exercise it rather than reporting an
+// empty body as 0.0%-covered.
 func astMarker() { _ = astMarkerCalled }
 
 // astMarkerCalled is the throwaway sink that gives [astMarker] a

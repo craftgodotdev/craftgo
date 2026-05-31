@@ -285,7 +285,7 @@ paths:
           headers:
             X-Response-Time:
               description: |-
-                tookMs is a SCALAR-typed (Millis = int) header: it resolves to its
+                tookMs is a scalar-typed (Millis = int) header: it resolves to its
                 underlying primitive and formats the same as a plain int.
               schema:
                 $ref: '#/components/schemas/Millis'
@@ -293,7 +293,7 @@ paths:
               description: |-
                 total rides the X-Total-Count response header instead of the JSON
                 body — a non-string @header value the generated handler formats
-                with strconv.Itoa. A classic pagination pattern (GitHub, Stripe).
+                with strconv.Itoa.
               schema:
                 type: integer
         default:

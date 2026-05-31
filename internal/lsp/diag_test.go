@@ -136,9 +136,9 @@ type Resp {}
 }
 
 // TestBuildProjectDiagnosticsClearsAfterRevert pins the "edit-and-undo"
-// flow that was leaking stale squigglies before the perFile partition
-// defaulted to a non-nil empty slice: nil marshals to JSON `null`, which
-// several LSP clients interpret as "no change" rather than "clear".
+// flow: the perFile partition defaults to a non-nil empty slice so a
+// cleared file marshals to JSON `[]` not `null`, which several LSP
+// clients interpret as "no change" rather than "clear".
 //
 // Scenario: edit types file to break a path-param reference (error
 // fires in service file), then revert the edit (error should clear

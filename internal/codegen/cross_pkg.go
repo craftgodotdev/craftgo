@@ -76,9 +76,9 @@ func BuildScalarTable(proj *semantic.Project, currentPkgName string) ScalarTable
 // struct-shaped types: local types are keyed by bare name (`Order`),
 // cross-package types by qualified form (`shared.Page`). The codegen
 // consults the table to decide whether a field type carries its own
-// `Validate()` method — without it, qualified refs like
-// `shared.Page<T>` slipped past `pkg.Types` (local-only) and the
-// recursive validate call was silently dropped.
+// `Validate()` method, so a qualified ref like `shared.Page<T>`
+// (which the local-only `pkg.Types` lookup misses) still emits its
+// recursive validate call.
 type TypeTable map[string]*ast.TypeDecl
 
 // BuildTypeTable returns the lookup table for `currentPkgName`.
@@ -109,9 +109,7 @@ func BuildTypeTable(proj *semantic.Project, currentPkgName string) TypeTable {
 // (`Color`); cross-package enums by qualified DSL form
 // (`shared.Color`). The validator codegen consults this so a field
 // typed `color shared.Color` emits the switch-case validity check
-// — without it, the local-only `pkg.Enums` lookup missed every
-// qualified ref and the wire could carry an unknown enum value
-// without a diagnostic.
+// for a qualified ref the local-only `pkg.Enums` lookup misses.
 type EnumTable map[string]*ast.EnumDecl
 
 // BuildEnumTable returns the lookup table for `currentPkgName`. Every

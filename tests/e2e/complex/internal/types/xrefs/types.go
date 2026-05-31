@@ -6,37 +6,35 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/xshared"
 )
 
-// XEnumDefault pins `@default(Red)` on a cross-pkg enum field — the
-// enum value must be referenced by bare ident, not a string literal,
-// because enum identity is by name. Transport pre-fill must qualify
-// the constant (`xshared.XColorRed`) and register the xshared
-// import on the handler file.
+// XEnumDefault exercises `@default(Red)` on a cross-pkg enum field:
+// the enum value is referenced by bare ident, not a string literal,
+// since enum identity is by name. Transport pre-fill qualifies the
+// constant (`xshared.XColorRed`) and registers the xshared import on
+// the handler file.
 type XEnumDefault struct {
 	Color *xshared.XColor `json:"color,omitempty"`
 }
 
-// XEnumMaps pins enum keys / values in maps. The walker must emit
-// a switch on either side independently (key-only, value-only, or
-// both). OpenAPI 3.1 should emit `propertyNames: {enum: [...]}`
-// for the enum-keyed maps — currently lossy (audit R1).
+// XEnumMaps exercises enum keys / values in maps. The walker emits a
+// switch on either side independently (key-only, value-only, or both).
 type XEnumMaps struct {
 	ByString map[string]xshared.XColor         `json:"byString"`
 	ByEnum   map[xshared.XColor]string         `json:"byEnum"`
 	BothEnum map[xshared.XColor]xshared.XColor `json:"bothEnum"`
 }
 
-// XEnumScalar pins direct + optional + array enum field shapes.
-// Validator must emit a switch-case per shape; OpenAPI schema must
-// inline the enum values list (or $ref to the enum schema).
+// XEnumScalar exercises direct + optional + array enum field shapes.
+// The validator emits a switch-case per shape; the OpenAPI schema
+// inlines the enum values list (or $refs the enum schema).
 type XEnumScalar struct {
 	Flat  xshared.XColor   `json:"flat"`
 	Maybe *xshared.XColor  `json:"maybe,omitempty"`
 	Many  []xshared.XColor `json:"many"`
 }
 
-// XGeneric pins cross-pkg GENERIC instantiations. Each argument
-// kind exercises a different generic-arg resolution path. OpenAPI
-// must register one component per (decl, args) tuple under the
+// XGeneric exercises cross-pkg generic instantiations. Each argument
+// kind takes a different generic-arg resolution path. OpenAPI
+// registers one component per (decl, args) tuple under the
 // FastAPI-style `XBagOfFoo` naming, not bare `xshared.XBag`.
 type XGeneric struct {
 	OfLocal xshared.XBag[XLocalItem]                `json:"ofLocal"`
@@ -53,13 +51,10 @@ type XLocalItem struct {
 	ID string `json:"id"`
 }
 
-// XScalarBindings pins SCALAR refs at WIRE binding sites. The
-// transport handler must emit qualified casts:
+// XScalarBindings exercises scalar refs at wire binding sites. The
+// transport handler emits qualified casts:
 //   - `req.Path = xshared.XEmail(r.PathValue("path"))`
 //   - `req.Q = xshared.XEmail(r.URL.Query().Get("q"))`
-//
-// without resolver these casts silently degrade to bare strings
-// and the handler fails to compile.
 type XScalarBindings struct {
 	Path xshared.XEmail  `json:"-"`
 	Q    xshared.XEmail  `json:"-"`
@@ -68,11 +63,10 @@ type XScalarBindings struct {
 	Num  xshared.XNodeID `json:"-"`
 }
 
-// XScalarFields pins cross-pkg scalar refs in every shape. Each
-// field inherits the scalar's @format / @length chain via the
-// project ScalarTable. The required-empty check on `flat` must
-// also resolve through the resolver — otherwise the scalar's
-// underlying primitive is not known and the check is dropped.
+// XScalarFields exercises cross-pkg scalar refs in every shape. Each
+// field inherits the scalar's @format / @length chain via the project
+// ScalarTable, and the required-empty check on `flat` resolves the
+// scalar's underlying primitive through the resolver.
 type XScalarFields struct {
 	Flat   xshared.XEmail       `json:"flat"`
 	Maybe  *xshared.XEmail      `json:"maybe,omitempty"`
@@ -80,12 +74,10 @@ type XScalarFields struct {
 	Stamps []xshared.XTimestamp `json:"stamps"`
 }
 
-// XSearchReq is the request that exercises CROSS-PACKAGE SCALAR
-// binding casts. Without resolver-aware transport gen the handler
-// for /search emits bare-string assignments (`req.Q = r.URL.Query()
-// .Get("q")`) instead of qualified casts (`req.Q = xshared.XEmail
-// (r.URL.Query().Get("q"))`) — the Go compiler then rejects with a
-// type mismatch because req.Q is `*xshared.XEmail` not `*string`.
+// XSearchReq exercises cross-package scalar binding casts. The /search
+// handler emits qualified casts (`req.Q = xshared.XEmail(r.URL.Query()
+// .Get("q"))`) so the assignment type-checks against the
+// `*xshared.XEmail` field.
 type XSearchReq struct {
 	Q   xshared.XEmail  `json:"-"`
 	Hdr xshared.XEmail  `json:"-"`
@@ -93,8 +85,8 @@ type XSearchReq struct {
 	Num xshared.XNodeID `json:"-"`
 }
 
-// XTypeFields pins cross-pkg TYPE refs in every shape. Each field
-// must dispatch `v.Field.Validate()` (or per-element when nested).
+// XTypeFields exercises cross-pkg type refs in every shape. Each field
+// dispatches `v.Field.Validate()` (or per-element when nested).
 type XTypeFields struct {
 	Flat  xshared.XOwner            `json:"flat"`
 	Maybe *xshared.XOwner           `json:"maybe,omitempty"`
@@ -102,10 +94,10 @@ type XTypeFields struct {
 	ByKey map[string]xshared.XOwner `json:"byKey"`
 }
 
-// XTypeMixin pins MIXIN embedding from cross-pkg. The `XAudit`
+// XTypeMixin exercises mixin embedding from cross-pkg. The `XAudit`
 // mixin's fields land via Go field-promotion; the host's Validate
-// must call `v.XAudit.Validate()` explicitly because Go method
-// promotion doesn't auto-invoke on the host.
+// calls `v.XAudit.Validate()` explicitly since Go method promotion
+// doesn't auto-invoke on the host.
 type XTypeMixin struct {
 	xshared.XAudit
 	ID string `json:"id"`

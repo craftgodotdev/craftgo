@@ -56,7 +56,7 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 // applied when the method declares `@timeout` or `@maxBodySize`. The
 // middleware chain is rendered separately as variadic args by
 // [buildMiddlewareArgs] so the route line stays flat regardless of
-// chain depth (old shape nested up to 7 wraps deep per call).
+// chain depth.
 //
 // Limits wrap the handler INSIDE the middleware chain so middlewares
 // see the timeout/body-cap-bound handler — the timeout cancels the
@@ -75,10 +75,9 @@ func buildHandlerCall(m *ast.Method) string {
 // when the chain is non-empty, otherwise "" so the template skips the
 // argument entirely.
 //
-// Order matches buildHandlerCall's historical "first = outermost"
-// contract: the first name in mws is the OUTERMOST frame at runtime.
-// server.Handle's variadic wrap iterates right-to-left so this stays
-// natural to read top-to-bottom in the generated route line.
+// The first name in mws is the OUTERMOST frame at runtime;
+// server.Handle's variadic wrap iterates right-to-left so the chain
+// reads top-to-bottom in the generated route line.
 func buildMiddlewareArgs(mws []string) string {
 	if len(mws) == 0 {
 		return ""

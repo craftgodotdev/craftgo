@@ -3,11 +3,8 @@ package ast
 import "slices"
 
 // FindDecorator returns the FIRST decorator in decs whose Name matches.
-// Returns nil when no decorator matches or decs is empty. The nil-check
-// is built in so callers don't have to skip nil entries themselves -
-// this is the most common shape of decorator iteration across the
-// codebase and was previously inlined as `for _, d := range decs { if
-// d != nil && d.Name == "X" { ... break } }` at 15+ sites.
+// Returns nil when no decorator matches or decs is empty. Nil entries
+// in decs are skipped, so callers iterate without their own nil guard.
 func FindDecorator(decs []*Decorator, name string) *Decorator {
 	for _, d := range decs {
 		if d != nil && d.Name == name {

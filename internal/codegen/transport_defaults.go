@@ -93,22 +93,59 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 		}
 		return "[]" + elemGo + "{" + strings.Join(parts, ", ") + "}"
 	}
+	var s string
 	switch lit := v.(type) {
 	case *ast.StringLit:
-		return strconv.Quote(lit.Value)
+		s = strconv.Quote(lit.Value)
 	case *ast.IntLit:
-		return strconv.FormatInt(lit.Value, 10)
+		s = strconv.FormatInt(lit.Value, 10)
 	case *ast.FloatLit:
-		return strconv.FormatFloat(lit.Value, 'g', -1, 64)
+		s = strconv.FormatFloat(lit.Value, 'g', -1, 64)
 	case *ast.BoolLit:
 		if lit.Value {
-			return "true"
+			s = "true"
+		} else {
+			s = "false"
 		}
-		return "false"
 	case *ast.IdentExpr:
+		// Enum default: the const (`types.ColorRed`) is already typed,
+		// so no cast is added.
 		return enumDefaultConst(t, pkg, r, lit, pkgAlias)
+	default:
+		return ""
 	}
-	return ""
+	// Scalar field default: cast the primitive literal to the scalar's
+	// defined Go type. Scalars emit as DEFINED types (`type PageSize
+	// int`), not aliases, so without the cast the pointer-prefill
+	// `__d := <lit>` infers the bare primitive and `&__d` (a `*int`)
+	// fails to assign to the field's `*PageSize`. Casting
+	// (`PageSize(20)`) makes `__d` the scalar type. Harmless for the
+	// non-pointer case — `req.X = PageSize(20)` is identical to the
+	// untyped-constant form.
+	if name := scalarDefaultGoName(t, pkg, r, pkgAlias); name != "" {
+		return name + "(" + s + ")"
+	}
+	return s
+}
+
+// scalarDefaultGoName returns the qualified Go type name of a scalar
+// reference (`types.PageSize`, `shared.CurrencyCode`) so a `@default`
+// literal can be cast to it, or "" when t is not a flat scalar ref
+// (array / map / primitive / enum / struct). Array elements clear
+// Optional via arrayElemTypeRef before reaching here; a top-level
+// optional scalar (`PageSize?`) keeps Optional set, so the clone drops
+// it — the cast targets the value type `PageSize`, not `*PageSize`.
+func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
+	if t == nil || t.Array || t.Map != nil || t.Named == nil || t.Named.Name == nil {
+		return ""
+	}
+	name := t.Named.Name.String()
+	if _, ok := pkg.Scalars[name]; !ok && r.LookupScalar(name) == nil {
+		return ""
+	}
+	base := *t
+	base.Optional = false
+	return qualifyNamed(GoTypeRef(&base), &base, pkg, r, pkgAlias)
 }
 
 // qualifyNamed prefixes a Go type reference with `<pkgAlias>.` when

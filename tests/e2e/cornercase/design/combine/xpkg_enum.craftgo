@@ -3,11 +3,9 @@ package combine
 import "shared"
 
 // XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
-// take inside a single field. Each form previously slipped past the
-// validator because the per-package `pkg.Enums` lookup is local-only;
-// the fix routes resolution through the project-wide EnumTable so
-// every shape now emits the switch-case validity check. The fixture
-// keeps drift coverage on the gen output for every shape.
+// take inside a single field. Resolution routes through the
+// project-wide EnumTable, so every shape emits the switch-case
+// validity check.
 //
 //   - flat:      `shared.Severity` direct field   → switch wrapped by shape().
 //   - many:      `shared.Severity[]`              → for-range + switch.

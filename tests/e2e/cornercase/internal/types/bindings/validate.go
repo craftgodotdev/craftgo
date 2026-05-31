@@ -60,14 +60,21 @@ func (v *FormFileReq) Validate() error {
 	if v.File != nil && v.File.Size > 5242880 {
 		return fmt.Errorf("file: file size exceeds 5242880 bytes")
 	}
+	if v.File != nil {
+		switch v.File.Header.Get("Content-Type") {
+		case "image/png", "image/jpeg":
+		default:
+			return fmt.Errorf("file: disallowed content type")
+		}
+	}
 	return nil
 }
 
 // Validate checks every field-level constraint declared on GetItemReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetItemReq) Validate() error {
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid UUID")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -87,8 +94,8 @@ func (v *HeaderReq) Validate() error {
 // Validate checks every field-level constraint declared on Item.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Item) Validate() error {
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid UUID")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -116,10 +123,8 @@ func (v *PathEnumReq) Validate() error {
 	if v.C == "" {
 		return fmt.Errorf("c: required")
 	}
-	switch v.C {
-	case ColorRed, ColorGreen, ColorBlue:
-	default:
-		return fmt.Errorf("c: invalid Color value")
+	if err := v.C.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -136,8 +141,8 @@ func (v *PathExplicitNameReq) Validate() error {
 // Validate checks every field-level constraint declared on PathScalarReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathScalarReq) Validate() error {
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid UUID")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -173,10 +178,8 @@ func (v *QueryBoolReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *QueryEnumReq) Validate() error {
 	if v.C != nil {
-		switch *v.C {
-		case ColorRed, ColorGreen, ColorBlue:
-		default:
-			return fmt.Errorf("c: invalid Color value")
+		if err := v.C.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -219,10 +222,8 @@ func (v *SearchReq) Validate() error {
 		return fmt.Errorf("limit: above maximum 100")
 	}
 	if v.Sort != nil {
-		switch *v.Sort {
-		case ColorRed, ColorGreen, ColorBlue:
-		default:
-			return fmt.Errorf("sort: invalid Color value")
+		if err := v.Sort.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -239,6 +240,13 @@ func (v *UploadReq) Validate() error {
 	}
 	if v.File != nil && v.File.Size > 5242880 {
 		return fmt.Errorf("file: file size exceeds 5242880 bytes")
+	}
+	if v.File != nil {
+		switch v.File.Header.Get("Content-Type") {
+		case "image/png", "image/jpeg":
+		default:
+			return fmt.Errorf("file: disallowed content type")
+		}
 	}
 	if v.Caption != nil && len(*v.Caption) > 280 {
 		return fmt.Errorf("caption: length greater than 280")
@@ -266,6 +274,26 @@ func (v *UserAvatar) Validate() error {
 func (v *WireRenameReq) Validate() error {
 	if l := len(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("userId: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on UUID.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v UUID) Validate() error {
+	if !_pattern0.MatchString(string(v)) {
+		return fmt.Errorf("UUID: not a valid UUID")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Color.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Color) Validate() error {
+	switch v {
+	case ColorRed, ColorGreen, ColorBlue:
+	default:
+		return fmt.Errorf("Color: invalid Color value")
 	}
 	return nil
 }

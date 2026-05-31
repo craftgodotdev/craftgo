@@ -62,12 +62,12 @@ extend service OrderService {
 }
 
 // Second extend block — public/unauthenticated read endpoints that
-// intentionally DROP the inherited auth chain via @ignoreMiddleware.
-// Each method here exercises a different inheritance pattern.
+// drop the inherited auth chain via @ignoreMiddleware. Each method
+// exercises a different inheritance pattern.
 extend service OrderService {
-	// Pure ignore: clears EVERY inherited middleware, starts from
-	// empty. Used for the public-facing health probe that must NOT
-	// require auth or rate-limit.
+	// Pure ignore: clears every inherited middleware, starting from
+	// empty, for a public-facing health probe that requires neither
+	// auth nor rate-limit.
 	@doc("Public readiness probe — bypasses every parent middleware AND security.")
 	@ignoreMiddleware
 	@ignoreSecurity
@@ -75,8 +75,8 @@ extend service OrderService {
 		response shared.OkResp
 	}
 
-	// Ignore + replace: clears inherited chain THEN appends fresh
-	// middleware. Useful when a public endpoint still needs SOME
+	// Ignore + replace: clears the inherited chain then appends fresh
+	// middleware, for a public endpoint that still needs some
 	// cross-cutting concerns (CORS for browser callers) but none of
 	// the auth/rate-limit chain.
 	@doc("Public order tracking by id — CORS only, no auth.")
@@ -87,9 +87,9 @@ extend service OrderService {
 		response shared.OkResp
 	}
 
-	// Just append: inherits the full parent chain AND adds extras.
-	// This is the canonical "admin endpoint needs auth + extras"
-	// pattern that should produce a deep wrap (parent 4 + extra 2 = 6).
+	// Just append: inherits the full parent chain and adds extras.
+	// The "admin endpoint needs auth + extras" pattern produces a deep
+	// wrap (parent 4 + extra 2 = 6).
 	@doc("Bulk export — admin only, extra body-limit/timeout on top of parent chain.")
 	@middlewares(shared.BodyLimit, shared.Timeout)
 	@security(oauth2)
@@ -99,11 +99,11 @@ extend service OrderService {
 	}
 }
 
-// Third extend block — different middleware combo per method to verify
-// the codegen does not bleed extends together.
+// Third extend block — a different middleware combo per method,
+// exercising that codegen keeps extend blocks separate.
 extend service OrderService {
-	// No method-level middleware; should inherit ONLY the parent
-	// chain (RequestID, RateLimit, CORS, AuthRequired).
+	// No method-level middleware; inherits only the parent chain
+	// (RequestID, RateLimit, CORS, AuthRequired).
 	@doc("Admin replay (parent chain only).")
 	@security(oauth2)
 	post Replay /{id}/replay {

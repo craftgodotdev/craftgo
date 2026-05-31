@@ -1,6 +1,6 @@
 // Shared contracts pulled in by services.craftgo via
-// `import "shared/contracts"`. Same package as the importer — the CLI
-// treats imports as a way to spread one logical package across folders.
+// `import "shared/contracts"`. Same package as the importer: an import
+// spreads one logical package across folders.
 package design
 
 // Pong is the simple response for the ping endpoints.

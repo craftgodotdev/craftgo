@@ -12,7 +12,8 @@ const {{.ConstName}} = {{.QuotedCode}}
 // User code instantiates this struct and hands it to New{{.TypeName}}; the
 // framework wraps it with the type-bound code / message metadata.
 type {{.BodyName}} struct {
-{{range .BodyFields}}	{{.GoName}} {{.Type}} `json:{{.JSONTag}}`
+{{range .BodyMixins}}	{{.}}
+{{end}}{{range .BodyFields}}	{{.GoName}} {{.Type}} `json:{{.JSONTag}}`
 {{end}}}
 {{end -}}
 

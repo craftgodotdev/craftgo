@@ -28,17 +28,17 @@ scalar Email string @format(email) @maxLength(254)
 scalar NonEmptyID string @minLength(1) @maxLength(64)
 
 // Address is a struct used as a map VALUE in maps.craftgo. The two
-// fields carry length validators so we can see whether the generator
-// recurses into struct values when iterating a map.
+// fields carry length validators that fire when the generator recurses
+// into struct values during map iteration.
 type Address {
 	street string @length(1, 200)
 	city   string @length(1, 100)
 }
 
 // User is a struct used as a map VALUE in maps.craftgo. The `email`
-// field is typed as the `Email` scalar above so map iteration would
-// need to recurse through TWO layers (struct field → scalar) to fire
-// the inherited format check.
+// field is typed as the `Email` scalar above, so map iteration recurses
+// through TWO layers (struct field → scalar) to fire the inherited
+// format check.
 type User {
 	name  string @length(1, 80)
 	email Email

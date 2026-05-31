@@ -95,7 +95,12 @@ func renderScalars(pkg *semantic.Package) string {
 		return ""
 	}
 	names := sortedKeys(pkg.Scalars)
-	const tmpl = "// %s is a DSL scalar - alias of %s with the validators declared on it inherited by every field of this type.\ntype %s = %s\n\n"
+	// Defined type (NOT an alias `=`): a distinct Go type so the scalar
+	// can carry a Validate() method, defined ONCE and reused by every
+	// field of this type and picked up by the generic-instance validator
+	// via its `interface{ Validate() error }` assertion — so `Page<Email>`
+	// enforces Email's @format instead of silently dropping it.
+	const tmpl = "// %s is a DSL scalar over %s; its declared validators live on its Validate() method and are inherited by every field of this type.\ntype %s %s\n\n"
 	parts := make([]string, len(names))
 	for i, n := range names {
 		sd := pkg.Scalars[n]

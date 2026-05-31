@@ -47,3 +47,17 @@ type Search {
 	keywords Tag[]?
 	limit    Cents? @default(20)
 }
+
+// ScalarFieldOverrides exercises a field-level decorator STACKED on a
+// SCALAR-typed field. The scalar carries its own bounds (on its
+// Validate()); the field NARROWS them further. Because scalars are
+// DEFINED Go types (`type Cents int`), the generated validator
+// derefs+casts the scalar to its primitive and runs each stacked
+// decorator: `amount` rejects > 500 (Cents alone allows up to 1e9),
+// `discount` the optional variant, `code` rejects len > 5 (Tag alone
+// allows up to 20).
+type ScalarFieldOverrides {
+	amount   Cents  @lte(500)
+	discount Cents? @lte(100)
+	code     Tag    @maxLength(5)
+}

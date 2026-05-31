@@ -40,13 +40,11 @@ func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, re
 // onRename answers `textDocument/rename`. Every `.craftgo` file under
 // the design root is scanned for Ident tokens matching the symbol's
 // current name and rewritten in one WorkspaceEdit so a project-wide
-// rename never leaves stale references in sibling files (a common
-// regression with the previous single-file behaviour - renaming a
-// shared type would silently break consumers).
+// rename leaves no stale references in sibling files.
 //
-// The validation precondition is unchanged: the cursor must sit on
-// an identifier whose decl exists in the current file (so the user
-// is renaming a thing they own, not an imported foreign symbol).
+// Precondition: the cursor must sit on an identifier whose decl exists
+// in the current file, so the user renames a thing they own rather than
+// an imported foreign symbol.
 func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.RenameParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {

@@ -5,6 +5,7 @@ package scalars
 import (
 	"fmt"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"time"
 )
@@ -15,9 +16,9 @@ import (
 // literal so regexes containing a backtick, backslash, or quote still
 // produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+	_pattern0 = regexp.MustCompile("^[A-Z]{3}$")
 	_pattern1 = regexp.MustCompile("^[a-z-]+$")
-	_pattern2 = regexp.MustCompile("^[A-Z]{3}$")
+	_pattern2 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 )
 
 // Validate checks every field-level constraint declared on ArrayOfGenericInstance.
@@ -49,8 +50,8 @@ func (v *Audited) Validate() error {
 	if err := v.AuditFields.Validate(); err != nil {
 		return err
 	}
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid UUID")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -67,22 +68,16 @@ func (v *AuditedPage) Validate() error {
 // Validate checks every field-level constraint declared on Bag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Bag) Validate() error {
-	for i0 := range v.Tags {
-		if len(v.Tags[i0]) < 1 {
-			return fmt.Errorf("tags: length less than 1")
-		}
-		if len(v.Tags[i0]) > 20 {
-			return fmt.Errorf("tags: length greater than 20")
-		}
-		if !_pattern1.MatchString(v.Tags[i0]) {
-			return fmt.Errorf("tags: does not match pattern")
-		}
-	}
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
 	}
 	if len(v.Tags) > 10 {
 		return fmt.Errorf("tags: maxItems 10")
+	}
+	for i0 := range v.Tags {
+		if err := v.Tags[i0].Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -148,11 +143,32 @@ func (v *Envelope[T]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on GenericOverEnum.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *GenericOverEnum) Validate() error {
+	if err := v.Levels.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on GenericOverScalar.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *GenericOverScalar) Validate() error {
+	if err := v.Emails.Validate(); err != nil {
+		return err
+	}
+	if err := v.Amounts.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on GetOrderReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetOrderReq) Validate() error {
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid UUID")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -160,11 +176,8 @@ func (v *GetOrderReq) Validate() error {
 // Validate checks every field-level constraint declared on ListOrdersReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListOrdersReq) Validate() error {
-	if v.Limit < 0 {
-		return fmt.Errorf("limit: below minimum 0")
-	}
-	if v.Limit > 1000000000 {
-		return fmt.Errorf("limit: above maximum 1000000000")
+	if err := v.Limit.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -216,41 +229,23 @@ func (v *OptionalPage) Validate() error {
 // Validate checks every field-level constraint declared on Order.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Order) Validate() error {
-	if !_pattern0.MatchString(v.ID) {
-		return fmt.Errorf("id: not a valid UUID")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	if err := v.Amount.Validate(); err != nil {
+		return err
 	}
-	if v.Amount < 0 {
-		return fmt.Errorf("amount: below minimum 0")
+	if err := v.Rate.Validate(); err != nil {
+		return err
 	}
-	if v.Amount > 1000000000 {
-		return fmt.Errorf("amount: above maximum 1000000000")
+	if err := v.Tag.Validate(); err != nil {
+		return err
 	}
-	if v.Rate < 0 {
-		return fmt.Errorf("rate: below minimum 0")
-	}
-	if v.Rate > 1 {
-		return fmt.Errorf("rate: above maximum 1")
-	}
-	if len(v.Tag) < 1 {
-		return fmt.Errorf("tag: length less than 1")
-	}
-	if len(v.Tag) > 20 {
-		return fmt.Errorf("tag: length greater than 20")
-	}
-	if !_pattern1.MatchString(v.Tag) {
-		return fmt.Errorf("tag: does not match pattern")
-	}
-	if l := len(v.Country); l < 3 || l > 3 {
-		return fmt.Errorf("country: length out of range [3, 3]")
-	}
-	if !_pattern2.MatchString(v.Country) {
-		return fmt.Errorf("country: does not match pattern")
+	if err := v.Country.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -339,14 +334,11 @@ func (v *ProductPage) Validate() error {
 // Validate checks every field-level constraint declared on ProductRef.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ProductRef) Validate() error {
-	if len(v.Sku) < 1 {
-		return fmt.Errorf("sku: length less than 1")
+	if err := v.Sku.Validate(); err != nil {
+		return err
 	}
-	if v.Price < 0 {
-		return fmt.Errorf("price: below minimum 0")
-	}
-	if v.Price > 1000000000 {
-		return fmt.Errorf("price: above maximum 1000000000")
+	if err := v.Price.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -360,25 +352,53 @@ func (v *RecursiveHost) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on ScalarFieldOverrides.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ScalarFieldOverrides) Validate() error {
+	{
+		_sv := int(v.Amount)
+		if _sv > 500 {
+			return fmt.Errorf("amount: above maximum 500")
+		}
+	}
+	if err := v.Amount.Validate(); err != nil {
+		return err
+	}
+	if v.Discount != nil {
+		_sv := int(*v.Discount)
+		if _sv > 100 {
+			return fmt.Errorf("discount: above maximum 100")
+		}
+	}
+	if v.Discount != nil {
+		if err := v.Discount.Validate(); err != nil {
+			return err
+		}
+	}
+	{
+		_sv := string(v.Code)
+		if len(_sv) > 5 {
+			return fmt.Errorf("code: length greater than 5")
+		}
+	}
+	if err := v.Code.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Search.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Search) Validate() error {
 	for i0 := range v.Keywords {
-		if len(v.Keywords[i0]) < 1 {
-			return fmt.Errorf("keywords: length less than 1")
-		}
-		if len(v.Keywords[i0]) > 20 {
-			return fmt.Errorf("keywords: length greater than 20")
-		}
-		if !_pattern1.MatchString(v.Keywords[i0]) {
-			return fmt.Errorf("keywords: does not match pattern")
+		if err := v.Keywords[i0].Validate(); err != nil {
+			return err
 		}
 	}
-	if v.Limit != nil && *v.Limit < 0 {
-		return fmt.Errorf("limit: below minimum 0")
-	}
-	if v.Limit != nil && *v.Limit > 1000000000 {
-		return fmt.Errorf("limit: above maximum 1000000000")
+	if v.Limit != nil {
+		if err := v.Limit.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -404,6 +424,107 @@ func (v *Tree[T]) Validate() error {
 func (v *Wrapped) Validate() error {
 	if err := v.Results.Validate(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Cents.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Cents) Validate() error {
+	if int(v) < 0 {
+		return fmt.Errorf("Cents: below minimum 0")
+	}
+	if int(v) > 1000000000 {
+		return fmt.Errorf("Cents: above maximum 1000000000")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Email.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Email) Validate() error {
+	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+		return fmt.Errorf("Email: not a valid email")
+	}
+	if len(string(v)) > 254 {
+		return fmt.Errorf("Email: length greater than 254")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ISO3.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v ISO3) Validate() error {
+	if l := len(string(v)); l < 3 || l > 3 {
+		return fmt.Errorf("ISO3: length out of range [3, 3]")
+	}
+	if !_pattern0.MatchString(string(v)) {
+		return fmt.Errorf("ISO3: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on NonEmpty.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v NonEmpty) Validate() error {
+	if len(string(v)) < 1 {
+		return fmt.Errorf("NonEmpty: length less than 1")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Percent.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Percent) Validate() error {
+	if float64(v) < 0 {
+		return fmt.Errorf("Percent: below minimum 0")
+	}
+	if float64(v) > 1 {
+		return fmt.Errorf("Percent: above maximum 1")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Tag.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Tag) Validate() error {
+	if len(string(v)) < 1 {
+		return fmt.Errorf("Tag: length less than 1")
+	}
+	if len(string(v)) > 20 {
+		return fmt.Errorf("Tag: length greater than 20")
+	}
+	if !_pattern1.MatchString(string(v)) {
+		return fmt.Errorf("Tag: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on URL.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v URL) Validate() error {
+	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+		return fmt.Errorf("URL: not a valid URL")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on UUID.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v UUID) Validate() error {
+	if !_pattern2.MatchString(string(v)) {
+		return fmt.Errorf("UUID: not a valid UUID")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Priority.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Priority) Validate() error {
+	switch v {
+	case PriorityLow, PriorityMedium, PriorityHigh:
+	default:
+		return fmt.Errorf("Priority: invalid Priority value")
 	}
 	return nil
 }

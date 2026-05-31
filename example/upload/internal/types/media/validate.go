@@ -35,6 +35,13 @@ func (v *UploadAttachmentReq) Validate() error {
 	if v.Blob != nil && v.Blob.Size > 512000 {
 		return fmt.Errorf("blob: file size exceeds 512000 bytes")
 	}
+	if v.Blob != nil {
+		switch v.Blob.Header.Get("Content-Type") {
+		case "image/png", "text/plain", "application/json":
+		default:
+			return fmt.Errorf("blob: disallowed content type")
+		}
+	}
 	return nil
 }
 
@@ -50,6 +57,13 @@ func (v *UploadAvatarReq) Validate() error {
 	if v.Image != nil && v.Image.Size > 5242880 {
 		return fmt.Errorf("image: file size exceeds 5242880 bytes")
 	}
+	if v.Image != nil {
+		switch v.Image.Header.Get("Content-Type") {
+		case "image/png", "image/jpeg", "image/webp":
+		default:
+			return fmt.Errorf("image: disallowed content type")
+		}
+	}
 	return nil
 }
 
@@ -61,6 +75,13 @@ func (v *UploadDocumentReq) Validate() error {
 	}
 	if v.PDF != nil && v.PDF.Size > 52428800 {
 		return fmt.Errorf("pdf: file size exceeds 52428800 bytes")
+	}
+	if v.PDF != nil {
+		switch v.PDF.Header.Get("Content-Type") {
+		case "application/pdf":
+		default:
+			return fmt.Errorf("pdf: disallowed content type")
+		}
 	}
 	if l := len(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")

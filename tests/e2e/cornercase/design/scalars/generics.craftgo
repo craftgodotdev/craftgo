@@ -87,9 +87,8 @@ type PairUserOrder {
 
 // MaybeOrder exercises the `T?` substitution path inside the generic
 // body. The `Maybe<T>` decl has `value T?` so substituting T=Order
-// produces a field with nullable optional Order - the emitter must
-// preserve the `?` in the generated schema, not silently strip it
-// while walking through substitution.
+// yields a nullable-optional Order field, preserving the `?` through
+// substitution.
 type MaybeOrder {
 	hit Maybe<Order>
 }
@@ -130,13 +129,12 @@ type PageOfPrimitiveHost {
 	rows Page<string>
 }
 
-// GenericWithMixin pins mixin substitution through generics: a
-// generic body that embeds a mixin must NOT silently drop the
-// mixin's fields during instantiation. `PageWithAudit<T>` mixes
-// `AuditFields` inside its body; the substituted
-// `PageWithAudit<Order>` component must list `createdAt` /
-// `updatedAt` (from AuditFields) in addition to its own `items` /
-// `total`.
+// GenericWithMixin exercises mixin substitution through generics: a
+// generic body that embeds a mixin carries the mixin's fields through
+// instantiation. `PageWithAudit<T>` mixes `AuditFields` inside its
+// body; the substituted `PageWithAudit<Order>` component lists
+// `createdAt` / `updatedAt` (from AuditFields) in addition to its own
+// `items` / `total`.
 type PageWithAudit<T> {
 	AuditFields
 	items T[]
@@ -148,13 +146,11 @@ type AuditedPage {
 }
 
 // Tree<T> is the marquee recursive-generic test: the body references
-// `Tree<T>` itself through the `kids` field. Pre-refactor inlining
-// would infinite-loop substituting T=Order. Post-refactor the
-// instance registers as `TreeOfOrder`, emits its body, hits
-// `kids: Tree<T>[]` substituted to `Tree<Order>[]`, asks the
-// registry for the component name, finds `TreeOfOrder` is already
-// registered, and emits `$ref:TreeOfOrder` - the cycle terminates
-// as a reference.
+// `Tree<T>` itself through the `kids` field. The instance registers
+// as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted
+// to `Tree<Order>[]`, asks the registry for the component name, finds
+// `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` — the
+// cycle terminates as a reference.
 type Tree<T> {
 	val  T
 	kids Tree<T>[]
@@ -174,7 +170,7 @@ type Audited {
 	id UUID
 }
 
-// ConstrainedBox<T> is the field-metadata regression fixture. Unlike
+// ConstrainedBox<T> exercises field metadata on a generic body. Unlike
 // the other generics above (whose own body fields carry no validator
 // decorators), every non-parametric field here is decorated:
 //
@@ -182,14 +178,10 @@ type Audited {
 //   - label  @maxLength         → string length cap
 //   - stamp  @format            → string format hint
 //
-// Before the schemaForType/instantiateGeneric unification, the concrete
-// `ConstrainedBoxOfScalarsOrder` component walked the body WITHOUT
-// applyFieldMetadata, so it advertised bare `integer`/`string` and
-// dropped every bound, default, and format — hey-api / openapi-generator
-// then emitted unconstrained client types. The instance component MUST
-// now carry minimum/maximum/default/maxLength/format on these fields,
-// plus this decl's own description (generic instances inherit it the
-// same way a non-generic type would).
+// The concrete `ConstrainedBoxOfScalarsOrder` component carries
+// minimum/maximum/default/maxLength/format on these fields, plus this
+// decl's own description (generic instances inherit it the same way a
+// non-generic type would).
 type ConstrainedBox<T> {
 	item  T
 	count int?   @gte(1) @lte(100) @default(10)
@@ -201,4 +193,32 @@ type ConstrainedBox<T> {
 // registers `ConstrainedBox<Order>` and emits its component schema.
 type ConstrainedBoxHost {
 	box ConstrainedBox<Order>
+}
+
+// Priority is a small local enum used purely to exercise a generic
+// instantiated over an ENUM type parameter (`Page<Priority>`).
+enum Priority {
+	low
+	medium
+	high
+}
+
+// GenericOverScalar exercises a generic instantiated over a
+// CONSTRAINED SCALAR. `Page<Email>` / `Page<Cents>` substitute T with a
+// scalar that carries @format / @maxLength / @gte / @lte. The
+// parametric Page[T].Validate() reaches each element through the
+// runtime `interface{ Validate() error }` probe, which resolves because
+// scalars emit as DEFINED Go types with their own Validate() method
+// (not bare aliases). The instance components (`PageOfScalarsEmail`,
+// `PageOfCents`) carry the element constraints via the element $ref.
+type GenericOverScalar {
+	emails  Page<Email>
+	amounts Page<Cents>
+}
+
+// GenericOverEnum is the enum counterpart: `Page<Priority>` rejects
+// elements outside the declared value set, resolving through the enum's
+// generated `switch` Validate().
+type GenericOverEnum {
+	levels Page<Priority>
 }

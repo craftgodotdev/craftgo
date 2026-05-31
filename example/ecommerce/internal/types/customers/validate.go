@@ -4,7 +4,6 @@ package customers
 
 import (
 	"fmt"
-	"net/mail"
 	"regexp"
 	"time"
 )
@@ -16,9 +15,7 @@ import (
 // produce compilable Go - a raw `...` literal would break on a backtick.
 var (
 	_pattern0 = regexp.MustCompile("^[A-Z0-9 -]{3,12}$")
-	_pattern1 = regexp.MustCompile("^[A-Z]{2}$")
-	_pattern2 = regexp.MustCompile("^\\+?[0-9 ()-]{6,20}$")
-	_pattern3 = regexp.MustCompile("^[A-Za-z0-9_-]+$")
+	_pattern1 = regexp.MustCompile("^\\+?[0-9 ()-]{6,20}$")
 )
 
 // Validate checks every field-level constraint declared on Address.
@@ -42,11 +39,8 @@ func (v *Address) Validate() error {
 	if !_pattern0.MatchString(v.PostalCode) {
 		return fmt.Errorf("postalCode: does not match pattern")
 	}
-	if l := len(v.Country); l < 2 || l > 2 {
-		return fmt.Errorf("country: length out of range [2, 2]")
-	}
-	if !_pattern1.MatchString(v.Country) {
-		return fmt.Errorf("country: does not match pattern")
+	if err := v.Country.Validate(); err != nil {
+		return err
 	}
 	if v.Geo != nil {
 		if err := v.Geo.Validate(); err != nil {
@@ -60,14 +54,11 @@ func (v *Address) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Contact) Validate() error {
 	if v.Email != nil {
-		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
-			return fmt.Errorf("email: not a valid email")
+		if err := v.Email.Validate(); err != nil {
+			return err
 		}
 	}
-	if v.Email != nil && len(*v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
-	}
-	if v.Phone != nil && !_pattern2.MatchString(*v.Phone) {
+	if v.Phone != nil && !_pattern1.MatchString(*v.Phone) {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
@@ -91,11 +82,8 @@ func (v *Contact) Validate() error {
 // Validate checks every field-level constraint declared on CreateCustomerReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateCustomerReq) Validate() error {
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
-	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
@@ -115,20 +103,11 @@ func (v *CreateCustomerReq) Validate() error {
 // Validate checks every field-level constraint declared on Customer.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Customer) Validate() error {
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern3.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
-	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
-		return fmt.Errorf("email: not a valid email")
-	}
-	if len(v.Email) > 254 {
-		return fmt.Errorf("email: length greater than 254")
+	if err := v.Email.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
@@ -146,6 +125,13 @@ func (v *Customer) Validate() error {
 	}
 	if v.Avatar != nil && v.Avatar.Size > 5242880 {
 		return fmt.Errorf("avatar: file size exceeds 5242880 bytes")
+	}
+	if v.Avatar != nil {
+		switch v.Avatar.Header.Get("Content-Type") {
+		case "image/png", "image/jpeg", "image/webp":
+		default:
+			return fmt.Errorf("avatar: disallowed content type")
+		}
 	}
 	if v.LoyaltyPoints != nil && *v.LoyaltyPoints < 0 {
 		return fmt.Errorf("loyaltyPoints: below minimum 0")
@@ -165,14 +151,8 @@ func (v *Customer) Validate() error {
 // Validate checks every field-level constraint declared on CustomerRef.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CustomerRef) Validate() error {
-	if len(v.ID) < 1 {
-		return fmt.Errorf("id: length less than 1")
-	}
-	if len(v.ID) > 128 {
-		return fmt.Errorf("id: length greater than 128")
-	}
-	if !_pattern3.MatchString(v.ID) {
-		return fmt.Errorf("id: does not match pattern")
+	if err := v.ID.Validate(); err != nil {
+		return err
 	}
 	if l := len(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
@@ -183,17 +163,11 @@ func (v *CustomerRef) Validate() error {
 // Validate checks every field-level constraint declared on Geocode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Geocode) Validate() error {
-	if v.Lat < -90 {
-		return fmt.Errorf("lat: below minimum -90")
+	if err := v.Lat.Validate(); err != nil {
+		return err
 	}
-	if v.Lat > 90 {
-		return fmt.Errorf("lat: above maximum 90")
-	}
-	if v.Lng < -180 {
-		return fmt.Errorf("lng: below minimum -180")
-	}
-	if v.Lng > 180 {
-		return fmt.Errorf("lng: above maximum 180")
+	if err := v.Lng.Validate(); err != nil {
+		return err
 	}
 	if v.Altitude != nil && *v.Altitude < -500 {
 		return fmt.Errorf("altitude: below minimum -500")
@@ -227,6 +201,13 @@ func (v *UploadAvatarReq) Validate() error {
 	}
 	if v.Image != nil && v.Image.Size > 5242880 {
 		return fmt.Errorf("image: file size exceeds 5242880 bytes")
+	}
+	if v.Image != nil {
+		switch v.Image.Header.Get("Content-Type") {
+		case "image/png", "image/jpeg", "image/webp":
+		default:
+			return fmt.Errorf("image: disallowed content type")
+		}
 	}
 	return nil
 }
