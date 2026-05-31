@@ -63,15 +63,6 @@ components:
       type: object
     CreateTodoRespBody:
       $ref: '#/components/schemas/Todo'
-    DeleteTodoReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     DeleteTodoRespBody:
       $ref: '#/components/schemas/OkResp'
     GetTodoReq:
@@ -83,39 +74,9 @@ components:
       required:
       - id
       type: object
-    GetTodoReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     GetTodoRespBody:
       $ref: '#/components/schemas/Todo'
     ListTodosReq:
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        status:
-          anyOf:
-          - $ref: '#/components/schemas/TodoStatus'
-          - type: "null"
-        tag:
-          anyOf:
-          - $ref: '#/components/schemas/Tag'
-          - type: "null"
-      required:
-      - limit
-      type: object
-    ListTodosReqQuery:
       properties:
         cursor:
           type:
@@ -276,15 +237,6 @@ components:
           type:
           - string
           - "null"
-      type: object
-    UpdateTodoReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     UpdateTodoRespBody:
       $ref: '#/components/schemas/Todo'

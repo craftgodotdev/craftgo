@@ -62,13 +62,6 @@ components:
       required:
       - id
       type: object
-    DeleteUserReqPath:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
     DeleteUserRespBody:
       $ref: '#/components/schemas/Empty'
     Empty:
@@ -78,14 +71,6 @@ components:
       type: object
     GetUserReq:
       description: GetUserReq is the path-bound input for GET /users/{id}.
-      properties:
-        id:
-          description: id locates the user.
-          type: string
-      required:
-      - id
-      type: object
-    GetUserReqPath:
       properties:
         id:
           description: id locates the user.
@@ -160,13 +145,6 @@ components:
       - name
       - tags
       - meta
-      type: object
-    UpdateUserReqPath:
-      properties:
-        id:
-          type: string
-      required:
-      - id
       type: object
     UpdateUserRespBody:
       $ref: '#/components/schemas/User'

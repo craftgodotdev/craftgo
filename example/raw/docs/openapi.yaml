@@ -8,13 +8,6 @@ components:
       required:
       - verbose
       type: object
-    HealthReqQuery:
-      properties:
-        verbose:
-          type: boolean
-      required:
-      - verbose
-      type: object
     HealthResp:
       properties:
         status:

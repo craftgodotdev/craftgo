@@ -52,9 +52,9 @@ func (v *Pagination) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AccessDeniedErrBody.
+// Validate checks every field-level constraint declared on AccessRevokedBody.
 // Returns the first violation; nil when the value satisfies the contract.
-func (v *AccessDeniedErrBody) Validate() error {
+func (v *AccessRevokedBody) Validate() error {
 	return nil
 }
 

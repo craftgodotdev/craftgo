@@ -99,13 +99,14 @@ type AuditTrail {
 	at    string @format(datetime)
 }
 
-// AccessDeniedErr exercises a mixin inside an `error` body. The
+// AccessRevoked exercises a mixin inside an `error` body. The
 // emitter must lift `AuditTrail` into the error schema via
 // `allOf: [$ref:AuditTrail, <host>]` exactly like it does for
 // regular type decls. Without that flatten, the spec would advertise
 // only `reason` and clients would refuse the `actor` / `at` fields
-// the server actually returns.
-error Forbidden AccessDeniedErr {
+// the server actually returns. (Named distinctly from bindings'
+// `AccessDenied`, whose `Err`-suffixed component would otherwise clash.)
+error Forbidden AccessRevoked {
 	AuditTrail
 	reason string
 }

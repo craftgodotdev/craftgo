@@ -208,6 +208,92 @@ service S {
 	}
 }
 
+// TestGenerateOpenAPIMethodNameCollision pins that two services sharing
+// a method name no longer collide: their operationId and the
+// <Method>ReqBody/RespBody component schemas are service-prefixed and
+// unique, a unique method name stays bare (no churn), and an explicit
+// @operationId still overrides the operationId (while its component
+// names follow the collision-free base so they never clash).
+func TestGenerateOpenAPIMethodNameCollision(t *testing.T) {
+	src := `package design
+type A { x string }
+type B { y string }
+service AService { get List /a { response A } }
+service BService { get List /b { response B } }
+service CService { @operationId("customList") get List /c { response A } }
+service DService { get GetThing /d { response A } }`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	body := string(out)
+	mustContainAll(t, body,
+		// Colliding List -> service-prefixed operationId + RespBody ref.
+		"operationId: AServiceList",
+		"operationId: BServiceList",
+		"AServiceListRespBody:",
+		"BServiceListRespBody:",
+		"#/components/schemas/AServiceListRespBody",
+		"#/components/schemas/BServiceListRespBody",
+		// @operationId override wins for the id; component still qualified.
+		"operationId: customList",
+		"CServiceListRespBody:",
+		// Unique method name stays bare (no churn).
+		"operationId: GetThing",
+		"GetThingRespBody:",
+	)
+	// The collision must be fully resolved: no bare List operationId and
+	// no bare ListRespBody component survives.
+	mustContainNone(t, body, "operationId: List\n", "\n    ListRespBody:")
+}
+
+// TestGenerateOpenAPIDuplicateOperationIDErrors pins that an
+// @operationId override colliding with another method's operationId
+// fails generation with an actionable error (auto-prefixing cannot
+// resolve a user-chosen name, so codegen must not emit an invalid
+// duplicate-operationId spec).
+func TestGenerateOpenAPIDuplicateOperationIDErrors(t *testing.T) {
+	// AService.Find is pinned to "Lookup"; BService.Lookup defaults to
+	// "Lookup" (unique method name) — they collide.
+	src := `package design
+type R { x string }
+service AService { @operationId("Lookup") get Find /a { response R } }
+service BService { get Lookup /b { response R } }`
+	pkg := analyze(t, src)
+	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected a duplicate-operationId error, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate operationId") || !strings.Contains(err.Error(), "Lookup") {
+		t.Errorf("error should name the duplicate operationId; got: %v", err)
+	}
+}
+
+// TestGenerateOpenAPIComponentNameCollisionErrors pins that a name
+// clash in the flat components/schemas namespace fails generation
+// instead of silently overwriting one schema with the other. Here a
+// user-declared `PageOfOrder` collides with the generic instance
+// `Page<Order>` (also named `PageOfOrder`); the same guard covers
+// `<Method>ReqBody`/`RespBody` vs type clashes.
+func TestGenerateOpenAPIComponentNameCollisionErrors(t *testing.T) {
+	src := `package design
+type Order { id string }
+type PageOfOrder { hijacked string }
+type Page<T> { items T[] }
+type Resp { real Page<Order>  fake PageOfOrder }
+service S { get Get /g { response Resp } }`
+	pkg := analyze(t, src)
+	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected a duplicate-component-schema error, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate component schema") || !strings.Contains(err.Error(), "PageOfOrder") {
+		t.Errorf("error should name the colliding component; got: %v", err)
+	}
+}
+
 // TestGenerateOpenAPITypeSchemaExcludesHeaderFields pins that @header /
 // @cookie fields are dropped from a type's component schema — they ride
 // on response headers / cookies (json:"-"), never the JSON body. Before
@@ -1298,10 +1384,10 @@ service S {
 	src := string(out)
 	mustContainAll(t, src,
 		"requestBody:",
-		// Body / Query get grouped schemas; Path stays inline.
+		// Only the body gets a grouped schema ($ref'd by requestBody);
+		// path/query are emitted inline as parameters.
 		"$ref: '#/components/schemas/CreateReqBody'",
 		"CreateReqBody:",
-		"CreateReqQuery:",
 		// Response side uses the same convention: <Method>RespBody.
 		"CreateRespBody:",
 		"$ref: '#/components/schemas/CreateRespBody'",
@@ -1310,6 +1396,8 @@ service S {
 		"name: id",
 		"name: dryRun",
 	)
+	// No orphan <Method>ReqQuery wrapper (params are inline).
+	mustContainNone(t, src, "CreateReqQuery:")
 	// `payload` carries no binding decorator → should NOT appear as a
 	// parameter; it stays in the requestBody schema only.
 	if strings.Contains(src, "name: payload") {
@@ -1350,9 +1438,10 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPICookieAndHeaderInline pins the rule that Cookie /
-// Header / Path bins stay inline as parameters (no <Method>Req<Kind>
-// schemas), while Body and Query DO get their own grouped schemas.
+// TestGenerateOpenAPICookieAndHeaderInline pins the rule that path /
+// query / header / cookie bins stay inline as parameters; only the body
+// gets a grouped `<Method>ReqBody` schema (the one actually $ref'd by
+// requestBody). No `<Method>Req{Query,Header,Cookie,Path}` wrappers.
 func TestGenerateOpenAPICookieAndHeaderInline(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1378,29 +1467,23 @@ service S {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
+	// Only the body gets a grouped schema; path/query/header/cookie are
+	// emitted inline as parameters.
 	mustContainAll(t, src,
 		"CallReqBody:",
-		"CallReqQuery:",
-		"CallReqHeader:",
-		"CallReqCookie:",
-		"CallReqPath:",
+		"in: query",
+		"name: dryRun",
 		"in: header",
 		"name: apiKey",
 		"in: cookie",
 		"name: session",
+		"in: path",
 	)
-	// Parameter schemas are emitted inline (by value) rather than
-	// `$ref`-ing into the wrapper `<Method>Req<Kind>` schema. Nested
-	// `$ref` is technically valid JSON-Pointer but breaks most TS /
-	// Java / Rust client generators (hey-api, openapi-typescript,
-	// openapi-generator < 7) which fail to derive a stable type name
-	// from the property-walk path.
-	mustContainNone(t, src,
-		"$ref: '#/components/schemas/CallReqHeader/properties/",
-		"$ref: '#/components/schemas/CallReqCookie/properties/",
-		"$ref: '#/components/schemas/CallReqQuery/properties/",
-		"$ref: '#/components/schemas/CallReqPath/properties/",
-	)
+	// Parameters render inline; the wrapper
+	// `<Method>Req{Query,Header,Cookie,Path}` schemas are NOT registered
+	// (never $ref'd — they only bloated the spec and broke generators
+	// that can't name a property-walk $ref path).
+	mustContainNone(t, src, "CallReqQuery:", "CallReqHeader:", "CallReqCookie:", "CallReqPath:")
 }
 
 // TestGenerateOpenAPITagsFromDecorators covers @tags resolution at

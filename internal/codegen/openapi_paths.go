@@ -2,6 +2,7 @@
 package codegen
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -10,22 +11,84 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	counts := methodNameCounts(pkg)
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
 			full := methodFullPath("", svc.Primary, m)
-			addPerOperationRequestSchemas(doc, m, pkg, registry)
-			addPerOperationResponseSchema(doc, m, pkg, registry)
+			base := operationBaseName(svcName, m, counts)
+			addRequestBodySchema(doc, m, pkg, registry, base, names)
+			addPerOperationResponseSchema(doc, m, pkg, registry, base, names)
 			item := doc.Paths.Value(full)
 			if item == nil {
 				item = &openapi3.PathItem{}
 				doc.Paths.Set(full, item)
 			}
-			op := buildOperation(svcName, m, pkg, registry)
+			op := buildOperation(svcName, m, pkg, registry, base)
 			setOperation(item, m.Verb, op)
 		}
 	}
+}
+
+// methodNameCounts tallies how many methods across ALL services in the
+// (already project-merged) package share each bare method name. Two
+// services with a method of the same name (`ListItems`, `Ping`, ...)
+// would otherwise emit a duplicate operationId and overwrite each
+// other's `<Method>ReqBody` / `<Method>RespBody` component schemas —
+// last-writer-wins, leaving one operation pointing at the other's shape.
+func methodNameCounts(pkg *semantic.Package) map[string]int {
+	counts := map[string]int{}
+	for _, svc := range pkg.Services {
+		for _, m := range svc.Methods {
+			counts[m.Name]++
+		}
+	}
+	return counts
+}
+
+// operationBaseName is the collision-free base for a method's component
+// schema names (`<base>ReqBody`, `<base>RespBody`, ...) and its default
+// operationId. A method name that is unique project-wide stays bare
+// (`ListOrders`); one shared by two or more services is prefixed with
+// the service name (`HeaderEchoServiceListItems`) so every emitted name
+// is globally unique. An explicit `@operationId` still overrides the
+// operationId itself (see [operationID]); the component names always
+// follow this base so they never collide regardless of the override.
+func operationBaseName(svcName string, m *ast.Method, counts map[string]int) string {
+	if counts[m.Name] >= 2 {
+		return svcName + m.Name
+	}
+	return m.Name
+}
+
+// checkOperationIDUniqueness reports an error when two methods would emit
+// the same operationId. The auto-prefixing in [operationBaseName] removes
+// every same-method-name collision on its own, so a duplicate that
+// survives here can only come from an explicit `@operationId("...")` —
+// either two methods pinned to the same value, or an override that
+// happens to equal another method's auto-generated id. Those are the
+// user's to resolve, so codegen fails with an actionable message rather
+// than emitting an invalid (duplicate-operationId) spec.
+func checkOperationIDUniqueness(pkg *semantic.Package) error {
+	counts := methodNameCounts(pkg)
+	owners := map[string][]string{} // operationId -> ["Service.Method", ...]
+	for _, svcName := range sortedServices(pkg) {
+		for _, m := range pkg.Services[svcName].Methods {
+			id := operationID(m, operationBaseName(svcName, m, counts))
+			owners[id] = append(owners[id], svcName+"."+m.Name)
+		}
+	}
+	var dups []string
+	for _, id := range sortedKeys(owners) {
+		if who := owners[id]; len(who) >= 2 {
+			dups = append(dups, fmt.Sprintf("%q (from %s)", id, strings.Join(who, ", ")))
+		}
+	}
+	if len(dups) > 0 {
+		return fmt.Errorf("duplicate operationId %s — give each method a distinct @operationId(...)", strings.Join(dups, "; "))
+	}
+	return nil
 }
 
 // fieldBins splits a request type's fields by binding kind. Empty slices
@@ -92,31 +155,18 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 	return bins
 }
 
-// addPerOperationRequestSchemas emits a grouped schema for every
-// non-empty bin (`<Method>ReqBody`, `<Method>ReqQuery`,
-// `<Method>ReqHeader`, `<Method>ReqCookie`, `<Method>ReqPath`). Each
-// schema holds INLINE property definitions - making the per-kind schema
-// the single canonical place where each field's type lives. Parameter
-// `schema:` clauses then `$ref` into these per-kind schemas.
-func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
-	bins := binRequestFields(m, pkg)
+// addRequestBodySchema emits the `<base>ReqBody` schema referenced by the
+// operation's requestBody. Only body-bound fields land here; path/query/
+// header/cookie params are emitted inline by [paramsFromBins], so no
+// `<base>Req{Query,Header,Cookie,Path}` components are registered (they
+// would be orphaned — never $ref'd — and only bloat the spec).
+func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
 	if m.Request == nil {
 		return
 	}
+	bins := binRequestFields(m, pkg)
 	if len(bins.body) > 0 {
-		doc.Components.Schemas[m.Name+"ReqBody"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg, registry)}
-	}
-	if len(bins.query) > 0 {
-		doc.Components.Schemas[m.Name+"ReqQuery"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.query, pkg, registry)}
-	}
-	if len(bins.header) > 0 {
-		doc.Components.Schemas[m.Name+"ReqHeader"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.header, pkg, registry)}
-	}
-	if len(bins.cookie) > 0 {
-		doc.Components.Schemas[m.Name+"ReqCookie"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.cookie, pkg, registry)}
-	}
-	if len(bins.path) > 0 {
-		doc.Components.Schemas[m.Name+"ReqPath"] = &openapi3.SchemaRef{Value: schemaFromFields(bins.path, pkg, registry)}
+		names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg, registry)})
 	}
 }
 
@@ -127,7 +177,7 @@ func addPerOperationRequestSchemas(doc *openapi3.T, m *ast.Method, pkg *semantic
 // JSON-body fields end up in the schema (the wire form the runtime
 // serialises). The matching response.headers map is emitted by
 // buildOperation.
-func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
+func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
 	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
@@ -144,14 +194,14 @@ func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic
 				respName = registry.register(decl, m.Response.Type.Args)
 			}
 		}
-		doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
+		names.put(doc, base+"RespBody", &openapi3.SchemaRef{
 			Ref: "#/components/schemas/" + respName,
-		}
+		})
 		return
 	}
-	doc.Components.Schemas[m.Name+"RespBody"] = &openapi3.SchemaRef{
+	names.put(doc, base+"RespBody", &openapi3.SchemaRef{
 		Value: schemaFromFields(bins.body, pkg, registry),
-	}
+	})
 }
 
 // binResponseFields partitions the response type's fields the same way

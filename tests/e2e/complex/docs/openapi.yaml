@@ -148,28 +148,12 @@ components:
         email:
           type: string
       type: object
-    GetItemReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     GetItemRespBody:
       $ref: '#/components/schemas/XOwner'
     GetProfileReq:
       description: |-
         GetProfileReq carries only the path id; the handler binds it from
         {id} before calling logic.
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
-    GetProfileReqPath:
       properties:
         id:
           type: string
@@ -229,34 +213,6 @@ components:
           type: string
       required:
       - displayName
-      type: object
-    PatchProfileReqCookie:
-      properties:
-        sessionToken:
-          type: string
-      required:
-      - sessionToken
-      type: object
-    PatchProfileReqHeader:
-      properties:
-        idempotencyKey:
-          type: string
-      required:
-      - idempotencyKey
-      type: object
-    PatchProfileReqPath:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
-    PatchProfileReqQuery:
-      properties:
-        dryRun:
-          type: string
-      required:
-      - dryRun
       type: object
     PatchProfileResp:
       description: |-
@@ -349,30 +305,6 @@ components:
       properties:
         retry_after:
           type: integer
-      type: object
-    SearchReqCookie:
-      properties:
-        ck:
-          $ref: '#/components/schemas/XEmail'
-      required:
-      - ck
-      type: object
-    SearchReqHeader:
-      properties:
-        hdr:
-          $ref: '#/components/schemas/XEmail'
-      required:
-      - hdr
-      type: object
-    SearchReqQuery:
-      properties:
-        num:
-          $ref: '#/components/schemas/XNodeID'
-        q:
-          $ref: '#/components/schemas/XEmail'
-      required:
-      - q
-      - num
       type: object
     SearchRespBody:
       $ref: '#/components/schemas/XOwner'

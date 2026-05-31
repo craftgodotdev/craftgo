@@ -23,6 +23,14 @@ components:
       - id
       type: object
     AccessDeniedErr:
+      description: Forbidden error response (HTTP 403).
+      properties:
+        reason:
+          type: string
+        retryAfter:
+          type: integer
+      type: object
+    AccessRevokedErr:
       allOf:
       - $ref: '#/components/schemas/AuditTrail'
       - properties:
@@ -56,6 +64,8 @@ components:
       - id
       - email
       type: object
+    AccountServiceResetRespBody:
+      $ref: '#/components/schemas/ID'
     AddBoundaryReqBody:
       properties:
         body:
@@ -164,6 +174,10 @@ components:
       type: object
     AddUnsignedRespBody:
       $ref: '#/components/schemas/UnsignedReq'
+    AdminInventoryServiceHealthRespBody:
+      $ref: '#/components/schemas/HealthResp'
+    AdminInventoryServiceListItemsRespBody:
+      $ref: '#/components/schemas/InventoryListResp'
     AllFormats:
       description: |-
         AllFormats holds one field per supported @format(name). Each
@@ -585,13 +599,6 @@ components:
       required:
       - email
       type: object
-    BanUserReqPath:
-      properties:
-        id:
-          $ref: '#/components/schemas/ID'
-      required:
-      - id
-      type: object
     BanUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
     BindingsColor:
@@ -627,13 +634,6 @@ components:
         CancelJobReq is path-only; pairs with the 204 response. The path
         param is the canonical ID so logic can look the job up without a
         body.
-      properties:
-        jobId:
-          $ref: '#/components/schemas/ID'
-      required:
-      - jobId
-      type: object
-    CancelJobReqPath:
       properties:
         jobId:
           $ref: '#/components/schemas/ID'
@@ -996,33 +996,10 @@ components:
       required:
       - id
       type: object
-    DeleteAccountReqPath:
-      properties:
-        id:
-          $ref: '#/components/schemas/ID'
-      required:
-      - id
-      type: object
     DeleteAccountRespBody:
       $ref: '#/components/schemas/ID'
-    DeleteItemReqPath:
-      properties:
-        id:
-          $ref: '#/components/schemas/BindingsUUID'
-      required:
-      - id
-      type: object
     DeleteItemRespBody:
       $ref: '#/components/schemas/Item'
-    DeleteUserReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     DeleteUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
     DuplicateKeyErr:
@@ -1317,36 +1294,6 @@ components:
       type: object
     EchoUserRespBody:
       $ref: '#/components/schemas/NestedUser'
-    EchoWireReqCookie:
-      properties:
-        session:
-          type: string
-      required:
-      - session
-      type: object
-    EchoWireReqHeader:
-      properties:
-        apiKey:
-          type: string
-      required:
-      - apiKey
-      type: object
-    EchoWireReqPath:
-      properties:
-        userId:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - userId
-      type: object
-    EchoWireReqQuery:
-      properties:
-        q:
-          type:
-          - string
-          - "null"
-      type: object
     EchoWireRespBody:
       $ref: '#/components/schemas/Item'
     EchoWrappedReq:
@@ -1456,13 +1403,6 @@ components:
       - name
       - weight
       type: object
-    GetAuditedReqPath:
-      properties:
-        id:
-          $ref: '#/components/schemas/ScalarsUUID'
-      required:
-      - id
-      type: object
     GetAuditedRespBody:
       $ref: '#/components/schemas/Audited'
     GetItemReq:
@@ -1476,26 +1416,12 @@ components:
       required:
       - id
       type: object
-    GetItemReqPath:
-      properties:
-        id:
-          $ref: '#/components/schemas/BindingsUUID'
-      required:
-      - id
-      type: object
     GetItemRespBody:
       $ref: '#/components/schemas/Item'
     GetOrderReq:
       description: |-
         GetOrderReq pins a UUID-typed path parameter. The scalar's
         @format(uuid) inherits onto the field-level @path binding.
-      properties:
-        id:
-          $ref: '#/components/schemas/ScalarsUUID'
-      required:
-      - id
-      type: object
-    GetOrderReqPath:
       properties:
         id:
           $ref: '#/components/schemas/ScalarsUUID'
@@ -1527,17 +1453,17 @@ components:
       required:
       - id
       type: object
-    GetUserReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
-      type: object
     GetUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
+    HeaderEchoServiceListItemsRespBody:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ID'
+          type: array
+      required:
+      - items
+      type: object
     HeaderOptionalReq:
       description: |-
         HeaderOptionalReq probes the optional-header path. NOTE: codegen
@@ -1564,8 +1490,6 @@ components:
       required:
       - ok
       type: object
-    HealthRespBody:
-      $ref: '#/components/schemas/HealthResp'
     HealthzRespBody:
       $ref: '#/components/schemas/HealthResp'
     Home:
@@ -1658,8 +1582,6 @@ components:
       required:
       - items
       type: object
-    ListItemsRespBody:
-      $ref: '#/components/schemas/InventoryListResp'
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
@@ -1673,17 +1595,6 @@ components:
         parsed) that the framework has no clean idiom for. The bare-int
         form uses 0 as the absent sentinel, with @default providing the
         canonical fallback the handler sees after pre-fill.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        limit:
-          $ref: '#/components/schemas/Cents'
-      required:
-      - limit
-      type: object
-    ListOrdersReqQuery:
       properties:
         cursor:
           type:
@@ -1729,13 +1640,6 @@ components:
         implicit mixin form makes the limit / cursor / total fields land
         at the request root, and the optional `query` slot adds the free-
         text filter on top.
-      type: object
-    ListUsersReqQuery:
-      properties:
-        query:
-          type:
-          - string
-          - "null"
       type: object
     ListUsersResp:
       description: |-
@@ -3119,14 +3023,6 @@ components:
       required:
       - slot
       type: object
-    PromoteItemReqPath:
-      properties:
-        itemId:
-          minLength: 1
-          type: string
-      required:
-      - itemId
-      type: object
     PromoteItemRespBody:
       $ref: '#/components/schemas/EntitlementsAuditTrail'
     QuarantineRespBody:
@@ -3235,8 +3131,6 @@ components:
       required:
       - root
       type: object
-    ResetRespBody:
-      $ref: '#/components/schemas/HealthResp'
     Room:
       description: |-
         Room owns a slice of Furniture. Two consecutive slice-of-nested
@@ -3309,32 +3203,6 @@ components:
           - type: "null"
           default: 20
       type: object
-    SearchItemsReqQuery:
-      properties:
-        active:
-          type: boolean
-        cursor:
-          type:
-          - string
-          - "null"
-        ids:
-          items:
-            type: integer
-          type:
-          - array
-          - "null"
-        limit:
-          maximum: 100
-          minimum: 1
-          type: integer
-        sort:
-          anyOf:
-          - $ref: '#/components/schemas/BindingsColor'
-          - type: "null"
-      required:
-      - limit
-      - active
-      type: object
     SearchItemsRespBody:
       $ref: '#/components/schemas/ItemList'
     SearchProductsReqBody:
@@ -3385,6 +3253,10 @@ components:
       - limit
       - active
       type: object
+    SecuredServiceListItemsRespBody:
+      $ref: '#/components/schemas/InventoryListResp'
+    SecuredServiceResetRespBody:
+      $ref: '#/components/schemas/HealthResp'
     ServicesUser:
       allOf:
       - $ref: '#/components/schemas/Audit'
@@ -3733,15 +3605,6 @@ components:
           type: string
       required:
       - file
-      type: object
-    UploadAvatarReqPath:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     UploadAvatarRespBody:
       $ref: '#/components/schemas/UserAvatar'
@@ -4133,13 +3996,13 @@ paths:
   /account/admin/reset:
     post:
       description: Hard reset — bypasses BasicAuth, uses its own minimal chain.
-      operationId: Reset
+      operationId: AccountServiceReset
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResetRespBody'
+                $ref: '#/components/schemas/AccountServiceResetRespBody'
           description: Created
         default:
           description: ""
@@ -4213,13 +4076,13 @@ paths:
   /admin/inventory:
     get:
       description: List inventory items. Inherits auth + tags from the extend block.
-      operationId: ListItems
+      operationId: AdminInventoryServiceListItems
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListItemsRespBody'
+                $ref: '#/components/schemas/AdminInventoryServiceListItemsRespBody'
           description: OK
         default:
           description: ""
@@ -4263,13 +4126,13 @@ paths:
     get:
       description: Liveness probe. Public on purpose - operators hit this before secrets
         are loaded.
-      operationId: Health
+      operationId: AdminInventoryServiceHealth
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthRespBody'
+                $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
           description: OK
         default:
           description: ""
@@ -4279,7 +4142,7 @@ paths:
     get:
       description: Health probe. No request, no response — just a 200 OK when the
         service is reachable, plus the rate-limit 429 envelope.
-      operationId: Health
+      operationId: BindingsServiceHealth
       responses:
         "204":
           description: No Content
@@ -4879,13 +4742,13 @@ paths:
     get:
       description: List items with the total surfaced via response header and the
         auth cookie refreshed in passing.
-      operationId: ListItems
+      operationId: HeaderEchoServiceListItems
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListItemsRespBody'
+                $ref: '#/components/schemas/HeaderEchoServiceListItemsRespBody'
           description: OK
           headers:
             Set-Cookie:
@@ -5490,13 +5353,13 @@ paths:
   /secured:
     get:
       description: Normal authenticated endpoint - inherits everything from service-level.
-      operationId: ListItems
+      operationId: SecuredServiceListItems
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListItemsRespBody'
+                $ref: '#/components/schemas/SecuredServiceListItemsRespBody'
           description: OK
         default:
           description: ""
@@ -5543,13 +5406,13 @@ paths:
     post:
       description: Admin-only reset; uses its own middleware chain instead of the
         service default.
-      operationId: Reset
+      operationId: SecuredServiceReset
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResetRespBody'
+                $ref: '#/components/schemas/SecuredServiceResetRespBody'
           description: Created
         default:
           description: ""

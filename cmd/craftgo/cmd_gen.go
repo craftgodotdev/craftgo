@@ -109,6 +109,12 @@ func runGen(args []string) error {
 	if err := validateSecurityRefs(proj, cfg, pkgNames); err != nil {
 		return err
 	}
+	// Pre-flight: catch operationId / component-schema name collisions
+	// before any file is written, so a clash fails the whole run up front
+	// rather than after types/transport are already on disk.
+	if err := codegen.ValidateProjectOpenAPI(proj, cfg); err != nil {
+		return err
+	}
 	if err := genTypesPerPackage(proj, cfg, projectRoot, pkgNames); err != nil {
 		return err
 	}

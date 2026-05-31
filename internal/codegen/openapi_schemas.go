@@ -10,11 +10,11 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
-	addTypeSchemas(doc, pkg, registry)
-	addEnumSchemas(doc, pkg)
-	addScalarSchemas(doc, pkg)
-	addErrorSchemas(doc, pkg, registry)
+func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	addTypeSchemas(doc, pkg, registry, names)
+	addEnumSchemas(doc, pkg, names)
+	addScalarSchemas(doc, pkg, names)
+	addErrorSchemas(doc, pkg, registry, names)
 }
 
 // addErrorSchemas emits one components.schemas entry per ErrorDecl so
@@ -23,7 +23,7 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistr
 // `message` (string), plus any user-declared custom field. The
 // resulting schema name uses the smart-suffix rule (`UserNotFound` →
 // `UserNotFoundErr`), matching the Go type name in errors.go.
-func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
+func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	for _, name := range sortedKeys(pkg.Errors) {
 		ed := pkg.Errors[name]
 		typeName := errSuffix(ed.Name)
@@ -79,18 +79,18 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 			s.Required = nil
 			s.AllOf = mixinRefs
 		}
-		doc.Components.Schemas[typeName] = &openapi3.SchemaRef{Value: s}
+		names.put(doc, typeName, &openapi3.SchemaRef{Value: s})
 	}
 }
 
 // addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
-func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry) {
+func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	for _, name := range sortedKeys(pkg.Types) {
 		td := pkg.Types[name]
 		if len(td.TypeParams) > 0 {
 			continue
 		}
-		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: schemaForType(td, pkg, registry)}
+		names.put(doc, name, &openapi3.SchemaRef{Value: schemaForType(td, pkg, registry)})
 	}
 }
 
@@ -99,7 +99,7 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericReg
 // The OpenAPI `enum` array enumerates the wire values: bare values use
 // the value name, string values use the literal, int values use the
 // integer.
-func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
+func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
 	for _, name := range sortedKeys(pkg.Enums) {
 		ed := pkg.Enums[name]
 		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
@@ -118,7 +118,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 				s.Enum = append(s.Enum, v.Name)
 			}
 		}
-		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: s}
+		names.put(doc, name, &openapi3.SchemaRef{Value: s})
 	}
 }
 
@@ -137,7 +137,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package) {
 // bare primitive — the runtime validator enforced the rules but
 // generated TS clients saw only `string` / `number` and could send
 // values the server would reject.
-func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
+func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
 	for _, name := range sortedKeys(pkg.Scalars) {
 		sc := pkg.Scalars[name]
 		base := primitiveSchema(sc.Primitive)
@@ -147,7 +147,7 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package) {
 		applyPatternFormat(sc.Decorators, base)
 		applyStringLengthConstraints(sc.Decorators, base)
 		applyNumericConstraints(sc.Decorators, base)
-		doc.Components.Schemas[name] = &openapi3.SchemaRef{Value: base}
+		names.put(doc, name, &openapi3.SchemaRef{Value: base})
 	}
 }
 

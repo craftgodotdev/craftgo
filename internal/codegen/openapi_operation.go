@@ -12,9 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) *openapi3.Operation {
+func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
 	op := &openapi3.Operation{
-		OperationID: operationID(m),
+		OperationID: operationID(m, base),
 		Tags:        operationTags(svcName, m, pkg),
 		Responses:   openapi3.NewResponses(),
 		Description: resolveDescription(m.Decorators, m.Doc),
@@ -106,7 +106,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 					Required: true,
 					Content: openapi3.Content{
 						"application/json": &openapi3.MediaType{
-							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + m.Name + "ReqBody"},
+							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "ReqBody"},
 						},
 					},
 				}}
@@ -147,7 +147,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 					// Per the request-side convention, the response body
 					// is referenced via `<Method>RespBody` so consumers
 					// have a stable, per-operation $ref target.
-					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + m.Name + "RespBody"},
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "RespBody"},
 				},
 			},
 		}
@@ -556,13 +556,14 @@ func fieldIsRequired(f *ast.Field) bool {
 	return f != nil && f.Type != nil && !f.Type.Optional
 }
 
-// operationID returns the OpenAPI operationId for the method. Default
-// is the method's source-side name (e.g. `CreateProfile`); a method
+// operationID returns the OpenAPI operationId for a method. A method
 // decorated with `@operationId("createUserProfile")` overrides the
-// default with the supplied string literal. The override is honoured
-// verbatim so projects can adopt camelCase / kebab-case / whatever
-// convention their tooling expects.
-func operationID(m *ast.Method) string {
+// default verbatim (so projects can adopt camelCase / kebab-case /
+// whatever convention their tooling expects). Otherwise it falls back
+// to `base` — the collision-free name from [operationBaseName], which is
+// the bare method name when unique and service-prefixed when two
+// services share the method name.
+func operationID(m *ast.Method, base string) string {
 	for _, d := range m.Decorators {
 		if d.Name != "operationId" || len(d.Args) == 0 {
 			continue
@@ -571,7 +572,7 @@ func operationID(m *ast.Method) string {
 			return s.Value
 		}
 	}
-	return m.Name
+	return base
 }
 
 // operationTags assembles the OpenAPI `tags:` slice for one method.
