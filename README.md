@@ -101,18 +101,14 @@ design/*.craftgo  ──craftgo gen──▶  internal/types/      typed structs
 
 ## Documentation
 
-| | |
-|---|---|
-| [Getting Started](https://craftgodotdev.github.io/craftgo/guide/getting-started) | Build and run your first endpoint in 5 minutes |
-| [DSL Basics](https://craftgodotdev.github.io/craftgo/guide/dsl-basics) | The full syntax: types, services, decorators |
-| [Decorator Registry](https://craftgodotdev.github.io/craftgo/reference/decorator-registry) | Every decorator, its arguments, and where it applies |
-| [Runtime API](https://craftgodotdev.github.io/craftgo/reference/runtime-api) | `pkg/server` — the `net/http` wrapper your code runs on |
-| [Codegen Output](https://craftgodotdev.github.io/craftgo/reference/codegen-output) | Exactly what `craftgo gen` produces, file by file |
-| [llms.md](https://craftgodotdev.github.io/craftgo/llms) | Single-page reference built for pasting into an LLM prompt |
-
-## Status
-
-craftgo **1.0.0** is the first stable release. The DSL and generated layout follow [semantic versioning](https://semver.org) from here — breaking changes bump the major version and are documented in the [changelog](https://github.com/craftgodotdev/craftgo/blob/main/CHANGELOG.md).
+|                                                                                            |                                                            |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| [Getting Started](https://craftgodotdev.github.io/craftgo/guide/getting-started)           | Build and run your first endpoint in 5 minutes             |
+| [DSL Basics](https://craftgodotdev.github.io/craftgo/guide/dsl-basics)                     | The full syntax: types, services, decorators               |
+| [Decorator Registry](https://craftgodotdev.github.io/craftgo/reference/decorator-registry) | Every decorator, its arguments, and where it applies       |
+| [Runtime API](https://craftgodotdev.github.io/craftgo/reference/runtime-api)               | `pkg/server` — the `net/http` wrapper your code runs on    |
+| [Codegen Output](https://craftgodotdev.github.io/craftgo/reference/codegen-output)         | Exactly what `craftgo gen` produces, file by file          |
+| [llms.md](https://craftgodotdev.github.io/craftgo/llms)                                    | Single-page reference built for pasting into an LLM prompt |
 
 ## License
 
