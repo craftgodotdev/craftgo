@@ -108,18 +108,27 @@ func WithOTLPgRPCExporter(ctx context.Context, addr string, opts ...otlptracegrp
 }
 
 // WithOTLPHTTPExporter pushes spans to an OTLP collector via
-// HTTP/protobuf. endpoint is the full URL (`"http://collector:4318"` or
-// `"https://collector.example.com"`). Same insecure-by-default
-// trade-off as [WithOTLPgRPCExporter] - pass
-// `otlptracehttp.WithTLSClientConfig(...)` to opt into TLS.
+// HTTP/protobuf. endpoint is the full URL, including scheme:
+// `"http://collector:4318"` (plaintext) or
+// `"https://collector.example.com"` (TLS). The URL SCHEME selects
+// transport security - `http` connects insecurely, `https` uses TLS -
+// so no separate insecure/TLS toggle is needed; pass
+// `otlptracehttp.WithTLSClientConfig(...)` in opts only for a custom
+// certificate.
+//
+// The endpoint is wired via [otlptracehttp.WithEndpointURL], which
+// parses scheme + host + port + path. The earlier code passed the whole
+// URL to WithEndpoint (which expects a bare `host:port`), so the scheme
+// leaked into the host and the exporter silently failed to connect; it
+// also hardcoded WithInsecure(), forcing plaintext even for an https
+// endpoint. Both are fixed by deriving everything from the URL.
 func WithOTLPHTTPExporter(ctx context.Context, endpoint string, opts ...otlptracehttp.Option) Option {
 	return func(c *config) {
 		if c.err != nil {
 			return
 		}
 		base := []otlptracehttp.Option{
-			otlptracehttp.WithEndpoint(endpoint),
-			otlptracehttp.WithInsecure(),
+			otlptracehttp.WithEndpointURL(endpoint),
 		}
 		exp, err := otlptracehttp.New(ctx, append(base, opts...)...)
 		if err != nil {
@@ -205,6 +214,11 @@ type Config struct {
 	Exporter string `yaml:"exporter"`
 	// Endpoint is the collector address for the OTLP exporters.
 	// Ignored for "none" / "stdout".
+	//   - otlp_http: a full URL WITH scheme - the scheme picks transport
+	//     security: `http://collector:4318` (plaintext) or
+	//     `https://collector.example.com` (TLS).
+	//   - otlp_grpc: a bare `host:port` (e.g. `collector:4317`); the gRPC
+	//     exporter connects insecurely by default.
 	Endpoint string `yaml:"endpoint"`
 }
 

@@ -1,10 +1,12 @@
 package otel
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestHTTPMiddlewareDisabledByDefault confirms the runtime gate:
@@ -92,5 +94,50 @@ func TestHTTPMiddlewareDisabledOmitsTraceparent(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if got := rec.Header().Get("traceparent"); got != "" {
 		t.Errorf("expected no `traceparent` when otel is disabled, got %q", got)
+	}
+}
+
+// TestOTLPHTTPExporterHitsEndpointURL is the regression guard for the
+// OTLP HTTP endpoint fix: WithOTLPHTTPExporter must parse the FULL URL
+// (scheme + host + port) and actually POST spans there. The earlier code
+// passed the whole URL to WithEndpoint (which wants a bare host:port), so
+// the scheme leaked into the host and the exporter never connected.
+// Pointing it at a local test collector and asserting the collector is
+// hit on /v1/traces proves the URL is parsed and dialed correctly.
+func TestOTLPHTTPExporterHitsEndpointURL(t *testing.T) {
+	hit := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case hit <- r.URL.Path:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx := context.Background()
+	// srv.URL is "http://127.0.0.1:PORT" — pass it verbatim, scheme and all.
+	tp, err := Init(WithOTLPHTTPExporter(ctx, srv.URL))
+	if err != nil {
+		t.Fatalf("init with otlp http exporter: %v", err)
+	}
+	defer func() {
+		_ = tp.Shutdown(ctx)
+		Disable()
+	}()
+
+	_, span := tp.Tracer("test").Start(ctx, "probe")
+	span.End()
+	if err := tp.ForceFlush(ctx); err != nil {
+		t.Fatalf("force flush: %v", err)
+	}
+
+	select {
+	case path := <-hit:
+		if path != "/v1/traces" {
+			t.Errorf("collector hit on %q, want /v1/traces", path)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("OTLP collector was never hit — endpoint URL not parsed/connected correctly")
 	}
 }

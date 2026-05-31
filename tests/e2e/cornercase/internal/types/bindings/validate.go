@@ -11,8 +11,11 @@ import (
 
 // Pattern regexes compile ONCE at package init so Validate() calls
 // reference the precompiled var instead of recompiling per request.
+// The pattern is rendered via %q (Go-quoted) rather than a raw-string
+// literal so regexes containing a backtick, backslash, or quote still
+// produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 )
 
 // Validate checks every field-level constraint declared on AddItemReq.

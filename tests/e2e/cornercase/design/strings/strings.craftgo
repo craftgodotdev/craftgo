@@ -21,16 +21,21 @@ type Str_Lengths {
 	onlyMax   string @maxLength(100)
 }
 
-// Str_Patterns covers @pattern with Go regex syntax. Three flavours:
+// Str_Patterns covers @pattern with Go regex syntax. Four flavours:
 //
 //   - Plain anchors + quantifier: ^[A-Z]{2,4}$.
 //   - Escaped plus: ^\+?[0-9]+$ — the leading `\+` is a literal `+`,
 //     not a regex quantifier.
 //   - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
+//   - A regex containing a literal BACKTICK. The validator emits the
+//     pattern as a %q-quoted Go string, so a backtick survives; the old
+//     raw-string (`...`) emission would have closed the literal early
+//     and produced non-compiling Go.
 type Str_Patterns {
-	upper   string @pattern("^[A-Z]{2,4}$")
-	intlNum string @pattern("^\\+?[0-9]+$")
-	phoneUS string @pattern("\\d{3}-\\d{3}-\\d{4}")
+	upper    string @pattern("^[A-Z]{2,4}$")
+	intlNum  string @pattern("^\\+?[0-9]+$")
+	phoneUS  string @pattern("\\d{3}-\\d{3}-\\d{4}")
+	codeSpan string @pattern("^`[^`]+`$")
 }
 
 // Str_Combos stacks length + pattern + format on a single field so
@@ -38,9 +43,9 @@ type Str_Patterns {
 // exercised together. Each combo line carries every gate the
 // canonical "email or short identifier" use cases require.
 type Str_Combos {
-	email1 string @length(1, 80)   @pattern("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$") @format(email)
-	email2 string @minLength(3)    @maxLength(254) @format(email)
-	codeID string @length(3, 16)   @pattern("^[A-Z0-9_]+$")
+	email1 string @length(1, 80) @pattern("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$") @format(email)
+	email2 string @minLength(3) @maxLength(254) @format(email)
+	codeID string @length(3, 16) @pattern("^[A-Z0-9_]+$")
 }
 
 // Str_Optionals exercises the optional + validator combinations.
@@ -48,10 +53,10 @@ type Str_Combos {
 // dereferencing. The interesting case is `pattOpt` — pattern against
 // an optional should still emit the nil-guard prefix.
 type Str_Optionals {
-	lenOpt   string? @length(1, 100)
-	mailOpt  string? @format(email)
-	pattOpt  string? @pattern("^[A-Z]{2,4}$")
-	bothOpt  string? @length(1, 80) @format(email)
+	lenOpt  string? @length(1, 100)
+	mailOpt string? @format(email)
+	pattOpt string? @pattern("^[A-Z]{2,4}$")
+	bothOpt string? @length(1, 80) @format(email)
 }
 
 // Str_Nullable forces a pointer via @nullable on a non-optional
@@ -84,24 +89,24 @@ type Str_UTF8 {
 // consistent: length probe first (cheap), format probe second
 // (potentially regex / stdlib call).
 type AllFormats {
-	email      string @format(email)      @maxLength(254)
-	url        string @format(url)        @maxLength(2048)
-	uri        string @format(uri)        @maxLength(2048)
-	uuid       string @format(uuid)       @length(36, 36)
-	datetime   string @format(datetime)   @maxLength(40)
-	date       string @format(date)       @length(10, 10)
-	timeField  string @format(time)       @length(8, 8)
-	phone      string @format(phone)      @maxLength(20)
-	hostname   string @format(hostname)   @maxLength(253)
-	ipv4       string @format(ipv4)       @maxLength(15)
-	ipv6       string @format(ipv6)       @maxLength(45)
-	cidr       string @format(cidr)       @maxLength(43)
-	mac        string @format(mac)        @maxLength(17)
+	email      string @format(email) @maxLength(254)
+	url        string @format(url) @maxLength(2048)
+	uri        string @format(uri) @maxLength(2048)
+	uuid       string @format(uuid) @length(36, 36)
+	datetime   string @format(datetime) @maxLength(40)
+	date       string @format(date) @length(10, 10)
+	timeField  string @format(time) @length(8, 8)
+	phone      string @format(phone) @maxLength(20)
+	hostname   string @format(hostname) @maxLength(253)
+	ipv4       string @format(ipv4) @maxLength(15)
+	ipv6       string @format(ipv6) @maxLength(45)
+	cidr       string @format(cidr) @maxLength(43)
+	mac        string @format(mac) @maxLength(17)
 	creditcard string @format(creditcard) @length(12, 19)
-	base64     string @format(base64)     @maxLength(8192)
-	base64url  string @format(base64url)  @maxLength(8192)
-	hexcolor   string @format(hexcolor)   @maxLength(7)
-	jsonField  string @format(json)       @maxLength(65536)
+	base64     string @format(base64) @maxLength(8192)
+	base64url  string @format(base64url) @maxLength(8192)
+	hexcolor   string @format(hexcolor) @maxLength(7)
+	jsonField  string @format(json) @maxLength(65536)
 }
 
 // Str_EchoReq is the request body for the service's echo endpoint —

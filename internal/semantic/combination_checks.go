@@ -2,6 +2,8 @@
 package semantic
 
 import (
+	"strings"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -471,6 +473,47 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 //     managed shape would be silently ignored.
 func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	a.checkPassthroughBody(svcName, m)
+	a.checkBodyBindingVerb(svcName, m)
+}
+
+// checkBodyBindingVerb rejects `@body` / `@form` request fields on a
+// non-body verb (GET / HEAD / DELETE / OPTIONS). Those handlers never
+// decode a request body, so the binder's switch falls through and the
+// field is left zero with no error — silent data loss. The OpenAPI side
+// likewise omits the requestBody for non-body verbs, so the contract and
+// the runtime agree only by both dropping the field. Reject up front.
+//
+// Resolves the request type from the local package; a cross-package
+// request DTO (rare) is left to the codegen pass. Body verbs route
+// `@body` through the JSON decoder and `@form` through the multipart
+// handler, so the check only fires for the non-body set.
+func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
+	if m == nil || m.Request == nil {
+		return
+	}
+	switch strings.ToUpper(m.Verb) {
+	case "POST", "PUT", "PATCH":
+		return // body-bearing verbs decode @body / @form normally
+	}
+	td, ok := a.pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return
+	}
+	for _, member := range td.Body {
+		f, ok := member.(*ast.Field)
+		if !ok {
+			continue
+		}
+		for _, d := range f.Decorators {
+			if d == nil || (d.Name != "body" && d.Name != "form") {
+				continue
+			}
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingVerb,
+				"field %s.%s: @%s requires a body-bearing verb (POST/PUT/PATCH) — the %s %s handler decodes no request body, so the field would be silently dropped",
+				m.Request.Name.String(), f.Name, d.Name, strings.ToUpper(m.Verb), svcName)
+			break // one diagnostic per field
+		}
+	}
 }
 
 // checkPassthroughBody rejects `request` or `response` blocks on any

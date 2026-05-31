@@ -103,16 +103,21 @@ type Str_Optionals struct {
 	BothOpt *string `json:"bothOpt,omitempty"`
 }
 
-// Str_Patterns covers @pattern with Go regex syntax. Three flavours:
+// Str_Patterns covers @pattern with Go regex syntax. Four flavours:
 //
 //   - Plain anchors + quantifier: ^[A-Z]{2,4}$.
 //   - Escaped plus: ^\+?[0-9]+$ — the leading `\+` is a literal `+`,
 //     not a regex quantifier.
 //   - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
+//   - A regex containing a literal BACKTICK. The validator emits the
+//     pattern as a %q-quoted Go string, so a backtick survives; the old
+//     raw-string (`...`) emission would have closed the literal early
+//     and produced non-compiling Go.
 type Str_Patterns struct {
-	Upper   string `json:"upper"`
-	IntlNum string `json:"intlNum"`
-	PhoneUs string `json:"phoneUS"`
+	Upper    string `json:"upper"`
+	IntlNum  string `json:"intlNum"`
+	PhoneUs  string `json:"phoneUS"`
+	CodeSpan string `json:"codeSpan"`
 }
 
 // Str_UTF8 carries @example values containing multi-byte UTF-8
