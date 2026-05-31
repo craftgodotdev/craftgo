@@ -1530,6 +1530,8 @@ paths:
                 image:
                   format: binary
                   type: string
+              required:
+              - image
               type: object
         required: true
       responses:

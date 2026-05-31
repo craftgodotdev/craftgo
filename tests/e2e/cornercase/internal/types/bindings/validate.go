@@ -237,6 +237,9 @@ func (v *UploadReq) Validate() error {
 	if v.File != nil && v.File.Size > 5242880 {
 		return fmt.Errorf("file: file size exceeds 5242880 bytes")
 	}
+	if v.Caption != nil && len(*v.Caption) > 280 {
+		return fmt.Errorf("caption: length greater than 280")
+	}
 	return nil
 }
 

@@ -124,6 +124,14 @@ type paramBinding struct {
 	// can surface the contract under multipart `encoding[field].
 	// contentType`; non-file bindings leave it nil.
 	MimeTypes []string
+	// Required mirrors the field's non-optional state (the inverse of a
+	// `?` suffix). Set by [collectFormBindings] so [multipartRequestBody]
+	// can list non-optional form/file fields under the multipart schema's
+	// `required[]`; without it every uploaded field reads as optional to
+	// generated clients even when the server's validator rejects a
+	// missing one. Unused by the wire-param bindings (path/query/...),
+	// which carry the required flag on the OpenAPI parameter directly.
+	Required bool
 }
 
 // helpersData is the template input for `handler_helpers.tmpl`.

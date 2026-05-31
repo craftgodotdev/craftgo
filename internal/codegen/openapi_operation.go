@@ -395,10 +395,19 @@ func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 // at SDK call time.
 func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
+	// required lists every non-optional form/file field so a generated
+	// client mirrors the server's validator (a non-`?` `file @form` field
+	// is mandatory). Without it the schema advertises every uploaded
+	// field as optional and the SDK lets the caller omit a file the
+	// handler then rejects with a 400.
+	var required []string
 	for _, f := range forms {
 		props[f.DSLName] = &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type: &openapi3.Types{"string"},
 		}}
+		if f.Required {
+			required = append(required, f.DSLName)
+		}
 	}
 	encoding := map[string]*openapi3.Encoding{}
 	for _, f := range files {
@@ -406,6 +415,9 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 			Type:   &openapi3.Types{"string"},
 			Format: "binary",
 		}}
+		if f.Required {
+			required = append(required, f.DSLName)
+		}
 		if len(f.MimeTypes) > 0 {
 			encoding[f.DSLName] = &openapi3.Encoding{
 				ContentType: strings.Join(f.MimeTypes, ", "),
@@ -416,6 +428,7 @@ func multipartRequestBody(forms, files []paramBinding) *openapi3.RequestBodyRef 
 		Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:       &openapi3.Types{"object"},
 			Properties: props,
+			Required:   required,
 		}},
 	}
 	if len(encoding) > 0 {
