@@ -5,7 +5,7 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [Unreleased]
+## [1.1.0] 2026-05-31
 
 ### Changed
 
@@ -22,7 +22,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   Previously the element constraints were advertised in the OpenAPI spec but
   never enforced at runtime.
 - A field-level decorator stacked on a scalar-typed field (`unitCents Cents
-  @lte(1000000)`) is enforced instead of silently dropped.
+@lte(1000000)`) is enforced instead of silently dropped.
 - `@mimeTypes("a", "b")` (variadic form) generates the Content-Type allowlist
   check; only the bracketed array form was handled before.
 - The served `multipart/form-data` request schema carries each text field's
