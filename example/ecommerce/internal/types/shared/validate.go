@@ -10,8 +10,11 @@ import (
 
 // Pattern regexes compile ONCE at package init so Validate() calls
 // reference the precompiled var instead of recompiling per request.
+// The pattern is rendered via %q (Go-quoted) rather than a raw-string
+// literal so regexes containing a backtick, backslash, or quote still
+// produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	_pattern0 = regexp.MustCompile("^[A-Za-z0-9_-]+$")
 )
 
 // Validate checks every field-level constraint declared on AuditFields.

@@ -1407,36 +1407,10 @@ service S {
 
 // TestGenerateOpenAPIGetWithBodySkipped confirms that even on a GET, a
 // `@body` decorator causes the field to be excluded from parameters.
-func TestGenerateOpenAPIGetWithBodySkipped(t *testing.T) {
-	pkg := analyze(t, `package design
-
-type ListReq {
-    id      string  @path
-    cursor  string
-    secret  string  @body
-}
-
-type Resp { ok bool }
-
-service S {
-    get List /things/{id} {
-        request   ListReq
-        response  Resp
-    }
-}`)
-	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
-	src := string(out)
-	if !strings.Contains(src, "name: cursor") {
-		t.Errorf("expected default-query field in parameters:\n%s", src)
-	}
-	if strings.Contains(src, "name: secret") {
-		t.Errorf("@body field should not appear in parameters:\n%s", src)
-	}
-}
+// Note: @body on a non-body verb (the former "GET with body skipped"
+// case) is now rejected at semantic time — see
+// TestBodyFormOnNonBodyVerbRejected in internal/semantic. It can no
+// longer be authored, so there is no codegen behaviour left to assert.
 
 // TestGenerateOpenAPICookieAndHeaderInline pins the rule that path /
 // query / header / cookie bins stay inline as parameters; only the body

@@ -15,17 +15,21 @@ import (
 
 // Pattern regexes compile ONCE at package init so Validate() calls
 // reference the precompiled var instead of recompiling per request.
+// The pattern is rendered via %q (Go-quoted) rather than a raw-string
+// literal so regexes containing a backtick, backslash, or quote still
+// produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-	_pattern1 = regexp.MustCompile(`^\+?[0-9 ()-]{6,20}$`)
-	_pattern2 = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`)
-	_pattern3 = regexp.MustCompile(`^[0-9]{12,19}$`)
-	_pattern4 = regexp.MustCompile(`^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`)
-	_pattern5 = regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$`)
-	_pattern6 = regexp.MustCompile(`^[A-Z0-9_]+$`)
-	_pattern7 = regexp.MustCompile(`^[A-Z]{2,4}$`)
-	_pattern8 = regexp.MustCompile(`^\+?[0-9]+$`)
-	_pattern9 = regexp.MustCompile(`\d{3}-\d{3}-\d{4}`)
+	_pattern0  = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+	_pattern1  = regexp.MustCompile("^\\+?[0-9 ()-]{6,20}$")
+	_pattern2  = regexp.MustCompile("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$")
+	_pattern3  = regexp.MustCompile("^[0-9]{12,19}$")
+	_pattern4  = regexp.MustCompile("^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$")
+	_pattern5  = regexp.MustCompile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+	_pattern6  = regexp.MustCompile("^[A-Z0-9_]+$")
+	_pattern7  = regexp.MustCompile("^[A-Z]{2,4}$")
+	_pattern8  = regexp.MustCompile("^\\+?[0-9]+$")
+	_pattern9  = regexp.MustCompile("\\d{3}-\\d{3}-\\d{4}")
+	_pattern10 = regexp.MustCompile("^`[^`]+`$")
 )
 
 // Validate checks every field-level constraint declared on AllFormats.
@@ -295,6 +299,9 @@ func (v *Str_Patterns) Validate() error {
 	}
 	if !_pattern9.MatchString(v.PhoneUs) {
 		return fmt.Errorf("phoneUS: does not match pattern")
+	}
+	if !_pattern10.MatchString(v.CodeSpan) {
+		return fmt.Errorf("codeSpan: does not match pattern")
 	}
 	return nil
 }

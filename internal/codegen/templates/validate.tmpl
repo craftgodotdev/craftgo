@@ -11,9 +11,12 @@ import (
 {{if .RegexVars}}
 // Pattern regexes compile ONCE at package init so Validate() calls
 // reference the precompiled var instead of recompiling per request.
+// The pattern is rendered via %q (Go-quoted) rather than a raw-string
+// literal so regexes containing a backtick, backslash, or quote still
+// produce compilable Go - a raw `...` literal would break on a backtick.
 var (
 {{- range .RegexVars}}
-	{{.Name}} = regexp.MustCompile(`{{.Pattern}}`)
+	{{.Name}} = regexp.MustCompile({{printf "%q" .Pattern}})
 {{- end}}
 )
 {{- end}}

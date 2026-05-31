@@ -42,6 +42,26 @@ func TestMultipleOfNonZeroOK(t *testing.T) {
 	mustClean(t, `type X { n int @multipleOf(2) }`)
 }
 
+// ---------- @negative on unsigned ----------
+
+func TestNegativeOnUnsignedRejected(t *testing.T) {
+	// A uint is always >= 0, so the emitted `value >= 0` rejection fires
+	// for every value — @negative could never pass. Reject at design time.
+	expectDiag(t, `type X { count uint @negative }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, `type X { n uint32 @negative }`, CodeDecoratorTypeMismatch)
+	// Caught through a named scalar over an unsigned primitive...
+	expectDiag(t, "scalar Qty uint\ntype X { q Qty @negative }", CodeDecoratorTypeMismatch)
+	// ...and on the scalar declaration itself.
+	expectDiag(t, `scalar Qty uint @negative`, CodeDecoratorTypeMismatch)
+}
+
+func TestNegativeOnSignedAndPositiveOnUnsignedOK(t *testing.T) {
+	// @negative on a signed int is fine; @positive on a uint is fine
+	// (it rejects only 0, which a uint can legitimately exclude).
+	mustClean(t, `type X { delta int @negative }`)
+	mustClean(t, `type X { count uint @positive }`)
+}
+
 // ---------- @status ----------
 
 func TestStatusOutOfRange(t *testing.T) {

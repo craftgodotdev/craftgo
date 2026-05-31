@@ -51,6 +51,9 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		// of every field that uses it, so the float-on-integer check
 		// must run on the scalar declaration as well as on plain fields.
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
+		if unsignedPrim(dd.Primitive) {
+			a.diagNegativeUnsigned(dd.Decorators, dd.Primitive)
+		}
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
 			a.checkDecoratorRanges(m.Decorators)
@@ -72,6 +75,7 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember) {
 		a.checkBoundCapacity(f)
 		a.checkBoundLiteralKind(f)
 		a.checkMultipleOfTarget(f)
+		a.checkNegativeOnUnsigned(f)
 	}
 }
 
@@ -97,6 +101,48 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 		if d != nil && d.Name == "multipleOf" {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 				"@multipleOf does not support float fields — Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
+		}
+	}
+}
+
+// unsignedPrim reports whether a Go primitive name is an unsigned
+// integer. `@negative` is contradictory on these (the value is always
+// >= 0); `@positive` stays legal (it rejects only 0).
+func unsignedPrim(prim string) bool {
+	switch prim {
+	case "uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	}
+	return false
+}
+
+// checkNegativeOnUnsigned rejects `@negative` on an unsigned-integer
+// field. The validator emits a `value >= 0` rejection, which fires for
+// EVERY value of a `uint*` (always >= 0) — the field could never
+// validate. Catch the contradiction at semantic time instead of
+// generating an always-failing validator. Resolves through a named
+// scalar so `count Quantity @negative` (scalar Quantity uint) is caught
+// the same way a bare `count uint @negative` is.
+func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
+	if f == nil || f.Type == nil || f.Type.Named == nil {
+		return
+	}
+	prim := f.Type.Named.Name.String()
+	if sd, ok := a.pkg.Scalars[prim]; ok {
+		prim = sd.Primitive
+	}
+	if unsignedPrim(prim) {
+		a.diagNegativeUnsigned(f.Decorators, prim)
+	}
+}
+
+// diagNegativeUnsigned emits the `@negative`-on-unsigned diagnostic for
+// every `@negative` in decs. Shared by the field and scalar passes.
+func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
+	for _, d := range decs {
+		if d != nil && d.Name == "negative" {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@negative cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or drop @negative", prim)
 		}
 	}
 }

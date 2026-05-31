@@ -171,6 +171,12 @@ const (
 	// surfacing the mismatch at design time gives the author an
 	// actionable error.
 	CodeBindingType = "binding/type"
+	// CodeBindingVerb fires when `@body` or `@form` sits on a request
+	// field of a non-body verb (GET / HEAD / DELETE / OPTIONS). Those
+	// handlers decode no request body, so the field would be silently
+	// dropped at gen time — surfacing it at design time prevents the
+	// silent data loss.
+	CodeBindingVerb = "binding/verb"
 	// CodeServiceCollision fires when two packages in the same
 	// project both declare a primary `service` of the same name.
 	// The generated codegen layout keys output directories by

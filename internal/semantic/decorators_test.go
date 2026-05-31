@@ -421,6 +421,26 @@ func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
 }
 
+// TestBodyFormOnNonBodyVerbRejected pins that @body / @form request
+// fields are rejected on GET/DELETE (and other non-body verbs). Those
+// handlers decode no request body, so the binder would silently drop the
+// field; the design-time error prevents the data loss.
+func TestBodyFormOnNonBodyVerbRejected(t *testing.T) {
+	expectError(t, `type Req { raw string @body }
+service S { get Fetch /things { request Req } }`, CodeBindingVerb)
+	expectError(t, `type Req { upload file @form }
+service S { delete Remove /things { request Req } }`, CodeBindingVerb)
+}
+
+// TestBodyFormOnBodyVerbOK confirms the check leaves body-bearing verbs
+// alone: POST decodes @body via JSON, PUT/PATCH accept @form multipart.
+func TestBodyFormOnBodyVerbOK(t *testing.T) {
+	mustClean(t, `type Req { raw string @body }
+service S { post Make /things { request Req } }`)
+	mustClean(t, `type Req { upload file @form }
+service S { put Replace /things { request Req } }`)
+}
+
 // TestBindingTypeWireAccepts pins the Round-2.5 unification: every
 // HTTP wire-string source (@query, @header, @cookie, @form) accepts
 // the same primitive / scalar / enum / array set. The runtime codegen
