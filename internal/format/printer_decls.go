@@ -49,6 +49,27 @@ func (p *Printer) writeTrailing(td []string) {
 	p.write(strings.Join(td, " "))
 }
 
+// writeSourceTrailing emits the trailing `// comment` captured from the
+// source line, but ONLY when no decorator on the same line already
+// emitted it via its own TrailingDoc. The lexer attaches a line-trailing
+// comment to BOTH the last decorator's TrailingDoc AND the source-scan
+// map (p.trailing, built by scanTrailingComments), so any decl that
+// prints its decorators must suppress the source-scan copy here.
+// Otherwise the same `// note` is written twice and DOUBLES on every
+// subsequent format pass — `craftgo fmt` becomes non-idempotent and
+// format-on-save balloons the comment (1→2→4→8…). All three decorated
+// print sites (fields, enum values, scalars) route through here so the
+// guard can never drift out of sync again.
+func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
+	if decoratorCarriesTrailing {
+		return
+	}
+	if c, ok := p.trailing[line]; ok {
+		p.write(" // ")
+		p.write(c)
+	}
+}
+
 // printTypeBody prints a slice of TypeMember with column-aligned fields.
 // Mixins are printed un-aligned on their own lines. Doc lines that the
 // parser misattributed (i.e. trailing comments on the previous field's
@@ -138,15 +159,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 			}
 		}
 	}
-	// Skip the source-scan trailing if a decorator's TrailingDoc already
-	// emitted the same comment — otherwise the same `// note` would
-	// appear twice and grow on each format pass.
-	if !decoratorCarriesTrailing {
-		if c, ok := p.trailing[f.Pos.Line]; ok {
-			p.write(" // ")
-			p.write(c)
-		}
-	}
+	p.writeSourceTrailing(f.Pos.Line, decoratorCarriesTrailing)
 	p.nl()
 }
 
@@ -234,14 +247,15 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 		p.write("= ")
 		p.write(strconv.Quote(v.StrValue))
 	}
+	decoratorCarriesTrailing := false
 	for _, dec := range v.Decorators {
 		p.write(" ")
 		p.Decorator(dec)
+		if dec.TrailingDoc != "" {
+			decoratorCarriesTrailing = true
+		}
 	}
-	if c, ok := p.trailing[v.Pos.Line]; ok {
-		p.write(" // ")
-		p.write(c)
-	}
+	p.writeSourceTrailing(v.Pos.Line, decoratorCarriesTrailing)
 	p.nl()
 }
 
@@ -275,14 +289,15 @@ func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
 	p.write(d.Name)
 	p.write(" ")
 	p.write(d.Primitive)
+	decoratorCarriesTrailing := false
 	for _, dec := range d.Decorators {
 		p.write(" ")
 		p.Decorator(dec)
+		if dec.TrailingDoc != "" {
+			decoratorCarriesTrailing = true
+		}
 	}
-	if c, ok := p.trailing[d.Pos.Line]; ok {
-		p.write(" // ")
-		p.write(c)
-	}
+	p.writeSourceTrailing(d.Pos.Line, decoratorCarriesTrailing)
 	p.nl()
 }
 

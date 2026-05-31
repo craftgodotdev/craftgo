@@ -85,6 +85,28 @@ scalar Cents int @gte(0) @multipleOf(1)
 `,
 		},
 		{
+			// Regression: a scalar / enum value / field carrying BOTH a
+			// decorator AND a line-trailing `// comment` must not
+			// duplicate the comment. The lexer stores it on the last
+			// decorator's TrailingDoc AND the source-scan map, so a
+			// missing guard doubled it on every format pass
+			// (non-idempotent — format-on-save ballooned the comment).
+			name: "decorated trailing comments",
+			src: `package x
+
+scalar Tag string @minLength(1) // a tag
+
+enum Color {
+	Red = 1 @deprecated // legacy red
+	Blue = 2
+}
+
+type T {
+	name string @length(1, 80) // the display name
+}
+`,
+		},
+		{
 			name: "middleware declarations",
 			src: `package x
 
@@ -170,6 +192,33 @@ service S {
 				t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out1, out2)
 			}
 		})
+	}
+}
+
+// TestFormatDecoratedTrailingCommentSingle pins the double-emit fix
+// directly: a SINGLE format pass over a scalar / enum value that carries
+// both a decorator and a line-trailing comment must keep exactly one
+// copy of the comment. The idempotency table catches the doubling
+// indirectly (each pass doubles again); this guards the stronger
+// invariant that even the first format never duplicates.
+func TestFormatDecoratedTrailingCommentSingle(t *testing.T) {
+	src := `package x
+
+scalar Tag string @minLength(1) // a tag
+
+enum Color {
+	Red = 1 @deprecated // legacy red
+}
+`
+	out, diags := Format("t.craftgo", src)
+	if len(diags) > 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	if got := strings.Count(out, "// a tag"); got != 1 {
+		t.Errorf("scalar trailing comment must appear exactly once, got %d:\n%s", got, out)
+	}
+	if got := strings.Count(out, "// legacy red"); got != 1 {
+		t.Errorf("enum-value trailing comment must appear exactly once, got %d:\n%s", got, out)
 	}
 }
 
