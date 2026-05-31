@@ -66,6 +66,19 @@ func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]pr
 	files, designRoot := s.collectProjectFiles(fsPath, src)
 	diags := s.analyseForLSP(u, src, fsPath, files, designRoot)
 
+	// Source text per file, so toLSP can place diagnostics on UTF-16
+	// columns. The editor buffer (src) overrides the on-disk copy for the
+	// current file, and also backs untagged diagnostics (empty Filename,
+	// bucketed under fsPath).
+	srcByFile := make(map[string]string, len(files)+1)
+	for _, pf := range files {
+		srcByFile[pf.path] = pf.src
+	}
+	if fsPath != "" {
+		srcByFile[fsPath] = src
+	}
+	srcByFile[""] = src
+
 	// Partition by source file. Diagnostics with empty Filename land in
 	// the bucket for the triggering URI - they came from a phase that
 	// didn't tag a span (e.g. single-file fallback emits some without).
@@ -84,7 +97,7 @@ func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]pr
 			continue
 		}
 		seen[key][k] = true
-		perFile[key] = append(perFile[key], toLSP(d))
+		perFile[key] = append(perFile[key], toLSP(d, srcByFile))
 	}
 	// Ensure the triggering file has at least an empty slice so the
 	// publisher always sends a clear-diagnostics notification for it,
@@ -242,15 +255,21 @@ func keyOf(d lexer.Diagnostic) string {
 // quick-peek surfaces the partner location with a clickable jump -
 // without this surfacing they would be lost between the analyzer and
 // the IDE.
-func toLSP(d lexer.Diagnostic) protocol.Diagnostic {
+// toLSP converts an internal diagnostic to the LSP shape. srcByFile maps
+// a diagnostic's source filename to that file's text so positions land on
+// UTF-16 code-unit columns (the LSP unit) rather than the lexer's rune
+// columns — they differ on any line carrying supplementary runes. A
+// missing entry (empty string) degrades to a rune→unit copy via
+// [utf16Position], which is correct for the BMP.
+func toLSP(d lexer.Diagnostic, srcByFile map[string]string) protocol.Diagnostic {
 	end := d.End
 	if !end.IsValid() {
 		end = d.Pos
 	}
 	out := protocol.Diagnostic{
 		Range: protocol.Range{
-			Start: lspPos(d.Pos),
-			End:   lspPos(end),
+			Start: utf16Position(srcByFile[d.Pos.Filename], d.Pos),
+			End:   utf16Position(srcByFile[end.Filename], end),
 		},
 		Severity: lspSeverity(d.Severity),
 		Code:     d.Code,
@@ -260,7 +279,8 @@ func toLSP(d lexer.Diagnostic) protocol.Diagnostic {
 	if len(d.Related) > 0 {
 		related := make([]protocol.DiagnosticRelatedInformation, 0, len(d.Related))
 		for _, r := range d.Related {
-			rng := protocol.Range{Start: lspPos(r.Pos), End: lspPos(r.Pos)}
+			rp := utf16Position(srcByFile[r.Pos.Filename], r.Pos)
+			rng := protocol.Range{Start: rp, End: rp}
 			related = append(related, protocol.DiagnosticRelatedInformation{
 				Location: protocol.Location{
 					URI:   protocol.DocumentURI(pathToFileURIString(r.Pos.Filename)),

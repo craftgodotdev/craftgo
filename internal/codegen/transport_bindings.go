@@ -240,7 +240,13 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		if pathSegs[f.Name] {
 			continue
 		}
-		entry := paramBinding{DSLName: f.Name, GoName: GoFieldName(f.Name), Required: fieldIsRequired(f)}
+		// Wire name honours an explicit `@form("field_name")` arg (same
+		// rule as the path/query/header/cookie binders via bindingWireName)
+		// so the generated r.FormFile / r.FormValue key and the multipart
+		// schema property name both match what the client sends. Without
+		// it the field name leaked through and `@form("avatar_file")`
+		// silently bound to `avatarFile`.
+		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: GoFieldName(f.Name), Required: fieldIsRequired(f)}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
 			for _, d := range f.Decorators {
 				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
@@ -269,7 +275,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 	// Second pass: render bindings for the text fields now that we
 	// know the handler is multipart.
 	for _, c := range nonFile {
-		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, c.field.Name, formSource())
+		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, bindingWireName(c.field, "form"), formSource())
 		if lerr != nil {
 			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 			return

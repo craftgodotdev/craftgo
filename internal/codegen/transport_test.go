@@ -1285,6 +1285,37 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	}
 }
 
+// TestGenerateTransportFormExplicitWireName pins that an explicit
+// @form("wire_name") sets the runtime r.FormFile / r.FormValue key, not
+// the Go field name. Before the fix the field name leaked through and
+// the explicit name was silently dropped (so a client posting under the
+// declared wire name would never bind).
+func TestGenerateTransportFormExplicitWireName(t *testing.T) {
+	pkg := analyze(t, `package design
+type UploadReq {
+    caption  string  @form("note_text")
+    pic      file    @form("avatar_file")
+}
+type UploadResp { ok bool }
+service UploadService {
+    post Upload /upload { request UploadReq  response UploadResp }
+}`)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
+	mustParseGo(t, string(handler))
+	mustContainAll(t, string(handler),
+		`r.FormValue("note_text")`,
+		`r.FormFile("avatar_file")`,
+	)
+	// The Go field names must NOT leak through as the form keys.
+	if strings.Contains(string(handler), `r.FormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
+		t.Errorf("explicit @form name ignored — form key fell back to the field name:\n%s", handler)
+	}
+}
+
 // TestGenerateTransportRejectsBadQueryShapes pins the codegen-time
 // rejection of unsupported query-binding shapes. Without the gate,
 // struct/[]struct/map fields on a GET request would be silently

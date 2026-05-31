@@ -29,7 +29,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
 	"go.lsp.dev/jsonrpc2"
@@ -300,7 +299,7 @@ func (s *Server) publishDiagnostics(ctx context.Context, u uri.URI, src string) 
 	// root. Empty payloads clear stale squigglies in dependent files.
 	for openURI := range s.openDocURIs() {
 		op := uriToPath(string(openURI))
-		if op == "" || pushed[op] || !strings.HasPrefix(op, designRoot) {
+		if op == "" || pushed[op] || !isUnderDesignRoot(op, designRoot) {
 			continue
 		}
 		pushed[op] = true
