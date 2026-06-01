@@ -4,9 +4,6 @@ package {{.Package}}
 
 import (
 	"net/http"
-{{- if .NeedsErrors}}
-	"errors"
-{{- end}}
 {{- if .NeedsStrconv}}
 	"strconv"
 {{- end}}
@@ -52,6 +49,9 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- end}}
 {{- range .PathParams}}
 		{{.Bind}}
+{{- end}}
+{{- if .QueryParams}}
+		_q := r.URL.Query()
 {{- end}}
 {{- range .QueryParams}}
 		{{.Bind}}

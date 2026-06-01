@@ -3,10 +3,8 @@
 package bindingsservice
 
 import (
-	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/bindings-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/bindings"
@@ -26,54 +24,28 @@ import (
 func SearchItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.SearchReq
-		if _v := r.URL.Query().Get("cursor"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("limit"+": invalid int value: "+_err.Error()))
-				return
-			}
-			req.Limit = int(_n)
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
 		}
-		if _v := r.URL.Query().Get("sort"); _v != "" {
+		if _v := _q.Get("sort"); _v != "" {
 			_w := types.Color(_v)
 			req.Sort = &_w
 		}
-		for _, _v := range r.URL.Query()["ids"] {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("ids"+": invalid int value: "+_err.Error()))
-				return
-			}
-			req.Ids = append(req.Ids, int(_n))
+		if !server.BindValues(w, r, "ids", "int", _q["ids"], &req.Ids, server.ParseSigned[int]) {
+			return
 		}
-		if _v := r.URL.Query().Get("active"); _v != "" {
-			_n, _err := strconv.ParseBool(_v)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("active"+": invalid bool value: "+_err.Error()))
-				return
-			}
-			req.Active = _n
+		if !server.BindValue(w, r, "active", "bool", _q.Get("active"), &req.Active, server.ParseBool[bool]) {
+			return
 		}
-		if _v := r.URL.Query().Get("offset"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("offset"+": invalid int value: "+_err.Error()))
-				return
-			}
-			_w := int(_n)
-			req.Offset = &_w
+		if !server.BindValuePtr(w, r, "offset", "int", _q.Get("offset"), &req.Offset, server.ParseSigned[int]) {
+			return
 		}
-		if _v := r.URL.Query().Get("verbose"); _v != "" {
-			_n, _err := strconv.ParseBool(_v)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("verbose"+": invalid bool value: "+_err.Error()))
-				return
-			}
-			_w := _n
-			req.Verbose = &_w
+		if !server.BindValuePtr(w, r, "verbose", "bool", _q.Get("verbose"), &req.Verbose, server.ParseBool[bool]) {
+			return
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

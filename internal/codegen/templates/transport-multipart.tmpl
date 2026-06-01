@@ -46,6 +46,9 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- range .PathParams}}
 		{{.Bind}}
 {{- end}}
+{{- if .QueryParams}}
+		_q := r.URL.Query()
+{{- end}}
 {{- range .QueryParams}}
 		{{.Bind}}
 {{- end}}

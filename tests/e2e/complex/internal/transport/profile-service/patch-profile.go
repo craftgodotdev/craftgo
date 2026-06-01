@@ -25,7 +25,8 @@ func PatchProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		req.ID = r.PathValue("id")
-		req.DryRun = r.URL.Query().Get("dryRun")
+		_q := r.URL.Query()
+		req.DryRun = _q.Get("dryRun")
 		req.IdempotencyKey = r.Header.Get("idempotencyKey")
 		if c, err := r.Cookie("sessionToken"); err == nil {
 			req.SessionToken = c.Value

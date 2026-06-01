@@ -16,7 +16,8 @@ import (
 func ListUsers(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListUsersReq
-		if _v := r.URL.Query().Get("query"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("query"); _v != "" {
 			req.Query = &_v
 		}
 		if err := req.Validate(); err != nil {

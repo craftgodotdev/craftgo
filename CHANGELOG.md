@@ -5,7 +5,7 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [1.1.0] 2026-05-31
+## [Unreleased]
 
 ### Added
 
@@ -23,16 +23,38 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Changed
 
+- Wire-bind parse failures (`?page=abc`) and JSON body-decode failures now go
+  through `server.WriteValidationError` — the same swappable hook as
+  `req.Validate()` failures — so all request-input errors share one response
+  envelope. The default hook still writes a plain 400.
+- Generated handlers bind parsed primitives through the generic `server.Bind*`
+  / `server.Parse*` helpers (one call per field) instead of an inline
+  strconv block, so the handlers no longer import `strconv` / `errors` and
+  shrink by ~a third. No reflection — the helpers are compile-time
+  monomorphized and preserve per-type overflow checks.
+- A handler parses `r.URL.Query()` once into a local instead of per query
+  field. For a request with N query parameters this is one query-string parse
+  + map allocation instead of N (≈5× fewer allocations on a 5-field handler).
+
+### Fixed
+
+- A field-level numeric / string constraint stacked on a scalar-ref field
+  (`unitCents Cents @lte(1000000)`) now reaches the OpenAPI schema as
+  `allOf: [{$ref}, {maximum: …}]` (or as a sibling of the nullable `anyOf` for
+  an optional field). The runtime validator already enforced it; the bare
+  `$ref` dropped it from the spec, so a generated client could build a request
+  the server then rejects.
+
+## [1.1.0] 2026-05-31
+
+### Changed
+
 - **Scalars now emit as defined Go types** (`type Email string`) instead of
   aliases, each carrying its own `Validate()` method. This lets a generic
   instance over a constrained scalar or enum (`Page<Email>`, `Page<Status>`)
   validate its elements, and deduplicates the generated validator code. Code
   that assigns a bare string/number to a scalar-typed field now needs an
   explicit conversion (`Email("…")`); the generated transport already casts.
-- Wire-bind parse failures (`?page=abc`) and JSON body-decode failures now go
-  through `server.WriteValidationError` — the same swappable hook as
-  `req.Validate()` failures — so all request-input errors share one response
-  envelope. The default hook still writes a plain 400.
 
 ### Fixed
 

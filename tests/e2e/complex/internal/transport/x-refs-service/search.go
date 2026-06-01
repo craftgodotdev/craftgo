@@ -3,10 +3,8 @@
 package xrefsservice
 
 import (
-	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/service/x-refs-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/complex/internal/types/xrefs"
@@ -19,14 +17,10 @@ import (
 func Search(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XSearchReq
-		req.Q = xshared.XEmail(r.URL.Query().Get("q"))
-		if _v := r.URL.Query().Get("num"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("num"+": invalid int value: "+_err.Error()))
-				return
-			}
-			req.Num = xshared.XNodeID(int(_n))
+		_q := r.URL.Query()
+		req.Q = xshared.XEmail(_q.Get("q"))
+		if !server.BindValue(w, r, "num", "int", _q.Get("num"), &req.Num, server.ParseSigned[xshared.XNodeID]) {
+			return
 		}
 		req.Hdr = xshared.XEmail(r.Header.Get("hdr"))
 		if c, err := r.Cookie("ck"); err == nil {

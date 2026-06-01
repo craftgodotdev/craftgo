@@ -3292,13 +3292,18 @@ components:
         allows up to 20).
       properties:
         amount:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          - maximum: 500
         code:
-          $ref: '#/components/schemas/ScalarsTag'
+          allOf:
+          - $ref: '#/components/schemas/ScalarsTag'
+          - maxLength: 5
         discount:
           anyOf:
           - $ref: '#/components/schemas/Cents'
           - type: "null"
+          maximum: 100
       required:
       - amount
       - code

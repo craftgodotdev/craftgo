@@ -24,7 +24,8 @@ func EchoWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.WireRenameReq
 		req.UserID = r.PathValue("user_id")
-		if _v := r.URL.Query().Get("search_q"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("search_q"); _v != "" {
 			req.Q = &_v
 		}
 		req.APIKey = r.Header.Get("X-API-Key")

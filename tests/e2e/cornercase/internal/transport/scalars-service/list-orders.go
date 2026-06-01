@@ -3,10 +3,8 @@
 package scalarsservice
 
 import (
-	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/service/scalars-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/cornercase/internal/types/scalars"
@@ -19,16 +17,12 @@ func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
 		req.Limit = types.Cents(20)
-		if _v := r.URL.Query().Get("cursor"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("limit"+": invalid int value: "+_err.Error()))
-				return
-			}
-			req.Limit = types.Cents(int(_n))
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[types.Cents]) {
+			return
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

@@ -11,9 +11,22 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	if ref == nil {
 		return
 	}
-	// Plain $ref: nothing to mutate on the field site - description,
-	// example, default come from the referenced schema's own definition.
+	// Plain $ref: description / example / the type's own constraints come
+	// from the referenced schema. A field-level decorator that NARROWS
+	// the referenced type (`unitCents Cents @lte(1000000)`) is
+	// field-specific and the runtime validator enforces it, so the spec
+	// must too — emit allOf:[{$ref}, {constraints}] when such decorators
+	// are present. A bare $ref can't carry sibling validators portably.
 	if ref.Ref != "" {
+		if extra := fieldConstraintSchema(f); extra != nil {
+			ref.Value = &openapi3.Schema{
+				AllOf: openapi3.SchemaRefs{
+					{Ref: ref.Ref},
+					{Value: extra},
+				},
+			}
+			ref.Ref = ""
+		}
 		return
 	}
 	if ref.Value == nil {
@@ -24,13 +37,18 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	// tooling renders inconsistently - some UI generators show it next
 	// to the field, others let the $ref's own description win. We drop
 	// those decorators here; users who need a field-specific
-	// description should alias the type (`type Manager = User`). But
-	// `default` carries runtime semantics (server fills in when the
-	// field is absent), so it stays on the wrapper regardless.
+	// description should alias the type (`type Manager = User`).
+	// `default` and the narrowing constraints stay: as siblings of the
+	// anyOf they are ANDed with the resolved value (a numeric bound is
+	// vacuous for the `null` branch), keeping the spec in step with the
+	// runtime validator.
 	if isNullableRefWrapper(ref.Value) {
 		if def, ok := defaultValue(f.Decorators); ok {
 			ref.Value.Default = def
 		}
+		applyNumericConstraints(f.Decorators, ref.Value)
+		applyStringLengthConstraints(f.Decorators, ref.Value)
+		applyPatternFormat(f.Decorators, ref.Value)
 		return
 	}
 	if desc := resolveDescription(f.Decorators, f.Doc); desc != "" {
@@ -55,6 +73,39 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	applyStringLengthConstraints(f.Decorators, ref.Value)
 	applyArrayConstraints(f.Decorators, ref.Value)
 	applyPatternFormat(f.Decorators, ref.Value)
+}
+
+// fieldConstraintSchema builds a schema carrying ONLY the field-level
+// narrowing constraints (numeric / string-length / pattern / format) a
+// field stacks on top of a referenced type, or nil when it declares
+// none. A $ref field is never an array (arrays render as
+// `{type: array, items: {$ref}}`), so the array keywords are not
+// applicable here.
+func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
+	if f == nil || !hasFieldConstraintDecorator(f.Decorators) {
+		return nil
+	}
+	s := &openapi3.Schema{}
+	applyNumericConstraints(f.Decorators, s)
+	applyStringLengthConstraints(f.Decorators, s)
+	applyPatternFormat(f.Decorators, s)
+	return s
+}
+
+// hasFieldConstraintDecorator reports whether ds carries any decorator
+// that maps to an OpenAPI validation keyword (the narrowing constraints).
+func hasFieldConstraintDecorator(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		switch d.Name {
+		case "gte", "gt", "lte", "lt", "range", "positive", "negative", "multipleOf",
+			"minLength", "maxLength", "length", "pattern", "format":
+			return true
+		}
+	}
+	return false
 }
 
 // isNullableRefWrapper recognises the `anyOf: [{$ref}, {type: null}]`

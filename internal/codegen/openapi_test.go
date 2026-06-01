@@ -125,6 +125,35 @@ service S { post Send /m { request Req } }`)
 	)
 }
 
+// TestGenerateOpenAPIScalarRefFieldConstraint covers a field-level
+// decorator that NARROWS a scalar-ref field. The runtime validator
+// enforces it (`_sv := int(v.Amount); if _sv > N`), so the spec must
+// too: a non-optional field emits allOf:[{$ref}, {constraint}]; an
+// optional field carries the constraint as a sibling of its
+// anyOf-nullable wrapper. A bare $ref would drop it and let a client
+// build a request the server rejects.
+func TestGenerateOpenAPIScalarRefFieldConstraint(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+scalar Cents int @gte(0)
+scalar Tag   string @minLength(1)
+type Req {
+    amount   Cents  @lte(1000000)
+    discount Cents? @lte(100)
+    code     Tag    @maxLength(5)
+}
+service S { post Run /run { request Req } }`)
+	mustContainAll(t, body,
+		// amount: non-optional → allOf:[{$ref:Cents}, {maximum}]
+		"allOf:",
+		"maximum: 1000000",
+		// code: string-length narrowing on a string scalar ref
+		"maxLength: 5",
+		// discount: optional → anyOf-nullable wrapper + sibling maximum
+		"anyOf:",
+		"maximum: 100",
+	)
+}
+
 // TestGenerateOpenAPIErrorsDecorator pins the @errors flow:
 // referenced error decls land as components.schemas entries AND as
 // per-operation responses keyed by the error category's HTTP status.

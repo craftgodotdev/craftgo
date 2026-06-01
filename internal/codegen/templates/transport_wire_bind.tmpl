@@ -11,11 +11,15 @@ Shape catalogue:
   - directSlice         []string, no cast → straight slice copy
   - directSingle        single string (any cast) → Get + optional wrap
   - arrayString         []string with cast → loop + wrapped append
-  - arrayParsed         []numeric/bool → loop + parse + wrapped append
+  - arrayParsed         []numeric/bool → server.BindValues helper call
   - optionalStringNoCast *string → guard + addr-of raw value
   - optionalStringCast   *Alias → guard + cast + addr-of typed value
-  - singleParsed        numeric/bool single → guard + parse + assign
-  - optionalParsed      *numeric/bool → guard + parse + addr-of typed value
+  - singleParsed        numeric/bool single → server.BindValue helper call
+  - optionalParsed      *numeric/bool → server.BindValuePtr helper call
+
+The parsed shapes call the generic [server] bind helpers (one line per
+field). `ParseFn` is the typed parse function, e.g.
+`server.ParseSigned[int]` / `server.ParseSigned[types.Cents]`.
 
 `SingleSource` is a Go expression yielding the raw string (e.g.
 `r.URL.Query().Get("x")`, `r.Header.Get("X")`, `c.Value`,
@@ -44,13 +48,8 @@ for _, _v := range {{.ArraySource}} {
 {{- end}}
 
 {{define "arrayParsed" -}}
-for _, _v := range {{.ArraySource}} {
-	_n, _err := {{.ParseCall}}
-	if _err != nil {
-		server.WriteValidationError(w, r, errors.New({{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error()))
-		return
-	}
-	req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})
+if !server.BindValues(w, r, {{.DSLNameQuoted}}, {{printf "%q" .Label}}, {{.ArraySource}}, &req.{{.GoName}}, {{.ParseFn}}) {
+	return
 }
 {{- end}}
 
@@ -68,24 +67,13 @@ if _v := {{.SingleSource}}; _v != "" {
 {{- end}}
 
 {{define "singleParsed" -}}
-if _v := {{.SingleSource}}; _v != "" {
-	_n, _err := {{.ParseCall}}
-	if _err != nil {
-		server.WriteValidationError(w, r, errors.New({{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error()))
-		return
-	}
-	req.{{.GoName}} = {{.Wrap}}
+if !server.BindValue(w, r, {{.DSLNameQuoted}}, {{printf "%q" .Label}}, {{.SingleSource}}, &req.{{.GoName}}, {{.ParseFn}}) {
+	return
 }
 {{- end}}
 
 {{define "optionalParsed" -}}
-if _v := {{.SingleSource}}; _v != "" {
-	_n, _err := {{.ParseCall}}
-	if _err != nil {
-		server.WriteValidationError(w, r, errors.New({{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error()))
-		return
-	}
-	_w := {{.Wrap}}
-	req.{{.GoName}} = &_w
+if !server.BindValuePtr(w, r, {{.DSLNameQuoted}}, {{printf "%q" .Label}}, {{.SingleSource}}, &req.{{.GoName}}, {{.ParseFn}}) {
+	return
 }
 {{- end}}

@@ -23,7 +23,8 @@ func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteValidationError(w, r, err)
 			return
 		}
-		if _v := r.URL.Query().Get("status"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("status"); _v != "" {
 			_w := types.OrderStatus(_v)
 			req.Status = &_w
 		}

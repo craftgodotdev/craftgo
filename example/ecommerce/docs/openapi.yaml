@@ -610,7 +610,9 @@ components:
         sku:
           $ref: '#/components/schemas/SKU'
         unitCents:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          - maximum: 1000000
       required:
       - product
       - sku
@@ -757,7 +759,9 @@ components:
           type: array
           uniqueItems: true
         totalCents:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          - maximum: 100000000
       required:
       - id
       - customer
@@ -931,7 +935,9 @@ components:
             minLength: 1
             type: string
           priceCents:
-            $ref: '#/components/schemas/Cents'
+            allOf:
+            - $ref: '#/components/schemas/Cents'
+            - maximum: 100000000
           siteUrl:
             anyOf:
             - $ref: '#/components/schemas/SafeURL'

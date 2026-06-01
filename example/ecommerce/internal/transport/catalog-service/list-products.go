@@ -3,10 +3,8 @@
 package catalogservice
 
 import (
-	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/catalog-service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
@@ -18,21 +16,17 @@ import (
 func ListProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListProductsReq
-		if _v := r.URL.Query().Get("cursor"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				server.WriteValidationError(w, r, errors.New("limit"+": invalid int value: "+_err.Error()))
-				return
-			}
-			req.Limit = int(_n)
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
 		}
-		if _v := r.URL.Query().Get("category"); _v != "" {
+		if _v := _q.Get("category"); _v != "" {
 			req.Category = &_v
 		}
-		if _v := r.URL.Query().Get("tag"); _v != "" {
+		if _v := _q.Get("tag"); _v != "" {
 			req.Tag = &_v
 		}
 		if err := req.Validate(); err != nil {
