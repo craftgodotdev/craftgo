@@ -14,8 +14,9 @@ import (
 // literal so regexes containing a backtick, backslash, or quote still
 // produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile("^\\+\\d+$")
-	_pattern1 = regexp.MustCompile("^.*@example\\.com$")
+	_pattern0 = regexp.MustCompile("^(cross_sell|up_sell|combo)$")
+	_pattern1 = regexp.MustCompile("^\\+\\d+$")
+	_pattern2 = regexp.MustCompile("^.*@example\\.com$")
 )
 
 // Validate checks every field-level constraint declared on DefaultsBoundary.
@@ -63,6 +64,21 @@ func (v *DefaultsScalar) Validate() error {
 		if err := v.Size.Validate(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on KeywordFieldNames.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *KeywordFieldNames) Validate() error {
+	if !_pattern0.MatchString(v.Type) {
+		return fmt.Errorf("type: does not match pattern")
+	}
+	if v.Kind == "" {
+		return fmt.Errorf("kind: required")
+	}
+	if err := v.Kind.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -117,7 +133,7 @@ func (v *PairsContact) Validate() error {
 			return fmt.Errorf("email: not a valid email")
 		}
 	}
-	if v.Phone != nil && !_pattern0.MatchString(*v.Phone) {
+	if v.Phone != nil && !_pattern1.MatchString(*v.Phone) {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
@@ -153,7 +169,7 @@ func (v *PairsStr) Validate() error {
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
 	}
-	if !_pattern1.MatchString(v.Email) {
+	if !_pattern2.MatchString(v.Email) {
 		return fmt.Errorf("email: does not match pattern")
 	}
 	return nil
@@ -221,6 +237,17 @@ func (v Color) Validate() error {
 	case ColorRed, ColorGreen, ColorBlue:
 	default:
 		return fmt.Errorf("Color: invalid Color value")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on DiscKind.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v DiscKind) Validate() error {
+	switch v {
+	case DiscKindType, DiscKindCombo, DiscKindStandalone:
+	default:
+		return fmt.Errorf("DiscKind: invalid DiscKind value")
 	}
 	return nil
 }

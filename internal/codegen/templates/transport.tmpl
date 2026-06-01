@@ -4,6 +4,9 @@ package {{.Package}}
 
 import (
 	"net/http"
+{{- if .NeedsErrors}}
+	"errors"
+{{- end}}
 {{- if .NeedsStrconv}}
 	"strconv"
 {{- end}}
@@ -43,7 +46,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- end}}
 {{- if .BodyDecode}}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			server.WriteValidationError(w, r, err)
 			return
 		}
 {{- end}}

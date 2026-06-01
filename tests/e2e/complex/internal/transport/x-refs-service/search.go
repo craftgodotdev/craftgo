@@ -3,6 +3,7 @@
 package xrefsservice
 
 import (
+	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
@@ -22,7 +23,7 @@ func Search(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.URL.Query().Get("num"); _v != "" {
 			_n, _err := strconv.ParseInt(_v, 10, 64)
 			if _err != nil {
-				http.Error(w, "num"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
+				server.WriteValidationError(w, r, errors.New("num"+": invalid int value: "+_err.Error()))
 				return
 			}
 			req.Num = xshared.XNodeID(int(_n))

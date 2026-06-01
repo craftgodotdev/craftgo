@@ -65,8 +65,14 @@ type transportData struct {
 	// default survives unless the client explicitly sends a value.
 	Defaults []defaultBinding
 	// NeedsStrconv tells the template to import "strconv" when at
-	// least one bound field needed string→int/float/bool parsing.
+	// least one bound field needed string→int/float/bool parsing or
+	// number→string formatting (response headers).
 	NeedsStrconv bool
+	// NeedsErrors tells the template to import "errors" when a request /
+	// form parse can fail: the parse-error branch builds an error with
+	// errors.New and hands it to server.WriteValidationError. Response
+	// formatting sets NeedsStrconv but not this.
+	NeedsErrors bool
 	// SuccessStatus is the resolved HTTP success code for this method
 	// (see [methodSuccessStatus]). SuccessStatusExpr is the Go source
 	// the template emits in `w.WriteHeader(...)` — an `http.StatusXxx`
@@ -298,6 +304,9 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		if err != nil {
 			return transportData{}, err
 		}
+		// Request wire-bind strconv comes from parse shapes, which carry
+		// the errors.New parse-error branch.
+		d.NeedsErrors = d.NeedsStrconv
 		// collectBindings reads crossPkg/scalars off the resolver
 		// itself, so the locals are unused here.
 		_ = crossPkg
@@ -330,6 +339,9 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.FormFiles = files
 			if formStrconv {
 				d.NeedsStrconv = true
+				// Form text fields parse through the same shapes, so a
+				// parse error here also builds an errors.New value.
+				d.NeedsErrors = true
 			}
 			// Match the stdlib historical 32 MiB floor unless the
 			// method's `@maxBodySize` declares a higher cap. The
@@ -683,12 +695,9 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 			needsStrconv = true
 		}
 	} else {
-		// Single (non-array). Optional non-string primitives are not
-		// supported: `*int` from a wire string would need a tri-state
-		// (absent / empty / parsed) and no clean idiom exists yet.
-		if f.Type.Optional && prim.parser != "" {
-			return "", false, fmt.Errorf("field %q: optional %s cannot bind to @%s — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label, src.kind)
-		}
+		// Single (non-array). An absent param and a present-but-empty one
+		// (`?x=`) both leave the field unset: nil for an optional pointer,
+		// the zero value for a required field.
 		if prim.parser == "" {
 			if f.Type.Optional {
 				if cast == "" {
@@ -704,7 +713,11 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		} else {
 			data.ParseCall = parseCall(prim)
 			data.Wrap = wrap(castExpr(prim, "_n"))
-			shape = renderWireBindShape("singleParsed", data)
+			if f.Type.Optional {
+				shape = renderWireBindShape("optionalParsed", data)
+			} else {
+				shape = renderWireBindShape("singleParsed", data)
+			}
 			needsStrconv = true
 		}
 	}

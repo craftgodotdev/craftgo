@@ -74,6 +74,18 @@ type DefaultsScalar struct {
 	Size *PageSize `json:"size,omitempty"`
 }
 
+// KeywordFieldNames names fields after reserved words. Each lowers to an
+// exported Go field (`Type`, `Error`, `Map`, `Delete`) with the keyword
+// as its JSON tag; `map` as a field name coexists with `map<>` as a type.
+type KeywordFieldNames struct {
+	Type   string         `json:"type"`
+	Error  *string        `json:"error,omitempty"`
+	Map    *string        `json:"map,omitempty"`
+	Delete bool           `json:"delete"`
+	Counts map[string]int `json:"counts"`
+	Kind   DiscKind       `json:"kind"`
+}
+
 // PairsArr stacks the array-level decorators (@minItems, @maxItems,
 // @uniqueItems). Per-element constraints belong on a scalar: declare
 // the element type as a named scalar and the validator walker emits

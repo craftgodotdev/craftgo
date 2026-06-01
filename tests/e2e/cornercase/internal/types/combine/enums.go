@@ -9,3 +9,11 @@ const (
 	ColorGreen Color = "Green"
 	ColorBlue  Color = "Blue"
 )
+
+type DiscKind string
+
+const (
+	DiscKindType       DiscKind = "type"
+	DiscKindCombo      DiscKind = "combo"
+	DiscKindStandalone DiscKind = "standalone"
+)

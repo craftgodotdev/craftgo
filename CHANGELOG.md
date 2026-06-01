@@ -7,6 +7,20 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [1.1.0] 2026-05-31
 
+### Added
+
+- Reserved words (`type`, `error`, `map`, `delete`, `request`, ...) are
+  accepted as field names and enum value names. A type body holds only fields
+  and mixins and an enum body only value names, so a leading keyword reads as
+  the identifier — `type string @pattern(...)` and `enum Kind { type ... }`
+  parse, and lower to exported Go fields (`Type`) with the keyword as the JSON
+  tag.
+- Optional non-string primitives bind to `@query` / `@header` / `@cookie`
+  (`page int? @query`, `active bool? @header`, ...). The binder writes a
+  pointer on presence and leaves it nil when the param is absent or empty
+  (`?page=`); a present-but-unparseable value is a 400. Previously only
+  optional strings were allowed on those sources.
+
 ### Changed
 
 - **Scalars now emit as defined Go types** (`type Email string`) instead of
@@ -15,6 +29,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   validate its elements, and deduplicates the generated validator code. Code
   that assigns a bare string/number to a scalar-typed field now needs an
   explicit conversion (`Email("…")`); the generated transport already casts.
+- Wire-bind parse failures (`?page=abc`) and JSON body-decode failures now go
+  through `server.WriteValidationError` — the same swappable hook as
+  `req.Validate()` failures — so all request-input errors share one response
+  envelope. The default hook still writes a plain 400.
 
 ### Fixed
 

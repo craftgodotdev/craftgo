@@ -343,12 +343,6 @@ func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
 	if name == "file" {
 		return false
 	}
-	if t.Optional && !t.Array {
-		// Optional non-string primitives have no clean tri-state idiom.
-		if !isStringBackedName(name, pkg) {
-			return false
-		}
-	}
 	if isPrimitiveWireName(name) {
 		return true
 	}
@@ -365,29 +359,6 @@ func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
 				case ast.EnumBare, ast.EnumString, ast.EnumInt:
 					return true
 				}
-			}
-		}
-	}
-	return false
-}
-
-// isStringBackedName reports whether name resolves (possibly via a
-// scalar / enum) to the `string` primitive. Used by [isWireBindingType]
-// to allow optional ONLY for string-shaped fields.
-func isStringBackedName(name string, pkg *Package) bool {
-	if name == "string" {
-		return true
-	}
-	if pkg == nil {
-		return false
-	}
-	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
-		return true
-	}
-	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		for _, m := range ed.Members {
-			if v, ok := m.(*ast.EnumValue); ok {
-				return v.Kind == ast.EnumBare || v.Kind == ast.EnumString
 			}
 		}
 	}

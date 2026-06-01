@@ -107,12 +107,6 @@ func (r *refResolver) qualifiedIsWireBindable(t *ast.TypeRef) bool {
 	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
 		return false
 	}
-	if t.Optional && !t.Array {
-		// Same string-only optional gate the local helper uses.
-		if !r.qualifiedNameIsStringBacked(t.Named) {
-			return false
-		}
-	}
 	if sc := r.lookupScalar(t.Named); sc != nil {
 		return isPrimitiveWireName(sc.Primitive)
 	}
@@ -126,19 +120,6 @@ func (r *refResolver) qualifiedIsFormBindable(t *ast.TypeRef) bool {
 	// `file` is never qualified — bare primitive only — so the form
 	// check on a qualified ref collapses to the wire rules.
 	return r.qualifiedIsWireBindable(t)
-}
-
-// qualifiedNameIsStringBacked is the cross-pkg twin of
-// [isStringBackedName] — for the optional-non-array string-only gate
-// inside [qualifiedIsWireBindable].
-func (r *refResolver) qualifiedNameIsStringBacked(n *ast.NamedTypeRef) bool {
-	if sc := r.lookupScalar(n); sc != nil {
-		return sc.Primitive == "string"
-	}
-	if ed := r.lookupEnum(n); ed != nil {
-		return enumIsStringBacked(ed)
-	}
-	return false
 }
 
 // enumIsStringBacked returns true when the enum's first member is

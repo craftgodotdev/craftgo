@@ -519,6 +519,17 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	p.captureDoc()
 	decs := p.parseDecorators()
 	t := p.peek()
+	// A reserved word at the start of a type-body member is a FIELD NAME:
+	// a member is a field or a mixin, a mixin is a named type reference,
+	// and a keyword never spells one — so the keyword can only be the
+	// field's name. Take its spelling as the identifier (contextual
+	// keyword), letting `type`, `error`, `map`, ... be field names.
+	if isKeywordKind(t.Kind) {
+		name := p.advance()
+		tref := p.parseTypeRef()
+		fieldDecs := p.parseDecorators()
+		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
+	}
 	if t.Kind != lexer.Ident {
 		p.errorf(t.Pos, "expected field or mixin, got %s", t.Kind)
 		return nil
@@ -682,10 +693,14 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 
 // parseEnumValue reads a single `Name [= literal] [@decorators]` entry.
 func (p *Parser) parseEnumValue() *ast.EnumValue {
-	t, ok := p.expect(lexer.Ident)
-	if !ok {
+	// An enum body holds only value names, so a reserved word here is a
+	// value name (contextual keyword), e.g. `enum Kind { type ... }`.
+	t := p.peek()
+	if t.Kind != lexer.Ident && !isKeywordKind(t.Kind) {
+		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
 		return nil
 	}
+	p.advance()
 	v := &ast.EnumValue{Pos: t.Pos, Name: t.Text, Kind: ast.EnumBare}
 	if p.peek().Kind == lexer.Equal {
 		p.advance()

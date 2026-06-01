@@ -1312,28 +1312,3 @@ service UploadService {
 		t.Errorf("explicit @form name ignored — form key fell back to the field name:\n%s", handler)
 	}
 }
-
-// TestGenerateTransportRejectsBadQueryShapes pins the codegen-time
-// rejection of unsupported query-binding shapes. Without the gate,
-// struct/[]struct/map fields on a GET request would be silently
-// dropped — the handler would omit the bind line and the field
-// would land at the logic layer zero-valued, with no error to chase.
-//
-// Non-string `@path` / `@header` / `@cookie` is enforced at the
-// semantic layer (see `binding/type` diagnostic) so those cases
-// live in semantic tests, not here.
-//
-// Each case constructs a request type that exercises one rejection branch:
-//   - Filter Point      → struct on @query
-//   - Tags  []Point     → []struct on @query
-//   - Meta  map<string,string> → map on @query
-//   - Page  Page<Book>  → generic on @query
-//   - opt   int? @query  → optional numeric on @query (no clean idiom)
-//
-// These shapes are rejected at SEMANTIC time by
-// [semantic.checkBindingFieldType] (see `TestCodeOnBindingType` in
-// internal/semantic/decorators_test.go) so they never reach codegen.
-// The codegen layer keeps a defensive rejection in
-// [renderWireBindLine] for direct AST callers that skip semantic, but
-// the design-time test is the authoritative coverage and lives next
-// to the rule.

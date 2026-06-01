@@ -126,12 +126,10 @@ type QueryArrayStringReq struct {
 	Tags []string `json:"-"`
 }
 
-// QueryBoolReq mirrors QueryIntReq — optional non-string primitives
-// cannot bind to query (the `*bool` from a query string needs a
-// tri-state that has no clean idiom), so the bool variant stays
-// required and uses false as the absent sentinel.
+// QueryBoolReq is the optional-bool query path: present → `*bool`,
+// absent / empty → nil.
 type QueryBoolReq struct {
-	Active bool `json:"-"`
+	Active *bool `json:"-"`
 }
 
 // QueryEnumReq drives the enum cast path through @query. Enums are
@@ -141,8 +139,15 @@ type QueryEnumReq struct {
 	C *Color `json:"-"`
 }
 
-// QueryIntRequiredReq sidesteps the optional-numeric limitation: the
-// caller MUST supply `page` or the binder fails with HTTP 400.
+// QueryIntReq is the optional-int query path. The binder reads the raw
+// string, parses it on presence, and writes a `*int`; an absent or empty
+// `?page=` leaves the field nil. `@gte(1)` runs on the dereferenced value.
+type QueryIntReq struct {
+	Page *int `json:"-"`
+}
+
+// QueryIntRequiredReq is the required-int variant: an absent `page`
+// leaves the field at its zero value, and `@gte(1)` then rejects it.
 type QueryIntRequiredReq struct {
 	Page int `json:"-"`
 }
@@ -167,11 +172,13 @@ type QueryStringReq struct {
 // shape on the wire, so the optional binder works just like for
 // plain strings).
 type SearchReq struct {
-	Cursor *string `json:"-"`
-	Limit  int     `json:"-"`
-	Sort   *Color  `json:"-"`
-	Ids    []int   `json:"-"`
-	Active bool    `json:"-"`
+	Cursor  *string `json:"-"`
+	Limit   int     `json:"-"`
+	Sort    *Color  `json:"-"`
+	Ids     []int   `json:"-"`
+	Active  bool    `json:"-"`
+	Offset  *int    `json:"-"`
+	Verbose *bool   `json:"-"`
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The

@@ -3,6 +3,7 @@
 package streamservice
 
 import (
+	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
@@ -20,7 +21,7 @@ func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.URL.Query().Get("verbose"); _v != "" {
 			_n, _err := strconv.ParseBool(_v)
 			if _err != nil {
-				http.Error(w, "verbose"+": invalid bool value: "+_err.Error(), http.StatusBadRequest)
+				server.WriteValidationError(w, r, errors.New("verbose"+": invalid bool value: "+_err.Error()))
 				return
 			}
 			req.Verbose = _n

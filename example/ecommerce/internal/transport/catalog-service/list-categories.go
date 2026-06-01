@@ -3,6 +3,7 @@
 package catalogservice
 
 import (
+	"errors"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
@@ -23,7 +24,7 @@ func ListCategories(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.URL.Query().Get("limit"); _v != "" {
 			_n, _err := strconv.ParseInt(_v, 10, 64)
 			if _err != nil {
-				http.Error(w, "limit"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
+				server.WriteValidationError(w, r, errors.New("limit"+": invalid int value: "+_err.Error()))
 				return
 			}
 			req.Limit = int(_n)

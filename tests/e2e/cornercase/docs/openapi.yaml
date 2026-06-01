@@ -1004,6 +1004,12 @@ components:
       $ref: '#/components/schemas/Item'
     DeleteUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
+    DiscKind:
+      enum:
+      - type
+      - combo
+      - standalone
+      type: string
     DuplicateKeyErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -1607,6 +1613,37 @@ components:
           - "null"
       required:
       - items
+      type: object
+    KeywordFieldNames:
+      description: |-
+        KeywordFieldNames names fields after reserved words. Each lowers to an
+        exported Go field (`Type`, `Error`, `Map`, `Delete`) with the keyword
+        as its JSON tag; `map` as a field name coexists with `map<>` as a type.
+      properties:
+        counts:
+          additionalProperties:
+            type: integer
+          type: object
+        delete:
+          type: boolean
+        error:
+          type:
+          - string
+          - "null"
+        kind:
+          $ref: '#/components/schemas/DiscKind'
+        map:
+          type:
+          - string
+          - "null"
+        type:
+          pattern: ^(cross_sell|up_sell|combo)$
+          type: string
+      required:
+      - type
+      - delete
+      - counts
+      - kind
       type: object
     ListOrdersReq:
       description: |-
@@ -3143,15 +3180,13 @@ components:
       type: object
     QueryBoolReq:
       description: |-
-        QueryBoolReq mirrors QueryIntReq — optional non-string primitives
-        cannot bind to query (the `*bool` from a query string needs a
-        tri-state that has no clean idiom), so the bool variant stays
-        required and uses false as the absent sentinel.
+        QueryBoolReq is the optional-bool query path: present → `*bool`,
+        absent / empty → nil.
       properties:
         active:
-          type: boolean
-      required:
-      - active
+          type:
+          - boolean
+          - "null"
       type: object
     QueryEnumReq:
       description: |-
@@ -3164,10 +3199,22 @@ components:
           - $ref: '#/components/schemas/BindingsColor'
           - type: "null"
       type: object
+    QueryIntReq:
+      description: |-
+        QueryIntReq is the optional-int query path. The binder reads the raw
+        string, parses it on presence, and writes a `*int`; an absent or empty
+        `?page=` leaves the field nil. `@gte(1)` runs on the dereferenced value.
+      properties:
+        page:
+          minimum: 1
+          type:
+          - integer
+          - "null"
+      type: object
     QueryIntRequiredReq:
       description: |-
-        QueryIntRequiredReq sidesteps the optional-numeric limitation: the
-        caller MUST supply `page` or the binder fails with HTTP 400.
+        QueryIntRequiredReq is the required-int variant: an absent `page`
+        leaves the field at its zero value, and `@gte(1)` then rejects it.
       properties:
         page:
           minimum: 1
@@ -3357,10 +3404,19 @@ components:
           maximum: 100
           minimum: 1
           type: integer
+        offset:
+          minimum: 0
+          type:
+          - integer
+          - "null"
         sort:
           anyOf:
           - $ref: '#/components/schemas/BindingsColor'
           - type: "null"
+        verbose:
+          type:
+          - boolean
+          - "null"
       required:
       - limit
       - active
@@ -4272,7 +4328,7 @@ paths:
     get:
       description: Search items. Demonstrates the full @query matrix — optional string
         cursor, required int limit, optional enum sort, repeated int ids, required
-        bool active.
+        bool active, optional int offset, optional bool verbose.
       operationId: SearchItems
       parameters:
       - in: query
@@ -4307,6 +4363,19 @@ paths:
         required: true
         schema:
           type: boolean
+      - in: query
+        name: offset
+        schema:
+          minimum: 0
+          type:
+          - integer
+          - "null"
+      - in: query
+        name: verbose
+        schema:
+          type:
+          - boolean
+          - "null"
       responses:
         "200":
           content:

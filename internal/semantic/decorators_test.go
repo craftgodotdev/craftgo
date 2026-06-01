@@ -398,9 +398,6 @@ type X { p P @query }`, "@query requires"},
 type X { ps P[] @query }`, "@query requires"},
 		{"generic instance on @query", `type Page<T> { items T[] }
 type X { p Page<string> @query }`, "@query requires"},
-		// Optional non-string primitives: zero-sentinel convention applies.
-		{"optional int on @query", `type X { limit int? @query }`, "@query requires"},
-		{"optional bool on @cookie", `type X { flag bool? @cookie }`, "@cookie requires"},
 		// `file` only binds to @form; rejected on every other wire.
 		{"file on @query", `type X { upload file @query }`, "@query requires"},
 		{"file on @header", `type X { upload file @header }`, "@header requires"},
@@ -454,6 +451,12 @@ func TestBindingTypeWireAccepts(t *testing.T) {
 		{"float across wire", `type X { a float64 @query  b float64 @header  c float64 @cookie  d float64 @form }`},
 		{"bool across wire", `type X { a bool @query  b bool @header  c bool @cookie  d bool @form }`},
 		{"optional string", `type X { a string? @query  b string? @header  c string? @cookie  d string? @form }`},
+		{"optional int across wire", `type X { a int? @query  b int? @header  c int? @cookie  d int? @form }`},
+		{"optional float/bool/wide", `type X { a float64? @query  b bool? @header  c uint32? @cookie  d int64? @query }`},
+		{"optional int scalar", `scalar Cents int
+type X { a Cents? @query  b Cents? @header  c Cents? @cookie }`},
+		{"optional int enum", `enum Priority { Low = 1  High = 2 }
+type X { a Priority? @query  b Priority? @cookie }`},
 		{"array of primitive", `type X { a string[] @query  b string[] @header  c int[] @query  d string[] @form }`},
 		{"string scalar", `scalar Email string @format(email)
 type X { a Email @query  b Email @header  c Email @cookie  d Email @form  e Email? @header  f Email? @form }`},

@@ -185,6 +185,15 @@ func (v *QueryEnumReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on QueryIntReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *QueryIntReq) Validate() error {
+	if v.Page != nil && *v.Page < 1 {
+		return fmt.Errorf("page: below minimum 1")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on QueryIntRequiredReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *QueryIntRequiredReq) Validate() error {
@@ -225,6 +234,9 @@ func (v *SearchReq) Validate() error {
 		if err := v.Sort.Validate(); err != nil {
 			return err
 		}
+	}
+	if v.Offset != nil && *v.Offset < 0 {
+		return fmt.Errorf("offset: below minimum 0")
 	}
 	return nil
 }

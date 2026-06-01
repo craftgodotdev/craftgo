@@ -26,7 +26,7 @@ service BindingsService {
 	// because the parser rejects bare-array response forms (`Item[]`)
 	// in the method body — wrapping in a typed list is the idiomatic
 	// shape every other service uses.
-	@doc("Search items. Demonstrates the full @query matrix — optional string cursor, required int limit, optional enum sort, repeated int ids, required bool active.")
+	@doc("Search items. Demonstrates the full @query matrix — optional string cursor, required int limit, optional enum sort, repeated int ids, required bool active, optional int offset, optional bool verbose.")
 	get SearchItems /items {
 		request  SearchReq
 		response ItemList
@@ -82,15 +82,10 @@ service BindingsService {
 		response Item
 	}
 
-	// QueryIntProbe / PathIntProbe are kept as commented stubs so the
-	// diagnostic-capture trail stays in-source. Uncomment together
-	// with their request types (QueryIntReq / PathIntReq in
-	// bindings.craftgo) to reproduce the gen-time rejection.
-	//
-	// get QueryIntProbe /probe-int {
-	// 	request  QueryIntReq
-	// 	response Item
-	// }
+	// PathIntProbe is a commented stub: `@path` binds only string-backed
+	// fields, so a numeric path param is rejected at gen time. Uncomment
+	// it together with PathIntReq in bindings.craftgo to reproduce the
+	// diagnostic.
 	//
 	// get PathIntProbe /probe-path/{id} {
 	// 	request  PathIntReq
@@ -115,11 +110,13 @@ type GetItemReq {
 // shape on the wire, so the optional binder works just like for
 // plain strings).
 type SearchReq {
-	cursor string? @query
-	limit  int     @query @gte(1) @lte(100)
-	sort   Color?  @query
-	ids    int[]?  @query
-	active bool    @query
+	cursor  string?  @query
+	limit   int      @query @gte(1) @lte(100)
+	sort    Color?   @query
+	ids     int[]?   @query
+	active  bool     @query
+	offset  int?     @query @gte(0)
+	verbose bool?    @query
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The

@@ -1,6 +1,6 @@
 {{- /*
 transport_wire_bind.tmpl emits one binding block per field for every
-HTTP wire-string source: @query, @header, @cookie, @form. The seven
+HTTP wire-string source: @query, @header, @cookie, @form. The eight
 named shapes cover every (array / single) × (parser / no parser) ×
 (optional / required) × (cast / no cast) combination the DSL produces.
 [renderWireBindLine] picks the shape and provides the source-extraction
@@ -15,6 +15,7 @@ Shape catalogue:
   - optionalStringNoCast *string → guard + addr-of raw value
   - optionalStringCast   *Alias → guard + cast + addr-of typed value
   - singleParsed        numeric/bool single → guard + parse + assign
+  - optionalParsed      *numeric/bool → guard + parse + addr-of typed value
 
 `SingleSource` is a Go expression yielding the raw string (e.g.
 `r.URL.Query().Get("x")`, `r.Header.Get("X")`, `c.Value`,
@@ -46,7 +47,7 @@ for _, _v := range {{.ArraySource}} {
 for _, _v := range {{.ArraySource}} {
 	_n, _err := {{.ParseCall}}
 	if _err != nil {
-		http.Error(w, {{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error(), http.StatusBadRequest)
+		server.WriteValidationError(w, r, errors.New({{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error()))
 		return
 	}
 	req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})
@@ -70,9 +71,21 @@ if _v := {{.SingleSource}}; _v != "" {
 if _v := {{.SingleSource}}; _v != "" {
 	_n, _err := {{.ParseCall}}
 	if _err != nil {
-		http.Error(w, {{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error(), http.StatusBadRequest)
+		server.WriteValidationError(w, r, errors.New({{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error()))
 		return
 	}
 	req.{{.GoName}} = {{.Wrap}}
+}
+{{- end}}
+
+{{define "optionalParsed" -}}
+if _v := {{.SingleSource}}; _v != "" {
+	_n, _err := {{.ParseCall}}
+	if _err != nil {
+		server.WriteValidationError(w, r, errors.New({{.DSLNameQuoted}}+": invalid {{.Label}} value: "+_err.Error()))
+		return
+	}
+	_w := {{.Wrap}}
+	req.{{.GoName}} = &_w
 }
 {{- end}}

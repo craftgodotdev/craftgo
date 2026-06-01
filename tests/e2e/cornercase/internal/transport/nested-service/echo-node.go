@@ -17,7 +17,7 @@ func EchoNode(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Node
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			server.WriteValidationError(w, r, err)
 			return
 		}
 		if err := req.Validate(); err != nil {
