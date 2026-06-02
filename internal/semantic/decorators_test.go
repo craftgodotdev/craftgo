@@ -7,6 +7,95 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// ---------- BindingKind (shared with codegen) ----------
+
+func TestBindingKind(t *testing.T) {
+	mk := func(decs ...string) []*ast.Decorator {
+		out := make([]*ast.Decorator, len(decs))
+		for i, n := range decs {
+			out[i] = &ast.Decorator{Name: n}
+		}
+		return out
+	}
+	cases := []struct {
+		decs []string
+		want string
+	}{
+		{[]string{"query"}, "query"},
+		{[]string{"path"}, "path"},
+		{[]string{"header"}, "header"},
+		{[]string{"cookie"}, "cookie"},
+		{[]string{"body"}, "body"},
+		{[]string{"form"}, "form"},
+		{[]string{"doc", "query"}, "query"}, // non-binding decorators are skipped
+		{nil, ""},
+		{[]string{"doc"}, ""},
+	}
+	for _, c := range cases {
+		if got := BindingKind(mk(c.decs...)); got != c.want {
+			t.Errorf("BindingKind(%v) = %q, want %q", c.decs, got, c.want)
+		}
+	}
+}
+
+// ---------- RequestFieldBinding (shared with codegen) ----------
+
+func TestRequestFieldBinding(t *testing.T) {
+	field := func(name string, decs ...string) *ast.Field {
+		ds := make([]*ast.Decorator, len(decs))
+		for i, n := range decs {
+			ds[i] = &ast.Decorator{Name: n}
+		}
+		return &ast.Field{Name: name, Decorators: ds}
+	}
+	paths := map[string]bool{"id": true}
+
+	cases := []struct {
+		f        *ast.Field
+		bodyVerb bool
+		kind     string
+		auto     bool
+	}{
+		{field("q", "query"), false, "query", false}, // explicit wins, not auto
+		{field("s", "sensitive"), false, "sensitive", false},
+		{field("b", "body"), true, "body", false}, // explicit @body
+		{field("up", "form"), true, "form", false},
+		{field("id"), false, "path", true},      // un-decorated, name matches a path segment
+		{field("page"), false, "query", true},   // un-decorated on a body-less verb
+		{field("payload"), true, "body", false}, // un-decorated on a body verb
+	}
+	for _, c := range cases {
+		kind, auto := RequestFieldBinding(c.f, paths, c.bodyVerb)
+		if kind != c.kind || auto != c.auto {
+			t.Errorf("RequestFieldBinding(%q, bodyVerb=%v) = (%q,%v), want (%q,%v)", c.f.Name, c.bodyVerb, kind, auto, c.kind, c.auto)
+		}
+	}
+}
+
+// ---------- WireName (shared with codegen) ----------
+
+func TestWireName(t *testing.T) {
+	mk := func(field, dec, arg string) *ast.Field {
+		d := &ast.Decorator{Name: dec}
+		if arg != "" {
+			d.Args = []*ast.DecoratorArg{{Value: &ast.StringLit{Value: arg}}}
+		}
+		return &ast.Field{Name: field, Decorators: []*ast.Decorator{d}}
+	}
+	if got := WireName(mk("traceId", "header", "X-Trace-Id"), "header"); got != "X-Trace-Id" {
+		t.Errorf("explicit arg should win: got %q, want X-Trace-Id", got)
+	}
+	if got := WireName(mk("page", "query", ""), "query"); got != "page" {
+		t.Errorf("no arg falls back to field name: got %q, want page", got)
+	}
+	if got := WireName(mk("traceId", "header", "X-Trace-Id"), "query"); got != "traceId" {
+		t.Errorf("a wrong-kind arg must not leak: got %q, want traceId", got)
+	}
+	if got := WireName(nil, "query"); got != "" {
+		t.Errorf("nil field: got %q, want empty", got)
+	}
+}
+
 // ---------- Level rendering ----------
 
 func TestLevelName(t *testing.T) {
@@ -381,12 +470,13 @@ func TestCodeOnBindingType(t *testing.T) {
 		src   string
 		want  string
 	}{
-		// @path is the strictest binding: string-shaped, non-optional,
-		// non-array. Numerics (`int`/`bool`/`float`) must come in via
-		// a string scalar / enum if they belong in the URL.
-		{"non-string on @path", `type X { id int @path }`, "@path requires"},
-		{"optional string on @path", `type X { id string? @path }`, "@path requires"},
-		{"array string on @path", `type X { id string[] @path }`, "@path requires"},
+		// @path accepts the same wire-bindable shapes as @query (string /
+		// bool / int* / uint* / float*, or a scalar / enum over one) but
+		// never an optional (a route always supplies the segment), an
+		// array, or a map / struct / generic.
+		{"map on @path", `type X { id map<string, int> @path }`, "@path requires"},
+		{"optional on @path", `type X { id string? @path }`, "@path requires"},
+		{"array on @path", `type X { id string[] @path }`, "@path requires"},
 		// Cookie arrays are nonsense (cookies are single-value per name).
 		{"array on @cookie", `type X { ids string[] @cookie }`, "@cookie cannot bind to an array"},
 		// Maps / structs / generic instantiations never bind to wire-string sources.
@@ -398,9 +488,6 @@ type X { p P @query }`, "@query requires"},
 type X { ps P[] @query }`, "@query requires"},
 		{"generic instance on @query", `type Page<T> { items T[] }
 type X { p Page<string> @query }`, "@query requires"},
-		// Optional non-string primitives: zero-sentinel convention applies.
-		{"optional int on @query", `type X { limit int? @query }`, "@query requires"},
-		{"optional bool on @cookie", `type X { flag bool? @cookie }`, "@cookie requires"},
 		// `file` only binds to @form; rejected on every other wire.
 		{"file on @query", `type X { upload file @query }`, "@query requires"},
 		{"file on @header", `type X { upload file @header }`, "@header requires"},
@@ -417,6 +504,10 @@ func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
 	// Sanity: the binding-type check must NOT fire for well-formed
 	// shapes (plain string on @path / @header / @cookie).
 	mustClean(t, `type X { id string @path  auth string @header  sid string @cookie }`)
+	// Numeric / scalar / enum @path is accepted (parsed like @query).
+	mustClean(t, `scalar UserId int @gte(1)
+enum Kind { A B }
+type Y { id int @path  uid UserId @path  k Kind @path }`)
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
 }
 
@@ -440,6 +531,68 @@ service S { post Make /things { request Req } }`)
 service S { put Replace /things { request Req } }`)
 }
 
+// TestNullableAutoQueryRejected pins that a `@nullable` field with no
+// explicit binding is rejected on a body-less verb: it auto-binds to
+// @query (there is no body to decode into), where the pointer the
+// @nullable lowers to can't be assigned a wire string — the same reason
+// the explicit `@nullable @query` pairing is rejected.
+func TestNullableAutoQueryRejected(t *testing.T) {
+	expectError(t, `scalar Cents int @gte(0)
+type Req { c Cents @nullable }
+service S { get C /x { request Req } }`, CodeDecoratorConflict)
+	// On a body verb the field rides @body (a pointer is fine there), so
+	// the same shape is accepted.
+	mustClean(t, `scalar Cents int @gte(0)
+type Req { c Cents @nullable }
+service S { post C /x { request Req } }`)
+}
+
+// TestDuplicatePathVarRejected pins that a route repeating a path
+// variable name is rejected — net/http's ServeMux panics on a duplicate
+// wildcard at registration.
+func TestDuplicatePathVarRejected(t *testing.T) {
+	expectDiag(t, `type Resp { ok bool }
+type Req { id int @path }
+service S { get Get /items/{id}/x/{id} { request Req  response Resp } }`, CodeDuplicatePathVar)
+	mustClean(t, `type Resp { ok bool }
+type Req { id int @path  sub int @path }
+service S { get Get /items/{id}/x/{sub} { request Req  response Resp } }`)
+}
+
+// TestDuplicateWireNameRejected pins that two fields binding to the same
+// wire name on the same source are rejected (a duplicate OpenAPI
+// parameter); the same name on different sources is fine.
+func TestDuplicateWireNameRejected(t *testing.T) {
+	expectDiag(t, `type Req { a string @query("x")  b string @query("x") }
+type Resp { ok bool }
+service S { get Do /items { request Req  response Resp } }`, CodeDuplicateWireName)
+	mustClean(t, `type Req { a string @query("x")  b string @header("x") }
+type Resp { ok bool }
+service S { get Do /items { request Req  response Resp } }`)
+}
+
+// TestMixinPromotedBindingChecked pins that the method-level binding
+// checks see a field a request inherits through a mixin — a non-bindable
+// field that auto-binds to @query on a body-less verb, and a @body / @form
+// field on a non-body verb, are both rejected at design time even when
+// promoted via a mixin (previously only the codegen stage caught these,
+// with a position-less error the LSP never surfaced).
+func TestMixinPromotedBindingChecked(t *testing.T) {
+	expectError(t, `type Thing { x int }
+type Meta { data Thing }
+type Req { Meta }
+service S { get G /g { request Req } }`, CodeBindingType)
+
+	expectError(t, `type Meta { raw string @body }
+type Req { Meta }
+service S { get G /g { request Req } }`, CodeBindingVerb)
+
+	// A bindable promoted field (string auto-binds to @query) stays clean.
+	mustClean(t, `type Meta { q string }
+type Req { Meta }
+service S { get G /g { request Req } }`)
+}
+
 // TestBindingTypeWireAccepts pins that every HTTP wire-string source
 // (@query, @header, @cookie, @form) accepts the same primitive /
 // scalar / enum / array set. The runtime codegen then emits the
@@ -454,6 +607,12 @@ func TestBindingTypeWireAccepts(t *testing.T) {
 		{"float across wire", `type X { a float64 @query  b float64 @header  c float64 @cookie  d float64 @form }`},
 		{"bool across wire", `type X { a bool @query  b bool @header  c bool @cookie  d bool @form }`},
 		{"optional string", `type X { a string? @query  b string? @header  c string? @cookie  d string? @form }`},
+		{"optional int across wire", `type X { a int? @query  b int? @header  c int? @cookie  d int? @form }`},
+		{"optional float/bool/wide", `type X { a float64? @query  b bool? @header  c uint32? @cookie  d int64? @query }`},
+		{"optional int scalar", `scalar Cents int
+type X { a Cents? @query  b Cents? @header  c Cents? @cookie }`},
+		{"optional int enum", `enum Priority { Low = 1  High = 2 }
+type X { a Priority? @query  b Priority? @cookie }`},
 		{"array of primitive", `type X { a string[] @query  b string[] @header  c int[] @query  d string[] @form }`},
 		{"string scalar", `scalar Email string @format(email)
 type X { a Email @query  b Email @header  c Email @cookie  d Email @form  e Email? @header  f Email? @form }`},
@@ -744,13 +903,12 @@ type User { name string? @default(["x"]) }`, CodeDecoratorArgType)
 
 // ---------- @default + optional combination ----------
 
-func TestDefaultNeedsOptionalWarning(t *testing.T) {
-	// `@default(x)` on a non-optional field implies the field is
-	// allowed to be absent on the wire, so the type must carry `?`.
-	// `craftgo fmt` auto-fixes this on save; semantic warns until then.
-	d := expectDiag(t, `package design
-type ListReq { page int @default(1) }`, CodeDefaultNeedsOptional)
-	expectMessage(t, d, "@default", "optional")
+func TestDefaultWithoutOptionalIsClean(t *testing.T) {
+	// `@default(x)` on a non-optional field is correct as written: the
+	// codegen advertises it optional (not required) in OpenAPI and
+	// pre-fills it before decode, so no `?` is needed and nothing warns.
+	mustClean(t, `package design
+type ListReq { page int @default(1) }`)
 }
 
 func TestDefaultOnOptionalFieldClean(t *testing.T) {

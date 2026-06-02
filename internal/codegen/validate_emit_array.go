@@ -37,7 +37,10 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
 	msg := fmt.Sprintf(`"%s: %s %d"`, f.Name, label, n)
 	check := ifReturnf(cond, msg)
-	if f.Type.Optional {
+	// A nil slice / map at an optional or `@nullable` field is the valid
+	// "absent / null" state the OpenAPI null-union advertises, so skip the
+	// count check rather than reject it (`len(nil)` is 0).
+	if fieldNeedsNilGuard(f) {
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
 	return check

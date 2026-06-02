@@ -29,6 +29,46 @@ func runValidateGen(t *testing.T, src string) string {
 	return string(out)
 }
 
+func TestEnumCaseListDedupsCollidingMembers(t *testing.T) {
+	// A case-colliding enum (Active / active both PascalCase to "Active")
+	// emits deduped consts (StatusActive / StatusActive_2). The validate
+	// case-list must use the SAME deduped names — a non-deduped walk emits
+	// `case StatusActive, StatusActive`, a duplicate case that fails to
+	// compile.
+	src := runValidateGen(t, `package design
+enum Status { Active  active }
+type Req { s Status }`)
+	if !strings.Contains(src, "StatusActive_2") {
+		t.Errorf("validate case-list must reference the deduped const StatusActive_2:\n%s", src)
+	}
+	if strings.Contains(src, "case StatusActive, StatusActive:") {
+		t.Errorf("validate case-list emitted a duplicate (non-deduped) case:\n%s", src)
+	}
+}
+
+func TestRequiredStringEnumWithEmptyMember(t *testing.T) {
+	// A required string-enum field whose enum defines "" as a real member
+	// (`Unknown = ""`) must NOT emit a `== ""` presence check — "" is the Go
+	// zero value, so the check would reject that legal member before the
+	// value-set switch runs. Mirrors the int-0 guard.
+	src := runValidateGen(t, `package design
+enum Status { Unknown = ""  Active = "active" }
+type Item { status Status }`)
+	if strings.Contains(src, `v.Status == ""`) {
+		t.Errorf("required check must not reject the empty-string enum member:\n%s", src)
+	}
+}
+
+func TestRequiredStringEnumWithoutEmptyMember(t *testing.T) {
+	// A string enum with no "" member still emits the presence check.
+	src := runValidateGen(t, `package design
+enum Color { Red = "red"  Blue = "blue" }
+type Item { color Color }`)
+	if !strings.Contains(src, `v.Color == ""`) {
+		t.Errorf("required check should fire for a string enum with no empty member:\n%s", src)
+	}
+}
+
 func TestValidateRequired(t *testing.T) {
 	// Required-by-default: a non-optional field enforces non-null
 	// only - empty string is allowed unless paired with `@length` /
@@ -56,8 +96,13 @@ type X {
     b string @minLength(1)
     c string @maxLength(50)
 }`)
+	// String length counts Unicode characters (matching OpenAPI minLength /
+	// maxLength + a Postgres varchar), so the validator uses
+	// utf8.RuneCountInString, not the byte-counting len().
 	mustContainAll(t, src,
-		"len(v.A)",
+		"utf8.RuneCountInString(v.A)",
+		"utf8.RuneCountInString(v.B) < 1",
+		"utf8.RuneCountInString(v.C) > 50",
 	)
 }
 
@@ -302,7 +347,7 @@ error Forbidden AccessDenied {
 type X { id string }`)
 	mustContainAll(t, src,
 		"func (v *AccessDeniedBody) Validate() error",
-		"len(v.Reason)",
+		"utf8.RuneCountInString(v.Reason)",
 		"v.RetryAfter != nil",
 	)
 	mustParseGo(t, src)
@@ -612,7 +657,7 @@ type Contact { email string?  phone string? }`)
 func TestValidateMutuallyExclusive(t *testing.T) {
 	src := runValidateGen(t, `package design
 @mutuallyExclusive(["a", "b"])
-type T { a bool  b bool }`)
+type T { a bool?  b bool? }`)
 	if !strings.Contains(src, "mutuallyExclusive") {
 		t.Errorf("missing mutuallyExclusive message:\n%s", src)
 	}

@@ -5,7 +5,6 @@ package customerservice
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/customer-service"
 	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
@@ -17,16 +16,15 @@ import (
 func ListCustomers(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req shared.Pagination
-		if _v := r.URL.Query().Get("cursor"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				http.Error(w, "limit"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.Limit = int(_n)
+		if !server.RequirePresent(w, r, _q.Has("limit"), "limit", "query") {
+			return
+		}
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

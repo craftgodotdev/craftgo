@@ -20,10 +20,11 @@ func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			server.WriteValidationError(w, r, err)
 			return
 		}
-		if _v := r.URL.Query().Get("status"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("status"); _v != "" {
 			_w := types.OrderStatus(_v)
 			req.Status = &_w
 		}

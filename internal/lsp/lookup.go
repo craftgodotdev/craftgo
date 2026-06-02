@@ -421,23 +421,10 @@ func noDeclBetween(f *ast.File, from, to int) bool {
 }
 
 // primFromIdent maps a built-in primitive spelling to its semantic
-// category bit. Kept local to the LSP layer (mirroring semantic's own
-// primFromName) so this package does not reach into semantic for an
-// unexported helper.
+// category bit. Delegates to [semantic.PrimFromName] so the editor's
+// primitive classification can't drift from the analyser's.
 func primFromIdent(name string) semantic.Prims {
-	switch name {
-	case "string", "bytes":
-		return semantic.PrimString
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
-		return semantic.PrimNumber
-	case "bool":
-		return semantic.PrimBool
-	case "file":
-		return semantic.PrimFile
-	}
-	return 0
+	return semantic.PrimFromName(name)
 }
 
 // fieldAtCursor returns the field whose row matches the cursor's line

@@ -114,6 +114,15 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, uses map[str
 		return ""
 	}
 	n, ok := intArg(d.Args[0])
+	if !ok {
+		// Accept a whole-valued float literal (`@multipleOf(5.0)`): the
+		// OpenAPI side already emits it, and `%` needs an integer divisor,
+		// so the two stages would otherwise disagree (spec advertises it,
+		// runtime drops it).
+		if fl, fok := d.Args[0].Value.(*ast.FloatLit); fok && fl.Value == float64(int64(fl.Value)) {
+			n, ok = int64(fl.Value), true
+		}
+	}
 	if !ok || n == 0 {
 		return ""
 	}

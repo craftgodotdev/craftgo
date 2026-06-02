@@ -82,11 +82,13 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			}
 			ts := p.typeRefString(f.Type)
 			// Auto-fix: a field carrying `@default(...)` is conceptually
-			// optional - the default fires when the value is absent. If
-			// the author hasn't typed `?`, the formatter adds it on save
-			// so the source matches the runtime contract (and the
-			// `decorator/default-needs-optional` warning clears).
-			if f.Type != nil && !f.Type.Optional && fieldHasDefault(f) {
+			// optional — the default fires when the value is absent or null.
+			// If the author hasn't typed `?`, the formatter adds it on save so
+			// the source makes the optionality explicit. A `@path` field is
+			// exempt: a path segment is always present, so the semantic gate
+			// rejects an optional `@path`, and adding `?` would rewrite valid
+			// source into source `craftgo gen` refuses.
+			if f.Type != nil && !f.Type.Optional && fieldHasDefault(f) && !ast.HasDecorator(f.Decorators, "path") {
 				ts += "?"
 			}
 			typeStr[f] = ts
@@ -98,8 +100,10 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
+			p.looseBeforeMember(v.Pos.Line)
 			p.alignedField(v, maxName, maxType, typeStr[v])
 		case *ast.Mixin:
+			p.looseBeforeMember(v.Pos.Line)
 			p.indent()
 			p.NamedTypeRef(v.Ref)
 			p.nl()
@@ -109,10 +113,30 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	}
 }
 
+// looseBeforeMember emits any free-floating `//` block the lexer dropped
+// from a body member's leading Doc (a section-separator comment with a
+// blank line on each side). buildLooseFromComments anchors such a block to
+// the member's source line; without this lookup the comment is captured
+// but never printed, silently lost on `craftgo fmt`. A blank line precedes
+// it to preserve the section break.
+func (p *Printer) looseBeforeMember(line int) {
+	loose, ok := p.loose[line]
+	if !ok {
+		return
+	}
+	// Blank line on BOTH sides keeps the section-separator shape and makes
+	// the result re-parse as the same loose block (idempotent) — without the
+	// trailing blank, a second fmt would read the comment as the next
+	// member's leading doc and shift the layout.
+	p.nl()
+	p.Doc(loose)
+	p.nl()
+}
+
 // fieldHasDefault reports whether f carries a `@default(...)` decorator.
-// Used by the type-body printer to auto-add `?` to the rendered type
-// when the author hasn't marked the field optional, since `@default`
-// only fires when the value is absent.
+// The type-body printer uses it to auto-add `?` to the rendered type when
+// the author hasn't marked the field optional, since `@default` makes the
+// field optional (the default fires on an absent or null value).
 func fieldHasDefault(f *ast.Field) bool {
 	if f == nil {
 		return false
@@ -142,20 +166,28 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 	p.write(f.Name)
 	p.write(strings.Repeat(" ", maxName-len(f.Name)+1))
 	p.write(ts)
-	decoratorCarriesTrailing := false
+	var decTrailing []string
 	if len(f.Decorators) > 0 {
 		p.write(strings.Repeat(" ", maxType-len(ts)+1))
 		for i, dec := range f.Decorators {
 			if i > 0 {
 				p.write(" ")
 			}
-			p.Decorator(dec)
+			// Render WITHOUT the inline trailing so a comment on a non-last
+			// decorator does not swallow the decorators that follow it on the
+			// collapsed line; collect it to re-emit at the end instead.
+			p.decoratorCore(dec)
 			if dec.TrailingDoc != "" {
-				decoratorCarriesTrailing = true
+				decTrailing = append(decTrailing, dec.TrailingDoc)
 			}
 		}
 	}
-	p.writeSourceTrailing(f.Pos.Line, decoratorCarriesTrailing)
+	if len(decTrailing) > 0 {
+		p.write("  // ")
+		p.write(strings.Join(decTrailing, " "))
+	} else {
+		p.writeSourceTrailing(f.Pos.Line, false)
+	}
 	p.nl()
 }
 

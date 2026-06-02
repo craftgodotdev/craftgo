@@ -46,8 +46,8 @@ func TestPrimFromName(t *testing.T) {
 		{"User", 0},
 	}
 	for _, c := range cases {
-		if got := primFromName(c.in); got != c.want {
-			t.Errorf("primFromName(%q) = %v, want %v", c.in, got, c.want)
+		if got := PrimFromName(c.in); got != c.want {
+			t.Errorf("PrimFromName(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
 }

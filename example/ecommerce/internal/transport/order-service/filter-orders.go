@@ -5,7 +5,6 @@ package orderservice
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/order-service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
@@ -18,47 +17,43 @@ func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.FilterOrdersReq
 		req.Status = types.OrderStatus(r.PathValue("status"))
-		req.Method = types.PaymentMethod(r.URL.Query().Get("method"))
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				http.Error(w, "limit"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.Limit = int(_n)
+		_q := r.URL.Query()
+		if !server.RequirePresent(w, r, _q.Has("method"), "method", "query") {
+			return
 		}
-		if _v := r.URL.Query().Get("maxPrice"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				http.Error(w, "maxPrice"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.MaxPrice = int(_n)
+		req.Method = types.PaymentMethod(_q.Get("method"))
+		if !server.RequirePresent(w, r, _q.Has("limit"), "limit", "query") {
+			return
+		}
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
+		}
+		if !server.RequirePresent(w, r, _q.Has("maxPrice"), "maxPrice", "query") {
+			return
+		}
+		if !server.BindValue(w, r, "maxPrice", "int", _q.Get("maxPrice"), &req.MaxPrice, server.ParseSigned[int]) {
+			return
 		}
 		if _v := r.Header.Get("idemKey"); _v != "" {
 			req.IdemKey = &_v
 		}
-		if _v := r.Header.Get("retryAfter"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				http.Error(w, "retryAfter"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.RetryAfter = int(_n)
+		if !server.RequirePresent(w, r, len(r.Header.Values("retryAfter")) > 0, "retryAfter", "header") {
+			return
+		}
+		if !server.BindValue(w, r, "retryAfter", "int", r.Header.Get("retryAfter"), &req.RetryAfter, server.ParseSigned[int]) {
+			return
 		}
 		if c, err := r.Cookie("lastSeen"); err == nil {
 			if _v := c.Value; _v != "" {
 				req.LastSeen = &_v
 			}
 		}
+		if !server.RequirePresent(w, r, server.CookiePresent(r, "tier"), "tier", "cookie") {
+			return
+		}
 		if c, err := r.Cookie("tier"); err == nil {
-			if _v := c.Value; _v != "" {
-				_n, _err := strconv.ParseInt(_v, 10, 64)
-				if _err != nil {
-					http.Error(w, "tier"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-					return
-				}
-				req.Tier = int(_n)
+			if !server.BindValue(w, r, "tier", "int", c.Value, &req.Tier, server.ParseSigned[int]) {
+				return
 			}
 		}
 		if err := req.Validate(); err != nil {

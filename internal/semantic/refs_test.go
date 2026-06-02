@@ -71,6 +71,70 @@ func TestMutuallyExclusiveFieldMissing(t *testing.T) {
 type T { a string? }`, CodeDecoratorRef)
 }
 
+func TestCrossFieldRequiresOptionalField(t *testing.T) {
+	// A plain (non-optional, non-nullable) field has no unambiguous
+	// present/absent state for the cross-field check: OpenAPI uses
+	// key-presence, the runtime uses zero-value emptiness.
+	d := expectDiag(t, `@requiresOneOf(email, phone)
+type Contact { email string?  phone string }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "phone")
+}
+
+func TestCrossFieldNullableFieldAccepted(t *testing.T) {
+	// `@nullable` is pointer-backed too, so it has a well-defined presence
+	// and satisfies the cross-field requirement alongside `?`.
+	mustClean(t, `@mutuallyExclusive(a, b)
+type T { a string @nullable  b string? }`)
+}
+
+func TestCrossFieldRejectsWireBoundMember(t *testing.T) {
+	// A @query member is excluded from the JSON body, so a body-level group
+	// referencing it would advertise a property the body never carries.
+	d := expectDiag(t, `@requiresOneOf(q1, q2)
+type Req { q1 string? @query  q2 string? @query }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "q1")
+}
+
+func TestCrossFieldRejectsDefaultMember(t *testing.T) {
+	// A @default member is always present at runtime (pre-filled), so the
+	// group is a no-op the OpenAPI contradicts.
+	d := expectDiag(t, `@requiresOneOf(a, b)
+type Req { a string? @default("x")  b string? }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "a")
+}
+
+func TestCrossFieldRejectsNilableNonPointerMember(t *testing.T) {
+	// A slice / map member's runtime presence is emptiness (`len() > 0`), and a
+	// raw `bytes` / `any` member is always treated as present — neither matches
+	// the group's OpenAPI present-and-non-null, which counts an empty `[]` as
+	// present and a null as absent. All four are nilable-but-not-pointer in Go,
+	// so they are rejected.
+	d := expectDiag(t, `@requiresOneOf(tags, name)
+type Req { tags string[]?  name string? }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "tags")
+
+	d = expectDiag(t, `@mutuallyExclusive(meta, name)
+type Req { meta map<string, string>?  name string? }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "meta")
+
+	d = expectDiag(t, `@requiresOneOf(blob, name)
+type Req { blob bytes?  name string? }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "blob")
+
+	d = expectDiag(t, `@mutuallyExclusive(payload, name)
+type Req { payload any?  name string? }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "payload")
+}
+
+func TestCrossFieldRejectsSensitiveMember(t *testing.T) {
+	// A @sensitive member is server-only (json:"-"), so it can't ride a
+	// body-level cross-field group — the OpenAPI would name a property the
+	// public schema never carries.
+	d := expectDiag(t, `@mutuallyExclusive(secret, b)
+type Req { secret string? @sensitive  b string? }`, CodeCrossFieldNotOptional)
+	expectMessage(t, d, "secret")
+}
+
 // ---------- @security with Options ----------
 
 func TestSecurityRefSkippedWithoutOptions(t *testing.T) {

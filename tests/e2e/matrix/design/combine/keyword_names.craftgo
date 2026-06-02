@@ -1,0 +1,23 @@
+// Reserved words serve as field and enum-value names (contextual
+// keywords): a type body holds only fields and mixins, so a leading
+// keyword is a field name, and an enum body holds only value names.
+package combine
+
+// DiscKind is an enum whose first value reuses the `type` keyword.
+enum DiscKind {
+	type
+	combo
+	standalone
+}
+
+// KeywordFieldNames names fields after reserved words. Each lowers to an
+// exported Go field (`Type`, `Error`, `Map`, `Delete`) with the keyword
+// as its JSON tag; `map` as a field name coexists with `map<>` as a type.
+type KeywordFieldNames {
+	type   string @pattern("^(cross_sell|up_sell|combo)$")
+	error  string?
+	map    string?
+	delete bool
+	counts map<string, int>
+	kind   DiscKind
+}

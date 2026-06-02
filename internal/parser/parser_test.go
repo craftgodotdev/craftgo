@@ -362,6 +362,43 @@ func TestTypeMemberNonIdent(t *testing.T) {
 	}
 }
 
+func TestKeywordFieldNames(t *testing.T) {
+	// Reserved words are field names in a type body (contextual keywords).
+	td := mustParseTypeDecl(t, `type X {
+		type   string
+		error  string
+		map    string
+		delete bool
+	}`)
+	want := []string{"type", "error", "map", "delete"}
+	if len(td.Body) != len(want) {
+		t.Fatalf("field count = %d, want %d", len(td.Body), len(want))
+	}
+	for i, w := range want {
+		f, ok := td.Body[i].(*ast.Field)
+		if !ok {
+			t.Fatalf("member %d is %T, want *ast.Field", i, td.Body[i])
+		}
+		if f.Name != w {
+			t.Errorf("field %d name = %q, want %q", i, f.Name, w)
+		}
+	}
+}
+
+func TestKeywordEnumValues(t *testing.T) {
+	vals := mustParse(t, `enum Kind { type  map  delete }`).
+		Decls[0].(*ast.EnumDecl).EnumValues()
+	want := []string{"type", "map", "delete"}
+	if len(vals) != len(want) {
+		t.Fatalf("value count = %d, want %d", len(vals), len(want))
+	}
+	for i, w := range want {
+		if vals[i].Name != w {
+			t.Errorf("value %d = %q, want %q", i, vals[i].Name, w)
+		}
+	}
+}
+
 func TestEmptyTypeBody(t *testing.T) {
 	f := mustParse(t, `type X {}`)
 	if len(f.Decls[0].(*ast.TypeDecl).Body) != 0 {

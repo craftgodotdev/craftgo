@@ -111,6 +111,16 @@ func TestExampleRejectsObject(t *testing.T) {
 	expectError(t, `type X { meta any? @example({a: 1, b: "x"}) }`, CodeDecoratorArgType)
 }
 
+func TestPatternRejectsInvalidRegex(t *testing.T) {
+	// An uncompilable regex would reach regexp.MustCompile in the
+	// generated validator and panic at package init.
+	expectError(t, `type X { bad string @pattern("(unclosed") }`, CodeDecoratorArgType)
+}
+
+func TestPatternAcceptsValidRegex(t *testing.T) {
+	mustClean(t, `type X { ok string @pattern("^[a-z]+$") }`)
+}
+
 // TestExampleAcceptsLiteralsAndArrays confirms the kept forms: scalar
 // literals and arrays of scalars (the one non-scalar form that stays
 // legal after the object-example rejection).

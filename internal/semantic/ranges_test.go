@@ -40,6 +40,15 @@ func TestMultipleOfZeroRejected(t *testing.T) {
 
 func TestMultipleOfNonZeroOK(t *testing.T) {
 	mustClean(t, `type X { n int @multipleOf(2) }`)
+	// A whole-valued float divisor is fine (folds to the int divisor).
+	mustClean(t, `type X { n int @multipleOf(5.0) }`)
+}
+
+func TestMultipleOfFractionalOnIntRejected(t *testing.T) {
+	// A fractional divisor can't be enforced by integer modulus, yet the
+	// OpenAPI would advertise it — reject so spec and validator agree.
+	expectDiag(t, `type X { n int @multipleOf(2.5) }`, CodeDecoratorTypeMismatch)
+	expectDiag(t, "scalar Step int @multipleOf(2.5)", CodeDecoratorTypeMismatch)
 }
 
 // ---------- @negative on unsigned ----------
@@ -301,7 +310,7 @@ func TestRangesNilDecoratorTolerated(t *testing.T) {
 	a.checkBodyRanges([]ast.TypeMember{
 		// Mixin members are skipped.
 		&ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Other"}}}},
-	})
+	}, nil)
 	if len(a.diags) != 0 {
 		t.Errorf("expected no diags, got %v", a.diags)
 	}
@@ -342,6 +351,9 @@ func TestUniqueItemsNonComparableRejected(t *testing.T) {
 	expectDiag(t, `type T { a any[] @uniqueItems }`, CodeDecoratorTypeMismatch)
 	expectDiag(t, "type NC { rows string[] }\ntype T { s NC[] @uniqueItems }", CodeDecoratorTypeMismatch)
 	expectDiag(t, "type Page<X> { items X[]  total int }\ntype T { p Page<string>[] @uniqueItems }", CodeDecoratorTypeMismatch)
+	// Comparable only after substituting the type argument: Pair<bytes>
+	// holds `bytes` fields, so the dedupe map[Pair[[]byte]] won't compile.
+	expectDiag(t, "type Pair<X> { a X  b X }\ntype T { ps Pair<bytes>[] @uniqueItems }", CodeDecoratorTypeMismatch)
 }
 
 func TestUniqueItemsComparableOK(t *testing.T) {
@@ -350,4 +362,35 @@ func TestUniqueItemsComparableOK(t *testing.T) {
 	mustClean(t, "scalar Tag string @minLength(1)\ntype T { tags Tag[] @uniqueItems }")
 	mustClean(t, "enum Color { Red  Blue }\ntype T { cs Color[] @uniqueItems }")
 	mustClean(t, "type Pt { x int  y int }\ntype T { pts Pt[] @uniqueItems }")
+	// A generic instance over a comparable argument stays legal.
+	mustClean(t, "type Pair<X> { a X  b X }\ntype T { ps Pair<int>[] @uniqueItems }")
+}
+
+// ---------- map key comparability ----------
+
+func TestMapKeyNotMarshalableRejected(t *testing.T) {
+	// A generic type-parameter key lowers to `map[K any]` — invalid Go.
+	expectDiag(t, "type Item { id int }\ntype Index<K> { byKey map<K, Item> }", CodeMapKeyType)
+	// A struct with a slice field is not comparable, so `map[Item]...` fails.
+	expectDiag(t, "type Item { tags string[] }\ntype Bad { m map<Item, string> }", CodeMapKeyType)
+	// An all-comparable struct key COMPILES but json.Marshal can't serialise
+	// it (JSON object keys are strings), so it is rejected too.
+	expectDiag(t, "type Key { id int  region string }\ntype Bag { m map<Key, string> }", CodeMapKeyType)
+	// A bool / float key is comparable and compiles, but json.Marshal rejects
+	// it at runtime ("unsupported type"), so it is rejected at design time.
+	expectDiag(t, "type V { x int }\ntype Bag { m map<bool, V> }", CodeMapKeyType)
+	expectDiag(t, "type V { x int }\ntype Bag { m map<float64, V> }", CodeMapKeyType)
+	// A scalar over a bool / float primitive resolves to the same
+	// non-marshalable key and is rejected.
+	expectDiag(t, "scalar Flag bool\ntype V { x int }\ntype Bag { m map<Flag, V> }", CodeMapKeyType)
+	expectDiag(t, "scalar Ratio float64\ntype V { x int }\ntype Bag { m map<Ratio, V> }", CodeMapKeyType)
+}
+
+func TestMapKeyMarshalableOK(t *testing.T) {
+	mustClean(t, "type Item { id int }\ntype Bag { m map<string, Item> }")
+	// A string- / int-backed scalar and an enum are valid string-keys.
+	mustClean(t, "scalar UserID int @gte(1)\ntype Item { id int }\ntype Bag { m map<UserID, Item> }")
+	mustClean(t, "enum Color { Red  Blue }\ntype Item { id int }\ntype Bag { m map<Color, Item> }")
+	// Nested maps with string / int keys.
+	mustClean(t, "type V { x int }\ntype Bag { m map<string, map<int, V>> }")
 }

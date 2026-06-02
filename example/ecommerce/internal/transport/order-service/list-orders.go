@@ -5,7 +5,6 @@ package orderservice
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/order-service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
@@ -17,18 +16,17 @@ import (
 func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
-		if _v := r.URL.Query().Get("cursor"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				http.Error(w, "limit"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.Limit = int(_n)
+		if !server.RequirePresent(w, r, _q.Has("limit"), "limit", "query") {
+			return
 		}
-		if _v := r.URL.Query().Get("status"); _v != "" {
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
+		}
+		if _v := _q.Get("status"); _v != "" {
 			_w := types.OrderStatus(_v)
 			req.Status = &_w
 		}

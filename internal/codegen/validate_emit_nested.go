@@ -42,16 +42,17 @@ func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
 }
 
 // enumCaseList renders the comma-separated list of fully-qualified
-// constant names matching `<EnumName><PascalCase(ValueName)>`, the same
-// naming convention `enums.go` uses. When the enum lives in a sibling
-// DSL package, qualifier carries the Go package prefix (e.g.
-// `"shared."`) so the case list compiles against the cross-package
-// constants.
+// constant names, read from the shared enumMembers resolver so the case
+// list uses the SAME deduped const names the enum declaration emits — a
+// case-colliding enum (`Active` / `active`) yields `EActive, EActive_2`,
+// not the `EActive, EActive` a non-deduped walk produced (which failed to
+// compile). When the enum lives in a sibling DSL package, qualifier
+// carries the Go package prefix (e.g. `"shared."`).
 func enumCaseList(ed *ast.EnumDecl, qualifier string) string {
-	enumVals := ed.EnumValues()
-	parts := make([]string, 0, len(enumVals))
-	for _, v := range enumVals {
-		parts = append(parts, qualifier+ed.Name+GoFieldName(v.Name))
+	members := enumMembers(ed)
+	parts := make([]string, 0, len(members))
+	for _, m := range members {
+		parts = append(parts, qualifier+m.ConstName)
 	}
 	return strings.Join(parts, ", ")
 }
@@ -70,18 +71,28 @@ func enumCaseList(ed *ast.EnumDecl, qualifier string) string {
 // helper hands us the value-form expression for each form; we wrap it
 // with `&` for arrays/single, but optional fields are already a `*T`
 // so we use the pointer access as-is.
-func typeParamValidateCall(f *ast.Field) string {
+func typeParamValidateCall(f *ast.Field, uses map[string]bool) string {
 	access := "v." + GoFieldName(f.Name)
+	uses["reflect"] = true
 	return shape(f, access, func(elem string) string {
 		probe := "&" + elem
 		if f.Type.Optional {
 			probe = access
 		}
+		// The direct probe handles a T that itself has Validate() (struct /
+		// scalar / enum) with no reflection. When it doesn't — T is
+		// instantiated as a composite (map / slice) whose ELEMENT carries
+		// the constraint — fall back to validateValue, which walks the
+		// composite and validates each element. Without the fallback a
+		// `Page<map<string, Item>>` advertises Item's constraints in OpenAPI
+		// but never enforces them.
 		return fmt.Sprintf(`if vv, ok := any(%s).(interface{ Validate() error }); ok {
 if err := vv.Validate(); err != nil {
 return err
 }
-}`, probe)
+} else if err := validateValue(%s); err != nil {
+return err
+}`, probe, elem)
 	})
 }
 
@@ -122,28 +133,34 @@ return err
 		if !keyHas && !valHas {
 			return ""
 		}
-		var stmts []string
-		if keyHas {
-			stmts = append(stmts, body("key"))
-		}
-		if valHas {
-			// Value-side shape: arrays of struct elements need nested
-			// for-loops; optionals need a nil-guard; otherwise call
-			// directly.
-			switch {
-			case v.Array:
-				depth := v.ArrayDepth
-				if depth < 1 {
-					depth = 1
-				}
-				stmts = append(stmts, emitNestedForLoops("val", depth, body))
-			case v.Optional:
-				stmts = append(stmts, fmt.Sprintf("if val != nil {\n%s\n}", body("val")))
-			default:
-				stmts = append(stmts, body("val"))
+		// mapWalk ranges ONE map (at mapAccess), calling Validate() on
+		// whichever of key / value carries one. Map keys can't be array /
+		// optional / map in the grammar, so the key side stays flat; the
+		// value side runs through [nestedValueChecks], which handles a value
+		// that is itself an array, an optional, or a NESTED map.
+		mapWalk := func(mapAccess string) string {
+			var stmts []string
+			if keyHas {
+				stmts = append(stmts, body("key"))
 			}
+			if valHas {
+				stmts = append(stmts, nestedValueChecks(v, "val", 0, pkg, r))
+			}
+			return mapRangeLoop(mapAccess, keyHas, valHas, strings.Join(stmts, "\n"))
 		}
-		return mapRangeLoop(access, keyHas, valHas, strings.Join(stmts, "\n"))
+		// `map<K,V>[]` (and deeper, `map<K,V>[][]`) carries BOTH Map and
+		// Array on the SAME TypeRef. Peel each array dimension with an index
+		// loop first, then walk the map at the leaf — ranging `access`
+		// directly would iterate the SLICE as if it were a map and call
+		// Validate() on a whole map element.
+		if f.Type.Array {
+			depth := f.Type.ArrayDepth
+			if depth < 1 {
+				depth = 1
+			}
+			return emitNestedForLoops(access, depth, mapWalk)
+		}
+		return mapWalk(access)
 	}
 	if f.Type.Named == nil {
 		return ""
@@ -182,10 +199,78 @@ return err
 // through scalar-decorator emission elsewhere, so this only inspects
 // the value side.
 func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
-	if t == nil || t.Map != nil || t.Named == nil {
+	if t == nil {
+		return false
+	}
+	if t.Map != nil {
+		// A map value can itself be a map (`map<K, map<K2, V>>`): the inner
+		// key / value may carry validators that still need walking, so
+		// recurse rather than treating every map as validator-free.
+		return typeRefHasValidator(t.Map.Key, pkg, r) || typeRefHasValidator(t.Map.Value, pkg, r)
+	}
+	if t.Named == nil {
 		return false
 	}
 	return typeRefNamedHasValidator(t.Named, pkg, r)
+}
+
+// nestedValueChecks recursively emits Validate() dispatch for a value of
+// type t reached through `access` — used for a map value, which may itself
+// be a nested map, an array, an optional, or a validator-carrying named
+// type. depth namespaces the loop variables so nested ranges don't shadow.
+// Returns "" when nothing under t carries a validator.
+func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.Package, r *ProjectResolver) string {
+	if t == nil || !typeRefHasValidator(t, pkg, r) {
+		return ""
+	}
+	valErr := func(a string) string {
+		return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", a)
+	}
+	switch {
+	case t.Array:
+		// An array (incl. `map<K,V>[]`, which carries BOTH Array and Map on
+		// the same TypeRef): peel ONE array dimension first, then recurse on
+		// the element — checking Map before Array would range the slice as a
+		// map.
+		iv := fmt.Sprintf("i%d", depth)
+		elem := *t
+		elem.Optional = false
+		if elem.ArrayDepth > 0 {
+			elem.ArrayDepth--
+		}
+		if elem.ArrayDepth == 0 {
+			elem.Array = false
+		}
+		return fmt.Sprintf("for %s := range %s {\n%s\n}", iv, access,
+			nestedValueChecks(&elem, fmt.Sprintf("%s[%s]", access, iv), depth+1, pkg, r))
+	case t.Map != nil:
+		kHas := typeRefHasValidator(t.Map.Key, pkg, r)
+		vHas := typeRefHasValidator(t.Map.Value, pkg, r)
+		kv := fmt.Sprintf("k%d", depth)
+		vv := fmt.Sprintf("v%d", depth)
+		var inner []string
+		if kHas {
+			inner = append(inner, valErr(kv))
+		}
+		if vHas {
+			inner = append(inner, nestedValueChecks(t.Map.Value, vv, depth+1, pkg, r))
+		}
+		body := strings.Join(inner, "\n")
+		switch {
+		case kHas && vHas:
+			return fmt.Sprintf("for %s, %s := range %s {\n%s\n}", kv, vv, access, body)
+		case kHas:
+			return fmt.Sprintf("for %s := range %s {\n%s\n}", kv, access, body)
+		default:
+			return fmt.Sprintf("for _, %s := range %s {\n%s\n}", vv, access, body)
+		}
+	case t.Optional:
+		base := *t
+		base.Optional = false
+		return fmt.Sprintf("if %s != nil {\n%s\n}", access, nestedValueChecks(&base, access, depth, pkg, r))
+	default:
+		return valErr(access)
+	}
 }
 
 // typeRefNamedHasValidator is the named-ref core of typeRefHasValidator,

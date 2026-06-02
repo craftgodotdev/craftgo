@@ -20,14 +20,18 @@ func (a *analyzer) checkServiceMethods() {
 			} else {
 				seenName[m.Name] = m.Pos
 			}
-			// Key the collision by path SHAPE — `/x/{id}` and `/x/{id1}`
-			// resolve to the same HTTP route, so the differing param
-			// name must not let them slip past. The displayed route
-			// keeps the literal form for clarity.
-			key := m.Verb + " " + PathShape(m.Path)
+			// Key the collision by the RESOLVED route shape: the full route
+			// (prefix / group / basePath joined, with the kebab method-name
+			// fallback applied for a pathless method) with param names stripped
+			// to `{}`. This matches the cross-service check, so two pathless
+			// methods of one verb — whose auto-routes differ (`/ping` vs
+			// `/health`) — no longer collide on an empty path, while `/x/{id}`
+			// and `/x/{id1}` still do.
+			route := a.resolveMethodPath(si.Primary, m)
+			key := m.Verb + " " + routeShape(route)
 			if prev, ok := seenRoute[key]; ok {
 				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateRoute,
-					"duplicate route %q", m.Verb+" "+PathString(m.Path))
+					"duplicate route %q", m.Verb+" "+route)
 				d.Related = related(prev, "first declared here")
 			} else {
 				seenRoute[key] = m.Pos

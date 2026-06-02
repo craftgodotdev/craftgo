@@ -2,11 +2,6 @@
 components:
   schemas:
     HealthReq:
-      properties:
-        verbose:
-          type: boolean
-      required:
-      - verbose
       type: object
     HealthResp:
       properties:

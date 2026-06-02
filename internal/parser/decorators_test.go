@@ -224,3 +224,29 @@ type T {
 		}
 	}
 }
+
+// TestParseScalarDoesNotStealNextDecorator pins that a scalar declaration
+// only consumes decorators on its own line: a decorator on the following
+// line is the leading decorator of the next declaration, not a trailing
+// decorator of the scalar.
+func TestParseScalarDoesNotStealNextDecorator(t *testing.T) {
+	f := parseSrc(t, `package design
+scalar Email string
+@requiresOneOf(primary, fallback)
+type Pair { primary string?  fallback string? }`)
+	sd := f.Decls[0].(*ast.ScalarDecl)
+	if len(sd.Decorators) != 0 {
+		t.Fatalf("scalar Email should carry no decorators, got %d (%v)", len(sd.Decorators), sd.Decorators)
+	}
+	td := f.Decls[1].(*ast.TypeDecl)
+	if len(td.Decorators) != 1 || td.Decorators[0].Name != "requiresOneOf" {
+		t.Fatalf("type Pair should carry @requiresOneOf, got %v", td.Decorators)
+	}
+	// A same-line trailing decorator still belongs to the scalar.
+	f2 := parseSrc(t, `package design
+scalar Email string @format("email")`)
+	sd2 := f2.Decls[0].(*ast.ScalarDecl)
+	if len(sd2.Decorators) != 1 || sd2.Decorators[0].Name != "format" {
+		t.Fatalf("scalar Email should carry @format, got %v", sd2.Decorators)
+	}
+}

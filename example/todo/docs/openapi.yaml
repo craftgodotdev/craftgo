@@ -12,7 +12,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/TodoPriority'
           - type: "null"
-          default: Medium
+          default: medium
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -42,7 +42,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/TodoPriority'
           - type: "null"
-          default: Medium
+          default: medium
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -66,36 +66,10 @@ components:
     DeleteTodoRespBody:
       $ref: '#/components/schemas/OkResp'
     GetTodoReq:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     GetTodoRespBody:
       $ref: '#/components/schemas/Todo'
     ListTodosReq:
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        status:
-          anyOf:
-          - $ref: '#/components/schemas/TodoStatus'
-          - type: "null"
-        tag:
-          anyOf:
-          - $ref: '#/components/schemas/Tag'
-          - type: "null"
-      required:
-      - limit
       type: object
     ListTodosRespBody:
       properties:
@@ -143,7 +117,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/TodoPriority'
           - type: "null"
-          default: Medium
+          default: medium
         status:
           $ref: '#/components/schemas/TodoStatus'
         tags:
@@ -190,10 +164,6 @@ components:
       type: string
     UpdateTodoReq:
       properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
         notes:
           maxLength: 2000
           type:
@@ -213,8 +183,6 @@ components:
           type:
           - string
           - "null"
-      required:
-      - id
       type: object
     UpdateTodoReqBody:
       properties:

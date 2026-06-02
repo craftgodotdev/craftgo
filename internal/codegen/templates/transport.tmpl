@@ -43,12 +43,15 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- end}}
 {{- if .BodyDecode}}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			server.WriteValidationError(w, r, err)
 			return
 		}
 {{- end}}
 {{- range .PathParams}}
 		{{.Bind}}
+{{- end}}
+{{- if .QueryParams}}
+		_q := r.URL.Query()
 {{- end}}
 {{- range .QueryParams}}
 		{{.Bind}}

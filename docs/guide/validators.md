@@ -132,12 +132,16 @@ type Post {
 type Contact {
     email     string?
     phone     string?
-    personal  bool
-    business  bool
+    personal  bool?
+    business  bool?
 }
 ```
 
 These attach to the type, not a field. The validator surfaces a single message.
+Every referenced field must be optional (`?`) or `@nullable` — a plain field, a
+wire parameter (`@query` / `@header` / …), a `@default` or `@sensitive` field,
+and a collection are rejected, since their runtime presence can't match the
+spec's present-and-non-null check.
 
 ## Optional fields
 

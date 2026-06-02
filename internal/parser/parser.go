@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
@@ -296,7 +297,15 @@ func (p *Parser) parseValue() ast.Expr {
 		return &ast.StringLit{Pos: t.Pos, Value: unquoteRaw(t.Text)}
 	case lexer.Int:
 		p.advance()
-		n, _ := strconv.ParseInt(t.Text, 10, 64)
+		n, err := strconv.ParseInt(t.Text, 10, 64)
+		if err != nil {
+			// strconv clamps an out-of-range literal to MaxInt64 with an
+			// ErrRange; emitting the clamped value would silently corrupt a
+			// bound (e.g. a uint64 @lte above MaxInt64). Reject instead — the
+			// IntLit's int64 storage can't represent values beyond the signed
+			// 64-bit range yet.
+			p.errorf(t.Pos, "integer literal %s is out of range — values beyond the signed 64-bit range (max %s) aren't supported yet", t.Text, "9223372036854775807")
+		}
 		return &ast.IntLit{Pos: t.Pos, Value: n}
 	case lexer.Float:
 		p.advance()
@@ -323,7 +332,10 @@ func (p *Parser) parseValue() ast.Expr {
 		next := p.peek()
 		if next.Kind == lexer.Int {
 			p.advance()
-			n, _ := strconv.ParseInt("-"+next.Text, 10, 64)
+			n, err := strconv.ParseInt("-"+next.Text, 10, 64)
+			if err != nil {
+				p.errorf(t.Pos, "integer literal -%s is out of range — values beyond the signed 64-bit range (min %s) aren't supported yet", next.Text, "-9223372036854775808")
+			}
 			return &ast.IntLit{Pos: t.Pos, Value: n}
 		}
 		if next.Kind == lexer.Float {
@@ -519,6 +531,17 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	p.captureDoc()
 	decs := p.parseDecorators()
 	t := p.peek()
+	// A reserved word at the start of a type-body member is a FIELD NAME:
+	// a member is a field or a mixin, a mixin is a named type reference,
+	// and a keyword never spells one — so the keyword can only be the
+	// field's name. Take its spelling as the identifier (contextual
+	// keyword), letting `type`, `error`, `map`, ... be field names.
+	if isKeywordKind(t.Kind) {
+		name := p.advance()
+		tref := p.parseTypeRef()
+		fieldDecs := p.parseDecorators()
+		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
+	}
 	if t.Kind != lexer.Ident {
 		p.errorf(t.Pos, "expected field or mixin, got %s", t.Kind)
 		return nil
@@ -682,10 +705,14 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 
 // parseEnumValue reads a single `Name [= literal] [@decorators]` entry.
 func (p *Parser) parseEnumValue() *ast.EnumValue {
-	t, ok := p.expect(lexer.Ident)
-	if !ok {
+	// An enum body holds only value names, so a reserved word here is a
+	// value name (contextual keyword), e.g. `enum Kind { type ... }`.
+	t := p.peek()
+	if t.Kind != lexer.Ident && !isKeywordKind(t.Kind) {
+		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
 		return nil
 	}
+	p.advance()
 	v := &ast.EnumValue{Pos: t.Pos, Name: t.Text, Kind: ast.EnumBare}
 	if p.peek().Kind == lexer.Equal {
 		p.advance()
@@ -709,25 +736,14 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 
 // ----- error -----
 
-// errorCategories enumerates the reserved HTTP-status categories the
-// `error <Category> Name` form may use. Anything outside this set produces
-// a diagnostic. Each entry maps 1:1 to an RFC-defined HTTP status code; the
-// status emitted at runtime + in OpenAPI is derived from the category name.
-var errorCategories = map[string]bool{
-	"BadRequest": true, "Unauthorized": true, "PaymentRequired": true,
-	"Forbidden": true, "NotFound": true, "MethodNotAllowed": true,
-	"NotAcceptable": true, "Conflict": true, "Gone": true,
-	"LengthRequired": true, "PreconditionFailed": true, "PayloadTooLarge": true,
-	"UnsupportedMediaType": true, "UnprocessableEntity": true, "Locked": true,
-	"TooManyRequests": true, "Internal": true, "NotImplemented": true,
-	"BadGateway": true, "ServiceUnavailable": true, "GatewayTimeout": true,
-}
-
-// parseErrorDecl reads `error <Category> Name [{ Body }]`.
+// parseErrorDecl reads `error <Category> Name [{ Body }]`. The reserved
+// category set lives in [errcat] (the leaf codegen + the LSP also read), so the
+// `error <Category>` form, the emitted HTTP status, and the editor completions
+// share one catalogue.
 func (p *Parser) parseErrorDecl(decs []*ast.Decorator) *ast.ErrorDecl {
 	pos := p.advance().Pos
 	cat, _ := p.expect(lexer.Ident)
-	if cat.Text != "" && !errorCategories[cat.Text] {
+	if cat.Text != "" && !errcat.IsCategory(cat.Text) {
 		p.errorf(cat.Pos, "unknown error category %q", cat.Text)
 	}
 	name, _ := p.expect(lexer.Ident)
@@ -751,7 +767,13 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 	name, _ := p.expect(lexer.Ident)
 	prim, _ := p.expect(lexer.Ident)
 	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text, Primitive: prim.Text}
-	sd.Decorators = append(sd.Decorators, p.parseDecorators()...)
+	// Trailing decorators on the same line as the primitive belong to the
+	// scalar (`scalar Email string @pattern(...)`). A decorator on a later
+	// line is the leading decorator of the next declaration, so stop —
+	// consuming it here would steal it from the following type/enum/service.
+	for p.peek().Kind == lexer.At && p.peek().Pos.Line == prim.Pos.Line {
+		sd.Decorators = append(sd.Decorators, p.parseDecorator())
+	}
 	return sd
 }
 

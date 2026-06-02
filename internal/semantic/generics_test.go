@@ -111,6 +111,75 @@ type X {}`))
 	}
 }
 
+// ---------- Optional type argument (rejected) ----------
+
+func TestGenericOptionalArgRejected(t *testing.T) {
+	// `Page<Item?>` over an array field: the `?` would lower to a nullable
+	// element on the Go side (`[]*Item`) while the OpenAPI items stay a
+	// non-null `$ref`. Rejected.
+	_, diags := Analyze(parseFiles(t, `type Page<T> { items T[] }
+type Item { id string }
+type X { p Page<Item?> }`))
+	d := findCode(diags, CodeGenericOptionalArg)
+	if d == nil {
+		t.Fatalf("got %v", codes(diags))
+	}
+	if !strings.Contains(d.Msg, "optional") {
+		t.Errorf("msg = %q", d.Msg)
+	}
+}
+
+func TestGenericOptionalArgRejectedOnPlainField(t *testing.T) {
+	// Rejected uniformly, even when the generic uses the param as a plain
+	// field (`value T`) where it would lower cleanly — nullability is always
+	// declared inside the generic, never on the argument.
+	_, diags := Analyze(parseFiles(t, `type Wrap<T> { value T }
+type Item { id string }
+type X { p Wrap<Item?> }`))
+	if findCode(diags, CodeGenericOptionalArg) == nil {
+		t.Fatalf("got %v", codes(diags))
+	}
+}
+
+func TestGenericOptionalArgRejectedInMethod(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Page<T> { items T[] }
+type Item { id string }
+service S {
+	get List /list { response Page<Item?> }
+}`))
+	if findCode(diags, CodeGenericOptionalArg) == nil {
+		t.Fatalf("got %v", codes(diags))
+	}
+}
+
+func TestGenericOptionalArgRejectedNested(t *testing.T) {
+	// The optional arg is nested inside another generic instance.
+	_, diags := Analyze(parseFiles(t, `type Page<T> { items T[] }
+type Box<T> { value T }
+type Item { id string }
+type X { p Box<Page<Item?>> }`))
+	if findCode(diags, CodeGenericOptionalArg) == nil {
+		t.Fatalf("got %v", codes(diags))
+	}
+}
+
+func TestGenericMapValueOptionalArgClean(t *testing.T) {
+	// Only the top-level argument `?` is rejected. A `?` on a map VALUE
+	// inside the argument (`map<string, Item?>` -> `map[string]*Item`) is
+	// nullable on both the Go and OpenAPI sides, so it stays clean.
+	mustClean(t, `type Page<T> { items T[] }
+type Item { id string }
+type X { p Page<map<string, Item?>> }`)
+}
+
+func TestGenericArrayArgClean(t *testing.T) {
+	// A non-optional array argument is fine — `Page<Item[]>` is an
+	// array-of-array, no optionality involved.
+	mustClean(t, `type Page<T> { items T[] }
+type Item { id string }
+type X { p Page<Item[]> }`)
+}
+
 // ---------- Mixin generic refs ----------
 
 func TestMixinGenericValidatedByGenerics(t *testing.T) {

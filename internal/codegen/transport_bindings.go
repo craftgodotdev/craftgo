@@ -1,13 +1,78 @@
-// Transport: path/query/header/cookie/form/response binding collection + string-binding helpers.
+// Transport: path/query/header/cookie/form/response binding collection.
 package codegen
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
+
+// flattenFields returns td's fields with embedded mixins expanded in
+// declaration order: every `Mixin` member contributes the fields of the
+// type it names (recursively), the same fields the JSON body schema
+// (allOf $ref) and the validator (mixinValidateCall) already pull in. The
+// wire-binding, OpenAPI-parameter, default pre-fill, and body-decode
+// passes call this so a field a request inherits through a mixin is bound,
+// documented, defaulted, and decoded — not silently dropped while the
+// validator still enforces it. `r` may be nil (the OpenAPI pass runs on
+// the merged single package, where pkg.Types already holds every type);
+// `seen` breaks mixin cycles.
+func flattenFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []*ast.Field {
+	if td == nil {
+		return nil
+	}
+	var out []*ast.Field
+	for _, m := range td.Body {
+		switch v := m.(type) {
+		case *ast.Field:
+			out = append(out, v)
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			name := v.Ref.Name.String()
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			var mt *ast.TypeDecl
+			if pkg != nil {
+				mt = pkg.Types[name]
+			}
+			if mt == nil && r != nil {
+				mt = r.LookupType(name)
+			}
+			sub := flattenFields(mt, pkg, r, seen)
+			// A generic mixin (`Page<Item>`) promotes fields typed in the
+			// type-parameter (`items T[]`). Substitute the concrete arguments
+			// so every consumer — wire binder, OpenAPI params/body, default
+			// pre-fill — sees `items Item[]`, not the bare `T`.
+			if mt != nil && len(v.Ref.Args) > 0 && len(mt.TypeParams) > 0 {
+				subst := map[string]*ast.TypeRef{}
+				for i, p := range mt.TypeParams {
+					if i < len(v.Ref.Args) {
+						subst[p] = v.Ref.Args[i]
+					}
+				}
+				for i, f := range sub {
+					fc := *f
+					fc.Type = substituteTypeRef(f.Type, subst)
+					sub[i] = &fc
+				}
+			}
+			out = append(out, sub...)
+		}
+	}
+	return out
+}
+
+// requestFields is the mixin-aware field list of a request / response
+// type: [flattenFields] with a fresh cycle-guard.
+func requestFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver) []*ast.Field {
+	return flattenFields(td, pkg, r, map[string]bool{})
+}
 
 // collectResponseBindings walks the response type's fields and renders
 // the `@header` / `@cookie` writers. Each entry's [paramBinding.Bind]
@@ -23,11 +88,11 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectRes
 	if !ok {
 		return nil, nil, false
 	}
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
-			continue
-		}
+	// Flatten so a @header / @cookie field promoted through a mixin is
+	// written on the response too — the OpenAPI doc side (binResponseFields)
+	// already flattens, so without this the spec advertises a header the
+	// handler never emits.
+	for _, f := range requestFields(td, pkg, r) {
 		kind := bindingFromDecorators(f.Decorators)
 		if kind != "header" && kind != "cookie" {
 			continue
@@ -101,12 +166,12 @@ func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim
 		return "string", ""
 	}
 	declName = f.Type.Named.Name.String()
-	if _, ok := queryPrims[declName]; ok {
+	if idents.IsWireParseable(declName) {
 		return declName, declName
 	}
 	if pkg != nil {
 		if sc, ok := pkg.Scalars[declName]; ok && sc != nil {
-			if _, ok := queryPrims[sc.Primitive]; ok {
+			if idents.IsWireParseable(sc.Primitive) {
 				return sc.Primitive, declName
 			}
 		}
@@ -116,7 +181,7 @@ func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim
 	}
 	if r != nil {
 		if sc := r.LookupScalar(declName); sc != nil {
-			if _, ok := queryPrims[sc.Primitive]; ok {
+			if idents.IsWireParseable(sc.Primitive) {
 				return sc.Primitive, declName
 			}
 		}
@@ -209,18 +274,6 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 	if m.Request == nil {
 		return nil, nil, false, nil
 	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
-		return nil, nil, false, nil
-	}
-	pathSegs := map[string]bool{}
-	if m.Path != nil {
-		for _, seg := range m.Path.Segments {
-			if seg.Param {
-				pathSegs[seg.Literal] = true
-			}
-		}
-	}
 	// First pass: find file fields. Without one, the handler renders
 	// as a plain JSON body decoder and we have nothing to emit here.
 	type candidate struct {
@@ -228,18 +281,17 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		entry paramBinding
 	}
 	var nonFile []candidate
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
+	// Read the resolved IR (mixins flattened, auto-@path resolved): a form
+	// field is one that rides the request body — body or @form — and is not
+	// a wire param or a server-only @sensitive field. Skipping @sensitive
+	// here also keeps such a value out of the multipart binding, matching
+	// the JSON binder.
+	for _, rf := range resolveRequestFields(m, pkg, r) {
+		switch rf.Binding {
+		case BindPath, BindQuery, BindHeader, BindCookie, BindSensitive:
 			continue
 		}
-		switch bindingFromDecorators(f.Decorators) {
-		case "path", "query", "header", "cookie":
-			continue
-		}
-		if pathSegs[f.Name] {
-			continue
-		}
+		f := rf.Field
 		// Wire name honours an explicit `@form("field_name")` arg (same
 		// rule as the path/query/header/cookie binders via bindingWireName)
 		// so the generated r.FormFile / r.FormValue key and the multipart
@@ -314,71 +366,55 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 	if m.Request == nil {
 		return
 	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
-		// Cross-package request type (`request shared.Cred`) doesn't
-		// land in pkg.Types — fall through the resolver so the
-		// handler still binds its fields.
-		if td2 := r.LookupType(m.Request.Name.String()); td2 != nil {
-			td = td2
-		} else {
-			return
-		}
-	}
-	scalars := r.scalars()
 	reqName := m.Request.Name.String()
-	pathSegs := map[string]bool{}
-	if m.Path != nil {
-		for _, seg := range m.Path.Segments {
-			if seg.Param {
-				pathSegs[seg.Literal] = true
-			}
-		}
-	}
-	autoQuery := !hasBodyVerb(m.Verb)
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
+	// Read the resolved IR: the full binding (explicit + auto-@path/@query,
+	// mixins flattened, cross-package request type resolved) is computed
+	// once in resolveRequestFields, so the binder's view can't drift from
+	// the OpenAPI parameter categorisation.
+	for _, rf := range resolveRequestFields(m, pkg, r) {
+		// @sensitive fields never cross the wire (json:"-", excluded from the
+		// OpenAPI schema): the binder must not read them from any source, or
+		// an un-decorated sensitive field would auto-promote to @query and
+		// leak into the URL while the spec documents no such parameter.
+		if rf.Binding == BindSensitive {
 			continue
 		}
-		bind := bindingFromDecorators(f.Decorators)
-		auto := false
-		if bind == "" && pathSegs[f.Name] {
-			bind = "path"
-			auto = true
-		}
-		if bind == "" && autoQuery {
-			bind = "query"
-			auto = true
-		}
-		// Wire-side name defaults to the DSL field name, but an
-		// explicit string argument on the binding decorator overrides
-		// it: `@path("user_id")` binds the field to the path segment
-		// `{user_id}` even when the Go field name is `UserId`. Without
-		// honouring the arg, URLs like `/users/{user_id}` never match
-		// the field `userId` because `r.PathValue("userId")` returns
-		// the empty string.
-		wireName := bindingWireName(f, bind)
-		switch bind {
-		case "path":
-			if !stringBindable(f, pkg, scalars, false) {
-				if auto {
-					// Auto-promoted from a path segment match - silently skip
-					// so a body field that happens to share a name with a
-					// segment doesn't break the build. Explicit @path is
-					// strict (handled above by entering this case via the
-					// decorator scan); auto-promotion is permissive.
+		f := rf.Field
+		// Wire-side name honours an explicit decorator arg
+		// (`@path("user_id")` binds segment `{user_id}` even when the Go
+		// field is `UserId`).
+		wireName := rf.WireName()
+		switch rf.Binding {
+		case BindPath:
+			// A path segment binds like a @query value — a string passes
+			// straight through, a numeric / scalar / enum parses via the
+			// same server.Parse* helper — but it is always present and
+			// single-valued, so renderWireBindLine emits the required
+			// directSingle / singleParsed shape. An optional or array
+			// @path field is rejected (the semantic layer reports it for an
+			// explicit @path); under auto-promotion a non-bindable body
+			// field that merely shares a segment name is skipped silently.
+			if f.Type != nil && (f.Type.Optional || f.Type.Array) {
+				if rf.AutoBound {
 					continue
 				}
-				err = fmt.Errorf("%s.%s: @path requires a non-optional string-backed field (string, string scalar, or string enum) - got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, describeFieldType(f))
+				return
+			}
+			line, _, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, pathSource())
+			if lerr != nil {
+				if rf.AutoBound {
+					continue
+				}
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
 			}
 			path = append(path, paramBinding{
 				DSLName: wireName,
 				GoName:  GoFieldName(f.Name),
-				Bind:    fmt.Sprintf("req.%s = %s", GoFieldName(f.Name), stringBindCast(f, fmt.Sprintf("r.PathValue(%q)", wireName), pkgAlias)),
+				Bind:    line,
 			})
-		case "query":
+		case BindQuery:
 			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, querySource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
@@ -388,7 +424,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 				needsStrconv = true
 			}
 			query = append(query, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
-		case "header":
+		case BindHeader:
 			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, headerSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
@@ -398,7 +434,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 				needsStrconv = true
 			}
 			header = append(header, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
-		case "cookie":
+		case BindCookie:
 			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, cookieSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
@@ -428,35 +464,17 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 	if m == nil || m.Request == nil || pkg == nil || len(crossPkg) == 0 {
 		return out
 	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
+	if _, ok := pkg.Types[m.Request.Name.String()]; !ok {
 		return out
 	}
-	pathSegs := map[string]bool{}
-	if m.Path != nil {
-		for _, seg := range m.Path.Segments {
-			if seg.Param {
-				pathSegs[seg.Literal] = true
-			}
-		}
-	}
-	autoQuery := !hasBodyVerb(m.Verb)
 	set := map[string]bool{}
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
-			continue
-		}
-		bind := bindingFromDecorators(f.Decorators)
-		if bind == "" && pathSegs[f.Name] {
-			bind = "path"
-		}
-		if bind == "" && autoQuery {
-			bind = "query"
-		}
-		switch bind {
-		case "path", "query", "header", "cookie":
-			walkCrossPkgImports(f.Type, crossPkg, set)
+	// Read the resolved IR: the wire-bound classification (explicit +
+	// auto-@path/@query, mixins flattened) is computed once in
+	// resolveRequestFields rather than re-derived here.
+	for _, rf := range resolveRequestFields(m, pkg, nil) {
+		switch rf.Binding {
+		case BindPath, BindQuery, BindHeader, BindCookie:
+			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
 		}
 		// Body field with `@default(...)` on a cross-pkg enum OR scalar
 		// emits a pre-fill line that references the foreign package and
@@ -466,8 +484,8 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		// aliases), so the cast references the foreign package and the
 		// import is required. The trigger is "field type is a cross-pkg
 		// named ref AND has @default".
-		if isQualifiedNamedWithDefault(f, crossPkg) {
-			walkCrossPkgImports(f.Type, crossPkg, set)
+		if isQualifiedNamedWithDefault(rf.Field, crossPkg) {
+			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
 		}
 	}
 	for pkgName, path := range crossPkg {
@@ -516,20 +534,11 @@ func isQualifiedNamedWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
 // (snake_case path segments, kebab/hyphen HTTP headers) can differ
 // from the Go field name. `kind` selects which decorator to inspect
 // (`path`/`query`/`header`/`cookie`) so the same field may carry the
-// wrong-decorator's arg without leakage.
+// wrong-decorator's arg without leakage. The rule lives in
+// [semantic.WireName] so the analyser's binding checks and these binders
+// agree on the emitted name.
 func bindingWireName(f *ast.Field, kind string) string {
-	if f == nil {
-		return ""
-	}
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != kind || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-			return s.Value
-		}
-	}
-	return f.Name
+	return semantic.WireName(f, kind)
 }
 
 // describeFieldType renders a short human-readable form of f's type
@@ -560,102 +569,6 @@ func describeFieldType(f *ast.Field) string {
 	return name
 }
 
-// parseCall renders the strconv.ParseX(_v, ...) expression for a
-// numeric / bool primitive. Bool ignores bits; ParseFloat takes only
-// (s, bits); ParseInt / ParseUint take (s, base, bits).
-
-// stringBindable reports whether f's type can ride a path / header /
-// cookie wire (always a string at the protocol level). Matches:
-//   - the bare `string` primitive
-//   - a `scalar X string @...` declared in any reachable package
-//   - a string-backed enum (kind EnumBare or EnumString) in pkg
-//
-// Optional is accepted when allowOptional=true (header / cookie callers
-// pass true; path callers pass false because path segments are
-// mandatory by route-matching). Array / map shapes are always rejected
-// regardless.
-//
-// `scalars` is the project-wide lookup table built by
-// [BuildScalarTable]; it carries both local scalars (keyed by bare
-// name) and cross-package scalars (keyed by qualified name like
-// "shared.ID"). Consulting it lets a cross-package scalar binding
-// (`shared.ID @path`, where `shared.ID` is a string scalar) pass the
-// string-backed check.
-//
-// Mirrors `semantic.isStringBindingType` so design-time and gen-time
-// rejections agree.
-func stringBindable(f *ast.Field, pkg *semantic.Package, scalars ScalarTable, allowOptional bool) bool {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
-		return false
-	}
-	if f.Type.Optional && !allowOptional {
-		return false
-	}
-	name := f.Type.Named.Name.String()
-	if name == "string" {
-		return true
-	}
-	if sc := lookupScalar(name, pkg, scalars); sc != nil && sc.Primitive == "string" {
-		return true
-	}
-	if pkg != nil {
-		if ed, ok := pkg.Enums[name]; ok && ed != nil {
-			k := firstEnumKind(ed)
-			return k == ast.EnumBare || k == ast.EnumString
-		}
-	}
-	return false
-}
-
-// lookupScalar resolves a possibly-qualified scalar name to its
-// declaration, consulting the project-wide [ScalarTable] first
-// (covers cross-package references) and falling back to the local
-// `pkg.Scalars` map for legacy single-package callers that pass a
-// nil table.
-func lookupScalar(name string, pkg *semantic.Package, scalars ScalarTable) *ast.ScalarDecl {
-	if scalars != nil {
-		if sc, ok := scalars[name]; ok {
-			return sc
-		}
-	}
-	if pkg != nil {
-		if sc, ok := pkg.Scalars[name]; ok {
-			return sc
-		}
-	}
-	return nil
-}
-
-// stringBindCast wraps `src` (a Go expression yielding a string) in
-// the cast required to land in f's declared Go type. Plain `string`
-// returns src unchanged; scalar or enum types wrap as
-// `pkgAlias.TypeName(src)` so the cast resolves to the typed alias
-// the request struct expects. Caller is responsible for confirming
-// [stringBindable] first.
-//
-// pkgAlias is the Go-side import alias the request type lives under
-// (typically "types" for local declarations) - the same alias used to
-// qualify the request struct in the handler. Empty alias falls back
-// to an unqualified `TypeName(...)`.
-func stringBindCast(f *ast.Field, src, pkgAlias string) string {
-	if f == nil || f.Type == nil || f.Type.Named == nil {
-		return src
-	}
-	name := f.Type.Named.Name.String()
-	if name == "string" {
-		return src
-	}
-	// Cross-package references (`shared.ID`) carry their own
-	// qualifier from the DSL and already match the Go import added
-	// by the type resolver. Prepending the local `pkgAlias` would
-	// produce `types.shared.ID(...)` which doesn't resolve — the
-	// cross-pkg path skips the local alias entirely.
-	if !strings.Contains(name, ".") && pkgAlias != "" {
-		name = pkgAlias + "." + name
-	}
-	return name + "(" + src + ")"
-}
-
 // hasUnboundField reports whether the request type has at least one
 // field that does NOT carry an explicit @path/@query/@header/@cookie
 // (or @body/@form) decorator and is not implicitly path-bound. The
@@ -666,34 +579,15 @@ func hasUnboundField(m *ast.Method, pkg *semantic.Package) bool {
 	if m.Request == nil {
 		return false
 	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
-		return false
-	}
-	pathSegs := map[string]bool{}
-	if m.Path != nil {
-		for _, seg := range m.Path.Segments {
-			if seg.Param {
-				pathSegs[seg.Literal] = true
-			}
-		}
-	}
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
-			continue
-		}
-		switch bindingFromDecorators(f.Decorators) {
-		case "path", "query", "header", "cookie":
-			continue
-		case "body", "form":
+	// A field rides the body iff the resolved binding is body or form (an
+	// explicit @body / @form, or an un-decorated field that auto-bound to
+	// @body on this verb). Wire params (@path/@query/@header/@cookie, incl.
+	// auto-@path) do not.
+	for _, rf := range resolveRequestFields(m, pkg, nil) {
+		switch rf.Binding {
+		case BindBody, BindForm:
 			return true
 		}
-		// Implicit path match short-circuits - that's a path field, not body.
-		if pathSegs[f.Name] {
-			continue
-		}
-		return true
 	}
 	return false
 }

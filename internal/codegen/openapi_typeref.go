@@ -141,7 +141,10 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		values := ed.EnumValues()
 		out := make([]any, 0, len(values))
 		for _, v := range values {
-			out = append(out, v.Name)
+			// JSON object keys are always strings, so emit each member's
+			// wire value in its JSON-key form (an int-enum key surfaces as
+			// its decimal string "1", "5", ...).
+			out = append(out, enumMemberWireString(v))
 		}
 		return &openapi3.Schema{
 			Type: &openapi3.Types{"string"},
@@ -149,96 +152,19 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		}
 	}
 	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
-		// Inherit the scalar's own string constraints — length /
-		// pattern / format — so the map key constraint mirrors what
-		// a bare-field of the same scalar type would receive in its
-		// schema. Decorators not relevant to keys (`@gte`, `@minItems`)
-		// are filtered by the underlying string-only emit.
-		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		applyScalarStringDecorators(s, sc.Decorators)
-		return s
+		// Only a string scalar contributes a key constraint: JSON object keys
+		// are strings, so its length / pattern / format apply directly. A
+		// non-string scalar key has no consumable propertyNames form — a
+		// numeric `type: integer` is rejected by a conformant 3.1 validator
+		// (the key is a string), and a numeric bound (`@gte(1)`) has no clean
+		// string-pattern equivalent — so its key constraint is left to the
+		// runtime rather than advertised in a shape clients can't validate.
+		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
+		applyPatternFormat(sc.Decorators, base)
+		applyStringLengthConstraints(sc.Decorators, base)
+		return base
 	}
 	return nil
-}
-
-// applyScalarStringDecorators copies the string-shape constraints a
-// scalar declares (`@minLength`, `@maxLength`, `@pattern`, `@format`)
-// onto an OpenAPI schema. Centralised so the map-key `propertyNames`
-// path and the existing scalar-component emit agree on which
-// decorators are key-applicable.
-func applyScalarStringDecorators(s *openapi3.Schema, decs []*ast.Decorator) {
-	for _, d := range decs {
-		if d == nil || len(d.Args) == 0 {
-			continue
-		}
-		switch d.Name {
-		case "minLength":
-			if n, ok := intArgValue(d.Args[0]); ok {
-				v := uint64(n)
-				s.MinLength = v
-			}
-		case "maxLength":
-			if n, ok := intArgValue(d.Args[0]); ok {
-				v := uint64(n)
-				s.MaxLength = &v
-			}
-		case "length":
-			// `@length(min, max)` — two-arg form.
-			if len(d.Args) == 2 {
-				if mn, ok := intArgValue(d.Args[0]); ok {
-					s.MinLength = uint64(mn)
-				}
-				if mx, ok := intArgValue(d.Args[1]); ok {
-					v := uint64(mx)
-					s.MaxLength = &v
-				}
-			} else if n, ok := intArgValue(d.Args[0]); ok {
-				// Single-arg `@length(N)` — exact length, fold into
-				// both bounds.
-				v := uint64(n)
-				s.MinLength = v
-				s.MaxLength = &v
-			}
-		case "pattern":
-			if str, ok := stringArgValue(d.Args[0]); ok {
-				s.Pattern = str
-			}
-		case "format":
-			if str, ok := stringArgValue(d.Args[0]); ok {
-				s.Format = str
-			}
-		}
-	}
-}
-
-// intArgValue extracts the int64 value from a decorator argument when
-// the expression is an [ast.IntLit]. Returns (0, false) otherwise.
-func intArgValue(a *ast.DecoratorArg) (int64, bool) {
-	if a == nil {
-		return 0, false
-	}
-	if lit, ok := a.Value.(*ast.IntLit); ok {
-		return lit.Value, true
-	}
-	return 0, false
-}
-
-// stringArgValue extracts the string value from a decorator argument
-// when the expression is an [ast.StringLit] or an [ast.IdentExpr]
-// (some decorators accept enum-ident shortcuts for format names).
-func stringArgValue(a *ast.DecoratorArg) (string, bool) {
-	if a == nil {
-		return "", false
-	}
-	switch v := a.Value.(type) {
-	case *ast.StringLit:
-		return v.Value, true
-	case *ast.IdentExpr:
-		if v.Name != nil && len(v.Name.Parts) > 0 {
-			return v.Name.Parts[len(v.Name.Parts)-1], true
-		}
-	}
-	return "", false
 }
 
 // instantiateGeneric builds the schema body for one generic instance

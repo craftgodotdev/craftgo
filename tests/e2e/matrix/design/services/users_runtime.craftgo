@@ -1,0 +1,87 @@
+package services
+
+// GetUserReq is the path-bound input for GET /account-users/{id}.
+type AcctGetUserReq {
+	// id locates the user.
+	id string
+}
+
+type AcctDeleteUserReq {
+	id string
+}
+
+// AcctCreateUserReq is the body for POST /account-users.
+type AcctCreateUserReq {
+	name string @length(1, 50)
+	age  int?
+	tags string[]
+	meta map<string, string>
+}
+
+type AcctUpdateUserReq {
+	id   string @path
+	name string @length(1, 50)
+	age  int?
+	tags string[]
+	meta map<string, string>
+}
+
+// AcctUser is the wire-level shape of a stored user.
+type AcctUser {
+	id   string
+	name string
+	age  int?
+	tags string[]
+	meta map<string, string>
+}
+
+type AcctEmpty {
+}
+
+enum AcctRole {
+	Admin = "admin"
+	User  = "user"
+	Guest = "guest"
+}
+
+enum AcctPriority {
+	Low  = 1
+	Med  = 2
+	High = 3
+}
+
+error NotFound AcctUserNotFound
+
+error BadRequest AcctValidationFailed {
+	fields string[]
+}
+
+@prefix("/account-users")
+service AccountUserService {
+	// GetUser returns the user identified by req.ID.
+	get GetUser /users/{id} {
+		request  AcctGetUserReq
+		response AcctUser
+	}
+
+	// CreateUser stores a new user and returns the freshly created entity.
+	post CreateUser /users {
+		request  AcctCreateUserReq
+		response AcctUser
+	}
+
+	delete DeleteUser /users/{id} {
+		request  AcctDeleteUserReq
+		response AcctEmpty
+	}
+
+	// Ping is a liveness-style endpoint with no body.
+	get Ping {}
+}
+
+extend service AccountUserService {
+	put UpdateUser /users/{id} {
+		request  AcctUpdateUserReq
+		response AcctUser
+	}
+}

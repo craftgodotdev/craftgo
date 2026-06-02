@@ -266,11 +266,11 @@ service S {
 		// path: string-backed enum cast
 		`req.State = types.Status(r.PathValue("state"))`,
 		// query string-backed enum + scalar
-		`req.Contact = types.Email(r.URL.Query().Get("contact"))`,
-		// query int-backed enum: parse + cast through int
-		`types.Priority(int(_n))`,
-		// query numeric scalar: parse + cast
-		`types.Cents(int(_n))`,
+		`req.Contact = types.Email(_q.Get("contact"))`,
+		// query int-backed enum: bind helper parses + converts to the enum
+		`server.BindValue(w, r, "priority", "int", _q.Get("priority"), &req.Priority, server.ParseSigned[types.Priority])`,
+		// query numeric scalar: bind helper parses + converts to the scalar
+		`server.BindValue(w, r, "cap", "int", _q.Get("cap"), &req.Cap, server.ParseSigned[types.Cents])`,
 		// cookie cast
 		`req.Sess = c.Value`,
 		// header cast (string-backed enum)
@@ -340,8 +340,15 @@ service S {
 		`r.PathValue("user_id")`,
 		`r.Header.Get("X-API-Key")`,
 		`r.Cookie("session_id")`,
-		`r.URL.Query().Get("sort_by")`,
+		// The query map is parsed once into _q.
+		`_q := r.URL.Query()`,
+		// @query("sort_by"): _q is read by the WIRE name, not the Go
+		// field name `sortBy`.
+		`_q.Get("sort_by")`,
 	)
+	// No per-field r.URL.Query() calls, and the field name never leaks
+	// in as the query key.
+	mustContainNone(t, got, `r.URL.Query().Get(`, `_q.Get("sortBy")`)
 }
 
 // TestGenerateTransportWireNumericAcrossSources covers the unified
@@ -388,43 +395,29 @@ service S {
 	got := string(body)
 	mustParseGo(t, got)
 	mustContainAll(t, got,
-		// @query int: parse + cast.
-		`if _v := r.URL.Query().Get("qLimit"); _v != ""`,
-		`_n, _err := strconv.ParseInt(_v, 10, 64)`,
-		`req.QLimit = int(_n)`,
-		// @query bool: ParseBool.
-		`if _v := r.URL.Query().Get("qFlag"); _v != ""`,
-		`_n, _err := strconv.ParseBool(_v)`,
-		`req.QFlag = _n`,
-		// @header int: same shape, different source.
-		`if _v := r.Header.Get("hCount"); _v != ""`,
-		`req.HCount = int(_n)`,
-		// @header float64: ParseFloat with bit-width.
-		`if _v := r.Header.Get("hRatio"); _v != ""`,
-		`_n, _err := strconv.ParseFloat(_v, 64)`,
-		`req.HRatio = float64(_n)`,
-		// @cookie int-enum: wrapped in cookie guard, parse + alias cast.
-		// The codegen double-casts (`Alias(int(_n))`) because the cast
-		// pipeline runs primitive normalisation before alias wrap; both
-		// casts are required to satisfy Go's strict typing for int64
-		// → int → Priority.
+		// @query int → BindValue + ParseSigned[int].
+		`server.BindValue(w, r, "qLimit", "int", _q.Get("qLimit"), &req.QLimit, server.ParseSigned[int])`,
+		// @query bool → ParseBool.
+		`server.BindValue(w, r, "qFlag", "bool", _q.Get("qFlag"), &req.QFlag, server.ParseBool[bool])`,
+		// @header int: same helper, different source.
+		`server.BindValue(w, r, "hCount", "int", r.Header.Get("hCount"), &req.HCount, server.ParseSigned[int])`,
+		// @header float64 → ParseFloat[float64] (the helper picks the bit width).
+		`server.BindValue(w, r, "hRatio", "float", r.Header.Get("hRatio"), &req.HRatio, server.ParseFloat[float64])`,
+		// @cookie int-enum: wrapped in the cookie guard, parses c.Value.
 		`if c, err := r.Cookie("cTier"); err == nil {`,
-		`if _v := c.Value; _v != ""`,
-		`req.CTier = types.Priority(int(_n))`,
-		// @cookie int-scalar: same shape, scalar cast.
+		`server.BindValue(w, r, "cTier", "int", c.Value, &req.CTier, server.ParseSigned[types.Priority])`,
+		// @cookie int-scalar: same shape, scalar type argument.
 		`if c, err := r.Cookie("cAge"); err == nil {`,
-		`req.CAge = types.Cents(int(_n))`,
-		// @form int: source becomes FormValue, otherwise identical.
-		`if _v := r.FormValue("fQty"); _v != ""`,
-		`req.FQty = int(_n)`,
-		// @form bool: ParseBool through FormValue.
-		`if _v := r.FormValue("fFlag"); _v != ""`,
-		`req.FFlag = _n`,
+		`server.BindValue(w, r, "cAge", "int", c.Value, &req.CAge, server.ParseSigned[types.Cents])`,
+		// @form int: source becomes FormValue.
+		`server.BindValue(w, r, "fQty", "int", r.FormValue("fQty"), &req.FQty, server.ParseSigned[int])`,
+		// @form bool.
+		`server.BindValue(w, r, "fFlag", "bool", r.FormValue("fFlag"), &req.FFlag, server.ParseBool[bool])`,
 		// @form file: bound through r.FormFile.
 		`r.FormFile("upload")`,
-		// strconv import flows through to the multipart template.
-		`"strconv"`,
 	)
+	// Parsing lives in the helpers now, so the handler no longer imports strconv.
+	mustContainNone(t, got, `"strconv"`)
 }
 
 // TestGenerateTransportOptionalHeaderCookie covers `string? @header`
@@ -1312,28 +1305,3 @@ service UploadService {
 		t.Errorf("explicit @form name ignored — form key fell back to the field name:\n%s", handler)
 	}
 }
-
-// TestGenerateTransportRejectsBadQueryShapes pins the codegen-time
-// rejection of unsupported query-binding shapes. Without the gate,
-// struct/[]struct/map fields on a GET request would be silently
-// dropped — the handler would omit the bind line and the field
-// would land at the logic layer zero-valued, with no error to chase.
-//
-// Non-string `@path` / `@header` / `@cookie` is enforced at the
-// semantic layer (see `binding/type` diagnostic) so those cases
-// live in semantic tests, not here.
-//
-// Each case constructs a request type that exercises one rejection branch:
-//   - Filter Point      → struct on @query
-//   - Tags  []Point     → []struct on @query
-//   - Meta  map<string,string> → map on @query
-//   - Page  Page<Book>  → generic on @query
-//   - opt   int? @query  → optional numeric on @query (no clean idiom)
-//
-// These shapes are rejected at SEMANTIC time by
-// [semantic.checkBindingFieldType] (see `TestCodeOnBindingType` in
-// internal/semantic/decorators_test.go) so they never reach codegen.
-// The codegen layer keeps a defensive rejection in
-// [renderWireBindLine] for direct AST callers that skip semantic, but
-// the design-time test is the authoritative coverage and lives next
-// to the rule.

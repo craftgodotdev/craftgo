@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -34,7 +35,7 @@ func (v *CreateOrderReq) Validate() error {
 			return err
 		}
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	if v.Currency != nil {
@@ -101,7 +102,7 @@ func (v *FilterOrdersReq) Validate() error {
 	if v.Limit > 100 {
 		return fmt.Errorf("limit: above maximum 100")
 	}
-	if v.IdemKey != nil && (len(*v.IdemKey) < 1 || len(*v.IdemKey) > 128) {
+	if v.IdemKey != nil && (utf8.RuneCountInString(*v.IdemKey) < 1 || utf8.RuneCountInString(*v.IdemKey) > 128) {
 		return fmt.Errorf("idemKey: length out of range [1, 128]")
 	}
 	return nil
@@ -110,7 +111,7 @@ func (v *FilterOrdersReq) Validate() error {
 // Validate checks every field-level constraint declared on GetOrderReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetOrderReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -145,7 +146,7 @@ func (v *LineItem) Validate() error {
 			return err
 		}
 	}
-	if v.Note != nil && len(*v.Note) > 200 {
+	if v.Note != nil && utf8.RuneCountInString(*v.Note) > 200 {
 		return fmt.Errorf("note: length greater than 200")
 	}
 	return nil
@@ -208,7 +209,7 @@ func (v *Order) Validate() error {
 	if err := v.Status.Validate(); err != nil {
 		return err
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	if v.ShippedAt != nil {
@@ -254,8 +255,8 @@ func (v *Payment) Validate() error {
 	if err := v.Method.Validate(); err != nil {
 		return err
 	}
-	if v.CardLast4 != nil && (len(*v.CardLast4) < 4 || len(*v.CardLast4) > 4) {
-		return fmt.Errorf("cardLast4: length out of range [4, 4]")
+	if v.CardLast4 != nil && (utf8.RuneCountInString(*v.CardLast4) < 4 || utf8.RuneCountInString(*v.CardLast4) > 4) {
+		return fmt.Errorf("cardLast4: length must be 4")
 	}
 	if v.CardLast4 != nil && !_pattern0.MatchString(*v.CardLast4) {
 		return fmt.Errorf("cardLast4: does not match pattern")

@@ -57,10 +57,10 @@ func (r *refResolver) checkBindingsOnQualifiedField(parent string, f *ast.Field)
 	for _, d := range f.Decorators {
 		switch d.Name {
 		case "path":
-			if r.qualifiedIsStringBindable(f.Type, false) {
+			if r.qualifiedIsPathBindable(f.Type) {
 				continue
 			}
-			r.diagBinding(d, "field %s.%s: @path requires a non-optional string-backed field (string, string scalar, or string enum) - got %s",
+			r.diagBinding(d, "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 				parent, f.Name, describeTypeRef(f.Type))
 		case "query", "header", "cookie":
 			if d.Name == "cookie" && f.Type.Array {
@@ -83,35 +83,21 @@ func (r *refResolver) checkBindingsOnQualifiedField(parent string, f *ast.Field)
 	}
 }
 
-// qualifiedIsStringBindable is the cross-package twin of
-// [isStringBindingType]. The same shape rules apply; the only
-// difference is the scalar / enum lookup walks the project's
-// package map.
-func (r *refResolver) qualifiedIsStringBindable(t *ast.TypeRef, allowOptional bool) bool {
-	if t == nil || t.Array || t.Map != nil || t.Named == nil {
+// qualifiedIsPathBindable is the cross-package twin of
+// [isPathBindingType]: a `@path` field is wire-bindable but never
+// optional (a matched route always supplies the segment) nor an array
+// (a path carries a single value per segment). The scalar / enum lookup
+// walks the project's package map for `pkg.Name` refs.
+func (r *refResolver) qualifiedIsPathBindable(t *ast.TypeRef) bool {
+	if t == nil || t.Optional || t.Array {
 		return false
 	}
-	if t.Optional && !allowOptional {
-		return false
-	}
-	if sc := r.lookupScalar(t.Named); sc != nil {
-		return sc.Primitive == "string"
-	}
-	if ed := r.lookupEnum(t.Named); ed != nil {
-		return enumIsStringBacked(ed)
-	}
-	return false
+	return r.qualifiedIsWireBindable(t)
 }
 
 func (r *refResolver) qualifiedIsWireBindable(t *ast.TypeRef) bool {
 	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
 		return false
-	}
-	if t.Optional && !t.Array {
-		// Same string-only optional gate the local helper uses.
-		if !r.qualifiedNameIsStringBacked(t.Named) {
-			return false
-		}
 	}
 	if sc := r.lookupScalar(t.Named); sc != nil {
 		return isPrimitiveWireName(sc.Primitive)
@@ -126,31 +112,6 @@ func (r *refResolver) qualifiedIsFormBindable(t *ast.TypeRef) bool {
 	// `file` is never qualified — bare primitive only — so the form
 	// check on a qualified ref collapses to the wire rules.
 	return r.qualifiedIsWireBindable(t)
-}
-
-// qualifiedNameIsStringBacked is the cross-pkg twin of
-// [isStringBackedName] — for the optional-non-array string-only gate
-// inside [qualifiedIsWireBindable].
-func (r *refResolver) qualifiedNameIsStringBacked(n *ast.NamedTypeRef) bool {
-	if sc := r.lookupScalar(n); sc != nil {
-		return sc.Primitive == "string"
-	}
-	if ed := r.lookupEnum(n); ed != nil {
-		return enumIsStringBacked(ed)
-	}
-	return false
-}
-
-// enumIsStringBacked returns true when the enum's first member is
-// bare or string-typed — the only kinds the @path / @query string
-// gate accepts.
-func enumIsStringBacked(ed *ast.EnumDecl) bool {
-	for _, m := range ed.Members {
-		if v, ok := m.(*ast.EnumValue); ok {
-			return v.Kind == ast.EnumBare || v.Kind == ast.EnumString
-		}
-	}
-	return false
 }
 
 // enumWireKindOK returns true when the enum's first member is one of

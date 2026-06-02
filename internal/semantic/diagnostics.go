@@ -75,6 +75,31 @@ const (
 	// name twice. Codegen would emit `v.A == nil && v.A == nil` which
 	// `go vet` rejects as a redundant boolean expression.
 	CodeDuplicateGroupField = "decorator/duplicate-group-field"
+	// CodeCrossFieldNotOptional fires when a cross-field validator
+	// (`@requiresOneOf`, `@mutuallyExclusive`) references a field that
+	// is neither optional (`?`) nor `@nullable`. Presence is then
+	// ambiguous: OpenAPI expresses the group with key-presence
+	// (`required` / `not.required`) while the runtime validator falls
+	// back to zero-value emptiness (`== ""` / `== 0`), so the spec and
+	// the server disagree on whether an empty-but-present value counts.
+	// Requiring pointer-backed fields makes "present" mean the same
+	// thing on both sides.
+	CodeCrossFieldNotOptional = "decorator/cross-field-not-optional"
+	// CodeMapKeyType fires when a map key type is not a usable, JSON-
+	// serialisable map key. A generic type-parameter or a non-comparable
+	// type fails to compile; a bool / float / struct key compiles but
+	// json.Marshal cannot serialise it (JSON object keys are strings). Only
+	// a string / int* / uint* key, or a scalar / enum over one, is allowed.
+	CodeMapKeyType = "type/map-key"
+	// CodeDuplicatePathVar fires when a route template repeats a path
+	// variable name (`/items/{id}/x/{id}`). net/http's ServeMux panics on
+	// a duplicate wildcard at registration.
+	CodeDuplicatePathVar = "route/duplicate-path-var"
+	// CodeDuplicateWireName fires when two request fields bind to the same
+	// wire parameter name on the same source (`a @query("x")  b
+	// @query("x")`). The OpenAPI emits a duplicate (name, in) parameter
+	// (an invalid spec) and the binder reads the same value into both.
+	CodeDuplicateWireName = "binding/duplicate-wire-name"
 
 	// CodePackageMismatch fires when files disagree on the `package`
 	// name.
@@ -158,11 +183,6 @@ const (
 	// CodeBindingConflict fires when a field has more than one of
 	// `@path / @query / @header / @cookie / @body / @form`.
 	CodeBindingConflict = "binding/conflict"
-	// CodeDefaultNeedsOptional fires (severity Warning) when a field
-	// carries `@default(...)` but its type lacks the `?` suffix. The
-	// formatter auto-adds `?` on save, so the warning clears as soon
-	// as the user runs `craftgo fmt` (or format-on-save).
-	CodeDefaultNeedsOptional = "decorator/default-needs-optional"
 	// CodeBindingType fires when `@path`, `@header`, or `@cookie` is
 	// applied to a field whose type is not a non-array, non-optional
 	// `string`. The wire formats those decorators target carry only
@@ -226,6 +246,13 @@ const (
 	// CodeGenericNonGeneric fires when a non-generic type is referenced
 	// with `<...>` arguments.
 	CodeGenericNonGeneric = "generic/non-generic"
+	// CodeGenericOptionalArg fires when a generic type argument carries a
+	// trailing `?` (`Page<Item?>`). The optionality has no single, well-
+	// defined position once the argument is substituted into the decl's
+	// body, so the Go type and the OpenAPI schema disagree about whether it
+	// applies to the element or the surrounding collection. Declare the
+	// nullability on a concrete field of the generic instead.
+	CodeGenericOptionalArg = "generic/optional-arg"
 
 	// CodePathBaseFormat warns when [Options.BasePath] is malformed -
 	// missing leading slash, trailing slash, or contains `//`. Code-
@@ -234,6 +261,12 @@ const (
 	// CodePathCollision fires when two methods (across any service)
 	// resolve to the same VERB + final-path tuple.
 	CodePathCollision = "path/collision"
+	// CodeDuplicateOperation fires when two methods resolve to the same
+	// OpenAPI operationId — auto-prefixing removes same-method-name
+	// collisions, so a survivor comes from an explicit `@operationId(...)`
+	// that two methods share (or that equals another method's auto id),
+	// which would emit an invalid spec.
+	CodeDuplicateOperation = "operation/duplicate-id"
 	// CodePathParamMissing fires when a `{name}` segment in the
 	// resolved route has no corresponding field binding in the
 	// method's request type.

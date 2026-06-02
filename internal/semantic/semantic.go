@@ -242,6 +242,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	}
 	a.checkGenerics()
 	a.checkPathResolution()
+	a.checkOperationIDUniqueness()
 	a.checkCombinationRules(files)
 }
 

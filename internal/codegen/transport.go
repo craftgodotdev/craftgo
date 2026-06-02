@@ -64,8 +64,10 @@ type transportData struct {
 	// JSON decode never zeroes fields it doesn't see, so a pre-filled
 	// default survives unless the client explicitly sends a value.
 	Defaults []defaultBinding
-	// NeedsStrconv tells the template to import "strconv" when at
-	// least one bound field needed string→int/float/bool parsing.
+	// NeedsStrconv tells the template to import "strconv" when a
+	// response header / cookie field needs number→string formatting.
+	// Request parsing runs through the generic [server] bind helpers, so
+	// it no longer pulls strconv into the handler.
 	NeedsStrconv bool
 	// SuccessStatus is the resolved HTTP success code for this method
 	// (see [methodSuccessStatus]). SuccessStatusExpr is the Go source
@@ -470,26 +472,25 @@ func pathString(p *ast.Path) string {
 
 type queryPrim struct {
 	parser string // strconv.ParseX function or "" for direct string
-	bits   int
-	goType string // cast target ("int", "int8", "float64", ...) or "" for direct
+	goType string // type-argument for the bind helper ("int", "float64", ...) or "" for bool/string
 	label  string // human-readable kind for error messages
 }
 
 var queryPrims = map[string]queryPrim{
 	"string":  {label: "string"},
 	"bool":    {parser: "strconv.ParseBool", label: "bool"},
-	"int":     {parser: "strconv.ParseInt", bits: 64, goType: "int", label: "int"},
-	"int8":    {parser: "strconv.ParseInt", bits: 8, goType: "int8", label: "int"},
-	"int16":   {parser: "strconv.ParseInt", bits: 16, goType: "int16", label: "int"},
-	"int32":   {parser: "strconv.ParseInt", bits: 32, goType: "int32", label: "int"},
-	"int64":   {parser: "strconv.ParseInt", bits: 64, goType: "int64", label: "int"},
-	"uint":    {parser: "strconv.ParseUint", bits: 64, goType: "uint", label: "uint"},
-	"uint8":   {parser: "strconv.ParseUint", bits: 8, goType: "uint8", label: "uint"},
-	"uint16":  {parser: "strconv.ParseUint", bits: 16, goType: "uint16", label: "uint"},
-	"uint32":  {parser: "strconv.ParseUint", bits: 32, goType: "uint32", label: "uint"},
-	"uint64":  {parser: "strconv.ParseUint", bits: 64, goType: "uint64", label: "uint"},
-	"float32": {parser: "strconv.ParseFloat", bits: 32, goType: "float32", label: "float"},
-	"float64": {parser: "strconv.ParseFloat", bits: 64, goType: "float64", label: "float"},
+	"int":     {parser: "strconv.ParseInt", goType: "int", label: "int"},
+	"int8":    {parser: "strconv.ParseInt", goType: "int8", label: "int"},
+	"int16":   {parser: "strconv.ParseInt", goType: "int16", label: "int"},
+	"int32":   {parser: "strconv.ParseInt", goType: "int32", label: "int"},
+	"int64":   {parser: "strconv.ParseInt", goType: "int64", label: "int"},
+	"uint":    {parser: "strconv.ParseUint", goType: "uint", label: "uint"},
+	"uint8":   {parser: "strconv.ParseUint", goType: "uint8", label: "uint"},
+	"uint16":  {parser: "strconv.ParseUint", goType: "uint16", label: "uint"},
+	"uint32":  {parser: "strconv.ParseUint", goType: "uint32", label: "uint"},
+	"uint64":  {parser: "strconv.ParseUint", goType: "uint64", label: "uint"},
+	"float32": {parser: "strconv.ParseFloat", goType: "float32", label: "float"},
+	"float64": {parser: "strconv.ParseFloat", goType: "float64", label: "float"},
 }
 
 // collectRequestFieldImports walks every WIRE-BOUND field of the
@@ -515,37 +516,61 @@ var queryPrims = map[string]queryPrim{
 // cookieGuard is true. SingleExpr / arrayExpr for cookie return
 // `c.Value` / "" - the wrap supplies `c`.
 type wireSource struct {
-	kind        string
-	singleExpr  func(wireName string) string
-	arrayExpr   func(wireName string) string // "" if arrays unsupported for this source
-	cookieGuard bool
+	kind         string
+	singleExpr   func(wireName string) string
+	arrayExpr    func(wireName string) string // "" if arrays unsupported for this source
+	presenceExpr func(wireName string) string // Go bool expr: key present? nil = no presence check for this source
+	cookieGuard  bool
 }
 
 // querySource / headerSource / cookieSource / formSource build the
 // wireSource for each of the four supported bindings. Hot path - kept
 // allocation-free by capturing the wireName by value at the call site.
 func querySource() wireSource {
+	// Reads come off `_q`, the `url.Values` the handler parses ONCE via
+	// `_q := r.URL.Query()` (the template emits it when QueryParams is
+	// non-empty). r.URL.Query() reparses RawQuery and allocates a fresh
+	// map on every call, so binding N query fields off one `_q` instead
+	// of N `r.URL.Query()` calls is N× fewer parses + maps. The %q is the
+	// WIRE name (honours `@query("x-q")`), not the Go field name.
 	return wireSource{
-		kind:       "query",
-		singleExpr: func(n string) string { return fmt.Sprintf("r.URL.Query().Get(%q)", n) },
-		arrayExpr:  func(n string) string { return fmt.Sprintf("r.URL.Query()[%q]", n) },
+		kind:         "query",
+		singleExpr:   func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
+		arrayExpr:    func(n string) string { return fmt.Sprintf("_q[%q]", n) },
+		presenceExpr: func(n string) string { return fmt.Sprintf("_q.Has(%q)", n) },
 	}
 }
 
 func headerSource() wireSource {
 	return wireSource{
-		kind:       "header",
-		singleExpr: func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
-		arrayExpr:  func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+		kind:         "header",
+		singleExpr:   func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
+		arrayExpr:    func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+		presenceExpr: func(n string) string { return fmt.Sprintf("len(r.Header.Values(%q)) > 0", n) },
 	}
 }
 
 func cookieSource() wireSource {
 	return wireSource{
-		kind:        "cookie",
-		singleExpr:  func(string) string { return "c.Value" },
-		arrayExpr:   func(string) string { return "" },
-		cookieGuard: true,
+		kind:         "cookie",
+		singleExpr:   func(string) string { return "c.Value" },
+		arrayExpr:    func(string) string { return "" },
+		cookieGuard:  true,
+		presenceExpr: func(n string) string { return fmt.Sprintf("server.CookiePresent(r, %q)", n) },
+	}
+}
+
+// pathSource reads a single segment via `r.PathValue("id")`. A path has
+// no multi-value form, so arrayExpr returns "" and [renderWireBindLine]
+// rejects an array-typed @path field. A matched route always supplies
+// the segment, so the value is treated as present (the semantic layer
+// rejects an optional @path field, so only the required shapes —
+// directSingle / singleParsed — are ever emitted here).
+func pathSource() wireSource {
+	return wireSource{
+		kind:       "path",
+		singleExpr: func(n string) string { return fmt.Sprintf("r.PathValue(%q)", n) },
+		arrayExpr:  func(string) string { return "" },
 	}
 }
 
@@ -612,31 +637,17 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		if !ok {
 			if pkg != nil {
 				if ed, edOk := pkg.Enums[declName]; edOk && ed != nil {
-					switch firstEnumKind(ed) {
-					case ast.EnumBare, ast.EnumString:
-						prim = queryPrims["string"]
-						ok = true
-						cast = declName
-					case ast.EnumInt:
-						prim = queryPrims["int"]
-						ok = true
-						cast = declName
-					}
+					prim = queryPrims[enumWirePrim(ed)]
+					ok = true
+					cast = declName
 				}
 			}
 		}
 		if !ok {
 			if ed := r.LookupEnum(declName); ed != nil {
-				switch firstEnumKind(ed) {
-				case ast.EnumBare, ast.EnumString:
-					prim = queryPrims["string"]
-					ok = true
-					cast = declName
-				case ast.EnumInt:
-					prim = queryPrims["int"]
-					ok = true
-					cast = declName
-				}
+				prim = queryPrims[enumWirePrim(ed)]
+				ok = true
+				cast = declName
 			}
 		}
 	}
@@ -666,6 +677,19 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		SingleSource:  singleSrc,
 		ArraySource:   arraySrc,
 	}
+	// Parsed primitives bind through the generic [server] helpers; the
+	// type argument is the scalar cast when present, else the builtin
+	// Go type (bool has no goType entry, so fall back to the DSL name).
+	if prim.parser != "" {
+		bindType := cast
+		if bindType == "" {
+			bindType = prim.goType
+		}
+		if bindType == "" {
+			bindType = declName
+		}
+		data.ParseFn = bindParseFamily(prim.parser) + "[" + bindType + "]"
+	}
 	var shape string
 	needsStrconv := false
 	if f.Type.Array {
@@ -677,18 +701,12 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 				shape = renderWireBindShape("arrayString", data)
 			}
 		} else {
-			data.ParseCall = parseCall(prim)
-			data.Wrap = wrap(castExpr(prim, "_n"))
 			shape = renderWireBindShape("arrayParsed", data)
-			needsStrconv = true
 		}
 	} else {
-		// Single (non-array). Optional non-string primitives are not
-		// supported: `*int` from a wire string would need a tri-state
-		// (absent / empty / parsed) and no clean idiom exists yet.
-		if f.Type.Optional && prim.parser != "" {
-			return "", false, fmt.Errorf("field %q: optional %s cannot bind to @%s — drop the `?` (use 0 / false as the absent sentinel) or move to body", f.Name, prim.label, src.kind)
-		}
+		// Single (non-array). An absent param and a present-but-empty one
+		// (`?x=`) both leave the field unset: nil for an optional pointer,
+		// the zero value for a required field.
 		if prim.parser == "" {
 			if f.Type.Optional {
 				if cast == "" {
@@ -697,19 +715,44 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 					data.Wrap = wrap("_v")
 					shape = renderWireBindShape("optionalStringCast", data)
 				}
+			} else if _, hasDef := defaultValue(f.Decorators); hasDef {
+				// A string-backed param carrying @default: only overwrite
+				// the pre-filled default when the param is actually present,
+				// mirroring the parsed path's `raw != ""` guard. An
+				// unconditional assign would clobber the default with "" on
+				// an absent (or `?x=`) request.
+				data.Wrap = wrap("_v")
+				shape = renderWireBindShape("directSingleDefaulted", data)
 			} else {
 				data.Wrap = wrap(singleSrc)
 				shape = renderWireBindShape("directSingle", data)
 			}
 		} else {
-			data.ParseCall = parseCall(prim)
-			data.Wrap = wrap(castExpr(prim, "_n"))
-			shape = renderWireBindShape("singleParsed", data)
-			needsStrconv = true
+			if f.Type.Optional {
+				shape = renderWireBindShape("optionalParsed", data)
+			} else {
+				shape = renderWireBindShape("singleParsed", data)
+			}
 		}
 	}
 	if src.cookieGuard {
 		shape = wrapCookieGuard(wireName, shape)
+	}
+	// A required param (non-optional, no @default) on a source that can
+	// distinguish present from absent gets a presence check: the OpenAPI
+	// advertises required:true, so the runtime 400s on a missing key instead
+	// of silently accepting the zero value. This covers arrays too (a
+	// required array @query / @header 400s when the key is absent), matching
+	// the required:true the spec carries. A present-but-empty value (`?q=`)
+	// passes — the test is on the key, not the value. @default fields are
+	// exempt (the default covers absence). The check sits OUTSIDE the
+	// cookie-guard wrap so an absent required cookie 400s rather than
+	// skipping silently.
+	if src.presenceExpr != nil && !f.Type.Optional {
+		if _, hasDef := defaultValue(f.Decorators); !hasDef {
+			guard := fmt.Sprintf("if !server.RequirePresent(w, r, %s, %q, %q) {\nreturn\n}", src.presenceExpr(wireName), wireName, src.kind)
+			shape = guard + "\n" + shape
+		}
 	}
 	return shape, needsStrconv, nil
 }
@@ -754,10 +797,28 @@ type wireBindData struct {
 	DSLNameQuoted string
 	GoName        string
 	Wrap          string
-	ParseCall     string
-	Label         string
-	SingleSource  string
-	ArraySource   string
+	// ParseFn is the generic parse function the bind helpers receive,
+	// e.g. `server.ParseSigned[int]` or `server.ParseSigned[types.Cents]`.
+	ParseFn      string
+	Label        string
+	SingleSource string
+	ArraySource  string
+}
+
+// bindParseFamily maps a strconv parser to the matching generic
+// [server] parse helper. The type argument (appended by the caller)
+// carries the per-type bit width and any scalar conversion.
+func bindParseFamily(parser string) string {
+	switch parser {
+	case "strconv.ParseBool":
+		return "server.ParseBool"
+	case "strconv.ParseFloat":
+		return "server.ParseFloat"
+	case "strconv.ParseUint":
+		return "server.ParseUnsigned"
+	default: // strconv.ParseInt
+		return "server.ParseSigned"
+	}
 }
 
 // renderWireBindShape executes one named block from
@@ -783,28 +844,6 @@ var transportWireBindTemplate = tmpl("transport_wire_bind.tmpl")
 // for error messages - `[]Point`, `Page<Book>`, `map<string,int>`,
 // etc. Used by the binding-rejection paths so the user sees the
 // exact shape that violated the binding contract.
-
-func parseCall(p queryPrim) string {
-	switch p.parser {
-	case "strconv.ParseBool":
-		return "strconv.ParseBool(_v)"
-	case "strconv.ParseFloat":
-		return fmt.Sprintf("strconv.ParseFloat(_v, %d)", p.bits)
-	default: // ParseInt / ParseUint
-		return fmt.Sprintf("%s(_v, 10, %d)", p.parser, p.bits)
-	}
-}
-
-// castExpr wraps the parsed value in the target Go type cast when
-// needed. Bool returns the parsed value directly (it's already typed);
-// numeric primitives need a cast from int64/uint64/float64 to the
-// declared field type.
-func castExpr(p queryPrim, varName string) string {
-	if p.goType == "" || p.parser == "strconv.ParseBool" {
-		return varName
-	}
-	return fmt.Sprintf("%s(%s)", p.goType, varName)
-}
 
 func GenerateTransportHelpers(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {

@@ -2,18 +2,92 @@
 package codegen
 
 import (
+	"encoding/json"
+	"strconv"
+
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
+// maxExactInt is 2^53 — the largest magnitude an int64 keeps EXACTLY when
+// converted to the float64 that JSON numbers (and openapi3.Schema.Min /
+// Max) carry. Beyond it, float64(int64) rounds, so a bound like
+// `@gte(9007199254740993)` or `@gte(math.MaxInt64)` would advertise a
+// value the runtime validator (which keeps the exact int64) never agrees
+// with — at the extreme an unsatisfiable spec.
+const maxExactInt = int64(1) << 53
+
+// rawIfBigInt returns the exact decimal text of an integer-literal bound
+// whose magnitude exceeds float64's exact range, as a json.Number to be
+// emitted verbatim through Extensions. For in-range or non-integer args it
+// returns ok=false so the caller takes the ordinary float64 path. The
+// big-integer classification is shared with the validator via
+// [parseNumericArg] so the two sides agree on which bounds need exact text.
+func rawIfBigInt(d *ast.Decorator, i int) (json.Number, bool) {
+	if i >= len(d.Args) {
+		return "", false
+	}
+	if l, ok := parseNumericArg(d.Args[i]); ok && l.isInt && l.isBigInt {
+		return json.Number(strconv.FormatInt(l.intVal, 10)), true
+	}
+	return "", false
+}
+
+func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Package) {
 	if ref == nil {
 		return
 	}
-	// Plain $ref: nothing to mutate on the field site - description,
-	// example, default come from the referenced schema's own definition.
+	// Plain $ref: the referenced schema carries the type's own
+	// description / example / constraints. A bare $ref can't carry
+	// sibling keywords portably, so any FIELD-LEVEL metadata forces a
+	// wrapper:
+	//   - @nullable / `?`   -> anyOf:[{$ref}, {type:null}] (the value may
+	//     be null; a `@nullable`-without-`?` field stays in `required`,
+	//     matching the Go struct that always emits the key as JSON null).
+	//   - narrowing constraint (`unitCents Cents @lte(1000000)`) -> allOf:
+	//     [{$ref}, {constraints}], so a field that tightens the referenced
+	//     type advertises the bound the runtime validator enforces.
+	//   - @default / @deprecated -> carried on the wrapper.
+	// Field-specific description / example stay with the $ref (alias the
+	// type for a field-specific one); on a wrapper they render
+	// inconsistently across clients.
 	if ref.Ref != "" {
+		nullable := hasNullableDecorator(f.Decorators) || (f.Type != nil && f.Type.Optional)
+		extra := fieldConstraintSchema(f)
+		def, hasDef := resolveDefaultValue(f, pkg)
+		deprecated := hasDeprecatedDecorator(f.Decorators)
+		if !nullable && extra == nil && !hasDef && !deprecated {
+			return
+		}
+		base := ref.Ref
+		ref.Ref = ""
+		w := &openapi3.Schema{}
+		switch {
+		case nullable:
+			w.AnyOf = openapi3.SchemaRefs{
+				{Ref: base},
+				{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}},
+			}
+			applyNumericConstraints(f.Decorators, w)
+			applyStringLengthConstraints(f.Decorators, w)
+			applyPatternFormat(f.Decorators, w)
+		case extra != nil:
+			w.AllOf = openapi3.SchemaRefs{{Ref: base}, {Value: extra}}
+		default:
+			w.AllOf = openapi3.SchemaRefs{{Ref: base}}
+		}
+		if hasDef {
+			w.Default = def
+		}
+		if deprecated {
+			w.Deprecated = true
+			if reason := deprecatedReason(f.Decorators); reason != "" {
+				w.Description = appendDescription(w.Description, "Deprecated: "+reason)
+			}
+		}
+		ref.Value = w
 		return
 	}
 	if ref.Value == nil {
@@ -24,13 +98,24 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	// tooling renders inconsistently - some UI generators show it next
 	// to the field, others let the $ref's own description win. We drop
 	// those decorators here; users who need a field-specific
-	// description should alias the type (`type Manager = User`). But
-	// `default` carries runtime semantics (server fills in when the
-	// field is absent), so it stays on the wrapper regardless.
+	// description should alias the type (`type Manager = User`).
+	// `default` and the narrowing constraints stay: as siblings of the
+	// anyOf they are ANDed with the resolved value (a numeric bound is
+	// vacuous for the `null` branch), keeping the spec in step with the
+	// runtime validator.
 	if isNullableRefWrapper(ref.Value) {
-		if def, ok := defaultValue(f.Decorators); ok {
+		if def, ok := resolveDefaultValue(f, pkg); ok {
 			ref.Value.Default = def
 		}
+		if hasDeprecatedDecorator(f.Decorators) {
+			ref.Value.Deprecated = true
+			if reason := deprecatedReason(f.Decorators); reason != "" {
+				ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
+			}
+		}
+		applyNumericConstraints(f.Decorators, ref.Value)
+		applyStringLengthConstraints(f.Decorators, ref.Value)
+		applyPatternFormat(f.Decorators, ref.Value)
 		return
 	}
 	if desc := resolveDescription(f.Decorators, f.Doc); desc != "" {
@@ -48,13 +133,46 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef) {
 	if ex, ok := exampleValue(f.Decorators); ok {
 		ref.Value.Example = ex
 	}
-	if def, ok := defaultValue(f.Decorators); ok {
+	if def, ok := resolveDefaultValue(f, pkg); ok {
 		ref.Value.Default = def
 	}
 	applyNumericConstraints(f.Decorators, ref.Value)
 	applyStringLengthConstraints(f.Decorators, ref.Value)
 	applyArrayConstraints(f.Decorators, ref.Value)
 	applyPatternFormat(f.Decorators, ref.Value)
+}
+
+// fieldConstraintSchema builds a schema carrying ONLY the field-level
+// narrowing constraints (numeric / string-length / pattern / format) a
+// field stacks on top of a referenced type, or nil when it declares
+// none. A $ref field is never an array (arrays render as
+// `{type: array, items: {$ref}}`), so the array keywords are not
+// applicable here.
+func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
+	if f == nil || !hasFieldConstraintDecorator(f.Decorators) {
+		return nil
+	}
+	s := &openapi3.Schema{}
+	applyNumericConstraints(f.Decorators, s)
+	applyStringLengthConstraints(f.Decorators, s)
+	applyPatternFormat(f.Decorators, s)
+	return s
+}
+
+// hasFieldConstraintDecorator reports whether ds carries any decorator
+// that maps to an OpenAPI validation keyword (the narrowing constraints).
+func hasFieldConstraintDecorator(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		switch d.Name {
+		case "gte", "gt", "lte", "lt", "range", "positive", "negative", "multipleOf",
+			"minLength", "maxLength", "length", "pattern", "format":
+			return true
+		}
+	}
+	return false
 }
 
 // isNullableRefWrapper recognises the `anyOf: [{$ref}, {type: null}]`
@@ -108,11 +226,49 @@ func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 	if s == nil {
 		return
 	}
-	setExclusive := func(key string, v float64) {
+	ext := func(key string, v interface{}) {
 		if s.Extensions == nil {
 			s.Extensions = make(map[string]interface{})
 		}
 		s.Extensions[key] = v
+	}
+	// emitBound writes an inclusive minimum / maximum: a big integer literal
+	// rides through Extensions as a raw json.Number (exact), everything else
+	// uses the native float64 field so existing specs are unchanged.
+	emitBound := func(key string, d *ast.Decorator, i int, native func(float64)) {
+		if r, ok := rawIfBigInt(d, i); ok {
+			ext(key, r)
+			return
+		}
+		if v, ok := numericArgValue(d, i); ok {
+			native(v)
+		}
+	}
+	// emitExclusive writes an exclusive bound, always through Extensions as a
+	// number (kin-openapi still models ExclusiveMin/Max as the 3.0 booleans);
+	// big integers ride as a raw json.Number, smaller values as a float64.
+	emitExclusive := func(key string, d *ast.Decorator, i int) {
+		if r, ok := rawIfBigInt(d, i); ok {
+			ext(key, r)
+			return
+		}
+		if v, ok := numericArgValue(d, i); ok {
+			ext(key, v)
+		}
+	}
+	// Intersect rather than overwrite: the runtime validator runs EVERY
+	// decorator (tightest bound wins), so stacking `@gte(10) @range(0,100)`
+	// enforces min 10 at runtime — the spec must advertise the same, not
+	// the last writer's looser 0.
+	setMin := func(v float64) {
+		if s.Min == nil || v > *s.Min {
+			s.Min = &v
+		}
+	}
+	setMax := func(v float64) {
+		if s.Max == nil || v < *s.Max {
+			s.Max = &v
+		}
 	}
 	for _, d := range ds {
 		if d == nil {
@@ -120,34 +276,24 @@ func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 		}
 		switch d.Name {
 		case "gte":
-			if v, ok := numericArgValue(d, 0); ok {
-				s.Min = &v
-			}
+			emitBound("minimum", d, 0, setMin)
 		case "gt":
-			if v, ok := numericArgValue(d, 0); ok {
-				setExclusive("exclusiveMinimum", v)
-			}
+			emitExclusive("exclusiveMinimum", d, 0)
 		case "lte":
-			if v, ok := numericArgValue(d, 0); ok {
-				s.Max = &v
-			}
+			emitBound("maximum", d, 0, setMax)
 		case "lt":
-			if v, ok := numericArgValue(d, 0); ok {
-				setExclusive("exclusiveMaximum", v)
-			}
+			emitExclusive("exclusiveMaximum", d, 0)
 		case "range":
-			if lo, ok := numericArgValue(d, 0); ok {
-				s.Min = &lo
-			}
-			if hi, ok := numericArgValue(d, 1); ok {
-				s.Max = &hi
-			}
+			emitBound("minimum", d, 0, setMin)
+			emitBound("maximum", d, 1, setMax)
 		case "positive":
-			setExclusive("exclusiveMinimum", 0)
+			ext("exclusiveMinimum", float64(0))
 		case "negative":
-			setExclusive("exclusiveMaximum", 0)
+			ext("exclusiveMaximum", float64(0))
 		case "multipleOf":
-			if v, ok := numericArgValue(d, 0); ok && v != 0 {
+			if r, ok := rawIfBigInt(d, 0); ok {
+				ext("multipleOf", r)
+			} else if v, ok := numericArgValue(d, 0); ok && v != 0 {
 				s.MultipleOf = &v
 			}
 		}
@@ -162,6 +308,30 @@ func applyStringLengthConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 	if s == nil {
 		return
 	}
+	// `bytes` renders as `{type: string, format: byte}` (a base64 string).
+	// `minLength` / `maxLength` on that schema constrain the BASE64-encoded
+	// character count, whereas the runtime validator (and the author's
+	// intent) count RAW bytes — so emitting the keyword here would advertise
+	// a different bound than the server enforces. JSON Schema has no
+	// decoded-byte-length keyword, so the constraint is left to the runtime
+	// rather than advertised incorrectly; the byte count rides the field's
+	// `@doc` description if the author wants it documented.
+	if s.Format == "byte" {
+		return
+	}
+	// Intersect rather than overwrite (tightest wins), matching the runtime
+	// which runs every decorator: `@length(5) @minLength(3) @maxLength(10)`
+	// enforces exactly 5, so the spec must too — not the last writer's 3..10.
+	setMinLen := func(v uint64) {
+		if v > s.MinLength {
+			s.MinLength = v
+		}
+	}
+	setMaxLen := func(v uint64) {
+		if s.MaxLength == nil || v < *s.MaxLength {
+			s.MaxLength = &v
+		}
+	}
 	for _, d := range ds {
 		if d == nil {
 			continue
@@ -169,22 +339,26 @@ func applyStringLengthConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 		switch d.Name {
 		case "minLength":
 			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
-				u := uint64(v)
-				s.MinLength = u
+				setMinLen(uint64(v))
 			}
 		case "maxLength":
 			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
-				u := uint64(v)
-				s.MaxLength = &u
+				setMaxLen(uint64(v))
 			}
 		case "length":
-			if lo, ok := numericArgValue(d, 0); ok && lo >= 0 {
-				s.MinLength = uint64(lo)
+			// `@length(N)` is exact length — fold the single argument into
+			// both bounds (min == max == N), matching the runtime check and
+			// the map-key path; `@length(min, max)` is a range.
+			lo, ok := numericArgValue(d, 0)
+			if !ok || lo < 0 {
+				break
 			}
-			if hi, ok := numericArgValue(d, 1); ok && hi >= 0 {
-				u := uint64(hi)
-				s.MaxLength = &u
+			hi := lo
+			if v, ok := numericArgValue(d, 1); ok && v >= 0 {
+				hi = v
 			}
+			setMinLen(uint64(lo))
+			setMaxLen(uint64(hi))
 		}
 	}
 }
@@ -278,11 +452,8 @@ func numericArgValue(d *ast.Decorator, i int) (float64, bool) {
 	if i >= len(d.Args) {
 		return 0, false
 	}
-	switch v := d.Args[i].Value.(type) {
-	case *ast.IntLit:
-		return float64(v.Value), true
-	case *ast.FloatLit:
-		return v.Value, true
+	if l, ok := parseNumericArg(d.Args[i]); ok {
+		return l.floatVal, true
 	}
 	return 0, false
 }
@@ -304,6 +475,85 @@ func defaultValue(ds []*ast.Decorator) (any, bool) {
 			return ident.Name.String(), true
 		}
 		return literalToAny(v)
+	}
+	return nil, false
+}
+
+// resolveDefaultValue is [defaultValue] with enum-member resolution: when
+// the field is an enum type and its `@default` is a bare member identifier
+// (`@default(active)`), it returns the member's WIRE value — the `= 1` /
+// `= "ACTIVE"` literal the runtime and client use — not the DSL spelling.
+// Everything else (including bare enums, whose name IS the wire value)
+// falls through to [defaultValue].
+func resolveDefaultValue(f *ast.Field, pkg *semantic.Package) (any, bool) {
+	if f == nil {
+		return nil, false
+	}
+	for _, d := range f.Decorators {
+		if d.Name != "default" || len(d.Args) == 0 {
+			continue
+		}
+		// The enum a member identifier resolves against — for an array
+		// field (`Method[]`) the element type carries the enum name too, so
+		// the same lookup serves both `@default(Card)` and `@default([Card,
+		// Bank])`.
+		enumName := ""
+		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name != nil {
+			enumName = f.Type.Named.Name.String()
+		}
+		switch v := d.Args[0].Value.(type) {
+		case *ast.IdentExpr:
+			if v.Name == nil {
+				return nil, false
+			}
+			if wire, ok := resolveEnumMember(pkg, enumName, v.Name.String()); ok {
+				return wire, true
+			}
+			return v.Name.String(), true
+		case *ast.ArrayLit:
+			// Resolve each element so an array of enum members lands its
+			// wire values (`[Card, Bank]` -> `["card", "bank"]`); without
+			// this the whole array default is dropped, because literalToAny
+			// has no member-ident case and bails on the first one.
+			out := make([]any, 0, len(v.Elements))
+			for _, el := range v.Elements {
+				if id, ok := el.(*ast.IdentExpr); ok && id.Name != nil {
+					if wire, ok := resolveEnumMember(pkg, enumName, id.Name.String()); ok {
+						out = append(out, wire)
+					} else {
+						out = append(out, id.Name.String())
+					}
+					continue
+				}
+				x, ok := literalToAny(el)
+				if !ok {
+					return nil, false
+				}
+				out = append(out, x)
+			}
+			return out, true
+		default:
+			return literalToAny(d.Args[0].Value)
+		}
+	}
+	return nil, false
+}
+
+// resolveEnumMember returns the wire value of enumName's `member` (the
+// `= 1` / `= "ACTIVE"` literal), or ok=false when enumName is not an enum
+// in pkg or has no such member.
+func resolveEnumMember(pkg *semantic.Package, enumName, member string) (any, bool) {
+	if pkg == nil || enumName == "" {
+		return nil, false
+	}
+	ed, ok := pkg.Enums[enumName]
+	if !ok {
+		return nil, false
+	}
+	for _, ev := range ed.EnumValues() {
+		if ev.Name == member {
+			return enumMemberWire(ev), true
+		}
 	}
 	return nil, false
 }

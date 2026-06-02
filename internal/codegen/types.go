@@ -327,7 +327,10 @@ func goFieldIsPointer(f *ast.Field) bool {
 // because the analyzer doesn't synthesize a fake qualifier for local
 // refs.
 func renderMixin(m *ast.Mixin) string {
-	return "\t" + m.Ref.Name.String() + "\n"
+	// goNamedType carries the generic arguments, so a `Page<Item>` mixin
+	// embeds the instantiated `Page[Item]` (which Go accepts and promotes
+	// the fields of) rather than the bare, un-instantiable `Page`.
+	return "\t" + goNamedType(m.Ref) + "\n"
 }
 
 // GoTypeRef converts an [ast.TypeRef] into the corresponding Go type
@@ -481,11 +484,9 @@ func jsonTag(f *ast.Field) string {
 // / cookies - never from the body - so the generated struct should hide
 // them from JSON entirely.
 func isNonBodyBound(f *ast.Field) bool {
-	for _, d := range f.Decorators {
-		switch d.Name {
-		case "path", "query", "header", "cookie":
-			return true
-		}
+	switch semantic.BindingKind(f.Decorators) {
+	case "path", "query", "header", "cookie":
+		return true
 	}
 	return false
 }

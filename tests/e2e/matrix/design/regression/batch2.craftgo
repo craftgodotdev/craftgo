@@ -1,0 +1,98 @@
+// Fixtures exercising deeper cross-stage behaviour: array-of-map
+// validation, @nullable strings with @format, exact int64 bounds, mixin
+// wire/body field resolution, and required wire-parameter presence.
+// Rg2-prefixed to stay distinct from the other cornercase packages.
+package regression
+
+// An array of maps whose value carries a validator. The validator walks
+// each map's elements, peeling the `[]` dimension before the map range.
+scalar Rg2Tag string @minLength(1) @maxLength(20)
+
+type Rg2Maps {
+	m     map<string, Rg2Tag>[]
+	plain map<string, Rg2Tag>
+}
+
+// A @nullable string carrying @format; the validator nil-guards the deref
+// so a JSON null is handled without dereferencing.
+type Rg2Fmt {
+	email string @nullable @format(email)
+}
+
+// Integer bounds beyond 2^53 stay exact in OpenAPI (emitted as a raw
+// json.Number) so the spec bound matches the int64 the validator enforces;
+// small bounds keep the native form.
+type Rg2Big {
+	minId  int64 @gte(9007199254740993)
+	bigmin int64 @gte(9223372036854775807)
+	small  int   @gte(5) @lte(100)
+}
+
+// A request mixing wire-bound mixin fields (traceId, sortBy), a body-only
+// mixin field (note), and a direct body field (name). The wire fields bind
+// and surface as OpenAPI parameters; the body fields, including the
+// mixin's, ride the request body schema.
+type Rg2WireMix {
+	traceId string  @header("X-Trace-Id")
+	sortBy  string? @query @default("name")
+}
+
+type Rg2BodyMix {
+	note string @minLength(1)
+}
+
+type Rg2Mixed {
+	Rg2WireMix
+	Rg2BodyMix
+	name string
+}
+
+// A request whose entire body comes from a mixin. The server decodes the
+// body and advertises a requestBody, and the validator enforces the
+// mixin's checks.
+type Rg2Audit {
+	createdAt string @minLength(1)
+}
+
+type Rg2Only {
+	Rg2Audit
+}
+
+// Required (non-optional, no-@default) wire parameters; an absent key
+// returns 400, a present-but-empty value passes.
+type Rg2Required {
+	q     string @query
+	limit int    @query
+	tok   string @header("X-Tok")
+}
+
+@prefix("/regression2")
+@tags(regression)
+service RegressionBatch2 {
+	post EchoMaps /maps {
+		request  Rg2Maps
+		response Rg2Maps
+	}
+
+	post EchoFmt /fmt {
+		request  Rg2Fmt
+		response Rg2Fmt
+	}
+
+	post EchoBig /big {
+		request  Rg2Big
+		response Rg2Big
+	}
+
+	post DoMixed /m {
+		request  Rg2Mixed
+	}
+
+	post DoOnly /o {
+		request  Rg2Only
+	}
+
+	get DoReq /req {
+		request  Rg2Required
+	}
+}

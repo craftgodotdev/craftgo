@@ -1,0 +1,109 @@
+// Fixtures whose behaviour is expressible as generated output. The
+// rejection-only cases — a value constraint on a type-parameter,
+// @pattern/@format on bytes — are excluded since gen refuses them.
+// Rg3-prefixed.
+package regression
+
+// A whole-valued float literal `@multipleOf(5.0)` on an int field,
+// enforced by both validate and OpenAPI.
+type Rg3MultipleOf {
+	qty int @multipleOf(5)
+}
+
+// An int enum that defines 0 as a real member. A required field of it
+// accepts the zero-valued member rather than rejecting it via a `== 0`
+// check.
+enum Rg3Status {
+	Inactive = 0
+	Active   = 1
+	Banned   = 2
+}
+
+type Rg3Zero {
+	status Rg3Status
+}
+
+// An enum `@default` resolves to the member's wire value in OpenAPI (the
+// `= "RED"` / `= 9` literal), not the DSL member name.
+enum Rg3Color {
+	red   = "RED"
+	green = "GREEN"
+}
+
+enum Rg3Level {
+	low  = 1
+	high = 9
+}
+
+type Rg3Defaults {
+	c Rg3Color? @default(red)
+	l Rg3Level? @default(high)
+}
+
+// Map-of-map and map-of-array-of-map with validator-carrying values; the
+// validator walks every inner element.
+scalar Rg3Tag string @minLength(1)
+
+type Rg3NestedMaps {
+	mm  map<string, map<string, Rg3Tag>>
+	maa map<string, map<string, Rg3Tag>[]>
+}
+
+// A response mixing a mixin and a @header field keeps the mixin's body
+// fields (createdAt) in the per-operation response body schema.
+type Rg3Audit {
+	createdAt string @minLength(1)
+}
+
+type Rg3Resp {
+	Rg3Audit
+	etag string @header("ETag")
+	name string
+}
+
+// A cross-field decorator referencing a mixin-promoted field (email /
+// phone come from Rg3Pair).
+type Rg3Pair {
+	email string?
+	phone string?
+}
+
+@requiresOneOf(email, phone)
+type Rg3Contact {
+	Rg3Pair
+	note string
+}
+
+@prefix("/regression3")
+@tags(regression)
+service RegressionBatch3 {
+	post EchoMultipleOf /mo {
+		request  Rg3MultipleOf
+		response Rg3MultipleOf
+	}
+
+	post EchoZero /z {
+		request  Rg3Zero
+		response Rg3Zero
+	}
+
+	post EchoDefaults /d {
+		request  Rg3Defaults
+		response Rg3Defaults
+	}
+
+	post EchoNested /n {
+		request  Rg3NestedMaps
+		response Rg3NestedMaps
+	}
+
+	post EchoResp /r {
+		request  Rg3Audit
+		response Rg3Resp
+	}
+
+	post EchoContact /c {
+		request  Rg3Contact
+		response Rg3Contact
+	}
+}

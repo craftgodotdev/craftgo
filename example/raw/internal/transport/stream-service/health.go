@@ -5,7 +5,6 @@ package streamservice
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
-	"strconv"
 
 	service "github.com/craftgodotdev/craftgo/example/raw/internal/service/stream-service"
 	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
@@ -17,13 +16,12 @@ import (
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.HealthReq
-		if _v := r.URL.Query().Get("verbose"); _v != "" {
-			_n, _err := strconv.ParseBool(_v)
-			if _err != nil {
-				http.Error(w, "verbose"+": invalid bool value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.Verbose = _n
+		_q := r.URL.Query()
+		if !server.RequirePresent(w, r, _q.Has("verbose"), "verbose", "query") {
+			return
+		}
+		if !server.BindValue(w, r, "verbose", "bool", _q.Get("verbose"), &req.Verbose, server.ParseBool[bool]) {
+			return
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

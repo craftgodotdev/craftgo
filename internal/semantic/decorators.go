@@ -13,7 +13,11 @@ package semantic
 // argument shape ([ArgsRule]); the argument-shape pass validates arity,
 // value types, and enum sets against it.
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
+)
 
 // Level is a bitmask of declaration sites where a decorator may appear.
 // A [Spec] OR-s the levels it accepts; the placement check passes when
@@ -280,13 +284,11 @@ type Spec struct {
 	Flag bool
 }
 
-// formatValues lists the named string formats accepted by `@format` on
-// a field or scalar. Source: README §"Decorators by level".
-var formatValues = []string{
-	"email", "url", "uri", "uuid", "datetime", "date", "time",
-	"phone", "hostname", "ipv4", "ipv6", "cidr", "mac",
-	"creditcard", "base64", "base64url", "hexcolor", "json",
-}
+// formatValues lists the named string formats accepted by `@format` on a
+// field or scalar. The catalogue lives in [strfmt] (a leaf both this
+// analyser and codegen read) so the legal-name set and the validator set
+// cannot drift.
+var formatValues = strfmt.Names
 
 // Registry is the closed set of decorators the framework recognises. A
 // `@name` not present here is reported as `decorator/unknown` - there is

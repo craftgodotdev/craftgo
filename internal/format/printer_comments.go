@@ -6,6 +6,11 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// looseEOFKey is the sentinel loose-map key for end-of-file comment
+// blocks — those that follow the last declaration and so have no decl
+// anchor. Negative so it never collides with a 1-indexed source line.
+const looseEOFKey = -1
+
 func (p *Printer) printFreeComment(c *ast.FreeComment) {
 	for _, line := range c.Text {
 		p.indent()
@@ -86,7 +91,16 @@ func buildLooseFromComments(f *ast.File) map[int][]string {
 		}
 		// Anchor = first decl line >= lastLine + 1.
 		anchor := nextAnchor(anchors, lastLine+1)
-		if anchor != 0 && anchor > lastLine+1 {
+		if anchor == 0 {
+			// No declaration follows — an end-of-file comment block. Keep it
+			// under the EOF key so the printer re-emits it after the last
+			// decl instead of dropping it.
+			if existing, ok := out[looseEOFKey]; ok {
+				out[looseEOFKey] = append(append(existing, ""), block...)
+			} else {
+				out[looseEOFKey] = block
+			}
+		} else if anchor > lastLine+1 {
 			// Blank line between block end and anchor → loose.
 			if existing, ok := out[anchor]; ok {
 				out[anchor] = append(append(existing, ""), block...)

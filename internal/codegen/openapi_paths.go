@@ -38,13 +38,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 // other's `<Method>ReqBody` / `<Method>RespBody` component schemas —
 // last-writer-wins, leaving one operation pointing at the other's shape.
 func methodNameCounts(pkg *semantic.Package) map[string]int {
-	counts := map[string]int{}
-	for _, svc := range pkg.Services {
-		for _, m := range svc.Methods {
-			counts[m.Name]++
-		}
-	}
-	return counts
+	return semantic.MethodNameCounts(pkg)
 }
 
 // operationBaseName is the collision-free base for a method's component
@@ -56,10 +50,7 @@ func methodNameCounts(pkg *semantic.Package) map[string]int {
 // operationId itself (see [operationID]); the component names always
 // follow this base so they never collide regardless of the override.
 func operationBaseName(svcName string, m *ast.Method, counts map[string]int) string {
-	if counts[m.Name] >= 2 {
-		return svcName + m.Name
-	}
-	return m.Name
+	return semantic.OperationBaseName(svcName, m, counts)
 }
 
 // checkOperationIDUniqueness reports an error when two methods would emit
@@ -107,49 +98,23 @@ type fieldBins struct {
 //     `query`.
 func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 	var bins fieldBins
-	if m.Request == nil {
-		return bins
-	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
-		return bins
-	}
-	pathNames := map[string]bool{}
-	if m.Path != nil {
-		for _, seg := range m.Path.Segments {
-			if seg.Param {
-				pathNames[seg.Literal] = true
-			}
-		}
-	}
-	bodyVerb := hasBodyVerb(m.Verb)
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
+	// Read the resolved IR: the full binding (explicit + auto-@path/@query)
+	// is computed once in resolveRequestFields, so this categorisation can't
+	// drift from the transport binder's view of where each field rides.
+	for _, rf := range resolveRequestFields(m, pkg, nil) {
+		switch rf.Binding {
+		case BindSensitive:
 			continue
-		}
-		if hasSensitiveDecorator(f.Decorators) {
-			continue
-		}
-		switch bindingFromDecorators(f.Decorators) {
-		case "path":
-			bins.path = append(bins.path, f)
-		case "query":
-			bins.query = append(bins.query, f)
-		case "header":
-			bins.header = append(bins.header, f)
-		case "cookie":
-			bins.cookie = append(bins.cookie, f)
-		case "body", "form":
-			bins.body = append(bins.body, f)
-		default:
-			if pathNames[f.Name] {
-				bins.path = append(bins.path, f)
-			} else if bodyVerb {
-				bins.body = append(bins.body, f)
-			} else {
-				bins.query = append(bins.query, f)
-			}
+		case BindPath:
+			bins.path = append(bins.path, rf.Field)
+		case BindQuery:
+			bins.query = append(bins.query, rf.Field)
+		case BindHeader:
+			bins.header = append(bins.header, rf.Field)
+		case BindCookie:
+			bins.cookie = append(bins.cookie, rf.Field)
+		default: // BindBody, BindForm — both ride (or document) the request body
+			bins.body = append(bins.body, rf.Field)
 		}
 	}
 	return bins
@@ -164,10 +129,68 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	if m.Request == nil {
 		return
 	}
-	bins := binRequestFields(m, pkg)
-	if len(bins.body) > 0 {
-		names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: schemaFromFields(bins.body, pkg, registry)})
+	td, ok := pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return
 	}
+	bins := binRequestFields(m, pkg)
+	wireBound := len(bins.path)+len(bins.query)+len(bins.header)+len(bins.cookie) > 0
+	if !wireBound {
+		// Pure-body request: the JSON body IS the whole request type, so
+		// the schema must carry everything the server decodes and
+		// Validate()s — embedded mixin fields, generic type-argument
+		// substitution, and type-level @requiresOneOf / @mutuallyExclusive
+		// fragments. schemaFromFields renders only the loose *ast.Field
+		// list and silently drops all three, so reuse the full type-decl
+		// walk (the same one that builds the type's own component schema).
+		if len(m.Request.Args) > 0 && len(td.TypeParams) > 0 {
+			// Generic instance: $ref the registered monomorphised component
+			// (PageOfEmail) — the bare generic decl is never emitted as a
+			// schema and its fields are typed in the type-parameter T, so
+			// an inline render would dangle a $ref to T.
+			inst := registry.register(td, m.Request.Args)
+			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Ref: "#/components/schemas/" + inst})
+			return
+		}
+		if requestHasBodyContent(m, pkg) {
+			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)})
+		}
+		return
+	}
+	// Mixed request (body + path/query/header/cookie): inline only the
+	// body subset so wire-bound fields don't leak into the body schema.
+	// Embedded mixin body fields ARE included (binRequestFields expands
+	// mixins). Type-level @requiresOneOf / @mutuallyExclusive fragments
+	// are carried too so the cross-field contract the server enforces
+	// stays visible to the spec; a fragment naming a wire-bound field is a
+	// design edge the body schema can't express, but cross-field over body
+	// fields round-trips.
+	if len(bins.body) > 0 {
+		s := schemaFromFields(bins.body, pkg, registry)
+		if frags := crossFieldSchemaFragments(td.Decorators); len(frags) > 0 {
+			s = &openapi3.Schema{
+				AllOf: append(openapi3.SchemaRefs{{Value: s}}, frags...),
+			}
+		}
+		names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: s})
+	}
+}
+
+// requestHasBodyContent reports whether m's request contributes anything
+// to a JSON request body — any resolved field that rides the body
+// (OnWireBody). A request whose fields are all @sensitive / @header /
+// @cookie / wire-bound (even through a mixin) has no body schema to emit.
+func requestHasBodyContent(m *ast.Method, pkg *semantic.Package) bool {
+	// Read the resolved IR so this body-presence test uses the SAME
+	// verb-aware, mixin-flattened binding the handler decode-block
+	// (hasUnboundField) and the param categorisation (binRequestFields)
+	// use — a mixin of only @header/@cookie fields contributes no body.
+	for _, rf := range resolveRequestFields(m, pkg, nil) {
+		if rf.OnWireBody {
+			return true
+		}
+	}
+	return false
 }
 
 // addPerOperationResponseSchema emits `<Method>RespBody` carrying the
@@ -218,21 +241,19 @@ func binResponseFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 	if !ok {
 		return bins
 	}
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
+	// Read the resolved IR instead of re-deriving binding/sensitivity from
+	// the AST: the same flattened field list + binding classification every
+	// other stage sees, so this categorisation can't drift from theirs.
+	for _, rf := range resolveFields(td, pkg, nil) {
+		switch rf.Binding {
+		case BindSensitive:
 			continue
-		}
-		if hasSensitiveDecorator(f.Decorators) {
-			continue
-		}
-		switch bindingFromDecorators(f.Decorators) {
-		case "header":
-			bins.header = append(bins.header, f)
-		case "cookie":
-			bins.cookie = append(bins.cookie, f)
+		case BindHeader:
+			bins.header = append(bins.header, rf.Field)
+		case BindCookie:
+			bins.cookie = append(bins.cookie, rf.Field)
 		default:
-			bins.body = append(bins.body, f)
+			bins.body = append(bins.body, rf.Field)
 		}
 	}
 	return bins
@@ -312,7 +333,7 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package, registry *gene
 			continue
 		}
 		ref := schemaForTypeRef(f.Type, pkg, registry)
-		applyFieldMetadata(f, ref)
+		applyFieldMetadata(f, ref, pkg)
 		s.Properties[f.Name] = ref
 		if fieldIsRequired(f) {
 			s.Required = append(s.Required, f.Name)

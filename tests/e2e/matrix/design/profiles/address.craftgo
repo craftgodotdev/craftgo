@@ -1,0 +1,16 @@
+package design
+
+// PfAddress pulls Coords in via a transitive import: `import "geo"`
+// resolves from this file even though api.craftgo already imported it,
+// and BFS dedup makes the second visit a no-op.
+import "geo"
+
+// PfAddress is a postal address. Country is the ISO 3166-1 alpha-2 code,
+// so the length validator pins it to exactly two characters.
+type PfAddress {
+	street  string  @length(1, 200)
+	city    string  @length(1, 100)
+	country string  @length(2, 2)
+	postal  string?
+	coords  Coords?
+}

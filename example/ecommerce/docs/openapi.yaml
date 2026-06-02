@@ -4,6 +4,11 @@ components:
     ActionDeniedErr:
       description: Forbidden error response (HTTP 403).
       properties:
+        code:
+          default: ACTION_DENIED
+          type:
+          - string
+          - "null"
         reason:
           $ref: '#/components/schemas/SuspensionReason'
       required:
@@ -132,11 +137,26 @@ components:
             - "null"
         type: object
       - anyOf:
-        - required:
+        - properties:
+            email:
+              not:
+                type: "null"
+          required:
           - email
-        - required:
+        - properties:
+            phone:
+              not:
+                type: "null"
+          required:
           - phone
       - not:
+          properties:
+            personal:
+              not:
+                type: "null"
+            work:
+              not:
+                type: "null"
           required:
           - work
           - personal
@@ -400,6 +420,9 @@ components:
     DefaultsReqBody:
       properties:
         allowedMethods:
+          default:
+          - card
+          - bank
           items:
             $ref: '#/components/schemas/PaymentMethod'
           type:
@@ -433,7 +456,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/OrderStatus'
           - type: "null"
-          default: Pending
+          default: pending
         str:
           default: anon
           type:
@@ -452,6 +475,9 @@ components:
     DefaultsShowcaseReq:
       properties:
         allowedMethods:
+          default:
+          - card
+          - bank
           items:
             $ref: '#/components/schemas/PaymentMethod'
           type:
@@ -485,7 +511,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/OrderStatus'
           - type: "null"
-          default: Pending
+          default: pending
         str:
           default: anon
           type:
@@ -508,22 +534,6 @@ components:
       maxLength: 254
       type: string
     FilterOrdersReq:
-      properties:
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-        maxPrice:
-          type: integer
-        method:
-          $ref: '#/components/schemas/PaymentMethod'
-        status:
-          $ref: '#/components/schemas/OrderStatus'
-      required:
-      - status
-      - method
-      - limit
-      - maxPrice
       type: object
     FilterOrdersRespBody:
       $ref: '#/components/schemas/PageOfOrder'
@@ -550,35 +560,14 @@ components:
       - capturedAt
       type: object
     GetCustomerReq:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     GetCustomerRespBody:
       $ref: '#/components/schemas/Customer'
     GetOrderReq:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     GetOrderRespBody:
       $ref: '#/components/schemas/Order'
     GetProductReq:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     GetProductRespBody:
       $ref: '#/components/schemas/Product'
@@ -610,7 +599,9 @@ components:
         sku:
           $ref: '#/components/schemas/SKU'
         unitCents:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          - maximum: 1000000
       required:
       - product
       - sku
@@ -631,10 +622,6 @@ components:
           maximum: 100
           minimum: 0
           type: integer
-        status:
-          anyOf:
-          - $ref: '#/components/schemas/OrderStatus'
-          - type: "null"
       required:
       - limit
       type: object
@@ -642,10 +629,6 @@ components:
       $ref: '#/components/schemas/PageOfOrder'
     ListProductsReq:
       properties:
-        category:
-          type:
-          - string
-          - "null"
         cursor:
           type:
           - string
@@ -654,10 +637,6 @@ components:
           maximum: 100
           minimum: 0
           type: integer
-        tag:
-          type:
-          - string
-          - "null"
       required:
       - limit
       type: object
@@ -677,6 +656,7 @@ components:
       description: ServiceUnavailable error response (HTTP 503).
       properties:
         estimatedEndAt:
+          format: datetime
           type: string
         reason:
           $ref: '#/components/schemas/MaintenanceReason'
@@ -757,7 +737,9 @@ components:
           type: array
           uniqueItems: true
         totalCents:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          - maximum: 100000000
       required:
       - id
       - customer
@@ -887,6 +869,11 @@ components:
       properties:
         chargedBy:
           $ref: '#/components/schemas/CustomerRef'
+        code:
+          default: PAYMENT_FAILED
+          type:
+          - string
+          - "null"
         method:
           $ref: '#/components/schemas/PaymentMethod'
       required:
@@ -931,7 +918,9 @@ components:
             minLength: 1
             type: string
           priceCents:
-            $ref: '#/components/schemas/Cents'
+            allOf:
+            - $ref: '#/components/schemas/Cents'
+            - maximum: 100000000
           siteUrl:
             anyOf:
             - $ref: '#/components/schemas/SafeURL'
@@ -972,8 +961,12 @@ components:
       description: TooManyRequests error response (HTTP 429).
       properties:
         bucket:
-          type: string
+          type:
+          - string
+          - "null"
         retryAfter:
+          maximum: 86400
+          minimum: 1
           type: integer
       required:
       - retryAfter
@@ -1014,18 +1007,19 @@ components:
       $ref: '#/components/schemas/OkResp'
     UnauthorizedErr:
       description: Unauthorized error response (HTTP 401).
+      properties:
+        code:
+          default: AUTH_REQUIRED
+          type:
+          - string
+          - "null"
       type: object
     UploadAvatarReq:
       properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
         image:
           format: binary
           type: string
       required:
-      - id
       - image
       type: object
     UploadAvatarReqBody:

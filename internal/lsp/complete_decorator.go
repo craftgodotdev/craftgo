@@ -8,6 +8,7 @@ import (
 
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -251,48 +252,21 @@ func needsArgs(r semantic.ArgsRule) bool {
 	return r.Min > 0 || r.Variadic != 0
 }
 
-var errorCategoryStatus = []struct {
-	name   string
-	status int
-}{
-	{"BadRequest", 400},
-	{"Unauthorized", 401},
-	{"PaymentRequired", 402},
-	{"Forbidden", 403},
-	{"NotFound", 404},
-	{"MethodNotAllowed", 405},
-	{"NotAcceptable", 406},
-	{"Conflict", 409},
-	{"Gone", 410},
-	{"LengthRequired", 411},
-	{"PreconditionFailed", 412},
-	{"PayloadTooLarge", 413},
-	{"UnsupportedMediaType", 415},
-	{"UnprocessableEntity", 422},
-	{"Locked", 423},
-	{"TooManyRequests", 429},
-	{"Internal", 500},
-	{"NotImplemented", 501},
-	{"BadGateway", 502},
-	{"ServiceUnavailable", 503},
-	{"GatewayTimeout", 504},
-}
-
 // errorCategoryCompletions returns one completion item per reserved
 // HTTP error category. Fired when the cursor sits in the
 // `error <cursor>` position. Each item carries the HTTP status as
 // Detail and a short doc snippet that the LSP client can render in
-// the autocomplete popup.
+// the autocomplete popup. The catalogue is the shared [errcat] table.
 func errorCategoryCompletions() []protocol.CompletionItem {
-	out := make([]protocol.CompletionItem, 0, len(errorCategoryStatus))
-	for _, c := range errorCategoryStatus {
-		detail := fmt.Sprintf("HTTP %d", c.status)
+	out := make([]protocol.CompletionItem, 0, len(errcat.Categories))
+	for _, c := range errcat.Categories {
+		detail := fmt.Sprintf("HTTP %d", c.Status)
 		doc := protocol.MarkupContent{
 			Kind:  protocol.Markdown,
-			Value: fmt.Sprintf("**`%s`** - built-in error category (HTTP %d).\n\nUse as `error %s YourErrorName` to declare an error of this kind.", c.name, c.status, c.name),
+			Value: fmt.Sprintf("**`%s`** - built-in error category (HTTP %d).\n\nUse as `error %s YourErrorName` to declare an error of this kind.", c.Name, c.Status, c.Name),
 		}
 		out = append(out, protocol.CompletionItem{
-			Label:         c.name,
+			Label:         c.Name,
 			Kind:          protocol.CompletionItemKindEnumMember,
 			Detail:        detail,
 			Documentation: doc,

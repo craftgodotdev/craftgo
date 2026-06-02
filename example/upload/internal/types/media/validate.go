@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on GetMediaReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetMediaReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -26,7 +27,7 @@ func (v *OkResp) Validate() error {
 // Validate checks every field-level constraint declared on UploadAttachmentReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UploadAttachmentReq) Validate() error {
-	if l := len(v.NoteID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.NoteID); l < 1 || l > 64 {
 		return fmt.Errorf("noteId: length out of range [1, 64]")
 	}
 	if v.Blob == nil {
@@ -48,7 +49,7 @@ func (v *UploadAttachmentReq) Validate() error {
 // Validate checks every field-level constraint declared on UploadAvatarReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UploadAvatarReq) Validate() error {
-	if l := len(v.UserID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("userId: length out of range [1, 64]")
 	}
 	if v.Image == nil {
@@ -83,10 +84,10 @@ func (v *UploadDocumentReq) Validate() error {
 			return fmt.Errorf("pdf: disallowed content type")
 		}
 	}
-	if l := len(v.Title); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	return nil
@@ -95,19 +96,19 @@ func (v *UploadDocumentReq) Validate() error {
 // Validate checks every field-level constraint declared on UploadResult.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UploadResult) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if _u, _err := url.Parse(v.URL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 		return fmt.Errorf("url: not a valid URL")
 	}
-	if len(v.URL) > 2048 {
+	if utf8.RuneCountInString(v.URL) > 2048 {
 		return fmt.Errorf("url: length greater than 2048")
 	}
 	if v.SizeBytes < 0 {
 		return fmt.Errorf("sizeBytes: below minimum 0")
 	}
-	if l := len(v.MimeType); l < 1 || l > 128 {
+	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {
 		return fmt.Errorf("mimeType: length out of range [1, 128]")
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {

@@ -39,6 +39,14 @@ type validateData struct {
 	// same var.
 	RegexVars []regexVar
 	Types     []validatorType
+	// NeedsValidateValue emits the package-level `validateValue` reflection
+	// helper. It is the fallback for a generic type-parameter field whose
+	// argument is a composite (`Page<map<string, Item>>`): the direct
+	// `any(x).(Validate)` probe can't reach the element's Validate(), so the
+	// helper walks slices / maps / pointers and validates each leaf. Only
+	// emitted when a type-param probe is generated (keyed on the `reflect`
+	// import), so non-generic packages stay reflection-free.
+	NeedsValidateValue bool
 }
 
 // regexVar binds a pattern to its package-level Go identifier. Used
@@ -213,13 +221,20 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	// fields.
 	for _, name := range sortedKeys(pkg.Errors) {
 		ed := pkg.Errors[name]
-		fields := errorCustomFields(ed)
-		if len(fields) == 0 {
-			continue
-		}
+		// Carry both direct fields and embedded mixins into the synthetic
+		// body type so collectChecks runs the mixin's own Validate() — the
+		// error body struct embeds the mixin and the OpenAPI allOf advertises
+		// its constrained fields, so the validator must check them too, the
+		// same as any other type that embeds a mixin.
 		body := &ast.TypeDecl{Name: name + "Body"}
-		for _, fl := range fields {
-			body.Body = append(body.Body, fl)
+		for _, m := range ed.Body {
+			switch m.(type) {
+			case *ast.Field, *ast.Mixin:
+				body.Body = append(body.Body, m)
+			}
+		}
+		if len(body.Body) == 0 {
+			continue
 		}
 		types = append(types, validatorType{
 			Name:        body.Name,
@@ -235,10 +250,11 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	sort.Strings(imps)
 
 	return validateData{
-		Package:   pkg.Name,
-		Imports:   imps,
-		RegexVars: regexes.entries,
-		Types:     types,
+		Package:            pkg.Name,
+		Imports:            imps,
+		RegexVars:          regexes.entries,
+		Types:              types,
+		NeedsValidateValue: uses["reflect"],
 	}
 }
 
@@ -264,7 +280,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 		case *ast.Field:
 			out = append(out, fieldChecksWithScalar(v, pkg, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
-				if call := typeParamValidateCall(v); call != "" {
+				if call := typeParamValidateCall(v, ctx.uses); call != "" {
 					out = append(out, call)
 				}
 				continue
@@ -296,7 +312,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 	// @mutuallyExclusive) run AFTER per-field checks so a clearly-bad
 	// individual field surfaces its own error first. The cross-field
 	// rules then assume each visible value is structurally sound.
-	out = append(out, crossFieldChecks(td, ctx.uses)...)
+	out = append(out, crossFieldChecks(td, pkg, r, ctx.uses)...)
 	return out
 }
 
@@ -318,7 +334,7 @@ func mixinValidateCall(m *ast.Mixin) string {
 //
 //	@requiresOneOf(["a", "b"])     → at least one must be present
 //	@mutuallyExclusive(["a", "b"]) → at most one may be present
-func crossFieldChecks(td *ast.TypeDecl, uses map[string]bool) []string {
+func crossFieldChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) []string {
 	if len(td.Decorators) == 0 {
 		return nil
 	}
@@ -328,12 +344,12 @@ func crossFieldChecks(td *ast.TypeDecl, uses map[string]bool) []string {
 		case "requiresOneOf":
 			names := dedupeStrings(stringArrayDecoratorArg(d))
 			if len(names) > 0 {
-				out = append(out, requiresOneOfCheck(td, names, uses))
+				out = append(out, requiresOneOfCheck(td, names, pkg, r, uses))
 			}
 		case "mutuallyExclusive":
 			names := dedupeStrings(stringArrayDecoratorArg(d))
 			if len(names) >= 2 {
-				out = append(out, mutuallyExclusiveCheck(td, names, uses))
+				out = append(out, mutuallyExclusiveCheck(td, names, pkg, r, uses))
 			}
 		}
 	}
@@ -421,9 +437,9 @@ func collectStringOrIdent(elems []ast.Expr) []string {
 // (De Morgan), so we invert each presence expression up-front and
 // join with `&&` - the generated source is what `staticcheck` would
 // rewrite to anyway.
-func requiresOneOfCheck(td *ast.TypeDecl, names []string, uses map[string]bool) string {
+func requiresOneOfCheck(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
 	uses["fmt"] = true
-	parts := absenceParts(td, names)
+	parts := absenceParts(td, names, pkg, r)
 	cond := strings.Join(parts, " && ")
 	msg := fmt.Sprintf(`"%s: requiresOneOf %v - at least one must be set"`, td.Name, names)
 	return ifReturnf(cond, msg)
@@ -434,9 +450,9 @@ func requiresOneOfCheck(td *ast.TypeDecl, names []string, uses map[string]bool) 
 // thing is wrapped in a bare `{ ... }` block so the `n` counter
 // scopes locally - multiple @mutuallyExclusive declarations on the
 // same struct don't shadow each other.
-func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, uses map[string]bool) string {
+func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
 	uses["fmt"] = true
-	parts := presenceParts(td, names)
+	parts := presenceParts(td, names, pkg, r)
 	counters := make([]string, len(parts))
 	for i, p := range parts {
 		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
@@ -454,10 +470,10 @@ return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
 // list. Unknown names (typoed by the user) become a literal `false`
 // so the generated code compiles even when the decorator references a
 // missing field - the resulting check is a no-op for that slot.
-func presenceParts(td *ast.TypeDecl, names []string) []string {
+func presenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		f := lookupField(td, name)
+		f := lookupField(td, name, pkg, r)
 		if f == nil {
 			parts = append(parts, "false")
 			continue
@@ -467,8 +483,18 @@ func presenceParts(td *ast.TypeDecl, names []string) []string {
 	return parts
 }
 
-// lookupField finds the Field in a TypeDecl by DSL field name.
-func lookupField(td *ast.TypeDecl, name string) *ast.Field { return ast.FindField(td.Body, name) }
+// lookupField finds the Field a TypeDecl contributes by DSL field name,
+// expanding embedded mixins so a cross-field decorator can reference a
+// promoted field (`@requiresOneOf` over a field the type inherits). The
+// Go access (`v.Email`) resolves through field promotion.
+func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *ProjectResolver) *ast.Field {
+	for _, f := range flattenFields(td, pkg, r, map[string]bool{}) {
+		if f.Name == name {
+			return f
+		}
+	}
+	return nil
+}
 
 // presenceExpr returns the Go expression that's true when the field
 // has a meaningful value (matching's definition):
@@ -514,10 +540,10 @@ func presenceExpr(f *ast.Field) string {
 // by [requiresOneOfCheck] so the emitted condition reads as
 // `!a && !b && !c` (idiomatic) instead of `!(a || b || c)` (which
 // staticcheck flags as QF1001).
-func absenceParts(td *ast.TypeDecl, names []string) []string {
+func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		f := lookupField(td, name)
+		f := lookupField(td, name, pkg, r)
 		if f == nil {
 			// Unknown field → treat as "present" so the rule never
 			// fires for typoed names; mirrors presenceParts's

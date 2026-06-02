@@ -11,62 +11,10 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
-
-// categoryStatus maps each reserved error category to its HTTP status code.
-// Mirrors the table in the project README; new categories added there must
-// be added here as well.
-var categoryStatus = map[string]int{
-	"BadRequest":           400,
-	"Unauthorized":         401,
-	"PaymentRequired":      402,
-	"Forbidden":            403,
-	"NotFound":             404,
-	"MethodNotAllowed":     405,
-	"NotAcceptable":        406,
-	"Conflict":             409,
-	"Gone":                 410,
-	"LengthRequired":       411,
-	"PreconditionFailed":   412,
-	"PayloadTooLarge":      413,
-	"UnsupportedMediaType": 415,
-	"UnprocessableEntity":  422,
-	"Locked":               423,
-	"TooManyRequests":      429,
-	"Internal":             500,
-	"NotImplemented":       501,
-	"BadGateway":           502,
-	"ServiceUnavailable":   503,
-	"GatewayTimeout":       504,
-}
-
-// categoryMessage maps each reserved error category to its default
-// human-readable message (used as the runtime default for `Message`).
-var categoryMessage = map[string]string{
-	"BadRequest":           "Bad request",
-	"Unauthorized":         "Unauthorized",
-	"PaymentRequired":      "Payment required",
-	"Forbidden":            "Forbidden",
-	"NotFound":             "Not found",
-	"MethodNotAllowed":     "Method not allowed",
-	"NotAcceptable":        "Not acceptable",
-	"Conflict":             "Conflict",
-	"Gone":                 "Resource gone",
-	"LengthRequired":       "Length required",
-	"PreconditionFailed":   "Precondition failed",
-	"PayloadTooLarge":      "Payload too large",
-	"UnsupportedMediaType": "Unsupported media type",
-	"UnprocessableEntity":  "Unprocessable entity",
-	"Locked":               "Resource locked",
-	"TooManyRequests":      "Too many requests",
-	"Internal":             "Internal server error",
-	"NotImplemented":       "Not implemented",
-	"BadGateway":           "Bad gateway",
-	"ServiceUnavailable":   "Service unavailable",
-	"GatewayTimeout":       "Gateway timeout",
-}
 
 // GenerateErrors emits a single `errors.go` file under outDir/<pkg.Name>/
 // declaring one struct + constructor + Error()/HTTPStatus() methods +
@@ -221,10 +169,10 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) s
 		BodyName:           ed.Name + "Body",
 		ConstName:          "ErrCode" + ed.Name,
 		QuotedCode:         strconv.Quote(screamingSnake(ed.Name)),
-		QuotedMessage:      strconv.Quote(categoryMessage[ed.Category]),
+		QuotedMessage:      strconv.Quote(errcat.Message(ed.Category)),
 		Category:           ed.Category,
 		DSLName:            ed.Name,
-		Status:             categoryStatus[ed.Category],
+		Status:             errcat.Status(ed.Category),
 		BodyFields:         buildErrorBodyFields(errorCustomFields(ed)),
 		BodyMixins:         errorBodyMixins(ed),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
@@ -257,7 +205,7 @@ func buildErrorBodyFields(fields []*ast.Field) []errorBodyField {
 		}
 		out[i] = errorBodyField{
 			GoName:  GoFieldName(f.Name),
-			Type:    GoTypeRef(f.Type),
+			Type:    goFieldType(f),
 			JSONTag: tag,
 		}
 	}
@@ -295,7 +243,9 @@ func errorBodyMixins(ed *ast.ErrorDecl) []string {
 		if !ok || mx == nil || mx.Ref == nil || mx.Ref.Name == nil {
 			continue
 		}
-		out = append(out, mx.Ref.Name.String())
+		// goNamedType carries the generic arguments, so a `Page<Item>` mixin
+		// embeds `Page[Item]` rather than the bare, un-instantiable `Page`.
+		out = append(out, goNamedType(mx.Ref))
 	}
 	return out
 }
@@ -321,11 +271,10 @@ func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
 // their wire primitive so `cost shared.Cents @header` formats the same
 // as on the success-response path.
 func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	for _, m := range ed.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	// Flatten so a `@header` / `@cookie` field the error inherits through a
+	// mixin is written onto the response too — the error struct embeds the
+	// mixin (errorBodyMixins), so the promoted field is reachable as `e.X`.
+	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r, map[string]bool{}) {
 		if f.Name == "code" || f.Name == "message" {
 			continue
 		}

@@ -17,22 +17,21 @@ import (
 func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListTodosReq
-		if _v := r.URL.Query().Get("cursor"); _v != "" {
+		_q := r.URL.Query()
+		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if _v := r.URL.Query().Get("limit"); _v != "" {
-			_n, _err := strconv.ParseInt(_v, 10, 64)
-			if _err != nil {
-				http.Error(w, "limit"+": invalid int value: "+_err.Error(), http.StatusBadRequest)
-				return
-			}
-			req.Limit = int(_n)
+		if !server.RequirePresent(w, r, _q.Has("limit"), "limit", "query") {
+			return
 		}
-		if _v := r.URL.Query().Get("status"); _v != "" {
+		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
+		}
+		if _v := _q.Get("status"); _v != "" {
 			_w := types.TodoStatus(_v)
 			req.Status = &_w
 		}
-		if _v := r.URL.Query().Get("tag"); _v != "" {
+		if _v := _q.Get("tag"); _v != "" {
 			_w := types.Tag(_v)
 			req.Tag = &_w
 		}

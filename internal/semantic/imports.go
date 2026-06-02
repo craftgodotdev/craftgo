@@ -818,6 +818,11 @@ func (r *refResolver) checkOneTypeMixinsProject(currentPkg, host string, body []
 		}
 		r.processProjectMixin(currentPkg, host, mx, seen)
 	}
+	for _, c := range fieldEmbedClashes(body) {
+		r.diag(c.pos, lexer.SeverityError, CodeMixinConflict,
+			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
+			c.field, c.mixin, c.goName)
+	}
 }
 
 // processProjectMixin resolves one mixin reference - local or

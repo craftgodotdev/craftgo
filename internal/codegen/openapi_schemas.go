@@ -7,6 +7,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -31,35 +32,39 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 			Type:       &openapi3.Types{"object"},
 			Properties: openapi3.Schemas{},
 			Description: fmt.Sprintf("%s error response (HTTP %d).",
-				ed.Category, categoryStatus[ed.Category]),
+				ed.Category, errcat.Status(ed.Category)),
 		}
-		// `code` / `message` are reserved DSL slots (design-time
-		// override of the framework defaults via `@default(...)`) and
-		// never appear on the wire - they're internal metadata exposed
-		// through the `ErrCode()` / `Error()` methods. Fields tagged with
-		// `@header` / `@cookie` are also excluded - they ride on the
-		// response writer (see [renderErrorResponseHeadersMethod]).
-		// Anything else becomes a regular property on the schema.
+		// A user-declared `code` / `message` body field is an exported Go
+		// field that the error struct marshals and the validator enforces
+		// (errorCustomFields keeps them), so it belongs in the schema like
+		// any other property. Fields tagged `@header` / `@cookie` ride on
+		// the response writer (see [renderErrorResponseHeadersMethod]) and
+		// `@sensitive` fields are server-only, so both are excluded.
 		var mixinRefs openapi3.SchemaRefs
 		for _, m := range ed.Body {
 			switch v := m.(type) {
 			case *ast.Field:
-				if v.Name == "code" || v.Name == "message" {
+				rf := resolveField(v, pkg)
+				// Same OnWireBody decision the type-schema walk uses, so error
+				// and entity schemas agree on which fields ride the body (a
+				// @header/@cookie field rides the response writer, a @sensitive
+				// field is server-only).
+				if !rf.OnWireBody {
 					continue
 				}
-				if hasSensitiveDecorator(v.Decorators) {
-					continue
-				}
-				switch bindingFromDecorators(v.Decorators) {
-				case "header", "cookie":
-					continue
-				}
-				s.Properties[v.Name] = schemaForTypeRef(v.Type, pkg, registry)
+				// Carry the field's own metadata — field-level constraints
+				// (@gte/@maxLength/…), @default, @deprecated, and @nullable —
+				// onto the property, exactly as the type-schema walk does.
+				// Without this a client consuming the error response sees
+				// every field as a bare, unconstrained, non-null value.
+				ref := schemaForTypeRef(v.Type, pkg, registry)
+				applyFieldMetadata(v, ref, pkg)
+				s.Properties[v.Name] = ref
 				// Non-optional error fields belong in required[] — same
 				// model as type schemas. Without this a generated client
 				// types every error field as optional even though the
 				// runtime always emits it.
-				if fieldIsRequired(v) {
+				if rf.SpecRequired {
 					s.Required = append(s.Required, v.Name)
 				}
 			case *ast.Mixin:
@@ -71,7 +76,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 					continue
 				}
 				mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-					Ref: "#/components/schemas/" + v.Ref.Name.String(),
+					Ref: "#/components/schemas/" + mixinRefName(v.Ref, pkg, registry),
 				})
 			}
 		}
@@ -88,6 +93,21 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		}
 		names.put(doc, typeName, &openapi3.SchemaRef{Value: s})
 	}
+}
+
+// mixinRefName returns the component name an embedded mixin $refs. A
+// generic-instance mixin (`Page<Item>`) registers and refs its
+// monomorphised component (`PageOfItem`) — the same one a field of that
+// type would produce — instead of the bare, never-emitted generic decl
+// name. A plain mixin refs its own name.
+func mixinRefName(ref *ast.NamedTypeRef, pkg *semantic.Package, registry *genericRegistry) string {
+	name := ref.Name.String()
+	if len(ref.Args) > 0 && pkg != nil && registry != nil {
+		if decl, ok := pkg.Types[name]; ok && len(decl.TypeParams) > 0 {
+			return registry.register(decl, ref.Args)
+		}
+	}
+	return name
 }
 
 // addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
@@ -116,14 +136,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) 
 		enumVals := ed.EnumValues()
 		s.Enum = make([]any, 0, len(enumVals))
 		for _, v := range enumVals {
-			switch v.Kind {
-			case ast.EnumInt:
-				s.Enum = append(s.Enum, v.IntValue)
-			case ast.EnumString:
-				s.Enum = append(s.Enum, v.StrValue)
-			default: // EnumBare - wire value is the source-side name
-				s.Enum = append(s.Enum, v.Name)
-			}
+			s.Enum = append(s.Enum, enumMemberWire(v))
 		}
 		names.put(doc, name, &openapi3.SchemaRef{Value: s})
 	}
@@ -196,19 +209,12 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			if hasSensitiveDecorator(v.Decorators) {
-				continue
-			}
-			// `@header` / `@cookie` fields ride on the response writer
-			// (or bind from a request header) and carry `json:"-"`, so
-			// they never appear in the JSON body. Excluding them keeps
-			// this component schema consistent with the per-operation
-			// `<Method>RespBody` / `<Method>ReqBody` schemas and the
-			// error schemas, all of which already skip them — otherwise
-			// generated clients see the value as a required body field
-			// that the wire never carries.
-			switch bindingFromDecorators(v.Decorators) {
-			case "header", "cookie":
+			rf := resolveField(v, pkg)
+			// Wire-bound (`@path`/`@query`/`@header`/`@cookie`) and
+			// `@sensitive` fields carry `json:"-"` and never appear in the
+			// JSON body — OnWireBody is the resolved decision (same one the
+			// struct/binder use), so this can't drift from them.
+			if !rf.OnWireBody {
 				continue
 			}
 			ft := v.Type
@@ -216,9 +222,9 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 				ft = substituteTypeRef(v.Type, subst)
 			}
 			ref := schemaForTypeRef(ft, pkg, registry)
-			applyFieldMetadata(v, ref)
+			applyFieldMetadata(v, ref, pkg)
 			s.Properties[v.Name] = ref
-			if fieldIsRequired(v) {
+			if rf.SpecRequired {
 				s.Required = append(s.Required, v.Name)
 			}
 		case *ast.Mixin:
@@ -233,7 +239,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 				continue
 			}
 			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-				Ref: "#/components/schemas/" + v.Ref.Name.String(),
+				Ref: "#/components/schemas/" + mixinRefName(v.Ref, pkg, registry),
 			})
 		}
 	}
@@ -314,9 +320,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 			}
 			branches := make(openapi3.SchemaRefs, 0, len(names))
 			for _, n := range names {
-				branches = append(branches, &openapi3.SchemaRef{Value: &openapi3.Schema{
-					Required: []string{n},
-				}})
+				branches = append(branches, &openapi3.SchemaRef{Value: presentNonNull([]string{n})})
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
 				AnyOf: branches,
@@ -327,11 +331,29 @@ func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 				continue
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
-				Not: &openapi3.SchemaRef{Value: &openapi3.Schema{
-					Required: append([]string(nil), names...),
-				}},
+				Not: &openapi3.SchemaRef{Value: presentNonNull(names)},
 			}})
 		}
 	}
 	return out
+}
+
+// presentNonNull builds a schema that matches a body where every named
+// field is present AND not JSON null — the exact meaning the runtime
+// cross-field check uses (a pointer field is "present" only when `!= nil`,
+// so an explicit `null` does NOT count). Plain JSON-Schema `required` is
+// key-presence only and would treat `{"x": null}` as present, diverging
+// from the validator; the `properties: {x: {not: {type: null}}}` clause
+// closes that gap.
+func presentNonNull(names []string) *openapi3.Schema {
+	props := openapi3.Schemas{}
+	for _, n := range names {
+		props[n] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+			Not: &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}},
+		}}
+	}
+	return &openapi3.Schema{
+		Required:   append([]string(nil), names...),
+		Properties: props,
+	}
 }

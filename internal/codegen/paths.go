@@ -167,11 +167,7 @@ func hasBodyVerb(verb string) bool {
 // → `http-request`. Used for generated filenames so directory listings
 // stay readable on case-sensitive filesystems.
 func kebabCase(s string) string {
-	parts := idents.SplitFieldName(s)
-	for i, p := range parts {
-		parts[i] = strings.ToLower(p)
-	}
-	return strings.Join(parts, "-")
+	return idents.KebabCase(s)
 }
 
 // renderDoc returns the user's leading `//` comments verbatim, with the
