@@ -88,7 +88,10 @@ paths:
       operationId: GetUser
 ```
 
-The `operationId` is the bare method name (`GetUser`), not service-qualified.
+The `operationId` is the bare method name (`GetUser`) when that name is unique
+across the project. If two services declare a method with the same name, both
+are prefixed with the service name (`OrdersServicePing` / `CatalogServicePing`)
+so every `operationId` stays globally unique.
 
 Override with `@operationId`:
 
@@ -96,6 +99,11 @@ Override with `@operationId`:
 @operationId("getUserById")
 get GetUser /users/{id} { ... }
 ```
+
+Two methods that resolve to the same `operationId` (two explicit
+`@operationId("...")` sharing a value, or an override that collides with another
+method's auto id) are reported at design time, so the spec never carries a
+duplicate.
 
 ## Schema components
 

@@ -4,6 +4,7 @@ package stream
 
 import (
 	"fmt"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on HealthReq.
@@ -15,7 +16,7 @@ func (v *HealthReq) Validate() error {
 // Validate checks every field-level constraint declared on HealthResp.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *HealthResp) Validate() error {
-	if l := len(v.Status); l < 1 || l > 16 {
+	if l := utf8.RuneCountInString(v.Status); l < 1 || l > 16 {
 		return fmt.Errorf("status: length out of range [1, 16]")
 	}
 	if v.UptimeMs < 0 {

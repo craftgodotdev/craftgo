@@ -156,10 +156,19 @@ At most one of the listed fields may be present.
 ```craftgo
 @mutuallyExclusive(personal, business)
 type Account {
-    personal bool
-    business bool
+    personal bool?
+    business bool?
 }
 ```
+
+::: tip Listed fields must be pointer-backed
+Each referenced field must be optional (`?`) or `@nullable` so it has an
+unambiguous present/absent state. A plain field (checked by zero-value
+emptiness), a `@query` / `@header` / `@cookie` / `@form` parameter, a
+`@default` field, a `@sensitive` field, and a collection (`T[]` / `map<…>` /
+`bytes` / `any`) are all rejected at design time — their runtime presence
+can't match the `present-and-non-null` the OpenAPI fragment advertises.
+:::
 
 ## Field validators
 
@@ -179,7 +188,18 @@ Run on `string` and `bytes` fields, and on scalars whose primitive is one of tho
 | `@pattern("regex")`         | `(string)`            | RE2-flavored regex match            |
 | `@format(name)`             | bare ident or string  | Named format check (see below)      |
 
-Length validators count **bytes**, not runes — `len(s)` in the generated Go validator matches the wire size the body decoder saw. A `@maxLength(80)` constraint on a UTF-8 field caps payload at 80 bytes, so `"Việt Nam"` (8 bytes / 8 runes) passes while `"日本語"` (9 bytes / 3 runes) fails `@maxLength(8)` despite being 3 characters. This keeps the constraint aligned with the network budget that `@maxBodySize` already polices; switch to rune-counting in your handler if you need a "characters-as-the-user-types-them" check.
+On a **`string`** field, length validators count **Unicode characters**
+(runes), not bytes — the generated Go validator uses
+`utf8.RuneCountInString(s)`. This matches the OpenAPI `minLength` / `maxLength`
+keyword (JSON Schema counts characters) and a Postgres `varchar(n)` (also
+characters), so the runtime, the spec, and the database agree. `"日本語"` (3
+characters / 9 bytes) passes `@maxLength(3)`. To cap the raw network size
+instead, use `@maxBodySize` (which polices bytes).
+
+On a **`bytes`** field, length validators count **bytes** (`len(b)`) — the
+binary length — and are not advertised in the OpenAPI schema (an OpenAPI
+`maxLength` on a `bytes` field would count base64 characters, a different
+number).
 
 **Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. RFC-compliant validators (email, ipv4/ipv6, cidr, mac, datetime/date/time, base64, json) delegate to Go stdlib (`net`, `net/mail`, `net/url`, `time`, `encoding/*`); the remainder use regex.
 

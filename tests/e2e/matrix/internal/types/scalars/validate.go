@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -99,7 +100,7 @@ func (v *ConstrainedBox[T]) Validate() error {
 	if v.Count != nil && *v.Count > 100 {
 		return fmt.Errorf("count: above maximum 100")
 	}
-	if len(v.Label) > 64 {
+	if utf8.RuneCountInString(v.Label) > 64 {
 		return fmt.Errorf("label: length greater than 64")
 	}
 	if _, _err := time.Parse(time.RFC3339, v.Stamp); _err != nil {
@@ -392,7 +393,7 @@ func (v *ScalarFieldOverrides) Validate() error {
 	}
 	{
 		_sv := string(v.Code)
-		if len(_sv) > 5 {
+		if utf8.RuneCountInString(_sv) > 5 {
 			return fmt.Errorf("code: length greater than 5")
 		}
 	}
@@ -463,7 +464,7 @@ func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("Email: not a valid email")
 	}
-	if len(string(v)) > 254 {
+	if utf8.RuneCountInString(string(v)) > 254 {
 		return fmt.Errorf("Email: length greater than 254")
 	}
 	return nil
@@ -472,7 +473,7 @@ func (v Email) Validate() error {
 // Validate checks every field-level constraint declared on ISO3.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v ISO3) Validate() error {
-	if l := len(string(v)); l < 3 || l > 3 {
+	if l := utf8.RuneCountInString(string(v)); l < 3 || l > 3 {
 		return fmt.Errorf("ISO3: length must be 3")
 	}
 	if !_pattern0.MatchString(string(v)) {
@@ -484,7 +485,7 @@ func (v ISO3) Validate() error {
 // Validate checks every field-level constraint declared on NonEmpty.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v NonEmpty) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("NonEmpty: length less than 1")
 	}
 	return nil
@@ -505,10 +506,10 @@ func (v Percent) Validate() error {
 // Validate checks every field-level constraint declared on Tag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Tag) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("Tag: length less than 1")
 	}
-	if len(string(v)) > 20 {
+	if utf8.RuneCountInString(string(v)) > 20 {
 		return fmt.Errorf("Tag: length greater than 20")
 	}
 	if !_pattern1.MatchString(string(v)) {

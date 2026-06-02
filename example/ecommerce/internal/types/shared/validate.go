@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -118,7 +119,7 @@ func (v Cents) Validate() error {
 // Validate checks every field-level constraint declared on CountryCode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CountryCode) Validate() error {
-	if l := len(string(v)); l < 2 || l > 2 {
+	if l := utf8.RuneCountInString(string(v)); l < 2 || l > 2 {
 		return fmt.Errorf("CountryCode: length must be 2")
 	}
 	if !_pattern0.MatchString(string(v)) {
@@ -130,7 +131,7 @@ func (v CountryCode) Validate() error {
 // Validate checks every field-level constraint declared on CurrencyCode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CurrencyCode) Validate() error {
-	if l := len(string(v)); l < 3 || l > 3 {
+	if l := utf8.RuneCountInString(string(v)); l < 3 || l > 3 {
 		return fmt.Errorf("CurrencyCode: length must be 3")
 	}
 	if !_pattern1.MatchString(string(v)) {
@@ -145,7 +146,7 @@ func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("Email: not a valid email")
 	}
-	if len(string(v)) > 254 {
+	if utf8.RuneCountInString(string(v)) > 254 {
 		return fmt.Errorf("Email: length greater than 254")
 	}
 	return nil
@@ -178,10 +179,10 @@ func (v Longitude) Validate() error {
 // Validate checks every field-level constraint declared on NonEmptyID.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v NonEmptyID) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("NonEmptyID: length less than 1")
 	}
-	if len(string(v)) > 128 {
+	if utf8.RuneCountInString(string(v)) > 128 {
 		return fmt.Errorf("NonEmptyID: length greater than 128")
 	}
 	if !_pattern2.MatchString(string(v)) {
@@ -217,7 +218,7 @@ func (v SafeURL) Validate() error {
 	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 		return fmt.Errorf("SafeURL: not a valid URL")
 	}
-	if len(string(v)) > 2048 {
+	if utf8.RuneCountInString(string(v)) > 2048 {
 		return fmt.Errorf("SafeURL: length greater than 2048")
 	}
 	return nil
@@ -226,10 +227,10 @@ func (v SafeURL) Validate() error {
 // Validate checks every field-level constraint declared on Slug.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Slug) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("Slug: length less than 1")
 	}
-	if len(string(v)) > 64 {
+	if utf8.RuneCountInString(string(v)) > 64 {
 		return fmt.Errorf("Slug: length greater than 64")
 	}
 	if !_pattern4.MatchString(string(v)) {

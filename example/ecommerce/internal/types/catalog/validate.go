@@ -5,6 +5,7 @@ package catalog
 import (
 	"fmt"
 	"time"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on Category.
@@ -19,7 +20,7 @@ func (v *Category) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
 	if err := v.Slug.Validate(); err != nil {
@@ -39,7 +40,7 @@ func (v *CategoryRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
 	return nil
@@ -51,10 +52,10 @@ func (v *CreateProductReq) Validate() error {
 	if err := v.Sku.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
-	if v.Description != nil && len(*v.Description) > 5000 {
+	if v.Description != nil && utf8.RuneCountInString(*v.Description) > 5000 {
 		return fmt.Errorf("description: length greater than 5000")
 	}
 	if err := v.PriceCents.Validate(); err != nil {
@@ -88,7 +89,7 @@ func (v *CreateProductReq) Validate() error {
 // Validate checks every field-level constraint declared on GetProductReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetProductReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -118,10 +119,10 @@ func (v *Product) Validate() error {
 	if err := v.Sku.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
-	if v.Description != nil && len(*v.Description) > 5000 {
+	if v.Description != nil && utf8.RuneCountInString(*v.Description) > 5000 {
 		return fmt.Errorf("description: length greater than 5000")
 	}
 	{
@@ -172,7 +173,7 @@ func (v *ProductRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
 	return nil

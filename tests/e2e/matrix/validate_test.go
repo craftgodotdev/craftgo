@@ -17,6 +17,7 @@ import (
 	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	regression "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/regression"
 	scalars "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
+	strtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
 )
 
 // ---- helpers ----
@@ -204,4 +205,18 @@ func TestErrorBodyMixinValidated(t *testing.T) {
 		&regression.Rg5HdrErrorBody{Rg5HdrMeta: regression.Rg5HdrMeta{Note: ""}})
 	accepts(t, "valid promoted note",
 		&regression.Rg5HdrErrorBody{Rg5HdrMeta: regression.Rg5HdrMeta{Note: "ok"}})
+}
+
+// TestStringLengthCountsCharacters pins that @length / @minLength / @maxLength
+// count Unicode characters (matching the OpenAPI keyword and a Postgres
+// varchar(n)), not Go's byte len. Str_Lengths.exact carries @length(5, 5).
+func TestStringLengthCountsCharacters(t *testing.T) {
+	mk := func(exact string) *strtypes.Str_Lengths {
+		return &strtypes.Str_Lengths{ZeroLower: "x", NonEmpty: "x", Exact: exact, OnlyMin: "x", OnlyMax: "x"}
+	}
+	// 5 characters / 6 bytes — passes (a byte count would reject 6 > 5).
+	accepts(t, "café! is 5 characters at @length(5,5)", mk("café!"))
+	// 4 characters / 5 bytes — fails (a byte count would wrongly accept 5).
+	rejects(t, "café is 4 characters, not 5, at @length(5,5)", mk("café"))
+	rejects(t, "abcdef is 6 characters at @length(5,5)", mk("abcdef"))
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -20,10 +21,10 @@ var (
 // Validate checks every field-level constraint declared on Address.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Address) Validate() error {
-	if l := len(v.Street); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Street); l < 1 || l > 200 {
 		return fmt.Errorf("street: length out of range [1, 200]")
 	}
-	if l := len(v.City); l < 1 || l > 100 {
+	if l := utf8.RuneCountInString(v.City); l < 1 || l > 100 {
 		return fmt.Errorf("city: length out of range [1, 100]")
 	}
 	return nil
@@ -242,7 +243,7 @@ func (v *Map_StructValue) Validate() error {
 // Validate checks every field-level constraint declared on User.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *User) Validate() error {
-	if l := len(v.Name); l < 1 || l > 80 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
 	if err := v.Email.Validate(); err != nil {
@@ -257,7 +258,7 @@ func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("Email: not a valid email")
 	}
-	if len(string(v)) > 254 {
+	if utf8.RuneCountInString(string(v)) > 254 {
 		return fmt.Errorf("Email: length greater than 254")
 	}
 	return nil
@@ -266,10 +267,10 @@ func (v Email) Validate() error {
 // Validate checks every field-level constraint declared on NonEmptyID.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v NonEmptyID) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("NonEmptyID: length less than 1")
 	}
-	if len(string(v)) > 64 {
+	if utf8.RuneCountInString(string(v)) > 64 {
 		return fmt.Errorf("NonEmptyID: length greater than 64")
 	}
 	return nil
@@ -278,10 +279,10 @@ func (v NonEmptyID) Validate() error {
 // Validate checks every field-level constraint declared on Tag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Tag) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("Tag: length less than 1")
 	}
-	if len(string(v)) > 20 {
+	if utf8.RuneCountInString(string(v)) > 20 {
 		return fmt.Errorf("Tag: length greater than 20")
 	}
 	if !_pattern0.MatchString(string(v)) {

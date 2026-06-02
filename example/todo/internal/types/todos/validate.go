@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -20,10 +21,10 @@ var (
 // Validate checks every field-level constraint declared on CreateTodoReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateTodoReq) Validate() error {
-	if l := len(v.Title); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	if v.Status == "" {
@@ -57,7 +58,7 @@ func (v *CreateTodoReq) Validate() error {
 // Validate checks every field-level constraint declared on GetTodoReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetTodoReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -94,13 +95,13 @@ func (v *OkResp) Validate() error {
 // Validate checks every field-level constraint declared on Todo.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Todo) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
-	if l := len(v.Title); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	if v.Status == "" {
@@ -149,13 +150,13 @@ func (v *TodoList) Validate() error {
 // Validate checks every field-level constraint declared on UpdateTodoReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UpdateTodoReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
-	if v.Title != nil && (len(*v.Title) < 1 || len(*v.Title) > 200) {
+	if v.Title != nil && (utf8.RuneCountInString(*v.Title) < 1 || utf8.RuneCountInString(*v.Title) > 200) {
 		return fmt.Errorf("title: length out of range [1, 200]")
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	if v.Status != nil {
@@ -183,7 +184,7 @@ func (v Millis) Validate() error {
 // Validate checks every field-level constraint declared on Tag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Tag) Validate() error {
-	if l := len(string(v)); l < 1 || l > 40 {
+	if l := utf8.RuneCountInString(string(v)); l < 1 || l > 40 {
 		return fmt.Errorf("Tag: length out of range [1, 40]")
 	}
 	if !_pattern0.MatchString(string(v)) {

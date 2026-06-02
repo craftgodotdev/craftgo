@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -40,7 +41,7 @@ func (v *DefaultsCollection) Validate() error {
 // Validate checks every field-level constraint declared on DefaultsConflict.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsConflict) Validate() error {
-	if v.Empty != nil && len(*v.Empty) < 1 {
+	if v.Empty != nil && utf8.RuneCountInString(*v.Empty) < 1 {
 		return fmt.Errorf("empty: length less than 1")
 	}
 	return nil
@@ -163,7 +164,7 @@ func (v *PairsNum) Validate() error {
 // Validate checks every field-level constraint declared on PairsStr.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsStr) Validate() error {
-	if l := len(v.Email); l < 3 || l > 254 {
+	if l := utf8.RuneCountInString(v.Email); l < 3 || l > 254 {
 		return fmt.Errorf("email: length out of range [3, 254]")
 	}
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {

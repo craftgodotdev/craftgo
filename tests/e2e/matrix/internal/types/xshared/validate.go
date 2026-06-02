@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"reflect"
 	"time"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on XAudit.
@@ -45,7 +46,7 @@ func (v *XBag[T]) Validate() error {
 // Validate checks every field-level constraint declared on XOwner.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XOwner) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if err := v.Email.Validate(); err != nil {
@@ -60,7 +61,7 @@ func (v XEmail) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("XEmail: not a valid email")
 	}
-	if len(string(v)) > 254 {
+	if utf8.RuneCountInString(string(v)) > 254 {
 		return fmt.Errorf("XEmail: length greater than 254")
 	}
 	return nil
@@ -101,7 +102,7 @@ func (v XColor) Validate() error {
 // Validate checks every field-level constraint declared on XNotFoundBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XNotFoundBody) Validate() error {
-	if l := len(v.Resource); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Resource); l < 1 || l > 200 {
 		return fmt.Errorf("resource: length out of range [1, 200]")
 	}
 	return nil

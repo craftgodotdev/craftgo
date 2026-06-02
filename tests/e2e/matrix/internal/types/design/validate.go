@@ -5,6 +5,7 @@ package design
 import (
 	"fmt"
 	"regexp"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -22,10 +23,10 @@ func (v *ContactInfo) Validate() error {
 	if !_pattern0.MatchString(v.Email) {
 		return fmt.Errorf("email: does not match pattern")
 	}
-	if v.Phone != nil && len(*v.Phone) < 7 {
+	if v.Phone != nil && utf8.RuneCountInString(*v.Phone) < 7 {
 		return fmt.Errorf("phone: length less than 7")
 	}
-	if v.Phone != nil && len(*v.Phone) > 20 {
+	if v.Phone != nil && utf8.RuneCountInString(*v.Phone) > 20 {
 		return fmt.Errorf("phone: length greater than 20")
 	}
 	return nil
@@ -46,7 +47,7 @@ func (v *Coords) Validate() error {
 // Validate checks every field-level constraint declared on CreateProfileReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateProfileReq) Validate() error {
-	if l := len(v.DisplayName); l < 1 || l > 50 {
+	if l := utf8.RuneCountInString(v.DisplayName); l < 1 || l > 50 {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
 	}
 	if err := v.Contacts.Validate(); err != nil {
@@ -89,7 +90,7 @@ func (v *ListProfilesResp) Validate() error {
 // Validate checks every field-level constraint declared on PatchProfileReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PatchProfileReq) Validate() error {
-	if l := len(v.DisplayName); l < 1 || l > 50 {
+	if l := utf8.RuneCountInString(v.DisplayName); l < 1 || l > 50 {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
 	}
 	return nil
@@ -104,13 +105,13 @@ func (v *PatchProfileResp) Validate() error {
 // Validate checks every field-level constraint declared on PfAddress.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PfAddress) Validate() error {
-	if l := len(v.Street); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Street); l < 1 || l > 200 {
 		return fmt.Errorf("street: length out of range [1, 200]")
 	}
-	if l := len(v.City); l < 1 || l > 100 {
+	if l := utf8.RuneCountInString(v.City); l < 1 || l > 100 {
 		return fmt.Errorf("city: length out of range [1, 100]")
 	}
-	if l := len(v.Country); l < 2 || l > 2 {
+	if l := utf8.RuneCountInString(v.Country); l < 2 || l > 2 {
 		return fmt.Errorf("country: length must be 2")
 	}
 	if v.Coords != nil {
@@ -124,7 +125,7 @@ func (v *PfAddress) Validate() error {
 // Validate checks every field-level constraint declared on Profile.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Profile) Validate() error {
-	if l := len(v.DisplayName); l < 1 || l > 50 {
+	if l := utf8.RuneCountInString(v.DisplayName); l < 1 || l > 50 {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
 	}
 	if err := v.Contacts.Validate(); err != nil {

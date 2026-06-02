@@ -29,15 +29,16 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	uses["fmt"] = true
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
-	// Avoid the `if X != nil && l := len(*X); ...` form - Go forbids
-	// `:=` inside an `&&` expression. Inline `len(...)` twice instead;
-	// the second call is constant-folded by the compiler when the
-	// argument is a simple deref.
+	count := lengthCount(f, val, uses)
+	// Avoid the `if X != nil && l := count(*X); ...` form — Go forbids
+	// `:=` inside an `&&` expression. Inline the count twice instead; the
+	// second call is constant-folded by the compiler when the argument is a
+	// simple deref.
 	var cond string
 	if guard == "" {
-		cond = fmt.Sprintf("l := len(%s); l < %d || l > %d", val, lo, hi)
+		cond = fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi)
 	} else {
-		cond = fmt.Sprintf("%s(len(%s) < %d || len(%s) > %d)", guard, val, lo, val, hi)
+		cond = fmt.Sprintf("%s(%s < %d || %s > %d)", guard, count, lo, count, hi)
 	}
 	var msg string
 	if lo == hi {
@@ -66,9 +67,23 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	uses["fmt"] = true
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%slen(%s) %s %d", guard, val, op, n)
+	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, uses), op, n)
 	msg := fmt.Sprintf(`"%s: length %s %d"`, f.Name, label, n)
 	return ifReturnf(cond, msg)
+}
+
+// lengthCount returns the Go expression for the length a string-family field's
+// `@length` / `@minLength` / `@maxLength` validates: utf8.RuneCountInString for
+// a `string` so the bound counts Unicode characters — matching the OpenAPI
+// `minLength`/`maxLength` keyword and a Postgres `varchar(n)`, both of which
+// count characters, not bytes. A `bytes` field keeps `len()` (raw byte count,
+// the right measure for binary, and not advertised in the OpenAPI schema).
+func lengthCount(f *ast.Field, val string, uses map[string]bool) string {
+	if f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "bytes" {
+		return "len(" + val + ")"
+	}
+	uses["unicode/utf8"] = true
+	return "utf8.RuneCountInString(" + val + ")"
 }
 
 // patternCheck handles `@pattern("regex")`. The regex is interned in

@@ -4,6 +4,7 @@ package services
 
 import (
 	"fmt"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on AccountLoginResp.
@@ -27,7 +28,7 @@ func (v *AccountProfile) Validate() error {
 // Validate checks every field-level constraint declared on AcctCreateUserReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AcctCreateUserReq) Validate() error {
-	if l := len(v.Name); l < 1 || l > 50 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 50 {
 		return fmt.Errorf("name: length out of range [1, 50]")
 	}
 	return nil
@@ -54,7 +55,7 @@ func (v *AcctGetUserReq) Validate() error {
 // Validate checks every field-level constraint declared on AcctUpdateUserReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AcctUpdateUserReq) Validate() error {
-	if l := len(v.Name); l < 1 || l > 50 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 50 {
 		return fmt.Errorf("name: length out of range [1, 50]")
 	}
 	return nil
@@ -87,7 +88,7 @@ func (v *CancelJobReq) Validate() error {
 // Validate checks every field-level constraint declared on CreateJobReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateJobReq) Validate() error {
-	if len(v.Kind) < 1 {
+	if utf8.RuneCountInString(v.Kind) < 1 {
 		return fmt.Errorf("kind: length less than 1")
 	}
 	return nil
@@ -111,7 +112,7 @@ func (v *EntitlementsAuditTrail) Validate() error {
 // Validate checks every field-level constraint declared on GetUserReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetUserReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -177,7 +178,7 @@ func (v *Project) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return err
 	}
-	if len(v.Name) < 1 {
+	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
 	}
 	if err := v.Owner.Validate(); err != nil {
@@ -200,7 +201,7 @@ func (v *ProjectsResp) Validate() error {
 // Validate checks every field-level constraint declared on PromoteItemReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PromoteItemReq) Validate() error {
-	if len(v.ItemID) < 1 {
+	if utf8.RuneCountInString(v.ItemID) < 1 {
 		return fmt.Errorf("itemId: length less than 1")
 	}
 	if v.Slot < 1 {
@@ -224,7 +225,7 @@ func (v *User) Validate() error {
 	if err := v.Email.Validate(); err != nil {
 		return err
 	}
-	if len(v.Name) < 1 {
+	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
 	}
 	return nil

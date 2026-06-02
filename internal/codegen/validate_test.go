@@ -96,8 +96,13 @@ type X {
     b string @minLength(1)
     c string @maxLength(50)
 }`)
+	// String length counts Unicode characters (matching OpenAPI minLength /
+	// maxLength + a Postgres varchar), so the validator uses
+	// utf8.RuneCountInString, not the byte-counting len().
 	mustContainAll(t, src,
-		"len(v.A)",
+		"utf8.RuneCountInString(v.A)",
+		"utf8.RuneCountInString(v.B) < 1",
+		"utf8.RuneCountInString(v.C) > 50",
 	)
 }
 
@@ -342,7 +347,7 @@ error Forbidden AccessDenied {
 type X { id string }`)
 	mustContainAll(t, src,
 		"func (v *AccessDeniedBody) Validate() error",
-		"len(v.Reason)",
+		"utf8.RuneCountInString(v.Reason)",
 		"v.RetryAfter != nil",
 	)
 	mustParseGo(t, src)

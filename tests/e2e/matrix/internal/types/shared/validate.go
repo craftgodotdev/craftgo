@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"time"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on Audit.
@@ -35,7 +36,7 @@ func (v *Money) Validate() error {
 	if v.Amount < 0 {
 		return fmt.Errorf("amount: below minimum 0")
 	}
-	if l := len(v.Currency); l < 3 || l > 3 {
+	if l := utf8.RuneCountInString(v.Currency); l < 3 || l > 3 {
 		return fmt.Errorf("currency: length must be 3")
 	}
 	return nil
@@ -59,7 +60,7 @@ func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("Email: not a valid email")
 	}
-	if len(string(v)) > 254 {
+	if utf8.RuneCountInString(string(v)) > 254 {
 		return fmt.Errorf("Email: length greater than 254")
 	}
 	return nil
@@ -68,7 +69,7 @@ func (v Email) Validate() error {
 // Validate checks every field-level constraint declared on ID.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v ID) Validate() error {
-	if l := len(string(v)); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(string(v)); l < 1 || l > 64 {
 		return fmt.Errorf("ID: length out of range [1, 64]")
 	}
 	return nil

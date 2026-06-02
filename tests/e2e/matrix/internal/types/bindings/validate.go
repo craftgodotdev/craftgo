@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -21,7 +22,7 @@ var (
 // Validate checks every field-level constraint declared on AddItemReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AddItemReq) Validate() error {
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
 	if v.Price < 0 {
@@ -30,7 +31,7 @@ func (v *AddItemReq) Validate() error {
 	if v.Price > 1000000 {
 		return fmt.Errorf("price: above maximum 1000000")
 	}
-	if v.Notes != nil && len(*v.Notes) > 2000 {
+	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
 	}
 	return nil
@@ -51,7 +52,7 @@ func (v *CookieReq) Validate() error {
 // Validate checks every field-level constraint declared on FormFileReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *FormFileReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if v.File == nil {
@@ -97,7 +98,7 @@ func (v *Item) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
 	if v.Price < 0 {
@@ -132,7 +133,7 @@ func (v *PathEnumReq) Validate() error {
 // Validate checks every field-level constraint declared on PathExplicitNameReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathExplicitNameReq) Validate() error {
-	if l := len(v.UserID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("userId: length out of range [1, 64]")
 	}
 	return nil
@@ -150,7 +151,7 @@ func (v *PathScalarReq) Validate() error {
 // Validate checks every field-level constraint declared on PathStringReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathStringReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -244,7 +245,7 @@ func (v *SearchReq) Validate() error {
 // Validate checks every field-level constraint declared on UploadReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UploadReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if v.File == nil {
@@ -260,7 +261,7 @@ func (v *UploadReq) Validate() error {
 			return fmt.Errorf("file: disallowed content type")
 		}
 	}
-	if v.Caption != nil && len(*v.Caption) > 280 {
+	if v.Caption != nil && utf8.RuneCountInString(*v.Caption) > 280 {
 		return fmt.Errorf("caption: length greater than 280")
 	}
 	return nil
@@ -272,10 +273,10 @@ func (v *UserAvatar) Validate() error {
 	if _u, _err := url.Parse(v.URL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 		return fmt.Errorf("url: not a valid URL")
 	}
-	if len(v.URL) > 2048 {
+	if utf8.RuneCountInString(v.URL) > 2048 {
 		return fmt.Errorf("url: length greater than 2048")
 	}
-	if l := len(v.Key); l < 1 || l > 256 {
+	if l := utf8.RuneCountInString(v.Key); l < 1 || l > 256 {
 		return fmt.Errorf("key: length out of range [1, 256]")
 	}
 	return nil
@@ -284,7 +285,7 @@ func (v *UserAvatar) Validate() error {
 // Validate checks every field-level constraint declared on WireRenameReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *WireRenameReq) Validate() error {
-	if l := len(v.UserID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("userId: length out of range [1, 64]")
 	}
 	return nil
@@ -313,7 +314,7 @@ func (v Color) Validate() error {
 // Validate checks every field-level constraint declared on AccessDeniedBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccessDeniedBody) Validate() error {
-	if len(v.Reason) < 1 {
+	if utf8.RuneCountInString(v.Reason) < 1 {
 		return fmt.Errorf("reason: length less than 1")
 	}
 	return nil

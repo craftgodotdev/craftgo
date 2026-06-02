@@ -222,7 +222,7 @@ type Settings {
 }
 ```
 
-The first generic argument is the key type (must be a primitive). The second is the value type (any DSL type).
+The first generic argument is the key type and the second is the value type (any DSL type). The key must be a string- or integer-kind primitive (`string`, `int*`, `uint*`) or a scalar/enum over one — `encoding/json` can only marshal those as object keys. A `bool`, `float*`, or struct key is rejected at design time (it would compile but fail `json.Marshal` at runtime).
 
 ## Reserved names you cannot use as identifiers
 

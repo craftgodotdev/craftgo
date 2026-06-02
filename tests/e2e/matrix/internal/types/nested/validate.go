@@ -4,6 +4,7 @@ package nested
 
 import (
 	"fmt"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on A.
@@ -20,10 +21,10 @@ func (v *A) Validate() error {
 // Validate checks every field-level constraint declared on Address.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Address) Validate() error {
-	if len(v.Street) < 1 {
+	if utf8.RuneCountInString(v.Street) < 1 {
 		return fmt.Errorf("street: length less than 1")
 	}
-	if len(v.City) < 1 {
+	if utf8.RuneCountInString(v.City) < 1 {
 		return fmt.Errorf("city: length less than 1")
 	}
 	return nil
@@ -69,7 +70,7 @@ func (v *Cube) Validate() error {
 // Validate checks every field-level constraint declared on Furniture.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Furniture) Validate() error {
-	if len(v.Name) < 1 {
+	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
 	}
 	if v.Weight < 0 {
@@ -121,7 +122,7 @@ func (v *Matrix) Validate() error {
 // Validate checks every field-level constraint declared on Node.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Node) Validate() error {
-	if len(v.ID) < 1 {
+	if utf8.RuneCountInString(v.ID) < 1 {
 		return fmt.Errorf("id: length less than 1")
 	}
 	for i0 := range v.Children {
@@ -135,7 +136,7 @@ func (v *Node) Validate() error {
 // Validate checks every field-level constraint declared on Order.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Order) Validate() error {
-	if len(v.ID) < 1 {
+	if utf8.RuneCountInString(v.ID) < 1 {
 		return fmt.Errorf("id: length less than 1")
 	}
 	return nil

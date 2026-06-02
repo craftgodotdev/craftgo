@@ -44,6 +44,15 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Changed
 
+- **`@length` / `@minLength` / `@maxLength` on a `string` now count Unicode
+  characters, not bytes.** The generated validator uses
+  `utf8.RuneCountInString` instead of `len()`, so a multi-byte value like
+  `"日本語"` (3 characters / 9 bytes) passes `@maxLength(3)`. This aligns the
+  runtime check with the OpenAPI `minLength`/`maxLength` keyword (JSON Schema
+  counts characters) and a Postgres `varchar(n)` — previously the validator
+  rejected a value the spec advertised as valid. A `bytes` field still counts
+  bytes (binary length, not advertised in OpenAPI); use `@maxBodySize` to cap
+  raw network size.
 - Wire-bind parse failures (`?page=abc`) and JSON body-decode failures now go
   through `server.WriteValidationError` — the same swappable hook as
   `req.Validate()` failures — so all request-input errors share one response

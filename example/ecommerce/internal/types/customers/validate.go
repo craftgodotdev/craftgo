@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -21,19 +22,19 @@ var (
 // Validate checks every field-level constraint declared on Address.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Address) Validate() error {
-	if l := len(v.Street); l < 1 || l > 200 {
+	if l := utf8.RuneCountInString(v.Street); l < 1 || l > 200 {
 		return fmt.Errorf("street: length out of range [1, 200]")
 	}
-	if v.Street2 != nil && len(*v.Street2) > 200 {
+	if v.Street2 != nil && utf8.RuneCountInString(*v.Street2) > 200 {
 		return fmt.Errorf("street2: length greater than 200")
 	}
-	if len(v.City) < 1 {
+	if utf8.RuneCountInString(v.City) < 1 {
 		return fmt.Errorf("city: length less than 1")
 	}
-	if len(v.City) > 100 {
+	if utf8.RuneCountInString(v.City) > 100 {
 		return fmt.Errorf("city: length greater than 100")
 	}
-	if v.Region != nil && len(*v.Region) > 100 {
+	if v.Region != nil && utf8.RuneCountInString(*v.Region) > 100 {
 		return fmt.Errorf("region: length greater than 100")
 	}
 	if !_pattern0.MatchString(v.PostalCode) {
@@ -85,7 +86,7 @@ func (v *CreateCustomerReq) Validate() error {
 	if err := v.Email.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 120 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
 	}
 	if err := v.PrimaryAddress.Validate(); err != nil {
@@ -94,7 +95,7 @@ func (v *CreateCustomerReq) Validate() error {
 	if err := v.Contact.Validate(); err != nil {
 		return err
 	}
-	if v.Bio != nil && len(*v.Bio) > 500 {
+	if v.Bio != nil && utf8.RuneCountInString(*v.Bio) > 500 {
 		return fmt.Errorf("bio: length greater than 500")
 	}
 	return nil
@@ -109,7 +110,7 @@ func (v *Customer) Validate() error {
 	if err := v.Email.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 120 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
 	}
 	if err := v.PrimaryAddress.Validate(); err != nil {
@@ -139,7 +140,7 @@ func (v *Customer) Validate() error {
 	if v.LoyaltyPoints != nil && *v.LoyaltyPoints > 1000000 {
 		return fmt.Errorf("loyaltyPoints: above maximum 1000000")
 	}
-	if v.Bio != nil && len(*v.Bio) > 500 {
+	if v.Bio != nil && utf8.RuneCountInString(*v.Bio) > 500 {
 		return fmt.Errorf("bio: length greater than 500")
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
@@ -154,7 +155,7 @@ func (v *CustomerRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Name); l < 1 || l > 120 {
+	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
 	}
 	return nil
@@ -184,7 +185,7 @@ func (v *Geocode) Validate() error {
 // Validate checks every field-level constraint declared on GetCustomerReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetCustomerReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -193,7 +194,7 @@ func (v *GetCustomerReq) Validate() error {
 // Validate checks every field-level constraint declared on UploadAvatarReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UploadAvatarReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if v.Image == nil {

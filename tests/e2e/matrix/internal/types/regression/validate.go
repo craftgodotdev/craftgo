@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"reflect"
 	"regexp"
+	"unicode/utf8"
 )
 
 // Pattern regexes compile ONCE at package init so Validate() calls
@@ -21,7 +22,7 @@ var (
 // Validate checks every field-level constraint declared on Rg2Audit.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg2Audit) Validate() error {
-	if len(v.CreatedAt) < 1 {
+	if utf8.RuneCountInString(v.CreatedAt) < 1 {
 		return fmt.Errorf("createdAt: length less than 1")
 	}
 	return nil
@@ -48,7 +49,7 @@ func (v *Rg2Big) Validate() error {
 // Validate checks every field-level constraint declared on Rg2BodyMix.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg2BodyMix) Validate() error {
-	if len(v.Note) < 1 {
+	if utf8.RuneCountInString(v.Note) < 1 {
 		return fmt.Errorf("note: length less than 1")
 	}
 	return nil
@@ -119,7 +120,7 @@ func (v *Rg2WireMix) Validate() error {
 // Validate checks every field-level constraint declared on Rg3Audit.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg3Audit) Validate() error {
-	if len(v.CreatedAt) < 1 {
+	if utf8.RuneCountInString(v.CreatedAt) < 1 {
 		return fmt.Errorf("createdAt: length less than 1")
 	}
 	return nil
@@ -299,7 +300,7 @@ func (v *Rg5Empty) Validate() error {
 // Validate checks every field-level constraint declared on Rg5HdrMeta.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5HdrMeta) Validate() error {
-	if len(v.Note) < 1 {
+	if utf8.RuneCountInString(v.Note) < 1 {
 		return fmt.Errorf("note: length less than 1")
 	}
 	return nil
@@ -308,7 +309,7 @@ func (v *Rg5HdrMeta) Validate() error {
 // Validate checks every field-level constraint declared on Rg5Item.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5Item) Validate() error {
-	if len(v.Sku) < 2 {
+	if utf8.RuneCountInString(v.Sku) < 2 {
 		return fmt.Errorf("sku: length less than 2")
 	}
 	return nil
@@ -317,7 +318,7 @@ func (v *Rg5Item) Validate() error {
 // Validate checks every field-level constraint declared on Rg5Mixed.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5Mixed) Validate() error {
-	if len(v.Payload) < 1 {
+	if utf8.RuneCountInString(v.Payload) < 1 {
 		return fmt.Errorf("payload: length less than 1")
 	}
 	return nil
@@ -372,7 +373,7 @@ func (v *Rg5Session) Validate() error {
 // Validate checks every field-level constraint declared on Rg5Tag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5Tag) Validate() error {
-	if len(v.Name) < 1 {
+	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
 	}
 	return nil
@@ -417,13 +418,13 @@ func (v *Rg6Stacked) Validate() error {
 	if v.B < 0 || v.B > 100 {
 		return fmt.Errorf("b: out of range [0, 100]")
 	}
-	if l := len(v.A); l < 5 || l > 5 {
+	if l := utf8.RuneCountInString(v.A); l < 5 || l > 5 {
 		return fmt.Errorf("a: length must be 5")
 	}
-	if len(v.A) < 3 {
+	if utf8.RuneCountInString(v.A) < 3 {
 		return fmt.Errorf("a: length less than 3")
 	}
-	if len(v.A) > 10 {
+	if utf8.RuneCountInString(v.A) > 10 {
 		return fmt.Errorf("a: length greater than 10")
 	}
 	return nil
@@ -432,7 +433,7 @@ func (v *Rg6Stacked) Validate() error {
 // Validate checks every field-level constraint declared on RgAudit.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RgAudit) Validate() error {
-	if len(v.CreatedAt) < 1 {
+	if utf8.RuneCountInString(v.CreatedAt) < 1 {
 		return fmt.Errorf("createdAt: length less than 1")
 	}
 	return nil
@@ -517,10 +518,10 @@ func (v *RgLengths) Validate() error {
 	if err := v.Code.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.Inline); l < 6 || l > 6 {
+	if l := utf8.RuneCountInString(v.Inline); l < 6 || l > 6 {
 		return fmt.Errorf("inline: length must be 6")
 	}
-	if l := len(v.Rng); l < 2 || l > 8 {
+	if l := utf8.RuneCountInString(v.Rng); l < 2 || l > 8 {
 		return fmt.Errorf("rng: length out of range [2, 8]")
 	}
 	if err := v.Token.Validate(); err != nil {
@@ -633,10 +634,10 @@ func (v *RgSearch) Validate() error {
 // Validate checks every field-level constraint declared on Rg2Tag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Rg2Tag) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("Rg2Tag: length less than 1")
 	}
-	if len(string(v)) > 20 {
+	if utf8.RuneCountInString(string(v)) > 20 {
 		return fmt.Errorf("Rg2Tag: length greater than 20")
 	}
 	return nil
@@ -645,7 +646,7 @@ func (v Rg2Tag) Validate() error {
 // Validate checks every field-level constraint declared on Rg3Tag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Rg3Tag) Validate() error {
-	if len(string(v)) < 1 {
+	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("Rg3Tag: length less than 1")
 	}
 	return nil
@@ -672,7 +673,7 @@ func (v RgCents) Validate() error {
 // Validate checks every field-level constraint declared on RgCode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v RgCode) Validate() error {
-	if l := len(string(v)); l < 4 || l > 4 {
+	if l := utf8.RuneCountInString(string(v)); l < 4 || l > 4 {
 		return fmt.Errorf("RgCode: length must be 4")
 	}
 	return nil
@@ -768,16 +769,16 @@ func (v RgPriority) Validate() error {
 // Validate checks every field-level constraint declared on Rg5CodeErrBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5CodeErrBody) Validate() error {
-	if len(v.Code) < 3 {
+	if utf8.RuneCountInString(v.Code) < 3 {
 		return fmt.Errorf("code: length less than 3")
 	}
-	if len(v.Code) > 8 {
+	if utf8.RuneCountInString(v.Code) > 8 {
 		return fmt.Errorf("code: length greater than 8")
 	}
 	if !_pattern0.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
-	if len(v.Message) > 50 {
+	if utf8.RuneCountInString(v.Message) > 50 {
 		return fmt.Errorf("message: length greater than 50")
 	}
 	return nil
@@ -812,10 +813,10 @@ func (v *RgValidationFailedBody) Validate() error {
 	if v.Attempts > 10 {
 		return fmt.Errorf("attempts: above maximum 10")
 	}
-	if len(v.Field) < 1 {
+	if utf8.RuneCountInString(v.Field) < 1 {
 		return fmt.Errorf("field: length less than 1")
 	}
-	if len(v.Field) > 40 {
+	if utf8.RuneCountInString(v.Field) > 40 {
 		return fmt.Errorf("field: length greater than 40")
 	}
 	return nil

@@ -4,6 +4,7 @@ package xrefs
 
 import (
 	"fmt"
+	"unicode/utf8"
 )
 
 // Validate checks every field-level constraint declared on XEnumDefault.
@@ -81,7 +82,7 @@ func (v *XGeneric) Validate() error {
 // Validate checks every field-level constraint declared on XGetReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XGetReq) Validate() error {
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
@@ -186,7 +187,7 @@ func (v *XTypeMixin) Validate() error {
 	if err := v.XAudit.Validate(); err != nil {
 		return err
 	}
-	if l := len(v.ID); l < 1 || l > 64 {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	return nil
