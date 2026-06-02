@@ -78,19 +78,13 @@ func buildEnumView(ed *ast.EnumDecl) enumView {
 	if firstEnumKind(ed) == ast.EnumInt {
 		goBase = "int"
 	}
-	enumVals := ed.EnumValues()
-	dslNames := make([]string, len(enumVals))
-	for i, v := range enumVals {
-		dslNames[i] = v.Name
-	}
-	resolved, _ := idents.DedupGoFieldNames(dslNames)
-
-	values := make([]enumValueView, len(enumVals))
-	for i, v := range enumVals {
+	members := enumMembers(ed)
+	values := make([]enumValueView, len(members))
+	for i, m := range members {
 		values[i] = enumValueView{
-			ConstName: ed.Name + resolved[i],
+			ConstName: m.ConstName,
 			EnumName:  ed.Name,
-			Literal:   enumLiteral(v),
+			Literal:   m.Literal,
 		}
 	}
 	return enumView{Name: ed.Name, GoBase: goBase, Values: values}
@@ -118,4 +112,69 @@ func firstEnumKind(ed *ast.EnumDecl) ast.EnumValueKind {
 		return ast.EnumString
 	}
 	return values[0].Kind
+}
+
+// enumMember is the fully-resolved projection of one enum member, computed
+// ONCE per enum so every stage reads the same answer instead of
+// re-switching on the kind / re-deriving the const name. ConstName applies
+// the case-collision dedup a single time — the const declaration, the
+// validate case-list, and the transport default const must all use it (a
+// case-list built from a non-deduped name produced `case X, X` and failed
+// to compile for a case-colliding enum).
+type enumMember struct {
+	DSLName    string
+	ConstName  string // ed.Name + DedupGoFieldNames(...)[i]
+	Kind       ast.EnumValueKind
+	Wire       any    // typed wire value: int64 | string
+	WireString string // JSON-key / propertyNames form (int -> decimal string)
+	Literal    string // Go const right-hand side
+}
+
+// enumMembers resolves ed's members in source order, deduping the Go const
+// names once. Every const-name and wire-value consumer reads this.
+func enumMembers(ed *ast.EnumDecl) []enumMember {
+	vals := ed.EnumValues()
+	dslNames := make([]string, len(vals))
+	for i, v := range vals {
+		dslNames[i] = v.Name
+	}
+	resolved, _ := idents.DedupGoFieldNames(dslNames)
+	out := make([]enumMember, len(vals))
+	for i, v := range vals {
+		out[i] = enumMember{
+			DSLName:    v.Name,
+			ConstName:  ed.Name + resolved[i],
+			Kind:       v.Kind,
+			Wire:       enumMemberWire(v),
+			WireString: enumMemberWireString(v),
+			Literal:    enumLiteral(v),
+		}
+	}
+	return out
+}
+
+// enumMemberWire returns a member's typed wire value (int64 / string).
+func enumMemberWire(v *ast.EnumValue) any {
+	switch v.Kind {
+	case ast.EnumInt:
+		return v.IntValue
+	case ast.EnumString:
+		return v.StrValue
+	default:
+		return v.Name
+	}
+}
+
+// enumMemberWireString returns a member's wire value as it appears as a
+// JSON object key / propertyNames entry — an int-backed member stringifies
+// to its decimal form because JSON keys are strings.
+func enumMemberWireString(v *ast.EnumValue) string {
+	switch v.Kind {
+	case ast.EnumInt:
+		return strconv.FormatInt(v.IntValue, 10)
+	case ast.EnumString:
+		return v.StrValue
+	default:
+		return v.Name
+	}
 }

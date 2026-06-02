@@ -12,7 +12,7 @@ GOFLAGS      ?=
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
-SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/users tests/e2e/complex tests/e2e/multi-service
+SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -97,7 +97,7 @@ fmt-check: ## Fail if any Go file isn't gofmt'd.
 lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
 
 # ---- codegen + example --------------------------------------------------
-E2E_DIRS := tests/e2e/users tests/e2e/complex tests/e2e/multi-service tests/e2e/cornercase
+E2E_DIRS := tests/e2e/matrix
 
 .PHONY: gen
 gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce).

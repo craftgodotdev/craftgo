@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -24,11 +23,7 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		}
 	}
 	var out []defaultBinding
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range requestFields(td, pkg, r) {
 		if f.Type == nil || f.Type.Map != nil {
 			continue
 		}
@@ -241,24 +236,17 @@ func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver,
 	if ed == nil {
 		return ""
 	}
-	enumName := ed.Name
 	valueName := v.Name.Parts[0]
-	idx := -1
-	enumVals := ed.EnumValues()
-	dslNames := make([]string, len(enumVals))
-	for i, val := range enumVals {
-		dslNames[i] = val.Name
-		if val.Name == valueName {
-			idx = i
+	// Read the shared enumMembers resolver so this const name uses the SAME
+	// dedup the enum declaration (buildEnumView) and the validate case-list
+	// emit — they must reference the identical Go const.
+	for _, m := range enumMembers(ed) {
+		if m.DSLName == valueName {
+			if qualifier != "" {
+				return qualifier + "." + m.ConstName
+			}
+			return m.ConstName
 		}
 	}
-	if idx < 0 {
-		return ""
-	}
-	resolved, _ := idents.DedupGoFieldNames(dslNames)
-	bare := enumName + resolved[idx]
-	if qualifier != "" {
-		return qualifier + "." + bare
-	}
-	return bare
+	return ""
 }

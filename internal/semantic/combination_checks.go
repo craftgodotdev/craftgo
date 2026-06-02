@@ -103,8 +103,10 @@ func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
 		a.checkFieldCombinations(dd.Name, dd.Body)
+		a.checkDuplicateWireNames(dd.Name, dd.Body)
 	case *ast.ErrorDecl:
 		a.checkFieldCombinations(dd.Name, dd.Body)
+		a.checkDuplicateWireNames(dd.Name, dd.Body)
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
 			a.checkMethodCombinations(dd.Name, m)
@@ -123,8 +125,114 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 		}
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f)
-		a.checkDefaultNeedsOptional(parent, f)
 		a.checkBoundOverlap(parent, f)
+	}
+}
+
+// checkDuplicateWireNames rejects two fields in the same body that bind to
+// the same wire name on the same source (`a @query("x")  b @query("x")`).
+// The OpenAPI would carry a duplicate (name, in) parameter — an invalid
+// spec a client generator rejects — and the binder would read the same
+// value into both fields. The same name on DIFFERENT sources is fine (a
+// `@query("x")` and a `@header("x")` are distinct parameters).
+func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
+	seen := map[string]lexer.Position{}
+	for _, m := range members {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		kind, name, bound := wireBinding(f)
+		if !bound {
+			continue
+		}
+		key := kind + "\x00" + name
+		if prev, dup := seen[key]; dup {
+			d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
+				"%s.%s: @%s(%q) reuses a wire name already bound on the same source — the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names.",
+				parent, f.Name, kind, name)
+			d.Related = related(prev, "first bound here")
+			continue
+		}
+		seen[key] = f.Pos
+	}
+}
+
+// WireName returns the on-the-wire name for field f under binding kind
+// (path/query/header/cookie/form): the binding decorator's first non-empty
+// string argument, or the field's own name when none is given. It is the one
+// rule shared by the analyser's binding checks and codegen's binders /
+// OpenAPI parameter emit, so the documented parameter name and the name the
+// handler actually reads cannot disagree.
+func WireName(f *ast.Field, kind string) string {
+	if f == nil {
+		return ""
+	}
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != kind || len(d.Args) == 0 {
+			continue
+		}
+		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
+			return s.Value
+		}
+	}
+	return f.Name
+}
+
+// BindingKind returns the binding kind named by the first binding decorator
+// in ds — "path" / "query" / "header" / "cookie" / "body" / "form" — or "" when
+// none is present. It is the single "which decorator binds this field"
+// classifier the analyser's binding checks and codegen's binders both read, so
+// the two layers cannot disagree on where a field rides. (Valid input carries
+// at most one binding decorator per field — the single-binding rule rejects
+// the rest — so first-match is unambiguous.)
+func BindingKind(ds []*ast.Decorator) string {
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		switch d.Name {
+		case "path", "query", "header", "cookie", "body", "form":
+			return d.Name
+		}
+	}
+	return ""
+}
+
+// RequestFieldBinding resolves where a request field rides once method
+// context is applied: its explicit binding decorator if any (or @sensitive),
+// otherwise the auto-binding rule — an un-decorated field auto-binds to "path"
+// when its name matches a `{param}` segment, to "query" on a body-less verb
+// (there is no body to decode into), or stays "body". auto is true only for an
+// auto-promoted path/query field. This is the single place the request
+// auto-binding rule lives, read by both the analyser's binding checks and
+// codegen's request resolver so the two cannot disagree on where a field rides.
+func RequestFieldBinding(f *ast.Field, pathNames map[string]bool, bodyVerb bool) (kind string, auto bool) {
+	if ast.HasDecorator(f.Decorators, "sensitive") {
+		return "sensitive", false
+	}
+	if k := BindingKind(f.Decorators); k != "" {
+		return k, false
+	}
+	switch {
+	case pathNames[f.Name]:
+		return "path", true
+	case !bodyVerb:
+		return "query", true
+	default:
+		return "body", false
+	}
+}
+
+// wireBinding returns the wire (kind, name) a field binds to: the binding
+// decorator's explicit string arg, or the field name when the arg is
+// absent. bound is false for an unbound (body) field.
+func wireBinding(f *ast.Field) (kind, name string, bound bool) {
+	switch k := BindingKind(f.Decorators); k {
+	case "path", "query", "header", "cookie", "form":
+		return k, WireName(f, k), true
+	default:
+		return "", "", false
 	}
 }
 
@@ -168,34 +276,6 @@ func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
 	}
 }
 
-// checkDefaultNeedsOptional warns when a field carries `@default(...)` but
-// its type does not have the `?` (optional) suffix. `@default` only fires
-// when the value is absent from the request payload; under the
-// "required by default" model a non-optional field is always considered
-// mandatory by OpenAPI consumers, which contradicts the default's intent.
-//
-// The diagnostic is a Warning, not an Error - the runtime contract still
-// works (the default pre-fills the struct so validation passes when the
-// client omits the field) but the OpenAPI schema published to consumers
-// becomes misleading. The fix is to add `?` to the type; the formatter
-// applies that fix automatically when re-emitting the source so saving
-// the file resolves the warning in one round trip.
-func (a *analyzer) checkDefaultNeedsOptional(parent string, f *ast.Field) {
-	if f == nil || f.Type == nil || f.Type.Optional {
-		return
-	}
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != "default" {
-			continue
-		}
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning,
-			CodeDefaultNeedsOptional,
-			"field %s.%s: @default implies optional - add `?` to the type (auto-fixed by `craftgo fmt` / format-on-save)",
-			parent, f.Name)
-		return
-	}
-}
-
 // checkBindingFieldType vets the type compatibility of `@path`,
 // `@header`, `@cookie`, and `@form` bindings up front so the codegen
 // never has to produce uncompilable Go.
@@ -203,11 +283,13 @@ func (a *analyzer) checkDefaultNeedsOptional(parent string, f *ast.Field) {
 // Per-decorator rules (mirrors the wire-bind codegen in
 // `internal/codegen.renderWireBindLine`):
 //
-//   - `@path`              — non-optional string-shaped only. Path
-//     segments are mandatory by definition (the route matched or it
-//     didn't), so optional makes no semantic sense; numeric path
-//     params land as a string-scalar or string-enum with an explicit
-//     cast.
+//   - `@path`              — the same wire-bindable shapes as @query
+//     (string / bool / int* / uint* / float*, or a scalar / enum over
+//     one), but never optional or array. Path segments are mandatory by
+//     definition (the route matched or it didn't), so optional makes no
+//     semantic sense, and a path carries one value per segment. A
+//     numeric segment is parsed via the same server.Parse* helper a
+//     numeric @query field uses.
 //   - `@query` / `@header` / `@cookie` — string + numeric + bool +
 //     scalars/enums + arrays of those. Optional string-shaped is
 //     accepted (binder emits `*T`); optional numerics use the
@@ -224,6 +306,22 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	if f.Type == nil {
 		return
 	}
+	// `@nullable` marks a JSON-body field as accepting an explicit null.
+	// A wire parameter (path / query / header / cookie / form) is a string
+	// on the wire with no JSON-null form, and the Go field it lowers to
+	// would be a pointer the wire binder can't assign — so the pairing is
+	// rejected outright. `?` is the way to make a parameter optional.
+	if ast.HasDecorator(f.Decorators, "nullable") {
+		for _, d := range f.Decorators {
+			switch d.Name {
+			case "path", "query", "header", "cookie", "form":
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+					"@nullable cannot be combined with @%s: a wire parameter is a string with no JSON-null form. Use `?` to make the parameter optional.",
+					d.Name)
+				return
+			}
+		}
+	}
 	// In project mode the per-package pass defers qualified-ref
 	// binding-type checks to the post-pass resolver, which has the
 	// full project symbol table. Without the skip a cross-pkg scalar
@@ -237,11 +335,11 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	for _, d := range f.Decorators {
 		switch d.Name {
 		case "path":
-			if isStringBindingType(f.Type, a.pkg, false) {
+			if isPathBindingType(f.Type, a.pkg) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @path requires a non-optional string-backed field (string, string scalar, or string enum) - got %s",
+				"field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 				parent, f.Name, describeTypeRef(f.Type))
 			return
 		case "query", "header", "cookie":
@@ -283,43 +381,24 @@ func isQualifiedTypeRef(t *ast.TypeRef) bool {
 	return len(t.Named.Name.Parts) >= 2
 }
 
-// isStringBindingType reports whether t is a string-shaped value
-// acceptable for `@path` (the only binding that demands string-only).
-// Matches:
-//   - the bare `string` primitive
-//   - a `scalar X string @...` declared in pkg
-//   - a bare or string-valued enum declared in pkg
+// isPathBindingType reports whether t can bind to `@path`. A path
+// segment is parsed the same way as a `@query` value (string / bool /
+// int* / uint* / float*, or a scalar / enum wrapping one), so the
+// accepted set is exactly [isWireBindingType] MINUS two shapes a URL
+// path can't carry:
+//   - optional: a matched route always supplies the segment, so a
+//     nilable path field is meaningless.
+//   - array: a path carries a single value per segment, with no
+//     repeated form.
 //
-// Array / map shapes are always rejected. Optional is gated by
-// allowOptional: callers for path pass false (path is mandatory).
-// This helper is INTERNAL to the binding check - the wider
-// `@query/@header/@cookie/@form` rules accept many more shapes (see
-// [isWireBindingType] / [isFormBindingType]).
-func isStringBindingType(t *ast.TypeRef, pkg *Package, allowOptional bool) bool {
-	if t == nil || t.Array || t.Map != nil || t.Named == nil {
+// Numeric path IDs (`/users/{id}` with `id int`) are the common REST
+// case; the binder parses the segment via the same server.Parse* helper
+// a numeric @query field uses.
+func isPathBindingType(t *ast.TypeRef, pkg *Package) bool {
+	if t == nil || t.Optional || t.Array {
 		return false
 	}
-	if t.Optional && !allowOptional {
-		return false
-	}
-	name := t.Named.Name.String()
-	if name == "string" {
-		return true
-	}
-	if pkg == nil {
-		return false
-	}
-	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
-		return true
-	}
-	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		for _, m := range ed.Members {
-			if v, ok := m.(*ast.EnumValue); ok {
-				return v.Kind == ast.EnumBare || v.Kind == ast.EnumString
-			}
-		}
-	}
-	return false
+	return isWireBindingType(t, pkg)
 }
 
 // isWireBindingType reports whether t is acceptable as a `@query`,
@@ -333,7 +412,8 @@ func isStringBindingType(t *ast.TypeRef, pkg *Package, allowOptional bool) bool 
 //   - array of any of the above           → directSlice / arrayString / arrayParsed
 //   - optional of any string-shaped item  → optionalString*
 //
-// Rejects: optional numerics (zero sentinel), maps, structs, generic
+// Optional numerics are accepted too (the binder writes a `*T` and leaves
+// it nil when the key is absent). Rejects: maps, structs, generic
 // instantiations, and the `file` type (which only `@form` accepts).
 func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
 	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
@@ -445,6 +525,30 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	a.checkPassthroughBody(svcName, m)
 	a.checkBodyBindingVerb(svcName, m)
+	a.checkDuplicatePathVars(svcName, m)
+}
+
+// checkDuplicatePathVars rejects a route template that repeats a path
+// variable name (`/items/{id}/x/{id}`). net/http's ServeMux panics at
+// registration on a duplicate wildcard, so gen would produce a server
+// that crashes on boot — caught here at design time instead.
+func (a *analyzer) checkDuplicatePathVars(svcName string, m *ast.Method) {
+	if m == nil || m.Path == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, seg := range m.Path.Segments {
+		if !seg.Param {
+			continue
+		}
+		if seen[seg.Literal] {
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+				"%s.%s route repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one segment.",
+				svcName, m.Name, seg.Literal)
+			return
+		}
+		seen[seg.Literal] = true
+	}
 }
 
 // checkBodyBindingVerb rejects `@body` / `@form` request fields on a
@@ -470,11 +574,13 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if !ok {
 		return
 	}
-	for _, member := range td.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
-			continue
-		}
+	// Flatten so a field a request inherits through a mixin is checked too:
+	// without this an auto-@query non-bindable field (or a @body / @form
+	// field) promoted via a mixin slips past the semantic gate and fails
+	// only at the codegen stage with a position-less error the LSP can't
+	// surface. Mirrors the codegen request flatten.
+	flat := a.flattenRequestFields(td.Body, map[string]bool{})
+	for _, f := range flat {
 		for _, d := range f.Decorators {
 			if d == nil || (d.Name != "body" && d.Name != "form") {
 				continue
@@ -485,6 +591,85 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 			break // one diagnostic per field
 		}
 	}
+	// An un-decorated field that doesn't match a path segment auto-binds to
+	// @query on a non-body verb (there is no body to decode into). Codegen
+	// rejects it when its type can't ride a query string — but only at the
+	// transport stage, with a position-less error the LSP-shared semantic
+	// gate never produces, so the editor shows the design as clean while
+	// `craftgo gen` fails. Mirror that rejection here so the two agree.
+	pathSegs := map[string]bool{}
+	if m.Path != nil {
+		for _, seg := range m.Path.Segments {
+			if seg.Param {
+				pathSegs[seg.Literal] = true
+			}
+		}
+	}
+	for _, f := range flat {
+		if f.Type == nil {
+			continue
+		}
+		// A qualified cross-package type is deferred to the project pass (the
+		// local table can't see a string scalar declared in a sibling package).
+		if isQualifiedTypeRef(f.Type) {
+			continue
+		}
+		// Only a field that auto-binds to @query is at risk here: explicitly-
+		// bound fields, an auto-@path match (codegen skips a non-bindable one
+		// silently), and @sensitive are all resolved elsewhere. RequestFieldBinding
+		// is the same rule codegen's request resolver applies.
+		if kind, auto := RequestFieldBinding(f, pathSegs, false); kind != "query" || !auto {
+			continue
+		}
+		// `@nullable` lowers the field to a pointer, but on a body-less verb
+		// this field auto-binds to @query, where the binder writes a string
+		// into a non-pointer slot — the same mismatch the explicit
+		// `@nullable @query` pairing is rejected for above. The explicit
+		// guard never fires here (there is no binding decorator), so mirror
+		// it for the implicit auto-@query path.
+		if ast.HasDecorator(f.Decorators, "nullable") {
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
+				"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but @nullable has no meaning on a wire parameter — a query string has no JSON-null form. Use `?` to make it optional, or switch to a body verb (POST/PUT/PATCH).",
+				m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), svcName)
+			continue
+		}
+		if !isWireBindingType(f.Type, a.pkg) {
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string — switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
+				m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), svcName, describeTypeRef(f.Type))
+		}
+	}
+}
+
+// flattenRequestFields returns body's fields with embedded same-package
+// mixins expanded recursively, mirroring the codegen request flatten so
+// the method-level binding checks see a field a request inherits through a
+// mixin. A qualified (cross-package) mixin is skipped here and left to the
+// project resolver, matching the per-package analyzer's scope. `seen`
+// breaks mixin cycles. Generic-argument substitution is not modelled — the
+// binding checks key on the field's decorators and shape, which a generic
+// mixin's promoted field carries regardless of the concrete argument.
+func (a *analyzer) flattenRequestFields(body []ast.TypeMember, seen map[string]bool) []*ast.Field {
+	var out []*ast.Field
+	for _, m := range body {
+		switch v := m.(type) {
+		case *ast.Field:
+			out = append(out, v)
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) != 1 {
+				continue
+			}
+			name := v.Ref.Name.Parts[0]
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if td, ok := a.pkg.Types[name]; ok {
+				out = append(out, a.flattenRequestFields(td.Body, seen)...)
+			}
+		}
+	}
+	return out
 }
 
 // checkPassthroughBody rejects `request` or `response` blocks on any

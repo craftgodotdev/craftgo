@@ -8,6 +8,32 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// ---------- pathless-method route engine ----------
+
+// TestResolveMethodPathPathlessUsesIdentsKebab pins the analyzer's
+// pathless-method auto-route to the canonical word-split codegen registers
+// the route with (idents.SplitFieldName). The two engines diverged on
+// digit-boundary names — `ListV2Items` resolved to `/list-v2-items` here but
+// `/list-v2items` in codegen — so the editor showed (and route-collision
+// detection keyed on) a route the server never served.
+func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
+	a := &analyzer{}
+	svc := &ast.ServiceDecl{}
+	cases := map[string]string{
+		"ListV2Items":  "/list-v2items",
+		"OAuth2Login":  "/o-auth2login",
+		"Base64Encode": "/base64encode",
+		"GetUser":      "/get-user",
+		"ListTodos":    "/list-todos",
+	}
+	for name, want := range cases {
+		got := a.resolveMethodPath(svc, &ast.Method{Name: name})
+		if got != want {
+			t.Errorf("resolveMethodPath pathless %q = %q, want %q (idents canonical)", name, got, want)
+		}
+	}
+}
+
 // ---------- basePath format ----------
 
 func TestBasePathFormatOK(t *testing.T) {
@@ -90,6 +116,28 @@ func TestPathDifferentVerbNoCollision(t *testing.T) {
 	get GetUser /users {}
 	post CreateUser /users {}
 }`)
+}
+
+func TestPathlessMethodsNoFalseCollision(t *testing.T) {
+	// Two pathless methods of the same verb auto-route to distinct kebab
+	// paths (`/ping`, `/health`), so they must NOT be flagged as a duplicate
+	// route — the collision key uses the resolved route, not the empty path.
+	mustClean(t, `service S {
+	get Ping {}
+	get Health {}
+}`)
+}
+
+func TestSameServiceRouteCollisionStillFlagged(t *testing.T) {
+	// Two methods with the same explicit path + verb in one service still
+	// collide.
+	_, diags := Analyze(parseFiles(t, `service S {
+	get A /users {}
+	get B /users {}
+}`))
+	if findCode(diags, CodeServiceDuplicateRoute) == nil {
+		t.Fatalf("got %v", codes(diags))
+	}
 }
 
 func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
@@ -297,20 +345,6 @@ func TestExtractPathParams(t *testing.T) {
 		got := extractPathParams(c.in)
 		if !equalSlice(got, c.want) {
 			t.Errorf("extractPathParams(%q) = %v, want %v", c.in, got, c.want)
-		}
-	}
-}
-
-func TestCamelToKebab(t *testing.T) {
-	cases := map[string]string{
-		"GetUser":     "get-user",
-		"HTTPRequest": "http-request",
-		"Ping":        "ping",
-		"":            "",
-	}
-	for in, want := range cases {
-		if got := camelToKebab(in); got != want {
-			t.Errorf("camelToKebab(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

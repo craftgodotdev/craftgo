@@ -221,6 +221,113 @@ enum Color {
 	}
 }
 
+// TestFormatPreservesComments pins that `craftgo fmt` never silently
+// drops user comments: a trailing comment on a non-last decorator in a
+// multi-line chain (which must NOT swallow the following decorators), an
+// end-of-file comment block, and a blank-line-isolated separator comment
+// inside a type body. Each was lost or corrupted before the fix.
+func TestFormatPreservesComments(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string // substrings that must survive
+	}{
+		{
+			name: "trailing comment on non-last decorator",
+			src: `package demo
+
+type T {
+  x string @minLength(1) // note
+           @maxLength(5)
+}
+`,
+			// Both constraints survive and the comment is kept once.
+			want: []string{"@minLength(1)", "@maxLength(5)", "// note"},
+		},
+		{
+			name: "end-of-file comment block",
+			src: `package demo
+
+type User {
+	id string
+}
+
+// rationale recorded at end of file
+`,
+			want: []string{"// rationale recorded at end of file"},
+		},
+		{
+			name: "blank-isolated separator comment in body",
+			src: `package demo
+
+type User {
+	id string
+
+	// section separator comment
+
+	name string
+}
+`,
+			want: []string{"// section separator comment"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out, diags := Format("t.craftgo", c.src)
+			if len(diags) > 0 {
+				t.Fatalf("diagnostics: %v", diags)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("formatted output dropped %q:\n%s", w, out)
+				}
+			}
+			// The constraint must remain a real decorator, not become
+			// comment text — re-parse and re-format must be idempotent.
+			out2, diags := Format("t.craftgo", out)
+			if len(diags) > 0 {
+				t.Fatalf("formatted output failed to re-parse: %v\n%s", diags, out)
+			}
+			if out != out2 {
+				t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, out2)
+			}
+		})
+	}
+}
+
+// TestFormatAddsOptionalToDefault pins that `craftgo fmt` makes a
+// `@default` field's optionality explicit by adding `?` (the default fires
+// on an absent / null value, so the field is optional). A `@path` field is
+// exempt — a path segment is always present — and an already-optional
+// field is left unchanged (idempotent).
+func TestFormatAddsOptionalToDefault(t *testing.T) {
+	src := `package p
+
+type T {
+	flag bool @default(true)
+	sort string? @default("asc")
+	id string @path @default("x")
+}
+`
+	out, diags := Format("t.craftgo", src)
+	if len(diags) > 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	if !strings.Contains(out, "flag bool?") {
+		t.Errorf("fmt should add ? to a @default field:\n%s", out)
+	}
+	if !strings.Contains(out, "sort string?") {
+		t.Errorf("already-optional @default field must stay optional:\n%s", out)
+	}
+	if !strings.Contains(out, "id   string  @path") {
+		t.Errorf("@path @default field must NOT get ? (path is always present):\n%s", out)
+	}
+	out2, _ := Format("t.craftgo", out)
+	if out != out2 {
+		t.Errorf("not idempotent:\n--- first ---\n%s\n--- second ---\n%s", out, out2)
+	}
+}
+
 // TestFormatPreservesParse formats a file with a file-level decorator
 // and asserts the output re-parses with the same package name and the
 // decorator intact.

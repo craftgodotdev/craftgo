@@ -57,14 +57,17 @@ func scalarFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 // block (optional fields nil-guard first), so the field-level decorator
 // matches a validator and fires.
 func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) string {
-	// Synthetic field typed as the bare primitive and NOT a pointer:
-	// the deref happens in our wrapper, so `_sv` is already the value.
+	// Synthetic field typed as the bare primitive and NOT a pointer: the
+	// deref happens in our wrapper, so `_sv` is already the value. The
+	// field-level loop below drives off f.Decorators directly; sf carries
+	// none of its own, because a copied `@nullable` (or any pointer-inducing
+	// decorator) would make goFieldIsPointer(sf) true and re-add a nil-guard
+	// + deref against the already-dereferenced value local.
 	sf := &ast.Field{
 		Name: f.Name,
 		Type: &ast.TypeRef{
 			Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{primDSL}}},
 		},
-		Decorators: f.Decorators,
 	}
 	const local = "_sv"
 	var checks []string

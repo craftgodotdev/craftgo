@@ -10,6 +10,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -536,8 +537,8 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	// category-completion branch.
 	src := "package x\n\nerror "
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 6)
-	if len(items) != len(errorCategories) {
-		t.Fatalf("expected %d category items (one per reserved HTTP category), got %d", len(errorCategories), len(items))
+	if len(items) != len(errcat.Categories) {
+		t.Fatalf("expected %d category items (one per reserved HTTP category), got %d", len(errcat.Categories), len(items))
 	}
 	// Spot-check coverage of common categories + their HTTP statuses.
 	want := map[string]string{
@@ -575,8 +576,8 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	src := "package x\n\nerror Not"
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 9)
-	if len(items) != len(errorCategories) {
-		t.Fatalf("expected %d category items while typing, got %d", len(errorCategories), len(items))
+	if len(items) != len(errcat.Categories) {
+		t.Fatalf("expected %d category items while typing, got %d", len(errcat.Categories), len(items))
 	}
 }
 

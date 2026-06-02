@@ -27,6 +27,15 @@ type UserList { Page<User>  requestId string }
 type User { id string }`)
 }
 
+func TestMixinFieldEmbedNameCollision(t *testing.T) {
+	// A field whose Go field-name equals an embedded mixin's type name
+	// collides with the generated struct embed (`Pagination` embed +
+	// `pagination` field → both become `Pagination` → redeclared).
+	d := expectDiag(t, `type Pagination { page int }
+type Host { Pagination  pagination int }`, CodeMixinConflict)
+	expectMessage(t, d, "collides with the embedded mixin")
+}
+
 func TestMixinMultiple(t *testing.T) {
 	mustClean(t, `type Auditable { createdAt string }
 type Identified { id string }

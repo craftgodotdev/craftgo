@@ -255,7 +255,7 @@ func (v *Payment) Validate() error {
 		return err
 	}
 	if v.CardLast4 != nil && (len(*v.CardLast4) < 4 || len(*v.CardLast4) > 4) {
-		return fmt.Errorf("cardLast4: length out of range [4, 4]")
+		return fmt.Errorf("cardLast4: length must be 4")
 	}
 	if v.CardLast4 != nil && !_pattern0.MatchString(*v.CardLast4) {
 		return fmt.Errorf("cardLast4: does not match pattern")

@@ -10,23 +10,12 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// errorCategories holds the reserved HTTP error category identifiers.
-// The list mirrors the README §Keywords block - keep the two in sync.
-var errorCategories = map[string]bool{
-	"BadRequest": true, "Unauthorized": true, "PaymentRequired": true,
-	"Forbidden": true, "NotFound": true, "MethodNotAllowed": true,
-	"NotAcceptable": true, "Conflict": true, "Gone": true,
-	"LengthRequired": true, "PreconditionFailed": true, "PayloadTooLarge": true,
-	"UnsupportedMediaType": true, "UnprocessableEntity": true, "Locked": true,
-	"TooManyRequests": true, "Internal": true, "NotImplemented": true,
-	"BadGateway": true, "ServiceUnavailable": true, "GatewayTimeout": true,
-}
-
-func isErrorCategory(s string) bool { return errorCategories[s] }
+func isErrorCategory(s string) bool { return errcat.IsCategory(s) }
 
 // isVerbToken reports whether t is a lexer-recognised HTTP verb
 // keyword. Used by [hoverForToken] to gate the verb-doc dispatch so

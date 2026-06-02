@@ -13,13 +13,42 @@ import (
 // `(value, ok)` shape; `ok == false` is the standard signal for the
 // caller to skip emitting any check (validator opts out silently).
 
+// numericLit is the one canonical reading of a numeric decorator-argument
+// literal, shared by every constraint reader so the int/float distinction and
+// the big-integer threshold are decided in a single place (instead of the
+// validator, the OpenAPI bound emitter, and the big-int escape hatch each
+// re-classifying the same literal and risking drift).
+type numericLit struct {
+	intVal   int64   // valid when isInt
+	floatVal float64 // always set: float64(intVal) for an IntLit, the value for a FloatLit
+	isInt    bool    // the literal was an integer
+	isBigInt bool    // an integer whose magnitude exceeds maxExactInt, so float64 would lose precision
+}
+
+// parseNumericArg classifies a numeric decorator argument (IntLit / FloatLit).
+// ok is false for a missing or non-numeric argument.
+func parseNumericArg(a *ast.DecoratorArg) (numericLit, bool) {
+	if a == nil || a.Value == nil {
+		return numericLit{}, false
+	}
+	switch v := a.Value.(type) {
+	case *ast.IntLit:
+		return numericLit{
+			intVal:   v.Value,
+			floatVal: float64(v.Value),
+			isInt:    true,
+			isBigInt: v.Value > maxExactInt || v.Value < -maxExactInt,
+		}, true
+	case *ast.FloatLit:
+		return numericLit{floatVal: v.Value}, true
+	}
+	return numericLit{}, false
+}
+
 // intArg pulls an int64 out of a literal DecoratorArg.
 func intArg(a *ast.DecoratorArg) (int64, bool) {
-	if a == nil || a.Value == nil {
-		return 0, false
-	}
-	if i, ok := a.Value.(*ast.IntLit); ok {
-		return i.Value, true
+	if l, ok := parseNumericArg(a); ok && l.isInt {
+		return l.intVal, true
 	}
 	return 0, false
 }
@@ -33,16 +62,14 @@ func intArg(a *ast.DecoratorArg) (int64, bool) {
 // would silently drop float bounds even though the Spec allows
 // ArgNumber.
 func numericArg(a *ast.DecoratorArg) (string, bool) {
-	if a == nil || a.Value == nil {
+	l, ok := parseNumericArg(a)
+	if !ok {
 		return "", false
 	}
-	switch v := a.Value.(type) {
-	case *ast.IntLit:
-		return strconv.FormatInt(v.Value, 10), true
-	case *ast.FloatLit:
-		return strconv.FormatFloat(v.Value, 'g', -1, 64), true
+	if l.isInt {
+		return strconv.FormatInt(l.intVal, 10), true
 	}
-	return "", false
+	return strconv.FormatFloat(l.floatVal, 'g', -1, 64), true
 }
 
 // stringArg pulls a string out of a literal DecoratorArg.

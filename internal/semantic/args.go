@@ -10,6 +10,8 @@ package semantic
 //   - [CodeDecoratorArgValue] - value outside an allowed enum set.
 
 import (
+	"regexp"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
@@ -97,7 +99,27 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 			d.Name, d.Name)
 	}
 	a.checkExampleArg(d)
+	a.checkPatternArg(d)
 	a.checkPositionalArgs(site, d, spec)
+}
+
+// checkPatternArg verifies the @pattern argument is a compilable RE2
+// regex. The validator lowers it to `regexp.MustCompile`, which panics
+// at package-init time on an invalid expression — crashing every handler
+// in the generated package on first use. Catching it here at design time
+// is the free-form equivalent of the fixed-enum check @format gets.
+func (a *analyzer) checkPatternArg(d *ast.Decorator) {
+	if d == nil || d.Name != "pattern" || len(d.Args) == 0 {
+		return
+	}
+	s, ok := d.Args[0].Value.(*ast.StringLit)
+	if !ok {
+		return // a non-string arg is already reported by checkPositionalArgs
+	}
+	if _, err := regexp.Compile(s.Value); err != nil {
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
+			"@pattern is not a valid regular expression: %v — the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)
+	}
 }
 
 // checkExampleArg restricts @example to a literal value (string / int /

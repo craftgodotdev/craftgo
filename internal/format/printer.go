@@ -145,6 +145,12 @@ func (p *Printer) File(f *ast.File) {
 		}
 		p.Decl(d)
 	}
+	// End-of-file comment blocks (after the last decl) have no anchor, so
+	// re-emit them here rather than dropping them.
+	if eof, ok := p.loose[looseEOFKey]; ok {
+		p.nl()
+		p.Doc(eof)
+	}
 }
 
 // declFirstSourceLine returns the 1-indexed source line where this

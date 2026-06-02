@@ -4,13 +4,6 @@ components:
     DeleteMediaRespBody:
       $ref: '#/components/schemas/OkResp'
     GetMediaReq:
-      properties:
-        id:
-          maxLength: 64
-          minLength: 1
-          type: string
-      required:
-      - id
       type: object
     GetMediaRespBody:
       $ref: '#/components/schemas/UploadResult'
@@ -26,12 +19,7 @@ components:
         blob:
           format: binary
           type: string
-        noteId:
-          maxLength: 64
-          minLength: 1
-          type: string
       required:
-      - noteId
       - blob
       type: object
     UploadAttachmentReqBody:
@@ -49,12 +37,7 @@ components:
         image:
           format: binary
           type: string
-        userId:
-          maxLength: 64
-          minLength: 1
-          type: string
       required:
-      - userId
       - image
       type: object
     UploadAvatarReqBody:

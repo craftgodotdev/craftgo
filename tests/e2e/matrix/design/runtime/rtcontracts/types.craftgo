@@ -1,0 +1,17 @@
+// Shared contracts pulled in via `import "runtime/rtcontracts"` — the import
+// spreads one logical `runtime` package across folders.
+package runtime
+
+type RtPong {
+	name string
+}
+
+type RtOrder {
+	id    string
+	total int
+}
+
+type RtItem {
+	sku   string
+	price int @gte(0)
+}

@@ -80,17 +80,16 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 // is walked once to build a name set so multiple decorators on the same
 // type don't pay the O(n) cost twice.
 func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, body []ast.TypeMember) {
-	var fieldSet map[string]bool
-	getFields := func() map[string]bool {
+	var fieldSet map[string]*ast.Field
+	getFields := func() map[string]*ast.Field {
 		if fieldSet != nil {
 			return fieldSet
 		}
-		fieldSet = map[string]bool{}
-		for _, m := range body {
-			if f, ok := m.(*ast.Field); ok {
-				fieldSet[f.Name] = true
-			}
-		}
+		fieldSet = map[string]*ast.Field{}
+		// Mixin-promoted fields ARE fields of this type — the host struct
+		// embeds them and the validator runs their checks — so a cross-field
+		// decorator may reference them, not only the directly-declared ones.
+		a.collectGroupFields(body, fieldSet, map[string]bool{})
 		return fieldSet
 	}
 	for _, d := range decs {
@@ -115,10 +114,66 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 				continue
 			}
 			seen[name.value] = true
-			if !getFields()[name.value] {
+			f, ok := getFields()[name.value]
+			if !ok {
 				a.diag(name.pos, name.pos, lexer.SeverityError, CodeDecoratorRef,
 					"@%s on type %s: %q is not a field of this type",
 					d.Name, typeName, name.value)
+				continue
+			}
+			if f != nil {
+				// A nilable-but-not-pointer member has no clean cross-field
+				// presence: `?` / `@nullable` add no pointer (the Go type is
+				// already nilable), so the runtime can't use the `!= nil` check
+				// that lines up with the group's OpenAPI present-and-non-null. A
+				// slice / map is checked by emptiness (`len(...) > 0`, so an empty
+				// `[]` / `{}` reads as absent) and a `bytes` / `any` member has no
+				// presence expression at all (always treated as present). Reject
+				// so the author references a pointer-backed field instead.
+				if presenceUnclean(f) {
+					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
+						"@%s on type %s: field %q has no clean present/absent state for a cross-field group — a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
+						d.Name, typeName, name.value)
+					continue
+				}
+				// The referenced field must be pointer-backed (optional `?` or
+				// `@nullable`) so its runtime presence check (`!= nil`) lines up
+				// with the present-and-non-null semantics OpenAPI emits for the
+				// group. A plain field falls back to zero-value emptiness, which
+				// disagrees with the spec.
+				if !f.Type.Optional && !ast.HasDecorator(f.Decorators, "nullable") {
+					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
+						"@%s on type %s: field %q must be optional (`?`) or `@nullable` — a cross-field group needs an unambiguous present/absent state, but a plain field is checked by zero-value emptiness, which disagrees with the OpenAPI schema",
+						d.Name, typeName, name.value)
+				}
+				// A `@sensitive` member is server-only (`json:"-"`, excluded
+				// from the schema), so a body-level cross-field group can't
+				// reference it: the OpenAPI would name a property the public
+				// schema never carries, and the runtime check reads a field the
+				// client never sends.
+				if ast.HasDecorator(f.Decorators, "sensitive") {
+					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
+						"@%s on type %s: field %q is @sensitive (server-only, not on the wire), so it can't participate in a cross-field group. Reference a body field instead.",
+						d.Name, typeName, name.value)
+				}
+				// A wire-bound member (`@query`/`@header`/`@cookie`/`@path`/
+				// `@form`) is excluded from the JSON body schema, so a body-level
+				// cross-field group referencing it advertises a constraint over a
+				// property the body never carries — an unsatisfiable / meaningless
+				// schema.
+				if kind, _, bound := wireBinding(f); bound {
+					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
+						"@%s on type %s: field %q is bound to @%s and does not ride the JSON body, so it can't participate in a body-level cross-field group. Reference a body field instead.",
+						d.Name, typeName, name.value, kind)
+				}
+				// A `@default` member is pre-filled before decode, so the runtime
+				// group is always satisfied while the OpenAPI still requires the
+				// client to send it — they disagree on an empty body.
+				if ast.HasDecorator(f.Decorators, "default") {
+					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
+						"@%s on type %s: field %q carries @default, so it is always present at runtime and the cross-field check is a no-op the OpenAPI contradicts. Drop @default or the cross-field reference.",
+						d.Name, typeName, name.value)
+				}
 			}
 		}
 		// `@mutuallyExclusive` with 0 or 1 distinct fields renders
@@ -129,6 +184,60 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeMutExSingleField,
 				"@mutuallyExclusive needs at least 2 distinct fields (got %d) — the runtime check can never fire",
 				len(seen))
+		}
+	}
+}
+
+// presenceUnclean reports whether a cross-field member's Go type is nilable
+// but not a pointer, so its runtime presence can't be the clean `!= nil`
+// check that matches the group's OpenAPI present-and-non-null. A slice / map
+// is checked by emptiness (`len(...) > 0`); a raw `bytes` (`[]byte`) or `any`
+// (`interface{}`) member has no presence expression and is always treated as
+// present. (A `file` is `*multipart.FileHeader` — already a pointer — and a
+// scalar over `bytes` lowers to `*Scalar`, so both stay pointer-backed and
+// are not flagged here.)
+func presenceUnclean(f *ast.Field) bool {
+	if f.Type == nil {
+		return false
+	}
+	if f.Type.Array || f.Type.Map != nil {
+		return true
+	}
+	if f.Type.Named != nil {
+		switch f.Type.Named.Name.String() {
+		case "bytes", "any":
+			return true
+		}
+	}
+	return false
+}
+
+// collectGroupFields fills out with every field a type body contributes
+// (name -> declaration), expanding embedded mixins (recursively) so a
+// cross-field decorator can reference a promoted field. `seen` breaks
+// mixin cycles; an unresolved mixin ref is skipped (its own decl reports
+// the resolution error). A name already present (the host's own field)
+// is not overwritten by a promoted one — the host wins, matching Go
+// embedding.
+func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) {
+	for _, m := range body {
+		switch v := m.(type) {
+		case *ast.Field:
+			if _, dup := out[v.Name]; !dup {
+				out[v.Name] = v
+			}
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			name := v.Ref.Name.String()
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if td, ok := a.pkg.Types[name]; ok {
+				a.collectGroupFields(td.Body, out, seen)
+			}
 		}
 	}
 }

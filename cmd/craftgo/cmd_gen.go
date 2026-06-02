@@ -139,6 +139,15 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 	if err != nil {
 		return nil, err
 	}
+	// A file-header `@version("X")` overrides craftgo.design.yaml's
+	// openapi.version (the decorator's documented contract). Applied to
+	// cfg before codegen so the OpenAPI info.version honours it instead of
+	// silently dropping the decorator.
+	if cfg != nil {
+		if v := fileVersionOverride(files); v != "" {
+			cfg.OpenAPI.Version = v
+		}
+	}
 	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
 		SecuritySchemes: securitySchemeNames(cfg),
 		BasePath:        cfg.OpenAPI.BasePath,
@@ -151,6 +160,27 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 		return nil, fmt.Errorf("project has no DSL packages - every project must have at least one .craftgo file declaring `package X`")
 	}
 	return proj, nil
+}
+
+// fileVersionOverride returns the string argument of the first file-header
+// `@version("X")` decorator across the design files, or "" when none is
+// present. The decorator sets the OpenAPI document version, overriding the
+// craftgo.design.yaml `openapi.version` value.
+func fileVersionOverride(files []*ast.File) string {
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		for _, d := range f.Decorators {
+			if d == nil || d.Name != "version" || len(d.Args) == 0 {
+				continue
+			}
+			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
+				return s.Value
+			}
+		}
+	}
+	return ""
 }
 
 // sortedPackageNames returns the project's non-blank package names in

@@ -1,0 +1,50 @@
+// Fixtures pinning a round of stage-agreement fixes. Rg6-prefixed.
+package regression
+
+type Rg6Ok {
+	ok bool
+}
+
+// Stacked same-family bounds intersect in OpenAPI exactly as the runtime
+// validator enforces them (tightest wins): `@gte(10) @lte(90) @range(0,100)`
+// advertises minimum 10 / maximum 90, and `@length(5) @minLength(3)
+// @maxLength(10)` advertises an exact length of 5.
+type Rg6Stacked {
+	b int    @gte(10) @lte(90) @range(0, 100)
+	a string @length(5) @minLength(3) @maxLength(10)
+}
+
+// A @header field promoted into a response through a mixin is written on
+// the wire by the handler, matching the response header the spec documents.
+type Rg6RateMeta {
+	limit int @header("X-Rate-Limit")
+}
+
+type Rg6Resp {
+	Rg6RateMeta
+	data string
+}
+
+// A required array @query parameter returns 400 when its key is absent,
+// matching the required:true the spec advertises (an empty `?tags=` passes).
+type Rg6ArrReq {
+	tags string[] @query
+}
+
+@prefix("/regression6")
+@tags(regression)
+service RegressionBatch6 {
+	post EchoStacked /s {
+		request  Rg6Stacked
+		response Rg6Stacked
+	}
+
+	get RateLimited /r {
+		response Rg6Resp
+	}
+
+	get FilterTags /f {
+		request  Rg6ArrReq
+		response Rg6Ok
+	}
+}

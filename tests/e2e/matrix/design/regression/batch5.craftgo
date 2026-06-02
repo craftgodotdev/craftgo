@@ -1,0 +1,138 @@
+// Fixtures pinning a round of cross-stage agreement fixes. Rg5-prefixed.
+package regression
+
+type Rg5Ok {
+	done bool
+}
+
+type Rg5Empty {
+}
+
+enum Rg5Method {
+	Card = "card"
+	Bank = "bank"
+}
+
+// An array-of-enum @default lands its wire values in the OpenAPI `default`
+// (`[card, bank]`), and a @default query parameter is advertised optional
+// rather than required — the transport pre-fills both before decode.
+type Rg5Defaults {
+	methods Rg5Method[]? @default([Card, Bank])
+	sortBy  string?      @query @default("name")
+}
+
+// A non-string scalar map key carries its constraint into `propertyNames`:
+// the server enforces `@gte(1)` on each key, so the spec advertises it.
+scalar Rg5UserID int @gte(1)
+
+type Rg5Tag {
+	name string @minLength(1)
+}
+
+type Rg5Bag {
+	byUser map<Rg5UserID, Rg5Tag>
+}
+
+// A generic instantiated over a composite argument (`map<string, Rg5Item>`)
+// still enforces the element's constraint at runtime, matching the schema.
+type Rg5Item {
+	sku string @minLength(2)
+}
+
+type Rg5Page<T> {
+	items T[]
+}
+
+type Rg5Composite {
+	page Rg5Page<map<string, Rg5Item>>
+}
+
+// A wire-bound field (`@query`) stays out of the JSON body schema even
+// though it shares a type with body fields — it rides the query string.
+type Rg5Mixed {
+	filter  string @query
+	payload string @minLength(1)
+}
+
+// On a nilable type (bytes / slice / map), `@nullable` keeps a length /
+// count constraint nil-guarded so an explicit null passes the validator,
+// matching the OpenAPI null-union.
+type Rg5Nilable {
+	blob bytes            @nullable @minLength(4)
+	ids  int[]            @nullable @minItems(2)
+	tags map<string, int> @nullable @minItems(1)
+}
+
+// A required cookie 400s when absent, matching the `required: true` the
+// spec advertises.
+type Rg5Session {
+	sid string @cookie("sid")
+}
+
+// A `@header` field promoted through a mixin into an error writes a
+// response header and is documented as one.
+type Rg5HdrMeta {
+	rid  string @header("X-Request-Id")
+	note string @minLength(1)
+}
+
+error Conflict Rg5HdrError {
+	Rg5HdrMeta
+	resource string
+}
+
+// `@nullable` error-body fields lower to pointers so the server can
+// marshal an explicit null the spec advertises.
+error BadRequest Rg5NullErr {
+	detail Rg5Tag @nullable
+	note   string @nullable
+}
+
+// User-declared `code` / `message` error fields are on the wire and
+// validated, so they appear in the OpenAPI error schema with their
+// constraints.
+error NotFound Rg5CodeErr {
+	code    string @minLength(3) @maxLength(8) @pattern("^E_[A-Z]+$")
+	message string @maxLength(50)
+	extra   string
+}
+
+@prefix("/regression5")
+@tags(regression)
+service RegressionBatch5 {
+	post EchoDefaults /d {
+		request  Rg5Defaults
+		response Rg5Defaults
+	}
+
+	post EchoBag /bag {
+		request  Rg5Bag
+		response Rg5Bag
+	}
+
+	post EchoComposite /comp {
+		request  Rg5Composite
+		response Rg5Composite
+	}
+
+	post EchoMixed /mx {
+		request  Rg5Mixed
+		response Rg5Ok
+	}
+
+	post EchoNilable /nil {
+		request  Rg5Nilable
+		response Rg5Nilable
+	}
+
+	get FindSession /sess {
+		request  Rg5Session
+		response Rg5Ok
+	}
+
+	@errors(Rg5HdrError, Rg5NullErr, Rg5CodeErr)
+	post DoErrors /errs {
+		request  Rg5Empty
+		response Rg5Ok
+	}
+}

@@ -8,6 +8,20 @@ import (
 )
 
 func (p *Printer) Decorator(d *ast.Decorator) {
+	p.decoratorCore(d)
+	if d.TrailingDoc != "" {
+		p.write("  // ")
+		p.write(d.TrailingDoc)
+	}
+}
+
+// decoratorCore writes the `@name(args)` form WITHOUT the trailing
+// comment. A field's decorator chain collapses onto one line, so a
+// comment on a non-last decorator must land at the END of the line (it
+// would otherwise swallow the following decorators into comment text and
+// silently drop their constraints); alignedField renders via this and
+// emits the merged trailing itself.
+func (p *Printer) decoratorCore(d *ast.Decorator) {
 	p.write("@")
 	name := d.Name
 	p.write(name)
@@ -24,10 +38,6 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 			p.decoratorArgInContext(name, i, a)
 		}
 		p.write(")")
-	}
-	if d.TrailingDoc != "" {
-		p.write("  // ")
-		p.write(d.TrailingDoc)
 	}
 }
 

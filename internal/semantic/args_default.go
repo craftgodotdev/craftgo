@@ -155,14 +155,14 @@ func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 		return false
 	}
 	name := t.Named.Name.Parts[0]
-	if primFromName(name) != 0 {
+	if PrimFromName(name) != 0 {
 		return true
 	}
 	if _, ok := pkg.Enums[name]; ok {
 		return true
 	}
 	if sd, ok := pkg.Scalars[name]; ok {
-		return primFromName(sd.Primitive) != 0
+		return PrimFromName(sd.Primitive) != 0
 	}
 	return false
 }

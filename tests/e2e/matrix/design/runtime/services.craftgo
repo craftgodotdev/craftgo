@@ -1,0 +1,23 @@
+package runtime
+
+import "runtime/rtcontracts"
+
+@prefix("/orders")
+service OrdersService {
+	get Ping {
+		response RtPong
+	}
+	get Latest /latest {
+		response RtOrder
+	}
+}
+
+@prefix("/catalog")
+service CatalogService {
+	get Ping {
+		response RtPong
+	}
+	get Featured /featured {
+		response RtItem
+	}
+}

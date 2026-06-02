@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
+	"reflect"
 	"regexp"
 	"time"
 )
@@ -42,6 +43,8 @@ func (v *Envelope[T]) Validate() error {
 		if err := vv.Validate(); err != nil {
 			return err
 		}
+	} else if err := validateValue(v.Data); err != nil {
+		return err
 	}
 	return nil
 }
@@ -60,6 +63,8 @@ func (v *Page[T]) Validate() error {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
+		} else if err := validateValue(v.Items[i]); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -85,6 +90,8 @@ func (v *Result[T, E]) Validate() error {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
+		} else if err := validateValue((*v.Ok)); err != nil {
+			return err
 		}
 	}
 	if v.Err != nil {
@@ -92,6 +99,8 @@ func (v *Result[T, E]) Validate() error {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
+		} else if err := validateValue((*v.Err)); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -110,7 +119,7 @@ func (v Cents) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CountryCode) Validate() error {
 	if l := len(string(v)); l < 2 || l > 2 {
-		return fmt.Errorf("CountryCode: length out of range [2, 2]")
+		return fmt.Errorf("CountryCode: length must be 2")
 	}
 	if !_pattern0.MatchString(string(v)) {
 		return fmt.Errorf("CountryCode: does not match pattern")
@@ -122,7 +131,7 @@ func (v CountryCode) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CurrencyCode) Validate() error {
 	if l := len(string(v)); l < 3 || l > 3 {
-		return fmt.Errorf("CurrencyCode: length out of range [3, 3]")
+		return fmt.Errorf("CurrencyCode: length must be 3")
 	}
 	if !_pattern1.MatchString(string(v)) {
 		return fmt.Errorf("CurrencyCode: does not match pattern")
@@ -270,5 +279,66 @@ func (v *RateLimitedErrBody) Validate() error {
 // Validate checks every field-level constraint declared on UnauthorizedErrBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UnauthorizedErrBody) Validate() error {
+	return nil
+}
+
+// validateValue is the fallback for a generic type-parameter field whose
+// argument is a composite type. The direct `any(x).(Validate)` probe finds
+// a Validate() only when the argument type itself has one; when the
+// argument is a slice or map whose ELEMENT carries the constraint, this
+// walks the value and validates each leaf so the runtime enforces what the
+// OpenAPI schema advertises.
+func validateValue(v any) error {
+	return validateReflect(reflect.ValueOf(v))
+}
+
+func validateReflect(rv reflect.Value) error {
+	if !rv.IsValid() {
+		return nil
+	}
+	if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil
+		}
+		if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+		return validateReflect(rv.Elem())
+	}
+	// A non-pointer value: probe the value form, then an addressable copy
+	// so a pointer-receiver Validate() is still found (map values and other
+	// non-addressable elements need the copy).
+	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+		return vv.Validate()
+	}
+	if rv.CanAddr() {
+		if vv, ok := rv.Addr().Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	} else {
+		cp := reflect.New(rv.Type())
+		cp.Elem().Set(rv)
+		if vv, ok := cp.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if err := validateReflect(rv.Index(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := rv.MapRange()
+		for iter.Next() {
+			if err := validateReflect(iter.Value()); err != nil {
+				return err
+			}
+			if err := validateReflect(iter.Key()); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }

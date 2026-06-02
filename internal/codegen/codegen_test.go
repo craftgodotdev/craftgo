@@ -37,6 +37,21 @@ func analyze(t *testing.T, src string) *semantic.Package {
 	return pkg
 }
 
+// analyzeIgnoringErrors parses + analyses src and returns the package WITHOUT
+// failing on error-severity diagnostics. Backstop tests use it to feed codegen
+// an input the analyser would reject, proving codegen's own pre-flight guard
+// still fires for a direct, un-analysed caller.
+func analyzeIgnoringErrors(t *testing.T, src string) *semantic.Package {
+	t.Helper()
+	p := craftparser.New("test.craftgo", src)
+	f := p.Parse()
+	if d := p.Diagnostics(); len(d) > 0 {
+		t.Fatalf("parse errors: %v", d)
+	}
+	pkg, _ := semantic.Analyze([]*ast.File{f})
+	return pkg
+}
+
 func mustParseGo(t *testing.T, src string) {
 	t.Helper()
 	if _, err := parser.ParseFile(gotoken.NewFileSet(), "out.go", src, parser.AllErrors); err != nil {

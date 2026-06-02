@@ -41,6 +41,12 @@ req.{{.GoName}} = {{.ArraySource}}
 req.{{.GoName}} = {{.Wrap}}
 {{- end}}
 
+{{define "directSingleDefaulted" -}}
+if _v := {{.SingleSource}}; _v != "" {
+	req.{{.GoName}} = {{.Wrap}}
+}
+{{- end}}
+
 {{define "arrayString" -}}
 for _, _v := range {{.ArraySource}} {
 	req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})

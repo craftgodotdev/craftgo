@@ -79,7 +79,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 // would otherwise silently produce a no-op alias that breaks
 // validator inheritance + codegen).
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
-	actual := primFromName(sd.Primitive)
+	actual := PrimFromName(sd.Primitive)
 	if actual == 0 {
 		// Scalar's "primitive" slot is not a recognised built-in.
 		// Flag explicitly so the user sees the typo at design time
@@ -113,7 +113,7 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 //
 // Resolution rules:
 //   - Array (`T[]`) and map (`map<K,V>`) collapse to PrimArray.
-//   - Built-in primitives map directly via [primFromName].
+//   - Built-in primitives map directly via [PrimFromName].
 //   - Named refs that match a scalar in pkg.Scalars are followed; the
 //     scalar's underlying primitive wins.
 //   - Cross-package qualified names (`pkg.Type`) and generic params
@@ -129,20 +129,21 @@ func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 		return 0
 	}
 	name := t.Named.Name.Parts[0]
-	if p := primFromName(name); p != 0 {
+	if p := PrimFromName(name); p != 0 {
 		return p
 	}
 	// Custom scalar: follow to its underlying primitive.
 	if sd, ok := a.pkg.Scalars[name]; ok {
-		return primFromName(sd.Primitive)
+		return PrimFromName(sd.Primitive)
 	}
 	return 0
 }
 
-// primFromName maps a built-in primitive name to its [Prims] category.
+// PrimFromName maps a built-in primitive name to its [Prims] category.
 // Returns 0 for names this layer can't classify (custom types, `any`,
-// `object` - those are handled by the caller).
-func primFromName(name string) Prims {
+// `object` - those are handled by the caller). Exported so the LSP reuses the
+// one classification instead of keeping its own copy.
+func PrimFromName(name string) Prims {
 	switch name {
 	case "string", "bytes":
 		return PrimString

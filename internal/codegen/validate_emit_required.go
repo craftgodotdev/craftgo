@@ -61,13 +61,49 @@ func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, uses map[string]bool) string {
 	if f != nil && f.Type != nil && !f.Type.Array && !f.Type.Optional && f.Type.Map == nil && f.Type.Named != nil {
 		if ed, ok := pkg.Enums[f.Type.Named.Name.String()]; ok {
-			cond := access + ` == ""`
 			if firstEnumKind(ed) == ast.EnumInt {
-				cond = access + " == 0"
+				// An int-enum that defines 0 as a real member (`Inactive =
+				// 0`) can't use 0 as an "absent" sentinel — the required
+				// check would reject the valid member. Drop the presence
+				// check rather than reject a legal value (after JSON decode
+				// an absent int field and a present 0 are indistinguishable).
+				if enumHasIntValue(ed, 0) {
+					return ""
+				}
+				uses["fmt"] = true
+				return ifReturnf(access+" == 0", fmt.Sprintf(`"%s: required"`, f.Name))
+			}
+			// A string-enum that defines "" as a real member (`Unknown = ""`)
+			// can't use "" as the "absent" sentinel either — the presence
+			// check would reject that legal member before the value-set switch
+			// runs. Drop it, mirroring the int-0 case above.
+			if enumHasStringValue(ed, "") {
+				return ""
 			}
 			uses["fmt"] = true
-			return ifReturnf(cond, fmt.Sprintf(`"%s: required"`, f.Name))
+			return ifReturnf(access+` == ""`, fmt.Sprintf(`"%s: required"`, f.Name))
 		}
 	}
 	return requiredCheck(f, access, uses)
+}
+
+// enumHasIntValue reports whether ed defines a member whose int value is v.
+func enumHasIntValue(ed *ast.EnumDecl, v int64) bool {
+	for _, m := range ed.EnumValues() {
+		if m.Kind == ast.EnumInt && m.IntValue == v {
+			return true
+		}
+	}
+	return false
+}
+
+// enumHasStringValue reports whether ed defines a member whose explicit
+// string value is v.
+func enumHasStringValue(ed *ast.EnumDecl, v string) bool {
+	for _, m := range ed.EnumValues() {
+		if m.Kind == ast.EnumString && m.StrValue == v {
+			return true
+		}
+	}
+	return false
 }

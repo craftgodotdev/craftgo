@@ -1,0 +1,178 @@
+// Fixtures exercising agreement between the validate, OpenAPI, and client
+// stages across decorator and type-shape combinations. The committed
+// generated output is the reference. Names carry an `Rg` prefix to stay
+// distinct from the identically shaped types in the other cornercase
+// packages (one flat components.schemas namespace spans the project).
+package regression
+
+scalar RgCents int @gte(0)
+
+scalar RgCode string @length(4)  // single-arg exact length
+
+scalar RgToken bytes @minLength(16) @maxLength(16)
+
+scalar RgEmail string @format(email)
+
+enum RgColor {
+	Red   = "red"
+	Green = "green"
+	Blue  = "blue"
+}
+
+enum RgPriority {
+	Low    = 1
+	Medium = 5
+	High   = 10
+}
+
+// Scalar fields combining @nullable with a field-level constraint. The
+// dereferenced primitive is checked without an extra nil-guard, and the
+// field surfaces in OpenAPI as anyOf:[{$ref}, {type:null}] with the bound
+// as a sibling.
+type RgNullableScalars {
+	nulCapped  RgCents  @nullable @lte(100)
+	optCapped  RgCents? @lte(50)
+	nulEmail   RgEmail  @nullable
+	plainCents RgCents  @lte(1000)
+}
+
+type RgInner {
+	id string
+}
+
+// @nullable on a named ref emits the null union; @default / @deprecated on
+// a non-optional ref ride a wrapper schema.
+type RgRefMeta {
+	nulInner RgInner  @nullable
+	nulColor RgColor  @nullable
+	roleReq  RgCents? @default(7)
+	depColor RgColor  @deprecated("use status")
+}
+
+// Exact-length string, range form, and bytes length. The validator counts
+// the raw byte length OpenAPI advertises for the bytes fields.
+type RgLengths {
+	code   RgCode
+	inline string  @length(6)
+	rng    string  @length(2, 8)
+	token  RgToken
+	raw    bytes   @minLength(4)
+}
+
+// Enum-keyed maps whose propertyNames carry the wire values — "red"/"green"
+// for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
+// strings).
+type RgEnumMaps {
+	byColor map<RgColor, int>
+	byPrio  map<RgPriority, int>
+}
+
+// A type whose embedded mixin contributes the body fields the server
+// requires and validates.
+type RgAudit {
+	createdAt string @minLength(1)
+}
+
+type RgHost {
+	RgAudit
+	name string
+}
+
+// Cross-field fragments that surface in the request-body schema.
+@requiresOneOf(email, phone)
+@mutuallyExclusive(email, sms)
+type RgContact {
+	email string?
+	phone string?
+	sms   string?
+}
+
+// A generic whose instances $ref the monomorphised component rather than
+// the bare type parameter.
+type RgPage<T> {
+	items T[]
+	total int @gte(0)
+}
+
+// An error response carrying field constraints, nullability, and
+// @deprecated.
+error UnprocessableEntity RgValidationFailed {
+	attempts int     @gte(0) @lte(10)
+	field    string  @minLength(1) @maxLength(40)
+	hint     string?
+	legacy   string  @deprecated("removed")
+}
+
+// Numeric, scalar, and enum path params: id binds as int, uid as an int
+// scalar (parsed via server.Parse*), kind as a string enum (cast, no
+// parse).
+type RgItemPath {
+	id   int     @path
+	uid  RgCents @path
+	kind RgColor @path
+}
+
+type RgItemView {
+	id    int
+	label string
+}
+
+// String-backed wire params with @default; the default applies when the
+// request omits the parameter.
+type RgSearch {
+	sortQ  string?  @query @default("asc")
+	colorQ RgColor? @query @default(Green)
+	limitQ int?     @query @default(10)
+}
+
+@prefix("/regression")
+@tags(regression)
+service RegressionService {
+	post EchoNullableScalars /nullable-scalars {
+		request  RgNullableScalars
+		response RgNullableScalars
+	}
+
+	post EchoRefMeta /ref-meta {
+		request  RgRefMeta
+		response RgRefMeta
+	}
+
+	post EchoLengths /lengths {
+		request  RgLengths
+		response RgLengths
+	}
+
+	post EchoEnumMaps /enum-maps {
+		request  RgEnumMaps
+		response RgEnumMaps
+	}
+
+	post EchoHost /host {
+		request  RgHost
+		response RgHost
+	}
+
+	@errors(RgValidationFailed)
+	post EchoContact /contact {
+		request  RgContact
+		response RgContact
+	}
+
+	post EchoPage /page {
+		request  RgPage<RgEmail>
+		response RgPage<RgEmail>
+	}
+
+	// id binds as int, uid as an int scalar, kind as a string enum.
+	get GetItem /items/{id}/{uid}/{kind} {
+		request  RgItemPath
+		response RgItemView
+	}
+
+	// sortQ / colorQ / limitQ fall back to their defaults when absent.
+	get DoSearch /search {
+		request  RgSearch
+		response RgItemView
+	}
+}

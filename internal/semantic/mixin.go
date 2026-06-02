@@ -25,8 +25,46 @@ package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
+
+// fieldEmbedClash is a field whose Go field-name equals an embedded
+// mixin's type name.
+type fieldEmbedClash struct {
+	pos    lexer.Position
+	field  string
+	goName string
+	mixin  string
+}
+
+// fieldEmbedClashes returns each field whose generated Go field-name
+// collides with an embedded mixin's type name. The mixin embeds as that
+// type name, so the struct would declare the same Go identifier twice
+// (`type Host { Page  page int }` → a `Page` embed and a `Page` field →
+// "Page redeclared"). JSON tags differ, so OpenAPI is unaffected, but the
+// Go output does not compile.
+func fieldEmbedClashes(body []ast.TypeMember) []fieldEmbedClash {
+	embeds := map[string]bool{}
+	for _, m := range body {
+		mx, ok := m.(*ast.Mixin)
+		if !ok || mx.Ref == nil || mx.Ref.Name == nil || len(mx.Ref.Name.Parts) == 0 {
+			continue
+		}
+		embeds[mx.Ref.Name.Parts[len(mx.Ref.Name.Parts)-1]] = true
+	}
+	var out []fieldEmbedClash
+	for _, m := range body {
+		f, ok := m.(*ast.Field)
+		if !ok {
+			continue
+		}
+		if gn := idents.GoFieldName(f.Name); embeds[gn] {
+			out = append(out, fieldEmbedClash{pos: f.Pos, field: f.Name, goName: gn, mixin: gn})
+		}
+	}
+	return out
+}
 
 // checkMixins walks every type and error body, validating mixins and
 // collecting an "all reachable field names" set for conflict detection.
@@ -73,6 +111,11 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 			continue
 		}
 		a.processMixin(host, mx, seen)
+	}
+	for _, c := range fieldEmbedClashes(body) {
+		a.diag(c.pos, c.pos, lexer.SeverityError, CodeMixinConflict,
+			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
+			c.field, c.mixin, c.goName)
 	}
 }
 

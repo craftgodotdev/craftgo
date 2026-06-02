@@ -42,9 +42,9 @@ func (a *analyzer) checkRangesAndExtras(files []*ast.File) {
 func (a *analyzer) checkDeclRanges(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		a.checkBodyRanges(dd.Body)
+		a.checkBodyRanges(dd.Body, dd.TypeParams)
 	case *ast.ErrorDecl:
-		a.checkBodyRanges(dd.Body)
+		a.checkBodyRanges(dd.Body, nil)
 	case *ast.ScalarDecl:
 		a.checkDecoratorRanges(dd.Decorators)
 		// A scalar's bound decorators are inherited into the validator
@@ -53,6 +53,41 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
 		if unsignedPrim(dd.Primitive) {
 			a.diagNegativeUnsigned(dd.Decorators, dd.Primitive)
+		}
+		if dd.Primitive == "bytes" {
+			// Same rule as a bytes field: @pattern / @format constrain text,
+			// not a binary value, so the validator drops them while OpenAPI
+			// advertises them. Caught here too because a scalar carries its
+			// decorators on the declaration, not the using field.
+			for _, d := range dd.Decorators {
+				if d != nil && (d.Name == "pattern" || d.Name == "format") {
+					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+						"@%s applies to text, not a `bytes` scalar — a binary value has no string pattern / format. Use a `string` scalar, or drop the decorator.",
+						d.Name)
+				}
+			}
+		}
+		// Same rules as a field's @multipleOf, applied on the declaration
+		// because a scalar carries its decorators here, not on the using
+		// field: a float scalar can't use Go's integer-only modulus at all,
+		// and an integer scalar needs a whole-number divisor or the OpenAPI
+		// advertises a bound the validator drops.
+		isFloat := dd.Primitive == "float32" || dd.Primitive == "float64"
+		for _, d := range dd.Decorators {
+			if d == nil || d.Name != "multipleOf" {
+				continue
+			}
+			if isFloat {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+					"@multipleOf does not support float scalars — Go's modulus operator is integer-only. Use an integer scalar, or add a tolerance check in your handler.")
+				continue
+			}
+			if integerPrim(dd.Primitive) && len(d.Args) == 1 {
+				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
+					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+						"@multipleOf on an integer scalar needs a whole-number divisor — Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
+				}
+			}
 		}
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
@@ -63,7 +98,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 
 // checkBodyRanges runs the per-field combination rules in addition to
 // the per-decorator value checks. Mixin members are skipped.
-func (a *analyzer) checkBodyRanges(members []ast.TypeMember) {
+func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
 		if !ok {
@@ -76,15 +111,128 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember) {
 		a.checkBoundLiteralKind(f)
 		a.checkMultipleOfTarget(f)
 		a.checkNegativeOnUnsigned(f)
-		a.checkUniqueItemsComparable(f)
+		a.checkUniqueItemsComparable(f, typeParams)
+		a.checkValueConstraintOnTypeParam(f, typeParams)
+		a.checkPatternFormatOnBytes(f)
+		a.checkMapKeyComparable(f, typeParams)
 	}
 }
 
-// checkMultipleOfTarget rejects `@multipleOf` on float-typed fields.
-// Go's `%` operator is integer-only, and approximating modulo for
-// floats requires a tolerance argument the DSL doesn't carry, so the
-// combination is rejected at semantic time. Users layer a custom check
-// inside their service handler instead.
+// checkMapKeyComparable rejects a map whose key type cannot be a Go map
+// key: a bare generic type-parameter (`any`-constrained) or a struct /
+// generic that transitively contains a slice / map / bytes. The generated
+// `map[K]V` does not compile, yet gen and OpenAPI accept the design (gen
+// exits 0, then `go build` fails). Mirrors the @uniqueItems comparability
+// guard for the map-key position. Walks nested maps / arrays in the
+// field's own type; named types are checked when their own body is walked.
+func (a *analyzer) checkMapKeyComparable(f *ast.Field, typeParams []string) {
+	if f == nil {
+		return
+	}
+	a.mapKeysComparable(f.Type, f, typeParams)
+}
+
+func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []string) {
+	if t == nil {
+		return
+	}
+	if t.Map != nil {
+		if !a.keyMarshalable(t.Map.Key, typeParams) {
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeMapKeyType,
+				"map key %s is not a usable map key: a JSON object key is a string, so encoding/json supports only a string / int* / uint* key (or a scalar / enum over one). A bool, float, struct, slice, map, bytes, or generic type-parameter key either fails to compile or panics at json.Marshal. Use a string / int* / uint* / string- or int-scalar / enum key.",
+				describeTypeRef(t.Map.Key))
+		}
+		a.mapKeysComparable(t.Map.Value, f, typeParams)
+		a.mapKeysComparable(t.Map.Key, f, typeParams)
+		return
+	}
+	if t.Array {
+		a.mapKeysComparable(peelOneArray(t), f, typeParams)
+	}
+}
+
+// keyMarshalable reports whether key is a usable Go map key that
+// encoding/json can also marshal/unmarshal: a string or integer kind, or a
+// scalar / enum over one. Go also COMPILES a bool / float / all-comparable
+// struct key, but json.Marshal returns "unsupported type" for those at
+// runtime — so they are rejected even though they compile (the OpenAPI
+// would advertise a serializable object the server can't produce). A
+// qualified cross-package key is accepted conservatively (the project pass
+// resolves it); a bare type-parameter is never a valid key.
+func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
+	if key == nil || key.Named == nil || key.Named.Name == nil || key.Array || key.Map != nil {
+		return false
+	}
+	name := key.Named.Name.String()
+	for _, tp := range typeParams {
+		if tp == name {
+			return false
+		}
+	}
+	if len(key.Named.Name.Parts) > 1 {
+		return true // cross-package ref; defer to the project resolver
+	}
+	if _, ok := a.pkg.Enums[name]; ok {
+		return true // string- or int-backed enum
+	}
+	prim := name
+	if sc, ok := a.pkg.Scalars[name]; ok {
+		prim = sc.Primitive
+	}
+	switch prim {
+	case "string",
+		"int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	}
+	return false
+}
+
+// checkValueConstraintOnTypeParam rejects a field-level VALUE constraint
+// (numeric or string) on a bare type-parameter field (`val T @gte(10)` in
+// a generic decl). The validator is emitted once against the parametric
+// receiver, where the element is `any`-constrained and so can't be
+// compared / measured — yet the monomorphised OpenAPI advertises the
+// bound, diverging from the (silently absent) runtime check. Array-shape
+// constraints (@minItems / @maxItems) are NOT rejected here: they bound
+// the slice length, which is knowable parametrically (@uniqueItems is
+// handled separately by [checkUniqueItemsComparable]).
+func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []string) {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
+		return
+	}
+	name := f.Type.Named.Name.String()
+	isParam := false
+	for _, tp := range typeParams {
+		if tp == name {
+			isParam = true
+			break
+		}
+	}
+	if !isParam {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d == nil {
+			continue
+		}
+		switch d.Name {
+		case "gte", "gt", "lte", "lt", "range", "positive", "negative", "multipleOf",
+			"minLength", "maxLength", "length", "pattern", "format":
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@%s cannot constrain a type-parameter field (%s): the parametric validator sees it as `any` and can't enforce the bound, while the monomorphised OpenAPI would still advertise it. Drop the decorator, or constrain a concrete type the instance supplies.",
+				d.Name, name)
+			return
+		}
+	}
+}
+
+// checkMultipleOfTarget rejects `@multipleOf` where the generated validator
+// can't enforce what the OpenAPI advertises. Go's `%` operator is
+// integer-only: a float field can't be checked at all, and an integer
+// field with a fractional divisor (`@multipleOf(2.5)`) can't either — the
+// validator silently drops it while the spec still advertises `multipleOf:
+// 2.5`. Both are rejected so the spec and the validator agree.
 func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
@@ -93,13 +241,49 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	if sd, ok := a.pkg.Scalars[prim]; ok {
 		prim = sd.Primitive
 	}
-	if prim != "float32" && prim != "float64" {
+	isFloat := prim == "float32" || prim == "float64"
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != "multipleOf" {
+			continue
+		}
+		if isFloat {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@multipleOf does not support float fields — Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
+			continue
+		}
+		// Integer field: a fractional divisor is unenforceable by integer
+		// modulus, yet the OpenAPI would advertise it — reject it.
+		if len(d.Args) == 1 {
+			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+					"@multipleOf on an integer field needs a whole-number divisor — Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
+			}
+		}
+	}
+}
+
+// checkPatternFormatOnBytes rejects `@pattern` / `@format` on a `bytes`
+// field (or a bytes-backed scalar). Both decorators constrain TEXT — the
+// validator emits a regexp / format check gated on a string shape, so a
+// bytes field silently drops the check while the OpenAPI schema still
+// advertises the pattern / format. A binary value has no string pattern;
+// the author wants a `string` field.
+func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
+		return
+	}
+	prim := f.Type.Named.Name.String()
+	if sd, ok := a.pkg.Scalars[prim]; ok {
+		prim = sd.Primitive
+	}
+	if prim != "bytes" {
 		return
 	}
 	for _, d := range f.Decorators {
-		if d != nil && d.Name == "multipleOf" {
+		if d != nil && (d.Name == "pattern" || d.Name == "format") {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@multipleOf does not support float fields — Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
+				"@%s applies to text, not a `bytes` field — a binary value has no string pattern / format, so the runtime validator drops it while the OpenAPI schema would still advertise it. Use a `string` field, or drop the decorator.",
+				d.Name)
 		}
 	}
 }
@@ -110,6 +294,17 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 func unsignedPrim(prim string) bool {
 	switch prim {
 	case "uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	}
+	return false
+}
+
+// integerPrim reports whether prim is a signed or unsigned integer
+// primitive — the set whose @multipleOf is enforced with Go's modulus.
+func integerPrim(prim string) bool {
+	switch prim {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64":
 		return true
 	}
 	return false
@@ -155,7 +350,7 @@ func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 // generated validator compiling and the spec honest. Element types that
 // can't be resolved in this package (cross-package qualified refs) are
 // conservatively allowed to avoid false rejections.
-func (a *analyzer) checkUniqueItemsComparable(f *ast.Field) {
+func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string) {
 	if f == nil || f.Type == nil || !f.Type.Array {
 		return
 	}
@@ -164,6 +359,21 @@ func (a *analyzer) checkUniqueItemsComparable(f *ast.Field) {
 			continue
 		}
 		elem := peelOneArray(f.Type)
+		// A type-parameter element (`items T[] @uniqueItems` in a generic
+		// decl) is `any`-constrained on the parametric receiver, so the
+		// dedupe `map[T]struct{}` cannot compile and the parametric
+		// Validate() cannot enforce uniqueness — reject it like any other
+		// incomparable element rather than emit non-compiling Go.
+		if elem != nil && elem.Named != nil && elem.Named.Name != nil && !elem.Array && elem.Map == nil {
+			name := elem.Named.Name.String()
+			for _, tp := range typeParams {
+				if tp == name {
+					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+						"@uniqueItems is not supported on a type-parameter element (%s): the parametric validator can't build a dedupe map over an `any`-constrained value. Drop @uniqueItems, or use a concrete comparable element type.", name)
+					return
+				}
+			}
+		}
 		if !a.typeRefComparable(elem, map[string]bool{}) {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 				"@uniqueItems requires comparable elements (usable as a map key) — %s is not (a slice / map / `any`, or a struct/generic containing one). Restructure the element into a comparable shape, or drop @uniqueItems.",
@@ -225,10 +435,24 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool 
 			return true
 		}
 		seen[name] = true
+		// For a generic instance (`Pair<bytes>`) substitute the type-args
+		// into the decl's fields: a field typed `T` is comparable only if the
+		// concrete argument is. Without this, `T` resolves to nothing and
+		// falls through to the "conservatively comparable" branch, so
+		// `Pair<bytes>[] @uniqueItems` would pass the check and then emit a
+		// non-compiling `map[Pair[[]byte]]`.
+		subst := map[string]*ast.TypeRef{}
+		if len(td.TypeParams) > 0 && t.Named != nil {
+			for i, tp := range td.TypeParams {
+				if i < len(t.Named.Args) {
+					subst[tp] = t.Named.Args[i]
+				}
+			}
+		}
 		for _, m := range td.Body {
 			switch v := m.(type) {
 			case *ast.Field:
-				if !a.typeRefComparable(v.Type, seen) {
+				if !a.typeRefComparable(substTypeParam(v.Type, subst), seen) {
 					return false
 				}
 			case *ast.Mixin:
@@ -244,6 +468,33 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool 
 	// Unresolved here (cross-package qualified ref or bare generic
 	// type-param) — conservatively comparable to avoid a false reject.
 	return true
+}
+
+// substTypeParam replaces a bare type-parameter reference (`T`) with its
+// concrete argument from subst, and recurses into a nested generic
+// instance's args (`Inner<T>`). Array / map fields are returned unchanged
+// — they are non-comparable regardless of the element, so the caller
+// rejects them before any substitution matters.
+func substTypeParam(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeRef {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
+		return t
+	}
+	if !t.Array && t.Map == nil {
+		if rep, ok := subst[t.Named.Name.String()]; ok {
+			return rep
+		}
+	}
+	if len(t.Named.Args) > 0 {
+		clone := *t
+		nn := *t.Named
+		nn.Args = make([]*ast.TypeRef, len(t.Named.Args))
+		for i, arg := range t.Named.Args {
+			nn.Args[i] = substTypeParam(arg, subst)
+		}
+		clone.Named = &nn
+		return &clone
+	}
+	return t
 }
 
 // intCapacity returns the value range a Go integer primitive can hold.

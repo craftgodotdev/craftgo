@@ -1,0 +1,52 @@
+// Fixtures for generic-instance mixins, server-only fields on a non-body
+// verb, and large exact @multipleOf divisors. Rg4-prefixed.
+package regression
+
+// A type embedding an instantiated generic (Rg4Page<Rg4Item>) as a mixin.
+// The embed monomorphises to Rg4Page[Rg4Item] and promotes its fields; the
+// OpenAPI host schema allOf-refs the Rg4PageOfRg4Item component.
+type Rg4Item {
+	id string
+}
+
+type Rg4Page<T> {
+	items T[]
+	total int @gte(0)
+}
+
+type Rg4Host {
+	Rg4Page<Rg4Item>
+	name string
+}
+
+// A @sensitive field on a GET request stays off the wire (json:"-",
+// excluded from the OpenAPI params): the binder never reads it from the
+// query string, so only `visible` binds.
+type Rg4Secret {
+	visible string @query
+	secret  string @sensitive
+}
+
+// A @multipleOf divisor beyond 2^53 stays exact in OpenAPI (raw json.Number)
+// matching the int64 the validator enforces.
+type Rg4BigMul {
+	n int64 @multipleOf(9007199254740993)
+}
+
+@prefix("/regression4")
+@tags(regression)
+service RegressionBatch4 {
+	post EchoHost /h {
+		request  Rg4Host
+		response Rg4Host
+	}
+
+	get DoSecret /s {
+		request  Rg4Secret
+	}
+
+	post EchoBigMul /b {
+		request  Rg4BigMul
+		response Rg4BigMul
+	}
+}

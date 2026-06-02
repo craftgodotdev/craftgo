@@ -8,13 +8,23 @@ import (
 )
 
 func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
-	if !isStringOrOptString(f) || len(d.Args) != 2 {
+	// `@length(N)` is the exact-length form (min == max == N); the
+	// two-arg `@length(min, max)` is a range. Both lower to one len()
+	// bounds check.
+	if !isLengthCheckable(f) || len(d.Args) == 0 || len(d.Args) > 2 {
 		return ""
 	}
 	lo, ok1 := intArg(d.Args[0])
-	hi, ok2 := intArg(d.Args[1])
-	if !ok1 || !ok2 {
+	if !ok1 {
 		return ""
+	}
+	hi := lo
+	if len(d.Args) == 2 {
+		v, ok2 := intArg(d.Args[1])
+		if !ok2 {
+			return ""
+		}
+		hi = v
 	}
 	uses["fmt"] = true
 	val := stringValueExpr(f, access)
@@ -29,7 +39,12 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	} else {
 		cond = fmt.Sprintf("%s(len(%s) < %d || len(%s) > %d)", guard, val, lo, val, hi)
 	}
-	msg := fmt.Sprintf(`"%s: length out of range [%d, %d]"`, f.Name, lo, hi)
+	var msg string
+	if lo == hi {
+		msg = fmt.Sprintf(`"%s: length must be %d"`, f.Name, lo)
+	} else {
+		msg = fmt.Sprintf(`"%s: length out of range [%d, %d]"`, f.Name, lo, hi)
+	}
 	return ifReturnf(cond, msg)
 }
 
@@ -37,7 +52,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 // Optional string fields are handled the same way as `lengthCheck` -
 // nil-guard plus pointer deref.
 func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, uses map[string]bool) string {
-	if !isStringOrOptString(f) || len(d.Args) != 1 {
+	if !isLengthCheckable(f) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := intArg(d.Args[0])
@@ -113,10 +128,13 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 			return ifReturnf("!"+patVar+".MatchString("+val+")", msg)
 		}
 	}
-	if f.Type.Optional {
-		// Pointer field: nest the check inside a nil-guard so the
-		// init-stmt forms (mail.ParseAddress / time.Parse / ...) only
-		// run when a value is present.
+	if goFieldIsPointer(f) {
+		// Pointer field (`?` optional OR `@nullable`): nest the check
+		// inside a nil-guard so the deref in `val` and the init-stmt forms
+		// (mail.ParseAddress / time.Parse / ...) only run when a value is
+		// present. Keying on Optional alone would miss `@nullable`-without-
+		// `?`, which is still a `*string` — an unguarded deref panics on
+		// `{"field": null}`.
 		inner := emit(val, msg)
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(inner))
 	}

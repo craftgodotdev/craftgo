@@ -282,14 +282,17 @@ service DService { get GetThing /d { response A } }`
 // fails generation with an actionable error (auto-prefixing cannot
 // resolve a user-chosen name, so codegen must not emit an invalid
 // duplicate-operationId spec).
-func TestGenerateOpenAPIDuplicateOperationIDErrors(t *testing.T) {
-	// AService.Find is pinned to "Lookup"; BService.Lookup defaults to
-	// "Lookup" (unique method name) — they collide.
+func TestGenerateOpenAPIDuplicateOperationIDBackstop(t *testing.T) {
+	// The analyser is the primary, editor-visible gate for a duplicate
+	// operationId (see TestOperationID* in internal/semantic). GenerateOpenAPI
+	// keeps a backstop so a direct, un-analysed caller still fails fast instead
+	// of writing an invalid duplicate-operationId spec. AService.Find is pinned
+	// to "Lookup"; BService.Lookup defaults to "Lookup" — they collide.
 	src := `package design
 type R { x string }
 service AService { @operationId("Lookup") get Find /a { response R } }
 service BService { get Lookup /b { response R } }`
-	pkg := analyze(t, src)
+	pkg := analyzeIgnoringErrors(t, src)
 	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected a duplicate-operationId error, got nil")

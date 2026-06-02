@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -164,7 +165,7 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 	if m.Path != nil {
 		parts = append(parts, PathString(m.Path))
 	} else {
-		parts = append(parts, "/"+camelToKebab(m.Name))
+		parts = append(parts, "/"+idents.KebabCase(m.Name))
 	}
 	joined := strings.Join(parts, "/")
 	for strings.Contains(joined, "//") {
@@ -195,46 +196,6 @@ func decoratorString(svc *ast.ServiceDecl, name string) string {
 		}
 	}
 	return ""
-}
-
-// camelToKebab is the local copy of the codegen helper, kept here so
-// semantic doesn't import codegen. PascalCase / camelCase → kebab,
-// preserving common-initialism boundaries (`HTTPStream` →
-// `http-stream`).
-//
-// Hot path: rune-by-rune transform. Builder keeps the per-character
-// append allocation-free.
-func camelToKebab(s string) string {
-	var sb strings.Builder
-	for i, r := range s {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 && needsHyphen(s, i) {
-				sb.WriteByte('-')
-			}
-			sb.WriteRune(r - 'A' + 'a')
-			continue
-		}
-		sb.WriteRune(r)
-	}
-	return sb.String()
-}
-
-// needsHyphen reports whether position i in s is the start of a new
-// "word" for kebab-conversion: either the previous char was lowercase
-// (camel-case boundary) or the next char is lowercase while we're
-// in a run of uppercase (acronym → word boundary).
-func needsHyphen(s string, i int) bool {
-	prev := s[i-1]
-	if prev >= 'a' && prev <= 'z' {
-		return true
-	}
-	if i+1 < len(s) {
-		next := s[i+1]
-		if next >= 'a' && next <= 'z' {
-			return true
-		}
-	}
-	return false
 }
 
 // checkMethodPathParams validates that `{name}` segments in route

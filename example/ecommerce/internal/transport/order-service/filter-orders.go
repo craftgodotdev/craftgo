@@ -18,8 +18,17 @@ func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		var req types.FilterOrdersReq
 		req.Status = types.OrderStatus(r.PathValue("status"))
 		_q := r.URL.Query()
+		if !server.RequirePresent(w, r, _q.Has("method"), "method", "query") {
+			return
+		}
 		req.Method = types.PaymentMethod(_q.Get("method"))
+		if !server.RequirePresent(w, r, _q.Has("limit"), "limit", "query") {
+			return
+		}
 		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
+			return
+		}
+		if !server.RequirePresent(w, r, _q.Has("maxPrice"), "maxPrice", "query") {
 			return
 		}
 		if !server.BindValue(w, r, "maxPrice", "int", _q.Get("maxPrice"), &req.MaxPrice, server.ParseSigned[int]) {
@@ -28,6 +37,9 @@ func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.Header.Get("idemKey"); _v != "" {
 			req.IdemKey = &_v
 		}
+		if !server.RequirePresent(w, r, len(r.Header.Values("retryAfter")) > 0, "retryAfter", "header") {
+			return
+		}
 		if !server.BindValue(w, r, "retryAfter", "int", r.Header.Get("retryAfter"), &req.RetryAfter, server.ParseSigned[int]) {
 			return
 		}
@@ -35,6 +47,9 @@ func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			if _v := c.Value; _v != "" {
 				req.LastSeen = &_v
 			}
+		}
+		if !server.RequirePresent(w, r, server.CookiePresent(r, "tier"), "tier", "cookie") {
+			return
 		}
 		if c, err := r.Cookie("tier"); err == nil {
 			if !server.BindValue(w, r, "tier", "int", c.Value, &req.Tier, server.ParseSigned[int]) {

@@ -90,6 +90,29 @@ func BindValuePtr[T any](w http.ResponseWriter, r *http.Request, field, kind, ra
 	return true
 }
 
+// RequirePresent writes a 400 and returns false when a required wire
+// parameter's key is absent. `present` is the source-specific presence
+// test the caller computes (url.Values.Has, a non-empty header-values
+// slice, ...); a present-but-empty value (`?q=`) counts as present, since
+// the value may legitimately be the empty string. Mirrors the BindValue
+// contract: the generated handler returns early when this returns false.
+func RequirePresent(w http.ResponseWriter, r *http.Request, present bool, field, kind string) bool {
+	if !present {
+		WriteValidationError(w, r, fmt.Errorf("%s: missing required %s parameter", field, kind))
+		return false
+	}
+	return true
+}
+
+// CookiePresent reports whether the named cookie is on the request.
+// `r.Cookie` returns http.ErrNoCookie when absent, so a nil error means
+// present. Used by the generated handler to drive RequirePresent for a
+// required cookie parameter.
+func CookiePresent(r *http.Request, name string) bool {
+	_, err := r.Cookie(name)
+	return err == nil
+}
+
 // BindValues parses each element of raw into *dst (repeated `?ids=1&ids=2`
 // or a multi-value header). One bad element fails the whole bind.
 func BindValues[T any](w http.ResponseWriter, r *http.Request, field, kind string, raw []string, dst *[]T, parse func(string) (T, error)) bool {

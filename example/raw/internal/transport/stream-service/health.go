@@ -17,6 +17,9 @@ func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.HealthReq
 		_q := r.URL.Query()
+		if !server.RequirePresent(w, r, _q.Has("verbose"), "verbose", "query") {
+			return
+		}
 		if !server.BindValue(w, r, "verbose", "bool", _q.Get("verbose"), &req.Verbose, server.ParseBool[bool]) {
 			return
 		}

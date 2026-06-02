@@ -202,7 +202,7 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, ctx emitCtx) []s
 	// requiredCheckEnumAware returns "" when the field type has no
 	// defined empty value, so primitives the JSON decoder already
 	// rejects-on-null get no validate-time block.
-	if f.Type != nil && !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
+	if resolveField(f, pkg).RuntimeEnforced {
 		if s := requiredCheckEnumAware(f, access, pkg, uses); s != "" {
 			out = append(out, s)
 		}

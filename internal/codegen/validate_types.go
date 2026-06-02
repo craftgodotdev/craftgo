@@ -23,6 +23,21 @@ func isStringOrOptString(f *ast.Field) bool {
 	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
 }
 
+// isLengthCheckable accepts the two len()-checkable primitives — `string`
+// and `bytes` (Go []byte) — for the length validators (@length /
+// @minLength / @maxLength). `@pattern` / `@format` stay string-only via
+// [isStringOrOptString]; a byte slice has no sensible regexp / format.
+func isLengthCheckable(f *ast.Field) bool {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
+		return false
+	}
+	switch f.Type.Named.Name.String() {
+	case "string", "bytes":
+		return true
+	}
+	return false
+}
+
 // isNumericField - non-array integer or float. Optional (`T?`) and
 // `@nullable` variants are accepted; the per-validator emitters pair
 // [numericValueExpr] with [optionalGuard] so the deref only runs after
@@ -119,17 +134,37 @@ func arrayElemType(t *ast.TypeRef) string {
 	return GoTypeRef(&clone)
 }
 
-// optionalGuard returns the leading nil-check expression for any
-// field whose generated Go type is a pointer (`*T`). Plain value
-// fields return the empty string - their access expression is already
-// a concrete value. Both `T?` (optional) and `T @nullable` (forced
-// pointer to allow JSON null) end up as Go pointers, so the same
-// guard handles both.
+// optionalGuard returns the leading nil-check expression for any field
+// whose access can legitimately be nil. Plain value fields return the
+// empty string - their access is already a concrete value. Both `T?`
+// (optional) and `T @nullable` (forced pointer) end up as Go pointers
+// and are guarded; so is a nilable-typed field (bytes / slice / map)
+// that is optional or `@nullable` — it carries no extra `*`, but a nil
+// value is the valid "absent / null" state, so the constraint must
+// skip it rather than run `len(nil)` and reject what the OpenAPI
+// null-union advertises as legal.
 func optionalGuard(f *ast.Field, access string) string {
-	if goFieldIsPointer(f) {
+	if fieldNeedsNilGuard(f) {
 		return access + " != nil && "
 	}
 	return ""
+}
+
+// fieldNeedsNilGuard reports whether f's value can be nil in a state the
+// contract treats as valid (absent / null), so a constraint check must
+// nil-guard first. True for any pointer field, and for a nilable Go type
+// (bytes / slice / map) marked optional (`?`) or `@nullable`.
+func fieldNeedsNilGuard(f *ast.Field) bool {
+	if goFieldIsPointer(f) {
+		return true
+	}
+	if f == nil || f.Type == nil {
+		return false
+	}
+	if !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
+		return false
+	}
+	return isNilableGoType(GoTypeRef(f.Type))
 }
 
 // stringValueExpr returns the string-typed access expression. Pointer

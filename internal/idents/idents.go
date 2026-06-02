@@ -142,6 +142,21 @@ func SplitFieldName(s string) []string {
 	return parts
 }
 
+// KebabCase lowercases each word [SplitFieldName] yields and joins them with
+// `-`. It is the one word-splitting rule for kebab output (route segments,
+// generated file names) so the analyser's pathless-method route and the
+// route codegen registers cannot disagree: `ListV2Items` → `list-v2items`,
+// `GetUser` → `get-user`. A digit→letter boundary is NOT a word break, so
+// `V2Items` stays one word — unlike a hand-rolled camel walker that splits
+// before any uppercase whose next rune is lowercase.
+func KebabCase(s string) string {
+	parts := SplitFieldName(s)
+	for i, p := range parts {
+		parts[i] = strings.ToLower(p)
+	}
+	return strings.Join(parts, "-")
+}
+
 // Collision records one DSL → Go-identifier mapping inside a group
 // of names that produced the same Go identifier under [GoFieldName].
 // The first occurrence keeps the bare Go name; subsequent ones are

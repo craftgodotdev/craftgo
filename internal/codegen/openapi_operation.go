@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -265,7 +266,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 			continue
 		}
 		typeName := errSuffix(ed.Name)
-		status := strconv.Itoa(categoryStatus[ed.Category])
+		status := strconv.Itoa(errcat.Status(ed.Category))
 		entry, exists := grouped[status]
 		if !exists {
 			entry = &byStatus{}
@@ -277,7 +278,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		// An error's @header / @cookie body fields are written onto the
 		// response by the generated WriteResponseHeaders, so document
 		// them as response.headers — mirroring the success-response path.
-		hs, cs := errorHeaderCookieFields(ed)
+		hs, cs := errorHeaderCookieFields(ed, pkg)
 		entry.headers = append(entry.headers, hs...)
 		entry.cookies = append(entry.cookies, cs...)
 	}
@@ -311,12 +312,11 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 // its @header and @cookie fields — the ones the runtime writes onto the
 // response via WriteResponseHeaders rather than into the JSON body.
 // Mirrors [binResponseFields] for the error path.
-func errorHeaderCookieFields(ed *ast.ErrorDecl) (headers, cookies []*ast.Field) {
-	for _, member := range ed.Body {
-		f, ok := member.(*ast.Field)
-		if !ok {
-			continue
-		}
+func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package) (headers, cookies []*ast.Field) {
+	// Flatten so a `@header` / `@cookie` field the error inherits through a
+	// mixin is documented as a response header too — matching the runtime,
+	// which writes the promoted field via WriteResponseHeaders.
+	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, nil, map[string]bool{}) {
 		switch bindingFromDecorators(f.Decorators) {
 		case "header":
 			headers = append(headers, f)
@@ -410,7 +410,7 @@ func multipartRequestBody(forms, files []paramBinding, pkg *semantic.Package, re
 		var ref *openapi3.SchemaRef
 		if f.Field != nil {
 			ref = schemaForTypeRef(f.Field.Type, pkg, registry)
-			applyFieldMetadata(f.Field, ref)
+			applyFieldMetadata(f.Field, ref, pkg)
 		} else {
 			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
 		}
@@ -468,7 +468,7 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 		for _, f := range fields {
 			required := alwaysRequired || fieldIsRequired(f)
 			ref := schemaForTypeRef(f.Type, pkg, registry)
-			applyFieldMetadata(f, ref)
+			applyFieldMetadata(f, ref, pkg)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				// Wire name, NOT the DSL field name: an explicit
 				// `@header("X-Trace-Id")` / `@cookie("session_id")` /
@@ -499,23 +499,7 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 // `@body` and `@form` are returned verbatim so the caller can recognise
 // and skip them - body-shaped fields land in requestBody, not parameters.
 func bindingFromDecorators(ds []*ast.Decorator) string {
-	for _, d := range ds {
-		switch d.Name {
-		case "path":
-			return "path"
-		case "query":
-			return "query"
-		case "header":
-			return "header"
-		case "cookie":
-			return "cookie"
-		case "body":
-			return "body"
-		case "form":
-			return "form"
-		}
-	}
-	return ""
+	return semantic.BindingKind(ds)
 }
 
 // hasOwnDecorator reports whether ds carries a non-propagated decorator
@@ -561,9 +545,16 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 // fieldIsRequired reports whether f must be present in the request
 // payload. craftgo's "required by default" model: a field is required
 // unless its type carries the `?` suffix that explicitly marks it
-// optional.
+// optional, OR it carries a `@default` — the transport pre-fills the
+// default before decode (for both wire params and body fields), so an
+// absent value is valid. Advertising such a field `required: true`
+// contradicts the `default` the same schema carries and disagrees with
+// the server, which never rejects its absence.
 func fieldIsRequired(f *ast.Field) bool {
-	return f != nil && f.Type != nil && !f.Type.Optional
+	if f == nil || f.Type == nil || f.Type.Optional {
+		return false
+	}
+	return !ast.HasDecorator(f.Decorators, "default")
 }
 
 // operationID returns the OpenAPI operationId for a method. A method
@@ -574,15 +565,7 @@ func fieldIsRequired(f *ast.Field) bool {
 // the bare method name when unique and service-prefixed when two
 // services share the method name.
 func operationID(m *ast.Method, base string) string {
-	for _, d := range m.Decorators {
-		if d.Name != "operationId" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-			return s.Value
-		}
-	}
-	return base
+	return semantic.OperationID(m, base)
 }
 
 // operationTags assembles the OpenAPI `tags:` slice for one method.

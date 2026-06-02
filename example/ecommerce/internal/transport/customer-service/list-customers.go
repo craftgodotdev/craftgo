@@ -20,6 +20,9 @@ func ListCustomers(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
+		if !server.RequirePresent(w, r, _q.Has("limit"), "limit", "query") {
+			return
+		}
 		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int]) {
 			return
 		}

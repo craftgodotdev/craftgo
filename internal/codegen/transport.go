@@ -516,10 +516,11 @@ var queryPrims = map[string]queryPrim{
 // cookieGuard is true. SingleExpr / arrayExpr for cookie return
 // `c.Value` / "" - the wrap supplies `c`.
 type wireSource struct {
-	kind        string
-	singleExpr  func(wireName string) string
-	arrayExpr   func(wireName string) string // "" if arrays unsupported for this source
-	cookieGuard bool
+	kind         string
+	singleExpr   func(wireName string) string
+	arrayExpr    func(wireName string) string // "" if arrays unsupported for this source
+	presenceExpr func(wireName string) string // Go bool expr: key present? nil = no presence check for this source
+	cookieGuard  bool
 }
 
 // querySource / headerSource / cookieSource / formSource build the
@@ -533,26 +534,43 @@ func querySource() wireSource {
 	// of N `r.URL.Query()` calls is N× fewer parses + maps. The %q is the
 	// WIRE name (honours `@query("x-q")`), not the Go field name.
 	return wireSource{
-		kind:       "query",
-		singleExpr: func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
-		arrayExpr:  func(n string) string { return fmt.Sprintf("_q[%q]", n) },
+		kind:         "query",
+		singleExpr:   func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
+		arrayExpr:    func(n string) string { return fmt.Sprintf("_q[%q]", n) },
+		presenceExpr: func(n string) string { return fmt.Sprintf("_q.Has(%q)", n) },
 	}
 }
 
 func headerSource() wireSource {
 	return wireSource{
-		kind:       "header",
-		singleExpr: func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
-		arrayExpr:  func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+		kind:         "header",
+		singleExpr:   func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
+		arrayExpr:    func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+		presenceExpr: func(n string) string { return fmt.Sprintf("len(r.Header.Values(%q)) > 0", n) },
 	}
 }
 
 func cookieSource() wireSource {
 	return wireSource{
-		kind:        "cookie",
-		singleExpr:  func(string) string { return "c.Value" },
-		arrayExpr:   func(string) string { return "" },
-		cookieGuard: true,
+		kind:         "cookie",
+		singleExpr:   func(string) string { return "c.Value" },
+		arrayExpr:    func(string) string { return "" },
+		cookieGuard:  true,
+		presenceExpr: func(n string) string { return fmt.Sprintf("server.CookiePresent(r, %q)", n) },
+	}
+}
+
+// pathSource reads a single segment via `r.PathValue("id")`. A path has
+// no multi-value form, so arrayExpr returns "" and [renderWireBindLine]
+// rejects an array-typed @path field. A matched route always supplies
+// the segment, so the value is treated as present (the semantic layer
+// rejects an optional @path field, so only the required shapes —
+// directSingle / singleParsed — are ever emitted here).
+func pathSource() wireSource {
+	return wireSource{
+		kind:       "path",
+		singleExpr: func(n string) string { return fmt.Sprintf("r.PathValue(%q)", n) },
+		arrayExpr:  func(string) string { return "" },
 	}
 }
 
@@ -619,31 +637,17 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		if !ok {
 			if pkg != nil {
 				if ed, edOk := pkg.Enums[declName]; edOk && ed != nil {
-					switch firstEnumKind(ed) {
-					case ast.EnumBare, ast.EnumString:
-						prim = queryPrims["string"]
-						ok = true
-						cast = declName
-					case ast.EnumInt:
-						prim = queryPrims["int"]
-						ok = true
-						cast = declName
-					}
+					prim = queryPrims[enumWirePrim(ed)]
+					ok = true
+					cast = declName
 				}
 			}
 		}
 		if !ok {
 			if ed := r.LookupEnum(declName); ed != nil {
-				switch firstEnumKind(ed) {
-				case ast.EnumBare, ast.EnumString:
-					prim = queryPrims["string"]
-					ok = true
-					cast = declName
-				case ast.EnumInt:
-					prim = queryPrims["int"]
-					ok = true
-					cast = declName
-				}
+				prim = queryPrims[enumWirePrim(ed)]
+				ok = true
+				cast = declName
 			}
 		}
 	}
@@ -711,6 +715,14 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 					data.Wrap = wrap("_v")
 					shape = renderWireBindShape("optionalStringCast", data)
 				}
+			} else if _, hasDef := defaultValue(f.Decorators); hasDef {
+				// A string-backed param carrying @default: only overwrite
+				// the pre-filled default when the param is actually present,
+				// mirroring the parsed path's `raw != ""` guard. An
+				// unconditional assign would clobber the default with "" on
+				// an absent (or `?x=`) request.
+				data.Wrap = wrap("_v")
+				shape = renderWireBindShape("directSingleDefaulted", data)
 			} else {
 				data.Wrap = wrap(singleSrc)
 				shape = renderWireBindShape("directSingle", data)
@@ -725,6 +737,22 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	}
 	if src.cookieGuard {
 		shape = wrapCookieGuard(wireName, shape)
+	}
+	// A required param (non-optional, no @default) on a source that can
+	// distinguish present from absent gets a presence check: the OpenAPI
+	// advertises required:true, so the runtime 400s on a missing key instead
+	// of silently accepting the zero value. This covers arrays too (a
+	// required array @query / @header 400s when the key is absent), matching
+	// the required:true the spec carries. A present-but-empty value (`?q=`)
+	// passes — the test is on the key, not the value. @default fields are
+	// exempt (the default covers absence). The check sits OUTSIDE the
+	// cookie-guard wrap so an absent required cookie 400s rather than
+	// skipping silently.
+	if src.presenceExpr != nil && !f.Type.Optional {
+		if _, hasDef := defaultValue(f.Decorators); !hasDef {
+			guard := fmt.Sprintf("if !server.RequirePresent(w, r, %s, %q, %q) {\nreturn\n}", src.presenceExpr(wireName), wireName, src.kind)
+			shape = guard + "\n" + shape
+		}
 	}
 	return shape, needsStrconv, nil
 }
