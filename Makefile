@@ -66,7 +66,7 @@ cover: ## Run tests with coverage and write coverage.html.
 	@echo "wrote coverage.html"
 
 .PHONY: e2e
-e2e: ## Run the cross-module e2e orchestrator (tests/e2e/...).
+e2e: ## Run the e2e orchestrator: gen + `go test` the matrix fixture.
 	$(GO) test $(GOFLAGS) -count=1 ./tests/e2e/...
 
 .PHONY: test-submodules
@@ -97,6 +97,8 @@ fmt-check: ## Fail if any Go file isn't gofmt'd.
 lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
 
 # ---- codegen + example --------------------------------------------------
+# The single consolidated e2e fixture (matrix). Its design exercises every DSL
+# construct and boots a server for the http-roundtrip tests.
 E2E_DIRS := tests/e2e/matrix
 
 .PHONY: gen
@@ -112,7 +114,7 @@ gen-go: ## Regenerate every example mini-project without rebuilding the CLI.
 	done
 
 .PHONY: gen-e2e
-gen-e2e: ## Regenerate every tests/e2e/* fixture from its design dir.
+gen-e2e: ## Regenerate the e2e matrix fixture from its design dir.
 	@for d in $(E2E_DIRS); do \
 		echo "→ gen $$d"; $(GO) run ./cmd/craftgo gen "$$d/design" || exit 1; \
 	done
