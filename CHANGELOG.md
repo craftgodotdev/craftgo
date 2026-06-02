@@ -5,7 +5,7 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [Unreleased]
+## [1.2.0] - 2026-06-02
 
 ### Added
 
@@ -64,13 +64,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   monomorphized and preserve per-type overflow checks.
 - A handler parses `r.URL.Query()` once into a local instead of per query
   field. For a request with N query parameters this is one query-string parse
-  + map allocation instead of N (≈5× fewer allocations on a 5-field handler).
+  - map allocation instead of N (≈5× fewer allocations on a 5-field handler).
 - `@nullable` on a `@query` / `@header` / `@cookie` / `@form` / `@path`
   parameter is now rejected at design time. A wire value is a string with
   no JSON-null form (and the pairing previously generated a non-compiling
   pointer binder); use `?` to make a parameter optional.
 - `@uniqueItems` on a generic type-parameter array field (`items T[]
-  @uniqueItems` in a generic decl) is rejected at design time. The
+@uniqueItems` in a generic decl) is rejected at design time. The
   parametric validator can't build a `map[T]` dedupe over an
   `any`-constrained element, so the combination previously emitted
   non-compiling Go while the spec advertised `uniqueItems`.
@@ -144,7 +144,7 @@ cluster, now fixed and pinned by the `regression` fixture:
   slice and called `Validate()` on a whole map. The array dimensions are
   now peeled before the map is ranged.
 - A `@nullable` string carrying `@format` (`a string @nullable
-  @format(email)`) dereferenced the pointer without a nil-guard, panicking
+@format(email)`) dereferenced the pointer without a nil-guard, panicking
   the validator on `{"a": null}`. The guard now keys on the field's
   pointer-ness, not just the `?` suffix.
 - Integer bounds beyond 2^53 (`@gte(9007199254740993)`,
@@ -219,7 +219,7 @@ fixture (Rg5-prefixed).
   `map[Pair[[]byte]]` dedupe that does not compile. The comparability
   check now substitutes the generic argument before judging the element.
 - A `scalar` declaration consumed the leading decorators of the
-  *following* declaration (it read decorators across the newline), so a
+  _following_ declaration (it read decorators across the newline), so a
   `@requiresOneOf` / `@deprecated` on a type declared right after a
   scalar was mis-attributed to the scalar and rejected. A scalar now
   takes only the decorators on its own line.
@@ -288,7 +288,7 @@ cluster, pinned by the `regression` fixture (Rg6-prefixed):
   design time, like `@uniqueItems` element comparability.
 - A route template repeating a path variable (`/items/{id}/x/{id}`) and
   two fields binding to the same wire name on one source (`a @query("x")
-  b @query("x")`) are rejected: the first panics net/http's ServeMux at
+b @query("x")`) are rejected: the first panics net/http's ServeMux at
   registration, the second emits a duplicate OpenAPI parameter.
 - `@requiresOneOf` / `@mutuallyExclusive` over a wire-bound (`@query` /
   `@header` / `@cookie`) or `@default` member is rejected — the wire field
@@ -296,10 +296,10 @@ cluster, pinned by the `regression` fixture (Rg6-prefixed):
   defaulted member is always present so the group is a no-op the spec
   contradicts. The OpenAPI fragment now also requires each member be
   present **and non-null** (`required` + `properties: {x: {not: {type:
-  null}}}`), matching the runtime's `!= nil` check on an explicit JSON
+null}}}`), matching the runtime's `!= nil` check on an explicit JSON
   `null` body.
 - Stacking same-family bound decorators (`@gte(10) @lte(90) @range(0,
-  100)`, `@length(5) @minLength(3) @maxLength(10)`) advertised the last
+100)`, `@length(5) @minLength(3) @maxLength(10)`) advertised the last
   writer's bound in OpenAPI while the validator enforces the tightest. The
   spec now intersects them (tightest wins), matching the runtime.
 - A `@header` / `@cookie` field promoted into a **response** through a
@@ -318,7 +318,7 @@ cluster, pinned by the `regression` fixture (Rg6-prefixed):
   string scalar key still carries its length / pattern / format.
 - `craftgo fmt` no longer silently drops or corrupts comments: a trailing
   `//` on a non-last decorator in a multi-line chain (`@minLength(1) //
-  note` above `@maxLength(5)`) folded the following decorators into the
+note` above `@maxLength(5)`) folded the following decorators into the
   comment — **deleting a real constraint** — and now lands the comment at
   the end of the collapsed line with every decorator intact; an
   end-of-file comment block (after the last declaration) and a
