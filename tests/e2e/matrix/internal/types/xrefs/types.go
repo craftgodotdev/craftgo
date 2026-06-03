@@ -6,6 +6,29 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
+// XBagPromoteReq instantiates the generic mixin host xshared.XWrapInBag
+// (which embeds XBag<T>); OpenAPI must register XBagOfXOwner, not a phantom
+// XBagOfT with a dangling element $ref.
+type XBagPromoteReq struct {
+	xshared.XWrapInBag[xshared.XOwner]
+}
+
+// XBodyPromoteReq promotes a cross-package mixin's BODY fields: the POST
+// handler must emit the JSON decode (its only body fields come from the
+// mixin) and pre-fill the promoted scalar / enum defaults with qualified
+// casts (xshared.XSize(20), xshared.XColorGreen).
+type XBodyPromoteReq struct {
+	xshared.XPromoteBody
+}
+
+// XByKeyReq draws its only field — the `@path`-bound `key` — from the
+// cross-package mixin xshared.XPathKey. The GetByKey route's `{key}`
+// segment binds through that mixin; the per-package path-param pass can't
+// expand a sibling-package mixin, so the project-level check owns it.
+type XByKeyReq struct {
+	xshared.XPathKey
+}
+
 // XEnumDefault exercises `@default(Red)` on a cross-pkg enum field:
 // the enum value is referenced by bare ident, not a string literal,
 // since enum identity is by name. Transport pre-fill qualifies the
@@ -49,6 +72,14 @@ type XGetReq struct {
 
 type XLocalItem struct {
 	ID string `json:"id"`
+}
+
+// XNestedReq reaches fields through a mixin nested INSIDE a cross-package
+// mixin: xshared.XParent embeds xshared.XGrand. So `gKey` (@path) and
+// `g32` (@default) live two mixin levels deep — the flattener must
+// qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
+type XNestedReq struct {
+	xshared.XParent
 }
 
 // XScalarBindings exercises scalar refs at wire binding sites. The
@@ -101,4 +132,10 @@ type XTypeFields struct {
 type XTypeMixin struct {
 	xshared.XAudit
 	ID string `json:"id"`
+}
+
+// XWirePromoteReq promotes a cross-package scalar bound to @query: the GET
+// handler must cast xshared.XEmail and import xshared.
+type XWirePromoteReq struct {
+	xshared.XPromoteWire
 }

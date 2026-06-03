@@ -37,6 +37,12 @@ of which wire source it's emitting for.
 req.{{.GoName}} = {{.ArraySource}}
 {{- end}}
 
+{{define "directSliceDefaulted" -}}
+if _vs := {{.ArraySource}}; len(_vs) > 0 {
+	req.{{.GoName}} = _vs
+}
+{{- end}}
+
 {{define "directSingle" -}}
 req.{{.GoName}} = {{.Wrap}}
 {{- end}}
@@ -50,6 +56,15 @@ if _v := {{.SingleSource}}; _v != "" {
 {{define "arrayString" -}}
 for _, _v := range {{.ArraySource}} {
 	req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})
+}
+{{- end}}
+
+{{define "arrayStringDefaulted" -}}
+if _vs := {{.ArraySource}}; len(_vs) > 0 {
+	req.{{.GoName}} = req.{{.GoName}}[:0]
+	for _, _v := range _vs {
+		req.{{.GoName}} = append(req.{{.GoName}}, {{.Wrap}})
+	}
 }
 {{- end}}
 

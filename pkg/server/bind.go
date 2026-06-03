@@ -116,6 +116,14 @@ func CookiePresent(r *http.Request, name string) bool {
 // BindValues parses each element of raw into *dst (repeated `?ids=1&ids=2`
 // or a multi-value header). One bad element fails the whole bind.
 func BindValues[T any](w http.ResponseWriter, r *http.Request, field, kind string, raw []string, dst *[]T, parse func(string) (T, error)) bool {
+	if len(raw) == 0 {
+		// Key absent: leave dst as-is so a prefilled `@default` survives.
+		return true
+	}
+	// Key present: the wire array carries the full value, so REPLACE rather
+	// than append — appending onto a prefilled `@default` would concatenate
+	// the default with the request ([7,8] + [4,5] = [7,8,4,5]).
+	*dst = (*dst)[:0]
 	for _, s := range raw {
 		v, err := parse(s)
 		if err != nil {

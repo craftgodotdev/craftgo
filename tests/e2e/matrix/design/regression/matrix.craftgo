@@ -52,11 +52,12 @@ type RgRefMeta {
 // Exact-length string, range form, and bytes length. The validator counts
 // the raw byte length OpenAPI advertises for the bytes fields.
 type RgLengths {
-	code   RgCode
-	inline string  @length(6)
-	rng    string  @length(2, 8)
-	token  RgToken
-	raw    bytes   @minLength(4)
+	code     RgCode
+	inline   string   @length(6)
+	rng      string   @length(2, 8)
+	token    RgToken
+	nulToken RgToken? @minLength(8)
+	raw      bytes    @minLength(4)
 }
 
 // Enum-keyed maps whose propertyNames carry the wire values — "red"/"green"

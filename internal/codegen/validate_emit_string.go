@@ -143,7 +143,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 			return ifReturnf("!"+patVar+".MatchString("+val+")", msg)
 		}
 	}
-	if goFieldIsPointer(f) {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		// Pointer field (`?` optional OR `@nullable`): nest the check
 		// inside a nil-guard so the deref in `val` and the init-stmt forms
 		// (mail.ParseAddress / time.Parse / ...) only run when a value is

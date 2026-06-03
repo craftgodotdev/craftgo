@@ -90,14 +90,7 @@ func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
 		imports["strconv"] = true
 	}
 	for _, name := range names {
-		for _, m := range pkg.Errors[name].Body {
-			f, ok := m.(*ast.Field)
-			if !ok {
-				continue
-			}
-			collectFieldImports(f.Type, imports)
-			walkCrossPkgImports(f.Type, crossPkg, imports)
-		}
+		collectBodyImports(pkg.Errors[name].Body, crossPkg, imports)
 	}
 
 	parts := []string{
@@ -173,7 +166,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) s
 		Category:           ed.Category,
 		DSLName:            ed.Name,
 		Status:             errcat.Status(ed.Category),
-		BodyFields:         buildErrorBodyFields(errorCustomFields(ed)),
+		BodyFields:         buildErrorBodyFields(errorCustomFields(ed), pkg, r),
 		BodyMixins:         errorBodyMixins(ed),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
 		Headers:            toErrorBindings(headers),
@@ -196,7 +189,7 @@ var errorsTemplate = tmpl("errors.tmpl")
 // template-friendly shape: PascalCase Go name, rendered Go type, and
 // the JSON tag string (response-bound fields are tagged `"-"` so the
 // value rides on a response header instead of the body).
-func buildErrorBodyFields(fields []*ast.Field) []errorBodyField {
+func buildErrorBodyFields(fields []*ast.Field, pkg *semantic.Package, r *ProjectResolver) []errorBodyField {
 	out := make([]errorBodyField, len(fields))
 	for i, f := range fields {
 		tag := strconv.Quote(f.Name)
@@ -205,7 +198,7 @@ func buildErrorBodyFields(fields []*ast.Field) []errorBodyField {
 		}
 		out[i] = errorBodyField{
 			GoName:  GoFieldName(f.Name),
-			Type:    goFieldType(f),
+			Type:    goFieldType(f, pkg, r),
 			JSONTag: tag,
 		}
 	}

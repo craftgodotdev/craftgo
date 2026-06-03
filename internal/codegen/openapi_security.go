@@ -13,7 +13,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
+func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Config) {
 	if doc.Components == nil {
 		doc.Components = &openapi3.Components{}
 	}
@@ -60,12 +60,32 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package) {
 		if _, exists := doc.Components.SecuritySchemes[n]; exists {
 			continue
 		}
-		doc.Components.SecuritySchemes[n] = &openapi3.SecuritySchemeRef{Value: &openapi3.SecurityScheme{
-			Type:         "http",
-			Scheme:       "bearer",
-			BearerFormat: "JWT",
-		}}
+		doc.Components.SecuritySchemes[n] = &openapi3.SecuritySchemeRef{Value: securitySchemeFor(n, cfg)}
 	}
+}
+
+// securitySchemeFor builds the OpenAPI security scheme for a referenced
+// scheme name from the manifest's `openapi.securitySchemes` declaration
+// (type / scheme / bearerFormat / in / name / openIdConnectUrl). It falls
+// back to the legacy http/bearer/JWT default only when the manifest
+// declares no schemes at all — in that mode ValidateSecurityRefs skips
+// reference validation, so every referenced scheme uses the default. When
+// schemes ARE declared, a referenced-but-undeclared name is already
+// rejected by ValidateSecurityRefs before emission.
+func securitySchemeFor(name string, cfg *config.Config) *openapi3.SecurityScheme {
+	if cfg != nil {
+		if sc, ok := cfg.OpenAPI.SecuritySchemes[name]; ok {
+			return &openapi3.SecurityScheme{
+				Type:             sc.Type,
+				Scheme:           sc.Scheme,
+				BearerFormat:     sc.BearerFormat,
+				In:               sc.In,
+				Name:             sc.Name,
+				OpenIdConnectUrl: sc.OpenIDConnectURL,
+			}
+		}
+	}
+	return &openapi3.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
 }
 
 // ValidateSecurityRefs cross-checks every `@security(scheme)` reference

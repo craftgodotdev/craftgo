@@ -5,6 +5,360 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Fixed
+
+- A **bare scalar or enum request type** (`request Token` where `Token` is a
+  scalar/enum) is now rejected — a fieldless type has nothing to bind or decode
+  as a body, so the payload was silently dropped (and a constraint-free scalar
+  produced non-compiling Go). Wrap the value in a `type`.
+- An **integral-float numeric bound** (`@gte(300.0)`) is now capacity-checked
+  like its integer form, and `@default` on a `file` field is rejected — both
+  previously produced non-compiling Go.
+- An **auto-bound path field with a non-bindable type** (struct/map/array/
+  generic) is rejected, matching the explicit `@path` form (it was silently
+  dropped and emitted an invalid non-scalar path parameter).
+- Repeated `@errors` decorators are no longer false-rejected as a duplicate —
+  `@errors` aggregates like `@tags`/`@security`/`@middlewares`, so the
+  extend-service inheritance idiom works. The decl-collision check now uses the
+  same smart `Err`/`Error` suffix codegen emits, so an error named `…Err`/
+  `…Error` is no longer falsely flagged against a coincidentally-named type.
+- `@example(<enum-member>)` now resolves to the member's wire value in the spec
+  (it was silently dropped, unlike `@default`); a required `any[]` field no
+  longer gets a spurious nil presence check; and `@status(205)` on a
+  body-returning method is rejected (joining 204/304/1xx).
+- **Scalar-declaration numeric bounds** are now validated like field bounds: a
+  bound that overflows the scalar's primitive (`scalar X uint8 @lte(300)`) or
+  an always-false unsigned bound (`scalar X uint @lt(0)`) is rejected at gen
+  time instead of generating non-compiling / reject-everything Go. A negative
+  single-arg `@length(-1)` is likewise rejected.
+- **Array-shortcut decorator forms** (`@errors([A, B])`, `@tags([A, B])`,
+  `@middlewares([A, B])`) are now honoured by codegen — they were accepted by
+  the analyzer but silently contributed nothing, dropping error responses,
+  tags, and the entire middleware chain. (`@security([...])` already worked.)
+- **OpenAPI exclusive bounds intersect** instead of overwriting: stacking
+  `@gt(5) @positive` (or `@lt(-5) @negative`) now advertises the tightest bound
+  (`exclusiveMinimum: 5`) the order-invariant validator enforces, rather than
+  the looser last-writer value.
+- A request field diverted to `@query`/`@header`/`@cookie`/`@body` no longer
+  satisfies the path-coverage check for a same-named `{segment}` — the segment
+  is reported missing instead of producing an OpenAPI spec with no `in: path`
+  parameter and a handler that never reads the value.
+- Explicit `@path @default` is rejected (a matched route always supplies the
+  segment), matching the auto-`@path` form, and a no-content success status
+  (`@status(204)`/`304`/`1xx`) on a body-returning method is rejected.
+- The multipart handler no longer emits an unused (or duplicate) `types`
+  import when the request type lives in another package — it now carries the
+  same `NeedsTypes` guard the JSON transport and service templates use.
+- A generic type parameter in a **map value** position (`map<K, T>`) is now
+  validated (its values walked via the reflective fallback) instead of being
+  silently dropped from `Validate()` while OpenAPI advertised the constraints.
+- A **field-level numeric/string constraint on an enum field** (`p Priority
+  @lte(5)`) is now enforced at runtime (the enum is cast to its underlying
+  int/string before the check) instead of being advertised in OpenAPI but
+  dropped from the validator.
+- The `openapi.securitySchemes` manifest block is now honoured: a declared
+  `apiKey` / `oauth2` / `openIdConnect` scheme is emitted with its configured
+  type/scheme/in/name instead of every `@security` scheme being hardcoded as
+  `http` bearer-JWT.
+- A bodyless or header-only **error response** now advertises the
+  `{code, message}` envelope the runtime actually writes, instead of an empty
+  `object` schema.
+- Duplicate `@security` requirements (a method repeating its service's scheme)
+  are deduplicated, and the phantom empty `default` response is no longer
+  emitted on every operation.
+
+- A **scalar over `bytes`** (`scalar Blob bytes`) marked optional (`?`) or
+  `@nullable` now renders as the bare named slice (`Blob`) rather than a
+  redundant pointer (`*Blob`) — the named slice already holds nil, exactly like
+  a raw `bytes` field. The pointer decision is resolved once through the scalar
+  table so the struct field, the validator nil-guards, and the field-level
+  checks agree; a null / absent value still skips the scalar's own `Validate()`.
+  A scalar over a nilable primitive can no longer be a cross-field-group member
+  (its presence is emptiness, not a clean `!= nil`), matching raw `bytes` / `any`.
+- A field-level `@doc` / `@example` on a field whose type is a **named ref**
+  (a component `$ref`) is now carried onto an `allOf` / `anyOf` wrapper instead
+  of being silently dropped — a bare `$ref` cannot hold sibling keywords
+  portably, so the metadata rode nowhere before.
+- A method's `@errors(...)` reference now **follows the OpenAPI merge's rename**
+  when two packages declare an error of the same name. The merge renames the
+  colliding schemas (`Dup` → `ADup` / `BDup`); previously the per-operation
+  response lookup used the bare decorator name, missed the renamed schema, and
+  silently dropped the error from the spec's responses.
+- **Cross-package mixin field promotion** is now resolved consistently across
+  the transport stage, fixing a cluster of silent / non-compiling failures when
+  a request embeds a mixin from another package. A field promoted across the
+  package boundary now has its type re-qualified to its home package, and the
+  body-decode decision and the handler-import collector thread the project
+  resolver. Concretely:
+  - a request whose only body fields come from a cross-package mixin now emits
+    the JSON body decode (previously skipped — the body was never read and
+    required fields failed validation against zero values);
+  - a cross-package scalar / enum bound to `@query` / `@path` / `@header` /
+    `@cookie` through a mixin now binds (previously aborted gen with
+    "type X cannot bind", though the message listed scalars as allowed);
+  - the foreign package's import is kept when a promoted field's cast
+    references it (previously dropped → `undefined: pkg`, non-compiling);
+  - a cross-package scalar / enum `@default` promoted through a mixin now casts
+    the pre-fill literal to the qualified type (`shared.Size(20)`,
+    `shared.ColorGreen`) instead of emitting an uncast `*int` / dropping the
+    default.
+- A generic type embedded as a **mixin** in a generic host (`Box<T>` embedding
+  `Tree<T>`, instantiated as `Box<Leaf>`) now substitutes the host's type
+  parameters into the mixin's generic arguments, so OpenAPI registers
+  `TreeOfLeaf` rather than a phantom `TreeOfT` whose element `$ref` dangled. The
+  project-merge path likewise rewrites a cross-package mixin's generic args, so
+  `lib.Page<lib.Owner>` no longer emits a dangling `$ref: lib.Owner`.
+- A cross-package type referenced through a codegen path whose
+  **import-collection walk had drifted from its emit walk** generated
+  non-compiling Go (`undefined: <pkg>`) when that path was the *only* reference
+  to the foreign package. Three instances are fixed: a type appearing solely in
+  a mixin's generic argument (`type R { Box<mod.Owner> }` → `Box[mod.Owner]`),
+  a cross-package scalar / enum bound with `@form`, and a cross-package element
+  under `@uniqueItems` (the dedupe `map[shared.Name]struct{}`). Each import is
+  now collected by walking the same structure the emit path renders.
+- An array `@query` / `@header` parameter with a `@default` both dropped and
+  corrupted the default: a string array was overwritten with `nil` when the key
+  was absent (destroying the default), and a parsed array appended the request
+  onto the prefilled default (`[7,8]` + `?ids=4&ids=5` → `[7,8,4,5]`). Array
+  wire-binding now preserves the default when the key is absent and replaces
+  (not appends) when present — `server.BindValues` resets before binding and the
+  string paths are presence-guarded.
+- An **enum-array** `@query` / `@header` parameter with a `@default` corrupted
+  the default: the prefill resolved the member array (`@default([Red, Blue])` →
+  `[]Color{ColorRed, ColorBlue}`) but the binder's has-default test could not
+  (it routed the array literal through a converter with no enum-member case and
+  returned "no default"), so the field used the bare appending shape — `?colors=
+  Green` yielded `[Red Green Blue]` instead of `[Green]`, every appended value
+  passing validation, so the corruption was silent. The binder now consults the
+  same default-resolution oracle the prefill emits from, so the two agree and the
+  present-param path clears the slice before appending.
+- A **multi-dimensional array** (`int[][]`, `shared.Tag[][]`, …) on a wire-string
+  source is now rejected at design time. A wire source encodes an array as
+  repeated single values (`?x=1&x=2`), which has no nested form, so codegen
+  emitted a one-dimensional binder against an N-D field that did not compile
+  (`server.BindValues(… &req.Grid, server.ParseSigned[int])` with `req.Grid` of
+  type `[][]int`), while OpenAPI rendered the correct nested `items`. The depth
+  guard lives in the shared `isWireBindingType` predicate (and its cross-package
+  twin), so every path agrees: the explicit `int[][] @query` / `@header` /
+  `@form` form **and** the implicit auto-`@query` promotion of an undecorated
+  field on a body-less verb (`get`/`delete`) — the latter previously slipped past
+  the depth check and shipped non-compiling Go. The check is structural
+  (independent of the element type), so cross-package element types are caught
+  too. Single-level arrays and multi-dim arrays in the JSON body are unaffected.
+- A cross-field group (`@requiresOneOf` / `@mutuallyExclusive`) referencing a
+  field promoted by a **cross-package mixin** is no longer falsely rejected as
+  "not a field of this type" — the per-package pass defers (it can't expand the
+  foreign mixin) and the field set is resolved project-wide. The deferral is now
+  backed by a **project-level re-check**: a member that no field provides —
+  including a typo sitting alongside a legitimately-promoted one — is rejected at
+  design time instead of slipping through to codegen, which substituted a literal
+  `false` and emitted a validator that silently never fired (the whole group,
+  De-Morgan'd, went dead). The re-check resolves nested cross-package mixins too.
+  As a backstop, codegen now emits an undefined identifier (a loud `go build`
+  failure naming the member) rather than `false` for any group member it still
+  can't resolve, so a future resolver gap can't ship as a no-op validator. The
+  re-check also re-applies the per-field quality rules to a cross-package-promoted
+  member (must be optional / `@nullable`, not `@sensitive`, not wire-bound, not
+  `@default`) — extracted into one shared helper both passes call — so a plain or
+  otherwise-ineligible promoted member is rejected exactly as a local one is,
+  rather than only its name being checked.
+- A numeric **`@default` outside the field primitive's capacity** — a negative on
+  an unsigned type (`uint @default(-5)`) or an out-of-range magnitude on a narrow
+  int (`int8 @default(200)`) — is now rejected at design time. Codegen otherwise
+  emitted a pre-fill cast (`uint(-5)` / `int8(200)`) that failed `go build` with
+  `constant overflows`, and OpenAPI advertised the out-of-range default. The
+  capacity check reuses the same range logic the numeric-bound guard uses.
+- A **`@default` on a `bytes` field** is now rejected. A bytes value has no
+  unambiguous literal form — the Go side needs `[]byte(...)` while OpenAPI's
+  `format: byte` default is base64, and the only literal kind the gate accepted
+  (string) compiled straight into the `[]byte` slot as a bare quoted string,
+  which never built. `bytes[]` is rejected identically.
+- A **multi-dimensional array `@default`** (`int[][]? @default([[1, 2], [3, 4]])`,
+  `Color[][]? @default(...)`) is now rejected at design time. `@default` targets a
+  primitive, scalar, enum, or a single-level array of those — a nested-array
+  default has no real use and an exotic nested-literal form. The check is
+  structural (array depth), so it fires for cross-package element types too.
+  Single-level array defaults are unaffected.
+- A required **`any @sensitive`** field made its endpoint reject every request
+  with `400 … required`. A `@sensitive` field is `json:"-"` (dropped before
+  decode), yet it still received the runtime presence check a required field
+  gets — an unsatisfiable gate, since the client can never send the value. The
+  presence check now excludes `@sensitive` fields, matching their exclusion from
+  the wire body.
+- A `@query` / `@header` / `@cookie` / `@form` / `@path` **binding rejection over
+  a `map` field** rendered the offending type as a bare `?` (`got ?`); the
+  diagnostic now renders the map type (`got map<string, int>`). The rejection
+  itself was already correct.
+- An **empty `@path("")` wire-name argument** no longer false-rejects the
+  path-param check with a nonsensical `field ""` message — it falls back to the
+  field name, mirroring the explicit-name fallback every other binding decorator
+  already applies.
+- A **cross-package qualified request type** (`request shared.Holder`) silently
+  dropped every field of its bare nested mixins from the transport binder: a
+  `@query` member never bound and a body member never decoded, while the
+  validator (and the semantic path-param check, which derived the package
+  correctly) still enforced them — so a conformant request failed validation
+  against zero values. The request-field resolver now derives the flatten prefix
+  from the qualified request name, so bare mixins resolve in the request type's
+  home package, matching the semantic side.
+- `@uniqueItems` over a **cross-package element that is only transitively
+  non-comparable** — reached through a bare member of the foreign struct that
+  itself holds a slice / map — was accepted, then emitted a non-compiling
+  `map[pkg.T]struct{}` dedup. The comparability walk now threads the foreign
+  struct's home package into its recursion, so a bare nested member resolves in
+  that package instead of being conservatively accepted as "unknown".
+- A whole-number **`@default` on an optional `float64?`** (`@default(1.0)`)
+  rendered as `1`, which Go infers as `int`, so the pointer pre-fill `__d := 1`
+  was a `*int` that wouldn't assign to the field's `*float64`. A float literal
+  now always renders with its decimal point (`1.0`); a fractional default
+  (`2.5`) is unchanged and still needs no cast.
+- A **`@default` on a field promoted from a nested mixin of a qualified request
+  type** (`request shared.Holder`) was silently dropped from the handler
+  pre-fill: the binder bound the field and OpenAPI advertised the default, but a
+  client omitting it got the zero value instead. The default-collection pass now
+  threads the qualified request's home-package prefix (matching the binder), so
+  the bare nested mixin's defaulted fields resolve and seed.
+- A **qualified generic request type with a local type-arg**
+  (`request shared.WrapBag<Item>`, `Item` local) generated a handler that
+  referenced `types.Item` but dropped the canonical `types` import → non-compiling
+  `undefined: types`. The transport codegen now keeps the import when the rendered
+  request type still carries a `types.` reference, mirroring the scaffold-service
+  guard.
+- `@uniqueItems` over a **cross-package generic instance** whose type-arg makes
+  it non-comparable (`shared.Box<shared.User>[]`, `User` holding a slice) was
+  accepted, then emitted a non-compiling `map[shared.Box[...]]struct{}`. The
+  cross-package comparability walk now substitutes the type-args into the generic
+  decl's fields — mirroring the same-package twin — so a `T` field is judged
+  against its concrete argument; comparable instances (`Box<string>`) still pass.
+- A required **cross-package enum body field** got no field-named presence check
+  (only the enum's own value-set rejection), so an omitted field reported
+  `"Sev: invalid Sev value"` instead of `"field: required"`, and the check ran in
+  a different order than a local enum's. The required-check now resolves a
+  qualified enum through the project resolver, matching the local-enum path. (The
+  accept/reject decision was already correct — this is the diagnostic + ordering.)
+- The project binding-type pass **double-visited every request body** (request
+  types are already in the package's type set), emitting byte-identical duplicate
+  diagnostics — N+1× for a type reused across N methods. The redundant second
+  pass is removed; each binding error now reports once.
+- The per-request / per-response codegen passes (field resolver, default
+  pre-fill, **import collector**, **response header/cookie writers**) each
+  resolved the method's type via the bare-keyed local `pkg.Types` and bailed on
+  the qualified cross-package form, so a qualified type was silently dropped by
+  one stage while a sibling emitted it. They now share one `lookupMethodType`
+  helper (local then project resolver, with the home-package flatten prefix),
+  fixing two more leaks:
+  - a **qualified cross-package response** (`response shared.Resp`) now writes
+    its `@header` / `@cookie` fields — previously the writers were dropped (the
+    fields are `json:"-"`, so the values went to neither header/cookie nor body)
+    while OpenAPI still advertised them;
+  - a **qualified request whose field reaches a third package** (`request
+    b.Holder`, `b.Holder.cid` typed `c.CID`) now imports that third package for
+    the cast / `@default` pre-fill — previously the import was dropped →
+    `undefined: c`, non-compiling.
+- A **non-marshalable map key nested inside a generic type-argument**
+  (`Box<map<StructKey, V>>`, `lib.Box<map<lib.FloatKey, V>>`) was accepted, then
+  emitted either non-compiling Go (`invalid map key type` for a struct/slice
+  key) or a runtime `json.Marshal` panic (bool/float/bytes key). The map-key
+  comparability checks (per-package and project) now descend into generic
+  type-arguments, mirroring the `@uniqueItems` walk; valid keys still pass.
+- A **cross-package generic request whose type-arg lives in a DSL package
+  literally named `types`** (`request types.Wrap<types.Thing>`) emitted the
+  canonical local-types import alongside the cross-package one → `types
+  redeclared`. The canonical import is now dropped when the request package's
+  own alias is `types`.
+- `@uniqueItems` over a generic instance whose non-comparability arrives
+  through a **generic mixin of the type-parameter** (`Box<bytes>[]`, where
+  `Box<T>` embeds `Inner<T>` and `Inner` holds a `T`) was accepted, then emitted
+  a non-compiling `map[Box[[]byte]]struct{}`. The comparability walk now
+  substitutes the outer type-args into a mixin ref before descending — the
+  mixin branch was the one spot the Field branch's substitution didn't mirror.
+- A **cross-package mixin embedded in an error body** dropped its package
+  import from the generated `errors.go` → `undefined: <pkg>`. The error
+  emitter's import walk skipped mixin members that the type emitter's walk
+  already covered; both now share one `collectBodyImports` helper that walks
+  fields and mixins, so the two can't drift again.
+- `@uniqueItems` over a struct holding **two different instantiations of one
+  generic** (`Holder { s Wrap<string>; b Wrap<bytes> }`) accepted a
+  non-comparable element when the comparable instantiation was checked first:
+  the comparability cycle-guard was keyed by the bare decl name, so the first
+  `Wrap<…>` poisoned the guard for the second and a non-compiling
+  `map[Holder]struct{}` leaked. The guard is now keyed by the instantiated
+  identity (name + type-args), so each instantiation is judged independently
+  while a true cycle still breaks.
+- A **generic mixin whose type-argument is a stdlib-backed builtin**
+  (`Box<file>` → embedded `Box[*multipart.FileHeader]`) dropped its
+  `mime/multipart` import from the generated `types.go` / `errors.go` →
+  `undefined: multipart`. The shared body import walk now routes mixin args
+  through the same `collectFieldImports` the field branch uses.
+- A **cross-package scalar / enum field carrying `@nullable`** that auto-binds
+  to `@query` on a body-less verb (GET/DELETE) generated a non-pointer
+  assignment into a `*pkg.T` slot → non-compiling. The local equivalent was
+  already rejected; the rejection is structural, so it now runs before the
+  qualified-ref deferral and fires for cross-package types too.
+- A cluster of per-field semantic guards resolved a field's primitive /
+  category through the LOCAL symbol table and so silently no-op'd on a
+  **qualified cross-package ref**; they now run at the project level against the
+  resolved type. This catches, for an imported scalar / enum / type in a field:
+  a decorator on the wrong category (`@minLength` on an `int` scalar, `@gt` on a
+  `string` scalar), `@multipleOf` on a float scalar (Go's modulus is
+  integer-only), `@uniqueItems` over a non-comparable element (a `bytes` scalar
+  or a struct containing a slice — previously a non-compiling `map[T]struct{}`),
+  and a `map` whose key is a bool / float / struct / bytes scalar (not a usable
+  JSON object key). Each fires only on the qualified form, matching the
+  bare/local behaviour without double-reporting.
+- A **redundant self-qualification** (`design.Email` inside the `design`
+  package) is now rejected with the bare-name fix, instead of emitting a
+  self-import the package can't satisfy (`undefined: design`) and dropping the
+  field's validator.
+- Two mixins that **lower to the same Go embedded-field name** — a local `Leaf`
+  and an imported `shared.Leaf`, or `shared.Leaf` and `other.Leaf` — are now
+  rejected together with the exact-duplicate case; all would redeclare the field
+  `Leaf` in the generated struct. (The duplicate-embed check now keys on the
+  unqualified leaf name, not the dotted reference.)
+- A **mixin embedded more than once** in one type body is now rejected at design
+  time — the generated Go struct would declare the embedded type twice and fail
+  to compile (`X redeclared`).
+- A contradictory numeric bound on a **cross-package scalar** is now caught at
+  design time: `@negative` / `@lt(0)` on a `shared.Count` over a `uint*`
+  (every value rejected), an out-of-capacity literal like `@lte(-1)` over a
+  `uint32` (`-1 overflows uint32`, non-compiling), and a fractional bound over a
+  cross-package integer scalar. The per-package pass resolved the primitive
+  through its local scalar table and missed the imported scalar; the project
+  resolver now re-checks qualified-scalar bounds.
+- **`@lt(0)` on an unsigned field** is now rejected at design time (the
+  desugared spelling of the already-rejected `@negative`): no `uint*` value can
+  be `< 0`, so every request would be rejected. The capacity guard missed it
+  because `0` is itself an in-range value.
+- A field reached through a mixin **nested inside a cross-package mixin**
+  (`Req { shared.Outer }`, where `shared.Outer` embeds a sibling-package
+  `shared.Inner`) was silently dropped from the generated handler — it
+  never bound, defaulted, or appeared in the wire binder, while OpenAPI
+  (built from a flattened merged package) still advertised it, so a client
+  sent a value the server ignored. The codegen flattener (and the
+  project-level `@path` check) now resolve a bare mixin nested in a foreign
+  mixin against that foreign package (`shared.Inner`), not the current one.
+- A `@default` on an optional field of a narrow numeric width (`int8` /
+  `int16` / `int32` / `int64` / `uint*` / `float32`) generated
+  **non-compiling** Go. The pointer pre-fill emitted `__d := 1`, which
+  infers Go `int` (or `float64` for a float literal), so `&__d` was a
+  `*int` that wouldn't assign to the field's `*int32`. The literal is now
+  cast to the field's primitive (`__d := int32(1)`), matching what a
+  scalar default already did. `int` / `float64` defaults are unchanged
+  (the literal already matches); plain `int` and `string` / `bool` were
+  never affected. Covers both the body pre-fill and the `@query` /
+  `@header` / `@cookie` default path.
+- A `@path` parameter supplied by a mixin embedded from another package
+  (`type Req { shared.IdHolder }`, where `shared.IdHolder` declares the
+  `@path` field) is no longer falsely reported as `path/param-missing`.
+  The per-package analyser can't expand a sibling-package mixin, so the
+  segment-to-field check now runs at the project level with cross-package
+  mixin resolution — the same flattening the codegen binder already does,
+  so the design-time check and the generated handler agree. A genuinely
+  missing segment or an orphaned `@path` field is still reported, now
+  across the package boundary.
+
 ## [1.2.0] - 2026-06-02
 
 ### Added

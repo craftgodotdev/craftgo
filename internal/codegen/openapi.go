@@ -134,7 +134,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	// instances remain - recursive generics (`Tree<User>`) terminate
 	// because they $ref themselves rather than re-instantiate.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
-	addSecuritySchemes(doc, pkg)
+	addSecuritySchemes(doc, pkg, cfg)
 	if len(names.dups) > 0 {
 		return doc, fmt.Errorf("duplicate component schema name(s): %s — a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(dedupSorted(names.dups), ", "))
 	}

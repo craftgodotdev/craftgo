@@ -207,6 +207,14 @@ components:
       type: object
     AcctUserNotFoundErr:
       description: NotFound error response (HTTP 404).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     AcctValidationFailedErr:
       description: BadRequest error response (HTTP 400).
@@ -1273,6 +1281,36 @@ components:
           - type: "null"
           default: 20
       type: object
+    DefaultsWidth:
+      description: |-
+        DefaultsWidth parks a @default on each narrow numeric width. The same
+        pre-fill cast a scalar needs applies to a bare narrow primitive: the
+        literal is cast to the field's type (`int32(7)`) so `__d := int32(7)`
+        keeps the field's `*int32`. Without it `__d := 7` infers Go `int` and
+        `&__d` (*int) can't assign. `int` / `float64` need no cast (the
+        literal already matches their inferred type); the widths below do.
+      properties:
+        w32:
+          default: 7
+          type:
+          - integer
+          - "null"
+        w64:
+          default: 9
+          type:
+          - integer
+          - "null"
+        wf32:
+          default: 1.5
+          type:
+          - number
+          - "null"
+        wu16:
+          default: 3
+          type:
+          - integer
+          - "null"
+      type: object
     DeleteAccountReq:
       description: DeleteAccountReq is path-bound by id; no body.
       properties:
@@ -1618,6 +1656,11 @@ components:
           maxLength: 6
           minLength: 6
           type: string
+        nulToken:
+          anyOf:
+          - $ref: '#/components/schemas/RgToken'
+          - type: "null"
+          minLength: 8
         raw:
           format: byte
           type: string
@@ -2066,6 +2109,7 @@ components:
             anyOf:
             - $ref: '#/components/schemas/NestedUser'
             - type: "null"
+            description: Self-optional - the marquee recursion case.
           name:
             type:
             - string
@@ -2100,6 +2144,38 @@ components:
       type: object
     EchoUserRespBody:
       $ref: '#/components/schemas/NestedUser'
+    EchoWidthReqBody:
+      description: |-
+        DefaultsWidth parks a @default on each narrow numeric width. The same
+        pre-fill cast a scalar needs applies to a bare narrow primitive: the
+        literal is cast to the field's type (`int32(7)`) so `__d := int32(7)`
+        keeps the field's `*int32`. Without it `__d := 7` infers Go `int` and
+        `&__d` (*int) can't assign. `int` / `float64` need no cast (the
+        literal already matches their inferred type); the widths below do.
+      properties:
+        w32:
+          default: 7
+          type:
+          - integer
+          - "null"
+        w64:
+          default: 9
+          type:
+          - integer
+          - "null"
+        wf32:
+          default: 1.5
+          type:
+          - number
+          - "null"
+        wu16:
+          default: 3
+          type:
+          - integer
+          - "null"
+      type: object
+    EchoWidthRespBody:
+      $ref: '#/components/schemas/DefaultsWidth'
     EchoWireRespBody:
       $ref: '#/components/schemas/Item'
     EchoWrappedReq:
@@ -2259,12 +2335,16 @@ components:
       type: object
     GetAuditedRespBody:
       $ref: '#/components/schemas/Audited'
+    GetByKeyRespBody:
+      $ref: '#/components/schemas/XOwner'
     GetItemReq:
       description: |-
         GetItemReq is the path-only DTO reused by GetItem and DeleteItem.
         Two operations sharing one DTO is fine — they both want the same
         "lookup by id" handle.
       type: object
+    GetNestedRespBody:
+      $ref: '#/components/schemas/XOwner'
     GetOrderReq:
       description: |-
         GetOrderReq pins a UUID-typed path parameter. The scalar's
@@ -2284,6 +2364,15 @@ components:
       type: object
     GetProfileRespBody:
       $ref: '#/components/schemas/Profile'
+    GetThirdRespBody:
+      $ref: '#/components/schemas/XOwner'
+    GetTracedRespBody:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
     GetUserReq:
       description: |-
         GetUserReq is the path-only request for GetUser / DeleteUser. The
@@ -2851,6 +2940,7 @@ components:
             anyOf:
             - $ref: '#/components/schemas/NestedUser'
             - type: "null"
+            description: Self-optional - the marquee recursion case.
           name:
             type:
             - string
@@ -4052,9 +4142,13 @@ components:
       description: ProductRef exercises NonEmpty + Cents on a smaller surface.
       properties:
         price:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          description: 'SCALAR REF: Cents enforces @gte(0) + @lte(1000000000).'
         sku:
-          $ref: '#/components/schemas/NonEmpty'
+          allOf:
+          - $ref: '#/components/schemas/NonEmpty'
+          description: 'SCALAR REF: NonEmpty enforces @minLength(1).'
       required:
       - sku
       - price
@@ -4102,6 +4196,14 @@ components:
       type: object
     ProfileNotFoundErr:
       description: NotFound error response (HTTP 404).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     ProfileValidationFailedErr:
       description: UnprocessableEntity error response (HTTP 422).
@@ -4151,6 +4253,40 @@ components:
       required:
       - items
       type: object
+    PromoteBagReqBody:
+      allOf:
+      - $ref: '#/components/schemas/XWrapInBagOfXOwner'
+      - type: object
+      description: |-
+        XBagPromoteReq instantiates the generic mixin host xshared.XWrapInBag
+        (which embeds XBag<T>); OpenAPI must register XBagOfXOwner, not a phantom
+        XBagOfT with a dangling element $ref.
+      type: object
+    PromoteBagRespBody:
+      $ref: '#/components/schemas/XOwner'
+    PromoteBodyReqBody:
+      allOf:
+      - $ref: '#/components/schemas/XPromoteBody'
+      - type: object
+      description: |-
+        XBodyPromoteReq promotes a cross-package mixin's BODY fields: the POST
+        handler must emit the JSON decode (its only body fields come from the
+        mixin) and pre-fill the promoted scalar / enum defaults with qualified
+        casts (xshared.XSize(20), xshared.XColorGreen).
+      type: object
+    PromoteBodyRespBody:
+      $ref: '#/components/schemas/XOwner'
+    PromoteHolderReqBody:
+      properties:
+        bod:
+          maxLength: 10
+          minLength: 1
+          type: string
+      required:
+      - bod
+      type: object
+    PromoteHolderRespBody:
+      $ref: '#/components/schemas/XOwner'
     PromoteItemReq:
       description: |-
         PromoteItemReq is path-bound by `itemId` and carries the slot
@@ -4180,8 +4316,20 @@ components:
       type: object
     PromoteItemRespBody:
       $ref: '#/components/schemas/EntitlementsAuditTrail'
+    PromoteWireRespBody:
+      $ref: '#/components/schemas/XOwner'
     QuarantineRespBody:
       $ref: '#/components/schemas/HealthResp'
+    QueryArrayEnumDefaultReq:
+      description: |-
+        QueryArrayEnumDefaultReq drives the enum-array @query @default path.
+        The slice is pre-filled with the wire values of the default members
+        ([Red, Blue]); the binder must REPLACE that pre-fill when the param
+        is present, not append to it — so `?colors=green` yields ["green"],
+        never ["red", "green", "blue"]. The has-default oracle the binder
+        consults resolves the enum-member array literal so it agrees with the
+        pre-fill that emitted the default.
+      type: object
     QueryArrayIntReq:
       description: |-
         QueryArrayIntReq drives the `[]int @query` shape. Each repeated
@@ -4240,6 +4388,14 @@ components:
       type: object
     RateLimitedErr:
       description: TooManyRequests error response (HTTP 429).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     RateLimitedRespBody:
       properties:
@@ -4250,6 +4406,14 @@ components:
       type: object
     RecordNotFoundErr:
       description: NotFound error response (HTTP 404).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     RecursiveHost:
       properties:
@@ -5032,6 +5196,11 @@ components:
           maxLength: 6
           minLength: 6
           type: string
+        nulToken:
+          anyOf:
+          - $ref: '#/components/schemas/RgToken'
+          - type: "null"
+          minLength: 8
         raw:
           format: byte
           type: string
@@ -5241,17 +5410,29 @@ components:
         the inherited checks WITHOUT any per-field decorator.
       properties:
         amount:
-          $ref: '#/components/schemas/Cents'
+          allOf:
+          - $ref: '#/components/schemas/Cents'
+          description: 'SCALAR REF: Cents brings @gte(0) + @lte(1000000000).'
         country:
-          $ref: '#/components/schemas/ISO3'
+          allOf:
+          - $ref: '#/components/schemas/ISO3'
+          description: 'SCALAR REF: ISO3 brings @length(3, 3) + @pattern.'
         email:
-          $ref: '#/components/schemas/ScalarsEmail'
+          allOf:
+          - $ref: '#/components/schemas/ScalarsEmail'
+          description: 'SCALAR REF: Email brings @format(email) + @maxLength(254).'
         id:
-          $ref: '#/components/schemas/ScalarsUUID'
+          allOf:
+          - $ref: '#/components/schemas/ScalarsUUID'
+          description: 'SCALAR REF: UUID brings @format(uuid).'
         rate:
-          $ref: '#/components/schemas/Percent'
+          allOf:
+          - $ref: '#/components/schemas/Percent'
+          description: 'SCALAR REF: Percent brings @gte(0) + @lte(1) on float64.'
         tag:
-          $ref: '#/components/schemas/ScalarsTag'
+          allOf:
+          - $ref: '#/components/schemas/ScalarsTag'
+          description: 'SCALAR REF: Tag brings @minLength(1) + @maxLength(20) + @pattern.'
       required:
       - id
       - email
@@ -5288,6 +5469,8 @@ components:
           - type: "null"
           default: 20
       type: object
+    SearchByColorRespBody:
+      $ref: '#/components/schemas/ItemList'
     SearchItemsRespBody:
       $ref: '#/components/schemas/ItemList'
     SearchProductsReqBody:
@@ -6087,6 +6270,10 @@ components:
         stay non-optional (the binder rejects `string? @header`); the query
         field is optional to also cover the optional-param wire-name path.
       type: object
+    WrapLocalReqBody:
+      $ref: '#/components/schemas/XWrapInBagOfXLocalItem'
+    WrapLocalRespBody:
+      $ref: '#/components/schemas/XOwner'
     Wrapped:
       description: |-
         Wrapped nests two generic instantiations: outer Page<…> over inner
@@ -6187,6 +6374,35 @@ components:
       required:
       - items
       - cap
+      type: object
+    XBagPromoteReq:
+      allOf:
+      - $ref: '#/components/schemas/XWrapInBagOfXOwner'
+      - type: object
+      description: |-
+        XBagPromoteReq instantiates the generic mixin host xshared.XWrapInBag
+        (which embeds XBag<T>); OpenAPI must register XBagOfXOwner, not a phantom
+        XBagOfT with a dangling element $ref.
+      type: object
+    XBodyPromoteReq:
+      allOf:
+      - $ref: '#/components/schemas/XPromoteBody'
+      - type: object
+      description: |-
+        XBodyPromoteReq promotes a cross-package mixin's BODY fields: the POST
+        handler must emit the JSON decode (its only body fields come from the
+        mixin) and pre-fill the promoted scalar / enum defaults with qualified
+        casts (xshared.XSize(20), xshared.XColorGreen).
+      type: object
+    XByKeyReq:
+      allOf:
+      - $ref: '#/components/schemas/XPathKey'
+      - type: object
+      description: |-
+        XByKeyReq draws its only field — the `@path`-bound `key` — from the
+        cross-package mixin xshared.XPathKey. The GetByKey route's `{key}`
+        segment binds through that mixin; the per-package path-param pass can't
+        expand a sibling-package mixin, so the project-level check owns it.
       type: object
     XColor:
       enum:
@@ -6289,12 +6505,92 @@ components:
       type: object
     XGetReq:
       type: object
+    XGrand:
+      description: |-
+        XGrand is a leaf mixin reached only through a CHAIN of mixins: XParent
+        embeds it (bare, same-package ref inside xshared), and a consumer in
+        another package embeds XParent. So a field here sits two mixin levels
+        deep, the inner link being a bare ref inside a cross-package mixin —
+        the case the codegen flattener and the path-param check must qualify as
+        `xshared.XGrand`, or `gKey`'s @path and `g32`'s @default silently drop.
+      properties:
+        g32:
+          default: 7
+          type:
+          - integer
+          - "null"
+      type: object
+    XHeaderResp:
+      description: |-
+        XHeaderResp is used as a QUALIFIED cross-package response
+        (`response xshared.XHeaderResp`) by xrefs. Its @header / @cookie fields
+        must be written by the handler even though the response type is
+        cross-package — the response-binding collector resolves it through the
+        project resolver, or the values silently drop (the fields are `json:"-"`)
+        while OpenAPI still advertises the header/cookie.
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    XHolder:
+      allOf:
+      - $ref: '#/components/schemas/XHolderSub'
+      - type: object
+      description: |-
+        XHolder is used as a QUALIFIED request type (`request xshared.XHolder`) by
+        xrefs' service. Because the request type lives here, its bare nested mixin
+        XHolderSub resolves in xshared — the binder must thread xshared as the
+        flatten prefix, or `q` (the @query param) and `bod` (the body field) are
+        silently dropped from the handler while the validator still enforces them.
+      type: object
+    XHolderSub:
+      description: |-
+        XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields —
+        a @query param, a JSON-body field, and a defaulted @query param — must
+        survive when XHolder is used as a QUALIFIED request type from another
+        package. The `limit` default must also PRE-FILL in the handler (the
+        default-collection pass threads the same xshared prefix as the binder);
+        without it the binder binds `limit` but the documented `default: 50` never
+        seeds, so an omitted param yields 0 instead of 50.
+      properties:
+        bod:
+          maxLength: 10
+          minLength: 1
+          type: string
+      required:
+      - bod
+      type: object
     XLocalItem:
       properties:
         id:
           type: string
       required:
       - id
+      type: object
+    XMixinErr:
+      allOf:
+      - $ref: '#/components/schemas/XOwner'
+      - properties:
+          reason:
+            maxLength: 200
+            minLength: 1
+            type: string
+        required:
+        - reason
+        type: object
+      description: Conflict error response (HTTP 409).
+      type: object
+    XNestedReq:
+      allOf:
+      - $ref: '#/components/schemas/XParent'
+      - type: object
+      description: |-
+        XNestedReq reaches fields through a mixin nested INSIDE a cross-package
+        mixin: xshared.XParent embeds xshared.XGrand. So `gKey` (@path) and
+        `g32` (@default) live two mixin levels deep — the flattener must
+        qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
       type: object
     XNodeID:
       maximum: 1000000
@@ -6328,6 +6624,28 @@ components:
       required:
       - id
       - email
+      type: object
+    XParent:
+      allOf:
+      - $ref: '#/components/schemas/XGrand'
+      - properties:
+          p64:
+            default: 9
+            type:
+            - integer
+            - "null"
+        type: object
+      description: |-
+        XParent embeds XGrand (bare) and adds its own default; consumers embed
+        XParent to reach both levels.
+      type: object
+    XPathKey:
+      description: |-
+        XPathKey is a cross-package mixin that carries a `@path`-bound field.
+        xrefs embeds it in a request whose route declares `{key}`; the path
+        segment binds through the mixin. The per-package pass can't expand a
+        sibling-package mixin, so the project-level path-param check owns the
+        verdict — the same cross-package flattening the codegen binder does.
       type: object
     XPkgEnum:
       description: |-
@@ -6386,6 +6704,38 @@ components:
       - byEnum
       - bothEnum
       type: object
+    XPromoteBody:
+      description: |-
+        XPromoteBody bundles fields a consumer reaches only by EMBEDDING it
+        across the package boundary: a required body field (the handler must
+        emit the JSON decode), a cross-package scalar @default (the pre-fill
+        must cast `xshared.XSize(20)`), and a cross-package enum @default (the
+        pre-fill must qualify `xshared.XColorGreen`). Promotion re-qualifies
+        each bare field type to xshared so the binder / pre-fill resolve it.
+      properties:
+        label:
+          minLength: 1
+          type: string
+        size:
+          anyOf:
+          - $ref: '#/components/schemas/XSize'
+          - type: "null"
+          default: 20
+        tone:
+          anyOf:
+          - $ref: '#/components/schemas/XColor'
+          - type: "null"
+          default: Green
+      required:
+      - label
+      type: object
+    XPromoteWire:
+      description: |-
+        XPromoteWire carries a cross-package scalar bound to @query, reached
+        through a mixin: the binder must cast `xshared.XEmail(...)` AND pull in
+        the xshared import, both of which need the promoted field's type
+        re-qualified to its home package.
+      type: object
     XRefsServiceGetItemRespBody:
       $ref: '#/components/schemas/XOwner'
     XRefsServiceListItemsRespBody:
@@ -6429,6 +6779,18 @@ components:
         handler emits qualified casts (`req.Q = xshared.XEmail(r.URL.Query()
         .Get("q"))`) so the assignment type-checks against the
         `*xshared.XEmail` field.
+      type: object
+    XSize:
+      maximum: 100
+      minimum: 1
+      type: integer
+    XThirdReq:
+      description: |-
+        XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by
+        xrefs, and its field reaches a THIRD package (`shared`). The xrefs handler
+        casts `shared.Severity(...)`, so the import collector must resolve the
+        qualified request through the project resolver and pull in `shared` — or
+        the cast compiles to `undefined: shared`.
       type: object
     XTimestamp:
       format: datetime
@@ -6474,21 +6836,56 @@ components:
         calls `v.XAudit.Validate()` explicitly since Go method promotion
         doesn't auto-invoke on the host.
       type: object
+    XWirePromoteReq:
+      allOf:
+      - $ref: '#/components/schemas/XPromoteWire'
+      - type: object
+      description: |-
+        XWirePromoteReq promotes a cross-package scalar bound to @query: the GET
+        handler must cast xshared.XEmail and import xshared.
+      type: object
+    XWrapInBagOfXLocalItem:
+      allOf:
+      - $ref: '#/components/schemas/XBagOfXLocalItem'
+      - properties:
+          wrapNote:
+            type:
+            - string
+            - "null"
+        type: object
+      description: |-
+        XParametric is a generic mixin host: `XWrapInBag` embeds `XBag<T>` and a
+        consumer instantiates it. The OpenAPI mixin branch must substitute the
+        host's type-param into the embedded generic's args, or it registers a
+        phantom `XBagOfT` whose element `$ref` dangles.
+      type: object
+    XWrapInBagOfXOwner:
+      allOf:
+      - $ref: '#/components/schemas/XBagOfXOwner'
+      - properties:
+          wrapNote:
+            type:
+            - string
+            - "null"
+        type: object
+      description: |-
+        XParametric is a generic mixin host: `XWrapInBag` embeds `XBag<T>` and a
+        consumer instantiates it. The OpenAPI mixin branch must substitute the
+        host's type-param into the embedded generic's args, or it registers a
+        phantom `XBagOfT` whose element `$ref` dangles.
+      type: object
   securitySchemes:
     AdminBearer:
-      bearerFormat: JWT
       scheme: bearer
       type: http
     AdminWriteScope:
-      bearerFormat: JWT
       scheme: bearer
       type: http
     MFA:
-      bearerFormat: JWT
-      scheme: bearer
-      type: http
+      in: header
+      name: X-MFA-Token
+      type: apiKey
     ProfileAuth:
-      bearerFormat: JWT
       scheme: bearer
       type: http
 info:
@@ -6506,8 +6903,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListProjectsRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - ProjectService
   /account-users/ping:
@@ -6517,8 +6912,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - AccountUserService
   /account-users/users:
@@ -6538,8 +6931,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AccountUserServiceCreateUserRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - AccountUserService
   /account-users/users/{id}:
@@ -6558,8 +6949,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AccountUserServiceDeleteUserRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - AccountUserService
     get:
@@ -6579,8 +6968,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AccountUserServiceGetUserRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - AccountUserService
     put:
@@ -6604,8 +6991,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UpdateUserRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - AccountUserService
   /account/admin/{id}:
@@ -6626,8 +7011,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeleteAccountRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - account
       - admin
@@ -6642,8 +7025,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AccountServiceResetRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - account
       - admin
@@ -6658,8 +7039,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - account
   /account/logout:
@@ -6674,8 +7053,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/LogoutRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - account
       - authenticated
@@ -6691,8 +7068,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/MeRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - account
       - authenticated
@@ -6707,8 +7082,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SignupRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - account
   /admin/inventory:
@@ -6722,8 +7095,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminInventoryServiceListItemsRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - AdminBearer: []
       tags:
@@ -6753,8 +7124,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromoteItemRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - AdminBearer: []
       - AdminWriteScope: []
@@ -6772,10 +7141,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - AdminInventoryService
+  /bindings/by-color:
+    get:
+      description: Search by colors with an enum-array @query default. An absent `colors`
+        keeps the [Red, Blue] pre-fill; a present `?colors=green` REPLACES it (not
+        appends), so the result is exactly the requested set.
+      operationId: SearchByColor
+      parameters:
+      - in: query
+        name: colors
+        schema:
+          default:
+          - Red
+          - Blue
+          items:
+            $ref: '#/components/schemas/BindingsColor'
+          type:
+          - array
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchByColorRespBody'
+          description: OK
+      tags:
+      - bindings
   /bindings/health:
     get:
       description: Health probe. No request, no response — just a 200 OK when the
@@ -6790,8 +7184,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RateLimitExceededErr'
           description: TooManyRequests
-        default:
-          description: ""
       tags:
       - bindings
   /bindings/items:
@@ -6853,8 +7245,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SearchItemsRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - bindings
     post:
@@ -6886,8 +7276,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DuplicateKeyErr'
           description: Conflict
-        default:
-          description: ""
       tags:
       - bindings
   /bindings/items/{id}:
@@ -6920,8 +7308,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecordNotFoundErr'
           description: NotFound
-        default:
-          description: ""
       tags:
       - bindings
     get:
@@ -6941,8 +7327,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/BindingsServiceGetItemRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - bindings
   /bindings/users/{id}/avatar:
@@ -6986,8 +7370,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UploadAvatarRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - bindings
   /bindings/wire/{user_id}:
@@ -7026,8 +7408,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoWireRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - bindings
   /catalog/featured:
@@ -7040,8 +7420,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/FeaturedRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - CatalogService
   /catalog/ping:
@@ -7054,8 +7432,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CatalogServicePingRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - CatalogService
   /collections/array-bounds:
@@ -7077,8 +7453,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ArrayBoundsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - collections
   /collections/map-key-value:
@@ -7098,8 +7472,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/MapKeyValueRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - collections
   /collections/map-struct:
@@ -7122,8 +7494,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/MapStructRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - collections
   /collections/multi-dim:
@@ -7145,8 +7515,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/MultiDimRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - collections
   /collections/tag-slice:
@@ -7169,8 +7537,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/TagSliceRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - collections
   /combine/defaults/boundary:
@@ -7191,8 +7557,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoBoundaryRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/defaults/collection:
@@ -7213,8 +7577,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoCollectionRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/defaults/conflict:
@@ -7236,8 +7598,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoConflictRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/defaults/enum:
@@ -7258,8 +7618,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoEnumRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/defaults/scalar:
@@ -7280,8 +7638,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoScalarRespBody'
           description: Created
-        default:
-          description: ""
+      tags:
+      - combine
+  /combine/defaults/width:
+    post:
+      description: Echo the narrow-width default matrix. The pre-fill casts each literal
+        to the field primitive so the *T pointer assignment compiles (int32 / int64
+        / uint16 / float32).
+      operationId: EchoWidth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoWidthReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoWidthRespBody'
+          description: Created
       tags:
       - combine
   /combine/pairs/arr:
@@ -7302,8 +7679,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateArrRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/pairs/choice:
@@ -7325,8 +7700,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateChoiceRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/pairs/contact:
@@ -7347,8 +7720,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateContactRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/pairs/num:
@@ -7369,8 +7740,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateNumRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/pairs/str:
@@ -7391,8 +7760,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateStrRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /combine/presence:
@@ -7415,8 +7782,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoPresenceRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - combine
   /header-echo:
@@ -7455,8 +7820,6 @@ paths:
             Retry-After:
               schema:
                 type: integer
-        default:
-          description: ""
       tags:
       - HeaderEchoService
   /jobs:
@@ -7476,8 +7839,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateJobRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - StatusCodesService
   /jobs/{jobId}:
@@ -7493,8 +7854,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - StatusCodesService
   /jobs/enqueue:
@@ -7515,8 +7874,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnqueueJobRespBody'
           description: Accepted
-        default:
-          description: ""
       tags:
       - StatusCodesService
   /nested/a:
@@ -7536,8 +7893,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoARespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/b:
@@ -7557,8 +7912,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoBRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/catalog:
@@ -7579,8 +7932,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoCatalogRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/cube:
@@ -7600,8 +7951,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoCubeRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/list-page:
@@ -7621,8 +7970,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoListPageRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/matrix:
@@ -7642,8 +7989,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoMatrixRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/node:
@@ -7663,8 +8008,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoNodeRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/org:
@@ -7684,8 +8027,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoOrgRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/person:
@@ -7706,8 +8047,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoPersonRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/team:
@@ -7727,8 +8066,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoTeamRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /nested/user:
@@ -7748,8 +8085,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoUserRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - nested
   /numbers/boundary:
@@ -7768,8 +8103,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddBoundaryRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /numbers/counter:
@@ -7788,8 +8121,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddCounterRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /numbers/exact:
@@ -7808,8 +8139,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddExactRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /numbers/mixed:
@@ -7828,8 +8157,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddMixedRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /numbers/optional:
@@ -7848,8 +8175,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddOptionalRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /numbers/price:
@@ -7868,8 +8193,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddPriceRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /numbers/unsigned:
@@ -7888,8 +8211,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AddUnsignedRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - NumbersService
   /orders/latest:
@@ -7902,8 +8223,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/LatestRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - OrdersService
   /orders/ping:
@@ -7916,8 +8235,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrdersServicePingRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - OrdersService
   /regression/contact:
@@ -7942,8 +8259,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RgValidationFailedErr'
           description: UnprocessableEntity
-        default:
-          description: ""
       tags:
       - regression
   /regression/enum-maps:
@@ -7962,8 +8277,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoEnumMapsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression/host:
@@ -7982,8 +8295,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegressionServiceEchoHostRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression/items/{id}/{uid}/{kind}:
@@ -8013,8 +8324,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegressionServiceGetItemRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - regression
   /regression/lengths:
@@ -8033,8 +8342,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoLengthsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression/nullable-scalars:
@@ -8053,8 +8360,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoNullableScalarsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression/page:
@@ -8073,8 +8378,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoPageRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression/ref-meta:
@@ -8093,8 +8396,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoRefMetaRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression/search:
@@ -8130,8 +8431,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DoSearchRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - regression
   /regression2/big:
@@ -8150,8 +8449,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoBigRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression2/fmt:
@@ -8170,8 +8467,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoFmtRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression2/m:
@@ -8199,8 +8494,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - regression
   /regression2/maps:
@@ -8219,8 +8512,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoMapsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression2/o:
@@ -8235,8 +8526,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - regression
   /regression2/req:
@@ -8261,8 +8550,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - regression
   /regression3/c:
@@ -8281,8 +8568,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegressionBatch3EchoContactRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression3/d:
@@ -8301,8 +8586,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegressionBatch3EchoDefaultsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression3/mo:
@@ -8321,8 +8604,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoMultipleOfRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression3/n:
@@ -8341,8 +8622,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoNestedRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression3/r:
@@ -8365,8 +8644,6 @@ paths:
             ETag:
               schema:
                 type: string
-        default:
-          description: ""
       tags:
       - regression
   /regression3/z:
@@ -8385,8 +8662,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoZeroRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression4/b:
@@ -8405,8 +8680,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoBigMulRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression4/h:
@@ -8425,8 +8698,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegressionBatch4EchoHostRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression4/s:
@@ -8441,8 +8712,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - regression
   /regression5/bag:
@@ -8461,8 +8730,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoBagRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression5/comp:
@@ -8481,8 +8748,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoCompositeRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression5/d:
@@ -8509,8 +8774,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegressionBatch5EchoDefaultsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression5/errs:
@@ -8545,8 +8808,6 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-        default:
-          description: ""
       tags:
       - regression
   /regression5/mx:
@@ -8571,8 +8832,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoMixedRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression5/nil:
@@ -8591,8 +8850,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoNilableRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /regression5/sess:
@@ -8611,8 +8868,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/FindSessionRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - regression
   /regression6/f:
@@ -8633,8 +8888,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/FilterTagsRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - regression
   /regression6/r:
@@ -8651,8 +8904,6 @@ paths:
             X-Rate-Limit:
               schema:
                 type: integer
-        default:
-          description: ""
       tags:
       - regression
   /regression6/s:
@@ -8671,8 +8922,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoStackedRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - regression
   /scalars/audited/{id}:
@@ -8693,8 +8942,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetAuditedRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - scalars
   /scalars/orders:
@@ -8723,8 +8970,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListOrdersRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - scalars
     post:
@@ -8744,8 +8989,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateOrderRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - scalars
   /scalars/orders/{id}:
@@ -8767,8 +9010,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetOrderRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - scalars
   /scalars/search:
@@ -8789,8 +9030,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SearchProductsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - scalars
   /scalars/wrapped:
@@ -8811,8 +9050,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoWrappedRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - scalars
   /secured:
@@ -8826,8 +9063,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SecuredServiceListItemsRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - AdminBearer: []
       tags:
@@ -8843,8 +9078,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthzRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - monitoring
   /secured/quarantine:
@@ -8859,8 +9092,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/QuarantineRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - AdminBearer: []
       - AdminBearer: []
@@ -8879,8 +9110,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SecuredServiceResetRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - AdminBearer: []
       tags:
@@ -8897,8 +9126,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/WipeRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - AdminBearer: []
       - AdminBearer: []
@@ -8923,8 +9150,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CombineConstraintsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - strings
   /strings/echo:
@@ -8947,8 +9172,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - strings
   /strings/formats:
@@ -8970,8 +9193,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateAllFormatsRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - strings
   /users:
@@ -9012,8 +9233,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListUsersRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - UserService
     post:
@@ -9031,8 +9250,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserServiceCreateUserRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - UserService
   /users/{id}:
@@ -9065,8 +9282,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConflictErr'
           description: Conflict
-        default:
-          description: ""
       tags:
       - UserService
     get:
@@ -9086,8 +9301,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserServiceGetUserRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - UserService
   /users/{id}/ban:
@@ -9112,8 +9325,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/BanUserRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - UserService
   /v1/admin/dashboard:
@@ -9127,8 +9338,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DashboardStatsRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - admin
       - ops
@@ -9141,8 +9350,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - admin
       - ops
@@ -9160,8 +9367,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminListProfilesRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - ProfileAuth: []
       tags:
@@ -9183,8 +9388,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SnapshotRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - admin
       - ops
@@ -9200,8 +9403,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListProfilesRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - ProfileService
     post:
@@ -9241,8 +9442,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PfRateLimitedErr'
           description: TooManyRequests
-        default:
-          description: ""
       tags:
       - ProfileService
   /v1/profiles/{id}:
@@ -9268,8 +9467,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProfileNotFoundErr'
           description: NotFound
-        default:
-          description: ""
       tags:
       - ProfileService
     patch:
@@ -9313,10 +9510,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/PatchProfileRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - ProfileService
+  /xrefs/by-key/{key}:
+    get:
+      description: Pins cross-package mixin @path binding. The {key} segment binds
+        through xshared.XPathKey's field; the project-level path-param check must
+        resolve the sibling-package mixin or it false-rejects this route.
+      operationId: GetByKey
+      parameters:
+      - in: path
+        name: key
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetByKeyRespBody'
+          description: OK
+      tags:
+      - XRefsService
   /xrefs/defaults:
     post:
       description: Pins cross-package enum `@default` pre-fill in transport. Body
@@ -9337,8 +9555,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PostDefaultRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - XRefsService
   /xrefs/items:
@@ -9353,8 +9569,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/XRefsServiceListItemsRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - XRefsService
   /xrefs/items/{id}:
@@ -9383,8 +9597,148 @@ paths:
               schema:
                 $ref: '#/components/schemas/XNotFoundErr'
           description: NotFound
-        default:
-          description: ""
+      tags:
+      - XRefsService
+  /xrefs/nested/{gKey}:
+    get:
+      description: Pins a @path + @default nested two mixin levels deep through a
+        cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment
+        and g32/p64 defaults must all survive flattening — the bare inner XGrand resolves
+        as xshared.XGrand.
+      operationId: GetNested
+      parameters:
+      - in: path
+        name: gKey
+        required: true
+        schema:
+          maxLength: 40
+          minLength: 1
+          type: string
+      - in: query
+        name: g32
+        schema:
+          default: 7
+          type:
+          - integer
+          - "null"
+      - in: query
+        name: p64
+        schema:
+          default: 9
+          type:
+          - integer
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNestedRespBody'
+          description: OK
+      tags:
+      - XRefsService
+  /xrefs/promote-bag:
+    post:
+      description: 'Pins generic-mixin OpenAPI substitution: xshared.XWrapInBag<XOwner>
+        must register XBagOfXOwner, no phantom XBagOfT / dangling $ref.'
+      operationId: PromoteBag
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteBagReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteBagRespBody'
+          description: Created
+      tags:
+      - XRefsService
+  /xrefs/promote-body:
+    post:
+      description: 'Pins cross-package mixin BODY promotion: the POST handler decodes
+        the body (its only body fields are promoted from xshared.XPromoteBody) and
+        pre-fills the promoted scalar/enum defaults with qualified casts.'
+      operationId: PromoteBody
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteBodyReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteBodyRespBody'
+          description: Created
+      tags:
+      - XRefsService
+  /xrefs/promote-holder/{id}:
+    post:
+      description: Pins a QUALIFIED request type whose fields come from a bare nested
+        mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q`
+        from @query and decode `bod` from the body — without threading xshared as
+        the flatten prefix both silently drop while the validator still enforces them.
+      operationId: PromoteHolder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: q
+        required: true
+        schema:
+          maxLength: 5
+          minLength: 2
+          type: string
+      - in: query
+        name: limit
+        schema:
+          default: 50
+          type:
+          - integer
+          - "null"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteHolderReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteHolderRespBody'
+          description: Created
+      tags:
+      - XRefsService
+  /xrefs/promote-wire:
+    get:
+      description: 'Pins cross-package scalar @query promotion: the GET handler casts
+        xshared.XEmail and imports xshared, both needing the promoted field''s type
+        re-qualified.'
+      operationId: PromoteWire
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          $ref: '#/components/schemas/XEmail'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteWireRespBody'
+          description: OK
       tags:
       - XRefsService
   /xrefs/search:
@@ -9421,8 +9775,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/SearchRespBody'
           description: OK
-        default:
-          description: ""
+      tags:
+      - XRefsService
+  /xrefs/third/{id}:
+    get:
+      description: 'Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev
+        is shared.Severity). The xrefs handler casts shared.Severity(...), so the
+        import collector must resolve the qualified request and pull in `shared` —
+        else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds
+        a cross-package mixin, so the error emitter''s import walk must collect xshared.'
+      operationId: GetThird
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      - in: query
+        name: sev
+        required: true
+        schema:
+          $ref: '#/components/schemas/Severity'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetThirdRespBody'
+          description: OK
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XMixinErr'
+          description: Conflict
+      tags:
+      - XRefsService
+  /xrefs/traced/{id}:
+    get:
+      description: Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp).
+        The handler must write w.Header().Set / http.SetCookie even though the response
+        type is cross-package — else the values silently drop (json:"-") while OpenAPI
+        advertises them.
+      operationId: GetTraced
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTracedRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: xs-session'
+              schema:
+                type: string
+            X-Trace-Id:
+              schema:
+                type: string
+      tags:
+      - XRefsService
+  /xrefs/wrap-local:
+    post:
+      description: 'Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>).
+        The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it
+        must keep the canonical `types` import for the local arg even though the outer
+        type is cross-package — otherwise `undefined: types`.'
+      operationId: WrapLocal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WrapLocalReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrapLocalRespBody'
+          description: Created
       tags:
       - XRefsService
 servers:

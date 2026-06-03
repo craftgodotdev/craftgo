@@ -44,7 +44,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		for _, m := range ed.Body {
 			switch v := m.(type) {
 			case *ast.Field:
-				rf := resolveField(v, pkg)
+				rf := resolveField(v, pkg, nil)
 				// Same OnWireBody decision the type-schema walk uses, so error
 				// and entity schemas agree on which fields ride the body (a
 				// @header/@cookie field rides the response writer, a @sensitive
@@ -79,6 +79,19 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 					Ref: "#/components/schemas/" + mixinRefName(v.Ref, pkg, registry),
 				})
 			}
+		}
+		// A bodyless error (no declared fields) or a header/cookie-only
+		// error marshals its body to `{}`. The runtime writeError helper
+		// detects that empty marshal and substitutes a `{code, message}`
+		// envelope, so advertise the same shape — otherwise the spec
+		// promises an empty object the server never actually sends.
+		if len(s.Properties) == 0 && len(mixinRefs) == 0 {
+			strProp := func() *openapi3.SchemaRef {
+				return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+			}
+			s.Properties["code"] = strProp()
+			s.Properties["message"] = strProp()
+			s.Required = []string{"code", "message"}
 		}
 		if len(mixinRefs) > 0 {
 			host := &openapi3.Schema{
@@ -209,7 +222,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			rf := resolveField(v, pkg)
+			rf := resolveField(v, pkg, nil)
 			// Wire-bound (`@path`/`@query`/`@header`/`@cookie`) and
 			// `@sensitive` fields carry `json:"-"` and never appear in the
 			// JSON body — OnWireBody is the resolved decision (same one the
@@ -238,8 +251,22 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
 				continue
 			}
+			ref := v.Ref
+			// A generic host (`Box<T>` embedding `Tree<T>`) instantiated
+			// as `Box<Leaf>` must substitute its type-params into the
+			// mixin's own generic args, or mixinRefName registers a
+			// phantom `TreeOfT` whose element `$ref` dangles at `T`. The
+			// sibling Field branch already substitutes via substituteTypeRef.
+			if subst != nil && len(ref.Args) > 0 {
+				cp := *ref
+				cp.Args = make([]*ast.TypeRef, len(ref.Args))
+				for i, a := range ref.Args {
+					cp.Args[i] = substituteTypeRef(a, subst)
+				}
+				ref = &cp
+			}
 			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-				Ref: "#/components/schemas/" + mixinRefName(v.Ref, pkg, registry),
+				Ref: "#/components/schemas/" + mixinRefName(ref, pkg, registry),
 			})
 		}
 	}

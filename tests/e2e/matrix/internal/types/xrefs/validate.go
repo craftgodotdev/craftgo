@@ -7,6 +7,33 @@ import (
 	"unicode/utf8"
 )
 
+// Validate checks every field-level constraint declared on XBagPromoteReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XBagPromoteReq) Validate() error {
+	if err := v.XWrapInBag.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XBodyPromoteReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XBodyPromoteReq) Validate() error {
+	if err := v.XPromoteBody.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XByKeyReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XByKeyReq) Validate() error {
+	if err := v.XPathKey.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on XEnumDefault.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XEnumDefault) Validate() error {
@@ -45,6 +72,9 @@ func (v *XEnumMaps) Validate() error {
 // Validate checks every field-level constraint declared on XEnumScalar.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XEnumScalar) Validate() error {
+	if v.Flat == "" {
+		return fmt.Errorf("flat: required")
+	}
 	if err := v.Flat.Validate(); err != nil {
 		return err
 	}
@@ -91,6 +121,15 @@ func (v *XGetReq) Validate() error {
 // Validate checks every field-level constraint declared on XLocalItem.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XLocalItem) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XNestedReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XNestedReq) Validate() error {
+	if err := v.XParent.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -189,6 +228,27 @@ func (v *XTypeMixin) Validate() error {
 	}
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XWirePromoteReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XWirePromoteReq) Validate() error {
+	if err := v.XPromoteWire.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XMixinErrBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XMixinErrBody) Validate() error {
+	if err := v.XOwner.Validate(); err != nil {
+		return err
+	}
+	if l := utf8.RuneCountInString(v.Reason); l < 1 || l > 200 {
+		return fmt.Errorf("reason: length out of range [1, 200]")
 	}
 	return nil
 }

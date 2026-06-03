@@ -44,6 +44,35 @@ func scalarFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 	return scalarPrimitiveDSL(sd.Primitive)
 }
 
+// enumFieldPrimitive returns the underlying primitive ("int" or "string")
+// of a flat enum-typed field, or "" when the field is not an enum (or is
+// an array / map). A field-level numeric / string constraint on an enum is
+// advertised in OpenAPI (via the allOf wrapper), so it must be enforced
+// too — routing through [scalarFieldLevelChecks] with this primitive casts
+// the enum value to int / string before the numeric / string emitters run,
+// the same trick scalars use. Without it the enum's name fails every
+// validator's primitive type-guard and the constraint is silently dropped.
+func enumFieldPrimitive(f *ast.Field, ctx emitCtx) string {
+	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return ""
+	}
+	name := f.Type.Named.Name.String()
+	var ed *ast.EnumDecl
+	if ctx.pkg != nil {
+		ed = ctx.pkg.Enums[name]
+	}
+	if ed == nil && ctx.resolver != nil {
+		ed = ctx.resolver.LookupEnum(name)
+	}
+	if ed == nil {
+		return ""
+	}
+	if firstEnumKind(ed) == ast.EnumInt {
+		return "int"
+	}
+	return "string"
+}
+
 // scalarFieldLevelChecks emits the field-level decorators (`@lte`,
 // `@maxLength`, `@pattern`, ...) declared ON a scalar-typed FIELD — the
 // extra constraints a field stacks on top of the scalar's own ones
@@ -85,12 +114,19 @@ func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) s
 	}
 	body := strings.Join(checks, "\n")
 	primGo := scalarPrimitiveGo(primDSL)
-	if goFieldIsPointer(f) {
-		// Optional / @nullable scalar field: only run when present, and
-		// cast the dereferenced value.
+	switch {
+	case goFieldIsPointer(f, ctx.pkg, ctx.resolver):
+		// Optional / @nullable scalar over a value primitive lowers to *T:
+		// only run when present, and cast the dereferenced value.
 		return fmt.Sprintf("if %s != nil {\n%s := %s(*%s)\n%s\n}", access, local, primGo, access, body)
+	case scalarRefNilable(f.Type, ctx.pkg, ctx.resolver) && (f.Type.Optional || hasNullableDecorator(f.Decorators)):
+		// Optional / @nullable scalar over a nilable primitive (bytes)
+		// carries no pointer, but a nil value is the valid absent / null
+		// state — guard, then cast the value directly (no deref).
+		return fmt.Sprintf("if %s != nil {\n%s := %s(%s)\n%s\n}", access, local, primGo, access, body)
+	default:
+		return fmt.Sprintf("{\n%s := %s(%s)\n%s\n}", local, primGo, access, body)
 	}
-	return fmt.Sprintf("{\n%s := %s(%s)\n%s\n}", local, primGo, access, body)
 }
 
 // scalarDeclHasValidators reports whether any of the scalar's

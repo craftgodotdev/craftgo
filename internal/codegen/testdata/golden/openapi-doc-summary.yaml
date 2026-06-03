@@ -44,8 +44,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetBookRespBody'
           description: OK
-        default:
-          description: ""
       summary: Get a book
       tags:
       - S

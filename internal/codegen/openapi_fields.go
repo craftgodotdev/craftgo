@@ -50,15 +50,18 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	//     [{$ref}, {constraints}], so a field that tightens the referenced
 	//     type advertises the bound the runtime validator enforces.
 	//   - @default / @deprecated -> carried on the wrapper.
-	// Field-specific description / example stay with the $ref (alias the
-	// type for a field-specific one); on a wrapper they render
-	// inconsistently across clients.
+	//   - field-level @doc / @example -> carried on the wrapper as
+	//     siblings of the allOf/anyOf, so a field that documents or
+	//     exemplifies the referenced type keeps that metadata instead of
+	//     dropping it (a bare $ref has nowhere portable to hang them).
 	if ref.Ref != "" {
 		nullable := hasNullableDecorator(f.Decorators) || (f.Type != nil && f.Type.Optional)
 		extra := fieldConstraintSchema(f)
 		def, hasDef := resolveDefaultValue(f, pkg)
 		deprecated := hasDeprecatedDecorator(f.Decorators)
-		if !nullable && extra == nil && !hasDef && !deprecated {
+		desc := resolveDescription(f.Decorators, f.Doc)
+		ex, hasEx := exampleValue(f, pkg)
+		if !nullable && extra == nil && !hasDef && !deprecated && desc == "" && !hasEx {
 			return
 		}
 		base := ref.Ref
@@ -78,6 +81,9 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		default:
 			w.AllOf = openapi3.SchemaRefs{{Ref: base}}
 		}
+		if desc != "" {
+			w.Description = desc
+		}
 		if hasDef {
 			w.Default = def
 		}
@@ -87,23 +93,28 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 				w.Description = appendDescription(w.Description, "Deprecated: "+reason)
 			}
 		}
+		if hasEx {
+			w.Example = ex
+		}
 		ref.Value = w
 		return
 	}
 	if ref.Value == nil {
 		return
 	}
-	// Optional-ref wrapper (anyOf:[$ref, {type:null}]). Cosmetic
-	// metadata like description/example would land on the wrapper, which
-	// tooling renders inconsistently - some UI generators show it next
-	// to the field, others let the $ref's own description win. We drop
-	// those decorators here; users who need a field-specific
-	// description should alias the type (`type Manager = User`).
-	// `default` and the narrowing constraints stay: as siblings of the
-	// anyOf they are ANDed with the resolved value (a numeric bound is
-	// vacuous for the `null` branch), keeping the spec in step with the
-	// runtime validator.
+	// Optional-ref wrapper (anyOf:[$ref, {type:null}]). Field-level
+	// metadata lands on the wrapper as siblings of the anyOf: the
+	// field's @doc / @example document this specific use of the
+	// referenced type, and `default` / narrowing constraints are ANDed
+	// with the resolved value (a numeric bound is vacuous for the `null`
+	// branch), keeping the spec in step with the runtime validator.
 	if isNullableRefWrapper(ref.Value) {
+		if desc := resolveDescription(f.Decorators, f.Doc); desc != "" {
+			ref.Value.Description = desc
+		}
+		if ex, ok := exampleValue(f, pkg); ok {
+			ref.Value.Example = ex
+		}
 		if def, ok := resolveDefaultValue(f, pkg); ok {
 			ref.Value.Default = def
 		}
@@ -130,7 +141,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	if hasNullableDecorator(f.Decorators) || (f.Type != nil && f.Type.Optional) {
 		applyNullable(ref.Value)
 	}
-	if ex, ok := exampleValue(f.Decorators); ok {
+	if ex, ok := exampleValue(f, pkg); ok {
 		ref.Value.Example = ex
 	}
 	if def, ok := resolveDefaultValue(f, pkg); ok {
@@ -244,16 +255,56 @@ func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 			native(v)
 		}
 	}
+	// curExtNumber reads the current numeric value of an Extensions key as a
+	// float64, handling both the float64 and json.Number representations.
+	curExtNumber := func(key string) (float64, bool) {
+		if s.Extensions == nil {
+			return 0, false
+		}
+		switch v := s.Extensions[key].(type) {
+		case float64:
+			return v, true
+		case json.Number:
+			if f, err := v.Float64(); err == nil {
+				return f, true
+			}
+		}
+		return 0, false
+	}
+	// setExclusive intersects an exclusive bound: the runtime runs EVERY
+	// decorator, so the tightest wins — the LARGEST exclusiveMinimum and the
+	// SMALLEST exclusiveMaximum. Without this, stacking `@gt(5) @positive`
+	// (or `@lt(-5) @negative`) would advertise the LOOSER last-writer bound
+	// (exclusiveMinimum 0) while the validator enforces the tighter one.
+	setExclusive := func(key string, v float64, raw interface{}) {
+		if cur, ok := curExtNumber(key); ok {
+			if key == "exclusiveMinimum" && v <= cur {
+				return
+			}
+			if key == "exclusiveMaximum" && v >= cur {
+				return
+			}
+		}
+		if raw != nil {
+			ext(key, raw)
+		} else {
+			ext(key, v)
+		}
+	}
 	// emitExclusive writes an exclusive bound, always through Extensions as a
 	// number (kin-openapi still models ExclusiveMin/Max as the 3.0 booleans);
 	// big integers ride as a raw json.Number, smaller values as a float64.
 	emitExclusive := func(key string, d *ast.Decorator, i int) {
 		if r, ok := rawIfBigInt(d, i); ok {
-			ext(key, r)
+			if f, err := r.Float64(); err == nil {
+				setExclusive(key, f, r)
+			} else {
+				ext(key, r)
+			}
 			return
 		}
 		if v, ok := numericArgValue(d, i); ok {
-			ext(key, v)
+			setExclusive(key, v, nil)
 		}
 	}
 	// Intersect rather than overwrite: the runtime validator runs EVERY
@@ -287,9 +338,9 @@ func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 			emitBound("minimum", d, 0, setMin)
 			emitBound("maximum", d, 1, setMax)
 		case "positive":
-			ext("exclusiveMinimum", float64(0))
+			setExclusive("exclusiveMinimum", float64(0), nil)
 		case "negative":
-			ext("exclusiveMaximum", float64(0))
+			setExclusive("exclusiveMaximum", float64(0), nil)
 		case "multipleOf":
 			if r, ok := rawIfBigInt(d, 0); ok {
 				ext("multipleOf", r)
@@ -486,11 +537,20 @@ func defaultValue(ds []*ast.Decorator) (any, bool) {
 // Everything else (including bare enums, whose name IS the wire value)
 // falls through to [defaultValue].
 func resolveDefaultValue(f *ast.Field, pkg *semantic.Package) (any, bool) {
+	return resolveDecoratorLiteral(f, pkg, "default")
+}
+
+// resolveDecoratorLiteral resolves the literal value of a value-bearing
+// decorator (`@default` / `@example`) on a field, resolving an enum-member
+// identifier (or an array of them) to its wire value. Shared so @example
+// and @default agree — without it, @example silently drops a bare
+// enum-member ident that @default handles.
+func resolveDecoratorLiteral(f *ast.Field, pkg *semantic.Package, decName string) (any, bool) {
 	if f == nil {
 		return nil, false
 	}
 	for _, d := range f.Decorators {
-		if d.Name != "default" || len(d.Args) == 0 {
+		if d.Name != decName || len(d.Args) == 0 {
 			continue
 		}
 		// The enum a member identifier resolves against — for an array
@@ -565,14 +625,8 @@ func resolveEnumMember(pkg *semantic.Package, enumName, member string) (any, boo
 // `[]any` so array-typed properties get a sensible YAML rendering.
 // Returns (nil, false) when no example decorator is present so the
 // caller leaves the schema untouched.
-func exampleValue(ds []*ast.Decorator) (any, bool) {
-	for _, d := range ds {
-		if d.Name != "example" || len(d.Args) == 0 {
-			continue
-		}
-		return literalToAny(d.Args[0].Value)
-	}
-	return nil, false
+func exampleValue(f *ast.Field, pkg *semantic.Package) (any, bool) {
+	return resolveDecoratorLiteral(f, pkg, "example")
 }
 
 // literalToAny converts an [ast.Expr] literal into the equivalent Go

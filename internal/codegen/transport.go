@@ -275,12 +275,43 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		alias, bare, extra := resolveTypeRef(m.Request, crossPkg)
 		d.RequestPkgAlias = alias
 		d.RequestType = bare
-		// Cross-package request → drop the canonical types import;
-		// the only types reference in the handler body now resolves
-		// via the cross-pkg alias.
+		extraSeen := map[string]bool{}
+		addExtra := func(e extraImport) {
+			if e.Path == "" || extraSeen[e.Path] {
+				return
+			}
+			extraSeen[e.Path] = true
+			d.ExtraTypesImports = append(d.ExtraTypesImports, e)
+		}
+		// Cross-package request → drop the canonical types import; the only
+		// types reference in the handler body now resolves via the cross-pkg
+		// alias. Edge case: a cross-pkg generic with a LOCAL type-arg
+		// (`shared.WrapBag<Item>` → `shared.WrapBag[types.Item]`) still
+		// references the canonical `types` alias for the inner arg, so keep
+		// the import when the rendered type carries a `types.` reference —
+		// mirroring the scaffold-service guard. But when the cross-pkg request
+		// package itself is named `types`, its alias IS `types`, so the
+		// `types.` references are the cross-pkg ones (covered by `extra`); keep
+		// the canonical import too and they collide (`types redeclared`).
 		if extra.Path != "" {
-			d.NeedsTypes = false
-			d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
+			if alias == "types" || !strings.Contains(bare, "types.") {
+				d.NeedsTypes = false
+			}
+			addExtra(extra)
+		}
+		// The request type's own generic type-args reach further packages
+		// (`genpkg.Box<argpkg.Owner>` → `var req genpkg.Box[argpkg.Owner]`),
+		// so import every arg package — the transport sibling of the service
+		// scaffold's addRefExtras, which fixed the scaffold but left this
+		// handler emitter dropping the arg import (`undefined: argpkg`).
+		argSet := map[string]bool{}
+		walkCrossPkgImports(&ast.TypeRef{Named: m.Request}, crossPkg, argSet)
+		pathAlias := map[string]string{}
+		for a, p := range crossPkg {
+			pathAlias[p] = a
+		}
+		for path := range argSet {
+			addExtra(extraImport{Alias: pathAlias[path], Path: path})
 		}
 		// Wire binders cast cross-package scalar fields to their
 		// declared Go type — `req.ID = shared.ID(r.PathValue("id"))`.
@@ -288,12 +319,9 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		// it into the file's import block, and the cast compiles to
 		// `undefined: shared`. Walk every field type of the request
 		// struct so transitively-referenced packages get pulled in.
-		fieldImports := collectRequestFieldImports(m, pkg, crossPkg)
+		fieldImports := collectRequestFieldImports(m, pkg, crossPkg, r)
 		for _, alias := range sortedKeys(fieldImports) {
-			d.ExtraTypesImports = append(d.ExtraTypesImports, extraImport{
-				Alias: alias,
-				Path:  fieldImports[alias],
-			})
+			addExtra(extraImport{Alias: alias, Path: fieldImports[alias]})
 		}
 		var err error
 		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, d.NeedsStrconv, err = collectBindings(m, pkg, d.RequestPkgAlias, r)
@@ -306,7 +334,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		_ = scalars
 		// JSON body decode is only needed when at least one field is
 		// body-bound (default for body verbs unless explicitly tagged).
-		d.BodyDecode = hasBodyVerb(m.Verb) && hasUnboundField(m, pkg)
+		d.BodyDecode = hasBodyVerb(m.Verb) && hasUnboundField(m, pkg, r)
 	}
 	if hasPassthroughDecorator(m.Decorators) {
 		d.IsPassthrough = true
@@ -693,12 +721,29 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	var shape string
 	needsStrconv := false
 	if f.Type.Array {
+		// An array @default pre-fills the slice; the binding must REPLACE it
+		// when the key is present and PRESERVE it when absent. The parsed
+		// path's server.BindValues already does both; the string-slice paths
+		// otherwise overwrite-with-nil (direct) or append (cast), destroying
+		// or polluting the default — so they use presence-guarded variants.
+		// The has-default test uses resolveDefaultValue — the same oracle the
+		// prefill emits from — so an enum-member array default (`[Red, Blue]`,
+		// which defaultValue can't resolve) is seen as a default here too.
+		_, hasDef := resolveDefaultValue(f, pkg)
 		if prim.parser == "" {
 			if cast == "" {
-				shape = renderWireBindShape("directSlice", data)
+				if hasDef {
+					shape = renderWireBindShape("directSliceDefaulted", data)
+				} else {
+					shape = renderWireBindShape("directSlice", data)
+				}
 			} else {
 				data.Wrap = wrap("_v")
-				shape = renderWireBindShape("arrayString", data)
+				if hasDef {
+					shape = renderWireBindShape("arrayStringDefaulted", data)
+				} else {
+					shape = renderWireBindShape("arrayString", data)
+				}
 			}
 		} else {
 			shape = renderWireBindShape("arrayParsed", data)
@@ -715,7 +760,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 					data.Wrap = wrap("_v")
 					shape = renderWireBindShape("optionalStringCast", data)
 				}
-			} else if _, hasDef := defaultValue(f.Decorators); hasDef {
+			} else if _, hasDef := resolveDefaultValue(f, pkg); hasDef {
 				// A string-backed param carrying @default: only overwrite
 				// the pre-filled default when the param is actually present,
 				// mirroring the parsed path's `raw != ""` guard. An
@@ -749,7 +794,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	// cookie-guard wrap so an absent required cookie 400s rather than
 	// skipping silently.
 	if src.presenceExpr != nil && !f.Type.Optional {
-		if _, hasDef := defaultValue(f.Decorators); !hasDef {
+		if _, hasDef := resolveDefaultValue(f, pkg); !hasDef {
 			guard := fmt.Sprintf("if !server.RequirePresent(w, r, %s, %q, %q) {\nreturn\n}", src.presenceExpr(wireName), wireName, src.kind)
 			shape = guard + "\n" + shape
 		}

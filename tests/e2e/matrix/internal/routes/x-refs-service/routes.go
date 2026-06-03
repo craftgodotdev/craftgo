@@ -16,7 +16,16 @@ import (
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/xrefs/items/{id}", transport.GetItem(svcCtx))
+	srv.Handle("GET /api/xrefs/by-key/{key}", transport.GetByKey(svcCtx))
+	srv.Handle("POST /api/xrefs/promote-body", transport.PromoteBody(svcCtx))
+	srv.Handle("GET /api/xrefs/promote-wire", transport.PromoteWire(svcCtx))
+	srv.Handle("POST /api/xrefs/promote-bag", transport.PromoteBag(svcCtx))
+	srv.Handle("GET /api/xrefs/nested/{gKey}", transport.GetNested(svcCtx))
 	srv.Handle("GET /api/xrefs/items", transport.ListItems(svcCtx))
 	srv.Handle("GET /api/xrefs/search", transport.Search(svcCtx))
 	srv.Handle("POST /api/xrefs/defaults", transport.PostDefault(svcCtx))
+	srv.Handle("POST /api/xrefs/promote-holder/{id}", transport.PromoteHolder(svcCtx))
+	srv.Handle("POST /api/xrefs/wrap-local", transport.WrapLocal(svcCtx))
+	srv.Handle("GET /api/xrefs/traced/{id}", transport.GetTraced(svcCtx))
+	srv.Handle("GET /api/xrefs/third/{id}", transport.GetThird(svcCtx))
 }

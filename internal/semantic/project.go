@@ -101,6 +101,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	perPkgOpts.skipExtendOrphanCheck = true
 	perPkgOpts.skipMixinCheck = true
 	perPkgOpts.skipBindingTypeCheckQualified = true
+	perPkgOpts.skipPathParamCheck = true
 	var diags []Diagnostic
 	for name, group := range groups {
 		pkg, pkgDiags := AnalyzeWith(group, perPkgOpts)
@@ -108,7 +109,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		diags = append(diags, pkgDiags...)
 	}
 	// Per-file import resolution + qualified-ref check.
-	r := &refResolver{proj: proj, diags: diags}
+	r := &refResolver{proj: proj, diags: diags, basePath: opts.BasePath}
 	for _, f := range files {
 		r.processFile(f, opts.DesignRoot)
 	}
@@ -120,6 +121,9 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectFieldDefaults()
 	r.checkProjectMixins()
 	r.checkProjectBindings()
+	r.checkProjectPathParams()
+	r.checkProjectFieldRules()
+	r.checkProjectFieldGroups()
 	return proj, r.diags
 }
 

@@ -299,11 +299,12 @@ type RgItemView struct {
 // Exact-length string, range form, and bytes length. The validator counts
 // the raw byte length OpenAPI advertises for the bytes fields.
 type RgLengths struct {
-	Code   RgCode  `json:"code"`
-	Inline string  `json:"inline"`
-	Rng    string  `json:"rng"`
-	Token  RgToken `json:"token"`
-	Raw    []byte  `json:"raw"`
+	Code     RgCode  `json:"code"`
+	Inline   string  `json:"inline"`
+	Rng      string  `json:"rng"`
+	Token    RgToken `json:"token"`
+	NulToken RgToken `json:"nulToken,omitempty"`
+	Raw      []byte  `json:"raw"`
 }
 
 // Scalar fields combining @nullable with a field-level constraint. The

@@ -39,8 +39,9 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	check := ifReturnf(cond, msg)
 	// A nil slice / map at an optional or `@nullable` field is the valid
 	// "absent / null" state the OpenAPI null-union advertises, so skip the
-	// count check rather than reject it (`len(nil)` is 0).
-	if fieldNeedsNilGuard(f) {
+	// count check rather than reject it (`len(nil)` is 0). The collection
+	// nilability is syntactic, so no scalar resolver is needed.
+	if fieldNeedsNilGuard(f, nil, nil) {
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
 	return check
@@ -63,7 +64,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 // A bare block scopes `seen` to this check so multiple @uniqueItems
 // validators on the same struct don't shadow each other; `return` still
 // escapes back to the enclosing Validate() method.
-func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool) string {
+func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool, crossPkg CrossPkg) string {
 	if f.Type == nil || !f.Type.Array {
 		return ""
 	}
@@ -78,6 +79,10 @@ func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool) string 
 		return ""
 	}
 	uses["fmt"] = true
+	// The dedupe map keys on the element type; a cross-package element
+	// (`make(map[shared.Name]struct{})`) references that package, so its
+	// import must be registered or the validator won't compile.
+	walkCrossPkgImports(f.Type, crossPkg, uses)
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {

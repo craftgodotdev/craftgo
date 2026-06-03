@@ -30,7 +30,9 @@ func shape(f *ast.Field, access string, body func(elem string) string) string {
 	switch {
 	case f.Type != nil && f.Type.Array:
 		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
-	case goFieldIsPointer(f):
+	case goFieldIsPointer(f, nil, nil):
+		// Reached only for generic type-param probes, never a direct nilable
+		// scalar, so the pointer test needs no scalar resolver.
 		// The Go field is *T — from `?` (optional) OR `@nullable`
 		// (required-but-nullable). Key on the actual pointer-ness, not
 		// just the `?` suffix: a `@nullable` enum/scalar field lowers to

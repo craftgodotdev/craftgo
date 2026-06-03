@@ -157,6 +157,17 @@ func (v *PathStringReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on QueryArrayEnumDefaultReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *QueryArrayEnumDefaultReq) Validate() error {
+	for i0 := range v.Colors {
+		if err := v.Colors[i0].Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on QueryArrayIntReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *QueryArrayIntReq) Validate() error {

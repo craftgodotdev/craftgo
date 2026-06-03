@@ -195,3 +195,27 @@ func TestCrossPkgImportForGuards(t *testing.T) {
 		t.Error("unknown alias should return empty")
 	}
 }
+
+// TestCollectBodyImportsMixinFileArg pins that the shared body import walk
+// collects a stdlib-backed builtin (`file` → mime/multipart) that appears as
+// the generic ARGUMENT of a MIXIN (`m.Box<file>` → embedded
+// `m.Box[*multipart.FileHeader]`). The mixin branch must route the ref through
+// collectFieldImports like the field branch does, or the generated types.go /
+// errors.go references multipart without importing it.
+func TestCollectBodyImportsMixinFileArg(t *testing.T) {
+	cross := CrossPkg{"m": "github.com/x/internal/types/m"}
+	body := []ast.TypeMember{
+		&ast.Mixin{Ref: &ast.NamedTypeRef{
+			Name: &ast.QualifiedIdent{Parts: []string{"m", "Box"}},
+			Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"file"}}}}},
+		}},
+	}
+	imports := map[string]bool{}
+	collectBodyImports(body, cross, imports)
+	if !imports["mime/multipart"] {
+		t.Errorf("a mixin with a file generic-arg must import mime/multipart; got %v", imports)
+	}
+	if !imports[cross["m"]] {
+		t.Errorf("the mixin's own package must be imported; got %v", imports)
+	}
+}

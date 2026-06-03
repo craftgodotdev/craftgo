@@ -2,11 +2,18 @@
 
 package xshared
 
+import (
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+)
+
 // XEmail is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XEmail string
 
 // XNodeID is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XNodeID int
+
+// XSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type XSize int
 
 // XTimestamp is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XTimestamp string
@@ -29,10 +36,111 @@ type XBag[T any] struct {
 	Cap   int `json:"cap"`
 }
 
+// XGrand is a leaf mixin reached only through a CHAIN of mixins: XParent
+// embeds it (bare, same-package ref inside xshared), and a consumer in
+// another package embeds XParent. So a field here sits two mixin levels
+// deep, the inner link being a bare ref inside a cross-package mixin —
+// the case the codegen flattener and the path-param check must qualify as
+// `xshared.XGrand`, or `gKey`'s @path and `g32`'s @default silently drop.
+type XGrand struct {
+	GKey string `json:"-"`
+	G32  *int32 `json:"g32,omitempty"`
+}
+
+// XHeaderResp is used as a QUALIFIED cross-package response
+// (`response xshared.XHeaderResp`) by xrefs. Its @header / @cookie fields
+// must be written by the handler even though the response type is
+// cross-package — the response-binding collector resolves it through the
+// project resolver, or the values silently drop (the fields are `json:"-"`)
+// while OpenAPI still advertises the header/cookie.
+type XHeaderResp struct {
+	ID    string `json:"id"`
+	Trace string `json:"-"`
+	Sess  string `json:"-"`
+}
+
+// XHolder is used as a QUALIFIED request type (`request xshared.XHolder`) by
+// xrefs' service. Because the request type lives here, its bare nested mixin
+// XHolderSub resolves in xshared — the binder must thread xshared as the
+// flatten prefix, or `q` (the @query param) and `bod` (the body field) are
+// silently dropped from the handler while the validator still enforces them.
+type XHolder struct {
+	XHolderSub
+	ID string `json:"-"`
+}
+
+// XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields —
+// a @query param, a JSON-body field, and a defaulted @query param — must
+// survive when XHolder is used as a QUALIFIED request type from another
+// package. The `limit` default must also PRE-FILL in the handler (the
+// default-collection pass threads the same xshared prefix as the binder);
+// without it the binder binds `limit` but the documented `default: 50` never
+// seeds, so an omitted param yields 0 instead of 50.
+type XHolderSub struct {
+	Q     string `json:"-"`
+	Bod   string `json:"bod"`
+	Limit *int32 `json:"-"`
+}
+
 // XOwner is a cross-package type used in field positions, exercising
 // recursive validate dispatch (`v.Owner.Validate()`) when the owner
 // field's type lives in xshared.
 type XOwner struct {
 	ID    string `json:"id"`
 	Email XEmail `json:"email"`
+}
+
+// XParent embeds XGrand (bare) and adds its own default; consumers embed
+// XParent to reach both levels.
+type XParent struct {
+	XGrand
+	P64 *int64 `json:"p64,omitempty"`
+}
+
+// XPathKey is a cross-package mixin that carries a `@path`-bound field.
+// xrefs embeds it in a request whose route declares `{key}`; the path
+// segment binds through the mixin. The per-package pass can't expand a
+// sibling-package mixin, so the project-level path-param check owns the
+// verdict — the same cross-package flattening the codegen binder does.
+type XPathKey struct {
+	Key string `json:"-"`
+}
+
+// XPromoteBody bundles fields a consumer reaches only by EMBEDDING it
+// across the package boundary: a required body field (the handler must
+// emit the JSON decode), a cross-package scalar @default (the pre-fill
+// must cast `xshared.XSize(20)`), and a cross-package enum @default (the
+// pre-fill must qualify `xshared.XColorGreen`). Promotion re-qualifies
+// each bare field type to xshared so the binder / pre-fill resolve it.
+type XPromoteBody struct {
+	Label string  `json:"label"`
+	Size  *XSize  `json:"size,omitempty"`
+	Tone  *XColor `json:"tone,omitempty"`
+}
+
+// XPromoteWire carries a cross-package scalar bound to @query, reached
+// through a mixin: the binder must cast `xshared.XEmail(...)` AND pull in
+// the xshared import, both of which need the promoted field's type
+// re-qualified to its home package.
+type XPromoteWire struct {
+	Q XEmail `json:"-"`
+}
+
+// XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by
+// xrefs, and its field reaches a THIRD package (`shared`). The xrefs handler
+// casts `shared.Severity(...)`, so the import collector must resolve the
+// qualified request through the project resolver and pull in `shared` — or
+// the cast compiles to `undefined: shared`.
+type XThirdReq struct {
+	Sev shared.Severity `json:"-"`
+	ID  string          `json:"-"`
+}
+
+// XParametric is a generic mixin host: `XWrapInBag` embeds `XBag<T>` and a
+// consumer instantiates it. The OpenAPI mixin branch must substitute the
+// host's type-param into the embedded generic's args, or it registers a
+// phantom `XBagOfT` whose element `$ref` dangles.
+type XWrapInBag[T any] struct {
+	XBag[T]
+	WrapNote *string `json:"wrapNote,omitempty"`
 }

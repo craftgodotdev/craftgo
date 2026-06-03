@@ -573,6 +573,14 @@ components:
       $ref: '#/components/schemas/Product'
     InternalErr:
       description: Internal error response (HTTP 500).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     Latitude:
       maximum: 90
@@ -753,6 +761,14 @@ components:
       type: object
     OrderNotFoundErr:
       description: NotFound error response (HTTP 404).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     OrderStatus:
       enum:
@@ -1038,9 +1054,7 @@ components:
       scheme: bearer
       type: http
     oauth2:
-      bearerFormat: JWT
-      scheme: bearer
-      type: http
+      type: oauth2
 info:
   title: Ecommerce API
   version: 1.0.0
@@ -1071,8 +1085,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListCategoriesRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - catalog
   /catalog/products:
@@ -1112,8 +1124,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListProductsRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - catalog
     post:
@@ -1132,8 +1142,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateProductRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1157,8 +1165,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeleteProductRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - oauth2: []
       tags:
@@ -1181,8 +1187,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetProductRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - catalog
   /customers:
@@ -1222,8 +1226,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RateLimitedErr'
           description: TooManyRequests
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1244,8 +1246,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateCustomerRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1269,8 +1269,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeleteCustomerRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - bearer: []
       - oauth2: []
@@ -1300,8 +1298,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthorizedErr'
           description: Unauthorized
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1340,8 +1336,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UploadAvatarRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1375,8 +1369,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaymentFailedErr'
           description: Conflict
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1418,8 +1410,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/MaintenanceWindowErr'
           description: ServiceUnavailable
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1455,8 +1445,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderNotFoundErr'
           description: NotFound
-        default:
-          description: ""
       security:
       - bearer: []
       - oauth2: []
@@ -1481,8 +1469,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReplayRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - bearer: []
       - oauth2: []
@@ -1519,8 +1505,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderNotFoundErr'
           description: NotFound
-        default:
-          description: ""
       security:
       - bearer: []
       - oauth2: []
@@ -1545,8 +1529,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackPublicRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1610,8 +1592,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/FilterOrdersRespBody'
           description: OK
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1633,8 +1613,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DefaultsRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - bearer: []
       tags:
@@ -1664,8 +1642,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkExportRespBody'
           description: Created
-        default:
-          description: ""
       security:
       - bearer: []
       - oauth2: []
@@ -1682,8 +1658,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PublicHealthRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - orders
   /orders/list-orders:
@@ -1729,8 +1703,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/RateLimitedErr'
           description: TooManyRequests
-        default:
-          description: ""
       security:
       - bearer: []
       tags:

@@ -97,6 +97,11 @@ var repeatableDecorators = map[string]bool{
 	"security":    true,
 	"tags":        true,
 	"middlewares": true,
+	// @errors aggregates like the others (codegen iterates every @errors
+	// decorator with a seen-map dedup), and extend-service inheritance
+	// PREPENDS the extend block's @errors onto a method's own — so two
+	// occurrences are the intended idiom, not a duplicate.
+	"errors": true,
 }
 
 // checkDecoratorConflicts fires CodeDecoratorConflict for any field

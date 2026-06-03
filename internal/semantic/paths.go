@@ -69,7 +69,9 @@ func (a *analyzer) checkPathResolution() {
 					svcName, m.Name, route)
 			}
 
-			a.checkMethodPathParams(svcName, m, route)
+			if !a.opts.skipPathParamCheck {
+				checkMethodPathParams(svcName, m, route, a.pathParamEnv())
+			}
 
 			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide — they
 			// register against the same net/http pattern at boot. The
@@ -152,9 +154,16 @@ func (a *analyzer) checkBasePathFormat() {
 // always starts with `/`. When the method has no inline path the
 // fallback is the kebab-cased method name (matching codegen).
 func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
+	return resolveRoute(a.opts.BasePath, svc, m)
+}
+
+// resolveRoute is the analyzer-independent core of [analyzer.resolveMethodPath]
+// so the project-level path-param pass can compute the same route without an
+// analyzer instance.
+func resolveRoute(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
 	parts := []string{}
-	if a.opts.BasePath != "" {
-		parts = append(parts, a.opts.BasePath)
+	if basePath != "" {
+		parts = append(parts, basePath)
 	}
 	if p := decoratorString(svc, "prefix"); p != "" {
 		parts = append(parts, p)
@@ -216,7 +225,13 @@ func decoratorString(svc *ast.ServiceDecl, name string) string {
 // Auto-bound fields are NOT subject to the orphan check - only
 // explicitly-decorated ones, since a bare-named field that happens
 // to not match the path is just a regular query/body field.
-func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route string) {
+//
+// The two run modes differ only in their [pathParamEnv]: the per-package
+// analyzer resolves names against its own package, while the project-
+// level pass ([refResolver.checkProjectPathParams]) resolves qualified
+// mixin / request names across packages - so `type Req { shared.IdHolder }`
+// binds its `@path` field the same way the codegen binder does.
+func checkMethodPathParams(svcName string, m *ast.Method, route string, env pathParamEnv) {
 	pathParams := extractPathParams(route)
 	// When the route declares `{param}` segments but the method has no
 	// request struct, the generated logic signature drops to bare
@@ -239,7 +254,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 			}
 		}
 		if len(pathParams) > 0 && !passthrough {
-			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
+			env.emit(m.Pos, CodePathParamMissing,
 				"method %s.%s: path declares %v but no request struct — path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
 				svcName, m.Name, pathParams)
 		}
@@ -248,7 +263,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 	if len(pathParams) == 0 && m.Request.Name == nil {
 		return
 	}
-	reqFields := a.requestPathFields(m, pathParams)
+	reqFields := requestPathFields(m, pathParams, env)
 	if reqFields == nil {
 		// Unknown / cross-package request type - placement / qualified-ref
 		// pass owns the diagnostic; we silently skip rather than emit a
@@ -258,7 +273,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 	// Missing: route param has no field.
 	for _, p := range pathParams {
 		if !reqFields.has(p) {
-			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
+			env.emit(m.Pos, CodePathParamMissing,
 				"method %s.%s: path segment {%s} has no matching field in request type",
 				svcName, m.Name, p)
 		}
@@ -268,9 +283,73 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 	// that happens not to coincide with any path segment.
 	for _, name := range reqFields.explicit {
 		if !inSet(name, pathParams) {
-			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
+			env.emit(m.Pos, CodePathParamOrphan,
 				"method %s.%s: field %q has @path binding but route %s has no {%s} segment",
 				svcName, m.Name, name, route, name)
+		}
+	}
+}
+
+// pathParamEnv abstracts the two run modes of [checkMethodPathParams]:
+// how a (possibly qualified) type name resolves to its declaration, and
+// where diagnostics are sent. The per-package analyzer resolves against
+// its own package; the project resolver resolves across every package.
+type pathParamEnv struct {
+	// lookup resolves a type name - bare (`IdHolder`) or qualified
+	// (`shared.IdHolder`) - to its declaration, or nil when unresolved.
+	lookup func(name string) *ast.TypeDecl
+	// emit records a path-param diagnostic (always SeverityError).
+	emit func(pos lexer.Position, code, format string, args ...any)
+}
+
+// pathParamEnv builds the per-package environment: names resolve in the
+// analyzer's own package, diagnostics land on a.diags.
+func (a *analyzer) pathParamEnv() pathParamEnv {
+	return pathParamEnv{
+		lookup: func(name string) *ast.TypeDecl { return a.pkg.Types[name] },
+		emit: func(pos lexer.Position, code, format string, args ...any) {
+			a.diag(pos, pos, lexer.SeverityError, code, format, args...)
+		},
+	}
+}
+
+// checkProjectPathParams re-runs the `@path` segment ↔ field check with
+// cross-package visibility. The per-package pass is muted under
+// [Options.skipPathParamCheck] in project mode (it can't expand a mixin
+// pulled from a sibling package), so this is the single emit site there.
+// A request type and its mixins resolve across packages exactly as the
+// codegen binder's [flattenFields] does, so the diagnostic agrees with
+// what codegen will generate.
+func (r *refResolver) checkProjectPathParams() {
+	for pkgName, pkg := range r.proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		current := pkgName
+		env := pathParamEnv{
+			lookup: func(name string) *ast.TypeDecl {
+				if i := strings.LastIndexByte(name, '.'); i >= 0 {
+					if p := r.proj.Packages[name[:i]]; p != nil {
+						return p.Types[name[i+1:]]
+					}
+					return nil
+				}
+				if p := r.proj.Packages[current]; p != nil {
+					return p.Types[name]
+				}
+				return nil
+			},
+			emit: func(pos lexer.Position, code, format string, args ...any) {
+				r.diag(pos, lexer.SeverityError, code, format, args...)
+			},
+		}
+		for svcName, si := range pkg.Services {
+			if si == nil {
+				continue
+			}
+			for _, m := range si.Methods {
+				checkMethodPathParams(svcName, m, resolveRoute(r.basePath, si.Primary, m), env)
+			}
 		}
 	}
 }
@@ -294,19 +373,21 @@ func (s *pathParamSet) has(name string) bool {
 }
 
 // requestPathFields walks the method's request type and classifies
-// fields against pathParams. Mixin members are expanded recursively so
-// `type Req { Base  name string }` exposes Base's fields for path
-// binding - same view the codegen handler binder gets.
+// fields against pathParams. Mixin members are expanded recursively
+// through env.lookup so `type Req { Base  name string }` exposes Base's
+// fields for path binding - the same view the codegen handler binder
+// gets, including mixins pulled from a sibling package.
 //
-// Returns nil when the request type can't be resolved (cross-package
-// or unknown name) so the caller can skip path-param checks rather
-// than emit a confusing missing-field error.
-func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathParamSet {
-	if m.Request == nil || m.Request.Name == nil || len(m.Request.Name.Parts) != 1 {
+// Returns nil when the request type can't be resolved (unknown name) so
+// the caller can skip path-param checks rather than emit a confusing
+// missing-field error.
+func requestPathFields(m *ast.Method, pathParams []string, env pathParamEnv) *pathParamSet {
+	if m.Request == nil || m.Request.Name == nil {
 		return nil
 	}
-	td, ok := a.pkg.Types[m.Request.Name.Parts[0]]
-	if !ok {
+	name := m.Request.Name.String()
+	td := env.lookup(name)
+	if td == nil {
 		return nil
 	}
 	paramSet := map[string]bool{}
@@ -314,18 +395,27 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 		paramSet[p] = true
 	}
 	out := &pathParamSet{all: map[string]bool{}}
-	a.walkBodyForPath(td, paramSet, out, map[string]bool{})
+	// A qualified request type carries its package prefix so bare mixins
+	// in its body resolve there, not against the current package.
+	prefix := ""
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		prefix = name[:i]
+	}
+	walkBodyForPath(td, prefix, name, paramSet, out, map[string]bool{}, env)
 	return out
 }
 
 // walkBodyForPath descends into td.Body, classifying fields and
-// recursing into mixin targets. visited prevents infinite recursion
-// on cyclic mixin graphs (the mixin pass already reports the cycle).
-func (a *analyzer) walkBodyForPath(td *ast.TypeDecl, paramSet map[string]bool, out *pathParamSet, visited map[string]bool) {
-	if visited[td.Name] {
+// recursing into mixin targets resolved through env.lookup. `label` is
+// the name td was reached by (the request type name, or a mixin ref);
+// visited keys on it to prevent infinite recursion on cyclic mixin
+// graphs (the mixin pass already reports the cycle) while keeping
+// same-named types in different packages distinct.
+func walkBodyForPath(td *ast.TypeDecl, prefix, label string, paramSet map[string]bool, out *pathParamSet, visited map[string]bool, env pathParamEnv) {
+	if td == nil || visited[label] {
 		return
 	}
-	visited[td.Name] = true
+	visited[label] = true
 	for _, mem := range td.Body {
 		switch v := mem.(type) {
 		case *ast.Field:
@@ -335,15 +425,32 @@ func (a *analyzer) walkBodyForPath(td *ast.TypeDecl, paramSet map[string]bool, o
 				out.explicit = append(out.explicit, name)
 				continue
 			}
-			if paramSet[v.Name] {
+			// A field auto-binds to a same-named segment ONLY when no other
+			// wire decorator diverts it. `id string @query` on `/u/{id}`
+			// rides the query string, so it does NOT cover the {id} segment
+			// — mirror RequestFieldBinding (auto=false here) or the
+			// path-coverage check passes while {id} stays unbound and the
+			// emitted OpenAPI has no `in: path` parameter for it.
+			if paramSet[v.Name] && !hasDivertingWireBinding(v.Decorators) {
 				out.all[v.Name] = true
 			}
 		case *ast.Mixin:
-			if v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) != 1 {
+			if v.Ref == nil || v.Ref.Name == nil {
 				continue
 			}
-			if next, ok := a.pkg.Types[v.Ref.Name.Parts[0]]; ok {
-				a.walkBodyForPath(next, paramSet, out, visited)
+			// Resolve the mixin in the package it lives in: a qualified
+			// ref names that package; a bare ref nested inside a foreign
+			// mixin inherits that mixin's package (the prefix), so
+			// `shared.XMid { XDeep }` resolves XDeep as `shared.XDeep`.
+			key := v.Ref.Name.String()
+			childPrefix := prefix
+			if len(v.Ref.Name.Parts) == 2 {
+				childPrefix = v.Ref.Name.Parts[0]
+			} else if prefix != "" {
+				key = prefix + "." + key
+			}
+			if next := env.lookup(key); next != nil {
+				walkBodyForPath(next, childPrefix, key, paramSet, out, visited, env)
 			}
 		}
 	}
@@ -353,13 +460,30 @@ func (a *analyzer) walkBodyForPath(td *ast.TypeDecl, paramSet map[string]bool, o
 // `@path` and whether the field has the decorator at all. The custom
 // override `@path("custom-name")` wins over the field's own identifier
 // - that's the README contract.
+// hasDivertingWireBinding reports whether a field carries a wire binding
+// that routes it away from the path segment its name would otherwise
+// auto-bind to (mirrors RequestFieldBinding returning auto=false). @path
+// is handled by pathBindingName, so only the diverting bindings matter here.
+func hasDivertingWireBinding(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		switch d.Name {
+		case "query", "header", "cookie", "body", "form":
+			return true
+		}
+	}
+	return false
+}
+
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
 		if d.Name != "path" {
 			continue
 		}
 		if len(d.Args) > 0 {
-			if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
+			// An empty wire-name arg (`@path("")`) falls back to the field
+			// name, mirroring WireName so the path-param check and the
+			// binder agree on the segment a field claims.
+			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
 				return s.Value, true
 			}
 		}

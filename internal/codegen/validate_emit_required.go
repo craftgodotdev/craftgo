@@ -29,13 +29,18 @@ func requiredKind(f *ast.Field, access string) string {
 	if f.Type == nil {
 		return ""
 	}
-	if f.Type.Optional || goFieldIsPointer(f) {
+	if f.Type.Optional || goFieldIsPointer(f, nil, nil) {
+		// requiredKind runs only on required (non-optional, non-nullable)
+		// fields, where the pointer wrap never applies — so a scalar
+		// resolver would not change the answer here.
 		return access + " == nil"
 	}
-	if f.Type.Named != nil && f.Type.Named.Name.String() == "any" {
-		// `any` lands on Go's empty interface; the codec leaves it
+	if !f.Type.Array && f.Type.Map == nil && f.Type.Named != nil && f.Type.Named.Name.String() == "any" {
+		// Bare `any` lands on Go's empty interface; the codec leaves it
 		// nil for absent fields and for explicit JSON `null` (the
-		// decoder collapses both into the zero interface value).
+		// decoder collapses both into the zero interface value). The
+		// Array/Map guard keeps `any[]` / `map<K,any>` on the no-check
+		// slice/map path, like every other required nilable collection.
 		return access + " == nil"
 	}
 	return ""
@@ -58,9 +63,20 @@ func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 // strings) compare against `""`; int-valued enums compare against `0`.
 // The check is skipped for arrays / maps / pointers - those reuse the
 // generic `requiredCheck` path with len/nil semantics.
-func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, uses map[string]bool) string {
+func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
 	if f != nil && f.Type != nil && !f.Type.Array && !f.Type.Optional && f.Type.Map == nil && f.Type.Named != nil {
-		if ed, ok := pkg.Enums[f.Type.Named.Name.String()]; ok {
+		name := f.Type.Named.Name.String()
+		ed, ok := pkg.Enums[name]
+		if !ok && r != nil {
+			// A qualified enum (`shared.Priority`) misses the bare-keyed local
+			// table; resolve it project-wide so a cross-package enum field gets
+			// the same field-named "required" presence check a local one does,
+			// instead of only the enum's own value-set rejection.
+			if ed = r.LookupEnum(name); ed != nil {
+				ok = true
+			}
+		}
+		if ok {
 			if firstEnumKind(ed) == ast.EnumInt {
 				// An int-enum that defines 0 as a real member (`Inactive =
 				// 0`) can't use 0 as an "absent" sentinel — the required

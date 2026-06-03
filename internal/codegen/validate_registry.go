@@ -127,7 +127,7 @@ var validators = []validatorEntry{
 		return itemsBoundCheck(f, a, d, "<=", "maxItems", c.uses)
 	}},
 	{"uniqueItems", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return uniqueItemsCheck(f, a, c.uses)
+		return uniqueItemsCheck(f, a, c.uses, c.resolver.crossPkgMap())
 	}},
 
 	// file
@@ -202,8 +202,8 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, ctx emitCtx) []s
 	// requiredCheckEnumAware returns "" when the field type has no
 	// defined empty value, so primitives the JSON decoder already
 	// rejects-on-null get no validate-time block.
-	if resolveField(f, pkg).RuntimeEnforced {
-		if s := requiredCheckEnumAware(f, access, pkg, uses); s != "" {
+	if resolveField(f, pkg, ctx.resolver).RuntimeEnforced {
+		if s := requiredCheckEnumAware(f, access, pkg, ctx.resolver, uses); s != "" {
 			out = append(out, s)
 		}
 	}
@@ -222,7 +222,16 @@ func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, ctx emitCtx) []s
 	// emitting against the raw field would not match any validator. The
 	// helper casts the value to its primitive in a local first. Non-scalar
 	// fields keep the direct path.
-	if prim := scalarFieldPrimitive(f, ctx); prim != "" {
+	// Scalar AND enum fields route their field-level decorators through
+	// scalarFieldLevelChecks: both are defined types whose name fails the
+	// validator type-guards, so the helper casts the value to its primitive
+	// (int / string) in a local first. Without this, a constraint advertised
+	// in OpenAPI (`p Priority @lte(5)`) would never be enforced at runtime.
+	prim := scalarFieldPrimitive(f, ctx)
+	if prim == "" {
+		prim = enumFieldPrimitive(f, ctx)
+	}
+	if prim != "" {
 		if blk := scalarFieldLevelChecks(f, access, prim, ctx); blk != "" {
 			out = append(out, blk)
 		}

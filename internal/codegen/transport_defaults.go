@@ -13,17 +13,17 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 	if m.Request == nil {
 		return nil
 	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
-		// Cross-package request type — fall through the resolver.
-		if td2 := r.LookupType(m.Request.Name.String()); td2 != nil {
-			td = td2
-		} else {
-			return nil
-		}
+	// Resolve via the shared helper so the qualified-request prefix (and the
+	// resolver fallback) match the binder exactly — otherwise a defaulted
+	// field promoted from a nested mixin of a qualified request is dropped
+	// from the pre-fill while the binder binds it and OpenAPI advertises the
+	// default, leaving the client with zero values.
+	td, prefix := lookupMethodType(m.Request, pkg, r)
+	if td == nil {
+		return nil
 	}
 	var out []defaultBinding
-	for _, f := range requestFields(td, pkg, r) {
+	for _, f := range flattenFieldsIn(td, prefix, pkg, r, map[string]bool{}) {
 		if f.Type == nil || f.Type.Map != nil {
 			continue
 		}
@@ -34,7 +34,7 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		out = append(out, defaultBinding{
 			GoName:  GoFieldName(f.Name),
 			Literal: lit,
-			Ptr:     goFieldIsPointer(f),
+			Ptr:     goFieldIsPointer(f, pkg, r),
 		})
 	}
 	return out
@@ -95,7 +95,7 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 	case *ast.IntLit:
 		s = strconv.FormatInt(lit.Value, 10)
 	case *ast.FloatLit:
-		s = strconv.FormatFloat(lit.Value, 'g', -1, 64)
+		s = formatFloatLit(lit.Value)
 	case *ast.BoolLit:
 		if lit.Value {
 			s = "true"
@@ -120,7 +120,63 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 	if name := scalarDefaultGoName(t, pkg, r, pkgAlias); name != "" {
 		return name + "(" + s + ")"
 	}
+	// Narrow numeric primitive default: same pointer-prefill problem as a
+	// scalar. `__d := <lit>` infers Go `int` for an int literal and
+	// `float64` for a float one, so for an int32 / int64 / uint* /
+	// float32 field `&__d` is the wrong pointer type. Cast the literal to
+	// the field's primitive (`int32(1)`) so `__d` carries it.
+	if cast := primitiveDefaultCast(t, v); cast != "" {
+		return cast + "(" + s + ")"
+	}
 	return s
+}
+
+// formatFloatLit renders a float `@default` literal as Go source that is
+// unambiguously a float. `strconv.FormatFloat` drops the fraction of a
+// whole-number value (`1.0` → "1"), which Go would then infer as `int` — so
+// the optional-field pointer pre-fill `__d := 1` becomes `*int`, not the
+// field's `*float64`. Appending `.0` when the rendering carries no decimal
+// point or exponent keeps it a float literal (`1.0`), so no cast is needed
+// and a fractional value like `0.5` is unchanged.
+func formatFloatLit(f float64) string {
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eEnN") {
+		s += ".0"
+	}
+	return s
+}
+
+// primitiveDefaultCast returns the Go primitive a numeric `@default`
+// literal must be cast to so a `*T` pointer pre-fill assigns the right
+// type, or "" when no cast is needed. An int literal is already Go `int`
+// and a float literal `float64`; every other numeric width or sign
+// (int8 / int16 / int32 / int64 / uint* / float32, and a float-typed
+// field taking an int literal) needs the cast. string / bool literals
+// and non-primitive types (scalars, enums) are handled elsewhere.
+func primitiveDefaultCast(t *ast.TypeRef, v ast.Expr) string {
+	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+		return ""
+	}
+	prim := t.Named.Name.Parts[0]
+	switch v.(type) {
+	case *ast.IntLit:
+		if prim == "int" {
+			return ""
+		}
+	case *ast.FloatLit:
+		if prim == "float64" {
+			return ""
+		}
+	default:
+		return ""
+	}
+	switch prim {
+	case "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return prim
+	}
+	return ""
 }
 
 // scalarDefaultGoName returns the qualified Go type name of a scalar

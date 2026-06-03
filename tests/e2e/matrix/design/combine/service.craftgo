@@ -81,4 +81,10 @@ service CombineService {
 		request  DefaultsScalar
 		response DefaultsScalar
 	}
+
+	@doc("Echo the narrow-width default matrix. The pre-fill casts each literal to the field primitive so the *T pointer assignment compiles (int32 / int64 / uint16 / float32).")
+	post EchoWidth /defaults/width {
+		request  DefaultsWidth
+		response DefaultsWidth
+	}
 }

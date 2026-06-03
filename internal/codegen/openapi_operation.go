@@ -3,6 +3,7 @@ package codegen
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -17,7 +18,10 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	op := &openapi3.Operation{
 		OperationID: operationID(m, base),
 		Tags:        operationTags(svcName, m, pkg),
-		Responses:   openapi3.NewResponses(),
+		// NewResponsesWithCapacity (unlike NewResponses) seeds no phantom
+		// `default` catch-all. Every operation Sets at least a success
+		// response below, so the map is never empty.
+		Responses:   openapi3.NewResponsesWithCapacity(2),
 		Description: resolveDescription(m.Decorators, m.Doc),
 		Summary:     decoratorStringArg(m.Decorators, "summary"),
 	}
@@ -58,7 +62,8 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		}
 	}
 	if sec != nil {
-		op.Security = sec
+		deduped := dedupSecurity(*sec)
+		op.Security = &deduped
 	}
 	// @deprecated may sit on the method itself or on the primary
 	// service decl; either marks the operation deprecated. The
@@ -341,19 +346,37 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 			continue
 		}
 		for _, a := range d.Args {
-			id, ok := a.Value.(*ast.IdentExpr)
-			if !ok || id.Name == nil {
-				continue
+			for _, v := range decoratorArgValues(a) {
+				id, ok := v.(*ast.IdentExpr)
+				if !ok || id.Name == nil {
+					continue
+				}
+				name := id.Name.Parts[len(id.Name.Parts)-1]
+				if seen[name] {
+					continue
+				}
+				seen[name] = true
+				out = append(out, name)
 			}
-			name := id.Name.Parts[len(id.Name.Parts)-1]
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			out = append(out, name)
 		}
 	}
 	return out
+}
+
+// decoratorArgValues flattens one decorator argument into the underlying
+// value expressions, expanding the `@x([a, b])` array-shortcut form into
+// its elements. Decorators marked AllowArrayShortcut accept BOTH the
+// variadic `@x(a, b)` and the array `@x([a, b])` forms and the semantic
+// phase treats them as equivalent, so every codegen consumer must too —
+// otherwise the array form silently contributes nothing.
+func decoratorArgValues(a *ast.DecoratorArg) []ast.Expr {
+	if a == nil {
+		return nil
+	}
+	if arr, ok := a.Value.(*ast.ArrayLit); ok {
+		return arr.Elements
+	}
+	return []ast.Expr{a.Value}
 }
 
 // passthroughPathParams emits one OpenAPI path-parameter entry per
@@ -621,13 +644,39 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 			continue
 		}
 		for _, a := range d.Args {
-			switch v := a.Value.(type) {
-			case *ast.StringLit:
-				out = append(out, v.Value)
-			case *ast.IdentExpr:
-				out = append(out, v.Name.String())
+			for _, val := range decoratorArgValues(a) {
+				switch v := val.(type) {
+				case *ast.StringLit:
+					out = append(out, v.Value)
+				case *ast.IdentExpr:
+					out = append(out, v.Name.String())
+				}
 			}
 		}
+	}
+	return out
+}
+
+// dedupSecurity removes duplicate security requirements (identical
+// scheme→scopes sets) that arise when a method repeats a requirement its
+// service already declares. Each requirement is an OR-alternative, so two
+// identical entries are redundant; mirrors the tag dedup so the spec
+// carries one entry per distinct alternative.
+func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirements {
+	seen := map[string]bool{}
+	out := make(openapi3.SecurityRequirements, 0, len(reqs))
+	for _, req := range reqs {
+		keys := make([]string, 0, len(req))
+		for k, scopes := range req {
+			keys = append(keys, k+"="+strings.Join(scopes, ","))
+		}
+		sort.Strings(keys)
+		key := strings.Join(keys, "&")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, req)
 	}
 	return out
 }

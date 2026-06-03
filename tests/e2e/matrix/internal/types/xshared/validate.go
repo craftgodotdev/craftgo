@@ -43,6 +43,42 @@ func (v *XBag[T]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on XGrand.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XGrand) Validate() error {
+	if l := utf8.RuneCountInString(v.GKey); l < 1 || l > 40 {
+		return fmt.Errorf("gKey: length out of range [1, 40]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XHeaderResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XHeaderResp) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XHolder.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XHolder) Validate() error {
+	if err := v.XHolderSub.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XHolderSub.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XHolderSub) Validate() error {
+	if l := utf8.RuneCountInString(v.Q); l < 2 || l > 5 {
+		return fmt.Errorf("q: length out of range [2, 5]")
+	}
+	if l := utf8.RuneCountInString(v.Bod); l < 1 || l > 10 {
+		return fmt.Errorf("bod: length out of range [1, 10]")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on XOwner.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XOwner) Validate() error {
@@ -50,6 +86,76 @@ func (v *XOwner) Validate() error {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if err := v.Email.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XParent.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XParent) Validate() error {
+	if err := v.XGrand.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XPathKey.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XPathKey) Validate() error {
+	if l := utf8.RuneCountInString(v.Key); l < 1 || l > 64 {
+		return fmt.Errorf("key: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XPromoteBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XPromoteBody) Validate() error {
+	if utf8.RuneCountInString(v.Label) < 1 {
+		return fmt.Errorf("label: length less than 1")
+	}
+	if v.Size != nil {
+		if err := v.Size.Validate(); err != nil {
+			return err
+		}
+	}
+	if v.Tone != nil {
+		if err := v.Tone.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XPromoteWire.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XPromoteWire) Validate() error {
+	if err := v.Q.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XThirdReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XThirdReq) Validate() error {
+	if v.Sev == "" {
+		return fmt.Errorf("sev: required")
+	}
+	if err := v.Sev.Validate(); err != nil {
+		return err
+	}
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
+		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XWrapInBag.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XWrapInBag[T]) Validate() error {
+	if err := v.XBag.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -75,6 +181,18 @@ func (v XNodeID) Validate() error {
 	}
 	if int(v) > 1000000 {
 		return fmt.Errorf("XNodeID: above maximum 1000000")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XSize.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v XSize) Validate() error {
+	if int(v) < 1 {
+		return fmt.Errorf("XSize: below minimum 1")
+	}
+	if int(v) > 100 {
+		return fmt.Errorf("XSize: above maximum 100")
 	}
 	return nil
 }

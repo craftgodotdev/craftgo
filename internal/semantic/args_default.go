@@ -17,6 +17,17 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	if dec == nil {
 		return
 	}
+	// @default targets a primitive / scalar / enum or a SINGLE-level array
+	// of those. A multi-dimensional array default has no real use and its
+	// nested-literal form is a sharp edge, so it is rejected outright. The
+	// check is structural (array depth, independent of the element type), so
+	// it fires for cross-package element types too.
+	if f.Type != nil && f.Type.ArrayDepth > 1 {
+		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict,
+			"@default is not supported on a multi-dimensional array (field %q): a default may target a primitive, scalar, enum, or a single-level array of those — not a nested array",
+			f.Name)
+		return
+	}
 	if !defaultTypeSupported(f.Type, a.pkg) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError,
 			CodeDecoratorConflict,
@@ -86,6 +97,30 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 			want, ed.Name, enumValueList(ed))
 		return
 	}
+	// Resolve a scalar to its underlying primitive for the type-fit checks.
+	prim := name
+	if sd, ok := a.pkg.Scalars[name]; ok {
+		prim = sd.Primitive
+	}
+	// A `bytes` field has no unambiguous literal default: the Go side needs
+	// `[]byte(...)` while the OpenAPI `format: byte` default is base64, and
+	// the only literal kind the gate accepts (string) miscompiles straight
+	// into the []byte slot. Reject rather than emit non-compiling Go.
+	if prim == "bytes" {
+		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
+			"@default is not supported on a `bytes` field %q — a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
+			f.Name)
+		return
+	}
+	// A `file` upload (`*multipart.FileHeader`) has no literal default form;
+	// a string/int literal would be assigned into the pointer field and not
+	// compile. Reject like `bytes`.
+	if prim == "file" {
+		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
+			"@default is not supported on a `file` field %q — a file upload has no literal default form",
+			f.Name)
+		return
+	}
 	want := defaultPrimitiveKind(name, a.pkg)
 	if want == ArgAny {
 		return
@@ -93,6 +128,20 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 	if !exprMatchesKind(v, want) {
 		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgType,
 			"@default on field %q (%s) requires a %s literal", f.Name, name, want)
+		return
+	}
+	// An integer default outside the field primitive's capacity emits a
+	// non-compiling cast (`uint(-5)`, `int8(200)`). Mirror the bound
+	// capacity guard so the prefill compiles. Floats are skipped — the
+	// codegen cast holds every literal the kind check accepts.
+	if il, ok := v.(*ast.IntLit); ok {
+		if lo, hi, capOK := intCapacity(prim); capOK {
+			fv := float64(il.Value)
+			if fv < lo || fv > hi {
+				a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
+					"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
+			}
+		}
 	}
 }
 
@@ -173,10 +222,12 @@ func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 // scalar / enum table" rather than the full analyzer state.
 type semanticPkgRef = Package
 
-// arrayElemTypeRef returns the element TypeRef of an array. The
-// stored TypeRef has Array == true alongside the element's Named /
-// Optional fields, so dropping the Array flag yields the element
-// type. Optional propagates so `T?[]` element is `T?`.
+// arrayElemTypeRef returns the element TypeRef of an array. The stored
+// TypeRef has Array == true alongside the element's Named / Optional
+// fields, so dropping the Array flag yields the element type. Optional
+// propagates so `T?[]` element is `T?`. A multi-dimensional array default
+// is rejected up front (see [analyzer.checkFieldDefault]), so this only
+// ever peels a single-level array.
 func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
 	if t == nil {
 		return nil

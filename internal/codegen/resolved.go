@@ -140,6 +140,39 @@ func explicitBinding(f *ast.Field) Binding {
 	return bindingFromKind(bindingFromDecorators(f.Decorators))
 }
 
+// lookupMethodType resolves a method's request / response NamedTypeRef to its
+// declaration plus the package prefix its bare mixins resolve against. A
+// qualified ref (`shared.Holder`) is NOT in the consumer's bare-keyed
+// pkg.Types, so it falls through the project resolver and the prefix is its
+// home package; a local ref resolves in pkg.Types with an empty prefix.
+//
+// This is the single resolution every per-request / per-response codegen pass
+// shares — the field resolver, default pre-fill, import collector, and
+// response-header/cookie writers — so a qualified type is never silently
+// dropped by one stage (an `undefined: pkg` import, a missing pre-fill, an
+// unwritten response header) while a sibling stage emits it. Returns (nil, "")
+// when unresolvable; a nil resolver (the OpenAPI single-package callers) keeps
+// the local-only behavior those callers had.
+func lookupMethodType(ref *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver) (*ast.TypeDecl, string) {
+	if ref == nil || ref.Name == nil {
+		return nil, ""
+	}
+	name := ref.Name.String()
+	prefix := ""
+	if parts := ref.Name.Parts; len(parts) == 2 {
+		prefix = parts[0]
+	}
+	if td, ok := pkg.Types[name]; ok {
+		return td, prefix
+	}
+	if r != nil {
+		if td := r.LookupType(name); td != nil {
+			return td, prefix
+		}
+	}
+	return nil, prefix
+}
+
 // resolveRequestFields resolves m's request-type fields with method
 // context applied: an un-decorated field auto-binds to @path (its name
 // matches a `{param}` segment), to @query (a body-less verb has no body to
@@ -151,19 +184,9 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 	if m == nil || m.Request == nil {
 		return nil
 	}
-	reqName := m.Request.Name.String()
-	td, ok := pkg.Types[reqName]
-	if !ok {
-		// Cross-package request type (`request shared.Cred`) isn't in
-		// pkg.Types; fall through the project resolver so its fields still
-		// resolve. A nil resolver (the OpenAPI single-package callers) keeps
-		// the same "no fields" result those callers had before.
-		if r != nil {
-			td = r.LookupType(reqName)
-		}
-		if td == nil {
-			return nil
-		}
+	td, prefix := lookupMethodType(m.Request, pkg, r)
+	if td == nil {
+		return nil
 	}
 	pathNames := map[string]bool{}
 	if m.Path != nil {
@@ -174,7 +197,7 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 		}
 	}
 	bodyVerb := hasBodyVerb(m.Verb)
-	fields := resolveFields(td, pkg, r)
+	fields := resolveFieldsWithPrefix(td, prefix, pkg, r)
 	for i := range fields {
 		rf := &fields[i]
 		// Only an un-decorated field auto-binds. explicitBinding maps both
@@ -199,10 +222,19 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 // per-field facts are computed; stages read the result instead of
 // re-deriving from the AST.
 func resolveFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver) []ResolvedField {
-	flat := flattenFields(td, pkg, r, map[string]bool{})
+	return resolveFieldsWithPrefix(td, "", pkg, r)
+}
+
+// resolveFieldsWithPrefix is [resolveFields] with the package-prefix
+// context for bare mixins in td's body (see [flattenFieldsIn]). A non-empty
+// prefix is needed when td was reached through a qualified reference (a
+// cross-package request type), so its bare nested mixins resolve in td's
+// home package rather than being dropped.
+func resolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver) []ResolvedField {
+	flat := flattenFieldsIn(td, prefix, pkg, r, map[string]bool{})
 	out := make([]ResolvedField, 0, len(flat))
 	for _, f := range flat {
-		out = append(out, resolveField(f, pkg))
+		out = append(out, resolveField(f, pkg, r))
 	}
 	return out
 }
@@ -212,18 +244,18 @@ func resolveFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver) 
 // inlining them, but still need the same per-field facts (is-on-wire,
 // is-required, default) the flattened consumers get — so the decision is
 // computed once here instead of each emitter re-deriving it.
-func resolveField(f *ast.Field, pkg *semantic.Package) ResolvedField {
+func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) ResolvedField {
 	dv, hasDV := resolveDefaultValue(f, pkg)
 	return ResolvedField{
 		Field:         f,
 		DSLName:       f.Name,
 		GoName:        GoFieldName(f.Name),
-		GoType:        goFieldType(f),
+		GoType:        goFieldType(f, pkg, r),
 		JSONTag:       jsonTag(f),
 		Binding:       explicitBinding(f),
 		OnWireBody:    !isNonBodyBound(f) && !hasSensitiveDecorator(f.Decorators),
-		IsPointer:     goFieldIsPointer(f),
-		NeedsNilGuard: fieldNeedsNilGuard(f),
+		IsPointer:     goFieldIsPointer(f, pkg, r),
+		NeedsNilGuard: fieldNeedsNilGuard(f, pkg, r),
 		HasDefault:    ast.HasDecorator(f.Decorators, "default"),
 		DefaultWire:   dv,
 		HasDefValue:   hasDV,
@@ -231,7 +263,9 @@ func resolveField(f *ast.Field, pkg *semantic.Package) ResolvedField {
 		// The validator's presence gate (validate_registry.go): a
 		// non-optional, non-@nullable field gets a presence check. @nullable
 		// opts out (an explicit null is allowed); optional opts out (absence
-		// is allowed).
-		RuntimeEnforced: f.Type != nil && !f.Type.Optional && !hasNullableDecorator(f.Decorators),
+		// is allowed); @sensitive opts out too — it is `json:"-"` (off the
+		// wire, like OnWireBody above), so a presence check on it can never be
+		// satisfied and would 400 every request.
+		RuntimeEnforced: f.Type != nil && !f.Type.Optional && !hasNullableDecorator(f.Decorators) && !hasSensitiveDecorator(f.Decorators),
 	}
 }

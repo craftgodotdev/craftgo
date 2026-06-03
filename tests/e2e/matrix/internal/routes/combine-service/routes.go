@@ -26,4 +26,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/defaults/collection", transport.EchoCollection(svcCtx))
 	srv.Handle("POST /api/combine/defaults/enum", transport.EchoEnum(svcCtx))
 	srv.Handle("POST /api/combine/defaults/scalar", transport.EchoScalar(svcCtx))
+	srv.Handle("POST /api/combine/defaults/width", transport.EchoWidth(svcCtx))
 }

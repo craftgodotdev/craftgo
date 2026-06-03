@@ -35,8 +35,6 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
-          description: ""
       tags:
       - S
 servers:

@@ -228,7 +228,7 @@ func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot 
 			label string
 			fn    func() error
 		}{
-			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, r.CrossPkg) }},
+			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, r.CrossPkg, r) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
 			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, r) }},
 			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsResolved(p, typesDir, r) }},

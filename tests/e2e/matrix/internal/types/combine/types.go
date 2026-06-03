@@ -74,6 +74,19 @@ type DefaultsScalar struct {
 	Size *PageSize `json:"size,omitempty"`
 }
 
+// DefaultsWidth parks a @default on each narrow numeric width. The same
+// pre-fill cast a scalar needs applies to a bare narrow primitive: the
+// literal is cast to the field's type (`int32(7)`) so `__d := int32(7)`
+// keeps the field's `*int32`. Without it `__d := 7` infers Go `int` and
+// `&__d` (*int) can't assign. `int` / `float64` need no cast (the
+// literal already matches their inferred type); the widths below do.
+type DefaultsWidth struct {
+	W32  *int32   `json:"w32,omitempty"`
+	W64  *int64   `json:"w64,omitempty"`
+	Wu16 *uint16  `json:"wu16,omitempty"`
+	Wf32 *float32 `json:"wf32,omitempty"`
+}
+
 // KeywordFieldNames names fields after reserved words. Each lowers to an
 // exported Go field (`Type`, `Error`, `Map`, `Delete`) with the keyword
 // as its JSON tag; `map` as a field name coexists with `map<>` as a type.

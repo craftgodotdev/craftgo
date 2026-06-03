@@ -124,17 +124,36 @@ func buildServiceData(svcName string, m *ast.Method, imps importPaths, crossPkg 
 		extraSeen[extra.Path] = true
 		d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
 	}
+	// resolveTypeRef returns only the OUTER ref's import; a generic instance's
+	// type-args reach further packages (`genpkg.Box<argpkg.Owner>` →
+	// `genpkg.Box[argpkg.Owner]`), so walk the whole ref and add every
+	// cross-package import — otherwise the scaffold references `argpkg.Owner`
+	// with no import (`undefined: argpkg`). The other emitters already do this
+	// via walkCrossPkgImports.
+	pathAlias := map[string]string{}
+	for alias, path := range crossPkg {
+		pathAlias[path] = alias
+	}
+	addRefExtras := func(ref *ast.NamedTypeRef) {
+		set := map[string]bool{}
+		walkCrossPkgImports(&ast.TypeRef{Named: ref}, crossPkg, set)
+		for path := range set {
+			addExtra(extraImport{Alias: pathAlias[path], Path: path})
+		}
+	}
 	if hasReq {
 		alias, bare, extra := resolveTypeRef(m.Request, crossPkg)
 		d.RequestPkgAlias = alias
 		d.RequestType = bare
 		addExtra(extra)
+		addRefExtras(m.Request)
 	}
 	if hasResp {
 		alias, bare, extra := resolveTypeRef(m.Response.Type, crossPkg)
 		d.ResponsePkgAlias = alias
 		d.ResponseType = bare
 		addExtra(extra)
+		addRefExtras(m.Response.Type)
 	}
 	// When BOTH request and response live in cross-pkg packages, the
 	// canonical `types` import becomes unused. Drop it so the scaffold

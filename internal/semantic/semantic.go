@@ -144,6 +144,17 @@ type Options struct {
 	// [refResolver.checkProjectBindings] re-runs the check with
 	// the full project symbol table.
 	skipBindingTypeCheckQualified bool
+
+	// skipPathParamCheck disables the per-package `@path` segment ↔
+	// field check ([analyzer.checkMethodPathParams]). A request type
+	// can embed a mixin from a SIBLING package whose fields supply the
+	// path binding (`type Req { shared.IdHolder }`); the per-package
+	// pass can't expand that mixin, so it would false-report the
+	// segment as having no matching field. Project mode flips this on
+	// and [refResolver.checkProjectPathParams] re-runs the check with
+	// cross-package mixin resolution — matching what the codegen binder
+	// already does via the project resolver.
+	skipPathParamCheck bool
 }
 
 // Analyze validates the supplied AST files as a single package and returns

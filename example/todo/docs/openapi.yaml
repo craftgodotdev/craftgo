@@ -243,6 +243,10 @@ paths:
           anyOf:
           - $ref: '#/components/schemas/Tag'
           - type: "null"
+          description: |-
+            tag is a scalar (Tag) filter bound from the query string. The
+            scalar's inherited @length / @pattern run during req.Validate(),
+            so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
       responses:
         "200":
           content:
@@ -264,8 +268,6 @@ paths:
                 with strconv.Itoa.
               schema:
                 type: integer
-        default:
-          description: ""
       tags:
       - todos
     post:
@@ -284,8 +286,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateTodoRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - todos
   /todos/{id}:
@@ -307,8 +307,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeleteTodoRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - todos
     get:
@@ -329,8 +327,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetTodoRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - todos
     patch:
@@ -357,8 +353,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UpdateTodoRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - todos
 servers:

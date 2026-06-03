@@ -166,7 +166,7 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	// design edge the body schema can't express, but cross-field over body
 	// fields round-trips.
 	if len(bins.body) > 0 {
-		s := schemaFromFields(bins.body, pkg, registry)
+		s := schemaFromFields(substituteGenericFields(bins.body, td, m.Request.Args), pkg, registry)
 		if frags := crossFieldSchemaFragments(td.Decorators); len(frags) > 0 {
 			s = &openapi3.Schema{
 				AllOf: append(openapi3.SchemaRefs{{Value: s}}, frags...),
@@ -222,9 +222,39 @@ func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic
 		})
 		return
 	}
+	respBody := bins.body
+	if len(m.Response.Type.Args) > 0 {
+		if decl, ok := pkg.Types[m.Response.Type.Name.String()]; ok {
+			respBody = substituteGenericFields(bins.body, decl, m.Response.Type.Args)
+		}
+	}
 	names.put(doc, base+"RespBody", &openapi3.SchemaRef{
-		Value: schemaFromFields(bins.body, pkg, registry),
+		Value: schemaFromFields(respBody, pkg, registry),
 	})
+}
+
+// substituteGenericFields substitutes a generic instance's type-args into a
+// field list's types (`data T` → `data Item`) so a per-operation body schema
+// built from a wire-bound generic request/response $refs the concrete arg
+// instead of dangling a `$ref` to the type-parameter `T`. A no-op for a
+// non-generic type or when no args are supplied.
+func substituteGenericFields(fields []*ast.Field, td *ast.TypeDecl, args []*ast.TypeRef) []*ast.Field {
+	if td == nil || len(td.TypeParams) == 0 || len(args) == 0 {
+		return fields
+	}
+	subst := map[string]*ast.TypeRef{}
+	for i, tp := range td.TypeParams {
+		if i < len(args) {
+			subst[tp] = args[i]
+		}
+	}
+	out := make([]*ast.Field, len(fields))
+	for i, f := range fields {
+		fc := *f
+		fc.Type = substituteTypeRef(f.Type, subst)
+		out[i] = &fc
+	}
+	return out
 }
 
 // binResponseFields partitions the response type's fields the same way

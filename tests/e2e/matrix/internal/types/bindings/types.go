@@ -111,6 +111,17 @@ type PathStringReq struct {
 	ID string `json:"-"`
 }
 
+// QueryArrayEnumDefaultReq drives the enum-array @query @default path.
+// The slice is pre-filled with the wire values of the default members
+// ([Red, Blue]); the binder must REPLACE that pre-fill when the param
+// is present, not append to it — so `?colors=green` yields ["green"],
+// never ["red", "green", "blue"]. The has-default oracle the binder
+// consults resolves the enum-member array literal so it agrees with the
+// pre-fill that emitted the default.
+type QueryArrayEnumDefaultReq struct {
+	Colors []Color `json:"-"`
+}
+
 // QueryArrayIntReq drives the `[]int @query` shape. Each repeated
 // value goes through strconv.ParseInt + append; one bad value fails
 // the whole request with HTTP 400.

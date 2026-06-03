@@ -78,3 +78,16 @@ type DefaultsEnum {
 type DefaultsScalar {
 	size PageSize? @default(20)
 }
+
+// DefaultsWidth parks a @default on each narrow numeric width. The same
+// pre-fill cast a scalar needs applies to a bare narrow primitive: the
+// literal is cast to the field's type (`int32(7)`) so `__d := int32(7)`
+// keeps the field's `*int32`. Without it `__d := 7` infers Go `int` and
+// `&__d` (*int) can't assign. `int` / `float64` need no cast (the
+// literal already matches their inferred type); the widths below do.
+type DefaultsWidth {
+	w32  int32?   @default(7)
+	w64  int64?   @default(9)
+	wu16 uint16?  @default(3)
+	wf32 float32? @default(1.5)
+}

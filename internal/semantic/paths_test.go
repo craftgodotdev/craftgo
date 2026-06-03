@@ -411,19 +411,20 @@ func TestPathBindingNameVariants(t *testing.T) {
 
 func TestRequestPathFieldsNilGuards(t *testing.T) {
 	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
+	env := a.pathParamEnv()
 	// nil request
-	if got := a.requestPathFields(&ast.Method{}, nil); got != nil {
+	if got := requestPathFields(&ast.Method{}, nil, env); got != nil {
 		t.Error("nil request should return nil")
 	}
-	// qualified name → skip
-	got := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
+	// qualified name unresolvable in this package → nil
+	got := requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{"shared", "Req"}},
-	}}, nil)
+	}}, nil, env)
 	if got != nil {
-		t.Error("qualified ref should return nil")
+		t.Error("unresolved qualified ref should return nil")
 	}
 	// Request name is nil → skip
-	got = a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil)
+	got = requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil, env)
 	if got != nil {
 		t.Error("nil Name should return nil")
 	}
@@ -475,7 +476,7 @@ func TestWalkBodyForPathCyclicMixin(t *testing.T) {
 		},
 	}}
 	out := &pathParamSet{all: map[string]bool{}}
-	a.walkBodyForPath(a.pkg.Types["A"], map[string]bool{"id": true}, out, map[string]bool{})
+	walkBodyForPath(a.pkg.Types["A"], "", "A", map[string]bool{"id": true}, out, map[string]bool{}, a.pathParamEnv())
 	if !out.has("id") {
 		t.Error("cyclic mixin should still surface reachable fields once")
 	}
@@ -497,9 +498,9 @@ func TestWalkBodyForPathQualifiedNestedMixin(t *testing.T) {
 		},
 	}}
 	out := &pathParamSet{all: map[string]bool{}}
-	a.walkBodyForPath(a.pkg.Types["A"], map[string]bool{"id": true}, out, map[string]bool{})
+	walkBodyForPath(a.pkg.Types["A"], "", "A", map[string]bool{"id": true}, out, map[string]bool{}, a.pathParamEnv())
 	if !out.has("id") {
-		t.Error("qualified mixin should be skipped, own fields still surface")
+		t.Error("qualified mixin unresolvable in-package should be skipped, own fields still surface")
 	}
 }
 
@@ -521,11 +522,11 @@ func TestCheckMethodPathParamsNilName(t *testing.T) {
 	// Defensive: m.Request set but m.Request.Name nil - early-return
 	// branch in checkMethodPathParams.
 	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
-	a.checkMethodPathParams("S", &ast.Method{
+	checkMethodPathParams("S", &ast.Method{
 		Name:    "M",
 		Pos:     lexer.Position{Line: 1},
 		Request: &ast.NamedTypeRef{Name: nil},
-	}, "/users")
+	}, "/users", a.pathParamEnv())
 	if len(a.diags) != 0 {
 		t.Errorf("nil request name should not diag, got %v", a.diags)
 	}

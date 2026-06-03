@@ -179,14 +179,15 @@ return err
 			depth = 1
 		}
 		return emitNestedForLoops(access, depth, body)
-	case goFieldIsPointer(f):
-		// The Go field is a *Type — nil-guard before dispatching
-		// Validate(), or a nil receiver panics. This covers BOTH `?`
-		// (optional) AND `@nullable` (required-but-nullable): both lower
-		// to *Type, so keying on the actual pointer-ness — not just the
-		// `?` suffix — is what keeps `{"f":null}` / an omitted field from
-		// crashing the handler. Method dispatch resolves through the
-		// pointer, so no explicit deref is needed.
+	case fieldNeedsNilGuard(f, pkg, r):
+		// The Go field can be nil in the valid "absent / null" state —
+		// either a *Type (`?` optional / `@nullable` value type) OR a
+		// scalar over a nilable primitive (`scalar Blob bytes` → `[]byte`),
+		// which carries no extra pointer but is still nil when absent.
+		// Nil-guard before dispatching Validate(), or a nil receiver runs
+		// the scalar's own constraints against the empty value and rejects
+		// what the OpenAPI null-union advertises as legal. Method dispatch
+		// resolves through both shapes, so no explicit deref is needed.
 		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body(access))
 	default:
 		return body(access)

@@ -475,12 +475,25 @@ func presenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *P
 	for _, name := range names {
 		f := lookupField(td, name, pkg, r)
 		if f == nil {
-			parts = append(parts, "false")
+			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
-		parts = append(parts, presenceExpr(f))
+		parts = append(parts, presenceExpr(f, pkg, r))
 	}
 	return parts
+}
+
+// unresolvedCrossFieldExpr is emitted when a cross-field group member
+// can't be resolved to a real field. Semantic analysis rejects such
+// references before codegen runs — per-package for local types,
+// project-level ([refResolver.checkProjectFieldGroups]) for types
+// promoting cross-package mixin fields — so reaching here means a
+// semantic↔codegen drift. Emit an undefined identifier rather than a
+// literal `false`: a `false` slot silently produces a no-op validator
+// that hides the drift, whereas this fails `go build` with the
+// offending member named.
+func unresolvedCrossFieldExpr(name string) string {
+	return "craftgoUnresolvedCrossFieldMember_" + GoFieldName(name)
 }
 
 // lookupField finds the Field a TypeDecl contributes by DSL field name,
@@ -509,12 +522,12 @@ func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *Projec
 // pointer check must come BEFORE the value-shape branches so cross-
 // field rules emit a nil-check rather than `v.X == ""` against a
 // `*string` (which fails to compile).
-func presenceExpr(f *ast.Field) string {
+func presenceExpr(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string {
 	access := "v." + GoFieldName(f.Name)
 	if f.Type == nil {
 		return "true"
 	}
-	if goFieldIsPointer(f) {
+	if goFieldIsPointer(f, pkg, r) {
 		return access + " != nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {
@@ -545,13 +558,14 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 	for _, name := range names {
 		f := lookupField(td, name, pkg, r)
 		if f == nil {
-			// Unknown field → treat as "present" so the rule never
-			// fires for typoed names; mirrors presenceParts's
-			// `false` literal but on the absence side.
-			parts = append(parts, "false")
+			// Unresolved member — semantic analysis rejects this before
+			// codegen, so this is a drift guard, not a user path. Emit a
+			// loud build failure (see [unresolvedCrossFieldExpr]) rather
+			// than a silent literal that no-ops the validator.
+			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
-		parts = append(parts, absenceExpr(f))
+		parts = append(parts, absenceExpr(f, pkg, r))
 	}
 	return parts
 }
@@ -562,12 +576,12 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 // `!(...)` wrapping leaks into the output. Pointer-shape (`T?` or
 // `@nullable T`) is checked first via [goFieldIsPointer] so the emit
 // stays type-safe.
-func absenceExpr(f *ast.Field) string {
+func absenceExpr(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string {
 	access := "v." + GoFieldName(f.Name)
 	if f.Type == nil {
 		return "false"
 	}
-	if goFieldIsPointer(f) {
+	if goFieldIsPointer(f, pkg, r) {
 		return access + " == nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {

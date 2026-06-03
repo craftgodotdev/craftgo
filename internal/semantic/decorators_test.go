@@ -479,6 +479,12 @@ func TestCodeOnBindingType(t *testing.T) {
 		{"array on @path", `type X { id string[] @path }`, "@path requires"},
 		// Cookie arrays are nonsense (cookies are single-value per name).
 		{"array on @cookie", `type X { ids string[] @cookie }`, "@cookie cannot bind to an array"},
+		// A wire-string source encodes an array as repeated single values
+		// (`?x=1&x=2`); a nested array has no wire form and the 1-D binder
+		// codegen would emit won't compile, so reject at design time.
+		{"multi-dim array on @query", `type X { grid int[][] @query }`, "@query cannot bind to a multi-dimensional array"},
+		{"multi-dim array on @header", `type X { tags string[][] @header }`, "@header cannot bind to a multi-dimensional array"},
+		{"multi-dim array on @form", `type X { grid int[][] @form }`, "@form cannot bind to a multi-dimensional array"},
 		// Maps / structs / generic instantiations never bind to wire-string sources.
 		{"map on @query", `type X { meta map<string, string> @query }`, "@query requires"},
 		{"map on @header", `type X { meta map<string, string> @header }`, "@header requires"},
@@ -509,6 +515,28 @@ func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
 enum Kind { A B }
 type Y { id int @path  uid UserId @path  k Kind @path }`)
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
+	// Single-level arrays on @query / @header / @form ARE bindable (the
+	// repeated-param form) — only nested arrays are rejected.
+	mustClean(t, `type Z { tags string[] @query  ids int[] @header  vals string[] @form }`)
+}
+
+// A multi-dimensional array whose element is a CROSS-PACKAGE scalar must
+// still be rejected on a wire-string source — the depth guard is purely
+// structural and runs before the qualified-ref resolution is deferred, so
+// the foreign element type doesn't let it slip through.
+func TestMultiDimArrayCrossPkgQueryRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+scalar Tag string @minLength(1)`,
+		"api.craftgo": `package design
+import "shared"
+type Req { grid shared.Tag[][] @query }
+service S { get List /list { request Req } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeBindingType) {
+		t.Fatalf("expected multi-dim cross-pkg @query rejection; got %v", codes(diags))
+	}
 }
 
 // TestBodyFormOnNonBodyVerbRejected pins that @body / @form request

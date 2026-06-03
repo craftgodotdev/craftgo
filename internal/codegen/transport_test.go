@@ -178,6 +178,10 @@ type Req {
     limit int?     @default(20)
     ratio float64? @default(0.5)
     active bool?    @default(true)
+    width  int32?   @default(7)
+    wide   int64?   @default(9)
+    ucount uint16?  @default(3)
+    pct    float32? @default(1.5)
     plain  string
 }
 service S {
@@ -210,6 +214,25 @@ service S {
 		`__d := true`,
 		`req.Active = &__d`,
 	)
+	// A narrow numeric width casts the literal to the field's primitive so
+	// the pointer pre-fill `__d := int32(7)` keeps the field's `*int32`;
+	// without the cast `__d := 7` is `*int` and `&__d` fails to assign.
+	// `int` / `float64` above stay BARE (the literal already matches).
+	mustContainAll(t, body,
+		`__d := int32(7)`,
+		`req.Width = &__d`,
+		`__d := int64(9)`,
+		`req.Wide = &__d`,
+		`__d := uint16(3)`,
+		`req.Ucount = &__d`,
+		`__d := float32(1.5)`,
+		`req.Pct = &__d`,
+	)
+	// Guard the no-needless-cast contract: int / float64 literals carry
+	// no cast (would be `int(20)` / `float64(0.5)` if over-applied).
+	if strings.Contains(body, "int(20)") || strings.Contains(body, "float64(0.5)") {
+		t.Errorf("int / float64 defaults must not be cast:\n%s", body)
+	}
 	// The non-defaulted `plain` field must NOT receive an assignment.
 	if strings.Contains(body, "req.Plain =") {
 		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
@@ -278,6 +301,76 @@ service S {
 	)
 }
 
+// TestGenerateTransportEnumArrayQueryDefault pins the enum-array
+// @query @default binder. The slice is pre-filled with the default
+// members' wire values; a present param must REPLACE that pre-fill,
+// not append to it — the `req.X = req.X[:0]` clear is what guards
+// against `?colors=green` yielding `[red green blue]` instead of
+// `[green]`. The has-default oracle the binder consults resolves the
+// enum-member array literal so it agrees with the pre-fill emission.
+func TestGenerateTransportEnumArrayQueryDefault(t *testing.T) {
+	src := `package design
+
+enum Color { Red  Green  Blue }
+
+type Req { colors Color[]? @query @default([Red, Blue]) }
+
+service S {
+    get Get /thing { request Req }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/get.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	mustContainAll(t, got,
+		// pre-fill with the default members' wire values
+		`req.Colors = []types.Color{types.ColorRed, types.ColorBlue}`,
+		// present param REPLACES the pre-fill: clear, then append
+		`req.Colors = req.Colors[:0]`,
+		`req.Colors = append(req.Colors, types.Color(_v))`,
+	)
+}
+
+// TestGenerateTransportWholeNumberFloatDefault pins that a whole-number
+// float `@default(1.0)` renders as a float literal (`1.0`), not `1` — which
+// would infer `int` and make the optional-field pointer pre-fill `*int`
+// instead of `*float64`. A fractional default (`2.5`) is unchanged and
+// carries no cast.
+func TestGenerateTransportWholeNumberFloatDefault(t *testing.T) {
+	src := `package design
+
+type Req {
+    x float64? @default(1.0)
+    y float64? @default(2.5)
+}
+
+service S {
+    post Do /do { request Req }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/do.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	mustContainAll(t, got, `__d := 1.0`, `__d := 2.5`)
+	if strings.Contains(got, "__d := 1\n") || strings.Contains(got, "float64(1)") {
+		t.Errorf("whole-number float default must render as float literal `1.0`, not `1` / `float64(1)`:\n%s", got)
+	}
+}
+
 // TestCollectRequestFieldImports covers the cross-package import
 // walk for request type fields. A request with a `shared.ID` field
 // auto-promoted to @path emits `req.ID = shared.ID(...)` in the
@@ -299,7 +392,7 @@ func TestCollectRequestFieldImports(t *testing.T) {
 		},
 	}
 	cross := CrossPkg{"shared": "github.com/example/svc/internal/types/shared"}
-	got := collectRequestFieldImports(method, pkg, cross)
+	got := collectRequestFieldImports(method, pkg, cross, nil)
 	if got["shared"] != "github.com/example/svc/internal/types/shared" {
 		t.Errorf("expected `shared` import in collected map, got %v", got)
 	}
@@ -1303,5 +1396,90 @@ service UploadService {
 	// The Go field names must NOT leak through as the form keys.
 	if strings.Contains(string(handler), `r.FormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
 		t.Errorf("explicit @form name ignored — form key fell back to the field name:\n%s", handler)
+	}
+}
+
+// TestRequestFieldsNestedCrossPkgMixin pins that flattenFields collects a
+// field reached through a mixin nested INSIDE a cross-package mixin
+// (app.Req -> shared.Outer -> shared.Inner). The bare inner `Inner` must
+// be qualified as `shared.Inner`, or its field silently drops from the
+// binder / default pre-fill while OpenAPI (built from a merged package)
+// still advertises it.
+func TestRequestFieldsNestedCrossPkgMixin(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Inner { deep int32? @default(7) }
+type Outer { Inner  mid int64? @default(9) }`,
+		"app/types.craftgo": `package app
+import "shared"
+type Req { shared.Outer  own string }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	appPkg := proj.Packages["app"]
+	if appPkg == nil {
+		t.Fatal("app package missing")
+	}
+	r := BuildProjectResolver(proj, newFixtureConfig(), "app")
+	got := map[string]bool{}
+	var names []string
+	for _, f := range requestFields(appPkg.Types["Req"], appPkg, r) {
+		got[f.Name] = true
+		names = append(names, f.Name)
+	}
+	// own = direct, mid = one cross-pkg level, deep = two levels (nested).
+	for _, want := range []string{"own", "mid", "deep"} {
+		if !got[want] {
+			t.Errorf("requestFields dropped %q (nested cross-pkg mixin field); collected %v", want, names)
+		}
+	}
+}
+
+// TestResolveRequestFieldsQualifiedRequestNestedMixin pins that a QUALIFIED
+// request type (`request shared.Holder`) has its bare nested mixin's fields
+// resolved and bound. The request type lives in `shared`, so its bare mixin
+// `Sub` resolves there — without threading that package as the flatten
+// prefix, `q` and `bod` were silently dropped from the binder while the
+// validator and the semantic path-param check still enforced them.
+func TestResolveRequestFieldsQualifiedRequestNestedMixin(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Sub { q string @query @length(2, 5)  bod string @length(1, 10) }
+type Holder { Sub  id string @path }`,
+		"app/types.craftgo": `package app
+import "shared"
+type Resp { ok bool }
+service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	appPkg := proj.Packages["app"]
+	if appPkg == nil {
+		t.Fatal("app package missing")
+	}
+	r := BuildProjectResolver(proj, newFixtureConfig(), "app")
+	m := &ast.Method{
+		Verb:    "post",
+		Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Holder"}}},
+		Path:    &ast.Path{Segments: []*ast.PathSegment{{Literal: "h"}, {Param: true, Literal: "id"}}},
+	}
+	got := map[string]Binding{}
+	var names []string
+	for _, rf := range resolveRequestFields(m, appPkg, r) {
+		got[rf.DSLName] = rf.Binding
+		names = append(names, rf.DSLName)
+	}
+	if got["q"] != BindQuery {
+		t.Errorf("q should bind @query (from the cross-pkg request's bare mixin); got %v, fields %v", got["q"], names)
+	}
+	if _, ok := got["bod"]; !ok {
+		t.Errorf("bod (cross-pkg request body field) dropped; fields %v", names)
+	}
+	if got["id"] != BindPath {
+		t.Errorf("id should bind @path; got %v, fields %v", got["id"], names)
 	}
 }

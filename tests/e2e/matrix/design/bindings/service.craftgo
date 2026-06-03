@@ -32,6 +32,17 @@ service BindingsService {
 		response ItemList
 	}
 
+	// SearchByColor drives the enum-array @query @default binder. An
+	// absent `colors` keeps the [Red, Blue] pre-fill; a present
+	// `?colors=green` REPLACES it (the binder clears the slice before
+	// appending) so the result is exactly the requested set, never the
+	// pre-fill concatenated with the query values.
+	@doc("Search by colors with an enum-array @query default. An absent `colors` keeps the [Red, Blue] pre-fill; a present `?colors=green` REPLACES it (not appends), so the result is exactly the requested set.")
+	get SearchByColor /by-color {
+		request  QueryArrayEnumDefaultReq
+		response ItemList
+	}
+
 	// UploadAvatar exercises the path + form-file combination. The
 	// `id` field auto-binds to the path segment; the `file` field
 	// rides the multipart/form-data body.

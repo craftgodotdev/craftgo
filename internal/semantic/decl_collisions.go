@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -96,6 +97,17 @@ type producedName struct {
 // [internal/codegen/{types,enums,errors,middleware}.go]; whenever
 // one of those changes the declProducer set, update this function in
 // lock-step.
+// errStructName mirrors codegen's errSuffix: the error struct keeps its
+// name when it already ends in `Err`/`Error`, otherwise `Err` is appended.
+// Replicated here (semantic can't import codegen) so the collision check
+// predicts the SAME Go identifier codegen actually emits.
+func errStructName(name string) string {
+	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
+		return name
+	}
+	return name + "Err"
+}
+
 func goNamesProducedBy(d ast.Decl) []producedName {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -117,7 +129,7 @@ func goNamesProducedBy(d ast.Decl) []producedName {
 		if dd.Name == "" {
 			return nil
 		}
-		out := []producedName{{goName: dd.Name + "Err", dslName: dd.Name, kind: "error", pos: dd.Pos}}
+		out := []producedName{{goName: errStructName(dd.Name), dslName: dd.Name, kind: "error", pos: dd.Pos}}
 		if len(dd.Body) > 0 {
 			out = append(out, producedName{goName: dd.Name + "Body", dslName: dd.Name, kind: "error", pos: dd.Pos})
 		}

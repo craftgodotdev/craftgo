@@ -20,6 +20,19 @@ import (
 // the merged single package, where pkg.Types already holds every type);
 // `seen` breaks mixin cycles.
 func flattenFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []*ast.Field {
+	return flattenFieldsIn(td, "", pkg, r, seen)
+}
+
+// flattenFieldsIn is [flattenFields] with a package-prefix context.
+// `prefix` is the package qualifier for BARE mixin names in td's body:
+// "" for the package being generated, or a sibling package name when td
+// was itself reached through a cross-package mixin. Without it a bare
+// mixin nested inside `shared.XMid` (e.g. `XDeep`, declared in `shared`)
+// is looked up against the current package and silently dropped — so its
+// fields never bind, default, or validate, while OpenAPI (built from a
+// flattened merged package) still advertises them. The prefix qualifies
+// the bare name (`shared.XDeep`) so the resolver finds it.
+func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []*ast.Field {
 	if td == nil {
 		return nil
 	}
@@ -27,24 +40,41 @@ func flattenFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			out = append(out, v)
+			// A field promoted from a foreign package (prefix != "") names
+			// its type bare in its home package; re-qualify so the
+			// consumer's resolver (binder cast, default pre-fill, import
+			// collector) finds it as `prefix.Name`. No-op at the top level
+			// and for the r=nil (merged-package OpenAPI) path.
+			out = append(out, requalifyFieldType(v, prefix, r))
 		case *ast.Mixin:
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
 				continue
 			}
-			name := v.Ref.Name.String()
-			if seen[name] {
+			// Resolve the mixin in the package it lives in: a qualified
+			// ref names that package; a bare ref inherits the enclosing
+			// prefix (the package td itself came from).
+			parts := v.Ref.Name.Parts
+			key := v.Ref.Name.String()
+			childPrefix := prefix
+			if len(parts) == 2 {
+				childPrefix = parts[0]
+			} else if prefix != "" {
+				key = prefix + "." + key
+			}
+			if seen[key] {
 				continue
 			}
-			seen[name] = true
+			seen[key] = true
 			var mt *ast.TypeDecl
-			if pkg != nil {
-				mt = pkg.Types[name]
+			// pkg.Types is bare-keyed for the current package only, so it
+			// only applies to a bare ref at the top level (prefix == "").
+			if pkg != nil && prefix == "" && len(parts) == 1 {
+				mt = pkg.Types[key]
 			}
 			if mt == nil && r != nil {
-				mt = r.LookupType(name)
+				mt = r.LookupType(key)
 			}
-			sub := flattenFields(mt, pkg, r, seen)
+			sub := flattenFieldsIn(mt, childPrefix, pkg, r, seen)
 			// A generic mixin (`Page<Item>`) promotes fields typed in the
 			// type-parameter (`items T[]`). Substitute the concrete arguments
 			// so every consumer — wire binder, OpenAPI params/body, default
@@ -74,6 +104,83 @@ func requestFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver) 
 	return flattenFields(td, pkg, r, map[string]bool{})
 }
 
+// requalifyFieldType returns f with its type re-qualified into package
+// `prefix` (see [requalifyTypeRef]), cloning only when a rewrite is needed.
+func requalifyFieldType(f *ast.Field, prefix string, r *ProjectResolver) *ast.Field {
+	if f == nil || prefix == "" || r == nil || f.Type == nil {
+		return f
+	}
+	nt := requalifyTypeRef(f.Type, prefix, r)
+	if nt == f.Type {
+		return f
+	}
+	fc := *f
+	fc.Type = nt
+	return &fc
+}
+
+// requalifyTypeRef rewrites every BARE named ref in t that names a
+// type / scalar / enum declared in package `prefix` into the qualified
+// form `prefix.Name`, recursing through arrays, map keys/values, and
+// generic args. A bare name that does NOT resolve in `prefix` (a builtin
+// like `string`/`int`, or a generic type-parameter) is left as-is. Used
+// when a field is promoted into another package through a cross-package
+// mixin: its type, written bare in its home package, must be qualified so
+// the consumer's resolver finds the scalar / enum / type.
+func requalifyTypeRef(t *ast.TypeRef, prefix string, r *ProjectResolver) *ast.TypeRef {
+	if t == nil || prefix == "" || r == nil {
+		return t
+	}
+	if t.Map != nil {
+		nk := requalifyTypeRef(t.Map.Key, prefix, r)
+		nv := requalifyTypeRef(t.Map.Value, prefix, r)
+		if nk == t.Map.Key && nv == t.Map.Value {
+			return t
+		}
+		clone := *t
+		mc := *t.Map
+		mc.Key, mc.Value = nk, nv
+		clone.Map = &mc
+		return &clone
+	}
+	if t.Named == nil || t.Named.Name == nil {
+		return t
+	}
+	var newArgs []*ast.TypeRef
+	argsChanged := false
+	if len(t.Named.Args) > 0 {
+		newArgs = make([]*ast.TypeRef, len(t.Named.Args))
+		for i, a := range t.Named.Args {
+			newArgs[i] = requalifyTypeRef(a, prefix, r)
+			if newArgs[i] != a {
+				argsChanged = true
+			}
+		}
+	}
+	qualify := false
+	if len(t.Named.Name.Parts) == 1 {
+		q := prefix + "." + t.Named.Name.Parts[0]
+		if r.LookupType(q) != nil || r.LookupScalar(q) != nil || r.LookupEnum(q) != nil {
+			qualify = true
+		}
+	}
+	if !qualify && !argsChanged {
+		return t
+	}
+	clone := *t
+	named := *t.Named
+	if argsChanged {
+		named.Args = newArgs
+	}
+	if qualify {
+		nm := *t.Named.Name
+		nm.Parts = []string{prefix, t.Named.Name.Parts[0]}
+		named.Name = &nm
+	}
+	clone.Named = &named
+	return &clone
+}
+
 // collectResponseBindings walks the response type's fields and renders
 // the `@header` / `@cookie` writers. Each entry's [paramBinding.Bind]
 // holds the fully-rendered Go statement (formatting handled per type),
@@ -84,15 +191,20 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectRes
 	if m.Response == nil || m.Response.Type == nil {
 		return nil, nil, false
 	}
-	td, ok := pkg.Types[m.Response.Type.Name.String()]
-	if !ok {
+	// A qualified cross-package response (`response shared.Resp`) isn't in the
+	// bare-keyed local pkg.Types; resolve it through the project resolver and
+	// thread its home-package prefix, or its @header / @cookie fields are
+	// silently dropped from the writer (the fields are json:"-", so the values
+	// go to neither header/cookie nor body) while OpenAPI still advertises them.
+	td, prefix := lookupMethodType(m.Response.Type, pkg, r)
+	if td == nil {
 		return nil, nil, false
 	}
 	// Flatten so a @header / @cookie field promoted through a mixin is
 	// written on the response too — the OpenAPI doc side (binResponseFields)
 	// already flattens, so without this the spec advertises a header the
 	// handler never emits.
-	for _, f := range requestFields(td, pkg, r) {
+	for _, f := range flattenFieldsIn(td, prefix, pkg, r, map[string]bool{}) {
 		kind := bindingFromDecorators(f.Decorators)
 		if kind != "header" && kind != "cookie" {
 			continue
@@ -459,21 +571,32 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 // Result keys the DSL package name (used as the Go alias in the
 // binder cast) to its full Go import path, ready to append to the
 // handler's extra-imports block.
-func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg CrossPkg) map[string]string {
+func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg CrossPkg, r *ProjectResolver) map[string]string {
 	out := map[string]string{}
 	if m == nil || m.Request == nil || pkg == nil || len(crossPkg) == 0 {
 		return out
 	}
-	if _, ok := pkg.Types[m.Request.Name.String()]; !ok {
+	// A qualified cross-package request (`request shared.Holder`) isn't in the
+	// bare-keyed local pkg.Types; resolve it through the project resolver so a
+	// field whose cast / @default reaches a THIRD package still contributes
+	// its import. resolveRequestFields below already resolves the qualified
+	// request — this guard just must not bail before it runs.
+	if td, _ := lookupMethodType(m.Request, pkg, r); td == nil {
 		return out
 	}
 	set := map[string]bool{}
 	// Read the resolved IR: the wire-bound classification (explicit +
 	// auto-@path/@query, mixins flattened) is computed once in
-	// resolveRequestFields rather than re-derived here.
-	for _, rf := range resolveRequestFields(m, pkg, nil) {
+	// resolveRequestFields rather than re-derived here. The resolver must
+	// be threaded or a field promoted through a cross-package mixin is
+	// missed and its foreign-package import is dropped — emitting a cast to
+	// a package the file never imports (non-compiling).
+	for _, rf := range resolveRequestFields(m, pkg, r) {
 		switch rf.Binding {
-		case BindPath, BindQuery, BindHeader, BindCookie:
+		case BindPath, BindQuery, BindHeader, BindCookie, BindForm:
+			// @form casts a cross-package scalar / enum the same way the
+			// other wire sources do (`shared.Cents(...)` in the multipart
+			// handler), so its foreign-package import must be collected too.
 			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
 		}
 		// Body field with `@default(...)` on a cross-pkg enum OR scalar
@@ -575,15 +698,17 @@ func describeFieldType(f *ast.Field) string {
 // handler only emits the JSON body decode block when one or more body
 // fields exist, so a request whose every field is parameter-bound
 // skips the decode entirely.
-func hasUnboundField(m *ast.Method, pkg *semantic.Package) bool {
+func hasUnboundField(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) bool {
 	if m.Request == nil {
 		return false
 	}
 	// A field rides the body iff the resolved binding is body or form (an
 	// explicit @body / @form, or an un-decorated field that auto-bound to
 	// @body on this verb). Wire params (@path/@query/@header/@cookie, incl.
-	// auto-@path) do not.
-	for _, rf := range resolveRequestFields(m, pkg, nil) {
+	// auto-@path) do not. The resolver must be threaded or a request whose
+	// only body fields come from a cross-package mixin reads as "no body
+	// fields" and the handler skips the body decode — fields stay zero.
+	for _, rf := range resolveRequestFields(m, pkg, r) {
 		switch rf.Binding {
 		case BindBody, BindForm:
 			return true

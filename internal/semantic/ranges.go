@@ -21,6 +21,7 @@ package semantic
 import (
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -51,9 +52,19 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		// of every field that uses it, so the float-on-integer check
 		// must run on the scalar declaration as well as on plain fields.
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
-		if unsignedPrim(dd.Primitive) {
-			a.diagNegativeUnsigned(dd.Decorators, dd.Primitive)
+		// The capacity-overflow and unsigned-contradiction checks are
+		// otherwise field-only, so a scalar carrying an out-of-range bound
+		// (`scalar X uint8 @lte(300)`) or an always-false bound (`scalar X
+		// uint @lt(0)`) slipped through and generated non-compiling /
+		// reject-everything Go. Run them via a synthetic field typed as the
+		// scalar's primitive — exactly the decorators a using field inherits.
+		scalarAsField := &ast.Field{
+			Name:       dd.Name,
+			Type:       &ast.TypeRef{Named: &ast.NamedTypeRef{Pos: dd.Pos, Name: &ast.QualifiedIdent{Pos: dd.Pos, Parts: []string{dd.Primitive}}}},
+			Decorators: dd.Decorators,
 		}
+		a.checkBoundCapacity(scalarAsField)
+		a.checkNegativeOnUnsigned(scalarAsField)
 		if dd.Primitive == "bytes" {
 			// Same rule as a bytes field: @pattern / @format constrain text,
 			// not a binary value, so the validator drops them while OpenAPI
@@ -148,6 +159,15 @@ func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []
 	}
 	if t.Array {
 		a.mapKeysComparable(peelOneArray(t), f, typeParams)
+		return
+	}
+	// A generic instance (`Box<map<bad, V>>`) carries the map inside its
+	// type-arg; descend so a non-marshalable key nested in a type-argument is
+	// caught too, mirroring the @uniqueItems comparability walk.
+	if t.Named != nil {
+		for _, arg := range t.Named.Args {
+			a.mapKeysComparable(arg, f, typeParams)
+		}
 	}
 }
 
@@ -324,8 +344,22 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	if sd, ok := a.pkg.Scalars[prim]; ok {
 		prim = sd.Primitive
 	}
-	if unsignedPrim(prim) {
-		a.diagNegativeUnsigned(f.Decorators, prim)
+	if !unsignedPrim(prim) {
+		return
+	}
+	a.diagNegativeUnsigned(f.Decorators, prim)
+	// `@lt(0)` is the desugared spelling of `@negative`: "value < 0", which
+	// no `uint*` can satisfy. The capacity check ([checkBoundCapacity])
+	// misses it because 0 is itself an in-range value — only the predicate
+	// is empty. (`@lt(N)` / `@lte(N)` with N < 0 are already caught there
+	// as out-of-range literals.)
+	for _, d := range f.Decorators {
+		if d != nil && d.Name == "lt" && len(d.Args) == 1 {
+			if il, ok := d.Args[0].Value.(*ast.IntLit); ok && il.Value == 0 {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+					"@lt(0) cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or a positive bound", prim)
+			}
+		}
 	}
 }
 
@@ -431,10 +465,17 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool 
 		return true
 	}
 	if td, ok := a.pkg.Types[name]; ok {
-		if seen[name] {
+		// Key the back-edge guard by the instantiated identity (name + args),
+		// not the bare decl name — otherwise a comparable instantiation
+		// (`Wrap<string>`) poisons the guard so a later non-comparable one
+		// (`Wrap<bytes>`) short-circuits to "comparable" and leaks a
+		// non-compiling dedupe map. A true cycle (same instantiation) still
+		// matches and breaks.
+		key := comparableKey(t)
+		if seen[key] {
 			return true
 		}
-		seen[name] = true
+		seen[key] = true
 		// For a generic instance (`Pair<bytes>`) substitute the type-args
 		// into the decl's fields: a field typed `T` is comparable only if the
 		// concrete argument is. Without this, `T` resolves to nothing and
@@ -457,7 +498,11 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool 
 				}
 			case *ast.Mixin:
 				if v.Ref != nil && v.Ref.Name != nil {
-					if !a.typeRefComparable(&ast.TypeRef{Named: v.Ref}, seen) {
+					// Substitute the outer decl's type-args into the mixin ref
+					// too (a generic mixin `Inner<T>` becomes `Inner<bytes>`),
+					// mirroring the Field branch above — without it a bare `T`
+					// inside the mixin escapes the comparability check.
+					if !a.typeRefComparable(substTypeParam(&ast.TypeRef{Named: v.Ref}, subst), seen) {
 						return false
 					}
 				}
@@ -544,12 +589,28 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	if !ok {
 		return
 	}
-	check := func(d *ast.Decorator, val *ast.IntLit, pos lexer.Position) {
-		v := float64(val.Value)
+	check := func(d *ast.Decorator, arg *ast.DecoratorArg) {
+		var v float64
+		var disp string
+		switch lit := arg.Value.(type) {
+		case *ast.IntLit:
+			v, disp = float64(lit.Value), strconv.FormatInt(lit.Value, 10)
+		case *ast.FloatLit:
+			// An INTEGRAL float bound (`@gte(300.0)`) renders to a bare
+			// whole-number Go literal, so it must be capacity-checked too;
+			// a fractional float is rejected separately by
+			// checkIntBoundFloatLiteral.
+			if lit.Value != float64(int64(lit.Value)) {
+				return
+			}
+			v, disp = lit.Value, strconv.FormatInt(int64(lit.Value), 10)
+		default:
+			return
+		}
 		if v < lo || v > hi {
-			a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
-				"@%s bound %d exceeds %s range [%g, %g]",
-				d.Name, val.Value, prim, lo, hi)
+			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeBoundOverflow,
+				"@%s bound %s exceeds %s range [%g, %g]",
+				d.Name, disp, prim, lo, hi)
 		}
 	}
 	for _, d := range f.Decorators {
@@ -560,15 +621,11 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 		switch d.Name {
 		case "gt", "gte", "lt", "lte", "multipleOf":
 			if len(d.Args) == 1 {
-				if il, ok := d.Args[0].Value.(*ast.IntLit); ok {
-					check(d, il, d.Args[0].Pos)
-				}
+				check(d, d.Args[0])
 			}
 		case "range":
 			for _, ag := range d.Args {
-				if il, ok := ag.Value.(*ast.IntLit); ok {
-					check(d, il, ag.Pos)
-				}
+				check(d, ag)
 			}
 		}
 	}
@@ -674,9 +731,18 @@ func (a *analyzer) checkDecoratorRanges(decs []*ast.Decorator) {
 }
 
 // checkPairArgs handles `@length(min, max)` / `@range(min, max)`. The
-// 1-arg form of `@length` is "exact length" and skipped here.
+// 1-arg form of `@length` is "exact length" — still non-negative, or the
+// validator emits an always-true `l != N` reject (RuneCount is never < 0)
+// while OpenAPI advertises no length constraint at all.
 func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 	pos := positionalArgs(d)
+	if d.Name == "length" && len(pos) == 1 {
+		if v, ok := numericValue(pos[0].Value); ok && v < 0 {
+			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+				"@length: exact length must be ≥ 0 (got %g)", v)
+		}
+		return
+	}
 	if len(pos) != 2 {
 		return
 	}

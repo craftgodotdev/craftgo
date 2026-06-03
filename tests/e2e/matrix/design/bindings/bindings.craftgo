@@ -140,6 +140,17 @@ type QueryRequiredReq {
 	limit int @query @gte(1) @lte(100)
 }
 
+// QueryArrayEnumDefaultReq drives the enum-array @query @default path.
+// The slice is pre-filled with the wire values of the default members
+// ([Red, Blue]); the binder must REPLACE that pre-fill when the param
+// is present, not append to it — so `?colors=green` yields ["green"],
+// never ["red", "green", "blue"]. The has-default oracle the binder
+// consults resolves the enum-member array literal so it agrees with the
+// pre-fill that emitted the default.
+type QueryArrayEnumDefaultReq {
+	colors Color[]? @query @default([Red, Blue])
+}
+
 // ---------------------------------------------------------------
 // Header / cookie bindings.
 //

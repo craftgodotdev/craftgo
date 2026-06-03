@@ -24,10 +24,39 @@ package semantic
 // Codegen does the actual T→User rewrite per-instance.
 
 import (
+	"fmt"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
+
+// mixinEmbed records where a mixin first embedded under a given Go
+// field name, for the duplicate-embed diagnostic.
+type mixinEmbed struct {
+	full string
+	pos  lexer.Position
+}
+
+// goEmbedName returns the Go embedded-field name a mixin ref lowers to:
+// the unqualified last segment, so `shared.Leaf` and a local `Leaf` both
+// yield `Leaf` (and would redeclare it in the generated struct).
+func goEmbedName(n *ast.QualifiedIdent) string {
+	if n == nil || len(n.Parts) == 0 {
+		return ""
+	}
+	return n.Parts[len(n.Parts)-1]
+}
+
+// duplicateEmbedMsg builds the duplicate-embed diagnostic, distinguishing
+// the exact-same-ref case from two distinct refs (local vs imported, or
+// two imports) that collapse to the same Go field name.
+func duplicateEmbedMsg(first, second, leaf string) string {
+	if first == second {
+		return fmt.Sprintf("mixin %q is embedded more than once — the generated Go struct would declare it twice and fail to compile (%q redeclared)", first, leaf)
+	}
+	return fmt.Sprintf("mixins %q and %q both embed as the Go field %q — the generated struct would redeclare it and fail to compile", first, second, leaf)
+}
 
 // fieldEmbedClash is a field whose Go field-name equals an embedded
 // mixin's type name.
@@ -74,9 +103,58 @@ func fieldEmbedClashes(body []ast.TypeMember) []fieldEmbedClash {
 func (a *analyzer) checkMixins() {
 	for _, td := range a.pkg.Types {
 		a.checkOneTypeMixins(td.Name, td.Body)
+		a.checkTypeParamMixin(td.Name, td.TypeParams, td.Body)
 	}
 	for _, ed := range a.pkg.Errors {
 		a.checkOneTypeMixins(ed.Name, ed.Body)
+	}
+}
+
+// typeParamMixin is a mixin that embeds a bare type-parameter of its host
+// generic, with the source position for the diagnostic.
+type typeParamMixin struct {
+	pos   lexer.Position
+	param string
+}
+
+// findTypeParamMixins returns every mixin in body that embeds a bare
+// type-parameter of the host generic (`type Box<T> { T }`). Go forbids
+// embedding a type parameter ("embedded field type cannot be a (pointer to a)
+// type parameter"), so the generated struct would never compile. Shared by the
+// per-package and project mixin passes so both reject it identically.
+func findTypeParamMixins(typeParams []string, body []ast.TypeMember) []typeParamMixin {
+	if len(typeParams) == 0 {
+		return nil
+	}
+	tp := map[string]bool{}
+	for _, p := range typeParams {
+		tp[p] = true
+	}
+	var out []typeParamMixin
+	for _, m := range body {
+		mx, ok := m.(*ast.Mixin)
+		if !ok || mx.Ref == nil || mx.Ref.Name == nil {
+			continue
+		}
+		if parts := mx.Ref.Name.Parts; len(parts) == 1 && tp[parts[0]] {
+			out = append(out, typeParamMixin{pos: mx.Pos, param: parts[0]})
+		}
+	}
+	return out
+}
+
+// typeParamMixinMsg is the shared diagnostic text for an embedded type-param.
+func typeParamMixinMsg(host, param string) string {
+	return fmt.Sprintf(
+		"type %s cannot embed its type parameter %q as a mixin: Go forbids embedding a type parameter, so the generated struct would not compile. Use a named field instead (e.g. `value %s`).",
+		host, param, param)
+}
+
+// checkTypeParamMixin rejects an embedded type-parameter at the per-package
+// pass; [refResolver.checkProjectMixins] mirrors it for project mode.
+func (a *analyzer) checkTypeParamMixin(host string, typeParams []string, body []ast.TypeMember) {
+	for _, tpm := range findTypeParamMixins(typeParams, body) {
+		a.diag(tpm.pos, tpm.pos, lexer.SeverityError, CodeMixinConflict, "%s", typeParamMixinMsg(host, tpm.param))
 	}
 }
 
@@ -105,10 +183,24 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 			seen[f.Name] = fieldOrigin{pos: f.Pos, from: host}
 		}
 	}
+	seenMixin := map[string]mixinEmbed{}
 	for _, m := range body {
 		mx, ok := m.(*ast.Mixin)
 		if !ok {
 			continue
+		}
+		if mx.Ref != nil && mx.Ref.Name != nil {
+			// Key on the Go embedded-field name (the unqualified leaf), not
+			// the dotted ref: `Leaf` and `shared.Leaf` both embed as the
+			// field `Leaf` and would redeclare it.
+			leaf := goEmbedName(mx.Ref.Name)
+			full := mx.Ref.Name.String()
+			if prev, dup := seenMixin[leaf]; dup {
+				d := a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinConflict, "%s", duplicateEmbedMsg(prev.full, full, leaf))
+				d.Related = related(prev.pos, "first embedded here")
+				continue
+			}
+			seenMixin[leaf] = mixinEmbed{full: full, pos: mx.Pos}
 		}
 		a.processMixin(host, mx, seen)
 	}

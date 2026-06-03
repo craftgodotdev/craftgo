@@ -16,6 +16,8 @@ package semantic
 // "unresolved name" squiggle and offer a quick-fix list of candidates.
 
 import (
+	"fmt"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
@@ -81,6 +83,7 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 // type don't pay the O(n) cost twice.
 func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, body []ast.TypeMember) {
 	var fieldSet map[string]*ast.Field
+	var incomplete bool
 	getFields := func() map[string]*ast.Field {
 		if fieldSet != nil {
 			return fieldSet
@@ -89,7 +92,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 		// Mixin-promoted fields ARE fields of this type — the host struct
 		// embeds them and the validator runs their checks — so a cross-field
 		// decorator may reference them, not only the directly-declared ones.
-		a.collectGroupFields(body, fieldSet, map[string]bool{})
+		incomplete = a.collectGroupFields(body, fieldSet, map[string]bool{})
 		return fieldSet
 	}
 	for _, d := range decs {
@@ -116,64 +119,21 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			seen[name.value] = true
 			f, ok := getFields()[name.value]
 			if !ok {
+				if incomplete {
+					// A cross-package mixin the per-package pass couldn't
+					// expand may promote this member; codegen resolves it via
+					// the project resolver, so defer rather than false-reject.
+					continue
+				}
 				a.diag(name.pos, name.pos, lexer.SeverityError, CodeDecoratorRef,
 					"@%s on type %s: %q is not a field of this type",
 					d.Name, typeName, name.value)
 				continue
 			}
 			if f != nil {
-				// A nilable-but-not-pointer member has no clean cross-field
-				// presence: `?` / `@nullable` add no pointer (the Go type is
-				// already nilable), so the runtime can't use the `!= nil` check
-				// that lines up with the group's OpenAPI present-and-non-null. A
-				// slice / map is checked by emptiness (`len(...) > 0`, so an empty
-				// `[]` / `{}` reads as absent) and a `bytes` / `any` member has no
-				// presence expression at all (always treated as present). Reject
-				// so the author references a pointer-backed field instead.
-				if presenceUnclean(f) {
-					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
-						"@%s on type %s: field %q has no clean present/absent state for a cross-field group — a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
-						d.Name, typeName, name.value)
-					continue
-				}
-				// The referenced field must be pointer-backed (optional `?` or
-				// `@nullable`) so its runtime presence check (`!= nil`) lines up
-				// with the present-and-non-null semantics OpenAPI emits for the
-				// group. A plain field falls back to zero-value emptiness, which
-				// disagrees with the spec.
-				if !f.Type.Optional && !ast.HasDecorator(f.Decorators, "nullable") {
-					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
-						"@%s on type %s: field %q must be optional (`?`) or `@nullable` — a cross-field group needs an unambiguous present/absent state, but a plain field is checked by zero-value emptiness, which disagrees with the OpenAPI schema",
-						d.Name, typeName, name.value)
-				}
-				// A `@sensitive` member is server-only (`json:"-"`, excluded
-				// from the schema), so a body-level cross-field group can't
-				// reference it: the OpenAPI would name a property the public
-				// schema never carries, and the runtime check reads a field the
-				// client never sends.
-				if ast.HasDecorator(f.Decorators, "sensitive") {
-					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
-						"@%s on type %s: field %q is @sensitive (server-only, not on the wire), so it can't participate in a cross-field group. Reference a body field instead.",
-						d.Name, typeName, name.value)
-				}
-				// A wire-bound member (`@query`/`@header`/`@cookie`/`@path`/
-				// `@form`) is excluded from the JSON body schema, so a body-level
-				// cross-field group referencing it advertises a constraint over a
-				// property the body never carries — an unsatisfiable / meaningless
-				// schema.
-				if kind, _, bound := wireBinding(f); bound {
-					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
-						"@%s on type %s: field %q is bound to @%s and does not ride the JSON body, so it can't participate in a body-level cross-field group. Reference a body field instead.",
-						d.Name, typeName, name.value, kind)
-				}
-				// A `@default` member is pre-filled before decode, so the runtime
-				// group is always satisfied while the OpenAPI still requires the
-				// client to send it — they disagree on an empty body.
-				if ast.HasDecorator(f.Decorators, "default") {
-					a.diag(name.pos, name.pos, lexer.SeverityError, CodeCrossFieldNotOptional,
-						"@%s on type %s: field %q carries @default, so it is always present at runtime and the cross-field check is a no-op the OpenAPI contradicts. Drop @default or the cross-field reference.",
-						d.Name, typeName, name.value)
-				}
+				reportCrossFieldMemberIssues(d.Name, typeName, name.value, f, a.scalarNilable, func(code, msg string) {
+					a.diag(name.pos, name.pos, lexer.SeverityError, code, "%s", msg)
+				})
 			}
 		}
 		// `@mutuallyExclusive` with 0 or 1 distinct fields renders
@@ -188,15 +148,262 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 	}
 }
 
+// checkProjectFieldGroups re-validates `@requiresOneOf` / `@mutuallyExclusive`
+// member names against the full field set, including fields promoted from
+// cross-package mixins. The per-package pass ([analyzer.checkFieldGroupRefs])
+// defers the "not a field" reject for any type whose mixin closure reaches a
+// cross-package mixin — its promoted fields aren't visible there. This pass
+// closes that gap: a typoed member would otherwise reach codegen, which
+// substitutes a literal `false` for the unknown name and emits a validator
+// that never fires.
+func (r *refResolver) checkProjectFieldGroups() {
+	for pkgName, pkg := range r.proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for _, td := range pkg.Types {
+			r.checkOneTypeFieldGroups(pkgName, td)
+		}
+	}
+}
+
+// checkOneTypeFieldGroups runs the authoritative member check for one type,
+// but only when its mixin closure crossed a package boundary — that is
+// exactly the set the per-package pass deferred. Re-checking a type the
+// per-package pass already fully resolved would double-report. For each
+// member it (1) rejects a name no field provides and (2) re-applies the
+// per-field quality rules to a member promoted from a foreign mixin (which
+// the per-package pass never saw, so never checked); members the per-package
+// pass already had — direct fields and same-package-mixin-promoted ones — are
+// skipped to avoid double-reporting.
+func (r *refResolver) checkOneTypeFieldGroups(currentPkg string, td *ast.TypeDecl) {
+	if td == nil || !hasFieldGroupDecorator(td.Decorators) {
+		return
+	}
+	fullFields := map[string]*ast.Field{}
+	deferred := r.collectGroupFieldsProject(currentPkg, td.Body, fullFields, map[string]bool{})
+	if !deferred {
+		return
+	}
+	localFields := map[string]bool{}
+	r.collectLocalGroupFields(currentPkg, td.Body, localFields, map[string]bool{})
+	for _, d := range td.Decorators {
+		if d == nil || (d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive") {
+			continue
+		}
+		for _, arg := range collectIdentOrStringArgs(d) {
+			f, ok := fullFields[arg.value]
+			if !ok {
+				r.diag(arg.pos, lexer.SeverityError, CodeDecoratorRef,
+					"@%s on type %s: %q is not a field of this type",
+					d.Name, td.Name, arg.value)
+				continue
+			}
+			if localFields[arg.value] {
+				// The per-package pass had this member (a direct field or one
+				// from a same-package mixin) and already quality-checked it.
+				continue
+			}
+			if f != nil {
+				reportCrossFieldMemberIssues(d.Name, td.Name, arg.value, f, r.scalarNilable, func(code, msg string) {
+					r.diag(arg.pos, lexer.SeverityError, code, "%s", msg)
+				})
+			}
+		}
+	}
+}
+
+// collectGroupFieldsProject fills out with every field a type body
+// contributes (name → declaration), resolving embedded mixins across
+// packages. A name already present is not overwritten (first by body order
+// wins, mirroring [analyzer.collectGroupFields]). It returns `deferred` =
+// true when the closure reached a qualified cross-package mixin the
+// per-package pass could not expand — the signal that the type's members
+// were left for this project pass to validate.
+func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) (deferred bool) {
+	for _, m := range body {
+		switch v := m.(type) {
+		case *ast.Field:
+			if _, dup := out[v.Name]; !dup {
+				out[v.Name] = v
+			}
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			parts := v.Ref.Name.Parts
+			var mixPkg, sym string
+			switch len(parts) {
+			case 1:
+				mixPkg, sym = currentPkg, parts[0]
+			case 2:
+				mixPkg, sym = parts[0], parts[1]
+				deferred = true
+			default:
+				continue
+			}
+			key := mixPkg + "." + sym
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			pkg := r.proj.Packages[mixPkg]
+			if pkg == nil {
+				continue
+			}
+			mt, ok := pkg.Types[sym]
+			if !ok {
+				continue
+			}
+			if r.collectGroupFieldsProject(mixPkg, mt.Body, out, seen) {
+				deferred = true
+			}
+		}
+	}
+	return deferred
+}
+
+// collectLocalGroupFields fills out with the field names the per-package pass
+// could see: direct fields plus those from same-package (bare) mixins,
+// stopping at a qualified cross-package mixin (which the per-package pass
+// also can't expand). The result is exactly the members that pass already
+// quality-checked, so [checkOneTypeFieldGroups] can skip them and re-check
+// only the cross-package-promoted members.
+func (r *refResolver) collectLocalGroupFields(currentPkg string, body []ast.TypeMember, out map[string]bool, seen map[string]bool) {
+	for _, m := range body {
+		switch v := m.(type) {
+		case *ast.Field:
+			out[v.Name] = true
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) != 1 {
+				continue
+			}
+			sym := v.Ref.Name.Parts[0]
+			if seen[sym] {
+				continue
+			}
+			seen[sym] = true
+			pkg := r.proj.Packages[currentPkg]
+			if pkg == nil {
+				continue
+			}
+			if mt, ok := pkg.Types[sym]; ok {
+				r.collectLocalGroupFields(currentPkg, mt.Body, out, seen)
+			}
+		}
+	}
+}
+
+// hasFieldGroupDecorator reports whether a decorator list carries a
+// cross-field group (`@requiresOneOf` / `@mutuallyExclusive`).
+func hasFieldGroupDecorator(decs []*ast.Decorator) bool {
+	for _, d := range decs {
+		if d != nil && (d.Name == "requiresOneOf" || d.Name == "mutuallyExclusive") {
+			return true
+		}
+	}
+	return false
+}
+
+// reportCrossFieldMemberIssues applies the per-field quality rules a
+// cross-field group member must satisfy and calls `report(code, msg)` for
+// each violation. It is the single home for these rules so the per-package
+// pass ([analyzer.checkFieldGroupRefs]) and the project-level re-check
+// ([refResolver.checkOneTypeFieldGroups], which sees fields promoted across
+// package boundaries) apply them identically — whether the member is a local
+// field or one promoted from a foreign mixin. The presence-unclean case
+// returns early (it subsumes the optional check); the remaining rules are
+// independent so a field can violate several at once.
+func reportCrossFieldMemberIssues(decName, typeName, memberName string, f *ast.Field, scalarNilable func(*ast.NamedTypeRef) bool, report func(code, msg string)) {
+	// A nilable-but-not-pointer member has no clean cross-field presence:
+	// `?` / `@nullable` add no pointer (the Go type is already nilable), so
+	// the runtime can't use the `!= nil` check that lines up with the group's
+	// OpenAPI present-and-non-null. A slice / map is checked by emptiness
+	// (`len(...) > 0`, so an empty `[]` / `{}` reads as absent) and a `bytes`
+	// / `any` member (raw or via a scalar) has no presence expression at all
+	// (always treated as present). Reject so the author references a
+	// pointer-backed field instead.
+	if presenceUnclean(f, scalarNilable) {
+		report(CodeCrossFieldNotOptional, fmt.Sprintf(
+			"@%s on type %s: field %q has no clean present/absent state for a cross-field group — a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
+			decName, typeName, memberName))
+		return
+	}
+	// The referenced field must be pointer-backed (optional `?` or
+	// `@nullable`) so its runtime presence check (`!= nil`) lines up with the
+	// present-and-non-null semantics OpenAPI emits for the group. A plain
+	// field falls back to zero-value emptiness, which disagrees with the spec.
+	if !f.Type.Optional && !ast.HasDecorator(f.Decorators, "nullable") {
+		report(CodeCrossFieldNotOptional, fmt.Sprintf(
+			"@%s on type %s: field %q must be optional (`?`) or `@nullable` — a cross-field group needs an unambiguous present/absent state, but a plain field is checked by zero-value emptiness, which disagrees with the OpenAPI schema",
+			decName, typeName, memberName))
+	}
+	// A `@sensitive` member is server-only (`json:"-"`, excluded from the
+	// schema), so a body-level cross-field group can't reference it: the
+	// OpenAPI would name a property the public schema never carries, and the
+	// runtime check reads a field the client never sends.
+	if ast.HasDecorator(f.Decorators, "sensitive") {
+		report(CodeCrossFieldNotOptional, fmt.Sprintf(
+			"@%s on type %s: field %q is @sensitive (server-only, not on the wire), so it can't participate in a cross-field group. Reference a body field instead.",
+			decName, typeName, memberName))
+	}
+	// A wire-bound member (`@query`/`@header`/`@cookie`/`@path`/`@form`) is
+	// excluded from the JSON body schema, so a body-level cross-field group
+	// referencing it advertises a constraint over a property the body never
+	// carries — an unsatisfiable / meaningless schema.
+	if kind, _, bound := wireBinding(f); bound {
+		report(CodeCrossFieldNotOptional, fmt.Sprintf(
+			"@%s on type %s: field %q is bound to @%s and does not ride the JSON body, so it can't participate in a body-level cross-field group. Reference a body field instead.",
+			decName, typeName, memberName, kind))
+	}
+	// A `@default` member is pre-filled before decode, so the runtime group
+	// is always satisfied while the OpenAPI still requires the client to send
+	// it — they disagree on an empty body.
+	if ast.HasDecorator(f.Decorators, "default") {
+		report(CodeCrossFieldNotOptional, fmt.Sprintf(
+			"@%s on type %s: field %q carries @default, so it is always present at runtime and the cross-field check is a no-op the OpenAPI contradicts. Drop @default or the cross-field reference.",
+			decName, typeName, memberName))
+	}
+}
+
 // presenceUnclean reports whether a cross-field member's Go type is nilable
 // but not a pointer, so its runtime presence can't be the clean `!= nil`
 // check that matches the group's OpenAPI present-and-non-null. A slice / map
 // is checked by emptiness (`len(...) > 0`); a raw `bytes` (`[]byte`) or `any`
-// (`interface{}`) member has no presence expression and is always treated as
-// present. (A `file` is `*multipart.FileHeader` — already a pointer — and a
-// scalar over `bytes` lowers to `*Scalar`, so both stay pointer-backed and
-// are not flagged here.)
-func presenceUnclean(f *ast.Field) bool {
+// (`interface{}`) member — or a scalar over either (which lowers to the bare
+// named slice / interface, not a pointer) — has no presence expression and is
+// always treated as present. (A `file` is `*multipart.FileHeader` — already a
+// pointer — so it stays pointer-backed and is not flagged here.) The
+// scalarNilable predicate resolves a named scalar to its underlying primitive;
+// it may be nil when no scalar table is available, which only skips the scalar
+// case.
+// nilableScalarPrimitive reports whether a scalar's underlying primitive
+// lowers to a Go type that already holds nil (so a scalar over it renders
+// without a pointer wrap): the `bytes` slice and the `any` interface.
+func nilableScalarPrimitive(prim string) bool {
+	return prim == "bytes" || prim == "any"
+}
+
+// scalarNilable resolves a LOCAL named scalar and reports whether it sits
+// over a nilable primitive. Qualified cross-package scalars miss the local
+// table and are handled by the project pass ([refResolver.scalarNilable]).
+func (a *analyzer) scalarNilable(n *ast.NamedTypeRef) bool {
+	if n == nil || n.Name == nil {
+		return false
+	}
+	sd, ok := a.pkg.Scalars[n.Name.String()]
+	return ok && sd != nil && nilableScalarPrimitive(sd.Primitive)
+}
+
+// scalarNilable resolves a named scalar through the project resolver
+// (handling cross-package qualified refs) and reports whether it sits over
+// a nilable primitive.
+func (r *refResolver) scalarNilable(n *ast.NamedTypeRef) bool {
+	sc := r.lookupScalar(n)
+	return sc != nil && nilableScalarPrimitive(sc.Primitive)
+}
+
+func presenceUnclean(f *ast.Field, scalarNilable func(*ast.NamedTypeRef) bool) bool {
 	if f.Type == nil {
 		return false
 	}
@@ -206,6 +413,12 @@ func presenceUnclean(f *ast.Field) bool {
 	if f.Type.Named != nil {
 		switch f.Type.Named.Name.String() {
 		case "bytes", "any":
+			return true
+		}
+		// A scalar over a nilable primitive (`scalar Blob bytes`) lowers to
+		// the bare named slice (`[]byte`), not `*Blob`, so it has the same
+		// emptiness-only presence as a raw `bytes` member.
+		if scalarNilable != nil && scalarNilable(f.Type.Named) {
 			return true
 		}
 	}
@@ -219,7 +432,7 @@ func presenceUnclean(f *ast.Field) bool {
 // the resolution error). A name already present (the host's own field)
 // is not overwritten by a promoted one — the host wins, matching Go
 // embedding.
-func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) {
+func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) (incomplete bool) {
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
@@ -236,10 +449,20 @@ func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast
 			}
 			seen[name] = true
 			if td, ok := a.pkg.Types[name]; ok {
-				a.collectGroupFields(td.Body, out, seen)
+				if a.collectGroupFields(td.Body, out, seen) {
+					incomplete = true
+				}
+			} else {
+				// A cross-package (or otherwise unresolvable) mixin: its
+				// promoted fields aren't visible to the per-package pass, so
+				// the field set is incomplete — codegen resolves them via the
+				// project resolver. Signal so the caller doesn't false-reject
+				// a member that the mixin in fact provides.
+				incomplete = true
 			}
 		}
 	}
+	return incomplete
 }
 
 // checkServiceLevelRefs validates `@middlewares` and `@security` at the

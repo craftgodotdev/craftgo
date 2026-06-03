@@ -527,6 +527,17 @@ func (v *RgLengths) Validate() error {
 	if err := v.Token.Validate(); err != nil {
 		return err
 	}
+	if v.NulToken != nil {
+		_sv := []byte(v.NulToken)
+		if len(_sv) < 8 {
+			return fmt.Errorf("nulToken: length less than 8")
+		}
+	}
+	if v.NulToken != nil {
+		if err := v.NulToken.Validate(); err != nil {
+			return err
+		}
+	}
 	if len(v.Raw) < 4 {
 		return fmt.Errorf("raw: length less than 4")
 	}

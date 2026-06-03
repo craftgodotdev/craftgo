@@ -8,7 +8,9 @@ import (
 )
 
 func numericValueExpr(f *ast.Field, access string) string {
-	if goFieldIsPointer(f) {
+	// Only numeric-typed fields reach here, never a nilable scalar, so the
+	// pointer test needs no scalar resolver.
+	if goFieldIsPointer(f, nil, nil) {
 		return "*" + access
 	}
 	return access

@@ -574,12 +574,16 @@ type Pick {
 // `for key := range m` walk and dispatches Validate on the key side
 // as well as the value side.
 func TestValidateWalksMapKeyUserType(t *testing.T) {
+	// A cross-package scalar key (string-backed, so JSON-marshalable) with
+	// its own validator: the generated code walks the keys and calls
+	// key.Validate(). A struct key would be rejected at design time — a
+	// struct isn't a usable JSON map key (covered by the semantic pass).
 	root, files := projectFiles(t, map[string]string{
 		"shared/t.craftgo": `package shared
-type User { id string @length(1, 64) }`,
+scalar Email string @format(email) @length(1, 64)`,
 		"app/t.craftgo": `package app
 import "shared"
-type Bag { byUser map<shared.User, string> }`,
+type Bag { byEmail map<shared.Email, string> }`,
 	})
 	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
 	if len(diags) > 0 {
@@ -587,14 +591,14 @@ type Bag { byUser map<shared.User, string> }`,
 	}
 	appPkg := proj.Packages["app"]
 	dir := t.TempDir()
-	if err := GenerateValidatorsAll(appPkg, dir, nil, nil, BuildTypeTable(proj, "app"), nil); err != nil {
+	if err := GenerateValidatorsAll(appPkg, dir, nil, BuildScalarTable(proj, "app"), BuildTypeTable(proj, "app"), BuildEnumTable(proj, "app")); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src,
-		"for key := range v.ByUser",
+		"for key := range v.ByEmail",
 		"key.Validate()",
 	)
 }
@@ -942,5 +946,34 @@ type Host {
 	)
 	if strings.Contains(src, "switch *v.ENull {") {
 		t.Errorf("did not expect an inline pointer-deref switch for @nullable enum:\n%s", src)
+	}
+}
+
+// TestUniqueItemsCrossPkgElementImport pins that @uniqueItems over a
+// cross-package element type registers the foreign package's import — the
+// dedupe `make(map[shared.Name]struct{})` references it and would
+// otherwise be non-compiling.
+func TestUniqueItemsCrossPkgElementImport(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/s.craftgo": `package shared
+scalar Name string @minLength(1)`,
+		"app/t.craftgo": `package app
+import "shared"
+type U { names shared.Name[] @uniqueItems }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	cross := CrossPkg{"shared": "github.com/test/m/internal/types/shared"}
+	dir := t.TempDir()
+	if err := GenerateValidatorsAll(proj.Packages["app"], dir, cross, BuildScalarTable(proj, "app"), BuildTypeTable(proj, "app"), nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	if !strings.Contains(src, "internal/types/shared") {
+		t.Errorf("@uniqueItems over shared.Name must import shared; got:\n%s", src)
 	}
 }

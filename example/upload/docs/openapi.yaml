@@ -139,8 +139,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeleteMediaRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - media
     get:
@@ -161,8 +159,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetMediaRespBody'
           description: OK
-        default:
-          description: ""
       tags:
       - media
   /media/documents:
@@ -201,8 +197,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UploadDocumentRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - media
   /media/notes/{noteId}/attachments:
@@ -239,8 +233,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UploadAttachmentRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - media
   /media/users/{userId}/avatar:
@@ -277,8 +269,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UploadAvatarRespBody'
           description: Created
-        default:
-          description: ""
       tags:
       - media
 servers:

@@ -225,7 +225,20 @@ func rewriteMembers(members []ast.TypeMember, srcPkg string, rewrite func(string
 			out = append(out, &cp)
 		case *ast.Mixin:
 			cp := *v
-			cp.Ref = rewrite(srcPkg, v.Ref)
+			nr := rewrite(srcPkg, v.Ref)
+			// rewrite touches only the ref's NAME; its generic args (a
+			// cross-pkg arg like `lib.Owner` in `lib.Page<lib.Owner>`)
+			// must be rewritten too, or the merged generic instance's
+			// element `$ref` dangles at `lib.Owner`.
+			if nr != nil && len(nr.Args) > 0 {
+				nrc := *nr
+				nrc.Args = make([]*ast.TypeRef, len(nr.Args))
+				for i, a := range nr.Args {
+					nrc.Args[i] = rewriteTypeRef(a, srcPkg, rewrite)
+				}
+				nr = &nrc
+			}
+			cp.Ref = nr
 			out = append(out, &cp)
 		default:
 			out = append(out, m)
@@ -286,9 +299,50 @@ func cloneServiceInfo(si *semantic.ServiceInfo, srcPkg string, rewrite func(stri
 			respCopy.Type = rewriteNamedTypeRef(m.Response.Type, srcPkg, rewrite)
 			cp.Response = &respCopy
 		}
+		cp.Decorators = rewriteErrorDecorators(m.Decorators, srcPkg, rewrite)
 		out.Methods[i] = &cp
 	}
 	return &out
+}
+
+// rewriteErrorDecorators rewrites the error refs inside every
+// `@errors(...)` decorator so they track the merge's rename pass. When
+// two packages declare an error of the same name, the merge renames both
+// (e.g. `Dup` → `ADup` / `BDup`) and stores each under its renamed key in
+// the merged Errors map. The per-operation response builder looks the
+// error up by the decorator's trailing segment, so without rewriting the
+// decorator that lookup misses the renamed schema and the error silently
+// drops from the OpenAPI responses. Decorators other than `@errors` pass
+// through unchanged, and a ref the rename table leaves alone returns its
+// original node.
+func rewriteErrorDecorators(ds []*ast.Decorator, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) []*ast.Decorator {
+	if len(ds) == 0 {
+		return ds
+	}
+	out := make([]*ast.Decorator, len(ds))
+	for i, d := range ds {
+		if d == nil || d.Name != "errors" {
+			out[i] = d
+			continue
+		}
+		dc := *d
+		dc.Args = make([]*ast.DecoratorArg, len(d.Args))
+		for j, a := range d.Args {
+			id, ok := a.Value.(*ast.IdentExpr)
+			if !ok || id.Name == nil {
+				dc.Args[j] = a
+				continue
+			}
+			named := rewrite(srcPkg, &ast.NamedTypeRef{Pos: id.Pos, Name: id.Name})
+			ac := *a
+			idc := *id
+			idc.Name = named.Name
+			ac.Value = &idc
+			dc.Args[j] = &ac
+		}
+		out[i] = &dc
+	}
+	return out
 }
 
 // rewriteNamedTypeRef rewrites a NamedTypeRef itself plus the args

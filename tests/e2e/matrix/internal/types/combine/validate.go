@@ -69,6 +69,12 @@ func (v *DefaultsScalar) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on DefaultsWidth.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DefaultsWidth) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on KeywordFieldNames.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *KeywordFieldNames) Validate() error {
@@ -185,6 +191,9 @@ func (v *PresenceMatrix) Validate() error {
 // Validate checks every field-level constraint declared on XPkgEnum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XPkgEnum) Validate() error {
+	if v.Flat == "" {
+		return fmt.Errorf("flat: required")
+	}
 	if err := v.Flat.Validate(); err != nil {
 		return err
 	}

@@ -322,6 +322,39 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 		}
 	}
+	// A path segment of a matched route is ALWAYS supplied, so @default can
+	// never apply. The auto-@path form is rejected by checkAutoPathField;
+	// reject the explicit @path form here too so the two forms agree
+	// (otherwise codegen emits a dead prefill and the OpenAPI param carries
+	// both required:true and a default).
+	if ast.HasDecorator(f.Decorators, "default") {
+		for _, d := range f.Decorators {
+			if d.Name == "path" {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+					"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply — drop it.")
+				return
+			}
+		}
+	}
+	// A wire-string source (@query / @header / @form) encodes an array
+	// as repeated scalar params (`?x=1&x=2`) — inherently one-dimensional.
+	// A nested array (`int[][]`) has no wire form, so reject it
+	// structurally here, before the qualified-ref skip below: array depth
+	// is independent of the element type, so the check is the same whether
+	// the element is local or cross-package. Without this, codegen emits a
+	// 1-D binder against an N-D field that won't compile. (@cookie / @path
+	// reject every array shape outright elsewhere.)
+	if f.Type.ArrayDepth > 1 {
+		for _, d := range f.Decorators {
+			switch d.Name {
+			case "query", "header", "form":
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+					"field %s.%s: @%s cannot bind to a multi-dimensional array - a wire parameter carries repeated single values (`?x=1&x=2`), which has no nested form. Move the field to the JSON body or flatten to a single-level array.",
+					parent, f.Name, d.Name)
+				return
+			}
+		}
+	}
 	// In project mode the per-package pass defers qualified-ref
 	// binding-type checks to the post-pass resolver, which has the
 	// full project symbol table. Without the skip a cross-pkg scalar
@@ -419,6 +452,14 @@ func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
 	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
 		return false
 	}
+	// A wire-string source encodes an array as repeated single values
+	// (`?x=1&x=2`); a nested array has no wire form. Reject at the shared
+	// predicate so every consumer — the explicit `@query`/`@header` check,
+	// the auto-@query promotion on a body-less verb, and the @form set —
+	// agrees, instead of leaving the depth guard on one path only.
+	if t.ArrayDepth > 1 {
+		return false
+	}
 	name := t.Named.Name.String()
 	if name == "file" {
 		return false
@@ -480,8 +521,24 @@ func describeTypeRef(t *ast.TypeRef) string {
 	name := "?"
 	if t.Named != nil {
 		name = t.Named.Name.String()
+	} else if t.Map != nil {
+		key, val := "?", "?"
+		if t.Map.Key != nil {
+			key = describeTypeRef(t.Map.Key)
+		}
+		if t.Map.Value != nil {
+			val = describeTypeRef(t.Map.Value)
+		}
+		name = "map<" + key + ", " + val + ">"
 	}
-	if t.Array {
+	// Render one `[]` per array dimension so a multi-dim field reads as
+	// `int[][]`. ArrayDepth is authoritative; fall back to a single `[]`
+	// for any hand-built TypeRef that set only the Array flag.
+	depth := t.ArrayDepth
+	if depth == 0 && t.Array {
+		depth = 1
+	}
+	for i := 0; i < depth; i++ {
 		name += "[]"
 	}
 	if t.Optional {
@@ -526,6 +583,128 @@ func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	a.checkPassthroughBody(svcName, m)
 	a.checkBodyBindingVerb(svcName, m)
 	a.checkDuplicatePathVars(svcName, m)
+	a.checkAutoPathField(svcName, m)
+	a.checkNoContentStatusBody(svcName, m)
+	a.checkRequestBodyType(svcName, m)
+}
+
+// checkRequestBodyType rejects a request type that is a bare scalar or enum
+// (a fieldless named type). The request binder/decoder drives off the
+// type's FIELDS, so a fieldless type yields no decode and no parameters —
+// the client payload is silently dropped (and a constraint-free scalar
+// produces non-compiling Go, since the handler calls a Validate() that
+// isn't generated). Wrap the value in a `type { value <T> }`. Mirrors the
+// existing bare-array request reject. Only local (unqualified) request
+// types are resolved here; a qualified cross-package scalar/enum request is
+// rare and left to codegen.
+func (a *analyzer) checkRequestBodyType(svcName string, m *ast.Method) {
+	if m == nil || m.Request == nil || m.Request.Name == nil || len(m.Request.Name.Parts) != 1 {
+		return
+	}
+	name := m.Request.Name.String()
+	kind := ""
+	if _, ok := a.pkg.Scalars[name]; ok {
+		kind = "scalar"
+	} else if _, ok := a.pkg.Enums[name]; ok {
+		kind = "enum"
+	}
+	if kind == "" {
+		return
+	}
+	a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodeBindingType,
+		"request type %q is a %s, which has no fields to bind or decode as a request body — wrap it in a type (`type Req { value %s }`)",
+		name, kind, name)
+}
+
+// checkNoContentStatusBody rejects a no-content success status (204, 304,
+// or any 1xx) on a method that declares a response body. Per RFC 9110
+// those statuses carry no body, but both the OpenAPI emitter and the
+// transport template select their body-emitting branch on response-body
+// presence alone — never the status — so the pairing would advertise a
+// `application/json` body under a status that forbids one and write a body
+// the client never receives.
+func (a *analyzer) checkNoContentStatusBody(svcName string, m *ast.Method) {
+	if m == nil || m.Response == nil || m.Response.Type == nil {
+		return
+	}
+	for _, d := range m.Decorators {
+		if d == nil || d.Name != "status" || len(d.Args) != 1 {
+			continue
+		}
+		il, ok := d.Args[0].Value.(*ast.IntLit)
+		if !ok {
+			continue
+		}
+		code := il.Value
+		if code == 204 || code == 205 || code == 304 || (code >= 100 && code < 200) {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+				"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one — drop the response, or use a status that allows a body.",
+				code, m.Name)
+			return
+		}
+	}
+}
+
+// checkAutoPathField rejects optional (`?`) / `@nullable` / `@default` on a
+// request field that auto-binds to a `{param}` segment (its name matches the
+// segment and it carries no explicit binding decorator). A matched route
+// always supplies the segment, so an optional path field is meaningless;
+// `@nullable` lowers the field to a pointer while the path binder writes a
+// plain string into it (`req.ID = r.PathValue(...)` into a `*string` —
+// non-compiling); and `@default` can never apply to an always-present
+// segment. The explicit `@path` form is already rejected for these; this
+// mirrors it for the implicit auto-@path path, on every verb.
+func (a *analyzer) checkAutoPathField(svcName string, m *ast.Method) {
+	if m == nil || m.Request == nil || m.Path == nil {
+		return
+	}
+	td, ok := a.pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return // cross-package request — left to the project pass / codegen
+	}
+	pathSegs := map[string]bool{}
+	for _, seg := range m.Path.Segments {
+		if seg.Param {
+			pathSegs[seg.Literal] = true
+		}
+	}
+	if len(pathSegs) == 0 {
+		return
+	}
+	reqName := m.Request.Name.String()
+	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
+		if f.Type == nil {
+			continue
+		}
+		if kind, auto := RequestFieldBinding(f, pathSegs, false); kind != "path" || !auto {
+			continue
+		}
+		switch {
+		case f.Type.Optional:
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
+				"field %s.%s auto-binds to the path segment {%s}, which a matched route always supplies — drop the optional `?` (a path parameter is never absent).",
+				reqName, f.Name, f.Name)
+		case ast.HasDecorator(f.Decorators, "nullable"):
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
+				"field %s.%s auto-binds to the path segment {%s}, but @nullable makes it a pointer while the path binder writes a plain string — drop @nullable (a path parameter has no null form).",
+				reqName, f.Name, f.Name)
+		case ast.HasDecorator(f.Decorators, "default"):
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
+				"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply — drop it.",
+				reqName, f.Name, f.Name)
+		case !isQualifiedTypeRef(f.Type) && !isPathBindingType(f.Type, a.pkg):
+			// A path segment carries a single primitive/scalar/enum value;
+			// a struct / map / array / generic field that auto-binds to it
+			// has no wire form, so the binder drops it and OpenAPI emits a
+			// non-scalar path param. Reject like the explicit @path form.
+			// Qualified cross-package types (`shared.ID`) are skipped — the
+			// local table can't resolve them (a cross-pkg scalar IS
+			// bindable), so deferring avoids a false-reject.
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
+				reqName, f.Name, f.Name, describeTypeRef(f.Type))
+		}
+	}
 }
 
 // checkDuplicatePathVars rejects a route template that repeats a path
@@ -609,15 +788,11 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 		if f.Type == nil {
 			continue
 		}
-		// A qualified cross-package type is deferred to the project pass (the
-		// local table can't see a string scalar declared in a sibling package).
-		if isQualifiedTypeRef(f.Type) {
-			continue
-		}
 		// Only a field that auto-binds to @query is at risk here: explicitly-
 		// bound fields, an auto-@path match (codegen skips a non-bindable one
 		// silently), and @sensitive are all resolved elsewhere. RequestFieldBinding
-		// is the same rule codegen's request resolver applies.
+		// is the same rule codegen's request resolver applies — structural
+		// (decorators + path segments), so it works for qualified types too.
 		if kind, auto := RequestFieldBinding(f, pathSegs, false); kind != "query" || !auto {
 			continue
 		}
@@ -626,11 +801,22 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 		// into a non-pointer slot — the same mismatch the explicit
 		// `@nullable @query` pairing is rejected for above. The explicit
 		// guard never fires here (there is no binding decorator), so mirror
-		// it for the implicit auto-@query path.
+		// it for the implicit auto-@query path. This is a STRUCTURAL check
+		// (decorator presence, not type resolution), so it must run BEFORE the
+		// qualified-ref deferral below — a cross-package scalar / enum field
+		// (`lib.Email @nullable`) auto-binds the same way and otherwise emits a
+		// non-pointer assignment into a `*lib.Email` slot.
 		if ast.HasDecorator(f.Decorators, "nullable") {
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 				"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but @nullable has no meaning on a wire parameter — a query string has no JSON-null form. Use `?` to make it optional, or switch to a body verb (POST/PUT/PATCH).",
 				m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), svcName)
+			continue
+		}
+		// A qualified cross-package type is deferred to the project pass for
+		// the wire-bindable-TYPE check below (the local table can't see a
+		// string scalar declared in a sibling package). The structural checks
+		// above already ran.
+		if isQualifiedTypeRef(f.Type) {
 			continue
 		}
 		if !isWireBindingType(f.Type, a.pkg) {

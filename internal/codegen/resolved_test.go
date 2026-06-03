@@ -142,6 +142,14 @@ type Req {
 	if dv := byName["sort"].DefaultWire; dv != "asc" {
 		t.Errorf("sort DefaultWire = %v, want asc", dv)
 	}
+
+	// @sensitive opts out of the runtime presence check: the field is
+	// json:"-" (off the wire), so a presence gate could never be satisfied
+	// and would 400 every request (acute for `any @sensitive`, which emits
+	// a presence expression where a plain string @sensitive does not).
+	if byName["secret"].RuntimeEnforced {
+		t.Errorf("secret (@sensitive): RuntimeEnforced = true, want false (off-wire, presence check unsatisfiable)")
+	}
 }
 
 // TestResolveFieldsInvariant asserts the cross-stage invariant the IR

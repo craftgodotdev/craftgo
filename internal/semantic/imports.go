@@ -29,6 +29,9 @@ import (
 type refResolver struct {
 	proj  *Project
 	diags []Diagnostic
+	// basePath is the project's openapi.basePath, needed to resolve a
+	// method's final route in [refResolver.checkProjectPathParams].
+	basePath string
 }
 
 // processFile validates one file's imports + every qualified ref it
@@ -169,8 +172,17 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 		return
 	}
 	pkgName, sym := parts[0], parts[1]
-	// Self-qualified `currentPkg.Type` is allowed but redundant -
-	// resolve it and don't fire any diagnostic.
+	// Self-qualified `currentPkg.Type` is redundant AND breaks codegen: the
+	// type / validate emitter prints the qualifier verbatim (`design.Email`)
+	// inside the `design` package, which is a self-import the package can't
+	// satisfy (`undefined: design`), and the field's validator is dropped.
+	// Reject it with the bare-name fix rather than ship non-compiling Go.
+	if pkgName == currentPkg && currentPkg != "" {
+		r.diag(n.Pos, lexer.SeverityError, CodeQualifiedRef,
+			"redundant self-qualification %q — a type in its own package is referenced by its bare name; write %q",
+			n.Name.String(), sym)
+		return
+	}
 	target := r.proj.Packages[pkgName]
 	if target == nil {
 		r.diag(n.Pos, lexer.SeverityError, CodeRefUnknownPackage,
@@ -788,6 +800,13 @@ func (r *refResolver) checkProjectMixins() {
 		}
 		for _, td := range pkg.Types {
 			r.checkOneTypeMixinsProject(currentPkg, td.Name, td.Body)
+			// Embedding a bare type-parameter (`type Box<T> { T }`) is
+			// structural — no cross-package resolution needed — but the
+			// per-package pass that would catch it is gated off in project mode,
+			// so mirror it here.
+			for _, tpm := range findTypeParamMixins(td.TypeParams, td.Body) {
+				r.diag(tpm.pos, lexer.SeverityError, CodeMixinConflict, "%s", typeParamMixinMsg(td.Name, tpm.param))
+			}
 		}
 		for _, ed := range pkg.Errors {
 			r.checkOneTypeMixinsProject(currentPkg, ed.Name, ed.Body)
@@ -811,10 +830,24 @@ func (r *refResolver) checkOneTypeMixinsProject(currentPkg, host string, body []
 			seen[f.Name] = fieldOrigin{pos: f.Pos, from: host}
 		}
 	}
+	seenMixin := map[string]mixinEmbed{}
 	for _, m := range body {
 		mx, ok := m.(*ast.Mixin)
 		if !ok {
 			continue
+		}
+		if mx.Ref != nil && mx.Ref.Name != nil {
+			// Key on the Go embedded-field name (the unqualified leaf): a
+			// local `Leaf` and an imported `shared.Leaf` both embed as the
+			// field `Leaf` and would redeclare it.
+			leaf := goEmbedName(mx.Ref.Name)
+			full := mx.Ref.Name.String()
+			if prev, dup := seenMixin[leaf]; dup {
+				d := r.diag(mx.Pos, lexer.SeverityError, CodeMixinConflict, "%s", duplicateEmbedMsg(prev.full, full, leaf))
+				d.Related = related(prev.pos, "first embedded here")
+				continue
+			}
+			seenMixin[leaf] = mixinEmbed{full: full, pos: mx.Pos}
 		}
 		r.processProjectMixin(currentPkg, host, mx, seen)
 	}
