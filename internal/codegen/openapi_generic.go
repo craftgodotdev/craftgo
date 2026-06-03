@@ -36,6 +36,12 @@ type genericRegistry struct {
 	// order preserves registration order so emission output is stable
 	// across runs (maps iterate randomly in Go).
 	order []string
+	// dups collects synthetic component names that TWO structurally
+	// distinct instances resolve to — e.g. `Page<int[]>` and
+	// `Page<IntArray>` both name-collapse to `PageOfIntArray`. Without
+	// this they silently share one schema and one field is advertised with
+	// the wrong shape; the generator rejects up front instead.
+	dups map[string]bool
 }
 
 // genericInstance is the descriptor stored in [genericRegistry] for one
@@ -59,6 +65,7 @@ func newGenericRegistry() *genericRegistry {
 	return &genericRegistry{
 		instances: map[string]*genericInstance{},
 		emitted:   map[string]bool{},
+		dups:      map[string]bool{},
 	}
 }
 
@@ -68,12 +75,33 @@ func newGenericRegistry() *genericRegistry {
 // allocating a duplicate entry.
 func (r *genericRegistry) register(decl *ast.TypeDecl, args []*ast.TypeRef) string {
 	name := genericComponentName(decl, args)
-	if _, ok := r.instances[name]; ok {
+	if existing, ok := r.instances[name]; ok {
+		// Same synthetic name, but if the args are structurally different
+		// (e.g. an array arg int[] vs a struct named IntArray both yield the
+		// "IntArray" fragment) the two instances are NOT the same schema —
+		// record the collision rather than silently aliasing them.
+		if existing.decl != decl || !typeRefsEqual(existing.args, args) {
+			r.dups[name] = true
+		}
 		return name
 	}
 	r.instances[name] = &genericInstance{decl: decl, args: args, name: name}
 	r.order = append(r.order, name)
 	return name
+}
+
+// typeRefsEqual reports whether two generic-arg lists are structurally
+// identical (so they denote the same instantiation).
+func typeRefsEqual(a, b []*ast.TypeRef) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // pending returns instances whose body has not been emitted yet, in

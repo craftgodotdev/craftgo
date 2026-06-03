@@ -349,3 +349,54 @@ service S { post Op /x { request Body  response Resp } }`,
 		t.Errorf("any[] field wrongly got a nil presence check:\n%s", out)
 	}
 }
+
+// #5 (M6): two distinct cross-package decls that disambiguate to the same
+// merged component name (shared.User -> SharedUser, colliding with a real
+// api.SharedUser) are rejected instead of one silently overwriting the other.
+func TestCrossPkgMergeNameCollisionRejected(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type User { a string }`,
+		"api/a.craftgo": `package api
+import "shared"
+type User { b int }
+type SharedUser { c bool }
+type Resp { y shared.User  z SharedUser }
+type Req { ok bool }
+service S { get Do /do { request Req  response Resp } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	if dups := projectMergeCollisions(proj); len(dups) == 0 {
+		t.Error("expected cross-pkg merge name collision (shared.User vs api.SharedUser)")
+	}
+}
+
+// #4 (M6): two structurally distinct generic instances that collapse to the
+// same component name (Page<IntArray> and Page<int[]> both -> PageOfIntArray)
+// are rejected; structurally distinct args that DON'T collide stay clean.
+func TestGenericInstanceNameCollisionRejected(t *testing.T) {
+	mk := func(respFields string) (*openapi3.T, error) {
+		root, files := projectFiles(t, map[string]string{
+			"app/app.craftgo": `package app
+type Page<T> { items T[] }
+type IntArray { whatever int }
+type Req { id string }
+type Resp { ` + respFields + ` }
+service S { post G /g { request Req  response Resp } }`,
+		})
+		proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+		if len(diags) > 0 {
+			t.Fatalf("semantic: %v", diags)
+		}
+		return buildOpenAPIDoc(mergeProjectForOpenAPI(proj), &config.Config{})
+	}
+	if _, err := mk("real Page<IntArray>  prim Page<int[]>"); err == nil || !strings.Contains(err.Error(), "structurally distinct generic") {
+		t.Errorf("expected generic-instance collision error, got: %v", err)
+	}
+	if _, err := mk("a Page<int>  b Page<string>"); err != nil {
+		t.Errorf("distinct generic instances wrongly rejected: %v", err)
+	}
+}

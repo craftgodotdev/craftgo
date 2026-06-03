@@ -70,6 +70,9 @@ func ValidateProjectOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	if proj == nil {
 		return nil
 	}
+	if dups := projectMergeCollisions(proj); len(dups) > 0 {
+		return mergeCollisionError(dups)
+	}
 	merged := mergeProjectForOpenAPI(proj)
 	if merged.Name == "" {
 		merged.Name = "design"
@@ -93,6 +96,9 @@ func GenerateProjectOpenAPI(proj *semantic.Project, cfg *config.Config, projectR
 	if proj == nil {
 		return nil
 	}
+	if dups := projectMergeCollisions(proj); len(dups) > 0 {
+		return mergeCollisionError(dups)
+	}
 	merged := mergeProjectForOpenAPI(proj)
 	if merged.Name == "" {
 		// Fallback for fully-empty projects - title must come from
@@ -100,6 +106,12 @@ func GenerateProjectOpenAPI(proj *semantic.Project, cfg *config.Config, projectR
 		merged.Name = "design"
 	}
 	return GenerateOpenAPI(merged, cfg, projectRoot)
+}
+
+// mergeCollisionError formats the cross-package merge-collision diagnostic
+// (see [projectMergeCollisions]).
+func mergeCollisionError(dups []string) error {
+	return fmt.Errorf("cross-package OpenAPI name collision: %s — a type/enum/error/scalar in one package disambiguates to a component name another package already declares, which would silently drop one schema and advertise the wrong shape. Rename one of the clashing declarations", strings.Join(dups, ", "))
 }
 
 func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, error) {
@@ -138,6 +150,14 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	addSecuritySchemes(doc, pkg, cfg)
 	if len(names.dups) > 0 {
 		return doc, fmt.Errorf("duplicate component schema name(s): %s — a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(dedupSorted(names.dups), ", "))
+	}
+	if len(registry.dups) > 0 {
+		clashes := make([]string, 0, len(registry.dups))
+		for name := range registry.dups {
+			clashes = append(clashes, name)
+		}
+		sort.Strings(clashes)
+		return doc, fmt.Errorf("two structurally distinct generic instances map to the same component name(s): %s — e.g. an array argument and a struct of that array's element name collide. Rename the struct (or wrap the array) so each instantiation gets a distinct schema", strings.Join(clashes, ", "))
 	}
 	return doc, nil
 }

@@ -120,3 +120,38 @@ service S { get G /u/{id} { request shared.R  response Resp } }`,
 		t.Errorf("clean cross-pkg auto-path field wrongly rejected: %v", codes(diags))
 	}
 }
+
+// W3-inc2 (#16 sibling): a cross-package request on a body-less verb whose
+// field auto-binds to @query with @nullable is rejected by the project twin
+// (non-compiling without it).
+func TestProjectBodyBindingVerbCrossPkgNullableRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+type R { q string @nullable }`,
+		"api/api.craftgo": `package api
+import "shared"
+type Resp { ok bool }
+service S { get G /g { request shared.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorConflict) == nil {
+		t.Errorf("cross-pkg auto-@query @nullable should be rejected; got %v", codes(diags))
+	}
+}
+
+// W3-inc2: a bare cross-package scalar request type is rejected by the
+// project twin.
+func TestProjectBareCrossPkgScalarRequestRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Email string`,
+		"api/api.craftgo": `package api
+import "shared"
+type Resp { ok bool }
+service S { post Do /do { request shared.Email  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) == nil {
+		t.Errorf("bare cross-pkg scalar request should be rejected; got %v", codes(diags))
+	}
+}

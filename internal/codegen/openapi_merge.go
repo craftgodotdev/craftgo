@@ -8,15 +8,15 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
-	out := &semantic.Package{
-		Types:       map[string]*ast.TypeDecl{},
-		Enums:       map[string]*ast.EnumDecl{},
-		Errors:      map[string]*ast.ErrorDecl{},
-		Scalars:     map[string]*ast.ScalarDecl{},
-		Middlewares: map[string]*ast.MiddlewareDecl{},
-		Services:    map[string]*semantic.ServiceInfo{},
-	}
+type symbolKey struct{ pkg, name string }
+
+// projectResolveTable builds the cross-package name-resolution table used by
+// the OpenAPI merge: each (pkg, origName) → the merged component identifier
+// its schema lives under. A bare name that appears in 2+ packages is
+// disambiguated to <PascalPkg><Name>. Also returns the sorted non-blank
+// package names. Shared by [mergeProjectForOpenAPI] and
+// [projectMergeCollisions] so the rename rule lives once.
+func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
 	pkgNames := make([]string, 0, len(proj.Packages))
 	for n := range proj.Packages {
 		if n != "" {
@@ -24,16 +24,6 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		}
 	}
 	sort.Strings(pkgNames)
-	if len(pkgNames) > 0 {
-		out.Name = pkgNames[0]
-	}
-
-	// Build the name-resolution table: for each (pkgName, origName)
-	// tuple, the merged identifier the schema lives under. Conflicts
-	// are detected by membership-counting across all packages: a
-	// name is "shared" when it appears in 2+ packages.
-	type symbolKey struct{ pkg, name string }
-	resolve := map[symbolKey]string{}
 	collide := func(name string) bool {
 		count := 0
 		for _, pn := range pkgNames {
@@ -50,6 +40,7 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		}
 		return false
 	}
+	resolve := map[symbolKey]string{}
 	for _, pkgName := range pkgNames {
 		p := proj.Packages[pkgName]
 		if p == nil {
@@ -62,6 +53,47 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 			}
 			resolve[symbolKey{pkg: pkgName, name: name}] = final
 		}
+	}
+	return resolve, pkgNames
+}
+
+// projectMergeCollisions returns the merged component names that 2+ DISTINCT
+// declarations resolve to — e.g. `shared.User` disambiguated to `SharedUser`
+// colliding with an `api.SharedUser` that already spells that name. The merge
+// keys both clones under the same map entry, so one silently overwrites the
+// other (its schema dropped, and a field of that type advertised with the
+// WRONG shape). The OpenAPI generators reject up front instead.
+func projectMergeCollisions(proj *semantic.Project) []string {
+	resolve, _ := projectResolveTable(proj)
+	owners := map[string]map[string]bool{}
+	for k, final := range resolve {
+		if owners[final] == nil {
+			owners[final] = map[string]bool{}
+		}
+		owners[final][k.pkg+"."+k.name] = true
+	}
+	var dups []string
+	for final, set := range owners {
+		if len(set) >= 2 {
+			dups = append(dups, final)
+		}
+	}
+	sort.Strings(dups)
+	return dups
+}
+
+func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
+	out := &semantic.Package{
+		Types:       map[string]*ast.TypeDecl{},
+		Enums:       map[string]*ast.EnumDecl{},
+		Errors:      map[string]*ast.ErrorDecl{},
+		Scalars:     map[string]*ast.ScalarDecl{},
+		Middlewares: map[string]*ast.MiddlewareDecl{},
+		Services:    map[string]*semantic.ServiceInfo{},
+	}
+	resolve, pkgNames := projectResolveTable(proj)
+	if len(pkgNames) > 0 {
+		out.Name = pkgNames[0]
 	}
 
 	// Clone every decl into the merged package, rewriting the decl's
