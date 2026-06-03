@@ -277,6 +277,14 @@ func TestUniqueItemsOnMapRejected(t *testing.T) {
 	expectError(t, `type Req { m map<string, int> @uniqueItems }`, CodeDecoratorTypeMismatch)
 }
 
+// The file validators @maxSize / @mimeTypes are pointless on a @sensitive
+// field (it never crosses the wire), so they conflict — like every other
+// validator already listed in sensitiveConflicts.
+func TestSensitiveConflictsFileValidators(t *testing.T) {
+	expectError(t, `type Req { secret file @sensitive @maxSize(1000) }`, CodeDecoratorConflict)
+	expectError(t, `type Req { secret file @sensitive @mimeTypes(["image/png"]) }`, CodeDecoratorConflict)
+}
+
 // An empty `@path("")` wire-name arg falls back to the field name rather
 // than false-rejecting the path-param check.
 func TestEmptyPathWireNameClean(t *testing.T) {

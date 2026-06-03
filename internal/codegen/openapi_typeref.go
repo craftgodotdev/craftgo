@@ -99,6 +99,13 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 }
 
+// nullSchemaRef is the OpenAPI 3.1 `{type: "null"}` sentinel — the null branch
+// of a nullable anyOf wrapper, or the `not` of a never-null guard. Built in one
+// place so the 3.1 null shape is spelled once.
+func nullSchemaRef() *openapi3.SchemaRef {
+	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}}
+}
+
 // nullableRef builds the OpenAPI 3.1 "ref OR null" wrapper —
 // `anyOf: [{$ref}, {type: null}]` — for an optional named-type or
 // generic-instance field. A bare `$ref` can not portably carry a
@@ -111,7 +118,7 @@ func nullableRef(refName string) *openapi3.SchemaRef {
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{
 		AnyOf: openapi3.SchemaRefs{
 			{Ref: "#/components/schemas/" + refName},
-			{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}},
+			nullSchemaRef(),
 		},
 	}}
 }

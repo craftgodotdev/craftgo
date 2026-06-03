@@ -116,82 +116,19 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 		return
 	}
 	if t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
-		return
+		return // qualified (cross-package) types resolve in the project twin
 	}
 	name := t.Named.Name.Parts[0]
-	if ed, isEnum := a.pkg.Enums[name]; isEnum {
-		ident, ok := v.(*ast.IdentExpr)
-		if !ok {
-			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
-				"@%s on enum field %q must reference an enum value by name (one of %s)",
-				decName, f.Name, enumValueList(ed))
-			return
-		}
-		if ident.Name == nil || len(ident.Name.Parts) != 1 {
-			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
-				"@%s on enum field %q must be one of %s", decName, f.Name, enumValueList(ed))
-			return
-		}
-		want := ident.Name.Parts[0]
-		for _, ev := range ed.EnumValues() {
-			if ev.Name == want {
-				return
-			}
-		}
-		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
-			"@%s %q is not a value of enum %s; expected one of %s",
-			decName, want, ed.Name, enumValueList(ed))
-		return
-	}
+	ed := a.pkg.Enums[name] // nil if not an enum
 	// Resolve a scalar to its underlying primitive for the type-fit checks.
 	prim := name
 	if sd, ok := a.pkg.Scalars[name]; ok {
 		prim = sd.Primitive
 	}
-	if decName == "default" {
-		// A `bytes` field has no unambiguous literal default (Go []byte vs
-		// OpenAPI base64 `format: byte`); a `file` upload has no literal form
-		// at all. Reject rather than emit non-compiling Go. (An @example MAY
-		// carry a base64 string, so these are default-only.)
-		if prim == "bytes" {
-			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
-				"@default is not supported on a `bytes` field %q — a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
-				f.Name)
-			return
-		}
-		if prim == "file" {
-			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
-				"@default is not supported on a `file` field %q — a file upload has no literal default form",
-				f.Name)
-			return
-		}
-	}
-	want := defaultPrimitiveKind(name, a.pkg)
-	if want == ArgAny {
-		return
-	}
-	if !exprMatchesKind(v, want) {
-		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgType,
-			"@%s on field %q (%s) requires a %s literal", decName, f.Name, name, want)
-		return
-	}
-	if decName == "default" {
-		// An integer default outside the field primitive's capacity emits a
-		// non-compiling cast (`uint(-5)`, `int8(200)`). Mirror the bound
-		// capacity guard so the prefill compiles. Floats are skipped — the
-		// codegen cast holds every literal the kind check accepts. (An
-		// out-of-capacity example is merely a poor example, not a build
-		// break, so this is default-only.)
-		if il, ok := v.(*ast.IntLit); ok {
-			if lo, hi, capOK := intCapacity(prim); capOK {
-				fv := float64(il.Value)
-				if fv < lo || fv > hi {
-					a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
-						"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
-				}
-			}
-		}
-	}
+	checkScalarEnumLiteralValue(decName, f.Name, name, prim, ed, v, pos,
+		func(p lexer.Position, code, format string, args ...any) {
+			a.diag(p, p, lexer.SeverityError, code, format, args...)
+		})
 }
 
 // defaultPrimitiveKind maps a resolved primitive (or scalar) name to
@@ -199,11 +136,11 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 // through to their underlying primitive in one hop. Returns ArgAny
 // for names this layer can't classify so the caller skips the kind
 // check rather than emit a misleading mismatch.
-func defaultPrimitiveKind(name string, pkg *Package) ArgKind {
-	if sd, ok := pkg.Scalars[name]; ok {
-		name = sd.Primitive
-	}
-	switch name {
+// primitiveArgKind maps a resolved primitive name to the literal kind a
+// value-bearing decorator must carry. Unknown names (structs, unresolved
+// refs) return ArgAny so no kind check fires.
+func primitiveArgKind(prim string) ArgKind {
+	switch prim {
 	case "string", "bytes":
 		return ArgString
 	case "int", "int8", "int16", "int32", "int64",
@@ -215,6 +152,74 @@ func defaultPrimitiveKind(name string, pkg *Package) ArgKind {
 		return ArgBool
 	}
 	return ArgAny
+}
+
+// checkScalarEnumLiteralValue validates one non-array literal against an
+// already-resolved enum (ed != nil) OR a resolved scalar/primitive (prim).
+// dispName is the type name used in messages. decName gates the default-only
+// rejects (bytes/file have no literal form; an out-of-capacity int would not
+// compile). emit reports a diagnostic. Shared by the per-package literal check
+// and the cross-package project twin so a `shared.Tiny @default(200)` gets the
+// SAME kind / capacity / membership verdict as a local `Tiny @default(200)`.
+func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *ast.EnumDecl, v ast.Expr, pos lexer.Position, emit func(pos lexer.Position, code, format string, args ...any)) {
+	if ed != nil {
+		ident, ok := v.(*ast.IdentExpr)
+		if !ok {
+			emit(pos, CodeDecoratorArgValue,
+				"@%s on enum field %q must reference an enum value by name (one of %s)",
+				decName, fieldName, enumValueList(ed))
+			return
+		}
+		if ident.Name == nil || len(ident.Name.Parts) != 1 {
+			emit(pos, CodeDecoratorArgValue,
+				"@%s on enum field %q must be one of %s", decName, fieldName, enumValueList(ed))
+			return
+		}
+		want := ident.Name.Parts[0]
+		for _, ev := range ed.EnumValues() {
+			if ev.Name == want {
+				return
+			}
+		}
+		emit(pos, CodeDecoratorArgValue,
+			"@%s %q is not a value of enum %s; expected one of %s",
+			decName, want, ed.Name, enumValueList(ed))
+		return
+	}
+	if decName == "default" {
+		if prim == "bytes" {
+			emit(pos, CodeDecoratorConflict,
+				"@default is not supported on a `bytes` field %q — a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
+				fieldName)
+			return
+		}
+		if prim == "file" {
+			emit(pos, CodeDecoratorConflict,
+				"@default is not supported on a `file` field %q — a file upload has no literal default form",
+				fieldName)
+			return
+		}
+	}
+	want := primitiveArgKind(prim)
+	if want == ArgAny {
+		return
+	}
+	if !exprMatchesKind(v, want) {
+		emit(pos, CodeDecoratorArgType,
+			"@%s on field %q (%s) requires a %s literal", decName, fieldName, dispName, want)
+		return
+	}
+	if decName == "default" {
+		if il, ok := v.(*ast.IntLit); ok {
+			if lo, hi, capOK := intCapacity(prim); capOK {
+				fv := float64(il.Value)
+				if fv < lo || fv > hi {
+					emit(pos, CodeBoundOverflow,
+						"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
+				}
+			}
+		}
+	}
 }
 
 // defaultTypeSupported reports whether @default may target a field of

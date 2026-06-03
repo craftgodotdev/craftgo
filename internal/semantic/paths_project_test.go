@@ -233,6 +233,79 @@ service S { get G /g { request base.R  response Resp } }`,
 	}
 }
 
+// Cross-package @example now has a project twin (shared with @default): an
+// @example literal whose kind mismatches a foreign scalar's primitive is
+// rejected, where it once slipped through unchecked.
+func TestProjectCrossPkgExampleKindMismatchRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Count int`,
+		"app/app.craftgo": `package app
+import "shared"
+type R { n shared.Count? @example("not-an-int") }
+type Resp { ok bool }
+service S { post C /c { request R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorArgType) == nil {
+		t.Errorf("cross-pkg @example kind mismatch should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: a valid cross-package @example is clean.
+func TestProjectCrossPkgExampleValidClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Count int`,
+		"app/app.craftgo": `package app
+import "shared"
+type R { n shared.Count? @example(5) }
+type Resp { ok bool }
+service S { post C /c { request R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorArgType) != nil {
+		t.Errorf("valid cross-pkg @example wrongly rejected: %v", codes(diags))
+	}
+}
+
+// A cross-package scalar @default exceeding the underlying primitive's
+// capacity must be rejected the SAME as its local twin — the project default
+// validator now shares the per-package literal check (kind + capacity), so it
+// no longer accepts an out-of-range cross-pkg default that codegen can't cast.
+func TestProjectCrossPkgDefaultOverflowRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Tiny int8`,
+		"app/app.craftgo": `package app
+import "shared"
+type R { n shared.Tiny? @default(200) }
+type Resp { ok bool }
+service S { post C /c { request R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBoundOverflow) == nil {
+		t.Errorf("cross-pkg int8 @default(200) should overflow-reject; got %v", codes(diags))
+	}
+}
+
+// Control: an in-range cross-package scalar default is clean.
+func TestProjectCrossPkgDefaultInRangeClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Tiny int8`,
+		"app/app.craftgo": `package app
+import "shared"
+type R { n shared.Tiny? @default(100) }
+type Resp { ok bool }
+service S { post C /c { request R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBoundOverflow) != nil {
+		t.Errorf("in-range cross-pkg default wrongly rejected: %v", codes(diags))
+	}
+}
+
 // A cross-field group member that is a DIRECT field whose TYPE is a
 // cross-package scalar over bytes (`rawData shared.Blob?`) must be rejected
 // like its local twin — the per-package presence check resolves it with

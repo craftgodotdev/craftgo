@@ -111,14 +111,6 @@ func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
 	return strings.Join(parts, "\n")
 }
 
-// errorBodyField is the per-field record passed into errors.tmpl. Each
-// entry renders one line inside the generated `<Name>Body` struct.
-type errorBodyField struct {
-	GoName  string
-	Type    string
-	JSONTag string
-}
-
 // errorBinding holds the fully-rendered Go statement that writes one
 // `@header` / `@cookie` error field onto the response (header/cookie
 // name + value formatting already baked in). The template drops Stmt
@@ -140,8 +132,7 @@ type errorTemplateData struct {
 	DSLName            string
 	Status             int
 	HasBody            bool
-	BodyFields         []errorBodyField
-	BodyMixins         []string
+	BodyInterior       string
 	HasResponseHeaders bool
 	Headers            []errorBinding
 	Cookies            []errorBinding
@@ -158,21 +149,25 @@ type errorTemplateData struct {
 func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) string {
 	headers, cookies, _ := errorResponseBindings(ed, pkg, r)
 	data := errorTemplateData{
-		TypeName:           errSuffix(ed.Name),
-		BodyName:           ed.Name + "Body",
-		ConstName:          "ErrCode" + ed.Name,
-		QuotedCode:         strconv.Quote(screamingSnake(ed.Name)),
-		QuotedMessage:      strconv.Quote(errcat.Message(ed.Category)),
-		Category:           ed.Category,
-		DSLName:            ed.Name,
-		Status:             errcat.Status(ed.Category),
-		BodyFields:         buildErrorBodyFields(errorCustomFields(ed), pkg, r),
-		BodyMixins:         errorBodyMixins(ed),
+		TypeName:      errSuffix(ed.Name),
+		BodyName:      ed.Name + "Body",
+		ConstName:     "ErrCode" + ed.Name,
+		QuotedCode:    strconv.Quote(screamingSnake(ed.Name)),
+		QuotedMessage: strconv.Quote(errcat.Message(ed.Category)),
+		Category:      ed.Category,
+		DSLName:       ed.Name,
+		Status:        errcat.Status(ed.Category),
+		// The error Body struct renders through the SAME walk regular type
+		// structs use (renderTypeBody), so an error body's fields carry their
+		// docs, @deprecated comments, dedup-resolved Go names, and source-order
+		// interleaving with embedded mixins — instead of the bare,
+		// mixins-first shape the dedicated error emitter once produced.
+		BodyInterior:       renderTypeBody(ed.Body, pkg, r),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
 		Headers:            toErrorBindings(headers),
 		Cookies:            toErrorBindings(cookies),
 	}
-	data.HasBody = len(data.BodyFields) > 0 || len(data.BodyMixins) > 0
+	data.HasBody = errorBodyHasMembers(ed)
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
 		panic(fmt.Sprintf("codegen: render error %s: %v", ed.Name, err))
@@ -185,34 +180,6 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) s
 // process at the first generation attempt.
 var errorsTemplate = tmpl("errors.tmpl")
 
-// buildErrorBodyFields turns each declared body field into the
-// template-friendly shape: PascalCase Go name, rendered Go type, and
-// the JSON tag string (response-bound fields are tagged `"-"` so the
-// value rides on a response header instead of the body).
-func buildErrorBodyFields(fields []*ast.Field, pkg *semantic.Package, r *ProjectResolver) []errorBodyField {
-	names := make([]string, len(fields))
-	for i, f := range fields {
-		names[i] = f.Name
-	}
-	// Dedup the Go identifiers so colliding siblings (`userId` / `user_id`)
-	// get the `_2` suffix — the same resolution the response writer reads, so
-	// `e.<GoName>` lines up with the struct field.
-	resolved, _ := idents.DedupGoFieldNames(names)
-	out := make([]errorBodyField, len(fields))
-	for i, f := range fields {
-		out[i] = errorBodyField{
-			GoName: resolved[i],
-			Type:   goFieldType(f, pkg, r),
-			// The canonical tag rule, shared with regular types: a
-			// @sensitive or wire-bound (@header/@cookie) field is excluded
-			// from the body (`-`), and an optional field carries omitempty —
-			// so a server-only secret never rides the error response wire.
-			JSONTag: strconv.Quote(jsonTag(f)),
-		}
-	}
-	return out
-}
-
 // toErrorBindings adapts the shared paramBinding shape into the
 // template's view: each binding's pre-rendered write statement lives in
 // [paramBinding.Bind].
@@ -224,43 +191,17 @@ func toErrorBindings(in []paramBinding) []errorBinding {
 	return out
 }
 
-// errorCustomFields returns every Field in the error body. `code` and
-// `message` are NOT special-cased - they coexist with the framework's
-// unexported `code` / `message` metadata fields by virtue of Go's
-// case-sensitive identifiers (DSL `code` → exported Go `Code`,
-// distinct from the unexported framework field).
-// errorBodyMixins returns each mixin embedded in the error body as a Go
-// embed line target (bare or `pkg.Name` qualified). The error body
-// struct embeds them exactly like a regular type does, so the server can
-// populate the promoted fields the OpenAPI `allOf` advertises — without
-// this the body struct carries only its own fields and the
-// spec-conformant 4xx body could never be produced. (Errors are
-// server-built responses, so there is no Validate() to thread; the embed
-// alone closes the spec/struct gap.)
-func errorBodyMixins(ed *ast.ErrorDecl) []string {
-	var out []string
+// errorBodyHasMembers reports whether the error declares any body field or
+// embedded mixin — the condition under which a `<Name>Body` struct is emitted
+// and the constructor takes a body argument.
+func errorBodyHasMembers(ed *ast.ErrorDecl) bool {
 	for _, m := range ed.Body {
-		mx, ok := m.(*ast.Mixin)
-		if !ok || mx == nil || mx.Ref == nil || mx.Ref.Name == nil {
-			continue
+		switch m.(type) {
+		case *ast.Field, *ast.Mixin:
+			return true
 		}
-		// goNamedType carries the generic arguments, so a `Page<Item>` mixin
-		// embeds `Page[Item]` rather than the bare, un-instantiable `Page`.
-		out = append(out, goNamedType(mx.Ref))
 	}
-	return out
-}
-
-func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
-	var out []*ast.Field
-	for _, m := range ed.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
-		out = append(out, f)
-	}
-	return out
+	return false
 }
 
 // errorResponseBindings walks the error body and returns the
@@ -272,33 +213,11 @@ func errorCustomFields(ed *ast.ErrorDecl) []*ast.Field {
 // their wire primitive so `cost shared.Cents @header` formats the same
 // as on the success-response path.
 func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	// Flatten so a `@header` / `@cookie` field the error inherits through a
-	// mixin is written onto the response too — the error struct embeds the
-	// mixin (errorBodyMixins), so the promoted field is reachable as `e.X`.
-	for _, ff := range flattenFieldsWithNames(&ast.TypeDecl{Body: ed.Body}, "", pkg, r, map[string]bool{}) {
-		f := ff.Field
-		// Only @header / @cookie fields are written here; a plain body field
-		// (including the reserved `code` / `message` envelope names) is
-		// excluded by the kind filter below. A `code` / `message` field that
-		// IS wire-bound rides its header/cookie, not the body, so it must be
-		// written — the earlier blanket name-skip silently dropped it.
-		kind := bindingFromDecorators(f.Decorators)
-		if kind != "header" && kind != "cookie" {
-			continue
-		}
-		stmt, ns := renderResponseWrite(f, pkg, r, kind, "e", ff.GoName)
-		if ns {
-			needsStrconv = true
-		}
-		entry := paramBinding{Bind: stmt}
-		switch kind {
-		case "header":
-			headers = append(headers, entry)
-		case "cookie":
-			cookies = append(cookies, entry)
-		}
-	}
-	return headers, cookies, needsStrconv
+	// The error struct embeds its mixins, so a promoted @header / @cookie
+	// field is reachable as `e.X`; a `code` / `message` field that is wire-
+	// bound rides its header/cookie (not the body envelope). Shares the
+	// success-path writer so the two can't drift.
+	return responseBindingsFor(&ast.TypeDecl{Body: ed.Body}, "", "e", pkg, r)
 }
 
 // errSuffix appends `Err` to name unless name already ends in `Err` or

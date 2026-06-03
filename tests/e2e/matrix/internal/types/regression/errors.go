@@ -272,7 +272,9 @@ type RgValidationFailedBody struct {
 	Attempts int     `json:"attempts"`
 	Field    string  `json:"field"`
 	Hint     *string `json:"hint,omitempty"`
-	Legacy   string  `json:"legacy"`
+	//
+	// Deprecated: removed
+	Legacy string `json:"legacy"`
 }
 
 // RgValidationFailedErr is the typed UnprocessableEntity error generated for `RgValidationFailed`.

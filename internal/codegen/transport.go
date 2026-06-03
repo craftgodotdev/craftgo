@@ -468,12 +468,6 @@ func resolveDescription(decs []*ast.Decorator, doc []string) string {
 	return strings.Join(doc, "\n")
 }
 
-// collectFormBindings returns the per-field form bindings used by the
-// multipart handler. `file`-typed fields land in files; plain string
-// fields without an explicit binding fall back to form-string. Fields
-// already bound to path/query/header/cookie are skipped - those have
-// dedicated emission paths in the multipart template.
-
 func pathString(p *ast.Path) string {
 	if p == nil {
 		return ""
@@ -520,18 +514,6 @@ var queryPrims = map[string]queryPrim{
 	"float32": {parser: "strconv.ParseFloat", goType: "float32", label: "float"},
 	"float64": {parser: "strconv.ParseFloat", goType: "float64", label: "float"},
 }
-
-// collectRequestFieldImports walks every WIRE-BOUND field of the
-// method's request type (path / query / header / cookie, explicit
-// or auto-promoted) and returns the cross-package import paths
-// reached through those field types. Result keys the DSL package
-// name (= Go alias used in the binder cast) to its full Go import
-// path, ready to append to the handler's extra-imports block.
-//
-// Body-only fields are intentionally skipped: the JSON decoder
-// reads them through the request struct's own package, so no
-// extra import is needed at the handler-file level. Including them
-// would emit unused `import` statements that `go build` rejects.
 
 // wireSource describes a binding's HTTP wire source. Different bindings
 // extract the raw string differently but share the same downstream
@@ -884,11 +866,6 @@ func renderWireBindShape(name string, data wireBindData) string {
 // new wire-bound primitive is a template-only change once the Go
 // dispatcher knows which name to pick.
 var transportWireBindTemplate = tmpl("transport_wire_bind.tmpl")
-
-// describeFieldType renders a short human-readable form of f's type
-// for error messages - `[]Point`, `Page<Book>`, `map<string,int>`,
-// etc. Used by the binding-rejection paths so the user sees the
-// exact shape that violated the binding contract.
 
 func GenerateTransportHelpers(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {

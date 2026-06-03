@@ -93,17 +93,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 			s.Properties["message"] = strProp()
 			s.Required = []string{"code", "message"}
 		}
-		if len(mixinRefs) > 0 {
-			host := &openapi3.Schema{
-				Type:       &openapi3.Types{"object"},
-				Properties: s.Properties,
-				Required:   s.Required,
-			}
-			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
-			s.Properties = nil
-			s.Required = nil
-			s.AllOf = mixinRefs
-		}
+		wrapAllOfWithHost(s, mixinRefs, nil)
 		names.put(doc, typeName, &openapi3.SchemaRef{Value: s})
 	}
 }
@@ -178,9 +168,7 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames
 		if base == nil {
 			base = &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		}
-		applyPatternFormat(sc.Decorators, base)
-		applyStringLengthConstraints(sc.Decorators, base)
-		applyNumericConstraints(sc.Decorators, base)
+		applyFieldConstraints(sc.Decorators, base)
 		base.Description = resolveDescription(sc.Decorators, sc.Doc)
 		names.put(doc, name, &openapi3.SchemaRef{Value: base})
 	}
@@ -286,16 +274,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	// when at least one mixin contributed. Without mixins we keep the
 	// flat object shape so simple cases stay readable in YAML output.
 	if len(mixinRefs) > 0 {
-		host := &openapi3.Schema{
-			Type:       &openapi3.Types{"object"},
-			Properties: s.Properties,
-			Required:   s.Required,
-		}
-		mixinRefs = append(mixinRefs, &openapi3.SchemaRef{Value: host})
-		mixinRefs = append(mixinRefs, crossFragments...)
-		s.Properties = nil
-		s.Required = nil
-		s.AllOf = mixinRefs
+		wrapAllOfWithHost(s, mixinRefs, crossFragments)
 		return s
 	}
 	if len(crossFragments) > 0 {
@@ -378,11 +357,35 @@ func presentNonNull(names []string) *openapi3.Schema {
 	props := openapi3.Schemas{}
 	for _, n := range names {
 		props[n] = &openapi3.SchemaRef{Value: &openapi3.Schema{
-			Not: &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}},
+			Not: nullSchemaRef(),
 		}}
 	}
 	return &openapi3.Schema{
 		Required:   append([]string(nil), names...),
 		Properties: props,
 	}
+}
+
+// wrapAllOfWithHost folds a schema's own properties into an allOf alongside the
+// embedded mixin refs (and any extra fragments such as cross-field
+// constraints). The host's properties become one allOf member, so a
+// mixin-embedding type or error renders as
+// `allOf: [<mixin refs>, {host props}, <extra>]`. Mutates s in place: clears
+// its Properties / Required and sets AllOf. No-op when no mixin contributed
+// (a flat object shape stays readable in YAML). Shared by the type-schema and
+// error-schema emitters so the two can't drift on the wrapping shape.
+func wrapAllOfWithHost(s *openapi3.Schema, mixinRefs, extra openapi3.SchemaRefs) {
+	if len(mixinRefs) == 0 {
+		return
+	}
+	host := &openapi3.Schema{
+		Type:       &openapi3.Types{"object"},
+		Properties: s.Properties,
+		Required:   s.Required,
+	}
+	all := append(mixinRefs, &openapi3.SchemaRef{Value: host})
+	all = append(all, extra...)
+	s.Properties = nil
+	s.Required = nil
+	s.AllOf = all
 }

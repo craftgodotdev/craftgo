@@ -223,14 +223,19 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 	}
 }
 
-// checkOneTypeMixins validates every top-level mixin in body, walking
-// nested mixins recursively. The `seen` map carries (fieldName →
-// origin) for the host plus all already-expanded mixins.
-func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
-	seen := map[string]fieldOrigin{}
-	// Host's own fields land first; they always win if a later mixin
-	// brings the same name in (the conflict is reported, never
-	// silently overridden).
+// expandMixinsAndCheckCollisions runs the structural mixin collision checks
+// shared by the per-package and project passes: it lands the host's own field
+// origins into seen, rejects two mixins that lower to the same Go embed name,
+// expands each mixin's fields via processMixin (the pass's own resolution
+// scope), then reports field-vs-embed-name clashes and cross-embed Go-name
+// collisions. emit reports a diagnostic and returns it so a Related link can be
+// attached. seen is created by the caller and shared with processMixin so the
+// expansion accumulates into it. This is the one orchestration; only the
+// resolution scope (local pkg vs project) and the diag site differ between the
+// two passes, and those are injected.
+func expandMixinsAndCheckCollisions(host string, body []ast.TypeMember, seen map[string]fieldOrigin, processMixin func(mx *ast.Mixin), emit func(pos lexer.Position, code, format string, args ...any) *Diagnostic) {
+	// Host's own fields land first; they always win if a later mixin brings
+	// the same name in (the conflict is reported, never silently overridden).
 	for _, m := range body {
 		if f, ok := m.(*ast.Field); ok {
 			if _, dup := seen[f.Name]; dup {
@@ -252,22 +257,34 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 			leaf := goEmbedName(mx.Ref.Name)
 			full := mx.Ref.Name.String()
 			if prev, dup := seenMixin[leaf]; dup {
-				d := a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinConflict, "%s", duplicateEmbedMsg(prev.full, full, leaf))
+				d := emit(mx.Pos, CodeMixinConflict, "%s", duplicateEmbedMsg(prev.full, full, leaf))
 				d.Related = related(prev.pos, "first embedded here")
 				continue
 			}
 			seenMixin[leaf] = mixinEmbed{full: full, pos: mx.Pos}
 		}
-		a.processMixin(host, mx, seen)
+		processMixin(mx)
 	}
 	for _, c := range fieldEmbedClashes(body) {
-		a.diag(c.pos, c.pos, lexer.SeverityError, CodeMixinConflict,
+		emit(c.pos, CodeMixinConflict,
 			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
 			c.field, c.mixin, c.goName)
 	}
 	reportGoNameCollisions(seen, func(pos lexer.Position, msg string) {
-		a.diag(pos, pos, lexer.SeverityError, CodeMixinConflict, "%s", msg)
+		emit(pos, CodeMixinConflict, "%s", msg)
 	})
+}
+
+// checkOneTypeMixins validates every top-level mixin in body, walking
+// nested mixins recursively. The `seen` map carries (fieldName →
+// origin) for the host plus all already-expanded mixins.
+func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
+	seen := map[string]fieldOrigin{}
+	expandMixinsAndCheckCollisions(host, body, seen,
+		func(mx *ast.Mixin) { a.processMixin(host, mx, seen) },
+		func(pos lexer.Position, code, format string, args ...any) *Diagnostic {
+			return a.diag(pos, pos, lexer.SeverityError, code, format, args...)
+		})
 }
 
 // processMixin validates one mixin reference against the package and

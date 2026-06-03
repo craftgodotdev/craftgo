@@ -625,148 +625,103 @@ func (r *refResolver) checkBodyDefaults(members []ast.TypeMember, scalars map[st
 		if !ok {
 			continue
 		}
-		r.checkOneFieldDefault(f, scalars, enums)
+		r.checkOneFieldDefaultExample(f, scalars, enums)
 	}
 }
 
-func (r *refResolver) checkOneFieldDefault(f *ast.Field, scalars map[string]*ast.ScalarDecl, enums map[string]*ast.EnumDecl) {
+// checkOneFieldDefaultExample validates @default AND @example literals on a
+// field whose type is a CROSS-PACKAGE qualified scalar or enum — the case the
+// per-package pass skips (it can't resolve a foreign scalar's primitive).
+// Both decorators share the resolution + the literal check (kind, enum
+// membership, and — for @default — int-capacity / bytes-file). The @default-
+// only "not a valid target" rejects are gated on the decorator name; @example
+// is lenient (a poor example is harmless), matching the per-package passes.
+func (r *refResolver) checkOneFieldDefaultExample(f *ast.Field, scalars map[string]*ast.ScalarDecl, enums map[string]*ast.EnumDecl) {
 	if f == nil || f.Type == nil {
 		return
 	}
-	dec := defaultDecorator(f)
-	if dec == nil {
-		return
-	}
-	// Element-of-array follows the same rule as the field itself.
-	t := f.Type
-	if t.Array {
-		t = t.ElemTypeRef()
-	}
-	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 2 {
-		// Per-package pass already validated this case.
-		return
-	}
-	qname := t.Named.Name.Parts[0] + "." + t.Named.Name.Parts[1]
-	if sd, ok := scalars[qname]; ok {
-		want := primKindFor(sd.Primitive)
-		if want == ArgAny {
-			// Scalar wraps something we don't classify as a primitive
-			// (custom type, generic, ...) - reject the same way the
-			// per-package pass does for unsupported wrappers.
-			r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
-				"@default is not supported on field %q: scalar %s does not wrap a primitive", f.Name, qname)
-			return
+	for _, decName := range [...]string{"default", "example"} {
+		dec := ast.FindDecorator(f.Decorators, decName)
+		if dec == nil {
+			continue
 		}
-		r.validateDefaultLiteralKind(f, dec, qname, want)
-		return
-	}
-	if ed, ok := enums[qname]; ok {
-		r.validateDefaultEnumLiteral(f, dec, ed)
-		return
-	}
-	// Resolves to neither a scalar nor an enum (could be a struct type,
-	// or simply unknown). The qualified-ref pass already flagged unknown
-	// symbols with [CodeRefUnknownPackage] / [CodeRefUnknownSymbol]; we
-	// only need to surface the @default-specific message when the
-	// symbol exists but isn't a valid @default target.
-	pkgName := t.Named.Name.Parts[0]
-	if pkg := r.proj.Packages[pkgName]; pkg != nil && packageHasSymbol(pkg, t.Named.Name.Parts[1]) {
-		r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
-			"@default is not supported on field %q: only primitives, enums, scalars (wrapping primitives), and arrays of those are allowed", f.Name)
-	}
-}
-
-// validateDefaultLiteralKind checks one positional literal against an
-// expected [ArgKind]. Multi-arg / array literals are out of scope
-// (covered by the per-package pass for array fields whose ELEMENT is
-// local; for array fields whose element is a QUALIFIED ref the loop
-// below handles each element).
-func (r *refResolver) validateDefaultLiteralKind(f *ast.Field, dec *ast.Decorator, qname string, want ArgKind) {
-	args := positionalArgs(dec)
-	// Array field: each element must match the scalar's primitive.
-	if f.Type != nil && f.Type.Array {
-		arr, ok := singleArrayLiteral(args)
-		if !ok {
-			return
+		// Element-of-array follows the same rule as the field itself.
+		t := f.Type
+		if t.Array {
+			t = t.ElemTypeRef()
 		}
-		for _, e := range arr.Elements {
-			if !exprMatchesKind(e, want) {
-				r.diag(e.ExprPos(), lexer.SeverityError, CodeDecoratorArgType,
-					"@default on field %q (%s) requires a %s literal", f.Name, qname, want)
+		if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 2 {
+			continue // local type — per-package pass already validated it
+		}
+		qname := t.Named.Name.Parts[0] + "." + t.Named.Name.Parts[1]
+		var prim string
+		var edDecl *ast.EnumDecl
+		switch {
+		case scalars[qname] != nil:
+			prim = scalars[qname].Primitive
+			if primitiveArgKind(prim) == ArgAny {
+				// Scalar wraps a non-primitive: @default rejects it (no literal
+				// form), @example just ignores it — matching the per-package pass.
+				if decName == "default" {
+					r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
+						"@default is not supported on field %q: scalar %s does not wrap a primitive", f.Name, qname)
+				}
+				continue
 			}
+		case enums[qname] != nil:
+			edDecl = enums[qname]
+		default:
+			// Neither a scalar nor an enum (a struct, or unknown). @default is
+			// not a valid target here; @example silently does nothing.
+			if decName == "default" {
+				pkgName := t.Named.Name.Parts[0]
+				if pkg := r.proj.Packages[pkgName]; pkg != nil && packageHasSymbol(pkg, t.Named.Name.Parts[1]) {
+					r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
+						"@default is not supported on field %q: only primitives, enums, scalars (wrapping primitives), and arrays of those are allowed", f.Name)
+				}
+			}
+			continue
 		}
-		return
-	}
-	if len(args) != 1 {
-		return
-	}
-	if !exprMatchesKind(args[0].Value, want) {
-		r.diag(args[0].Pos, lexer.SeverityError, CodeDecoratorArgType,
-			"@default on field %q (%s) requires a %s literal", f.Name, qname, want)
+		// Validate each literal (array elements individually) through the SAME
+		// check the per-package pass uses, so a cross-package default/example
+		// gets the kind / enum-membership (and, for @default, capacity) verdicts.
+		emit := func(p lexer.Position, code, format string, args ...any) {
+			r.diag(p, lexer.SeverityError, code, format, args...)
+		}
+		for _, lit := range defaultArgLiterals(f, dec) {
+			if lit.v == nil {
+				continue // object-literal example — handled per-package
+			}
+			checkScalarEnumLiteralValue(decName, f.Name, qname, prim, edDecl, lit.v, lit.pos, emit)
+		}
 	}
 }
 
-// validateDefaultEnumLiteral mirrors the enum branch of
-// [checkDefaultLiteral] for cross-package enum fields.
-func (r *refResolver) validateDefaultEnumLiteral(f *ast.Field, dec *ast.Decorator, ed *ast.EnumDecl) {
+// defaultLit is one literal a @default carries, with its position.
+type defaultLit struct {
+	v   ast.Expr
+	pos lexer.Position
+}
+
+// defaultArgLiterals returns each literal a @default supplies: the single
+// positional value, or every element of an array-literal default.
+func defaultArgLiterals(f *ast.Field, dec *ast.Decorator) []defaultLit {
 	args := positionalArgs(dec)
-	// Element-wise check for array fields.
 	if f.Type != nil && f.Type.Array {
 		arr, ok := singleArrayLiteral(args)
 		if !ok {
-			return
+			return nil
 		}
+		out := make([]defaultLit, 0, len(arr.Elements))
 		for _, e := range arr.Elements {
-			r.checkEnumIdent(f, e, e.ExprPos(), ed)
+			out = append(out, defaultLit{v: e, pos: e.ExprPos()})
 		}
-		return
+		return out
 	}
 	if len(args) != 1 {
-		return
+		return nil
 	}
-	r.checkEnumIdent(f, args[0].Value, args[0].Pos, ed)
-}
-
-func (r *refResolver) checkEnumIdent(f *ast.Field, v ast.Expr, pos lexer.Position, ed *ast.EnumDecl) {
-	ident, ok := v.(*ast.IdentExpr)
-	if !ok {
-		r.diag(pos, lexer.SeverityError, CodeDecoratorArgValue,
-			"@default on enum field %q must reference an enum value by name (one of %s)", f.Name, enumValueList(ed))
-		return
-	}
-	if ident.Name == nil || len(ident.Name.Parts) != 1 {
-		r.diag(pos, lexer.SeverityError, CodeDecoratorArgValue,
-			"@default on enum field %q must be one of %s", f.Name, enumValueList(ed))
-		return
-	}
-	want := ident.Name.Parts[0]
-	for _, ev := range ed.EnumValues() {
-		if ev.Name == want {
-			return
-		}
-	}
-	r.diag(pos, lexer.SeverityError, CodeDecoratorArgValue,
-		"@default %q is not a value of enum %s; expected one of %s", want, ed.Name, enumValueList(ed))
-}
-
-// defaultDecorator returns the first `@default` decorator on f, or nil.
-func defaultDecorator(f *ast.Field) *ast.Decorator { return ast.FindDecorator(f.Decorators, "default") }
-
-// primKindFor is a tiny alias for [defaultPrimitiveKind] when no scalar
-// indirection is required (the scalar is already resolved upstream).
-func primKindFor(primName string) ArgKind {
-	switch primName {
-	case "string", "bytes":
-		return ArgString
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
-		return ArgInt
-	case "float32", "float64":
-		return ArgNumber
-	case "bool":
-		return ArgBool
-	}
-	return ArgAny
+	return []defaultLit{{v: args[0].Value, pos: args[0].Pos}}
 }
 
 // singleArrayLiteral asserts that args contains exactly one ArrayLit
@@ -822,43 +777,11 @@ func (r *refResolver) checkProjectMixins() {
 // cycle detection.
 func (r *refResolver) checkOneTypeMixinsProject(currentPkg, host string, body []ast.TypeMember) {
 	seen := map[string]fieldOrigin{}
-	for _, m := range body {
-		if f, ok := m.(*ast.Field); ok {
-			if _, dup := seen[f.Name]; dup {
-				continue
-			}
-			seen[f.Name] = fieldOrigin{pos: f.Pos, from: host}
-		}
-	}
-	seenMixin := map[string]mixinEmbed{}
-	for _, m := range body {
-		mx, ok := m.(*ast.Mixin)
-		if !ok {
-			continue
-		}
-		if mx.Ref != nil && mx.Ref.Name != nil {
-			// Key on the Go embedded-field name (the unqualified leaf): a
-			// local `Leaf` and an imported `shared.Leaf` both embed as the
-			// field `Leaf` and would redeclare it.
-			leaf := goEmbedName(mx.Ref.Name)
-			full := mx.Ref.Name.String()
-			if prev, dup := seenMixin[leaf]; dup {
-				d := r.diag(mx.Pos, lexer.SeverityError, CodeMixinConflict, "%s", duplicateEmbedMsg(prev.full, full, leaf))
-				d.Related = related(prev.pos, "first embedded here")
-				continue
-			}
-			seenMixin[leaf] = mixinEmbed{full: full, pos: mx.Pos}
-		}
-		r.processProjectMixin(currentPkg, host, mx, seen)
-	}
-	for _, c := range fieldEmbedClashes(body) {
-		r.diag(c.pos, lexer.SeverityError, CodeMixinConflict,
-			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
-			c.field, c.mixin, c.goName)
-	}
-	reportGoNameCollisions(seen, func(pos lexer.Position, msg string) {
-		r.diag(pos, lexer.SeverityError, CodeMixinConflict, "%s", msg)
-	})
+	expandMixinsAndCheckCollisions(host, body, seen,
+		func(mx *ast.Mixin) { r.processProjectMixin(currentPkg, host, mx, seen) },
+		func(pos lexer.Position, code, format string, args ...any) *Diagnostic {
+			return r.diag(pos, lexer.SeverityError, code, format, args...)
+		})
 }
 
 // processProjectMixin resolves one mixin reference - local or

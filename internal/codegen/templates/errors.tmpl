@@ -12,9 +12,7 @@ const {{.ConstName}} = {{.QuotedCode}}
 // User code instantiates this struct and hands it to New{{.TypeName}}; the
 // framework wraps it with the type-bound code / message metadata.
 type {{.BodyName}} struct {
-{{range .BodyMixins}}	{{.}}
-{{end}}{{range .BodyFields}}	{{.GoName}} {{.Type}} `json:{{.JSONTag}}`
-{{end}}}
+{{.BodyInterior}}}
 {{end -}}
 
 // {{.TypeName}} is the typed {{.Category}} error generated for `{{.DSLName}}`.

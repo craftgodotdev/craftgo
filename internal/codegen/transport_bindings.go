@@ -227,17 +227,23 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectRes
 	if td == nil {
 		return nil, nil, false
 	}
-	// Flatten so a @header / @cookie field promoted through a mixin is
-	// written on the response too — the OpenAPI doc side (binResponseFields)
-	// already flattens, so without this the spec advertises a header the
-	// handler never emits.
+	return responseBindingsFor(td, prefix, "resp", pkg, r)
+}
+
+// responseBindingsFor builds the @header / @cookie write bindings for one
+// response-side body — a method response (accessVar "resp") or an error body
+// (accessVar "e"). td/prefix names the body to flatten; the flatten promotes a
+// binding inherited through a mixin so the OpenAPI doc side (which also
+// flattens) and the writer stay in agreement. Shared by collectResponseBindings
+// and errorResponseBindings so the success and error writers can't drift.
+func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{}) {
 		f := ff.Field
 		kind := bindingFromDecorators(f.Decorators)
 		if kind != "header" && kind != "cookie" {
 			continue
 		}
-		stmt, ns := renderResponseWrite(f, pkg, r, kind, "resp", ff.GoName)
+		stmt, ns := renderResponseWrite(f, pkg, r, kind, accessVar, ff.GoName)
 		if ns {
 			needsStrconv = true
 		}
@@ -391,11 +397,6 @@ func formatToString(prim, declName, access string) (expr string, needsStrconv bo
 	}
 	return access, false
 }
-
-// hasPassthroughDecorator reports whether `@passthrough` is declared
-// on the method. Passthrough methods bypass the framework entirely:
-// codegen emits a thin `http.HandlerFunc` that delegates to logic
-// without parsing, validating, or encoding anything.
 
 // collectFormBindings walks the request type's fields and partitions
 // them into the multipart binder's two buckets: text fields (rendered

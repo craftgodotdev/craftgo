@@ -595,6 +595,8 @@ var sensitiveConflicts = map[string]bool{
 	"minItems":          true,
 	"maxItems":          true,
 	"uniqueItems":       true,
+	"maxSize":           true,
+	"mimeTypes":         true,
 	"requiresOneOf":     true,
 	"mutuallyExclusive": true,
 	"nullable":          true,

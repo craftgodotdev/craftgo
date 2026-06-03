@@ -71,11 +71,9 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		case nullable:
 			w.AnyOf = openapi3.SchemaRefs{
 				{Ref: base},
-				{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}},
+				nullSchemaRef(),
 			}
-			applyNumericConstraints(f.Decorators, w)
-			applyStringLengthConstraints(f.Decorators, w)
-			applyPatternFormat(f.Decorators, w)
+			applyFieldConstraints(f.Decorators, w)
 		case extra != nil:
 			w.AllOf = openapi3.SchemaRefs{{Ref: base}, {Value: extra}}
 		default:
@@ -124,9 +122,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 				ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
 			}
 		}
-		applyNumericConstraints(f.Decorators, ref.Value)
-		applyStringLengthConstraints(f.Decorators, ref.Value)
-		applyPatternFormat(f.Decorators, ref.Value)
+		applyFieldConstraints(f.Decorators, ref.Value)
 		return
 	}
 	if desc := resolveDescription(f.Decorators, f.Doc); desc != "" {
@@ -147,10 +143,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	if def, ok := resolveDefaultValue(f, pkg); ok {
 		ref.Value.Default = def
 	}
-	applyNumericConstraints(f.Decorators, ref.Value)
-	applyStringLengthConstraints(f.Decorators, ref.Value)
-	applyArrayConstraints(f.Decorators, ref.Value)
-	applyPatternFormat(f.Decorators, ref.Value)
+	applyFieldConstraints(f.Decorators, ref.Value)
 }
 
 // fieldConstraintSchema builds a schema carrying ONLY the field-level
@@ -164,10 +157,24 @@ func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
 		return nil
 	}
 	s := &openapi3.Schema{}
-	applyNumericConstraints(f.Decorators, s)
-	applyStringLengthConstraints(f.Decorators, s)
-	applyPatternFormat(f.Decorators, s)
+	applyFieldConstraints(f.Decorators, s)
 	return s
+}
+
+// applyFieldConstraints stamps every constraint family a field or scalar
+// schema can carry — numeric bounds, string length, pattern/format, and
+// array/map item counts — onto s. Each helper acts only on the decorators
+// actually present, and the semantic layer guarantees those are
+// type-appropriate, so calling all four is safe everywhere and "which
+// constraints a schema gets" is decided in ONE place (a new emit site can't
+// forget a family). The map-KEY propertyNames builder is the deliberate
+// exception — it omits numeric bounds no SDK generator honours — so it does
+// NOT route through here.
+func applyFieldConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
+	applyNumericConstraints(ds, s)
+	applyStringLengthConstraints(ds, s)
+	applyPatternFormat(ds, s)
+	applyArrayConstraints(ds, s)
 }
 
 // hasFieldConstraintDecorator reports whether ds carries any decorator
