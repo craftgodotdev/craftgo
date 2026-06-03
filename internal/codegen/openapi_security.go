@@ -31,18 +31,10 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 				continue
 			}
 			for _, a := range d.Args {
-				// Mirror securityFromDecorators: an arg is either a bare
-				// scheme ident OR an array of them (`@security([A, B])`,
-				// the AND form). The array case was missing, so its
-				// schemes were never registered and the operation's
-				// security $ref'd a scheme absent from components.
-				switch v := a.Value.(type) {
-				case *ast.IdentExpr:
+				// An arg is either a bare scheme ident OR an array of them
+				// (`@security([A, B])`); DecoratorArgValues flattens both.
+				for _, v := range ast.DecoratorArgValues(a) {
 					add(v)
-				case *ast.ArrayLit:
-					for _, el := range v.Elements {
-						add(el)
-					}
 				}
 			}
 		}
@@ -120,15 +112,10 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 				continue
 			}
 			for _, a := range d.Args {
-				// Validate both the bare-ident and array (`@security([A,B])`)
-				// forms, matching securityFromDecorators / addSecuritySchemes.
-				switch v := a.Value.(type) {
-				case *ast.IdentExpr:
+				// Bare-ident and array (`@security([A,B])`) forms both flatten
+				// through DecoratorArgValues.
+				for _, v := range ast.DecoratorArgValues(a) {
 					check(v)
-				case *ast.ArrayLit:
-					for _, el := range v.Elements {
-						check(el)
-					}
 				}
 			}
 		}

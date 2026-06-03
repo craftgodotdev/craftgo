@@ -346,7 +346,7 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 			continue
 		}
 		for _, a := range d.Args {
-			for _, v := range decoratorArgValues(a) {
+			for _, v := range ast.DecoratorArgValues(a) {
 				id, ok := v.(*ast.IdentExpr)
 				if !ok || id.Name == nil {
 					continue
@@ -361,22 +361,6 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 		}
 	}
 	return out
-}
-
-// decoratorArgValues flattens one decorator argument into the underlying
-// value expressions, expanding the `@x([a, b])` array-shortcut form into
-// its elements. Decorators marked AllowArrayShortcut accept BOTH the
-// variadic `@x(a, b)` and the array `@x([a, b])` forms and the semantic
-// phase treats them as equivalent, so every codegen consumer must too —
-// otherwise the array form silently contributes nothing.
-func decoratorArgValues(a *ast.DecoratorArg) []ast.Expr {
-	if a == nil {
-		return nil
-	}
-	if arr, ok := a.Value.(*ast.ArrayLit); ok {
-		return arr.Elements
-	}
-	return []ast.Expr{a.Value}
 }
 
 // passthroughPathParams emits one OpenAPI path-parameter entry per
@@ -644,7 +628,7 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 			continue
 		}
 		for _, a := range d.Args {
-			for _, val := range decoratorArgValues(a) {
+			for _, val := range ast.DecoratorArgValues(a) {
 				switch v := val.(type) {
 				case *ast.StringLit:
 					out = append(out, v.Value)
@@ -698,14 +682,9 @@ func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements 
 		}
 		req := openapi3.SecurityRequirement{}
 		for _, a := range d.Args {
-			switch v := a.Value.(type) {
-			case *ast.IdentExpr:
-				req[v.Name.String()] = []string{}
-			case *ast.ArrayLit:
-				for _, el := range v.Elements {
-					if id, ok := el.(*ast.IdentExpr); ok {
-						req[id.Name.String()] = []string{}
-					}
+			for _, v := range ast.DecoratorArgValues(a) {
+				if id, ok := v.(*ast.IdentExpr); ok {
+					req[id.Name.String()] = []string{}
 				}
 			}
 		}

@@ -564,32 +564,6 @@ func (r *refResolver) lookupEnum(n *ast.NamedTypeRef) *ast.EnumDecl {
 	return pkg.Enums[sym]
 }
 
-// lookupTypeDecl resolves either a local-bare or cross-pkg-qualified
-// type ref into the owning [ast.TypeDecl]. Used by request-type
-// resolution so the binding-type check walks the request body even
-// when `request foo.Cred` is qualified.
-func (r *refResolver) lookupTypeDecl(n *ast.NamedTypeRef) *ast.TypeDecl {
-	if n == nil || n.Name == nil || len(n.Name.Parts) == 0 {
-		return nil
-	}
-	parts := n.Name.Parts
-	if len(parts) == 1 {
-		for _, pkg := range r.proj.Packages {
-			if pkg != nil {
-				if td := pkg.Types[parts[0]]; td != nil {
-					return td
-				}
-			}
-		}
-		return nil
-	}
-	pkg := r.proj.Packages[parts[0]]
-	if pkg == nil {
-		return nil
-	}
-	return pkg.Types[parts[1]]
-}
-
 func splitQualified(n *ast.NamedTypeRef) (string, string) {
 	if n == nil || n.Name == nil {
 		return "", ""

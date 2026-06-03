@@ -339,10 +339,7 @@ func lastPathSegment(p string) string {
 func inDir(path, dir string) bool {
 	clean := filepath.Clean(path)
 	dirClean := filepath.Clean(dir)
-	if filepath.Dir(clean) == dirClean {
-		return true
-	}
-	return false
+	return filepath.Dir(clean) == dirClean
 }
 
 // fieldPrimAt returns the primitive category of the field at the

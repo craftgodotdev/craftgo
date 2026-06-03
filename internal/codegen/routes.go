@@ -191,7 +191,7 @@ func extractMiddlewareNames(ds []*ast.Decorator) []string {
 			continue
 		}
 		for _, a := range d.Args {
-			for _, v := range decoratorArgValues(a) {
+			for _, v := range ast.DecoratorArgValues(a) {
 				if id, ok := v.(*ast.IdentExpr); ok {
 					parts := id.Name.Parts
 					if len(parts) == 0 {

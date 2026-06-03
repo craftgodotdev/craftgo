@@ -509,33 +509,10 @@ func numericArgValue(d *ast.Decorator, i int) (float64, bool) {
 	return 0, false
 }
 
-// defaultValue extracts a `@default(v)` argument as a typed Go value
-// suitable for `openapi3.Schema.Default`. Mirrors [exampleValue] but
-// keyed off the `@default` decorator. Returns (nil, false) when no
-// default decorator is present so the caller leaves the schema
-// untouched. Bare-ident defaults (e.g. `@default(Active)` for an enum)
-// resolve to the ident's spelling - OpenAPI consumers see the wire
-// value the runtime would emit.
-func defaultValue(ds []*ast.Decorator) (any, bool) {
-	for _, d := range ds {
-		if d.Name != "default" || len(d.Args) == 0 {
-			continue
-		}
-		v := d.Args[0].Value
-		if ident, ok := v.(*ast.IdentExpr); ok && ident.Name != nil {
-			return ident.Name.String(), true
-		}
-		return literalToAny(v)
-	}
-	return nil, false
-}
-
-// resolveDefaultValue is [defaultValue] with enum-member resolution: when
-// the field is an enum type and its `@default` is a bare member identifier
-// (`@default(active)`), it returns the member's WIRE value — the `= 1` /
-// `= "ACTIVE"` literal the runtime and client use — not the DSL spelling.
-// Everything else (including bare enums, whose name IS the wire value)
-// falls through to [defaultValue].
+// resolveDefaultValue resolves a field's `@default` to a typed value for
+// `openapi3.Schema.Default`. When the field is an enum type and the default
+// is a bare member identifier (`@default(active)`), it returns the member's
+// WIRE value (`= 1` / `= "ACTIVE"`), not the DSL spelling.
 func resolveDefaultValue(f *ast.Field, pkg *semantic.Package) (any, bool) {
 	return resolveDecoratorLiteral(f, pkg, "default")
 }
