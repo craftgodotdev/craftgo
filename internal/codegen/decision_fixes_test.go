@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -55,6 +56,64 @@ type Doc {
 	mustContainAll(t, string(val),
 		"if v.NulBlob != nil {",
 		"if v.OptBlob != nil {",
+	)
+}
+
+// Two fields whose DSL names collide to the same Go identifier (`userId` /
+// `user_id` → `UserID`) get dedup-resolved (`UserID`, `UserID_2`) in the
+// struct. Every consumer — the validator (@minLength + the cross-field
+// @requiresOneOf) and the wire binder — must read the SAME resolved names, so
+// the binder assigns both fields and the validator checks both, rather than
+// `v.UserID` twice with `UserID_2` left unread.
+func TestCollidingGoFieldNamesDedupAcrossConsumers(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+@requiresOneOf(userId, user_id)
+type R {
+  userId  string? @minLength(2)
+  user_id string?
+  sortBy  string? @query("sortBy")
+  sort_by string? @query("sort_by")
+}
+type Resp { ok bool }
+service S {
+  post Echo /e { request R  response Resp }
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	// The collision raises a WARNING (codegen handles it via the `_2` suffix);
+	// only an error should fail the test.
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityError {
+			t.Fatalf("semantic error: %v", d)
+		}
+	}
+	dir := t.TempDir()
+	mPkg := proj.Packages["m"]
+	r := BuildProjectResolver(proj, newFixtureConfig(), "m")
+	if err := GenerateTypesPackage(mPkg, dir, CrossPkg{}, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateValidatorsAll(mPkg, dir, CrossPkg{}, BuildScalarTable(proj, "m"), BuildTypeTable(proj, "m"), BuildEnumTable(proj, "m")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The wire binder reads the resolved IR: each colliding field carries the
+	// dedup-resolved Go identifier, so the query assigns both, not one twice.
+	var goNames []string
+	for _, rf := range resolveRequestFields(mPkg.Services["S"].Methods[0], mPkg, r) {
+		goNames = append(goNames, rf.GoName)
+	}
+	mustContainAll(t, strings.Join(goNames, " "), "UserID", "UserID_2", "SortBy", "SortBy_2")
+
+	val, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
+	mustParseGo(t, string(val))
+	vs := string(val)
+	// @minLength fires on the first field (UserID); the cross-field group
+	// reads BOTH resolved names — not `v.UserID == nil && v.UserID == nil`.
+	mustContainAll(t, vs,
+		"v.UserID != nil",
+		"v.UserID == nil && v.UserID_2 == nil",
 	)
 }
 

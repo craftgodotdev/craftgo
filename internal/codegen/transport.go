@@ -620,7 +620,7 @@ func formSource() wireSource {
 // needs `strconv` imported, and an error describing why a particular
 // field shape cannot ride the wire (cookies have no array form, maps
 // and structs ride only `@body`, etc.).
-func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, pkgAlias, wireName string, src wireSource) (string, bool, error) {
+func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, pkgAlias, wireName, goName string, src wireSource) (string, bool, error) {
 	if f.Type == nil {
 		return "", false, fmt.Errorf("field %q has no resolved type", f.Name)
 	}
@@ -700,7 +700,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	arraySrc := src.arrayExpr(wireName)
 	data := wireBindData{
 		DSLNameQuoted: strconv.Quote(wireName),
-		GoName:        GoFieldName(f.Name),
+		GoName:        goName,
 		Label:         prim.label,
 		SingleSource:  singleSrc,
 		ArraySource:   arraySrc,

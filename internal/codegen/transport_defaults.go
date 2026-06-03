@@ -23,7 +23,8 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		return nil
 	}
 	var out []defaultBinding
-	for _, f := range flattenFieldsIn(td, prefix, pkg, r, map[string]bool{}) {
+	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{}) {
+		f := ff.Field
 		if f.Type == nil || f.Type.Map != nil {
 			continue
 		}
@@ -32,7 +33,7 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 			continue
 		}
 		out = append(out, defaultBinding{
-			GoName:  GoFieldName(f.Name),
+			GoName:  ff.GoName,
 			Literal: lit,
 			Ptr:     goFieldIsPointer(f, pkg, r),
 		})

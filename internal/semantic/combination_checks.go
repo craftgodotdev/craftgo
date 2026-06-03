@@ -712,8 +712,13 @@ func (a *analyzer) checkAutoPathField(svcName string, m *ast.Method) {
 	emit := func(pos lexer.Position, code, format string, args ...any) {
 		a.diag(pos, pos, lexer.SeverityError, code, format, args...)
 	}
+	// Resolve bindability against the local table; a qualified cross-package
+	// type is deferred to the project twin, which sees the foreign package.
+	unbindable := func(f *ast.Field) bool {
+		return !isQualifiedTypeRef(f.Type) && !isPathBindingType(f.Type, a.pkg)
+	}
 	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
-		autoPathFieldRule(reqName, pathSegs, f, a.pkg, emit)
+		autoPathFieldRule(reqName, pathSegs, f, unbindable, emit)
 	}
 }
 
@@ -742,7 +747,7 @@ func pathSegments(m *ast.Method) map[string]bool {
 // path-bindability; pass nil (project pass) or a qualified type to DEFER the
 // type check to codegen. Shared by the per-package and project passes so the
 // explicit/auto and local/cross-package forms all agree.
-func autoPathFieldRule(reqName string, pathSegs map[string]bool, f *ast.Field, localPkg *Package, emit func(pos lexer.Position, code, format string, args ...any)) {
+func autoPathFieldRule(reqName string, pathSegs map[string]bool, f *ast.Field, typeUnbindable func(*ast.Field) bool, emit func(pos lexer.Position, code, format string, args ...any)) {
 	if f == nil || f.Type == nil {
 		return
 	}
@@ -762,15 +767,55 @@ func autoPathFieldRule(reqName string, pathSegs map[string]bool, f *ast.Field, l
 		emit(f.Pos, CodeDecoratorConflict,
 			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply — drop it.",
 			reqName, f.Name, f.Name)
-	case localPkg != nil && !isQualifiedTypeRef(f.Type) && !isPathBindingType(f.Type, localPkg):
+	case typeUnbindable != nil && typeUnbindable(f):
 		// A path segment carries a single primitive/scalar/enum value; a
 		// struct / map / array / generic field that auto-binds to it has no
-		// wire form. Qualified cross-package types are skipped — the local
-		// table can't resolve them (a cross-pkg scalar IS bindable).
+		// wire form. The caller decides bindability — the per-package pass
+		// against its local table (deferring qualified cross-package refs to
+		// the project twin), the project twin against the resolved IR (which
+		// sees cross-package scalars / enums a local table can't).
 		emit(f.Pos, CodeBindingType,
 			"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 			reqName, f.Name, f.Name, describeTypeRef(f.Type))
 	}
+}
+
+// pathBindableIR reports whether a resolved field can source a path segment —
+// a single wire-string value: a wire primitive (string/bool/int*/uint*/
+// float*), a scalar wrapping one, or an enum. Structs, maps, arrays, bytes,
+// any, and file have no path-string form. The optional / array shapes are
+// rejected by the structural arms of [autoPathFieldRule] before this runs.
+// This is the cross-package twin of [isPathBindingType]: it resolves through
+// the IR so a `lib.Scalar` / `lib.Enum` is judged by what it wraps, not
+// false-rejected for being unresolvable in the using package's local table.
+func pathBindableIR(rf ResolvedField) bool {
+	switch rf.Category {
+	case CatPrimitive, CatEnum:
+		return true
+	case CatScalar:
+		return isPrimitiveWireName(rf.ResolvedPrim)
+	}
+	return false
+}
+
+// wireBindableIR reports whether a field can ride a @query string. It is the
+// cross-package twin of [isWireBindingType]: like a path value the element
+// must be a wire primitive / scalar-over-one / enum, but a query also accepts
+// a 1-D array (repeated values, `?x=1&x=2`). Maps, generics, and nested
+// arrays have no wire form. The element is resolved through the IR so a
+// cross-package `lib.Scalar` / `lib.Enum` is judged by what it wraps.
+func wireBindableIR(f *ast.Field, proj *Project) bool {
+	t := f.Type
+	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 || t.ArrayDepth > 1 {
+		return false
+	}
+	// An array rides as repeated single values, so judge the element type.
+	elem := *f
+	et := *t
+	et.Array = false
+	et.ArrayDepth = 0
+	elem.Type = &et
+	return pathBindableIR(ResolveField(&elem, nil, proj))
 }
 
 // checkProjectAutoPathField is the cross-package twin of checkAutoPathField:
@@ -816,8 +861,15 @@ func (r *refResolver) checkProjectAutoPathField() {
 				emit := func(pos lexer.Position, code, format string, args ...any) {
 					r.diag(pos, lexer.SeverityError, code, format, args...)
 				}
+				// The IR resolves a cross-package field's type (collectGroupFields
+				// Project requalified each promoted field to its home package), so
+				// a foreign struct / array / map that auto-binds to a path segment
+				// is caught here — the gap the per-package pass defers.
+				unbindable := func(f *ast.Field) bool {
+					return !pathBindableIR(ResolveField(f, nil, r.proj))
+				}
 				for _, f := range fields {
-					autoPathFieldRule(reqName, pathSegs, f, nil, emit)
+					autoPathFieldRule(reqName, pathSegs, f, unbindable, emit)
 				}
 			}
 		}
@@ -881,8 +933,11 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	emit := func(start, end lexer.Position, code, format string, args ...any) {
 		a.diag(start, end, lexer.SeverityError, code, format, args...)
 	}
+	unbindable := func(f *ast.Field) bool {
+		return !isQualifiedTypeRef(f.Type) && !isWireBindingType(f.Type, a.pkg)
+	}
 	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
-		bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, a.pkg, emit)
+		bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, unbindable, emit)
 	}
 }
 
@@ -893,9 +948,11 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 // JSON-null form, and the pointer it lowers to can't take the binder's plain
 // string — non-compiling); and a non-bindable auto-@query type is rejected
 // when resolvable. The first two are STRUCTURAL (no type resolution) and fire
-// for cross-package fields too; the type check uses localPkg (nil / qualified
-// → deferred to codegen). Shared by the per-package and project passes.
-func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, f *ast.Field, localPkg *Package, emit func(start, end lexer.Position, code, format string, args ...any)) {
+// for cross-package fields too; the type check is delegated to typeUnbindable
+// (the per-package pass resolves against its local table and defers qualified
+// cross-package refs, the project twin resolves through the IR). Shared by the
+// per-package and project passes.
+func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, f *ast.Field, typeUnbindable func(*ast.Field) bool, emit func(start, end lexer.Position, code, format string, args ...any)) {
 	if f == nil {
 		return
 	}
@@ -920,7 +977,7 @@ func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]boo
 			reqName, f.Name, verb, svcName)
 		return
 	}
-	if localPkg != nil && !isQualifiedTypeRef(f.Type) && !isWireBindingType(f.Type, localPkg) {
+	if typeUnbindable != nil && typeUnbindable(f) {
 		emit(f.Pos, f.Pos, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string — switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
 			reqName, f.Name, verb, svcName, describeTypeRef(f.Type))
@@ -970,8 +1027,15 @@ func (r *refResolver) checkProjectBodyBindingVerb() {
 				emit := func(start, end lexer.Position, code, format string, args ...any) {
 					r.diag(start, lexer.SeverityError, code, format, args...)
 				}
+				// The IR resolves a cross-package field's element type, so a
+				// foreign struct / map / nested array auto-binding to @query is
+				// caught here with a position — the gap the per-package pass
+				// defers to a position-less codegen error.
+				unbindable := func(f *ast.Field) bool {
+					return !wireBindableIR(f, r.proj)
+				}
 				for _, f := range fields {
-					bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, nil, emit)
+					bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, unbindable, emit)
 				}
 			}
 		}

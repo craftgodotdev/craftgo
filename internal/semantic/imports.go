@@ -856,6 +856,9 @@ func (r *refResolver) checkOneTypeMixinsProject(currentPkg, host string, body []
 			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
 			c.field, c.mixin, c.goName)
 	}
+	reportGoNameCollisions(seen, func(pos lexer.Position, msg string) {
+		r.diag(pos, lexer.SeverityError, CodeMixinConflict, "%s", msg)
+	})
 }
 
 // processProjectMixin resolves one mixin reference - local or

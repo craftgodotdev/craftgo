@@ -16,7 +16,8 @@ import (
 // literal so regexes containing a backtick, backslash, or quote still
 // produce compilable Go - a raw `...` literal would break on a backtick.
 var (
-	_pattern0 = regexp.MustCompile("^E_[A-Z]+$")
+	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+	_pattern1 = regexp.MustCompile("^E_[A-Z]+$")
 )
 
 // Validate checks every field-level constraint declared on Rg2Audit.
@@ -215,6 +216,24 @@ func (v *Rg4BigMul) Validate() error {
 	if v.N%9007199254740993 != 0 {
 		return fmt.Errorf("n: must be a multiple of 9007199254740993")
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg4Collide.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg4Collide) Validate() error {
+	if v.UserID != nil && utf8.RuneCountInString(*v.UserID) < 2 {
+		return fmt.Errorf("userId: length less than 2")
+	}
+	if v.UserID == nil && v.UserID_2 == nil {
+		return fmt.Errorf("Rg4Collide: requiresOneOf [userId user_id] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg4CollideQuery.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg4CollideQuery) Validate() error {
 	return nil
 }
 
@@ -427,6 +446,60 @@ func (v *Rg6Stacked) Validate() error {
 	if utf8.RuneCountInString(v.A) > 10 {
 		return fmt.Errorf("a: length greater than 10")
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7Box.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7Box[T]) Validate() error {
+	for i := range v.Req {
+		if vv, ok := any(&v.Req[i]).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue(v.Req[i]); err != nil {
+			return err
+		}
+	}
+	for i := range v.Opt {
+		if vv, ok := any(&v.Opt[i]).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue(v.Opt[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7Headed.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7Headed) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7Holder.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7Holder) Validate() error {
+	if err := v.Box.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7Item.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7Item) Validate() error {
+	if !_pattern0.MatchString(v.ID) {
+		return fmt.Errorf("id: not a valid UUID")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7Maps.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7Maps) Validate() error {
 	return nil
 }
 
@@ -786,7 +859,7 @@ func (v *Rg5CodeErrBody) Validate() error {
 	if utf8.RuneCountInString(v.Code) > 8 {
 		return fmt.Errorf("code: length greater than 8")
 	}
-	if !_pattern0.MatchString(v.Code) {
+	if !_pattern1.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
 	if utf8.RuneCountInString(v.Message) > 50 {
@@ -812,6 +885,18 @@ func (v *Rg5NullErrBody) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7DupBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7DupBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Rg7SecretBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Rg7SecretBody) Validate() error {
 	return nil
 }
 

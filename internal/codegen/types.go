@@ -343,7 +343,10 @@ func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) b
 // `[]byte`, plus `any`). Such a scalar field holds nil directly, so an
 // optional / `@nullable` use of it needs no redundant pointer — matching
 // how a raw `bytes` field is rendered. Arrays, maps, and generic
-// instances are excluded: their nilability is already syntactic.
+// instances are excluded: their nilability is already syntactic. The
+// primitive-nilability verdict comes from [semantic.NilableScalarPrimitive],
+// the same authority the semantic resolved IR reads, so the emitted Go and
+// the design-time checks can't disagree on whether a scalar needs a `*T`.
 func scalarRefNilable(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
 	if t == nil || t.Array || t.ArrayDepth > 0 || t.Map != nil || t.Named == nil || t.Named.Name == nil {
 		return false
@@ -359,7 +362,7 @@ func scalarRefNilable(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver)
 	if sd == nil {
 		return false
 	}
-	return isNilableGoType(scalarPrimitiveGo(sd.Primitive))
+	return semantic.NilableScalarPrimitive(sd.Primitive)
 }
 
 // renderMixin returns one Go-level embedded-type line. Qualified

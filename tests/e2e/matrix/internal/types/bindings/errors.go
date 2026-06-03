@@ -10,7 +10,7 @@ const ErrCodeAccessDenied = "ACCESS_DENIED"
 // framework wraps it with the type-bound code / message metadata.
 type AccessDeniedBody struct {
 	Reason     string `json:"reason"`
-	RetryAfter *int   `json:"retryAfter"`
+	RetryAfter *int   `json:"retryAfter,omitempty"`
 }
 
 // AccessDeniedErr is the typed Forbidden error generated for `AccessDenied`.
@@ -200,7 +200,7 @@ const ErrCodeInvalidInput = "INVALID_INPUT"
 // framework wraps it with the type-bound code / message metadata.
 type InvalidInputBody struct {
 	Errors []string `json:"errors"`
-	Trace  *string  `json:"trace"`
+	Trace  *string  `json:"trace,omitempty"`
 }
 
 // InvalidInputErr is the typed BadRequest error generated for `InvalidInput`.

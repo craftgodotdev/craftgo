@@ -33,6 +33,25 @@ type Rg4BigMul {
 	n int64 @multipleOf(9007199254740993)
 }
 
+// Two fields whose Go identifiers collide (`userId` / `user_id` both
+// PascalCase to `UserID`). The struct renderer disambiguates the second to
+// `UserID_2`; the validator (@minLength + the type-level @requiresOneOf) and
+// the body writers must read the SAME dedup-resolved names, not emit
+// `v.UserID` twice and leave `UserID_2` unread.
+@requiresOneOf(userId, user_id)
+type Rg4Collide {
+	userId  string? @minLength(2)
+	user_id string?
+}
+
+// The same Go-name collision on WIRE-bound fields: the query binder must
+// assign `req.SortBy` and `req.SortBy_2` from their distinct query keys
+// rather than clobbering one.
+type Rg4CollideQuery {
+	sortBy  string? @query("sortBy")
+	sort_by string? @query("sort_by")
+}
+
 @prefix("/regression4")
 @tags(regression)
 service RegressionBatch4 {
@@ -48,5 +67,14 @@ service RegressionBatch4 {
 	post EchoBigMul /b {
 		request  Rg4BigMul
 		response Rg4BigMul
+	}
+
+	post EchoCollide /collide {
+		request  Rg4Collide
+		response Rg4Collide
+	}
+
+	get DoCollideQuery /collide-q {
+		request Rg4CollideQuery
 	}
 }

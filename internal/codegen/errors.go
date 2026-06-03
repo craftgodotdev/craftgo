@@ -190,16 +190,24 @@ var errorsTemplate = tmpl("errors.tmpl")
 // the JSON tag string (response-bound fields are tagged `"-"` so the
 // value rides on a response header instead of the body).
 func buildErrorBodyFields(fields []*ast.Field, pkg *semantic.Package, r *ProjectResolver) []errorBodyField {
+	names := make([]string, len(fields))
+	for i, f := range fields {
+		names[i] = f.Name
+	}
+	// Dedup the Go identifiers so colliding siblings (`userId` / `user_id`)
+	// get the `_2` suffix — the same resolution the response writer reads, so
+	// `e.<GoName>` lines up with the struct field.
+	resolved, _ := idents.DedupGoFieldNames(names)
 	out := make([]errorBodyField, len(fields))
 	for i, f := range fields {
-		tag := strconv.Quote(f.Name)
-		if isResponseBoundField(f) {
-			tag = `"-"`
-		}
 		out[i] = errorBodyField{
-			GoName:  GoFieldName(f.Name),
-			Type:    goFieldType(f, pkg, r),
-			JSONTag: tag,
+			GoName: resolved[i],
+			Type:   goFieldType(f, pkg, r),
+			// The canonical tag rule, shared with regular types: a
+			// @sensitive or wire-bound (@header/@cookie) field is excluded
+			// from the body (`-`), and an optional field carries omitempty —
+			// so a server-only secret never rides the error response wire.
+			JSONTag: strconv.Quote(jsonTag(f)),
 		}
 	}
 	return out
@@ -267,7 +275,8 @@ func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectR
 	// Flatten so a `@header` / `@cookie` field the error inherits through a
 	// mixin is written onto the response too — the error struct embeds the
 	// mixin (errorBodyMixins), so the promoted field is reachable as `e.X`.
-	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r, map[string]bool{}) {
+	for _, ff := range flattenFieldsWithNames(&ast.TypeDecl{Body: ed.Body}, "", pkg, r, map[string]bool{}) {
+		f := ff.Field
 		if f.Name == "code" || f.Name == "message" {
 			continue
 		}
@@ -275,7 +284,7 @@ func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectR
 		if kind != "header" && kind != "cookie" {
 			continue
 		}
-		stmt, ns := renderResponseWrite(f, pkg, r, kind, "e")
+		stmt, ns := renderResponseWrite(f, pkg, r, kind, "e", ff.GoName)
 		if ns {
 			needsStrconv = true
 		}
@@ -288,17 +297,6 @@ func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectR
 		}
 	}
 	return headers, cookies, needsStrconv
-}
-
-// isResponseBoundField reports whether f carries `@header` or `@cookie`
-// - used to mark the JSON tag as `"-"` so the field does not double
-// up in the body alongside the response-header / cookie write.
-func isResponseBoundField(f *ast.Field) bool {
-	switch bindingFromDecorators(f.Decorators) {
-	case "header", "cookie":
-		return true
-	}
-	return false
 }
 
 // errSuffix appends `Err` to name unless name already ends in `Err` or

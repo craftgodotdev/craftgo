@@ -31,6 +31,13 @@ func (r *refResolver) checkProjectBindings() {
 		for _, td := range pkg.Types {
 			r.checkBindingsInBody(td.Name, td.Body)
 		}
+		// Error bodies carry @header / @cookie response bindings too, so a
+		// qualified cross-package field on one must satisfy the same wire-type
+		// rule — the per-package pass defers qualified refs to here. Mirrors
+		// checkProjectFieldRules, which already iterates both sets.
+		for _, ed := range pkg.Errors {
+			r.checkBindingsInBody(ed.Name, ed.Body)
+		}
 	}
 }
 

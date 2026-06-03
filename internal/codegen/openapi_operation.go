@@ -309,8 +309,73 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		if h := buildResponseHeaders(entry.headers, entry.cookies, pkg, registry); len(h) > 0 {
 			resp.Headers = h
 		}
+		// A success `@status` may already occupy this code (e.g. `@status(409)`
+		// on the method plus a Conflict-category `@errors`): the runtime
+		// returns the success body on the happy path and this error on the
+		// failure path, so merge both into a oneOf rather than letting the
+		// error overwrite — and silently orphan — the success shape.
+		if existing := op.Responses.Value(status); existing != nil && existing.Value != nil {
+			resp = mergeStatusResponses(existing.Value, resp, schema)
+		}
 		op.Responses.Set(status, &openapi3.ResponseRef{Value: resp})
 	}
+}
+
+// mergeStatusResponses combines a response already registered at a status (the
+// method's success shape) with an error response that lands on the same code.
+// The two body schemas join as a oneOf so neither is dropped; the descriptions
+// are concatenated and the headers unioned. A response with no JSON body (a
+// bare-status success) contributes only its description.
+func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *openapi3.SchemaRef) *openapi3.Response {
+	var oneOf openapi3.SchemaRefs
+	add := func(s *openapi3.SchemaRef) {
+		if s == nil {
+			return
+		}
+		// Flatten an existing oneOf so the merged list stays a single level.
+		if s.Ref == "" && s.Value != nil && len(s.Value.OneOf) > 0 {
+			oneOf = append(oneOf, s.Value.OneOf...)
+			return
+		}
+		oneOf = append(oneOf, s)
+	}
+	if mt := existing.Content.Get("application/json"); mt != nil {
+		add(mt.Schema)
+	}
+	add(errSchema)
+
+	desc := ""
+	if existing.Description != nil {
+		desc = *existing.Description
+	}
+	if errResp.Description != nil && *errResp.Description != "" && *errResp.Description != desc {
+		if desc != "" {
+			desc += " or "
+		}
+		desc += *errResp.Description
+	}
+	merged := &openapi3.Response{Description: &desc}
+	if len(oneOf) == 1 {
+		merged.Content = openapi3.Content{"application/json": &openapi3.MediaType{Schema: oneOf[0]}}
+	} else if len(oneOf) > 1 {
+		merged.Content = openapi3.Content{"application/json": &openapi3.MediaType{
+			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}},
+		}}
+	}
+	// Union the response headers (the success set first, then any error
+	// headers the existing set doesn't already carry).
+	if len(existing.Headers) > 0 || len(errResp.Headers) > 0 {
+		merged.Headers = openapi3.Headers{}
+		for k, v := range existing.Headers {
+			merged.Headers[k] = v
+		}
+		for k, v := range errResp.Headers {
+			if _, ok := merged.Headers[k]; !ok {
+				merged.Headers[k] = v
+			}
+		}
+	}
+	return merged
 }
 
 // errorHeaderCookieFields partitions an error declaration's body into

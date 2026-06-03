@@ -391,7 +391,22 @@ func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 // can't be resolved in this package (cross-package qualified refs) are
 // conservatively allowed to avoid false rejections.
 func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string) {
-	if f == nil || f.Type == nil || !f.Type.Array {
+	if f == nil || f.Type == nil {
+		return
+	}
+	// @uniqueItems is array-only. A map collapses to PrimArray in the
+	// applicability gate (so the gate lets it pass), but neither codegen stage
+	// honours it — the validator and OpenAPI both silently drop it. Reject so
+	// the constraint can't vanish without a word; a map's keys are unique
+	// already and JSON-Schema has no object-uniqueness keyword.
+	if f.Type.Map != nil {
+		if d := ast.FindDecorator(f.Decorators, "uniqueItems"); d != nil {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@uniqueItems applies to array fields, not maps (field %q): a map's keys are already unique and there is no object-uniqueness form. Drop @uniqueItems.", f.Name)
+		}
+		return
+	}
+	if !f.Type.Array {
 		return
 	}
 	for _, d := range f.Decorators {

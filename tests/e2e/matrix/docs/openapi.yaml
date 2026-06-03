@@ -1356,6 +1356,25 @@ components:
       - combo
       - standalone
       type: string
+    DoConflictReqBody:
+      description: |-
+        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
+        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
+    DoConflictRespBody:
+      $ref: '#/components/schemas/Rg7Maps'
     DoErrorsRespBody:
       $ref: '#/components/schemas/Rg5Ok'
     DoMixedReqBody:
@@ -1567,6 +1586,41 @@ components:
       type: object
     EchoCollectionRespBody:
       $ref: '#/components/schemas/DefaultsCollection'
+    EchoCollideReqBody:
+      allOf:
+      - properties:
+          user_id:
+            type:
+            - string
+            - "null"
+          userId:
+            minLength: 2
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            userId:
+              not:
+                type: "null"
+          required:
+          - userId
+        - properties:
+            user_id:
+              not:
+                type: "null"
+          required:
+          - user_id
+      description: |-
+        Two fields whose Go identifiers collide (`userId` / `user_id` both
+        PascalCase to `UserID`). The struct renderer disambiguates the second to
+        `UserID_2`; the validator (@minLength + the type-level @requiresOneOf) and
+        the body writers must read the SAME dedup-resolved names, not emit
+        `v.UserID` twice and leave `UserID_2` unread.
+      type: object
+    EchoCollideRespBody:
+      $ref: '#/components/schemas/Rg4Collide'
     EchoCompositeReqBody:
       properties:
         page:
@@ -1672,6 +1726,39 @@ components:
       type: object
     EchoFmtRespBody:
       $ref: '#/components/schemas/Rg2Fmt'
+    EchoHeadedReqBody:
+      description: |-
+        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
+        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
+    EchoHeadedRespBody:
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+      type: object
+    EchoHolderReqBody:
+      properties:
+        box:
+          $ref: '#/components/schemas/Rg7BoxOfRg7Item'
+      required:
+      - box
+      type: object
+    EchoHolderRespBody:
+      $ref: '#/components/schemas/Rg7Holder'
     EchoLengthsReqBody:
       description: |-
         Exact-length string, range form, and bytes length. The validator counts
@@ -1725,24 +1812,6 @@ components:
       type: object
     EchoListPageRespBody:
       $ref: '#/components/schemas/ListPage'
-    EchoMapsReqBody:
-      properties:
-        m:
-          items:
-            additionalProperties:
-              $ref: '#/components/schemas/Rg2Tag'
-            type: object
-          type: array
-        plain:
-          additionalProperties:
-            $ref: '#/components/schemas/Rg2Tag'
-          type: object
-      required:
-      - m
-      - plain
-      type: object
-    EchoMapsRespBody:
-      $ref: '#/components/schemas/Rg2Maps'
     EchoMatrixReqBody:
       description: |-
         Matrix is the 2-D slice of nested case. Codegen emits two nested
@@ -4474,6 +4543,24 @@ components:
       required:
       - root
       type: object
+    RegressionBatch2EchoMapsReqBody:
+      properties:
+        m:
+          items:
+            additionalProperties:
+              $ref: '#/components/schemas/Rg2Tag'
+            type: object
+          type: array
+        plain:
+          additionalProperties:
+            $ref: '#/components/schemas/Rg2Tag'
+          type: object
+      required:
+      - m
+      - plain
+      type: object
+    RegressionBatch2EchoMapsRespBody:
+      $ref: '#/components/schemas/Rg2Maps'
     RegressionBatch3EchoContactReqBody:
       allOf:
       - $ref: '#/components/schemas/Rg3Pair'
@@ -4540,6 +4627,25 @@ components:
       type: object
     RegressionBatch5EchoDefaultsRespBody:
       $ref: '#/components/schemas/Rg5Defaults'
+    RegressionBatch7EchoMapsReqBody:
+      description: |-
+        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
+        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
+    RegressionBatch7EchoMapsRespBody:
+      $ref: '#/components/schemas/Rg7Maps'
     RegressionServiceEchoContactReqBody:
       allOf:
       - properties:
@@ -4852,6 +4958,45 @@ components:
       required:
       - "n"
       type: object
+    Rg4Collide:
+      allOf:
+      - properties:
+          user_id:
+            type:
+            - string
+            - "null"
+          userId:
+            minLength: 2
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            userId:
+              not:
+                type: "null"
+          required:
+          - userId
+        - properties:
+            user_id:
+              not:
+                type: "null"
+          required:
+          - user_id
+      description: |-
+        Two fields whose Go identifiers collide (`userId` / `user_id` both
+        PascalCase to `UserID`). The struct renderer disambiguates the second to
+        `UserID_2`; the validator (@minLength + the type-level @requiresOneOf) and
+        the body writers must read the SAME dedup-resolved names, not emit
+        `v.UserID` twice and leave `UserID_2` unread.
+      type: object
+    Rg4CollideQuery:
+      description: |-
+        The same Go-name collision on WIRE-bound fields: the query binder must
+        assign `req.SortBy` and `req.SortBy_2` from their distinct query keys
+        rather than clobbering one.
+      type: object
     Rg4Host:
       allOf:
       - $ref: '#/components/schemas/Rg4PageOfRg4Item'
@@ -5120,6 +5265,87 @@ components:
       required:
       - b
       - a
+      type: object
+    Rg7BoxOfRg7Item:
+      properties:
+        opt:
+          items:
+            $ref: '#/components/schemas/Rg7Item'
+          type:
+          - array
+          - "null"
+        req:
+          items:
+            $ref: '#/components/schemas/Rg7Item'
+          type: array
+      required:
+      - req
+      type: object
+    Rg7DupErr:
+      description: Conflict error response (HTTP 409).
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
+      type: object
+    Rg7Headed:
+      description: |-
+        G: a response @header carrying @deprecated + @example surfaces both on the
+        OpenAPI Header Object (deprecated flag + schema example), not just a bare
+        description.
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+      type: object
+    Rg7Holder:
+      properties:
+        box:
+          $ref: '#/components/schemas/Rg7BoxOfRg7Item'
+      required:
+      - box
+      type: object
+    Rg7Item:
+      description: |-
+        I: an optional parametric array element (`opt T[]?`) is validated
+        per-element — the generated probe targets `&v.Opt[i]`, not the whole slice.
+      properties:
+        id:
+          format: uuid
+          type: string
+      required:
+      - id
+      type: object
+    Rg7Maps:
+      description: |-
+        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
+        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
+    Rg7SecretErr:
+      description: Forbidden error response (HTTP 403).
+      properties:
+        note:
+          type: string
+        reason:
+          type:
+          - string
+          - "null"
+      required:
+      - note
       type: object
     RgAudit:
       description: |-
@@ -7911,7 +8137,9 @@ paths:
                 type: string
             X-Next-Page:
               schema:
-                type: string
+                type:
+                - string
+                - "null"
             X-Total-Count:
               schema:
                 type: integer
@@ -8606,19 +8834,19 @@ paths:
       - regression
   /regression2/maps:
     post:
-      operationId: EchoMaps
+      operationId: RegressionBatch2EchoMaps
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EchoMapsReqBody'
+              $ref: '#/components/schemas/RegressionBatch2EchoMapsReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EchoMapsRespBody'
+                $ref: '#/components/schemas/RegressionBatch2EchoMapsRespBody'
           description: Created
       tags:
       - regression
@@ -8788,6 +9016,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoBigMulRespBody'
           description: Created
+      tags:
+      - regression
+  /regression4/collide:
+    post:
+      operationId: EchoCollide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoCollideReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoCollideRespBody'
+          description: Created
+      tags:
+      - regression
+  /regression4/collide-q:
+    get:
+      operationId: DoCollideQuery
+      parameters:
+      - in: query
+        name: sortBy
+        schema:
+          type:
+          - string
+          - "null"
+      - in: query
+        name: sort_by
+        schema:
+          type:
+          - string
+          - "null"
+      responses:
+        "204":
+          description: No Content
       tags:
       - regression
   /regression4/h:
@@ -9029,6 +9296,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EchoStackedRespBody'
+          description: Created
+      tags:
+      - regression
+  /regression7/conflict:
+    post:
+      operationId: DoConflict
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DoConflictReqBody'
+        required: true
+      responses:
+        "409":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/DoConflictRespBody'
+                - $ref: '#/components/schemas/Rg7DupErr'
+          description: Conflict
+      tags:
+      - regression
+  /regression7/headed:
+    post:
+      operationId: EchoHeaded
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoHeadedReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoHeadedRespBody'
+          description: Created
+          headers:
+            ETag:
+              deprecated: true
+              schema:
+                deprecated: true
+                description: 'Deprecated: use If-Match'
+                example: v3
+                type: string
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rg7SecretErr'
+          description: Forbidden
+      tags:
+      - regression
+  /regression7/holder:
+    post:
+      operationId: EchoHolder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoHolderReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoHolderRespBody'
+          description: Created
+      tags:
+      - regression
+  /regression7/maps:
+    post:
+      operationId: RegressionBatch7EchoMaps
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegressionBatch7EchoMapsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegressionBatch7EchoMapsRespBody'
           description: Created
       tags:
       - regression

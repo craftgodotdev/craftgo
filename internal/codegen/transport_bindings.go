@@ -33,10 +33,41 @@ func flattenFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 // flattened merged package) still advertises them. The prefix qualifies
 // the bare name (`shared.XDeep`) so the resolver finds it.
 func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []*ast.Field {
+	flat := flattenFieldsWithNames(td, prefix, pkg, r, seen)
+	out := make([]*ast.Field, len(flat))
+	for i, ff := range flat {
+		out[i] = ff.Field
+	}
+	return out
+}
+
+// flatField is a flattened request/response field paired with the Go
+// identifier it lands on. GoName is deduped within the field's DECLARING
+// struct (the type whose body literally lists it), so it matches what the
+// struct renderer emits — colliding siblings (`userId` / `user_id`) get the
+// `_2`/`_3` suffix in EVERY consumer (wire binder, default pre-fill, response
+// writer), not just the struct. A field promoted through a mixin keeps the
+// name from its own declaring struct, since the request embeds that mixin
+// (Go field promotion) rather than inlining its fields.
+type flatField struct {
+	Field  *ast.Field
+	GoName string
+}
+
+// flattenFieldsWithNames is [flattenFieldsIn] carrying each field's
+// dedup-resolved Go identifier. The dedup runs PER recursion level (over the
+// declaring type's direct fields), mirroring the struct renderer, so the
+// suffix a colliding field gets is identical to its struct field — the single
+// source of the Go field identity the whole pipeline reads.
+func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []flatField {
 	if td == nil {
 		return nil
 	}
-	var out []*ast.Field
+	// Dedup this level's direct fields exactly as the struct renderer does, so
+	// a promoted field carries the name it has in its own struct.
+	levelNames := resolvedGoFieldNames(td.Body)
+	var out []flatField
+	fieldIdx := 0
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
@@ -45,7 +76,8 @@ func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *
 			// consumer's resolver (binder cast, default pre-fill, import
 			// collector) finds it as `prefix.Name`. No-op at the top level
 			// and for the r=nil (merged-package OpenAPI) path.
-			out = append(out, requalifyFieldType(v, prefix, r))
+			out = append(out, flatField{Field: requalifyFieldType(v, prefix, r), GoName: levelNames[fieldIdx]})
+			fieldIdx++
 		case *ast.Mixin:
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
 				continue
@@ -74,7 +106,7 @@ func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *
 			if mt == nil && r != nil {
 				mt = r.LookupType(key)
 			}
-			sub := flattenFieldsIn(mt, childPrefix, pkg, r, seen)
+			sub := flattenFieldsWithNames(mt, childPrefix, pkg, r, seen)
 			// A generic mixin (`Page<Item>`) promotes fields typed in the
 			// type-parameter (`items T[]`). Substitute the concrete arguments
 			// so every consumer — wire binder, OpenAPI params/body, default
@@ -86,10 +118,10 @@ func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *
 						subst[p] = v.Ref.Args[i]
 					}
 				}
-				for i, f := range sub {
-					fc := *f
-					fc.Type = substituteTypeRef(f.Type, subst)
-					sub[i] = &fc
+				for i := range sub {
+					fc := *sub[i].Field
+					fc.Type = substituteTypeRef(sub[i].Field.Type, subst)
+					sub[i].Field = &fc
 				}
 			}
 			out = append(out, sub...)
@@ -204,12 +236,13 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectRes
 	// written on the response too — the OpenAPI doc side (binResponseFields)
 	// already flattens, so without this the spec advertises a header the
 	// handler never emits.
-	for _, f := range flattenFieldsIn(td, prefix, pkg, r, map[string]bool{}) {
+	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{}) {
+		f := ff.Field
 		kind := bindingFromDecorators(f.Decorators)
 		if kind != "header" && kind != "cookie" {
 			continue
 		}
-		stmt, ns := renderResponseWrite(f, pkg, r, kind, "resp")
+		stmt, ns := renderResponseWrite(f, pkg, r, kind, "resp", ff.GoName)
 		if ns {
 			needsStrconv = true
 		}
@@ -233,10 +266,10 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectRes
 // (cookies are guaranteed non-array by the semantic layer). The
 // returned statement may span several lines — gofmt, run over the whole
 // generated file, normalises the indentation.
-func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, kind, accessVar string) (stmt string, needsStrconv bool) {
+func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, kind, accessVar, goName string) (stmt string, needsStrconv bool) {
 	prim, declName := wirePrimName(f, pkg, r)
 	wire := bindingWireName(f, kind)
-	field := accessVar + "." + GoFieldName(f.Name)
+	field := accessVar + "." + goName
 
 	set := func(valueExpr string) string {
 		if kind == "cookie" {
@@ -410,7 +443,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		// schema property name both match what the client sends, rather
 		// than falling back to the Go field name (`@form("avatar_file")`
 		// binds to `avatar_file`, not `avatarFile`).
-		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: GoFieldName(f.Name), Required: fieldIsRequired(f), Field: f}
+		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: rf.GoName, Required: fieldIsRequired(f), Field: f}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
 			for _, d := range f.Decorators {
 				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
@@ -439,7 +472,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 	// Second pass: render bindings for the text fields now that we
 	// know the handler is multipart.
 	for _, c := range nonFile {
-		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, bindingWireName(c.field, "form"), formSource())
+		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, bindingWireName(c.field, "form"), c.entry.GoName, formSource())
 		if lerr != nil {
 			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 			return
@@ -513,7 +546,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
-			line, _, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, pathSource())
+			line, _, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, pathSource())
 			if lerr != nil {
 				if rf.AutoBound {
 					continue
@@ -523,11 +556,11 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 			}
 			path = append(path, paramBinding{
 				DSLName: wireName,
-				GoName:  GoFieldName(f.Name),
+				GoName:  rf.GoName,
 				Bind:    line,
 			})
 		case BindQuery:
-			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, querySource())
+			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, querySource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -535,9 +568,9 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 			if needs {
 				needsStrconv = true
 			}
-			query = append(query, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
+			query = append(query, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		case BindHeader:
-			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, headerSource())
+			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, headerSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -545,9 +578,9 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 			if needs {
 				needsStrconv = true
 			}
-			header = append(header, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
+			header = append(header, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		case BindCookie:
-			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, cookieSource())
+			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, cookieSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
 				return
@@ -555,7 +588,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 			if needs {
 				needsStrconv = true
 			}
-			cookie = append(cookie, paramBinding{DSLName: wireName, GoName: GoFieldName(f.Name), Bind: line})
+			cookie = append(cookie, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		}
 	}
 	return

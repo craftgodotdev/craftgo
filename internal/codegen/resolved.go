@@ -231,10 +231,15 @@ func resolveFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver) 
 // cross-package request type), so its bare nested mixins resolve in td's
 // home package rather than being dropped.
 func resolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver) []ResolvedField {
-	flat := flattenFieldsIn(td, prefix, pkg, r, map[string]bool{})
+	flat := flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{})
 	out := make([]ResolvedField, 0, len(flat))
-	for _, f := range flat {
-		out = append(out, resolveField(f, pkg, r))
+	for _, ff := range flat {
+		rf := resolveField(ff.Field, pkg, r)
+		// The dedup-resolved Go identifier from the declaring struct, so the
+		// binder / default / response writer land on the same field the struct
+		// declares (colliding siblings get the `_2` suffix everywhere).
+		rf.GoName = ff.GoName
+		out = append(out, rf)
 	}
 	return out
 }

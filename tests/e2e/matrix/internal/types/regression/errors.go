@@ -158,6 +158,102 @@ func (e *Rg5NullErr) ErrCode() string { return e.code }
 // HTTPStatus returns the HTTP status code associated with the BadRequest category.
 func (e *Rg5NullErr) HTTPStatus() int { return 400 }
 
+// ErrCodeRg7Dup is the canonical machine-readable code for Rg7DupErr.
+const ErrCodeRg7Dup = "RG7DUP"
+
+// Rg7DupBody is the wire-shape payload declared at design time for Rg7DupErr.
+// User code instantiates this struct and hands it to NewRg7DupErr; the
+// framework wraps it with the type-bound code / message metadata.
+type Rg7DupBody struct {
+	Detail string `json:"detail"`
+}
+
+// Rg7DupErr is the typed Conflict error generated for `Rg7Dup`.
+// The unexported `code` and `message` fields hold the type-bound
+// metadata populated by the constructor. Because they are unexported,
+// json.Marshal omits them from the wire payload - clients see only
+// the embedded body shape (or `{}` when no body was declared).
+type Rg7DupErr struct {
+	code    string
+	message string
+	Rg7DupBody
+}
+
+// NewRg7DupErr constructs Rg7DupErr with the framework metadata baked in.
+// `code` and `message` are bound to the type and not exposed as
+// constructor parameters; only the body struct varies per instance.
+func NewRg7DupErr(body Rg7DupBody) *Rg7DupErr {
+	return &Rg7DupErr{
+		code:       ErrCodeRg7Dup,
+		message:    "Conflict",
+		Rg7DupBody: body,
+	}
+}
+
+// Error implements the standard error interface and returns the
+// category-default message bound to the type.
+func (e *Rg7DupErr) Error() string { return e.message }
+
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *Rg7DupErr) ErrCode() string { return e.code }
+
+// HTTPStatus returns the HTTP status code associated with the Conflict category.
+func (e *Rg7DupErr) HTTPStatus() int { return 409 }
+
+// ErrCodeRg7Secret is the canonical machine-readable code for Rg7SecretErr.
+const ErrCodeRg7Secret = "RG7SECRET"
+
+// Rg7SecretBody is the wire-shape payload declared at design time for Rg7SecretErr.
+// User code instantiates this struct and hands it to NewRg7SecretErr; the
+// framework wraps it with the type-bound code / message metadata.
+type Rg7SecretBody struct {
+	Secret string  `json:"-"`
+	Reason *string `json:"reason,omitempty"`
+	Note   string  `json:"note"`
+}
+
+// Rg7SecretErr is the typed Forbidden error generated for `Rg7Secret`.
+// The unexported `code` and `message` fields hold the type-bound
+// metadata populated by the constructor. Because they are unexported,
+// json.Marshal omits them from the wire payload - clients see only
+// the embedded body shape (or `{}` when no body was declared).
+type Rg7SecretErr struct {
+	code    string
+	message string
+	Rg7SecretBody
+}
+
+// NewRg7SecretErr constructs Rg7SecretErr with the framework metadata baked in.
+// `code` and `message` are bound to the type and not exposed as
+// constructor parameters; only the body struct varies per instance.
+func NewRg7SecretErr(body Rg7SecretBody) *Rg7SecretErr {
+	return &Rg7SecretErr{
+		code:          ErrCodeRg7Secret,
+		message:       "Forbidden",
+		Rg7SecretBody: body,
+	}
+}
+
+// Error implements the standard error interface and returns the
+// category-default message bound to the type.
+func (e *Rg7SecretErr) Error() string { return e.message }
+
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`. The accessor is named
+// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *Rg7SecretErr) ErrCode() string { return e.code }
+
+// HTTPStatus returns the HTTP status code associated with the Forbidden category.
+func (e *Rg7SecretErr) HTTPStatus() int { return 403 }
+
 // ErrCodeRgValidationFailed is the canonical machine-readable code for RgValidationFailedErr.
 const ErrCodeRgValidationFailed = "RG_VALIDATION_FAILED"
 
@@ -167,7 +263,7 @@ const ErrCodeRgValidationFailed = "RG_VALIDATION_FAILED"
 type RgValidationFailedBody struct {
 	Attempts int     `json:"attempts"`
 	Field    string  `json:"field"`
-	Hint     *string `json:"hint"`
+	Hint     *string `json:"hint,omitempty"`
 	Legacy   string  `json:"legacy"`
 }
 

@@ -63,6 +63,15 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 	if t.Named != nil {
 		name := t.Named.Name.String()
 		if prim := primitiveSchema(name); prim != nil {
+			// An optional primitive used as a composite value (`map<K, int?>`,
+			// an array element) is nullable: extend the 3.1 type list to
+			// include "null" so the spec matches the `*T` Go field. Field-level
+			// optionals are stamped separately in openapi_fields.go; this
+			// branch is the only place a value-position optional primitive is
+			// rendered. (applyNullable is nil-safe, so bare `any` is untouched.)
+			if t.Optional {
+				applyNullable(prim)
+			}
 			return &openapi3.SchemaRef{Value: prim}
 		}
 		if len(t.Named.Args) > 0 {

@@ -258,6 +258,25 @@ func TestSingleDimArrayDefaultClean(t *testing.T) {
 	mustClean(t, `type Req { arr int[]? @default([1, 2, 3]) }`)
 }
 
+// A multi-dimensional array @example is rejected with the same structural
+// message @default uses, rather than the per-element walk misreporting the
+// inner array as "expects a single value" (the @default/@example parity twin).
+func TestMultiDimArrayExampleRejected(t *testing.T) {
+	expectError(t, `type Req { rows int[][] @example([[1, 2], [3, 4]]) }`, CodeDecoratorConflict)
+}
+
+// A single-level array @example is still accepted.
+func TestSingleDimArrayExampleClean(t *testing.T) {
+	mustClean(t, `type Req { flat int[] @example([1, 2, 3]) }`)
+}
+
+// @uniqueItems applies to arrays, not maps: a map collapses to PrimArray in the
+// applicability gate but neither codegen stage honours it, so reject rather
+// than silently drop the constraint (matching the int rejection).
+func TestUniqueItemsOnMapRejected(t *testing.T) {
+	expectError(t, `type Req { m map<string, int> @uniqueItems }`, CodeDecoratorTypeMismatch)
+}
+
 // An empty `@path("")` wire-name arg falls back to the field name rather
 // than false-rejecting the path-param check.
 func TestEmptyPathWireNameClean(t *testing.T) {

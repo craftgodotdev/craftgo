@@ -305,10 +305,18 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 		if name == "" {
 			name = f.Name
 		}
+		schema := schemaForTypeRef(f.Type, pkg, registry)
+		// Carry @example / @deprecated / field constraints onto the header
+		// schema, and @deprecated onto the Header Object itself — the same
+		// metadata every other field-emit site applies (paramsFromBins,
+		// schemaFromFields), so a documented response header isn't silently
+		// stripped of it.
+		applyFieldMetadata(f, schema, pkg)
 		hdr := &openapi3.Header{
 			Parameter: openapi3.Parameter{
-				Schema:      schemaForTypeRef(f.Type, pkg, registry),
+				Schema:      schema,
 				Description: resolveDescription(f.Decorators, f.Doc),
+				Deprecated:  hasDeprecatedDecorator(f.Decorators),
 			},
 		}
 		out[name] = &openapi3.HeaderRef{Value: hdr}

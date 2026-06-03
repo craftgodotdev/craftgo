@@ -56,6 +56,17 @@ func (a *analyzer) checkFieldExample(f *ast.Field) {
 	if dec == nil {
 		return
 	}
+	// A multi-dimensional array has no single-value example shape and its
+	// nested-literal form is the same sharp edge @default rejects — reject up
+	// front with the structural message, rather than letting the per-element
+	// walk misreport the inner array as "expects a single value". Mirrors
+	// [analyzer.checkFieldDefault].
+	if f.Type != nil && f.Type.ArrayDepth > 1 {
+		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict,
+			"@example is not supported on a multi-dimensional array (field %q): an example may target a primitive, scalar, enum, or a single-level array of those — not a nested array",
+			f.Name)
+		return
+	}
 	for _, ag := range positionalArgs(dec) {
 		if ag.Value == nil {
 			continue // object literal — rejected by checkExampleArg
@@ -262,16 +273,24 @@ type semanticPkgRef = Package
 
 // arrayElemTypeRef returns the element TypeRef of an array. The stored
 // TypeRef has Array == true alongside the element's Named / Optional
-// fields, so dropping the Array flag yields the element type. Optional
-// propagates so `T?[]` element is `T?`. A multi-dimensional array default
-// is rejected up front (see [analyzer.checkFieldDefault]), so this only
-// ever peels a single-level array.
+// fields, so dropping the Array flag yields the element type. Peel ONE level:
+// decrement the depth and re-set Array when an inner dimension remains, so a
+// multi-dimensional element keeps its array shape (mirrors the codegen twin in
+// transport_defaults.go). Optional is dropped — the `?` belongs to the outer
+// field, not each element.
 func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
 	if t == nil {
 		return nil
 	}
 	clone := *t
 	clone.Array = false
+	clone.Optional = false
+	if clone.ArrayDepth > 0 {
+		clone.ArrayDepth--
+	}
+	if clone.ArrayDepth > 0 {
+		clone.Array = true
+	}
 	return &clone
 }
 

@@ -71,12 +71,16 @@ func enumCaseList(ed *ast.EnumDecl, qualifier string) string {
 // helper hands us the value-form expression for each form; we wrap it
 // with `&` for arrays/single, but optional fields are already a `*T`
 // so we use the pointer access as-is.
-func typeParamValidateCall(f *ast.Field, uses map[string]bool) string {
-	access := "v." + GoFieldName(f.Name)
+func typeParamValidateCall(f *ast.Field, goName string, uses map[string]bool) string {
+	access := "v." + goName
 	uses["reflect"] = true
 	return shape(f, access, func(elem string) string {
 		probe := "&" + elem
-		if f.Type.Optional {
+		// An optional non-array `T?` lowers to a `*T` whose access is already
+		// the pointer to probe. An optional ARRAY (`T[]?`) still iterates
+		// per-element, so the element pointer `&elem` is correct — the
+		// whole-slice access would never satisfy the Validate() interface.
+		if f.Type.Optional && !f.Type.Array {
 			probe = access
 		}
 		// The direct probe handles a T that itself has Validate() (struct /
@@ -108,11 +112,11 @@ return err
 // `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
 // the pointer-receiver Validate either way, and the cleaner form is
 // what a human would write by hand.
-func nestedValidateCall(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string {
+func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
 	if pkg == nil || f.Type == nil {
 		return ""
 	}
-	access := "v." + GoFieldName(f.Name)
+	access := "v." + goName
 	body := func(elem string) string {
 		return fmt.Sprintf(`if err := %s.Validate(); err != nil {
 return err

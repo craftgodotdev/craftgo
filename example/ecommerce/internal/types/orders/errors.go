@@ -13,7 +13,7 @@ const ErrCodeActionDenied = "ACTION_DENIED"
 // User code instantiates this struct and hands it to NewActionDeniedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type ActionDeniedBody struct {
-	Code   *string          `json:"code"`
+	Code   *string          `json:"code,omitempty"`
 	Reason SuspensionReason `json:"reason"`
 }
 
@@ -99,7 +99,7 @@ const ErrCodePaymentFailed = "PAYMENT_FAILED"
 // User code instantiates this struct and hands it to NewPaymentFailedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type PaymentFailedBody struct {
-	Code      *string               `json:"code"`
+	Code      *string               `json:"code,omitempty"`
 	Method    PaymentMethod         `json:"method"`
 	ChargedBy customers.CustomerRef `json:"chargedBy"`
 }

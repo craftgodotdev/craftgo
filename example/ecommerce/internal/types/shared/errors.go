@@ -96,7 +96,7 @@ const ErrCodeRateLimitedErr = "RATE_LIMITED_ERR"
 // framework wraps it with the type-bound code / message metadata.
 type RateLimitedErrBody struct {
 	RetryAfter int     `json:"retryAfter"`
-	Bucket     *string `json:"bucket"`
+	Bucket     *string `json:"bucket,omitempty"`
 }
 
 // RateLimitedErr is the typed TooManyRequests error generated for `RateLimitedErr`.
@@ -143,7 +143,7 @@ const ErrCodeUnauthorizedErr = "UNAUTHORIZED_ERR"
 // User code instantiates this struct and hands it to NewUnauthorizedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type UnauthorizedErrBody struct {
-	Code *string `json:"code"`
+	Code *string `json:"code,omitempty"`
 }
 
 // UnauthorizedErr is the typed Unauthorized error generated for `UnauthorizedErr`.

@@ -275,12 +275,19 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 // reach neither.
 func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, ctx emitCtx) []string {
 	var out []string
+	// Dedup the Go field identifiers exactly as the struct renderer does, so
+	// the validator reads `v.UserID` / `v.UserID_2` — the same fields the
+	// struct declares — rather than `v.UserID` twice for a colliding pair.
+	levelNames := resolvedGoFieldNames(td.Body)
+	fieldIdx := 0
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			out = append(out, fieldChecksWithScalar(v, pkg, ctx)...)
+			goName := levelNames[fieldIdx]
+			fieldIdx++
+			out = append(out, fieldChecksWithScalar(v, goName, pkg, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
-				if call := typeParamValidateCall(v, ctx.uses); call != "" {
+				if call := typeParamValidateCall(v, goName, ctx.uses); call != "" {
 					out = append(out, call)
 				}
 				continue
@@ -291,7 +298,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 			// method, and the field calls it (`v.Status.Validate()`).
 			// This keeps the check declared once and lets generic
 			// instances over a scalar / enum validate their elements.
-			if nested := nestedValidateCall(v, pkg, r); nested != "" {
+			if nested := nestedValidateCall(v, goName, pkg, r); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:
@@ -473,12 +480,12 @@ return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
 func presenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		f := lookupField(td, name, pkg, r)
+		f, goName := lookupField(td, name, pkg, r)
 		if f == nil {
 			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
-		parts = append(parts, presenceExpr(f, pkg, r))
+		parts = append(parts, presenceExpr(f, goName, pkg, r))
 	}
 	return parts
 }
@@ -498,15 +505,17 @@ func unresolvedCrossFieldExpr(name string) string {
 
 // lookupField finds the Field a TypeDecl contributes by DSL field name,
 // expanding embedded mixins so a cross-field decorator can reference a
-// promoted field (`@requiresOneOf` over a field the type inherits). The
-// Go access (`v.Email`) resolves through field promotion.
-func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *ProjectResolver) *ast.Field {
-	for _, f := range flattenFields(td, pkg, r, map[string]bool{}) {
-		if f.Name == name {
-			return f
+// promoted field (`@requiresOneOf` over a field the type inherits). It also
+// returns the field's dedup-resolved Go identifier so the cross-field access
+// (`v.UserID_2`) matches the struct rather than colliding on the bare name.
+// The Go access resolves through field promotion for a mixin-inherited field.
+func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *ProjectResolver) (*ast.Field, string) {
+	for _, ff := range flattenFieldsWithNames(td, "", pkg, r, map[string]bool{}) {
+		if ff.Field.Name == name {
+			return ff.Field, ff.GoName
 		}
 	}
-	return nil
+	return nil, ""
 }
 
 // presenceExpr returns the Go expression that's true when the field
@@ -522,8 +531,8 @@ func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *Projec
 // pointer check must come BEFORE the value-shape branches so cross-
 // field rules emit a nil-check rather than `v.X == ""` against a
 // `*string` (which fails to compile).
-func presenceExpr(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string {
-	access := "v." + GoFieldName(f.Name)
+func presenceExpr(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
+	access := "v." + goName
 	if f.Type == nil {
 		return "true"
 	}
@@ -556,7 +565,7 @@ func presenceExpr(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) strin
 func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		f := lookupField(td, name, pkg, r)
+		f, goName := lookupField(td, name, pkg, r)
 		if f == nil {
 			// Unresolved member — semantic analysis rejects this before
 			// codegen, so this is a drift guard, not a user path. Emit a
@@ -565,7 +574,7 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
-		parts = append(parts, absenceExpr(f, pkg, r))
+		parts = append(parts, absenceExpr(f, goName, pkg, r))
 	}
 	return parts
 }
@@ -576,8 +585,8 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 // `!(...)` wrapping leaks into the output. Pointer-shape (`T?` or
 // `@nullable T`) is checked first via [goFieldIsPointer] so the emit
 // stays type-safe.
-func absenceExpr(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string {
-	access := "v." + GoFieldName(f.Name)
+func absenceExpr(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
+	access := "v." + goName
 	if f.Type == nil {
 		return "false"
 	}

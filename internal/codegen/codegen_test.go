@@ -565,11 +565,12 @@ error Internal Boom {
 	norm := strings.Join(strings.Fields(src), " ")
 
 	// User wire fields surface on the body struct as exported Go names
-	// with the DSL JSON tag.
-	if !strings.Contains(norm, `Code *string `+"`json:\"code\"`") {
+	// with the DSL JSON tag; an optional field carries omitempty (the same
+	// canonical jsonTag rule regular types use).
+	if !strings.Contains(norm, `Code *string `+"`json:\"code,omitempty\"`") {
 		t.Errorf("user `code?` field should appear on body struct as *Code:\n%s", src)
 	}
-	if !strings.Contains(norm, `Message *string `+"`json:\"message\"`") {
+	if !strings.Contains(norm, `Message *string `+"`json:\"message,omitempty\"`") {
 		t.Errorf("user `message?` field should appear on body struct as *Message:\n%s", src)
 	}
 	// Internal metadata stays present and unexported on the err type.
@@ -623,8 +624,9 @@ error TooManyRequests RateLimited {
 	if !strings.Contains(norm, `SessionToken string `+"`json:\"-\"`") {
 		t.Errorf("sessionToken should have json:\"-\":\n%s", src)
 	}
-	// Optional non-bound field keeps its real JSON tag.
-	if !strings.Contains(norm, `Bucket *string `+"`json:\"bucket\"`") {
+	// Optional non-bound field keeps its real JSON tag, with omitempty (the
+	// canonical jsonTag rule — an optional error-body field is omittable).
+	if !strings.Contains(norm, `Bucket *string `+"`json:\"bucket,omitempty\"`") {
 		t.Errorf("bucket should keep its DSL JSON tag:\n%s", src)
 	}
 	// WriteResponseHeaders must be emitted with the expected wire writes.
@@ -634,6 +636,32 @@ error TooManyRequests RateLimited {
 		`http.SetCookie(w, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
 		`"net/http"`,
 	)
+}
+
+// A @sensitive field on an error body must be tagged json:"-" — the same
+// canonical jsonTag rule regular types follow — so a server-only secret
+// never rides the error response wire. (Regression: the error emitter once
+// re-derived the tag and leaked the value as json:"<name>".)
+func TestGenerateErrorsSensitiveFieldExcludedFromBody(t *testing.T) {
+	pkg := analyze(t, `package design
+error Forbidden Boom {
+    secret string @sensitive
+    note   string
+}`)
+	dir := t.TempDir()
+	if err := GenerateErrors(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	norm := strings.Join(strings.Fields(src), " ")
+	if !strings.Contains(norm, `Secret string `+"`json:\"-\"`") {
+		t.Errorf("@sensitive error field must be json:\"-\" (server-only), not leaked:\n%s", src)
+	}
+	if strings.Contains(norm, `json:\"secret\"`) {
+		t.Errorf("@sensitive error field secret leaked onto the wire:\n%s", src)
+	}
 }
 
 // TestGenerateErrorsResponseBindingsNonString pins the non-string

@@ -42,6 +42,33 @@ type Identified { id string }
 type User { Auditable  Identified  name string }`)
 }
 
+// A direct field and a mixin-promoted field whose DSL names differ but whose
+// Go identifiers collide (`retryAfter` + promoted `retry_after` → both
+// `RetryAfter`) land in separate Go structs that field-promotion merges by
+// name, so the binder/validator/writers can't tell them apart. Reject.
+func TestMixinPromotedGoNameCollidesWithHostField(t *testing.T) {
+	d := expectDiag(t, `type HdrMix { retry_after int }
+type Req { HdrMix  retryAfter int }`, CodeMixinConflict)
+	expectMessage(t, d, "lower to the Go field")
+}
+
+// Two mixins each promoting a field that lowers to the same Go name land in
+// two equal-depth embeds → ambiguous selector. Reject.
+func TestMixinTwoPromotedGoNameCollision(t *testing.T) {
+	d := expectDiag(t, `type A { userId string }
+type B { user_id string }
+type C { A  B }`, CodeMixinConflict)
+	expectMessage(t, d, "lower to the Go field")
+}
+
+// Control: two DIRECT fields of one struct that collide on Go name are
+// dedup-renamed by codegen (UserID / UserID_2) — the analyzer raises an
+// informational warning but must NOT raise a mixin-conflict ERROR, since only
+// the cross-embed case is unfixable.
+func TestMixinDirectGoNameCollisionNotRejected(t *testing.T) {
+	expectNoCode(t, `type R { userId string  user_id string }`, CodeMixinConflict)
+}
+
 func TestMixinInsideErrorDecl(t *testing.T) {
 	mustClean(t, `type Auditable { createdAt string }
 error BadRequest E { Auditable  details string }`)

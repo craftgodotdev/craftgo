@@ -131,6 +131,24 @@ type Rg4BigMul struct {
 	N int64 `json:"n"`
 }
 
+// Two fields whose Go identifiers collide (`userId` / `user_id` both
+// PascalCase to `UserID`). The struct renderer disambiguates the second to
+// `UserID_2`; the validator (@minLength + the type-level @requiresOneOf) and
+// the body writers must read the SAME dedup-resolved names, not emit
+// `v.UserID` twice and leave `UserID_2` unread.
+type Rg4Collide struct {
+	UserID   *string `json:"userId,omitempty"`
+	UserID_2 *string `json:"user_id,omitempty"`
+}
+
+// The same Go-name collision on WIRE-bound fields: the query binder must
+// assign `req.SortBy` and `req.SortBy_2` from their distinct query keys
+// rather than clobbering one.
+type Rg4CollideQuery struct {
+	SortBy   *string `json:"-"`
+	SortBy_2 *string `json:"-"`
+}
+
 type Rg4Host struct {
 	Rg4Page[Rg4Item]
 	Name string `json:"name"`
@@ -250,6 +268,38 @@ type Rg6Resp struct {
 type Rg6Stacked struct {
 	B int    `json:"b"`
 	A string `json:"a"`
+}
+
+type Rg7Box[T any] struct {
+	Req []T `json:"req"`
+	Opt []T `json:"opt,omitempty"`
+}
+
+// G: a response @header carrying @deprecated + @example surfaces both on the
+// OpenAPI Header Object (deprecated flag + schema example), not just a bare
+// description.
+type Rg7Headed struct {
+	//
+	// Deprecated: use If-Match
+	Etag string `json:"-"`
+	Ok   bool   `json:"ok"`
+}
+
+type Rg7Holder struct {
+	Box Rg7Box[Rg7Item] `json:"box"`
+}
+
+// I: an optional parametric array element (`opt T[]?`) is validated
+// per-element — the generated probe targets `&v.Opt[i]`, not the whole slice.
+type Rg7Item struct {
+	ID string `json:"id"`
+}
+
+// E: an optional primitive map value is nullable in both Go (`map[string]*int`)
+// and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+type Rg7Maps struct {
+	Counts map[string]*int `json:"counts"`
+	Name   string          `json:"name"`
 }
 
 // A type whose embedded mixin contributes the body fields the server

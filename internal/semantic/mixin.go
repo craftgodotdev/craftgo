@@ -25,6 +25,7 @@ package semantic
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -167,6 +168,61 @@ type fieldOrigin struct {
 	from string // host name or mixin chain root
 }
 
+// reportGoNameCollisions flags fields whose DSL names differ but whose Go
+// identifiers collide ACROSS an embed boundary. Within one struct's own
+// fields a Go-name collision is dedup-renamed by codegen (`UserID` /
+// `UserID_2`), but a host field and a field promoted from a mixin — or two
+// fields promoted from different mixins — land in SEPARATE Go structs that
+// Go field-promotion merges by name: the binder, validator, and response
+// writers all read `v.UserID`, targeting one field for both (clobber) or, for
+// two equal-depth embeds, producing an ambiguous selector that won't compile.
+// The codegen dedup runs per declaring struct and so cannot fix it; reject at
+// design time so the author renames one. seen holds every contributing field
+// (host's own + promoted) keyed by DSL name with its origin; a Go-name group
+// is safe only when all its members share one origin. emit anchors each
+// diagnostic at the colliding field. Shared by the per-package
+// ([analyzer.checkOneTypeMixins]) and project ([refResolver.checkOneTypeMixinsProject]) passes.
+func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Position, msg string)) {
+	type ent struct {
+		dsl  string
+		from string
+		pos  lexer.Position
+	}
+	groups := map[string][]ent{}
+	for dsl, o := range seen {
+		gn := idents.GoFieldName(dsl)
+		groups[gn] = append(groups[gn], ent{dsl: dsl, from: o.from, pos: o.pos})
+	}
+	gnames := make([]string, 0, len(groups))
+	for gn := range groups {
+		gnames = append(gnames, gn)
+	}
+	sort.Strings(gnames)
+	for _, gn := range gnames {
+		ents := groups[gn]
+		if len(ents) < 2 {
+			continue
+		}
+		// Deterministic order: the lowest (from, dsl) is the anchor the
+		// others are reported against.
+		sort.Slice(ents, func(i, j int) bool {
+			if ents[i].from != ents[j].from {
+				return ents[i].from < ents[j].from
+			}
+			return ents[i].dsl < ents[j].dsl
+		})
+		first := ents[0]
+		for _, e := range ents[1:] {
+			if e.from == first.from {
+				continue // same declaring struct — codegen dedups it
+			}
+			emit(e.pos, fmt.Sprintf(
+				"field %q (from %s) and field %q (from %s) both lower to the Go field %q across mixin embedding — Go field promotion can't tell them apart, so the generated binder / validator / writers would target one field for both. Rename one.",
+				e.dsl, e.from, first.dsl, first.from, gn))
+		}
+	}
+}
+
 // checkOneTypeMixins validates every top-level mixin in body, walking
 // nested mixins recursively. The `seen` map carries (fieldName →
 // origin) for the host plus all already-expanded mixins.
@@ -209,6 +265,9 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
 			c.field, c.mixin, c.goName)
 	}
+	reportGoNameCollisions(seen, func(pos lexer.Position, msg string) {
+		a.diag(pos, pos, lexer.SeverityError, CodeMixinConflict, "%s", msg)
+	})
 }
 
 // processMixin validates one mixin reference against the package and

@@ -172,8 +172,8 @@ func validatorByName(name string) *validatorEntry {
 // existing type predicates (`isStringOrOptString`,
 // `isNumericField`, ...) match without special-casing scalar-typed
 // fields throughout the emitter set.
-func fieldChecksWithScalar(f *ast.Field, pkg *semantic.Package, ctx emitCtx) []string {
-	access := "v." + GoFieldName(f.Name)
+func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, ctx emitCtx) []string {
+	access := "v." + goName
 	uses := ctx.uses
 	var out []string
 

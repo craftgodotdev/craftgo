@@ -155,3 +155,184 @@ service S { post Do /do { request shared.Email  response Resp } }`,
 		t.Errorf("bare cross-pkg scalar request should be rejected; got %v", codes(diags))
 	}
 }
+
+// W5: a cross-package request whose field auto-binds to a path segment but is
+// a STRUCT (no path-string form) silently lost its binding — codegen emitted a
+// handler that left the field zero with no error. The project twin resolves
+// the cross-package type through the IR and rejects it at design time, matching
+// the per-package pass.
+func TestProjectAutoPathFieldCrossPkgStructRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/base.craftgo": `package base
+type Nested { a string }
+type R { id Nested  name string }`,
+		"app/app.craftgo": `package app
+import "base"
+type Resp { ok bool }
+service S { get G /u/{id} { request base.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) == nil {
+		t.Errorf("cross-pkg struct auto-path field should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: a cross-package SCALAR (over a wire primitive) auto-binding to a
+// path segment is bindable and must NOT be false-rejected — the local table
+// can't resolve it, so only the IR-backed twin gets this right.
+func TestProjectAutoPathFieldCrossPkgScalarClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/base.craftgo": `package base
+scalar Id string
+type R { id Id  name string }`,
+		"app/app.craftgo": `package app
+import "base"
+type Resp { ok bool }
+service S { get G /u/{id} { request base.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) != nil {
+		t.Errorf("cross-pkg scalar auto-path field wrongly rejected: %v", codes(diags))
+	}
+}
+
+// W5 sibling: a cross-package struct auto-binding to @query on a body-less verb
+// was only caught by a position-less codegen error. The project twin now
+// rejects it at design time with a position, matching the per-package pass.
+func TestProjectAutoQueryFieldCrossPkgStructRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/base.craftgo": `package base
+type Nested { a string }
+type R { filter Nested  name string }`,
+		"app/app.craftgo": `package app
+import "base"
+type Resp { ok bool }
+service S { get G /g { request base.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) == nil {
+		t.Errorf("cross-pkg struct auto-@query field should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: a cross-package scalar and a 1-D array of primitives both ride a
+// @query string (repeated values), so the twin must NOT false-reject them.
+func TestProjectAutoQueryFieldCrossPkgBindableClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/base.craftgo": `package base
+scalar Tag string
+type R { t Tag  tags string[]  name string }`,
+		"app/app.craftgo": `package app
+import "base"
+type Resp { ok bool }
+service S { get G /g { request base.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) != nil {
+		t.Errorf("cross-pkg scalar / 1-D array auto-@query wrongly rejected: %v", codes(diags))
+	}
+}
+
+// A cross-package qualified struct (or other non-wire type) bound with
+// @header on an ERROR body field must be rejected — the per-package pass
+// defers qualified refs, and checkProjectBindings once iterated only
+// pkg.Types, so the error field slipped past both passes into non-compiling
+// `string(e.Detail)` Go. The project binding check now sweeps pkg.Errors too.
+func TestProjectErrorFieldCrossPkgStructHeaderRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+type Point { x int  y int }`,
+		"app/app.craftgo": `package app
+import "shared"
+error NotFound NF { detail shared.Point @header("X-Detail")  note string }
+type Resp { ok bool }
+service S { @errors(NF) post C /c { request Resp  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) == nil {
+		t.Errorf("cross-pkg struct @header on an error field should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: a cross-package SCALAR (over a wire primitive) @header on an error
+// field is valid and must NOT be false-rejected.
+func TestProjectErrorFieldCrossPkgScalarHeaderClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Reason string`,
+		"app/app.craftgo": `package app
+import "shared"
+error NotFound NF { reason shared.Reason @header("X-Reason")  note string }
+type Resp { ok bool }
+service S { @errors(NF) post C /c { request Resp  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeBindingType) != nil {
+		t.Errorf("cross-pkg scalar @header on an error field wrongly rejected: %v", codes(diags))
+	}
+}
+
+// Cross-package twin of the Go-name collision: two mixins from DIFFERENT
+// packages each promote a field that lowers to the same Go identifier
+// (`userId` from m1.A, `user_id` from m2.B → both `UserID`). The project mixin
+// pass must reject it — without this codegen emits an ambiguous selector
+// (`v.UserID`) that won't compile.
+func TestProjectMixinCrossPkgGoNameCollision(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"m1/m1.craftgo": `package m1
+type A { userId string? }`,
+		"m2/m2.craftgo": `package m2
+type B { user_id string? }`,
+		"app/app.craftgo": `package app
+import "m1"
+import "m2"
+type C { m1.A  m2.B }
+type Resp { ok bool }
+service S { post C /c { request C  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeMixinConflict) == nil {
+		t.Errorf("cross-pkg mixin Go-name collision should be rejected; got %v", codes(diags))
+	}
+}
+
+// #6: a cross-field group member promoted from a sibling-package mixin carries
+// a bare named type (`Blob`, not `base.Blob`). When that scalar is over `bytes`
+// its Go type is nilable, so it has no clean present/absent state and the group
+// must reject it. The project flattener requalifies the promoted field to its
+// home package so the resolver can see the scalar at all.
+func TestProjectCrossFieldCrossPkgScalarOverBytesRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/base.craftgo": `package base
+scalar Blob bytes
+type Carrier { blob Blob?  name string? }`,
+		"app/app.craftgo": `package app
+import "base"
+@requiresOneOf(blob, name)
+type Req { base.Carrier }
+service S { post C /c { request Req  response Req } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeCrossFieldNotOptional) == nil {
+		t.Errorf("cross-pkg-promoted scalar-over-bytes member should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: the same promotion of a scalar over a VALUE primitive (`string`) is
+// pointer-backed and present/absent-clean, so it must NOT be false-rejected.
+func TestProjectCrossFieldCrossPkgScalarOverStringClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/base.craftgo": `package base
+scalar Code string
+type Carrier { code Code?  name string? }`,
+		"app/app.craftgo": `package app
+import "base"
+@requiresOneOf(code, name)
+type Req { base.Carrier }
+service S { post C /c { request Req  response Req } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeCrossFieldNotOptional) != nil {
+		t.Errorf("cross-pkg-promoted scalar-over-string member wrongly rejected: %v", codes(diags))
+	}
+}

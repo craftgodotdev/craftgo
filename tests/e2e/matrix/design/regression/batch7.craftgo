@@ -1,0 +1,78 @@
+// Fixtures for the post-refactor matrix-scan fixes: error-body json tags (A),
+// optional map-value nullability (E), success/error shared-status merge (F),
+// response-header metadata (G), and the optional parametric-array element
+// probe (I). Rg7-prefixed.
+package regression
+
+// E: an optional primitive map value is nullable in both Go (`map[string]*int`)
+// and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+type Rg7Maps {
+	counts map<string, int?>
+	name   string
+}
+
+// A: a @sensitive error-body field stays `json:"-"` (server-only, never on the
+// wire) and an optional field carries `,omitempty` — the canonical jsonTag
+// rule regular types follow, applied to the error emitter.
+error Forbidden Rg7Secret {
+	secret string @sensitive
+	reason string?
+	note   string
+}
+
+// F: a Conflict-category error sharing the success @status(409) — the success
+// body and the error merge into a oneOf instead of the error overwriting (and
+// orphaning) the success shape.
+error Conflict Rg7Dup {
+	detail string
+}
+
+// G: a response @header carrying @deprecated + @example surfaces both on the
+// OpenAPI Header Object (deprecated flag + schema example), not just a bare
+// description.
+type Rg7Headed {
+	etag string @header("ETag") @deprecated("use If-Match") @example("v3")
+	ok   bool
+}
+
+// I: an optional parametric array element (`opt T[]?`) is validated
+// per-element — the generated probe targets `&v.Opt[i]`, not the whole slice.
+type Rg7Item {
+	id string @format(uuid)
+}
+
+type Rg7Box<T> {
+	req T[]
+	opt T[]?
+}
+
+type Rg7Holder {
+	box Rg7Box<Rg7Item>
+}
+
+@prefix("/regression7")
+@tags(regression)
+service RegressionBatch7 {
+	post EchoMaps /maps {
+		request  Rg7Maps
+		response Rg7Maps
+	}
+
+	@errors(Rg7Secret)
+	post EchoHeaded /headed {
+		request  Rg7Maps
+		response Rg7Headed
+	}
+
+	@status(409)
+	@errors(Rg7Dup)
+	post DoConflict /conflict {
+		request  Rg7Maps
+		response Rg7Maps
+	}
+
+	post EchoHolder /holder {
+		request  Rg7Holder
+		response Rg7Holder
+	}
+}

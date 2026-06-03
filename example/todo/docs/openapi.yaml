@@ -269,13 +269,21 @@ paths:
                 tookMs is a scalar-typed (Millis = int) header: it resolves to its
                 underlying primitive and formats the same as a plain int.
               schema:
-                $ref: '#/components/schemas/Millis'
+                allOf:
+                - $ref: '#/components/schemas/Millis'
+                description: |-
+                  tookMs is a scalar-typed (Millis = int) header: it resolves to its
+                  underlying primitive and formats the same as a plain int.
             X-Total-Count:
               description: |-
                 total rides the X-Total-Count response header instead of the JSON
                 body — a non-string @header value the generated handler formats
                 with strconv.Itoa.
               schema:
+                description: |-
+                  total rides the X-Total-Count response header instead of the JSON
+                  body — a non-string @header value the generated handler formats
+                  with strconv.Itoa.
                 type: integer
       tags:
       - todos

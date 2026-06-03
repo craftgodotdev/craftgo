@@ -9,7 +9,7 @@ const ErrCodeDuplicateEmail = "DUPLICATE_EMAIL"
 // User code instantiates this struct and hands it to NewDuplicateEmailErr; the
 // framework wraps it with the type-bound code / message metadata.
 type DuplicateEmailBody struct {
-	Code  *string `json:"code"`
+	Code  *string `json:"code,omitempty"`
 	Email string  `json:"email"`
 }
 
@@ -57,7 +57,7 @@ const ErrCodeInsufficientPermissions = "INSUFFICIENT_PERMISSIONS"
 // User code instantiates this struct and hands it to NewInsufficientPermissionsErr; the
 // framework wraps it with the type-bound code / message metadata.
 type InsufficientPermissionsBody struct {
-	Code         *string `json:"code"`
+	Code         *string `json:"code,omitempty"`
 	RequiredRole string  `json:"required_role"`
 }
 
@@ -105,8 +105,8 @@ const ErrCodePfRateLimited = "PF_RATE_LIMITED"
 // User code instantiates this struct and hands it to NewPfRateLimitedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type PfRateLimitedBody struct {
-	Code       *string `json:"code"`
-	Message    *string `json:"message"`
+	Code       *string `json:"code,omitempty"`
+	Message    *string `json:"message,omitempty"`
 	RetryAfter int     `json:"retry_after"`
 }
 
@@ -192,7 +192,7 @@ const ErrCodeProfileValidationFailed = "PROFILE_VALIDATION_FAILED"
 // User code instantiates this struct and hands it to NewProfileValidationFailedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type ProfileValidationFailedBody struct {
-	Code   *string  `json:"code"`
+	Code   *string  `json:"code,omitempty"`
 	Fields []string `json:"fields"`
 }
 
@@ -240,7 +240,7 @@ const ErrCodeStaleVersion = "STALE_VERSION"
 // User code instantiates this struct and hands it to NewStaleVersionErr; the
 // framework wraps it with the type-bound code / message metadata.
 type StaleVersionBody struct {
-	Code            *string `json:"code"`
+	Code            *string `json:"code,omitempty"`
 	ExpectedVersion int     `json:"expected_version"`
 	ActualVersion   int     `json:"actual_version"`
 }

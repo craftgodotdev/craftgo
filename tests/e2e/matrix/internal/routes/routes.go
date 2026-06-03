@@ -23,6 +23,7 @@ import (
 	regressionbatch4routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression-batch4"
 	regressionbatch5routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression-batch5"
 	regressionbatch6routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression-batch6"
+	regressionbatch7routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression-batch7"
 	regressionserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression-service"
 	scalarsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/scalars-service"
 	securedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/secured-service"
@@ -56,6 +57,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	regressionbatch4routes.RegisterRoutes(srv, svcCtx)
 	regressionbatch5routes.RegisterRoutes(srv, svcCtx)
 	regressionbatch6routes.RegisterRoutes(srv, svcCtx)
+	regressionbatch7routes.RegisterRoutes(srv, svcCtx)
 	regressionserviceroutes.RegisterRoutes(srv, svcCtx)
 	scalarsserviceroutes.RegisterRoutes(srv, svcCtx)
 	securedserviceroutes.RegisterRoutes(srv, svcCtx)

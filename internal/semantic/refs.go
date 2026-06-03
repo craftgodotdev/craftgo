@@ -131,7 +131,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 				continue
 			}
 			if f != nil {
-				reportCrossFieldMemberIssues(d.Name, typeName, name.value, f, a.scalarNilable, func(code, msg string) {
+				reportCrossFieldMemberIssues(d.Name, typeName, name.value, ResolveField(f, a.pkg, nil), func(code, msg string) {
 					a.diag(name.pos, name.pos, lexer.SeverityError, code, "%s", msg)
 				})
 			}
@@ -205,12 +205,37 @@ func (r *refResolver) checkOneTypeFieldGroups(currentPkg string, td *ast.TypeDec
 				continue
 			}
 			if f != nil {
-				reportCrossFieldMemberIssues(d.Name, td.Name, arg.value, f, r.scalarNilable, func(code, msg string) {
+				reportCrossFieldMemberIssues(d.Name, td.Name, arg.value, ResolveField(f, nil, r.proj), func(code, msg string) {
 					r.diag(arg.pos, lexer.SeverityError, code, "%s", msg)
 				})
 			}
 		}
 	}
+}
+
+// requalifyFieldType returns f with its bare (1-part) named type qualified to
+// pkg, so a field promoted across a package boundary carries a name the
+// project resolver can resolve (`base.Blob` rather than a bare `Blob`).
+// Builtins and already-qualified refs are returned unchanged. A COPY is
+// returned — the original field (and the AST codegen reads) is never mutated.
+func requalifyFieldType(f *ast.Field, pkg string) *ast.Field {
+	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return f
+	}
+	if len(f.Type.Named.Name.Parts) != 1 {
+		return f
+	}
+	name := f.Type.Named.Name.Parts[0]
+	if isPrimitiveWireName(name) || name == "bytes" || name == "any" || name == "file" {
+		return f
+	}
+	cf := *f
+	ct := *f.Type
+	cn := *f.Type.Named
+	cn.Name = &ast.QualifiedIdent{Pos: f.Type.Named.Name.Pos, Parts: []string{pkg, name}}
+	ct.Named = &cn
+	cf.Type = &ct
+	return &cf
 }
 
 // collectGroupFieldsProject fills out with every field a type body
@@ -225,7 +250,13 @@ func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.Ty
 		switch v := m.(type) {
 		case *ast.Field:
 			if _, dup := out[v.Name]; !dup {
-				out[v.Name] = v
+				// Requalify the field's bare named type to the package it was
+				// collected from (currentPkg), so a promoted field carries
+				// `base.Blob` rather than a bare `Blob` the project resolver
+				// can't see — the cross-package-promoted scalar nilability gap.
+				// ResolveField then resolves it through proj. A copy keeps the
+				// original AST (and codegen) untouched.
+				out[v.Name] = requalifyFieldType(v, currentPkg)
 			}
 		case *ast.Mixin:
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
@@ -314,7 +345,8 @@ func hasFieldGroupDecorator(decs []*ast.Decorator) bool {
 // field or one promoted from a foreign mixin. The presence-unclean case
 // returns early (it subsumes the optional check); the remaining rules are
 // independent so a field can violate several at once.
-func reportCrossFieldMemberIssues(decName, typeName, memberName string, f *ast.Field, scalarNilable func(*ast.NamedTypeRef) bool, report func(code, msg string)) {
+func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf ResolvedField, report func(code, msg string)) {
+	f := rf.Field
 	// A nilable-but-not-pointer member has no clean cross-field presence:
 	// `?` / `@nullable` add no pointer (the Go type is already nilable), so
 	// the runtime can't use the `!= nil` check that lines up with the group's
@@ -323,7 +355,7 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, f *ast.F
 	// / `any` member (raw or via a scalar) has no presence expression at all
 	// (always treated as present). Reject so the author references a
 	// pointer-backed field instead.
-	if presenceUnclean(f, scalarNilable) {
+	if presenceUnclean(rf) {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q has no clean present/absent state for a cross-field group — a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
 			decName, typeName, memberName))
@@ -370,59 +402,14 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, f *ast.F
 // but not a pointer, so its runtime presence can't be the clean `!= nil`
 // check that matches the group's OpenAPI present-and-non-null. A slice / map
 // is checked by emptiness (`len(...) > 0`); a raw `bytes` (`[]byte`) or `any`
-// (`interface{}`) member — or a scalar over either (which lowers to the bare
-// named slice / interface, not a pointer) — has no presence expression and is
-// always treated as present. (A `file` is `*multipart.FileHeader` — already a
-// pointer — so it stays pointer-backed and is not flagged here.) The
-// scalarNilable predicate resolves a named scalar to its underlying primitive;
-// it may be nil when no scalar table is available, which only skips the scalar
-// case.
-// nilableScalarPrimitive reports whether a scalar's underlying primitive
-// lowers to a Go type that already holds nil (so a scalar over it renders
-// without a pointer wrap): the `bytes` slice and the `any` interface.
-func nilableScalarPrimitive(prim string) bool {
-	return prim == "bytes" || prim == "any"
-}
-
-// scalarNilable resolves a LOCAL named scalar and reports whether it sits
-// over a nilable primitive. Qualified cross-package scalars miss the local
-// table and are handled by the project pass ([refResolver.scalarNilable]).
-func (a *analyzer) scalarNilable(n *ast.NamedTypeRef) bool {
-	if n == nil || n.Name == nil {
-		return false
-	}
-	sd, ok := a.pkg.Scalars[n.Name.String()]
-	return ok && sd != nil && nilableScalarPrimitive(sd.Primitive)
-}
-
-// scalarNilable resolves a named scalar through the project resolver
-// (handling cross-package qualified refs) and reports whether it sits over
-// a nilable primitive.
-func (r *refResolver) scalarNilable(n *ast.NamedTypeRef) bool {
-	sc := r.lookupScalar(n)
-	return sc != nil && nilableScalarPrimitive(sc.Primitive)
-}
-
-func presenceUnclean(f *ast.Field, scalarNilable func(*ast.NamedTypeRef) bool) bool {
-	if f.Type == nil {
-		return false
-	}
-	if f.Type.Array || f.Type.Map != nil {
-		return true
-	}
-	if f.Type.Named != nil {
-		switch f.Type.Named.Name.String() {
-		case "bytes", "any":
-			return true
-		}
-		// A scalar over a nilable primitive (`scalar Blob bytes`) lowers to
-		// the bare named slice (`[]byte`), not `*Blob`, so it has the same
-		// emptiness-only presence as a raw `bytes` member.
-		if scalarNilable != nil && scalarNilable(f.Type.Named) {
-			return true
-		}
-	}
-	return false
+// (`interface{}`) member — or a scalar over either, which lowers to the bare
+// named slice / interface — has no presence expression and is always treated
+// as present. A `file` is `*multipart.FileHeader` — already a pointer — so it
+// stays pointer-backed and is not flagged. The nilability fact comes from the
+// resolved IR ([ResolveField]), the single source the codegen pointer-wrap
+// decision reads too, so the cross-field check and the emitted Go agree.
+func presenceUnclean(rf ResolvedField) bool {
+	return rf.IsNilable && rf.Category != CatFile
 }
 
 // collectGroupFields fills out with every field a type body contributes

@@ -4,7 +4,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // Parity tests assert that a rule behaves IDENTICALLY across the "sibling
@@ -47,6 +49,65 @@ service S {
 		if (opV.Responses.Status(code) == nil) != (opA.Responses.Status(code) == nil) {
 			t.Errorf("@errors parity broken at %d: variadic present=%v vs array present=%v",
 				code, opV.Responses.Status(code) != nil, opA.Responses.Status(code) != nil)
+		}
+	}
+}
+
+// Axis: the nilability fact, decided in two layers. The semantic resolved IR
+// ([semantic.ResolveField].IsNilable) drives the cross-field presence check;
+// codegen's [goFieldType] drives the `*T` pointer-wrap. Both must agree that a
+// field's Go type already holds nil — otherwise the design-time check and the
+// emitted struct disagree (the cross-package-promoted scalar nilability class).
+// Both now read [semantic.NilableScalarPrimitive] for the scalar atom; this
+// test pins the WHOLE verdict across every field shape, local and cross-package,
+// so a future change to either layer's nilability logic fails here.
+func TestParityNilabilityIRvsCodegen(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Blob bytes
+scalar Cents int`,
+		"m/m.craftgo": `package m
+import "shared"
+scalar Blob bytes
+scalar Email string
+enum Color { Red Green }
+type Inner { x int }
+type T {
+  s      string
+  b      bytes
+  a      any
+  fl     file
+  blob   Blob
+  email  Email
+  c      Color
+  inner  Inner
+  arr    string[]
+  mp     map<string, int>
+  xblob  shared.Blob
+  xcents shared.Cents
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	mPkg := proj.Packages["m"]
+	r := BuildProjectResolver(proj, newFixtureConfig(), "m")
+
+	for _, mem := range mPkg.Types["T"].Body {
+		f, ok := mem.(*ast.Field)
+		if !ok {
+			continue
+		}
+		semNilable := semantic.ResolveField(f, mPkg, proj).IsNilable
+		// Codegen's wrap-skip: the base Go type already holds nil (syntactic
+		// slice/map/pointer/interface, or a scalar over a nilable primitive).
+		clone := *f.Type
+		clone.Optional = false
+		cgNilable := isNilableGoType(GoTypeRef(&clone)) || scalarRefNilable(f.Type, mPkg, r)
+		if semNilable != cgNilable {
+			t.Errorf("field %q nilability drift: semantic IR=%v, codegen wrap-skip=%v",
+				f.Name, semNilable, cgNilable)
 		}
 	}
 }
