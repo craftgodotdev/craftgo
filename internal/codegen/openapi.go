@@ -106,8 +106,9 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
 		Info: &openapi3.Info{
-			Title:   orDefault(cfg.OpenAPI.Title, pkg.Name),
-			Version: orDefault(cfg.OpenAPI.Version, "0.1.0"),
+			Title:       orDefault(cfg.OpenAPI.Title, pkg.Name),
+			Version:     orDefault(cfg.OpenAPI.Version, "0.1.0"),
+			Description: cfg.OpenAPI.Description,
 		},
 		Paths:      &openapi3.Paths{},
 		Components: &openapi3.Components{Schemas: openapi3.Schemas{}},

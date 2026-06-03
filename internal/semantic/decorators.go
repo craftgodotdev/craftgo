@@ -282,6 +282,12 @@ type Spec struct {
 	//
 	// The invariant is `Flag == true ⇒ Args.Max == 0`.
 	Flag bool
+	// Repeatable reports whether multiple `@Name` occurrences on one site
+	// are the intended idiom (each adds to an aggregate: tags merge,
+	// middlewares chain, security OR-alternatives, errors accumulate) rather
+	// than a duplicate. The duplicate-decorator check reads this so the rule
+	// lives ONCE here instead of a separate hardcoded list that drifts.
+	Repeatable bool
 }
 
 // formatValues lists the named string formats accepted by `@format` on a
@@ -491,22 +497,25 @@ var Registry = map[string]Spec{
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 	},
 	"middlewares": {
-		Name:   "middlewares",
-		Levels: LvlService | LvlMethod,
-		Doc:    "Apply named middlewares; method-level appends to service-level chain. Args: variadic idents or a single array literal.",
-		Args:   ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
+		Name:       "middlewares",
+		Levels:     LvlService | LvlMethod,
+		Doc:        "Apply named middlewares; method-level appends to service-level chain. Args: variadic idents or a single array literal.",
+		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
+		Repeatable: true,
 	},
 	"tags": {
-		Name:   "tags",
-		Levels: LvlService | LvlMethod,
-		Doc:    "OpenAPI tags. Method-level appends to service-level. Args: variadic idents/strings or a single array literal.",
-		Args:   ArgsRule{Min: 1, Max: -1, Variadic: ArgStringOrIdent, AllowArrayShortcut: true},
+		Name:       "tags",
+		Levels:     LvlService | LvlMethod,
+		Doc:        "OpenAPI tags. Method-level appends to service-level. Args: variadic idents/strings or a single array literal.",
+		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgStringOrIdent, AllowArrayShortcut: true},
+		Repeatable: true,
 	},
 	"security": {
-		Name:   "security",
-		Levels: LvlService | LvlMethod,
-		Doc:    "Security scheme requirements (OpenAPI metadata). Args: variadic scheme idents or a single array literal. Within one decorator the schemes AND-combine; multiple `@security(...)` decorators OR-combine.",
-		Args:   ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
+		Name:       "security",
+		Levels:     LvlService | LvlMethod,
+		Doc:        "Security scheme requirements (OpenAPI metadata). Args: variadic scheme idents or a single array literal. Within one decorator the schemes AND-combine; multiple `@security(...)` decorators OR-combine.",
+		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
+		Repeatable: true,
 	},
 	"ignoreMiddleware": {
 		Name:   "ignoreMiddleware",
@@ -530,7 +539,7 @@ var Registry = map[string]Spec{
 	// ---- Method-only ----
 	"summary":     {Name: "summary", Levels: LvlMethod, Doc: "One-line OpenAPI operation summary.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"operationId": {Name: "operationId", Levels: LvlMethod, Doc: "Override OpenAPI operationId.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI. Args: variadic error idents or a single array literal.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}},
+	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI. Args: variadic error idents or a single array literal.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}, Repeatable: true},
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
 	// `@consumes`, `@produces`, `@accepts` are not in the registry.
 	// craftgo's transport hardcodes `application/json` for both request

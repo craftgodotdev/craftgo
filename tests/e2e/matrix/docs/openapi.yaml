@@ -787,6 +787,11 @@ components:
     BanUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
     BindingsColor:
+      description: |-
+        Color is a string-backed enum (bare-ident form, default string
+        values are the ident text). Exercised across path, query, and the
+        cookie binders so every wire-format binder gets the enum cast +
+        validate path.
       enum:
       - Red
       - Green
@@ -795,6 +800,10 @@ components:
     BindingsServiceGetItemRespBody:
       $ref: '#/components/schemas/Item'
     BindingsUUID:
+      description: |-
+        UUID is a string-backed scalar that adds @format(uuid) inheritance
+        to every field that references it. Used in PathScalarReq so the
+        path binder lands a typed alias instead of a bare string.
       format: uuid
       type: string
     BodyExplicitReq:
@@ -843,6 +852,10 @@ components:
     CatalogServicePingRespBody:
       $ref: '#/components/schemas/RtPong'
     Cents:
+      description: |-
+        Cents is the canonical money scalar — non-negative integer with a
+        per-request ceiling. Bound stacking (@gte + @lte) demonstrates that
+        numeric scalars accept both lower and upper bounds.
       maximum: 1000000000
       minimum: 0
       type: integer
@@ -865,10 +878,19 @@ components:
       - city
       type: object
     CollectionsEmail:
+      description: |-
+        Email is the canonical email-format scalar. Used as a map VALUE in
+        maps.craftgo to confirm that scalar @format(email) + @maxLength
+        fire on every value during map iteration.
       format: email
       maxLength: 254
       type: string
     CollectionsTag:
+      description: |-
+        Tag is the kebab-case label scalar reused across the array and map
+        tests. Per-element validators (@minLength + @maxLength + @pattern)
+        are stacked so each enclosing `for` loop has THREE distinct
+        validators to emit per element.
       maxLength: 20
       minLength: 1
       pattern: ^[a-z-]+$
@@ -891,6 +913,10 @@ components:
       - email
       type: object
     CombineColor:
+      description: |-
+        Color is a string-valued bare enum used by DefaultEnum below. Bare
+        values (no `= "..."` literal) render as the matching Go const name
+        in lower case for the wire form.
       enum:
       - Red
       - Green
@@ -1324,6 +1350,7 @@ components:
     DeleteItemRespBody:
       $ref: '#/components/schemas/Item'
     DiscKind:
+      description: DiscKind is an enum whose first value reuses the `type` keyword.
       enum:
       - type
       - combo
@@ -2427,10 +2454,18 @@ components:
       - rooms
       type: object
     ID:
+      description: |-
+        ID is the cross-package opaque identifier shape. Referenced as
+        `shared.ID` from `services/` so every entity-id field inherits
+        the same 1..64 char cap without each consumer repeating the
+        validator stack.
       maxLength: 64
       minLength: 1
       type: string
     ISO3:
+      description: |-
+        ISO3 stacks @length + @pattern. @length(3, 3) pins the string to
+        exactly three characters; the @pattern enforces the alphabet.
       maxLength: 3
       minLength: 3
       pattern: ^[A-Z]{3}$
@@ -2991,9 +3026,14 @@ components:
       - children
       type: object
     NonEmpty:
+      description: NonEmpty is the "must be at least one character" string scalar.
       minLength: 1
       type: string
     NonEmptyID:
+      description: |-
+        NonEmptyID is the canonical id scalar (non-empty, bounded length).
+        Used as a map KEY in maps.craftgo to confirm that key-side scalar
+        decorators emit a key-only iteration loop.
       maxLength: 64
       minLength: 1
       type: string
@@ -3665,6 +3705,12 @@ components:
       - total
       type: object
     PageSize:
+      description: |-
+        PageSize is a numeric scalar — every field of this type inherits
+        the @gte/@lte bounds, carried on PageSize.Validate(). Used in
+        DefaultScalar below to verify that the @default literal threads
+        through the scalar's defined type without losing the inherited
+        validators.
       maximum: 100
       minimum: 1
       type: integer
@@ -3980,6 +4026,9 @@ components:
         of `/items/{id}`.
       type: object
     Percent:
+      description: |-
+        Percent is a 0-1 ratio. @gte/@lte on a float64 scalar exercises
+        the numeric-bound emitter on a non-integer primitive.
       maximum: 1
       minimum: 0
       type: number
@@ -4122,6 +4171,9 @@ components:
       - body
       type: object
     Priority:
+      description: |-
+        Priority is a small local enum used purely to exercise a generic
+        instantiated over an ENUM type parameter (`Page<Priority>`).
       enum:
       - low
       - medium
@@ -4638,6 +4690,9 @@ components:
         returns 400, a present-but-empty value passes.
       type: object
     Rg2Tag:
+      description: |-
+        An array of maps whose value carries a validator. The validator walks
+        each map's elements, peeling the `[]` dimension before the map range.
       maxLength: 20
       minLength: 1
       type: string
@@ -4660,6 +4715,9 @@ components:
       - createdAt
       type: object
     Rg3Color:
+      description: |-
+        An enum `@default` resolves to the member's wire value in OpenAPI (the
+        `= "RED"` / `= 9` literal), not the DSL member name.
       enum:
       - RED
       - GREEN
@@ -4761,12 +4819,19 @@ components:
         type: object
       type: object
     Rg3Status:
+      description: |-
+        An int enum that defines 0 as a real member. A required field of it
+        accepts the zero-valued member rather than rejecting it via a `== 0`
+        check.
       enum:
       - 0
       - 1
       - 2
       type: integer
     Rg3Tag:
+      description: |-
+        Map-of-map and map-of-array-of-map with validator-carrying values; the
+        validator walks every inner element.
       minLength: 1
       type: string
     Rg3Zero:
@@ -5005,6 +5070,9 @@ components:
       - name
       type: object
     Rg5UserID:
+      description: |-
+        A non-string scalar map key carries its constraint into `propertyNames`:
+        the server enforces `@gte(1)` on each key, so the spec advertises it.
       minimum: 1
       type: integer
     Rg6ArrReq:
@@ -5399,6 +5467,10 @@ components:
       - code
       type: object
     ScalarsEmail:
+      description: |-
+        Email centralises the canonical email-shape contract. Every field
+        of type Email inherits @format(email) and @maxLength(254) so the
+        per-field decorator chain stays empty.
       format: email
       maxLength: 254
       type: string
@@ -5442,11 +5514,15 @@ components:
       - country
       type: object
     ScalarsTag:
+      description: |-
+        Tag stacks @minLength + @maxLength + @pattern so a SINGLE scalar
+        reference brings in three element-level validators.
       maxLength: 20
       minLength: 1
       pattern: ^[a-z-]+$
       type: string
     ScalarsUUID:
+      description: UUID carries the @format(uuid) check.
       format: uuid
       type: string
     Search:
@@ -5533,6 +5609,10 @@ components:
         envelope.
       type: object
     Severity:
+      description: |-
+        Severity classifies a log/event line. The four levels follow the
+        conventional ordering Info < Warning < Error < Critical so a
+        numeric mapping in logic code can use the enum ordinal directly.
       enum:
       - Info
       - Warning
@@ -5540,6 +5620,10 @@ components:
       - Critical
       type: string
     SharedEmail:
+      description: |-
+        Email is the cross-package email shape — capped at the RFC-5321
+        maximum and gated by the @format(email) validator. Referenced as
+        `shared.Email` from anywhere a user-facing email address appears.
       format: email
       maxLength: 254
       type: string
@@ -5864,6 +5948,7 @@ components:
       - kids
       type: object
     URL:
+      description: URL carries the @format(url) check for safe-URL fields.
       format: url
       type: string
     UnsignedReq:
@@ -6405,12 +6490,22 @@ components:
         expand a sibling-package mixin, so the project-level check owns it.
       type: object
     XColor:
+      description: |-
+        XColor exercises cross-package enum refs. Used by xrefs in every
+        shape — direct, optional, array, map-key, map-value — so the
+        switch-case validity check, OpenAPI enum schema, and binding casts
+        resolve through the resolver rather than the local pkg.Enums.
       enum:
       - Red
       - Green
       - Blue
       type: string
     XEmail:
+      description: |-
+        XEmail exercises cross-package scalar refs with inherited
+        validators. The @format(email) + @maxLength(254) inherit into every
+        xrefs field typed `xshared.XEmail` (scalar inheritance resolves via
+        resolver.LookupScalar against the project ScalarTable).
       format: email
       maxLength: 254
       type: string
@@ -6593,6 +6688,10 @@ components:
         qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
       type: object
     XNodeID:
+      description: |-
+        XNodeID exercises a numeric cross-package scalar. The cast in
+        generated transport binding (`req.ID = xshared.XNodeID(int(_n))`)
+        qualifies the type name and registers the xshared import.
       maximum: 1000000
       minimum: 1
       type: integer
@@ -6781,6 +6880,11 @@ components:
         `*xshared.XEmail` field.
       type: object
     XSize:
+      description: |-
+        XSize is a numeric scalar used to pin cross-package scalar-default
+        PROMOTION: a field of this type reached through a mixin must have its
+        @default literal cast to the scalar's home-package type (xshared.XSize),
+        not a bare int.
       maximum: 100
       minimum: 1
       type: integer
@@ -6793,6 +6897,10 @@ components:
         the cast compiles to `undefined: shared`.
       type: object
     XTimestamp:
+      description: |-
+        XTimestamp is a string-backed scalar with no inherited validator,
+        exercising scalar resolution when the scalar has no decorators of
+        its own.
       format: datetime
       type: string
     XTypeFields:

@@ -660,49 +660,124 @@ func (a *analyzer) checkAutoPathField(svcName string, m *ast.Method) {
 	}
 	td, ok := a.pkg.Types[m.Request.Name.String()]
 	if !ok {
-		return // cross-package request — left to the project pass / codegen
+		return // cross-package request — handled by checkProjectAutoPathField
 	}
-	pathSegs := map[string]bool{}
-	for _, seg := range m.Path.Segments {
-		if seg.Param {
-			pathSegs[seg.Literal] = true
-		}
-	}
+	pathSegs := pathSegments(m)
 	if len(pathSegs) == 0 {
 		return
 	}
 	reqName := m.Request.Name.String()
+	emit := func(pos lexer.Position, code, format string, args ...any) {
+		a.diag(pos, pos, lexer.SeverityError, code, format, args...)
+	}
 	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
-		if f.Type == nil {
+		autoPathFieldRule(reqName, pathSegs, f, a.pkg, emit)
+	}
+}
+
+// pathSegments returns the set of `{param}` segment names in a method's
+// route.
+func pathSegments(m *ast.Method) map[string]bool {
+	out := map[string]bool{}
+	if m == nil || m.Path == nil {
+		return out
+	}
+	for _, seg := range m.Path.Segments {
+		if seg.Param {
+			out[seg.Literal] = true
+		}
+	}
+	return out
+}
+
+// autoPathFieldRule checks one request field that auto-binds to a path
+// segment (its name matches a `{param}` and it carries no explicit binding
+// decorator): optional `?` / `@nullable` / `@default` are rejected (a matched
+// route always supplies the segment, with no optional / null / default form,
+// and `@nullable` lowers to a pointer the path binder can't write a plain
+// string into — non-compiling), and a non-bindable field type is rejected
+// when resolvable. localPkg resolves an unqualified field type's
+// path-bindability; pass nil (project pass) or a qualified type to DEFER the
+// type check to codegen. Shared by the per-package and project passes so the
+// explicit/auto and local/cross-package forms all agree.
+func autoPathFieldRule(reqName string, pathSegs map[string]bool, f *ast.Field, localPkg *Package, emit func(pos lexer.Position, code, format string, args ...any)) {
+	if f == nil || f.Type == nil {
+		return
+	}
+	if kind, auto := RequestFieldBinding(f, pathSegs, false); kind != "path" || !auto {
+		return
+	}
+	switch {
+	case f.Type.Optional:
+		emit(f.Pos, CodeDecoratorConflict,
+			"field %s.%s auto-binds to the path segment {%s}, which a matched route always supplies — drop the optional `?` (a path parameter is never absent).",
+			reqName, f.Name, f.Name)
+	case ast.HasDecorator(f.Decorators, "nullable"):
+		emit(f.Pos, CodeDecoratorConflict,
+			"field %s.%s auto-binds to the path segment {%s}, but @nullable makes it a pointer while the path binder writes a plain string — drop @nullable (a path parameter has no null form).",
+			reqName, f.Name, f.Name)
+	case ast.HasDecorator(f.Decorators, "default"):
+		emit(f.Pos, CodeDecoratorConflict,
+			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply — drop it.",
+			reqName, f.Name, f.Name)
+	case localPkg != nil && !isQualifiedTypeRef(f.Type) && !isPathBindingType(f.Type, localPkg):
+		// A path segment carries a single primitive/scalar/enum value; a
+		// struct / map / array / generic field that auto-binds to it has no
+		// wire form. Qualified cross-package types are skipped — the local
+		// table can't resolve them (a cross-pkg scalar IS bindable).
+		emit(f.Pos, CodeBindingType,
+			"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
+			reqName, f.Name, f.Name, describeTypeRef(f.Type))
+	}
+}
+
+// checkProjectAutoPathField is the cross-package twin of checkAutoPathField:
+// the per-package pass returns early for a QUALIFIED request type
+// (`request shared.R`), so without this an auto-path field carrying
+// `@nullable` (non-compiling) / `?` / `@default` on a cross-package request
+// silently slips through. Only qualified requests are processed here (local
+// ones are already covered, and re-checking would double-report). The
+// type-bindability arm is deferred (localPkg=nil) — the structural decorator
+// checks (the #16 non-compile) need no type resolution.
+func (r *refResolver) checkProjectAutoPathField() {
+	for _, pkg := range r.proj.Packages {
+		if pkg == nil {
 			continue
 		}
-		if kind, auto := RequestFieldBinding(f, pathSegs, false); kind != "path" || !auto {
-			continue
-		}
-		switch {
-		case f.Type.Optional:
-			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
-				"field %s.%s auto-binds to the path segment {%s}, which a matched route always supplies — drop the optional `?` (a path parameter is never absent).",
-				reqName, f.Name, f.Name)
-		case ast.HasDecorator(f.Decorators, "nullable"):
-			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
-				"field %s.%s auto-binds to the path segment {%s}, but @nullable makes it a pointer while the path binder writes a plain string — drop @nullable (a path parameter has no null form).",
-				reqName, f.Name, f.Name)
-		case ast.HasDecorator(f.Decorators, "default"):
-			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
-				"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply — drop it.",
-				reqName, f.Name, f.Name)
-		case !isQualifiedTypeRef(f.Type) && !isPathBindingType(f.Type, a.pkg):
-			// A path segment carries a single primitive/scalar/enum value;
-			// a struct / map / array / generic field that auto-binds to it
-			// has no wire form, so the binder drops it and OpenAPI emits a
-			// non-scalar path param. Reject like the explicit @path form.
-			// Qualified cross-package types (`shared.ID`) are skipped — the
-			// local table can't resolve them (a cross-pkg scalar IS
-			// bindable), so deferring avoids a false-reject.
-			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
-				"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
-				reqName, f.Name, f.Name, describeTypeRef(f.Type))
+		for _, si := range pkg.Services {
+			if si == nil {
+				continue
+			}
+			for _, m := range si.Methods {
+				if m == nil || m.Request == nil || m.Request.Name == nil || m.Path == nil {
+					continue
+				}
+				parts := m.Request.Name.Parts
+				if len(parts) != 2 {
+					continue // local request — per-package pass owns it
+				}
+				home := r.proj.Packages[parts[0]]
+				if home == nil {
+					continue
+				}
+				td, ok := home.Types[parts[1]]
+				if !ok {
+					continue
+				}
+				pathSegs := pathSegments(m)
+				if len(pathSegs) == 0 {
+					continue
+				}
+				fields := map[string]*ast.Field{}
+				r.collectGroupFieldsProject(parts[0], td.Body, fields, map[string]bool{})
+				reqName := m.Request.Name.String()
+				emit := func(pos lexer.Position, code, format string, args ...any) {
+					r.diag(pos, lexer.SeverityError, code, format, args...)
+				}
+				for _, f := range fields {
+					autoPathFieldRule(reqName, pathSegs, f, nil, emit)
+				}
+			}
 		}
 	}
 }

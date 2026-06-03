@@ -151,6 +151,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) 
 		for _, v := range enumVals {
 			s.Enum = append(s.Enum, enumMemberWire(v))
 		}
+		s.Description = resolveDescription(ed.Decorators, ed.Doc)
 		names.put(doc, name, &openapi3.SchemaRef{Value: s})
 	}
 }
@@ -180,6 +181,7 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames
 		applyPatternFormat(sc.Decorators, base)
 		applyStringLengthConstraints(sc.Decorators, base)
 		applyNumericConstraints(sc.Decorators, base)
+		base.Description = resolveDescription(sc.Decorators, sc.Doc)
 		names.put(doc, name, &openapi3.SchemaRef{Value: base})
 	}
 }

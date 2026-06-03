@@ -42,12 +42,47 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	a.checkDefaultLiteral(f, f.Type, pos[0].Value, pos[0].Pos)
 }
 
-// checkDefaultLiteral validates the literal arg against a resolved
-// type. Recurses through arrays so `@default([Active, Pending])` on a
-// `Status[]` field flags any non-IdentExpr element or unknown enum
-// value. For primitive / scalar fields the literal kind must match
-// the resolved primitive (string vs int vs bool, ...).
+// checkFieldExample type-checks an `@example` literal against the field's
+// type, reusing the SAME validator as `@default` (checkLiteralType) so the
+// two agree — a string example on an int field, or a non-member value on an
+// enum field, is rejected just as the equivalent default is. Object-literal
+// args are left to [checkExampleArg]. Without this, @example silently
+// emitted spec examples that contradicted their own schema.
+func (a *analyzer) checkFieldExample(f *ast.Field) {
+	if f == nil {
+		return
+	}
+	dec := ast.FindDecorator(f.Decorators, "example")
+	if dec == nil {
+		return
+	}
+	for _, ag := range positionalArgs(dec) {
+		if ag.Value == nil {
+			continue // object literal — rejected by checkExampleArg
+		}
+		a.checkLiteralType("example", f, f.Type, ag.Value, ag.Pos)
+	}
+}
+
+// checkDefaultLiteral validates a `@default` literal against the field's
+// resolved type. Thin wrapper over [checkLiteralType] — the value-vs-type
+// logic is shared with `@example` so the two decorators agree on what a
+// valid literal is; the `@default`-specific rejects (bytes / file / int
+// capacity) ride inside, gated on the decorator name.
 func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr, pos lexer.Position) {
+	a.checkLiteralType("default", f, t, v, pos)
+}
+
+// checkLiteralType validates a value-bearing decorator's literal against a
+// resolved type: array shape, enum membership, and primitive-kind fit.
+// Recurses through arrays so `[Active, Pending]` on a `Status[]` field flags
+// any non-member element. Shared by `@default` and `@example` (decName) so a
+// string example on an int field is rejected exactly like a string default
+// is — the sibling-rule drift where @example was type-unchecked. The rejects
+// that are meaningful ONLY for a prefilled default (bytes/file have no
+// literal default form; an out-of-capacity int would not compile) are gated
+// on decName == "default".
+func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef, v ast.Expr, pos lexer.Position) {
 	if t == nil {
 		return
 	}
@@ -55,18 +90,18 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 		arr, ok := v.(*ast.ArrayLit)
 		if !ok {
 			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgType,
-				"@default on array field %q must be an array literal", f.Name)
+				"@%s on array field %q must be an array literal", decName, f.Name)
 			return
 		}
 		elem := arrayElemTypeRef(t)
 		for _, e := range arr.Elements {
-			a.checkDefaultLiteral(f, elem, e, e.ExprPos())
+			a.checkLiteralType(decName, f, elem, e, e.ExprPos())
 		}
 		return
 	}
 	if _, ok := v.(*ast.ArrayLit); ok {
 		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgType,
-			"@default on field %q expects a single value, not an array literal", f.Name)
+			"@%s on field %q expects a single value, not an array literal", decName, f.Name)
 		return
 	}
 	if t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
@@ -77,13 +112,13 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 		ident, ok := v.(*ast.IdentExpr)
 		if !ok {
 			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
-				"@default on enum field %q must reference an enum value by name (one of %s)",
-				f.Name, enumValueList(ed))
+				"@%s on enum field %q must reference an enum value by name (one of %s)",
+				decName, f.Name, enumValueList(ed))
 			return
 		}
 		if ident.Name == nil || len(ident.Name.Parts) != 1 {
 			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
-				"@default on enum field %q must be one of %s", f.Name, enumValueList(ed))
+				"@%s on enum field %q must be one of %s", decName, f.Name, enumValueList(ed))
 			return
 		}
 		want := ident.Name.Parts[0]
@@ -93,8 +128,8 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 			}
 		}
 		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
-			"@default %q is not a value of enum %s; expected one of %s",
-			want, ed.Name, enumValueList(ed))
+			"@%s %q is not a value of enum %s; expected one of %s",
+			decName, want, ed.Name, enumValueList(ed))
 		return
 	}
 	// Resolve a scalar to its underlying primitive for the type-fit checks.
@@ -102,24 +137,23 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 	if sd, ok := a.pkg.Scalars[name]; ok {
 		prim = sd.Primitive
 	}
-	// A `bytes` field has no unambiguous literal default: the Go side needs
-	// `[]byte(...)` while the OpenAPI `format: byte` default is base64, and
-	// the only literal kind the gate accepts (string) miscompiles straight
-	// into the []byte slot. Reject rather than emit non-compiling Go.
-	if prim == "bytes" {
-		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
-			"@default is not supported on a `bytes` field %q — a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
-			f.Name)
-		return
-	}
-	// A `file` upload (`*multipart.FileHeader`) has no literal default form;
-	// a string/int literal would be assigned into the pointer field and not
-	// compile. Reject like `bytes`.
-	if prim == "file" {
-		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
-			"@default is not supported on a `file` field %q — a file upload has no literal default form",
-			f.Name)
-		return
+	if decName == "default" {
+		// A `bytes` field has no unambiguous literal default (Go []byte vs
+		// OpenAPI base64 `format: byte`); a `file` upload has no literal form
+		// at all. Reject rather than emit non-compiling Go. (An @example MAY
+		// carry a base64 string, so these are default-only.)
+		if prim == "bytes" {
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
+				"@default is not supported on a `bytes` field %q — a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
+				f.Name)
+			return
+		}
+		if prim == "file" {
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
+				"@default is not supported on a `file` field %q — a file upload has no literal default form",
+				f.Name)
+			return
+		}
 	}
 	want := defaultPrimitiveKind(name, a.pkg)
 	if want == ArgAny {
@@ -127,19 +161,23 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 	}
 	if !exprMatchesKind(v, want) {
 		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgType,
-			"@default on field %q (%s) requires a %s literal", f.Name, name, want)
+			"@%s on field %q (%s) requires a %s literal", decName, f.Name, name, want)
 		return
 	}
-	// An integer default outside the field primitive's capacity emits a
-	// non-compiling cast (`uint(-5)`, `int8(200)`). Mirror the bound
-	// capacity guard so the prefill compiles. Floats are skipped — the
-	// codegen cast holds every literal the kind check accepts.
-	if il, ok := v.(*ast.IntLit); ok {
-		if lo, hi, capOK := intCapacity(prim); capOK {
-			fv := float64(il.Value)
-			if fv < lo || fv > hi {
-				a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
-					"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
+	if decName == "default" {
+		// An integer default outside the field primitive's capacity emits a
+		// non-compiling cast (`uint(-5)`, `int8(200)`). Mirror the bound
+		// capacity guard so the prefill compiles. Floats are skipped — the
+		// codegen cast holds every literal the kind check accepts. (An
+		// out-of-capacity example is merely a poor example, not a build
+		// break, so this is default-only.)
+		if il, ok := v.(*ast.IntLit); ok {
+			if lo, hi, capOK := intCapacity(prim); capOK {
+				fv := float64(il.Value)
+				if fv < lo || fv > hi {
+					a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
+						"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
+				}
 			}
 		}
 	}

@@ -183,3 +183,53 @@ service S {
 		t.Errorf("expected @status(205)+body reject, got: %v", diags)
 	}
 }
+
+// W2: a scalar declaration with contradictory pair bounds is rejected
+// (pair-ordering now runs on scalar decls, not only fields).
+func TestScalarDeclPairOrderingRejected(t *testing.T) {
+	for _, src := range []string{
+		"package p\nscalar Score int @gte(100) @lte(10)\n",
+		"package p\nscalar Name string @minLength(10) @maxLength(5)\n",
+	} {
+		diags := analyzeOneFile(t, src)
+		if !hasDiagContaining(diags, "must be ≥") && !hasDiagContaining(diags, "must be ≤") {
+			t.Errorf("expected scalar pair-ordering reject for %q, got: %v", strings.TrimSpace(src), diags)
+		}
+	}
+}
+
+// W1 (#22): @example is now type-checked against the field like @default —
+// a kind mismatch and a non-member enum example are rejected.
+func TestExampleTypeChecked(t *testing.T) {
+	cases := map[string]bool{ // src -> expectReject
+		`package p
+type T { count int @example("nope") }`: true,
+		`package p
+enum Color { Red Green }
+type T { c Color @example(Purple) }`: true,
+		`package p
+enum Color { Red Green }
+type T { c Color @example(Green) }`: false,
+		`package p
+type T { name string @example("alice") }`: false,
+	}
+	for src, expectReject := range cases {
+		diags := analyzeOneFile(t, src)
+		got := hasDiagContaining(diags, "requires a") || hasDiagContaining(diags, "not a value of enum") || hasDiagContaining(diags, "must reference an enum")
+		if got != expectReject {
+			t.Errorf("@example type-check: reject=%v want=%v for:\n%s\ndiags: %v", got, expectReject, src, diags)
+		}
+	}
+}
+
+// Parity: @default and @example reject the SAME type mismatch — they share
+// checkLiteralType, so a string literal on an int field fails for both.
+func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
+	defDiags := analyzeOneFile(t, "package p\ntype T { n int @default(\"nope\") }")
+	exDiags := analyzeOneFile(t, "package p\ntype T { n int @example(\"nope\") }")
+	defRej := hasDiagContaining(defDiags, "requires a")
+	exRej := hasDiagContaining(exDiags, "requires a")
+	if !defRej || !exRej {
+		t.Errorf("@default/@example type-check parity broken: default rejected=%v, example rejected=%v", defRej, exRej)
+	}
+}

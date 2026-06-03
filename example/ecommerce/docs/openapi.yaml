@@ -1056,6 +1056,8 @@ components:
     oauth2:
       type: oauth2
 info:
+  description: Ecommerce showcase — generics, scalars, deep nesting, mixins, multi-package,
+    cross-package refs, errors with bodies, extend service.
   title: Ecommerce API
   version: 1.0.0
 openapi: 3.1.0

@@ -77,6 +77,7 @@ type Output struct {
 type OpenAPI struct {
 	Title           string                    `yaml:"title"`
 	Version         string                    `yaml:"version"`
+	Description     string                    `yaml:"description"`
 	BasePath        string                    `yaml:"basePath"`
 	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes"`
 }

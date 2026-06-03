@@ -122,6 +122,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectMixins()
 	r.checkProjectBindings()
 	r.checkProjectPathParams()
+	r.checkProjectAutoPathField()
 	r.checkProjectFieldRules()
 	r.checkProjectFieldGroups()
 	return proj, r.diags

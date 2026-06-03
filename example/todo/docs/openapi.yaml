@@ -85,6 +85,10 @@ components:
       - items
       type: object
     Millis:
+      description: |-
+        Millis is a scalar over int used below for a non-string @header
+        value (X-Response-Time); scalar-typed header fields format through
+        their underlying primitive (strconv.Itoa).
       minimum: 0
       type: integer
     OkResp:
@@ -95,6 +99,11 @@ components:
       - ok
       type: object
     Tag:
+      description: |-
+        Tag is a scalar over string used as a request query filter. Its
+        @length / @pattern validators are inherited by any field typed Tag,
+        so a `@query`-bound Tag field is validated during req.Validate() and
+        a malformed ?tag= value is rejected with 400 before the handler runs.
       maxLength: 40
       minLength: 1
       pattern: ^[a-z0-9-]+$

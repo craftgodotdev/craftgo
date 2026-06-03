@@ -144,8 +144,11 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 	// cfg before codegen so the OpenAPI info.version honours it instead of
 	// silently dropping the decorator.
 	if cfg != nil {
-		if v := fileVersionOverride(files); v != "" {
+		if v := fileDecoratorString(files, "version"); v != "" {
 			cfg.OpenAPI.Version = v
+		}
+		if d := fileDecoratorString(files, "doc"); d != "" {
+			cfg.OpenAPI.Description = d
 		}
 	}
 	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
@@ -162,17 +165,18 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 	return proj, nil
 }
 
-// fileVersionOverride returns the string argument of the first file-header
-// `@version("X")` decorator across the design files, or "" when none is
-// present. The decorator sets the OpenAPI document version, overriding the
-// craftgo.design.yaml `openapi.version` value.
-func fileVersionOverride(files []*ast.File) string {
+// fileDecoratorString returns the string argument of the first file-header
+// `@<name>("X")` decorator across the design files, or "" when none is
+// present. Used for the file-level OpenAPI overrides — `@version` (document
+// version) and `@doc` (info.description) — that override the
+// craftgo.design.yaml values.
+func fileDecoratorString(files []*ast.File, name string) string {
 	for _, f := range files {
 		if f == nil {
 			continue
 		}
 		for _, d := range f.Decorators {
-			if d == nil || d.Name != "version" || len(d.Args) == 0 {
+			if d == nil || d.Name != name || len(d.Args) == 0 {
 				continue
 			}
 			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {

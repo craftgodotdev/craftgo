@@ -70,6 +70,7 @@ func (a *analyzer) checkFieldArgs(site Level, members []ast.TypeMember) {
 		}
 		a.checkArgsScope(site, f.Decorators)
 		a.checkFieldDefault(f)
+		a.checkFieldExample(f)
 	}
 }
 

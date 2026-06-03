@@ -65,6 +65,12 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		}
 		a.checkBoundCapacity(scalarAsField)
 		a.checkNegativeOnUnsigned(scalarAsField)
+		// Pair-ordering (@gte/@lte, @gt/@lt, @minLength/@maxLength,
+		// @minItems/@maxItems) is purely structural — it reads the
+		// decorators' own numeric args — so a contradictory scalar bound
+		// (`scalar Score int @gte(100) @lte(10)`) must be caught here too,
+		// not only on fields.
+		a.checkPairOrdering(scalarAsField)
 		if dd.Primitive == "bytes" {
 			// Same rule as a bytes field: @pattern / @format constrain text,
 			// not a binary value, so the validator drops them while OpenAPI

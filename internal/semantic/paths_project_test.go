@@ -84,3 +84,39 @@ service S {
 		t.Errorf("nested cross-pkg @path should bind {pk}, got: %s", d.Msg)
 	}
 }
+
+// W3 (#16): a cross-package request (request shared.R) with an auto-path
+// field carrying @nullable is rejected by the project twin — the per-package
+// pass returns early for cross-pkg requests, so without the twin it silently
+// emitted non-compiling Go (a plain string written into a *string slot).
+func TestProjectAutoPathFieldCrossPkgNullableRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+type R { id string @nullable  name string }`,
+		"api/api.craftgo": `package api
+import "shared"
+type Resp { ok bool }
+service S { get G /u/{id} { request shared.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorConflict) == nil {
+		t.Errorf("cross-pkg auto-path @nullable should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: a clean cross-package auto-path field (no @nullable) must NOT be
+// false-rejected by the project twin.
+func TestProjectAutoPathFieldCrossPkgClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+type R { id string  name string }`,
+		"api/api.craftgo": `package api
+import "shared"
+type Resp { ok bool }
+service S { get G /u/{id} { request shared.R  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorConflict) != nil {
+		t.Errorf("clean cross-pkg auto-path field wrongly rejected: %v", codes(diags))
+	}
+}

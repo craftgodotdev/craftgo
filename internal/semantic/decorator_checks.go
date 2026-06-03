@@ -76,7 +76,7 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 		if d == nil {
 			continue
 		}
-		if repeatableDecorators[d.Name] {
+		if Registry[d.Name].Repeatable {
 			continue
 		}
 		if prev, ok := seen[d.Name]; ok {
@@ -88,20 +88,6 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 		}
 		seen[d.Name] = d.Pos
 	}
-}
-
-// repeatableDecorators lists decorators whose multi-instance form is
-// the intended idiom: each occurrence adds to the aggregate (tags
-// merge, middlewares chain, security alternatives OR).
-var repeatableDecorators = map[string]bool{
-	"security":    true,
-	"tags":        true,
-	"middlewares": true,
-	// @errors aggregates like the others (codegen iterates every @errors
-	// decorator with a seen-map dedup), and extend-service inheritance
-	// PREPENDS the extend block's @errors onto a method's own — so two
-	// occurrences are the intended idiom, not a duplicate.
-	"errors": true,
 }
 
 // checkDecoratorConflicts fires CodeDecoratorConflict for any field

@@ -490,7 +490,11 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 				Name:     bindingWireName(f, in),
 				In:       in,
 				Required: required,
-				Schema:   ref,
+				// A deprecated parameter carries `deprecated` on the
+				// Parameter object itself (what Swagger UI / client codegen
+				// read for params), not only on the inner schema.
+				Deprecated: hasDeprecatedDecorator(f.Decorators),
+				Schema:     ref,
 			}})
 		}
 	}
