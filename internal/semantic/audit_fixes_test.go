@@ -277,6 +277,14 @@ func TestUniqueItemsOnMapRejected(t *testing.T) {
 	expectError(t, `type Req { m map<string, int> @uniqueItems }`, CodeDecoratorTypeMismatch)
 }
 
+// `file` is a multipart-upload wire keyword, not a Go type, so a scalar may
+// not wrap it (`scalar X file` would emit non-compiling `type X file`) — reject
+// it like `any`, which is already rejected.
+func TestScalarOverFileRejected(t *testing.T) {
+	expectError(t, `scalar FileScalar file
+type R { f FileScalar }`, CodeScalarBadPrimitive)
+}
+
 // The file validators @maxSize / @mimeTypes are pointless on a @sensitive
 // field (it never crosses the wire), so they conflict — like every other
 // validator already listed in sensitiveConflicts.

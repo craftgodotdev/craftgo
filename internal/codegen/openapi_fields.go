@@ -430,13 +430,16 @@ func applyArrayConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 	if s == nil {
 		return
 	}
-	// Array fields count elements via minItems/maxItems; map (object)
-	// fields count entries via minProperties/maxProperties — the same
-	// decorators, but a different JSON-Schema keyword per underlying
-	// shape (minItems on an object is invalid). Includes, not Is, because
-	// an optional array is `type: [array, "null"]`. @uniqueItems is
-	// array-only (no object analogue), so it is dropped on a map.
+	// Array fields count elements via minItems/maxItems; map (object) fields
+	// count entries via minProperties/maxProperties — the same decorators, but
+	// a different JSON-Schema keyword per underlying shape. The count keyword
+	// is emitted ONLY on a schema that IS an array or an object: a composition
+	// wrapper (the `anyOf:[{$ref}, {null}]` of a nullable named-type field) is
+	// neither, so it gets nothing — emitting minProperties there advertises an
+	// unenforced, unsatisfiable constraint. Includes, not Is, because an
+	// optional array is `type: [array, "null"]`. @uniqueItems is array-only.
 	isArray := s.Type != nil && s.Type.Includes("array")
+	isObject := s.Type != nil && s.Type.Includes("object")
 	for _, d := range ds {
 		if d == nil {
 			continue
@@ -445,18 +448,20 @@ func applyArrayConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
 		case "minItems":
 			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
 				u := uint64(v)
-				if isArray {
+				switch {
+				case isArray:
 					s.MinItems = u
-				} else {
+				case isObject:
 					s.MinProps = u
 				}
 			}
 		case "maxItems":
 			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
 				u := uint64(v)
-				if isArray {
+				switch {
+				case isArray:
 					s.MaxItems = &u
-				} else {
+				case isObject:
 					s.MaxProps = &u
 				}
 			}

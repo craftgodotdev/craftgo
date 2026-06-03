@@ -276,6 +276,29 @@ func genDoc(t *testing.T, src map[string]string, cfg *config.Config) *openapi3.T
 	return doc
 }
 
+// @minItems / @maxItems are array/map count keywords. On a NAMED-TYPE
+// (struct/enum) field they have no meaning, so the OpenAPI must not stamp
+// minProperties/maxProperties onto the field's anyOf-null wrapper (the runtime
+// enforces nothing there — it would be an unenforced, unsatisfiable
+// constraint). A map field still gets minProperties.
+func TestMinItemsNotLeakedOntoNamedTypeWrapper(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"m/m.craftgo": `package m
+type Inner { a string }
+type T {
+  x Inner? @minItems(2)
+  mp map<string, int> @minItems(2)
+}`,
+	}, &config.Config{})
+	props := doc.Components.Schemas["T"].Value.Properties
+	if got := props["x"].Value.MinProps; got != 0 {
+		t.Errorf("struct field wrapper leaked minProperties=%d (want 0)", got)
+	}
+	if got := props["mp"].Value.MinProps; got != 2 {
+		t.Errorf("map field should keep minProperties=2, got %d", got)
+	}
+}
+
 // @errors([...]) and @tags([...]) array-shortcut forms must contribute the
 // same responses / tags as the variadic form (they were silently dropped).
 func TestArrayShortcutErrorsAndTags(t *testing.T) {

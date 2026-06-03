@@ -80,11 +80,13 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 // validator inheritance + codegen).
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	actual := PrimFromName(sd.Primitive)
-	if actual == 0 {
-		// Scalar's "primitive" slot is not a recognised built-in.
-		// Flag explicitly so the user sees the typo at design time
-		// rather than discovering it via mysteriously-missing
-		// validators in the generated Go.
+	if actual == 0 || actual == PrimFile {
+		// Not a recognised scalar primitive. `file` resolves to PrimFile
+		// (non-zero) but is a multipart-upload wire keyword, not a Go type —
+		// `scalar X file` would emit non-compiling `type X file`, so reject it
+		// like an unknown primitive (mirroring the `any` rejection). Flag
+		// explicitly so the user sees it at design time rather than via a
+		// mysterious compile error in the generated Go.
 		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
 			"scalar %q primitive must be a built-in (got %q; expected one of string, bool, bytes, int, int8..int64, uint, uint8..uint64, float32, float64)",
 			sd.Name, sd.Primitive)
