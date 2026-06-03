@@ -242,12 +242,7 @@ func substituteGenericFields(fields []*ast.Field, td *ast.TypeDecl, args []*ast.
 	if td == nil || len(td.TypeParams) == 0 || len(args) == 0 {
 		return fields
 	}
-	subst := map[string]*ast.TypeRef{}
-	for i, tp := range td.TypeParams {
-		if i < len(args) {
-			subst[tp] = args[i]
-		}
-	}
+	subst := substMap(td.TypeParams, args)
 	out := make([]*ast.Field, len(fields))
 	for i, f := range fields {
 		fc := *f
@@ -301,10 +296,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 	}
 	out := openapi3.Headers{}
 	for _, f := range headers {
-		name := headerNameFromDecorators(f.Decorators)
-		if name == "" {
-			name = f.Name
-		}
+		name := bindingWireName(f, "header")
 		schema := schemaForTypeRef(f.Type, pkg, registry)
 		// Carry @example / @deprecated / field constraints onto the header
 		// schema, and @deprecated onto the Header Object itself — the same
@@ -324,11 +316,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 	if len(cookies) > 0 {
 		names := make([]string, 0, len(cookies))
 		for _, f := range cookies {
-			n := cookieNameFromDecorators(f.Decorators)
-			if n == "" {
-				n = f.Name
-			}
-			names = append(names, n)
+			names = append(names, bindingWireName(f, "cookie"))
 		}
 		desc := "Sets cookies: " + strings.Join(names, ", ")
 		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{
@@ -339,19 +327,6 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 		}}
 	}
 	return out
-}
-
-// headerNameFromDecorators returns the literal name passed to
-// `@header("X-Foo")` when present, otherwise empty so the caller
-// falls back to the field name.
-func headerNameFromDecorators(ds []*ast.Decorator) string {
-	return decoratorStringArg(ds, "header")
-}
-
-// cookieNameFromDecorators mirrors [headerNameFromDecorators] for
-// `@cookie("session_id")`.
-func cookieNameFromDecorators(ds []*ast.Decorator) string {
-	return decoratorStringArg(ds, "cookie")
 }
 
 // schemaFromFields builds an inline object schema covering the supplied

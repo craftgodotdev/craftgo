@@ -249,6 +249,15 @@ func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.Ty
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
+			// A DIRECT field whose own type is cross-package-qualified
+			// (`rawData shared.Blob`) also needs this project pass: the
+			// per-package presence check resolves it with proj=nil, so a
+			// scalar-over-bytes never reaches its nilable primitive and its
+			// unclean presence slips through. Defer so the group members get
+			// re-checked here with full resolution.
+			if isQualifiedTypeRef(v.Type) {
+				deferred = true
+			}
 			if _, dup := out[v.Name]; !dup {
 				// Requalify the field's bare named type to the package it was
 				// collected from (currentPkg), so a promoted field carries
@@ -304,7 +313,13 @@ func (r *refResolver) collectLocalGroupFields(currentPkg string, body []ast.Type
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			out[v.Name] = true
+			// A field whose TYPE is cross-package-qualified is NOT counted as
+			// locally checked: the per-package presence check can't resolve it
+			// (proj=nil), so leave it for the project re-check rather than
+			// skipping it as already-handled.
+			if !isQualifiedTypeRef(v.Type) {
+				out[v.Name] = true
+			}
 		case *ast.Mixin:
 			if v == nil || v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) != 1 {
 				continue

@@ -355,3 +355,18 @@ func walkTypeRefForGenerics(t *ast.TypeRef, pkg *semantic.Package, registry *gen
 		registry.register(decl, t.Named.Args)
 	}
 }
+
+// substMap pairs a generic decl's type parameters with the concrete
+// arguments of one instantiation (`T` → `Item`). Extra params beyond the
+// supplied args are left unmapped. The OpenAPI schema instantiation, the
+// response-field substitution, and the mixin field flatten all build this
+// same map, so they share one definition.
+func substMap(typeParams []string, args []*ast.TypeRef) map[string]*ast.TypeRef {
+	subst := make(map[string]*ast.TypeRef, len(typeParams))
+	for i, p := range typeParams {
+		if i < len(args) {
+			subst[p] = args[i]
+		}
+	}
+	return subst
+}

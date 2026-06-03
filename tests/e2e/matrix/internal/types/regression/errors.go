@@ -214,6 +214,7 @@ const ErrCodeRg7Secret = "RG7SECRET"
 type Rg7SecretBody struct {
 	Secret string  `json:"-"`
 	Reason *string `json:"reason,omitempty"`
+	Code   string  `json:"-"`
 	Note   string  `json:"note"`
 }
 
@@ -253,6 +254,13 @@ func (e *Rg7SecretErr) ErrCode() string { return e.code }
 
 // HTTPStatus returns the HTTP status code associated with the Forbidden category.
 func (e *Rg7SecretErr) HTTPStatus() int { return 403 }
+
+// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
+// Called by the generated `writeError` helper before the JSON body is
+// encoded so values reach the wire in a single response.
+func (e *Rg7SecretErr) WriteResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Error-Code", e.Code)
+}
 
 // ErrCodeRgValidationFailed is the canonical machine-readable code for RgValidationFailedErr.
 const ErrCodeRgValidationFailed = "RG_VALIDATION_FAILED"

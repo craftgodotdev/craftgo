@@ -147,6 +147,12 @@ const (
 	// body share a name.
 	CodeDuplicateField = "field/duplicate"
 
+	// CodeInvalidGoName fires when a field name maps to an invalid Go
+	// identifier — empty (e.g. `_`, `__`) or digit-leading (e.g. `_2`,
+	// which normalises to `2`). Codegen would emit uncompilable / unexported
+	// Go, so reject at design time with a clean message instead.
+	CodeInvalidGoName = "field/invalid-go-name"
+
 	// CodeEnumDuplicateName fires for two enum values with the same
 	// identifier.
 	CodeEnumDuplicateName = "enum/duplicate-name"

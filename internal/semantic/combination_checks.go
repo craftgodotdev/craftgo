@@ -135,18 +135,42 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 // spec a client generator rejects — and the binder would read the same
 // value into both fields. The same name on DIFFERENT sources is fine (a
 // `@query("x")` and a `@header("x")` are distinct parameters).
+// canonicalWireName folds a wire name to its collision key. HTTP header names
+// are case-insensitive (RFC 7230) and net/http canonicalises them, so two
+// fields bound to `X-Trace` and `x-trace` reach the same header — fold header
+// names to lower case for the key. Path / query / cookie names are
+// case-sensitive on the wire and pass through unchanged.
+func canonicalWireName(kind, name string) string {
+	if kind == "header" {
+		return strings.ToLower(name)
+	}
+	return name
+}
+
+// isBodyVerb reports whether verb carries a request body (POST/PUT/PATCH) —
+// the condition under which an undecorated field rides @body rather than
+// auto-promoting to @query.
+func isBodyVerb(verb string) bool {
+	switch strings.ToUpper(verb) {
+	case "POST", "PUT", "PATCH":
+		return true
+	}
+	return false
+}
+
+// checkDuplicateWireNames rejects two EXPLICITLY wire-bound fields that share a
+// wire name on one source (request / response / error). The body is flattened
+// so a binding promoted through a same-package mixin is seen, and header names
+// are case-folded so `X-Trace` / `x-trace` collide. Auto-promoted bindings are
+// route/verb-dependent and handled per-method by [analyzer.checkDuplicateAutoWireNames].
 func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
 	seen := map[string]lexer.Position{}
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range a.flattenRequestFields(members, map[string]bool{}) {
 		kind, name, bound := wireBinding(f)
 		if !bound {
 			continue
 		}
-		key := kind + "\x00" + name
+		key := kind + "\x00" + canonicalWireName(kind, name)
 		if prev, dup := seen[key]; dup {
 			d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
 				"%s.%s: @%s(%q) reuses a wire name already bound on the same source — the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names.",
@@ -155,6 +179,53 @@ func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMemb
 			continue
 		}
 		seen[key] = f.Pos
+	}
+}
+
+// checkDuplicateAutoWireNames catches a wire-name collision that involves an
+// AUTO-bound field — an undecorated field promoted to @path (its name matches
+// a {segment}) or to @query (on a body-less verb). The per-declaration
+// [analyzer.checkDuplicateWireNames] sees only EXPLICIT decorators, so an
+// auto-bound field colliding with an explicit (or another auto) binding slips
+// through into a silent double-read + a duplicate OpenAPI parameter. This runs
+// in method context (route segments + verb) where the auto-binding is known,
+// and reports only collisions involving an auto-bound field (explicit/explicit
+// is already covered) so the two checks never double-report.
+func (a *analyzer) checkDuplicateAutoWireNames(svcName string, m *ast.Method) {
+	if m == nil || m.Request == nil || m.Request.Name == nil {
+		return
+	}
+	td, ok := a.pkg.Types[m.Request.Name.String()]
+	if !ok {
+		return // cross-package request — not modelled here
+	}
+	pathSegs := pathSegments(m)
+	bodyVerb := isBodyVerb(m.Verb)
+	reqName := m.Request.Name.String()
+	type binding struct {
+		pos  lexer.Position
+		auto bool
+	}
+	seen := map[string]binding{}
+	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
+		kind, auto := RequestFieldBinding(f, pathSegs, bodyVerb)
+		switch kind {
+		case "path", "query", "header", "cookie", "form":
+		default:
+			continue
+		}
+		name := WireName(f, kind)
+		key := kind + "\x00" + canonicalWireName(kind, name)
+		if prev, dup := seen[key]; dup {
+			if auto || prev.auto {
+				d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
+					"%s.%s on %s %s: this field auto-binds to @%s(%q), already bound by another field — the binder reads both from one value and the OpenAPI carries a duplicate parameter. Give one an explicit, distinct binding.",
+					reqName, f.Name, strings.ToUpper(m.Verb), m.Name, kind, name)
+				d.Related = related(prev.pos, "first bound here")
+			}
+			continue
+		}
+		seen[key] = binding{pos: f.Pos, auto: auto}
 	}
 }
 
@@ -584,6 +655,7 @@ func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
 	a.checkBodyBindingVerb(svcName, m)
 	a.checkDuplicatePathVars(svcName, m)
 	a.checkAutoPathField(svcName, m)
+	a.checkDuplicateAutoWireNames(svcName, m)
 	a.checkNoContentStatusBody(svcName, m)
 	a.checkRequestBodyType(svcName, m)
 }

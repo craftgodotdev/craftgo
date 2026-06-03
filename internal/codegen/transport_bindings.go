@@ -112,12 +112,7 @@ func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Packa
 			// so every consumer — wire binder, OpenAPI params/body, default
 			// pre-fill — sees `items Item[]`, not the bare `T`.
 			if mt != nil && len(v.Ref.Args) > 0 && len(mt.TypeParams) > 0 {
-				subst := map[string]*ast.TypeRef{}
-				for i, p := range mt.TypeParams {
-					if i < len(v.Ref.Args) {
-						subst[p] = v.Ref.Args[i]
-					}
-				}
+				subst := substMap(mt.TypeParams, v.Ref.Args)
 				for i := range sub {
 					fc := *sub[i].Field
 					fc.Type = substituteTypeRef(sub[i].Field.Type, subst)

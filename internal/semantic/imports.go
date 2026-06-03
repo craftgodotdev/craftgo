@@ -640,7 +640,7 @@ func (r *refResolver) checkOneFieldDefault(f *ast.Field, scalars map[string]*ast
 	// Element-of-array follows the same rule as the field itself.
 	t := f.Type
 	if t.Array {
-		t = arrayElemTypeRef(t)
+		t = t.ElemTypeRef()
 	}
 	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 2 {
 		// Per-package pass already validated this case.

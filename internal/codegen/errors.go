@@ -277,9 +277,11 @@ func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectR
 	// mixin (errorBodyMixins), so the promoted field is reachable as `e.X`.
 	for _, ff := range flattenFieldsWithNames(&ast.TypeDecl{Body: ed.Body}, "", pkg, r, map[string]bool{}) {
 		f := ff.Field
-		if f.Name == "code" || f.Name == "message" {
-			continue
-		}
+		// Only @header / @cookie fields are written here; a plain body field
+		// (including the reserved `code` / `message` envelope names) is
+		// excluded by the kind filter below. A `code` / `message` field that
+		// IS wire-bound rides its header/cookie, not the body, so it must be
+		// written — the earlier blanket name-skip silently dropped it.
 		kind := bindingFromDecorators(f.Decorators)
 		if kind != "header" && kind != "cookie" {
 			continue

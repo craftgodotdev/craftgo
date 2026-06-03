@@ -104,7 +104,7 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 				"@%s on array field %q must be an array literal", decName, f.Name)
 			return
 		}
-		elem := arrayElemTypeRef(t)
+		elem := t.ElemTypeRef()
 		for _, e := range arr.Elements {
 			a.checkLiteralType(decName, f, elem, e, e.ExprPos())
 		}
@@ -230,7 +230,7 @@ func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 		return false
 	}
 	if t.Array {
-		return defaultElemSupported(arrayElemTypeRef(t), pkg)
+		return defaultElemSupported(t.ElemTypeRef(), pkg)
 	}
 	return defaultElemSupported(t, pkg)
 }
@@ -270,29 +270,6 @@ func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 // `*Package`) so the call sites read as "this helper needs only a
 // scalar / enum table" rather than the full analyzer state.
 type semanticPkgRef = Package
-
-// arrayElemTypeRef returns the element TypeRef of an array. The stored
-// TypeRef has Array == true alongside the element's Named / Optional
-// fields, so dropping the Array flag yields the element type. Peel ONE level:
-// decrement the depth and re-set Array when an inner dimension remains, so a
-// multi-dimensional element keeps its array shape (mirrors the codegen twin in
-// transport_defaults.go). Optional is dropped — the `?` belongs to the outer
-// field, not each element.
-func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
-	if t == nil {
-		return nil
-	}
-	clone := *t
-	clone.Array = false
-	clone.Optional = false
-	if clone.ArrayDepth > 0 {
-		clone.ArrayDepth--
-	}
-	if clone.ArrayDepth > 0 {
-		clone.Array = true
-	}
-	return &clone
-}
 
 // enumValueList renders an enum's value names as a comma-separated
 // list for diagnostic messages.

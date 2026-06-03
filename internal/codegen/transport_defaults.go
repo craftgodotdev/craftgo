@@ -74,7 +74,7 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 		if !ok {
 			return ""
 		}
-		elemT := arrayElemTypeRef(t)
+		elemT := t.ElemTypeRef()
 		elemGo := qualifyNamed(GoTypeRef(elemT), elemT, pkg, r, pkgAlias)
 		if elemGo == "" {
 			return ""
@@ -184,7 +184,7 @@ func primitiveDefaultCast(t *ast.TypeRef, v ast.Expr) string {
 // reference (`types.PageSize`, `shared.CurrencyCode`) so a `@default`
 // literal can be cast to it, or "" when t is not a flat scalar ref
 // (array / map / primitive / enum / struct). Array elements clear
-// Optional via arrayElemTypeRef before reaching here; a top-level
+// Optional via [ast.TypeRef.ElemTypeRef] before reaching here; a top-level
 // optional scalar (`PageSize?`) keeps Optional set, so the clone drops
 // it — the cast targets the value type `PageSize`, not `*PageSize`.
 func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
@@ -235,30 +235,6 @@ func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, r *Proje
 		return pkgAlias + "." + goName
 	}
 	return goName
-}
-
-// arrayElemTypeRef returns the element TypeRef of an array. Drops
-// the Array marker and decrements ArrayDepth so nested-array
-// elements (rare but legal) collapse one level at a time.
-//
-// The parent's Optional flag is cleared on the element clone: `T[]?`
-// means "the slice may be nil" not "every element is *T". Without
-// this clearance, defaultLiteral / OpenAPI emission would render
-// `[]*T{...}` for `T[]? @default(...)`, which produces invalid Go.
-func arrayElemTypeRef(t *ast.TypeRef) *ast.TypeRef {
-	if t == nil {
-		return nil
-	}
-	clone := *t
-	clone.Array = false
-	clone.Optional = false
-	if clone.ArrayDepth > 0 {
-		clone.ArrayDepth--
-	}
-	if clone.ArrayDepth > 0 {
-		clone.Array = true
-	}
-	return &clone
 }
 
 // enumDefaultConst resolves an `@default(<Ident>)` reference to its

@@ -33,6 +33,29 @@ type TypeRef struct {
 	ArrayDepth int
 }
 
+// ElemTypeRef returns a copy of t with ONE array dimension peeled: the depth
+// is decremented and Array re-set while an inner dimension remains, so a
+// multi-dimensional element keeps its array shape. Optional is dropped — the
+// `?` belongs to the outer field, not each element. Returns nil for a nil
+// receiver. The semantic type-checker (literal type-fit) and the codegen
+// default pre-fill both peel array elements this way; sharing one definition
+// keeps them from drifting.
+func (t *TypeRef) ElemTypeRef() *TypeRef {
+	if t == nil {
+		return nil
+	}
+	clone := *t
+	clone.Array = false
+	clone.Optional = false
+	if clone.ArrayDepth > 0 {
+		clone.ArrayDepth--
+	}
+	if clone.ArrayDepth > 0 {
+		clone.Array = true
+	}
+	return &clone
+}
+
 // MapType represents `map<K, V>`. Both Key and Value are recursive [TypeRef]
 // values so that nested maps and generic instances work uniformly.
 type MapType struct {

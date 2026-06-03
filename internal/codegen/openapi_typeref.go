@@ -196,12 +196,7 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 // back to inline emission for the nested level - kept for the no-
 // registry test path that does not exercise nesting.
 func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
-	subst := map[string]*ast.TypeRef{}
-	for i, p := range decl.TypeParams {
-		if i < len(args) {
-			subst[p] = args[i]
-		}
-	}
+	subst := substMap(decl.TypeParams, args)
 	// Delegate to the shared body-walk with a populated substitution
 	// map. This is the ONLY behavioural difference from a top-level
 	// type: every field type is substituted (T -> the concrete arg)

@@ -13,10 +13,13 @@ type Rg7Maps {
 
 // A: a @sensitive error-body field stays `json:"-"` (server-only, never on the
 // wire) and an optional field carries `,omitempty` — the canonical jsonTag
-// rule regular types follow, applied to the error emitter.
+// rule regular types follow, applied to the error emitter. A `code`-named
+// @header field is written onto the response (not dropped by the envelope
+// name-skip), and @example on an error field renders into the schema.
 error Forbidden Rg7Secret {
 	secret string @sensitive
-	reason string?
+	reason string? @example("rate limit hit")
+	code   string @header("X-Error-Code")
 	note   string
 }
 

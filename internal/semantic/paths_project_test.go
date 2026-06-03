@@ -233,6 +233,47 @@ service S { get G /g { request base.R  response Resp } }`,
 	}
 }
 
+// A cross-field group member that is a DIRECT field whose TYPE is a
+// cross-package scalar over bytes (`rawData shared.Blob?`) must be rejected
+// like its local twin — the per-package presence check resolves it with
+// proj=nil so the bytes primitive never surfaces; the project pass must run
+// (deferred) even though no cross-package MIXIN was traversed.
+func TestProjectCrossFieldDirectCrossPkgScalarBytesRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Blob bytes`,
+		"app/app.craftgo": `package app
+import "shared"
+@requiresOneOf(rawData, other)
+type Pick { rawData shared.Blob?  other string? }
+type Resp { ok bool }
+service S { post C /c { request Pick  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeCrossFieldNotOptional) == nil {
+		t.Errorf("cross-pkg scalar-over-bytes direct member should be rejected; got %v", codes(diags))
+	}
+}
+
+// Control: the same direct member over a VALUE primitive (`shared.Code` over
+// string) is pointer-backed and clean — must NOT be false-rejected.
+func TestProjectCrossFieldDirectCrossPkgScalarStringClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+scalar Code string`,
+		"app/app.craftgo": `package app
+import "shared"
+@requiresOneOf(code, other)
+type Pick { code shared.Code?  other string? }
+type Resp { ok bool }
+service S { post C /c { request Pick  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeCrossFieldNotOptional) != nil {
+		t.Errorf("cross-pkg scalar-over-string direct member wrongly rejected: %v", codes(diags))
+	}
+}
+
 // A cross-package qualified struct (or other non-wire type) bound with
 // @header on an ERROR body field must be rejected — the per-package pass
 // defers qualified refs, and checkProjectBindings once iterated only

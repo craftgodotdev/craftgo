@@ -5341,6 +5341,7 @@ components:
         note:
           type: string
         reason:
+          example: rate limit hit
           type:
           - string
           - "null"
@@ -9349,6 +9350,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/Rg7SecretErr'
           description: Forbidden
+          headers:
+            X-Error-Code:
+              schema:
+                type: string
       tags:
       - regression
   /regression7/holder:
