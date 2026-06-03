@@ -144,8 +144,6 @@ type UserList {
 Cross-package mixins use the qualified form:
 
 ```craftgo
-import "shared"
-
 type User {
     shared.Auditable
     name string

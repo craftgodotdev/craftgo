@@ -100,7 +100,7 @@ Errors appear inline as you type:
 
 ### Go-to-definition
 
-`Cmd+click` (or `gd` in vim-mode) on a type reference jumps to its declaration. Works across files in the same package and across packages via `import`.
+`Cmd+click` (or `gd` in vim-mode) on a type reference jumps to its declaration. Works across files in the same package and across packages (a `shared.Type` reference jumps to the `shared` package's declaration).
 
 ### Format
 

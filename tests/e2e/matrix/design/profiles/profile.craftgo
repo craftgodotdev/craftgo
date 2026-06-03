@@ -1,10 +1,5 @@
 package design
 
-// Profile and the matching request/response shapes. ContactInfo lives
-// in `contacts/`; PfAddress lives next to this file but pulls in Coords
-// from `geo/`, exercising transitive imports through gen.
-import "contacts"
-
 // Profile is the wire-level shape of a user profile, nesting a
 // ContactInfo plus a slice of Addresses, each of which optionally
 // embeds a Coords value.
@@ -12,7 +7,7 @@ type Profile {
 	id          string
 	displayName string              @length(1, 50)
 	contacts    ContactInfo
-	addresses   PfAddress[]           @minItems(1) @maxItems(5)
+	addresses   PfAddress[]         @minItems(1) @maxItems(5)
 	tags        string[]            @maxItems(10)
 	meta        map<string, string>
 	age         int?
@@ -23,7 +18,7 @@ type Profile {
 type CreateProfileReq {
 	displayName string              @length(1, 50)
 	contacts    ContactInfo
-	addresses   PfAddress[]           @minItems(1) @maxItems(5)
+	addresses   PfAddress[]         @minItems(1) @maxItems(5)
 	tags        string[]            @maxItems(10)
 	meta        map<string, string>
 	age         int?

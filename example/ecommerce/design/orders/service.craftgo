@@ -1,7 +1,5 @@
 package orders
 
-import "shared"
-
 @prefix("/orders")
 @tags(orders)
 @middlewares(shared.RequestID, shared.RateLimit, shared.CORS, shared.AuthRequired)

@@ -6,8 +6,6 @@
 // One field per matrix cell keeps each cell isolated.
 package xrefs
 
-import "xshared"
-
 // ----- ENUM matrix -----
 
 // XEnumScalar exercises direct + optional + array enum field shapes.
@@ -22,9 +20,9 @@ type XEnumScalar {
 // XEnumMaps exercises enum keys / values in maps. The walker emits a
 // switch on either side independently (key-only, value-only, or both).
 type XEnumMaps {
-	byString map<string, xshared.XColor>          // value-only switch
-	byEnum   map<xshared.XColor, string>          // key-only switch
-	bothEnum map<xshared.XColor, xshared.XColor>  // both-side switch
+	byString map<string, xshared.XColor> // value-only switch
+	byEnum   map<xshared.XColor, string> // key-only switch
+	bothEnum map<xshared.XColor, xshared.XColor> // both-side switch
 }
 
 // XEnumDefault exercises `@default(Red)` on a cross-pkg enum field:
@@ -54,11 +52,11 @@ type XScalarFields {
 //   - `req.Path = xshared.XEmail(r.PathValue("path"))`
 //   - `req.Q = xshared.XEmail(r.URL.Query().Get("q"))`
 type XScalarBindings {
-	path  xshared.XEmail   @path
-	q     xshared.XEmail   @query
-	hdr   xshared.XEmail   @header
-	ck    xshared.XEmail   @cookie
-	num   xshared.XNodeID  @query
+	path xshared.XEmail  @path
+	q    xshared.XEmail  @query
+	hdr  xshared.XEmail  @header
+	ck   xshared.XEmail  @cookie
+	num  xshared.XNodeID @query
 }
 
 // ----- TYPE matrix -----
@@ -88,13 +86,15 @@ type XTypeMixin {
 // registers one component per (decl, args) tuple under the
 // FastAPI-style `XBagOfFoo` naming, not bare `xshared.XBag`.
 type XGeneric {
-	ofLocal   xshared.XBag<XLocalItem>
-	ofXType   xshared.XBag<xshared.XOwner>
-	ofPrim    xshared.XBag<string>
-	ofMap     xshared.XBag<map<string, xshared.XColor>>
+	ofLocal xshared.XBag<XLocalItem>
+	ofXType xshared.XBag<xshared.XOwner>
+	ofPrim  xshared.XBag<string>
+	ofMap   xshared.XBag<map<string, xshared.XColor>>
 }
 
-type XLocalItem { id string }
+type XLocalItem {
+	id string
+}
 
 // XMixinErr is an error whose body embeds a CROSS-PACKAGE mixin
 // (xshared.XOwner). The error emitter's import walk must collect the xshared
@@ -132,10 +132,10 @@ type XNestedReq {
 // .Get("q"))`) so the assignment type-checks against the
 // `*xshared.XEmail` field.
 type XSearchReq {
-	q     xshared.XEmail   @query
-	hdr   xshared.XEmail   @header
-	ck    xshared.XEmail   @cookie
-	num   xshared.XNodeID  @query
+	q   xshared.XEmail  @query
+	hdr xshared.XEmail  @header
+	ck  xshared.XEmail  @cookie
+	num xshared.XNodeID @query
 }
 
 // XBodyPromoteReq promotes a cross-package mixin's BODY fields: the POST

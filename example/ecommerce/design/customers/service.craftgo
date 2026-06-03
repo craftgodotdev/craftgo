@@ -1,7 +1,5 @@
 package customers
 
-import "shared"
-
 @prefix("/customers")
 @tags(customers)
 @middlewares(shared.RequestID, shared.RateLimit, shared.CORS, shared.AuthRequired)

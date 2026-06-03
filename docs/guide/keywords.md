@@ -7,7 +7,7 @@ The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
 | Keyword      | Position    | Purpose                                                       |
 | ------------ | ----------- | ------------------------------------------------------------- |
 | `package`    | first line  | The package every declaration in this file belongs to         |
-| `import`     | header area | Reach declarations in another design subfolder                |
+| `import`     | header area | Legacy/optional — cross-package refs resolve without it       |
 | `type`       | top level   | Declare a request / response struct                           |
 | `enum`       | top level   | Declare a closed value set                                    |
 | `error`      | top level   | Declare a typed error with HTTP status mapping                |
@@ -63,21 +63,21 @@ All files in the same directory must share the same `package` name. The director
 
 The package name does not need to match the folder name (though doing so reads cleaner).
 
-## `import`
+## Cross-package references
 
-Reach declarations from a different design subfolder:
+Reach a declaration from a different design subfolder by qualifying it with that package's name — no import statement is needed:
 
 ```craftgo
 package design
-
-import "shared"
 
 type User {
     contact shared.Contact
 }
 ```
 
-The string is the path of a sibling subfolder under `design/`. craftgo wires the matching Go imports automatically when codegen sees a `<pkg>.<Type>` reference. Import cycles, self-imports, and out-of-tree paths (`..`, `/abs/path`) are rejected by the semantic phase (`import/escape`, `import/self`, etc.). Middleware names are global across the project; type / enum / error / scalar names live in their declaring package and must be qualified at the call site (`shared.Audit`, `users.User`).
+craftgo resolves `<pkg>.<Type>` against every package in the project (the `package X` declaration is the name) and wires the matching Go import in the generated code automatically. Middleware names are global across the project; type / enum / error / scalar names live in their declaring package and must be qualified at the call site (`shared.Audit`, `users.User`).
+
+> **Note:** an explicit `import "<subfolder>"` line is still accepted for backward compatibility but is **no longer required and will be removed** in a future release — qualified references resolve on their own.
 
 ## `type`
 
@@ -232,8 +232,6 @@ Avoid using any keyword above as a type, field, enum value, or service name. The
 
 ```
 package <ident>
-
-[import "<path>"]*
 
 [<decl>]*
 

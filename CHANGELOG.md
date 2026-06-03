@@ -7,6 +7,17 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Deprecated
+
+- The DSL `import "<subfolder>"` statement is **deprecated and no longer
+  required**. Cross-package types resolve automatically — reference a
+  declaration from another folder by qualifying it with that package's name
+  (`shared.Type`), and the codegen wires the matching Go import on its own.
+  `import` lines are still accepted (so existing designs keep working) but are
+  removed from all docs and examples and will be removed entirely in a future
+  major release. The LSP resolves cross-package references with or without
+  them.
+
 ### Fixed
 
 - A **bare scalar or enum request type** (`request Token` where `Token` is a

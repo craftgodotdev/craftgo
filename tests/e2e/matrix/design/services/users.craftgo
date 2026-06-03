@@ -23,8 +23,6 @@
 // qualifier).
 package services
 
-import "shared"
-
 // UserRef is the lightweight handle: id + email. Used as a BODY
 // request (POST CreateUser, POST BanUser) and as the owner field
 // of services.Project. Both fields are cross-package scalars

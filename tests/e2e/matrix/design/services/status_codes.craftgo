@@ -4,8 +4,6 @@
 // for 204) and uses it as the response `description`.
 package services
 
-import "shared"
-
 // AsyncJobResp is the standard "request acknowledged, work runs
 // later" envelope. Pairs with `@status(202)` on the trigger method.
 type AsyncJobResp {

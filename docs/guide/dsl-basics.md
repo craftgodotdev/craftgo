@@ -7,8 +7,7 @@ The craftgo DSL is a small file format that describes your API. From it, craftgo
 A `.craftgo` file has three things:
 
 1. A `package` line (mandatory)
-2. Optional `import` lines for cross-package references
-3. Declarations: `type`, `enum`, `scalar`, `error`, `service`, `middleware`
+2. Declarations: `type`, `enum`, `scalar`, `error`, `service`, `middleware`
 
 Every declaration produces specific generated code. The DSL is the single source of truth: change a field once, every generated artifact updates.
 
@@ -44,7 +43,7 @@ design/
     └── service.craftgo
 ```
 
-Files in the same subfolder share one package and see each other's declarations directly. Across subfolders, use `import`.
+Files in the same subfolder share one package and see each other's declarations directly. To use a declaration from another subfolder, just qualify it with that package's name (`shared.Type`) — cross-package references resolve automatically, no import needed.
 
 ## Six declaration kinds
 
@@ -61,8 +60,6 @@ Every craftgo file declares from this set:
 
 ```craftgo
 package design
-
-import "shared"
 
 type User       { id string  name string }
 enum Status     { Active  Inactive }
@@ -287,14 +284,12 @@ service UserService { ... }
 
 See [Middleware](/guide/middleware).
 
-## Imports
+## Cross-package references
 
-Files reference declarations across folders with `import`:
+Reference a declaration from another folder by qualifying it with that package's name — no import line needed:
 
 ```craftgo
 package design
-
-import "shared"
 
 type User {
     contact shared.Contact

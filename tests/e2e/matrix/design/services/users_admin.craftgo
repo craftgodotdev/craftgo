@@ -15,8 +15,6 @@
 // primary CRUD surface.
 package services
 
-import "shared"
-
 extend service UserService {
 	@middlewares(shared.RateLimit)
 	post BanUser /{id}/ban {

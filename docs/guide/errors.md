@@ -221,8 +221,6 @@ Errors live in the package they are declared in. Import them like any other type
 ```craftgo
 package design
 
-import "shared"
-
 service UserService {
     @errors(shared.AuthRequiredErr, UserNotFound)
     get GetUser /users/{id} { ... }

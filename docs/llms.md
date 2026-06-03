@@ -18,8 +18,6 @@ DSL is the contract. Generated code is plain Go. No reflection at runtime.
 ```
 package <ident>
 
-[import "<path>"]*
-
 [<decl>]*
 
 <decl> is one of:
@@ -33,7 +31,7 @@ package <ident>
   [@decorator]* middleware Name
 ```
 
-Files in the same directory share `package` and see each other's declarations. Cross-directory references use `import "<sibling-dir>"`.
+Files in the same directory share `package` and see each other's declarations. Cross-directory references qualify with the target package's name (`shared.Type`); no import statement is needed (an `import "<sibling-dir>"` line is still accepted but deprecated).
 
 ## Keywords (16)
 

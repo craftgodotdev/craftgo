@@ -1,22 +1,13 @@
 @version("1.0.0")
 package design
 
-import "geo"
-import "contacts"
-import "profiles"
-import "errs"
 // `middlewares` declares ProfileAuth + RequestStamp in a separate
 // folder; a `middleware` declaration in one folder is visible to
 // `@middlewares(...)` decorators in another.
-import "middlewares"
 // `profile-service` holds ProfileService split across multiple files
 // (primary + two `extend service` blocks), one folder per service.
-import "profile-service"
 // `admin` holds AdminService — a separate service in its own folder.
-import "admin"
 // `xshared` + `xrefs` form the cross-package reference matrix fixture:
 // every shape a `xshared.X` qualified ref can take is exercised in
 // xrefs, covering cross-package resolution across validate / transport
 // / openapi.
-import "xshared"
-import "xrefs"

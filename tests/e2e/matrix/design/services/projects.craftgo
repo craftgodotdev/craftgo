@@ -12,8 +12,6 @@
 // (`ProjectsResp` below).
 package services
 
-import "shared"
-
 // Project carries the cross-package `shared.ID` scalar (Go field
 // type: `string`, validators inherited from the scalar decl) and
 // the SAME-PACKAGE `UserRef` nested type — exercise of both the

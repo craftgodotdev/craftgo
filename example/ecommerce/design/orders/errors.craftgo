@@ -1,7 +1,5 @@
 package orders
 
-import "customers"
-
 enum SuspensionReason {
 	PolicyViolation
 	PaymentFailure

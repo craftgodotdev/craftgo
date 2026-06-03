@@ -1,9 +1,5 @@
 package orders
 
-import "shared"
-import "catalog"
-import "customers"
-
 enum OrderStatus {
 	Pending   = "pending"
 	Paid      = "paid"

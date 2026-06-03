@@ -1,7 +1,5 @@
 package combine
 
-import "shared"
-
 // XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
 // take inside a single field. Resolution routes through the
 // project-wide EnumTable, so every shape emits the switch-case

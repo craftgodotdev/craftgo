@@ -9,8 +9,6 @@
 // wire string via strconv, mirroring the request-side binder.
 package services
 
-import "shared"
-
 // PaginatedResp carries a JSON list plus response-only fields:
 // `X-Total-Count` advertises the total (a non-string int, formatted via
 // strconv.Itoa), `X-Next-Page` is an optional header (nil-guarded so an

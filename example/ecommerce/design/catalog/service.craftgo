@@ -1,7 +1,5 @@
 package catalog
 
-import "shared"
-
 @prefix("/catalog")
 @tags(catalog)
 @middlewares(shared.RequestID, shared.CORS)

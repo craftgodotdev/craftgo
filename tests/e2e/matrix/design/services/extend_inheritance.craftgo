@@ -7,8 +7,6 @@
 // per-method repetition.
 package services
 
-import "shared"
-
 // EntitlementsAuditTrail records the auth scheme that gated an
 // admin endpoint. Plain string body field - no @header/@cookie
 // involvement; it just rides in the JSON response so the audit

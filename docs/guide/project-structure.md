@@ -152,12 +152,10 @@ design/
     └── service.craftgo
 ```
 
-Cross-package types use `import`:
+Cross-package types are referenced by qualifying with the package name — no import needed:
 
 ```craftgo
 package design
-
-import "shared"
 
 type User {
     contact shared.Contact

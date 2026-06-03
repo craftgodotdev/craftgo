@@ -1,7 +1,5 @@
 package customers
 
-import "shared"
-
 type Geocode {
 	lat        shared.Latitude
 	lng        shared.Longitude

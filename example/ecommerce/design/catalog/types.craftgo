@@ -1,7 +1,5 @@
 package catalog
 
-import "shared"
-
 type Timestamps {
 	createdAt string @format(datetime)
 	updatedAt string @format(datetime)

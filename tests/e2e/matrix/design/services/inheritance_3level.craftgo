@@ -16,8 +16,6 @@
 // (steps 1 + 2 combined) before the method-level append.
 package services
 
-import "shared"
-
 // AccountService is the primary block. It declares the baseline
 // chain that every method gets: rate-limited + tagged "account".
 // Nothing here requires authentication so anonymous endpoints

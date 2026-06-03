@@ -5,8 +5,6 @@
 // under tests/e2e/matrix/internal/types/xrefs/.
 package xshared
 
-import "shared"
-
 // XHeaderResp is used as a QUALIFIED cross-package response
 // (`response xshared.XHeaderResp`) by xrefs. Its @header / @cookie fields
 // must be written by the handler even though the response type is
