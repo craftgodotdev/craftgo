@@ -70,10 +70,12 @@ func Print(w io.Writer, f *ast.File) error {
 // the same output - the only difference is whether the caller already
 // has an AST in hand.
 func newPrinter(w io.Writer, f *ast.File) *Printer {
+	interDec, chainClaimed := buildInterDecoratorComments(f)
 	return &Printer{
 		w:        w,
 		trailing: buildTrailingFromComments(f),
-		loose:    buildLooseFromComments(f),
+		loose:    buildLooseFromComments(f, chainClaimed),
+		interDec: interDec,
 	}
 }
 
@@ -97,6 +99,13 @@ type Printer struct {
 	// loose blocks targeting the same anchor are merged with a
 	// blank entry between them.
 	loose map[int][]string
+	// interDec holds `//` blocks written inside a declaration's
+	// decorator chain - between two decorators, or between the last
+	// decorator and the keyword. No AST node owns them, so the key is
+	// the 1-indexed source line of the decorator (or keyword) the block
+	// immediately precedes; declDecorators flushes the block just before
+	// emitting that token.
+	interDec map[int][]string
 }
 
 func (p *Printer) write(s string) {

@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -66,11 +67,13 @@ func servicePrefix(svc *ast.ServiceDecl) string {
 	return ""
 }
 
-// serviceGroup returns the path segment derived from the service's
-// @group("name") decorator. Groups stitch into the URL between the
-// @prefix and the method path, so a service with `@prefix("/v1")` and
-// `@group("admin")` produces `/v1/admin/<method-path>`. Empty when the
-// decorator is absent.
+// serviceGroup returns the cleaned slash-delimited path derived from the
+// service's @group("a/b/c") decorator. The group nests a service's generated
+// transport handlers and service stubs under <service>/<group>/ - it does not
+// appear in the HTTP route or the OpenAPI path. Returns "" when the decorator
+// is absent or its value cleans to nothing. The value is trimmed of leading /
+// trailing slashes and collapsed empty segments; the semantic phase rejects
+// traversal ("..") and absolute forms before codegen runs.
 func serviceGroup(svc *ast.ServiceDecl) string {
 	if svc == nil {
 		return ""
@@ -80,16 +83,35 @@ func serviceGroup(svc *ast.ServiceDecl) string {
 			continue
 		}
 		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
-			return s.Value
+			return cleanGroupPath(s.Value)
 		}
 	}
 	return ""
 }
 
-// methodFullPath joins the OpenAPI base path, the service prefix, the
-// service group, and the method's own path into a single absolute route.
-// Empty segments are dropped; consecutive slashes are collapsed; the
-// result always begins with '/'.
+// cleanGroupPath normalises a @group value into a relative slash path: it
+// trims surrounding slashes and drops empty segments so "/admin/" and
+// "admin//ops" become "admin" and "admin/ops". Traversal ("." / "..") segments
+// are dropped as a defence-in-depth backstop - the semantic phase rejects them
+// outright - so a malformed value reaching codegen can only ever nest inside
+// the service directory, never escape the output tree.
+func cleanGroupPath(raw string) string {
+	segs := strings.Split(raw, "/")
+	kept := segs[:0]
+	for _, s := range segs {
+		if s == "" || s == "." || s == ".." {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	return strings.Join(kept, "/")
+}
+
+// methodFullPath joins the OpenAPI base path, the service prefix, and the
+// method's own path into a single absolute route. Empty segments are dropped;
+// consecutive slashes are collapsed; the result always begins with '/'.
+// @group is deliberately absent - it nests generated files on disk, not the
+// URL.
 //
 // When the method declares no inline path the fallback is the method name
 // in kebab-case ("Ping" → "/ping"). This avoids collisions when several
@@ -101,9 +123,6 @@ func methodFullPath(basePath string, svc *ast.ServiceDecl, m *ast.Method) string
 	}
 	if p := servicePrefix(svc); p != "" {
 		parts = append(parts, p)
-	}
-	if g := serviceGroup(svc); g != "" {
-		parts = append(parts, g)
 	}
 	if m.Path != nil {
 		parts = append(parts, semantic.PathString(m.Path))
@@ -137,16 +156,53 @@ type importPaths struct {
 	Svccontext string
 }
 
+// serviceGroupSegOf returns the @group slash path for a service in pkg, or ""
+// when the service is unknown or ungrouped. Centralises the lookup so import
+// paths and on-disk directories nest identically.
+func serviceGroupSegOf(pkg *semantic.Package, svcName string) string {
+	si := pkg.Services[svcName]
+	if si == nil {
+		return ""
+	}
+	return serviceGroup(si.Primary)
+}
+
+// groupedSeg appends a service's @group path to its base directory segment,
+// e.g. "user-service" + "admin/ops" → "user-service/admin/ops". Returns base
+// unchanged when the service has no @group. The result is a forward-slash
+// path suitable for a Go import.
+func groupedSeg(base, group string) string {
+	if group == "" {
+		return base
+	}
+	return base + "/" + group
+}
+
+// serviceOutputDir returns projectRoot/output/<service>[/<group>], converting
+// the group to OS path separators. The single place per-service output
+// directories are built so transport handlers, the errors helper, and service
+// stubs all nest the @group identically.
+func serviceOutputDir(projectRoot, output, svcName, group string) string {
+	dir := filepath.Join(projectRoot, output, ServiceDir(svcName))
+	if group != "" {
+		dir = filepath.Join(dir, filepath.FromSlash(group))
+	}
+	return dir
+}
+
 // importPathsFor computes the per-service Go import paths for a project.
-// pkg.Name is appended to the types output; the kebab-case service
-// directory name is appended to transport / routes / service.
+// pkg.Name is appended to the types output; the kebab-case service directory
+// name is appended to transport / routes / service. A service's @group nests
+// transport and service one level deeper (under <service>/<group>); routes
+// stay flat so the per-service route file remains the single registration hub.
 func importPathsFor(cfg *config.Config, pkg *semantic.Package, svcName string) importPaths {
 	svcSeg := ServiceDir(svcName)
+	grouped := groupedSeg(svcSeg, serviceGroupSegOf(pkg, svcName))
 	return importPaths{
 		Types:      goImportFromRel(cfg.Package, cfg.Output.Types) + "/" + pkg.Name,
-		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + svcSeg,
+		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + grouped,
 		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + svcSeg,
-		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + svcSeg,
+		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + grouped,
 		Svccontext: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
 }

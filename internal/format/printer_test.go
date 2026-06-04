@@ -270,6 +270,50 @@ type User {
 `,
 			want: []string{"// section separator comment"},
 		},
+		{
+			name: "comment between service decorators",
+			src: `package demo
+
+@prefix("/v1")
+// only the v1 surface is admin-gated
+@tags(admin)
+service Users {
+	get GetUser /users/{id} {
+		request GetUserReq
+		response User
+	}
+}
+`,
+			want: []string{`@prefix("/v1")`, "@tags(admin)", "// only the v1 surface is admin-gated"},
+		},
+		{
+			name: "comment between method decorators",
+			src: `package demo
+
+service Users {
+	@doc("get user")
+	// 200 because a soft-deleted user still resolves
+	@status(200)
+	get GetUser /users/{id} {
+		request GetUserReq
+		response User
+	}
+}
+`,
+			want: []string{`@doc("get user")`, "@status(200)", "// 200 because a soft-deleted user still resolves"},
+		},
+		{
+			name: "comment between last decorator and keyword",
+			src: `package demo
+
+@minLength(1)
+// names are interned downstream
+type Name {
+	v string
+}
+`,
+			want: []string{"@minLength(1)", "// names are interned downstream", "type Name"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

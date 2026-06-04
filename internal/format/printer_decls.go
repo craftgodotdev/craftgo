@@ -11,7 +11,7 @@ import (
 
 func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 	p.Doc(d.Doc)
-	p.declDecorators(d.Decorators)
+	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.indent()
 	p.write("type ")
 	p.write(d.Name)
@@ -229,7 +229,7 @@ func (p *Printer) printFieldDoc(f *ast.Field) {
 
 func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 	p.Doc(d.Doc)
-	p.declDecorators(d.Decorators)
+	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.indent()
 	p.write("enum ")
 	p.write(d.Name)
@@ -289,7 +289,7 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 
 func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
 	p.Doc(d.Doc)
-	p.declDecorators(d.Decorators)
+	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.indent()
 	p.write("error ")
 	p.write(d.Category)
@@ -331,7 +331,7 @@ func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
 
 func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 	p.Doc(d.Doc)
-	p.declDecorators(d.Decorators)
+	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.indent()
 	p.write("middleware ")
 	p.write(d.Name)
@@ -340,7 +340,7 @@ func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 
 func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	p.Doc(d.Doc)
-	p.declDecorators(d.Decorators)
+	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.indent()
 	if d.Extend {
 		p.write("extend service ")
@@ -377,7 +377,7 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 
 func (p *Printer) Method(m *ast.Method) {
 	p.Doc(m.Doc)
-	p.declDecorators(m.Decorators)
+	p.declDecorators(m.Decorators, m.Pos.Line)
 	p.indent()
 	p.write(m.Verb)
 	p.write(" ")
@@ -470,10 +470,21 @@ func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
 	}
 }
 
-func (p *Printer) declDecorators(decs []*ast.Decorator) {
+// declDecorators renders a vertical decorator block, one decorator per line.
+// keywordLine is the source line of the keyword that follows the chain (the
+// `type` / `service` / verb token); it lets the printer re-emit a comment
+// written between the last decorator and the keyword. Comments written between
+// two decorators are flushed just before the decorator they precede.
+func (p *Printer) declDecorators(decs []*ast.Decorator, keywordLine int) {
 	for _, d := range decs {
+		if block, ok := p.interDec[d.Pos.Line]; ok {
+			p.Doc(block)
+		}
 		p.indent()
 		p.Decorator(d)
 		p.nl()
+	}
+	if block, ok := p.interDec[keywordLine]; ok {
+		p.Doc(block)
 	}
 }

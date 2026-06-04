@@ -11,6 +11,7 @@ package semantic
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -101,6 +102,7 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 	}
 	a.checkExampleArg(d)
 	a.checkPatternArg(d)
+	a.checkGroupArg(d)
 	a.checkPositionalArgs(site, d, spec)
 }
 
@@ -121,6 +123,58 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
 			"@pattern is not a valid regular expression: %v — the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)
 	}
+}
+
+// checkGroupArg verifies a @group value is a clean relative path. @group nests
+// a service's generated transport handlers and service stubs under
+// <service>/<group>/ on disk (it never touches the HTTP route), so the value
+// must be a slash-delimited list of plain segments — letters, digits, '-', or
+// '_'. Absolute paths, empty values, and "." / ".." segments are rejected so a
+// group can only ever nest deeper inside the service directory, never escape
+// the output tree.
+func (a *analyzer) checkGroupArg(d *ast.Decorator) {
+	if d == nil || d.Name != "group" || len(d.Args) == 0 {
+		return
+	}
+	s, ok := d.Args[0].Value.(*ast.StringLit)
+	if !ok {
+		return // a non-string arg is already reported by checkPositionalArgs
+	}
+	hasSegment := false
+	for _, seg := range strings.Split(s.Value, "/") {
+		if seg == "" {
+			continue // tolerated: leading / trailing / doubled slash
+		}
+		hasSegment = true
+		if seg == "." || seg == ".." {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
+				"@group segment %q is not allowed — @group nests generated files under the service directory and must be a plain relative path like \"admin\" or \"admin/ops\"", seg)
+			return
+		}
+		if !isPlainPathSegment(seg) {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
+				"@group segment %q must contain only letters, digits, '-' or '_'", seg)
+			return
+		}
+	}
+	if !hasSegment {
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
+			"@group value %q is empty after trimming slashes — provide a path like \"admin\" or \"admin/ops\"", s.Value)
+	}
+}
+
+// isPlainPathSegment reports whether s is a single directory segment safe to
+// use verbatim as a generated folder name: a non-empty run of ASCII letters,
+// digits, '-', or '_'.
+func isPlainPathSegment(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return s != ""
 }
 
 // checkExampleArg restricts @example to a literal value (string / int /

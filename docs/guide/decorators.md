@@ -389,20 +389,27 @@ service UserService {
 }
 ```
 
-### `@group(name)`
+### `@group(path)`
 
-Logical grouping label used for OpenAPI tags and router buckets.
+Does two things: (1) nests the service's generated **files** under `<service>/<group>/` on disk, and (2) adds its value as an **OpenAPI tag**. It does **not** change the HTTP route or the OpenAPI *path* — use `@prefix` for that.
 
 | Sites | service |
 | -------- | -------- |
 | Args  | `(string)` |
 
 ```craftgo
-@group("admin")
-service AdminService { ... }
+@prefix("/v1/admin")
+@group("admin/ops")
+service AdminService {
+    get DashboardStats /dashboard { ... }   // -> GET /v1/admin/dashboard
+}
 ```
 
-`@group` differs from `@tags`: tags are a list (one method can have many), group is a single bucket label. Use group when you want a clean separation in generated docs / nav.
+With the above, the handler and service stub for `DashboardStats` are written to `internal/transport/admin-service/admin/ops/dashboard-stats.go` and `internal/service/admin-service/admin/ops/dashboard-stats.go`, while the route stays `/v1/admin/dashboard`. The value is a relative path: a single segment (`admin`) or nested (`admin/ops`). Routes and types are unaffected — only transport handlers and service stubs move.
+
+The group value also rides along as an OpenAPI **tag**, appended to any explicit `@tags` and deduped. So `@group("admin/ops") @tags(users)` tags every operation `[users, admin/ops]`; `@group("admin") @tags(admin)` collapses to a single `admin`. `@ignoreTags` on a method drops the group tag along with the rest of the inherited service tags.
+
+Because the move changes where the service stub is generated, set `@group` before you start filling in business logic: adding it later leaves your existing stub at the old path and scaffolds a fresh empty one under the group.
 
 ### `@middlewares(name1, name2, ...)`
 

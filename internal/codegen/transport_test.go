@@ -987,17 +987,18 @@ service S {
 	}
 }
 
-// TestGenerateRoutesGroupAddsPathSegment confirms `@group("...")` on a
-// service stitches its argument into the route between the @prefix and
-// the method path. A service with `@prefix("/v1") @group("admin")`
-// produces `/<basePath>/v1/admin/<method-path>`.
-func TestGenerateRoutesGroupAddsPathSegment(t *testing.T) {
+// TestGenerateGroupNestsOutputNotRoute confirms `@group("admin/ops")` on a
+// service nests its generated transport handlers (and the errors helper) under
+// <transport>/<service>/<group>/ and points the route file's transport import
+// at that nested package - while the route pattern and OpenAPI path stay free
+// of the group. The route file itself stays flat at routes/<service>/.
+func TestGenerateGroupNestsOutputNotRoute(t *testing.T) {
 	pkg := analyze(t, `package design
 
 type Thing { id string }
 
 @prefix("/v1")
-@group("admin")
+@group("admin/ops")
 service AdminService {
     get ListAll /things {
         response Thing
@@ -1011,13 +1012,36 @@ service AdminService {
 	if err := GenerateRoutes(pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
+	if err := GenerateTransport(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+
+	// Route pattern carries no group; the transport import is nested.
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin-service/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src,
-		`"GET /api/v1/admin/things"`,
-		`"GET /api/v1/admin/health"`,
+		`"GET /api/v1/things"`,
+		`"GET /api/v1/health"`,
+		`transport/admin-service/admin/ops"`,
 	)
+	if strings.Contains(src, "/admin/ops/things") || strings.Contains(src, "v1/admin/ops") {
+		t.Errorf("@group leaked into the route pattern:\n%s", src)
+	}
+
+	// Handler + errors helper land under the nested group directory.
+	for _, rel := range []string{
+		"internal/transport/admin-service/admin/ops/list-all.go",
+		"internal/transport/admin-service/admin/ops/health.go",
+		"internal/transport/admin-service/admin/ops/errors.go",
+	} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("expected generated file %s: %v", rel, err)
+		}
+	}
 }
 
 // TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for

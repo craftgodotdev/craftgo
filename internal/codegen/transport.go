@@ -201,7 +201,7 @@ func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Serv
 // are produced when only one endpoint changes.
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
 	imps := importPathsFor(cfg, pkg, svcName)
-	dir := filepath.Join(projectRoot, cfg.Output.Transport, ServiceDir(svcName))
+	dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, serviceGroup(svc.Primary))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -873,7 +873,7 @@ func GenerateTransportHelpers(pkg *semantic.Package, cfg *config.Config, project
 	}
 	t := tmpl("transport_helpers.tmpl")
 	for _, svcName := range sortedServices(pkg) {
-		dir := filepath.Join(projectRoot, cfg.Output.Transport, ServiceDir(svcName))
+		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, serviceGroupSegOf(pkg, svcName))
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}

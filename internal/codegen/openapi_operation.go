@@ -646,11 +646,12 @@ func operationID(m *ast.Method, base string) string {
 
 // operationTags assembles the OpenAPI `tags:` slice for one method.
 // Service-level `@tags(...)` come first (so they sort before method
-// tags in the resulting spec), then method-level `@tags(...)` are
-// appended. `@ignoreTags` on a method skips the service-level chain
-// entirely. When neither level declares tags the service name is used
-// as a single default - keeping every operation grouped by service for
-// tools that don't render an empty tag list well.
+// tags in the resulting spec), then the service's `@group` value (which
+// doubles as a tag), then method-level `@tags(...)` are appended.
+// `@ignoreTags` on a method skips the service-level chain - including the
+// group tag - entirely. When neither level declares tags the service name
+// is used as a single default - keeping every operation grouped by service
+// for tools that don't render an empty tag list well.
 func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -667,6 +668,10 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 			for _, t := range tagsFromDecorators(svc.Primary.Decorators) {
 				add(t)
 			}
+			// @group nests files on disk and also doubles as an OpenAPI
+			// tag (the whole value, e.g. "admin/ops"), appended to any
+			// explicit @tags and deduped against them.
+			add(serviceGroup(svc.Primary))
 		}
 	}
 	for _, d := range m.Decorators {
