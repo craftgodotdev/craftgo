@@ -199,6 +199,23 @@ type T {
 	expectLabels(t, items, "length", "sensitive")
 }
 
+// TestCompletionServiceDecoratorSite pins the decorator popup for the zone
+// above a `service` / `extend service`. While the leading `@` is mid-typed the
+// parser swallows the following keyword as the decorator name, so the site must
+// be recovered from the token stream - otherwise it misreads as file scope and
+// the service-level decorators vanish. An extend block additionally drops
+// `@prefix` (primary-only) while keeping `@group`.
+func TestCompletionServiceDecoratorSite(t *testing.T) {
+	primary := "package x\n\n@\nservice S {\n  get A /a {}\n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", primary, 2, 1)
+	expectLabels(t, items, "prefix", "group", "middlewares", "tags", "security")
+
+	extend := "package x\n\nservice S { get A /a {} }\n\n@\nextend service S {\n  get B /b {}\n}\n"
+	eitems := mustCompletionsAt(t, "t.craftgo", extend, 4, 1)
+	expectLabels(t, eitems, "group", "middlewares", "tags", "security")
+	expectNoLabels(t, eitems, "prefix")
+}
+
 // TestSemanticSurvivesPartialEditsViaSnapshot pins the LSP-side
 // resilience contract: while a user is mid-typing (`extend `,
 // `service `, `type `, etc.) the parser may produce decls that are

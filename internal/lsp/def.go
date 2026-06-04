@@ -31,6 +31,13 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 	if idx < 0 || tok.Kind != lexer.Ident {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
+	// A cursor on an enum-value name inside `@default(...)` / `@example(...)`
+	// resolves to that value's declaration. Enum values are members of an
+	// EnumDecl, not top-level decls, so the findDecl paths below would miss
+	// them - handle this case first.
+	if loc, ok := s.enumValueDefinition(view, params.Position, tok.Text, string(params.TextDocument.URI), src); ok {
+		return reply(ctx, []protocol.Location{loc}, nil)
+	}
 	// Context-aware lookup: a name like `AuthRequired` can legally be
 	// both a middleware AND a same-named error / type / scalar decl
 	// (middleware lives in its own decl namespace; types/enums/errors/
@@ -86,6 +93,64 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 		}}, nil)
 	}
 	return reply(ctx, []protocol.Location{}, nil)
+}
+
+// enumValueDefinition resolves a cursor sitting on an enum-value name inside
+// `@default(...)` / `@example(...)` to that value's declaration. The field's
+// declared type names the enum; the matching value's position inside that
+// enum's body is the target. Returns false when the cursor is not in such a
+// position or the name is not a value of the field's enum type.
+func (s *Server) enumValueDefinition(view snapshotView, pos protocol.Position, name, currentURI, currentSrc string) (protocol.Location, bool) {
+	decName, ok := decoratorArgContext(view, pos)
+	if !ok || (decName != "default" && decName != "example") {
+		return protocol.Location{}, false
+	}
+	f := fieldAtCursor(view, pos)
+	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return protocol.Location{}, false
+	}
+	parts := f.Type.Named.Name.Parts
+	if len(parts) != 1 {
+		return protocol.Location{}, false
+	}
+	e, path := s.enumDeclWithPath(view, currentURI, currentSrc, parts[0])
+	if e == nil {
+		return protocol.Location{}, false
+	}
+	for _, v := range e.EnumValues() {
+		if v.Name == name {
+			return protocol.Location{
+				URI:   uri.New(pathToFileURIString(path)),
+				Range: rangeOfPosLen(v.Pos, len(v.Name)),
+			}, true
+		}
+	}
+	return protocol.Location{}, false
+}
+
+// enumDeclWithPath is [Server.enumDeclByNameProjectWide] with the owning file
+// path returned alongside the decl, so go-to-definition can build a Location
+// that points at the enum's file even when it lives in a sibling `.craftgo`.
+func (s *Server) enumDeclWithPath(view snapshotView, currentURI, currentSrc, name string) (*ast.EnumDecl, string) {
+	files, _ := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
+	for _, p := range files {
+		if p.file == nil {
+			continue
+		}
+		for _, d := range p.file.Decls {
+			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
+				return e, p.path
+			}
+		}
+	}
+	if view.file != nil {
+		for _, d := range view.file.Decls {
+			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
+				return e, uriToPath(currentURI)
+			}
+		}
+	}
+	return nil, ""
 }
 
 // refContextAt classifies the cursor's surrounding syntax into a

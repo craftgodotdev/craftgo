@@ -4,7 +4,8 @@ package adminservice
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
-	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin-service/ops/v2"
+	transportAdmin "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin"
+	transportAdminLegacy "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin/legacy"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -15,7 +16,8 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api/v1/admin/dashboard", transport.DashboardStats(svcCtx), svcCtx.ProfileAuth)
-	srv.Handle("GET /api/v1/admin/health", transport.Health(svcCtx), svcCtx.ProfileAuth)
-	srv.Handle("GET /api/v1/admin/snapshot", transport.Snapshot(svcCtx), svcCtx.ProfileAuth, svcCtx.RequestStamp)
+	srv.Handle("GET /api/v1/admin/dashboard", transportAdmin.DashboardStats(svcCtx), svcCtx.ProfileAuth)
+	srv.Handle("GET /api/v1/admin/health", transportAdmin.Health(svcCtx), svcCtx.ProfileAuth)
+	srv.Handle("GET /api/v1/admin/snapshot", transportAdmin.Snapshot(svcCtx), svcCtx.ProfileAuth, svcCtx.RequestStamp)
+	srv.Handle("GET /api/v1/admin/legacy/ping", transportAdminLegacy.LegacyPing(svcCtx), svcCtx.ProfileAuth)
 }

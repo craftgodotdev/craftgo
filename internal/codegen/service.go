@@ -68,14 +68,16 @@ func GenerateServicePackage(pkg *semantic.Package, cfg *config.Config, projectRo
 // generateServiceFor emits all per-method service scaffold files for a single
 // service, skipping any that already exist on disk.
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
-	imps := importPathsFor(cfg, pkg, svcName)
-	dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, serviceGroup(svc.Primary))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
+	groups := methodGroups(svc)
 	jsonTpl := tmpl("service.tmpl")
 	passthroughTpl := tmpl("service-passthrough.tmpl")
 	for _, m := range svc.Methods {
+		group := groups[m.Name]
+		imps := importPathsForGroup(cfg, pkg, svcName, group)
+		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
 		filename := kebabCase(m.Name) + ".go"
 		fullPath := filepath.Join(dir, filename)
 		if _, err := os.Stat(fullPath); err == nil {

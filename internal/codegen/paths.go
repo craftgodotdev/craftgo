@@ -3,6 +3,7 @@ package codegen
 import (
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -156,55 +157,131 @@ type importPaths struct {
 	Svccontext string
 }
 
-// serviceGroupSegOf returns the @group slash path for a service in pkg, or ""
-// when the service is unknown or ungrouped. Centralises the lookup so import
-// paths and on-disk directories nest identically.
-func serviceGroupSegOf(pkg *semantic.Package, svcName string) string {
-	si := pkg.Services[svcName]
-	if si == nil {
-		return ""
-	}
-	return serviceGroup(si.Primary)
-}
-
-// groupedSeg appends a service's @group path to its base directory segment,
-// e.g. "user-service" + "admin/ops" → "user-service/admin/ops". Returns base
-// unchanged when the service has no @group. The result is a forward-slash
-// path suitable for a Go import.
-func groupedSeg(base, group string) string {
-	if group == "" {
-		return base
-	}
-	return base + "/" + group
-}
-
-// serviceOutputDir returns projectRoot/output/<service>[/<group>], converting
-// the group to OS path separators. The single place per-service output
-// directories are built so transport handlers, the errors helper, and service
-// stubs all nest the @group identically.
-func serviceOutputDir(projectRoot, output, svcName, group string) string {
-	dir := filepath.Join(projectRoot, output, ServiceDir(svcName))
+// outputSegFor returns the path segment, under an output base, that holds a
+// service's methods for the given group. A non-empty @group REPLACES the
+// service-name segment entirely (so `@group("v2")` on any service emits to
+// `<base>/v2/`), giving the author full control of the layout; the ungrouped
+// case falls back to the kebab-case service directory. The result is a
+// forward-slash path - the group may itself be nested ("admin/ops").
+//
+// Because the group replaces the service name, it is effectively a global
+// namespace: two services that pick the same group land in the same directory
+// (and Go package). Keep groups unique per service - embed the service name in
+// the group when in doubt.
+func outputSegFor(svcName, group string) string {
 	if group != "" {
-		dir = filepath.Join(dir, filepath.FromSlash(group))
+		return group
 	}
-	return dir
+	return ServiceDir(svcName)
 }
 
-// importPathsFor computes the per-service Go import paths for a project.
-// pkg.Name is appended to the types output; the kebab-case service directory
-// name is appended to transport / routes / service. A service's @group nests
-// transport and service one level deeper (under <service>/<group>); routes
-// stay flat so the per-service route file remains the single registration hub.
-func importPathsFor(cfg *config.Config, pkg *semantic.Package, svcName string) importPaths {
-	svcSeg := ServiceDir(svcName)
-	grouped := groupedSeg(svcSeg, serviceGroupSegOf(pkg, svcName))
+// serviceOutputDir returns projectRoot/output/<segment>, where the segment is
+// the @group (replacing the service name) or the service directory when
+// ungrouped. The single place per-method output directories are built so
+// transport handlers, the per-group errors helper, and service stubs all land
+// identically.
+func serviceOutputDir(projectRoot, output, svcName, group string) string {
+	return filepath.Join(projectRoot, output, filepath.FromSlash(outputSegFor(svcName, group)))
+}
+
+// importPathsForGroup computes the Go import paths for one service+group. A
+// non-empty @group replaces the service-name segment on transport + service;
+// pkg.Name drives types, and routes stay at the service directory so the
+// per-service route file remains the single registration hub even when methods
+// scatter across group folders.
+func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, group string) importPaths {
+	seg := outputSegFor(svcName, group)
 	return importPaths{
 		Types:      goImportFromRel(cfg.Package, cfg.Output.Types) + "/" + pkg.Name,
-		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + grouped,
-		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + svcSeg,
-		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + grouped,
+		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + seg,
+		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + ServiceDir(svcName),
+		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + seg,
 		Svccontext: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
+}
+
+// methodGroups maps each of a service's method names to the @group of the
+// block that declared it: the primary block's @group for primary methods, and
+// each extend block's own @group for its methods. "" means the method is
+// ungrouped (its files stay at the service root). @group is service-level, so
+// every method in one block shares that block's group. Keyed by name (unique
+// within a service) rather than pointer because later passes - generic
+// monomorphisation, the OpenAPI builder - hand codegen cloned method values
+// whose pointers no longer match the parsed block members.
+func methodGroups(svc *semantic.ServiceInfo) map[string]string {
+	out := map[string]string{}
+	if svc == nil {
+		return out
+	}
+	if svc.Primary != nil {
+		g := serviceGroup(svc.Primary)
+		for _, m := range svc.Primary.Methods() {
+			out[m.Name] = g
+		}
+	}
+	for _, e := range svc.Extends {
+		g := serviceGroup(e)
+		for _, m := range e.Methods() {
+			out[m.Name] = g
+		}
+	}
+	return out
+}
+
+// methodGroupOf returns the @group of the block that declared m (primary or an
+// extend), or "" when ungrouped / not found. The map-free form for callers
+// that need one method's group without building the whole table.
+func methodGroupOf(svc *semantic.ServiceInfo, m *ast.Method) string {
+	if svc == nil || m == nil {
+		return ""
+	}
+	if svc.Primary != nil {
+		for _, pm := range svc.Primary.Methods() {
+			if pm.Name == m.Name {
+				return serviceGroup(svc.Primary)
+			}
+		}
+	}
+	for _, e := range svc.Extends {
+		for _, em := range e.Methods() {
+			if em.Name == m.Name {
+				return serviceGroup(e)
+			}
+		}
+	}
+	return ""
+}
+
+// distinctGroups returns the service's group set in deterministic order, with
+// the empty (ungrouped) group sorted first. Used to know which group folders
+// exist - one transport import + one errors helper per entry.
+func distinctGroups(svc *semantic.ServiceInfo) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, g := range methodGroups(svc) {
+		if !seen[g] {
+			seen[g] = true
+			out = append(out, g)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// transportAlias derives the Go import alias a service's routes file uses for
+// one group's transport package. The ungrouped package keeps the bare
+// "transport" name; a grouped package appends the PascalCased group segments
+// ("v2" → "transportV2", "admin/ops" → "transportAdminOps") so several group
+// imports coexist without colliding.
+func transportAlias(group string) string {
+	alias := "transport"
+	for _, seg := range strings.Split(group, "/") {
+		if seg == "" {
+			continue
+		}
+		alias += pascalCase(seg)
+	}
+	return alias
 }
 
 // hasBodyVerb reports whether the given HTTP verb conventionally carries a

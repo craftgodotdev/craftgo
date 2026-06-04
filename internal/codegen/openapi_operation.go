@@ -670,8 +670,10 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 			}
 			// @group nests files on disk and also doubles as an OpenAPI
 			// tag (the whole value, e.g. "admin/ops"), appended to any
-			// explicit @tags and deduped against them.
-			add(serviceGroup(svc.Primary))
+			// explicit @tags and deduped. The group is per-block, so an
+			// extend block's methods carry that block's @group, not the
+			// primary's.
+			add(methodGroupOf(svc, m))
 		}
 	}
 	for _, d := range m.Decorators {

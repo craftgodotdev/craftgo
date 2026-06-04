@@ -7,7 +7,9 @@ import (
 	"time"
 
 {{end -}}
-	transport "{{.TransportImport}}"
+{{- range .TransportImports}}
+	{{.Alias}} "{{.Path}}"
+{{- end}}
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"{{.SvccontextImport}}"
 )

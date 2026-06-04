@@ -391,9 +391,9 @@ service UserService {
 
 ### `@group(path)`
 
-Does two things: (1) nests the service's generated **files** under `<service>/<group>/` on disk, and (2) adds its value as an **OpenAPI tag**. It does **not** change the HTTP route or the OpenAPI *path* — use `@prefix` for that.
+Does two things: (1) sets where the service's generated **files** land on disk — the value **replaces** the service-name segment, so the files go to `<output>/<group>/` instead of `<output>/<service-name>/` — and (2) adds its value as an **OpenAPI tag**. It does **not** change the HTTP route or the OpenAPI *path* — use `@prefix` for that.
 
-| Sites | service |
+| Sites | service, extend service |
 | -------- | -------- |
 | Args  | `(string)` |
 
@@ -405,11 +405,29 @@ service AdminService {
 }
 ```
 
-With the above, the handler and service stub for `DashboardStats` are written to `internal/transport/admin-service/admin/ops/dashboard-stats.go` and `internal/service/admin-service/admin/ops/dashboard-stats.go`, while the route stays `/v1/admin/dashboard`. The value is a relative path: a single segment (`admin`) or nested (`admin/ops`). Routes and types are unaffected — only transport handlers and service stubs move.
+With the above, the handler and service stub for `DashboardStats` are written to `internal/transport/admin/ops/dashboard-stats.go` and `internal/service/admin/ops/dashboard-stats.go` (the `admin-service` segment is gone — the group took its place), while the route stays `/v1/admin/dashboard`. The value is a relative path: a single segment (`admin`) or nested (`admin/ops`). Routes and types are unaffected — only transport handlers and service stubs move.
+
+> **The group is a global namespace.** Because it replaces the service name, two services that pick the *same* `@group` land in the same directory (and Go package), where their method names can collide. Keep groups unique per service — embed the service name in the group (`@group("admin/ops")`) when in doubt.
 
 The group value also rides along as an OpenAPI **tag**, appended to any explicit `@tags` and deduped. So `@group("admin/ops") @tags(users)` tags every operation `[users, admin/ops]`; `@group("admin") @tags(admin)` collapses to a single `admin`. `@ignoreTags` on a method drops the group tag along with the rest of the inherited service tags.
 
 Because the move changes where the service stub is generated, set `@group` before you start filling in business logic: adding it later leaves your existing stub at the old path and scaffolds a fresh empty one under the group.
+
+**Per-block grouping.** Unlike `@prefix` (primary-only), `@group` is also accepted on an `extend service` block, where it groups **only that block's** methods. This splits one service's code across version/feature folders while a single routes file still registers every method. Each group folder is a self-contained package with its own `writeError` helper:
+
+```craftgo
+@prefix("/checkout")
+service Checkout {
+    post Pay /pay { request PayReq  response Receipt }      // -> transport/checkout/pay.go
+}
+
+@group("checkout/v2")
+extend service Checkout {
+    post PayV2 /v2/pay { request PayReqV2  response Receipt } // -> transport/checkout/v2/pay-v2.go
+}
+```
+
+The shared `writeError` helper stays at the service's transport root and every group package reaches it through the exported `WriteError`, so the groups do not duplicate it.
 
 ### `@middlewares(name1, name2, ...)`
 
@@ -552,7 +570,7 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 
 #### Rules for `extend service` decorators
 
-- Only **method-level-applicable** decorators are valid on an `extend service` block - `@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`. Service-only decorators like `@prefix` / `@group` belong on the primary and produce `service/extend-decorator-not-method` if put on extend.
+- Only **method-level-applicable** decorators are valid on an `extend service` block - `@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc` - plus `@group`, which groups that block's own methods on disk. `@prefix` is primary-only and produces `service/extend-decorator-not-method` if put on extend.
 - The primary service declaration must exist in the same package. A cross-package extend produces `service/extend-orphan` with a Related pointer to where the primary was found (or expected). To extend a service from another package, move the extend file into the primary's folder or rename the extend block to a new service.
 
 #### Combinations cheatsheet
@@ -560,7 +578,8 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 | Setup                                                | Result | Notes                                                 |
 | ---------------------------------------------------- | ------ | ----------------------------------------------------- |
 | `@middlewares` / `@security` / `@tags` on extend     | ✅      | Method-level-applicable decorators on extend OK       |
-| `@prefix` / `@group` on extend                       | ❌      | `service/extend-decorator-not-method` - move to primary |
+| `@prefix` on extend                                  | ❌      | `service/extend-decorator-not-method` - move to primary |
+| `@group` on extend                                   | ✅      | groups that block's methods under their own folder |
 | Extend in a different folder (different package)     | ❌      | `service/extend-orphan`                                |
 | Multiple extend blocks targeting the same service    | ✅      | Each block's decorators apply only to its own methods  |
 | `@ignoreMiddleware` on a method inside extend        | ✅      | Clears extend-block + primary middleware chain        |

@@ -7,15 +7,16 @@ package design
 //
 //   basePath(/api) + @prefix(/v1/admin) + method-path(/dashboard)
 //
-// → `/api/v1/admin/dashboard`. @prefix drives the URL; @group nests this
-// service's generated handlers and service stubs under
-// internal/transport/admin-service/ops/v2/ (and the matching service/
-// tree) without touching the route or OpenAPI *path*, and its value also
-// rides along as an OpenAPI tag - so these operations carry
-// [admin, ops, ops/v2]. The service-level @middlewares wraps every method
-// without the decorator on each one individually.
+// → `/api/v1/admin/dashboard`. @prefix drives the URL; @group sets where the
+// generated handlers and service stubs land on disk - its value REPLACES the
+// service-name segment, so these emit to internal/transport/admin/ (and the
+// matching service/ tree), not internal/transport/admin-service/ - without
+// touching the route or OpenAPI *path*. Its value also rides along as an
+// OpenAPI tag, so these operations carry [admin, ops] (the group "admin"
+// dedups against the explicit @tags(admin)). The service-level @middlewares
+// wraps every method without the decorator on each one individually.
 @prefix("/v1/admin")
-@group("ops/v2")
+@group("admin")
 @middlewares(ProfileAuth)
 @tags(admin, ops)
 service AdminService {

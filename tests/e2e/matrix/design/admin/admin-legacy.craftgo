@@ -1,0 +1,12 @@
+package design
+
+// Per-block @group: this extend block carries its OWN @group, distinct from
+// the primary AdminService's "admin". So AdminService's methods split across
+// two transport packages on disk - DashboardStats/Health/Snapshot under
+// transport/admin/, LegacyPing under transport/admin/legacy/ - while the single
+// routes file imports both and registers every method under the one service.
+// Each group folder carries its own self-contained writeError helper.
+@group("admin/legacy")
+extend service AdminService {
+	get LegacyPing /legacy/ping {}
+}

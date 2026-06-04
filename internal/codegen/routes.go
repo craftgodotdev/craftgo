@@ -61,8 +61,8 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 // Limits wrap the handler INSIDE the middleware chain so middlewares
 // see the timeout/body-cap-bound handler — the timeout cancels the
 // downstream work, not the middleware's own bookkeeping.
-func buildHandlerCall(m *ast.Method) string {
-	core := "transport." + m.Name + "(svcCtx)"
+func buildHandlerCall(m *ast.Method, transportAlias string) string {
+	core := transportAlias + "." + m.Name + "(svcCtx)"
 	if lit, ok := methodLimitsLiteral(m); ok {
 		core = "server.WithLimits(" + core + ", " + lit + ")"
 	}
@@ -228,12 +228,22 @@ type routeEntry struct {
 // route emits a duration literal so the generated file stays clean
 // for projects that don't use timeout decorators.
 type routesData struct {
-	Package          string
-	Service          string
-	TransportImport  string
+	Package string
+	Service string
+	// TransportImports is one entry per distinct @group the service's
+	// methods live in (the ungrouped root plus each group folder). Each
+	// carries its own import alias so several group packages coexist in
+	// one routes file. Empty when the service declares no methods.
+	TransportImports []transportImport
 	SvccontextImport string
 	Routes           []routeEntry
 	NeedsTime        bool
+}
+
+// transportImport is one aliased transport-package import in a routes file.
+type transportImport struct {
+	Alias string
+	Path  string
 }
 
 // GenerateRoutes emits one `routes.go` per service under
@@ -363,21 +373,27 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 
 // generateRoutesFor emits the routes.go file for a single service.
 func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	imps := importPathsFor(cfg, pkg, svcName)
 	dir := filepath.Join(projectRoot, cfg.Output.Routes, ServiceDir(svcName))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	groups := methodGroups(svc)
 	data := routesData{
 		Package:          ServicePackage(svcName),
 		Service:          svcName,
-		TransportImport:  imps.Transport,
-		SvccontextImport: imps.Svccontext,
+		SvccontextImport: importPathsForGroup(cfg, pkg, svcName, "").Svccontext,
+	}
+	// One aliased transport import per distinct group the methods live in.
+	for _, g := range distinctGroups(svc) {
+		data.TransportImports = append(data.TransportImports, transportImport{
+			Alias: transportAlias(g),
+			Path:  importPathsForGroup(cfg, pkg, svcName, g).Transport,
+		})
 	}
 	for _, m := range svc.Methods {
 		full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
 		mws := middlewareNames(m, svc.Primary)
-		call := buildHandlerCall(m)
+		call := buildHandlerCall(m, transportAlias(groups[m.Name]))
 		if strings.Contains(call, "time.") {
 			data.NeedsTime = true
 		}

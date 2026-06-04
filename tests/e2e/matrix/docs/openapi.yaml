@@ -9809,7 +9809,6 @@ paths:
       tags:
       - admin
       - ops
-      - ops/v2
   /v1/admin/health:
     get:
       description: |-
@@ -9822,7 +9821,16 @@ paths:
       tags:
       - admin
       - ops
-      - ops/v2
+  /v1/admin/legacy/ping:
+    get:
+      operationId: LegacyPing
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - admin
+      - ops
+      - admin/legacy
   /v1/admin/profiles:
     get:
       description: |-
@@ -9861,7 +9869,6 @@ paths:
       tags:
       - admin
       - ops
-      - ops/v2
       - snapshot
   /v1/profiles:
     get:

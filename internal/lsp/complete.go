@@ -314,10 +314,89 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 		// for that decl.
 		return declSiteLevel(nextDecl)
 	}
+	// The AST lost the following declaration. While the user is mid-
+	// typing a leading `@`, the parser swallows the next decl keyword as
+	// the decorator's own name (`@service`, `@type`), so nextDecl is nil
+	// even though a `service`/`type`/… keyword sits just below. The token
+	// stream survives that corruption, so scan it for the next top-level
+	// decl keyword and classify by that - otherwise the popup above a
+	// `service` would offer only file-level decorators (no @prefix,
+	// @group, @middlewares, @tags, @security).
+	if lvl := nextTopLevelDeclLevel(view, pos); lvl != 0 {
+		return lvl
+	}
 	// Trailing zone after the last decl. No syntactic owner; treat
 	// as file scope so file-only decorators stay visible while
 	// decl-only ones are correctly hidden.
 	return semantic.LvlFile
+}
+
+// firstTopLevelDeclKeyword scans the token stream forward from pos for the next
+// top-level declaration keyword (`type`, `service`, `extend`, ...) and returns
+// its kind, or [lexer.EOF] when none follows. Brace depth is tracked so only a
+// keyword at depth 0 - a real top-level decl, not an identifier named like a
+// keyword inside some body - counts. The token stream survives the parse
+// corruption a half-typed leading `@` causes (the keyword is swallowed as the
+// decorator name), so this recovers the pending declaration the AST lost.
+func firstTopLevelDeclKeyword(view snapshotView, pos protocol.Position) lexer.Kind {
+	cursorLine := int(pos.Line) + 1
+	cursorCol := int(pos.Character) + 1
+	depth := 0
+	for _, t := range view.tokens {
+		if t.Pos.Line < cursorLine || (t.Pos.Line == cursorLine && t.Pos.Column <= cursorCol) {
+			continue
+		}
+		switch t.Kind {
+		case lexer.LBrace:
+			depth++
+			continue
+		case lexer.RBrace:
+			if depth == 0 {
+				// Cursor is inside an enclosing body, not a top-level
+				// decorator zone - give up rather than guess.
+				return lexer.EOF
+			}
+			depth--
+			continue
+		}
+		if depth != 0 {
+			continue
+		}
+		switch t.Kind {
+		case lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar,
+			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware:
+			return t.Kind
+		}
+	}
+	return lexer.EOF
+}
+
+// nextTopLevelDeclLevel maps the next top-level decl keyword to its decorator
+// site level, or 0 when none follows.
+func nextTopLevelDeclLevel(view snapshotView, pos protocol.Position) semantic.Level {
+	switch firstTopLevelDeclKeyword(view, pos) {
+	case lexer.KwType:
+		return semantic.LvlType
+	case lexer.KwEnum:
+		return semantic.LvlEnum
+	case lexer.KwError:
+		return semantic.LvlError
+	case lexer.KwScalar:
+		return semantic.LvlScalar
+	case lexer.KwService, lexer.KwExtend:
+		return semantic.LvlService
+	case lexer.KwMiddleware:
+		return semantic.LvlMiddleware
+	}
+	return 0
+}
+
+// nextDeclDecoratorIsExtend reports whether the declaration the cursor's `@`
+// zone precedes is an `extend service` block. An extend block accepts only the
+// method-level-applicable service decorators plus @group - not @prefix - so the
+// completion filter narrows the LvlService set accordingly.
+func nextDeclDecoratorIsExtend(view snapshotView, pos protocol.Position) bool {
+	return firstTopLevelDeclKeyword(view, pos) == lexer.KwExtend
 }
 
 // cursorInsideDeclBody walks the token stream from the start of

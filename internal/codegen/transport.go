@@ -200,15 +200,17 @@ func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Serv
 // service. Each method becomes a separate file so that user-friendly diffs
 // are produced when only one endpoint changes.
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
-	imps := importPathsFor(cfg, pkg, svcName)
-	dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, serviceGroup(svc.Primary))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
+	groups := methodGroups(svc)
 	jsonTpl := tmpl("transport.tmpl")
 	passthroughTpl := tmpl("transport-passthrough.tmpl")
 	multipartTpl := tmpl("transport-multipart.tmpl")
 	for _, m := range svc.Methods {
+		group := groups[m.Name]
+		imps := importPathsForGroup(cfg, pkg, svcName, group)
+		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
 		data, err := buildTransportData(svcName, m, imps, pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
@@ -873,16 +875,21 @@ func GenerateTransportHelpers(pkg *semantic.Package, cfg *config.Config, project
 	}
 	t := tmpl("transport_helpers.tmpl")
 	for _, svcName := range sortedServices(pkg) {
-		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, serviceGroupSegOf(pkg, svcName))
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-		formatted, err := renderGo(t, helpersData{Package: ServicePackage(svcName)})
-		if err != nil {
-			return fmt.Errorf("render handler helpers: %w", err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "errors.go"), formatted, 0o644); err != nil {
-			return err
+		// Each group folder is a self-contained Go package, so the errors
+		// helper is emitted once per distinct group (including the ungrouped
+		// root) - the handlers there call the local writeError directly.
+		for _, group := range distinctGroups(pkg.Services[svcName]) {
+			dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			formatted, err := renderGo(t, helpersData{Package: ServicePackage(svcName)})
+			if err != nil {
+				return fmt.Errorf("render handler helpers: %w", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "errors.go"), formatted, 0o644); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

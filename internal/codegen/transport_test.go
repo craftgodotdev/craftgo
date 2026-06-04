@@ -1019,29 +1019,108 @@ service AdminService {
 		t.Fatal(err)
 	}
 
-	// Route pattern carries no group; the transport import is nested.
+	// Route pattern carries no group; the routes file stays at the service
+	// directory but imports the group package, whose path is the @group value
+	// (the service name is replaced, not nested).
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin-service/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src,
 		`"GET /api/v1/things"`,
 		`"GET /api/v1/health"`,
-		`transport/admin-service/admin/ops"`,
+		`transport/admin/ops"`,
 	)
+	if strings.Contains(src, "transport/admin-service/admin/ops") {
+		t.Errorf("@group should replace the service-name segment, not nest under it:\n%s", src)
+	}
 	if strings.Contains(src, "/admin/ops/things") || strings.Contains(src, "v1/admin/ops") {
 		t.Errorf("@group leaked into the route pattern:\n%s", src)
 	}
 
-	// Handler + errors helper land under the nested group directory.
+	// Handlers + the self-contained errors helper land under the group path
+	// (which replaces the service name on disk).
 	for _, rel := range []string{
-		"internal/transport/admin-service/admin/ops/list-all.go",
-		"internal/transport/admin-service/admin/ops/health.go",
-		"internal/transport/admin-service/admin/ops/errors.go",
+		"internal/transport/admin/ops/list-all.go",
+		"internal/transport/admin/ops/health.go",
+		"internal/transport/admin/ops/errors.go",
 	} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
 			t.Errorf("expected generated file %s: %v", rel, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(root, "internal/transport/admin-service")); err == nil {
+		t.Error("a fully-grouped service should not emit a service-name transport dir")
+	}
+}
+
+// TestGenerateExtendGroupNestsPerBlock pins per-block @group: a primary block
+// and an extend block each carry their own @group, so the service's methods
+// split across two transport packages on disk while one routes file imports
+// both and one shared errors helper (at the transport root) serves every
+// group package via its exported WriteError.
+func TestGenerateExtendGroupNestsPerBlock(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+@prefix("/v1")
+service Catalog {
+    get ListThings /things { response Thing }
+}
+
+@group("v2")
+extend service Catalog {
+    get ListThingsV2 /v2/things { response Thing }
+}`)
+	root := t.TempDir()
+	cfg := sampleConfig()
+	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateTransport(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+
+	// Primary method stays at the service directory; the extend block's
+	// method lands under its own group (which replaces the service name); each
+	// folder carries its own self-contained errors helper.
+	for _, rel := range []string{
+		"internal/transport/catalog/list-things.go",
+		"internal/transport/catalog/errors.go",
+		"internal/transport/v2/list-things-v2.go",
+		"internal/transport/v2/errors.go",
+	} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("expected generated file %s: %v", rel, err)
+		}
+	}
+
+	// Both handlers call the unexported writeError in their own package - the
+	// per-group errors helper means no cross-package import.
+	grouped, _ := os.ReadFile(filepath.Join(root, "internal/transport/v2/list-things-v2.go"))
+	if strings.Contains(string(grouped), "roottransport") {
+		t.Error("with per-group errors the grouped handler should not import a root package")
+	}
+	mustContainAll(t, string(grouped), "writeError(w, err)")
+	errsrc, _ := os.ReadFile(filepath.Join(root, "internal/transport/v2/errors.go"))
+	mustContainAll(t, string(errsrc), "func writeError(")
+	if strings.Contains(string(errsrc), "func WriteError(") {
+		t.Error("per-group errors helper should not export a WriteError wrapper")
+	}
+
+	// One routes file imports both transport packages under distinct aliases
+	// and dispatches each method through its own.
+	routes, _ := os.ReadFile(filepath.Join(root, "internal/routes/catalog/routes.go"))
+	rsrc := string(routes)
+	mustParseGo(t, rsrc)
+	mustContainAll(t, rsrc,
+		`transport "`, `transportV2 "`,
+		"transport.ListThings(svcCtx)",
+		"transportV2.ListThingsV2(svcCtx)",
+	)
 }
 
 // TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for

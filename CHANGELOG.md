@@ -5,6 +5,44 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.2] - 2026-06-04
+
+### Changed
+
+- **`@group`'s output path now replaces the service-name segment** instead of
+  nesting under it: `@group("v2")` on any service emits to
+  `internal/transport/v2/` (not `internal/transport/<service>/v2/`), giving the
+  author full control of the layout. Because the group replaces the service
+  name it is a **global namespace** — two services that share a group land in
+  the same directory and Go package, so keep groups unique per service (embed
+  the service name in the group when in doubt).
+
+### Added
+
+- **`@group` is now accepted on an `extend service` block** (per-block
+  grouping). Each block's `@group` groups only that block's methods, so one
+  service can split its code across version/feature folders (e.g. a primary
+  block plus an `@group("checkout/v2")` extend) while a single routes file
+  imports each group's transport package and registers every method under the
+  one service. Each group folder is a self-contained package with its own
+  `writeError` helper — no cross-package imports. `@prefix` remains
+  primary-only.
+
+### Fixed
+
+- **LSP: the decorator completion popup above a `service` now lists the
+  service-level decorators** (`@prefix`, `@group`, `@middlewares`, `@tags`,
+  `@security`). While typing the leading `@` the parser swallowed the following
+  keyword as the decorator name, so the site was misread as file scope; a
+  token-level scan now recovers the pending declaration's level. Above an
+  `extend service` block the same popup omits `@prefix` (primary-only) while
+  keeping `@group`.
+- **LSP: go-to-definition on an enum value inside `@default(...)` / `@example(...)`**
+  now jumps to that value's declaration (it previously resolved nothing, since
+  an enum value is a member, not a top-level decl).
+- **A service with no methods no longer emits an unused `transport` import** in
+  its generated routes file (it failed to compile).
+
 ## [1.3.1] - 2026-06-04
 
 ### Changed

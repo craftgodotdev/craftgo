@@ -172,7 +172,7 @@ extend service Users {
 Restrictions:
 
 - The extended service must exist somewhere in the same package.
-- Whole-service decorators (`@prefix`, `@group`) live on the primary `service` block; an extend block carrying them raises `service/extend-decorator-not-method`.
+- `@prefix` lives on the primary `service` block; an extend block carrying it raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block and nests that block's methods on disk.
 - Inside an extend block, individual methods may opt out of the inherited chain via `@ignoreMiddleware` (see [Opt-out: `@ignoreMiddleware`](#opt-out-ignoremiddleware) below).
 
 ## Opt-out: `@ignoreMiddleware`

@@ -180,7 +180,7 @@ extend service UserService {
 }
 ```
 
-`extend` blocks may carry method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) - those propagate to every method inside. Service-only decorators like `@prefix` / `@group` belong on the primary `service` block. The extended service must already exist in the same package.
+`extend` blocks may carry method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) - those propagate to every method inside - plus `@group`, which nests that block's methods under their own folder. `@prefix` is primary-only. The extended service must already exist in the same package.
 
 Used to split a large service across files, separate authenticated endpoints from public ones (the 50/50 pattern: primary holds public methods, an extend block holds the authenticated chain), or organise admin endpoints under a different middleware chain than the default. See [DSL Basics](/guide/dsl-basics#extending-a-service-across-files) for the full pattern.
 

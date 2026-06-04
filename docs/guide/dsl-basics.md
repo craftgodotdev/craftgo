@@ -210,8 +210,8 @@ The extend block's `@middlewares` / `@security` decorators apply to every method
 
 **Rules** (enforced at gen time with a diagnostic, not silently):
 
-- The primary `service` block declares whole-service decorators (`@prefix`, `@group` belong here).
-- `extend service` blocks may carry **method-level-applicable** decorators only (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`). Service-only decorators like `@prefix` on an extend raise `service/extend-decorator-not-method`.
+- The primary `service` block declares `@prefix` (the URL prefix is whole-service).
+- `extend service` blocks may carry **method-level-applicable** decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) plus `@group` (which nests that block's own methods on disk). `@prefix` on an extend raises `service/extend-decorator-not-method`.
 - The extended service must already be declared somewhere in the **same package** (same design subfolder); a cross-package extend raises `service/extend-orphan`.
 - Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). Each block contributes its own decorators only to its own methods.
 

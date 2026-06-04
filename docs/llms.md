@@ -219,7 +219,7 @@ extend service Users {
 }
 ```
 
-Whole-service decorators (`@prefix`, `@group`) belong on the **primary** `service` block - putting them on extend raises `service/extend-decorator-not-method`. Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
+`@prefix` belongs on the **primary** `service` block - putting it on extend raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block, where it nests that block's own methods on disk (per-block grouping). Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
 
 ### Inheritance and opt-outs
 

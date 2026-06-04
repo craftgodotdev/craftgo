@@ -155,6 +155,17 @@ func (a *analyzer) mergeServices() {
 					// pass already emits a diagnostic for it.
 					continue
 				}
+				if d.Name == "group" {
+					// @group on an extend block sets that block's codegen
+					// output path + OpenAPI tag (consumed in codegen via
+					// ServiceInfo.Extends so each block can nest under its
+					// own folder). It is not a method decorator, so it is
+					// neither rejected nor propagated onto the methods - but
+					// the args pass skips extend decorators, so validate it
+					// here.
+					a.checkGroupArg(d)
+					continue
+				}
 				if spec.Levels&LvlMethod == 0 {
 					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
 						"decorator @%s on extend service %q is not valid at method level; move it to the primary service", d.Name, name)

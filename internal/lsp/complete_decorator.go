@@ -200,6 +200,11 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	case semantic.LvlScalar:
 		fieldPrim = scalarPrimAt(view, pos)
 	}
+	// An `extend service` block accepts only the method-level-applicable
+	// service decorators plus @group (which groups that block's methods);
+	// @prefix is primary-only. The decl-site level is LvlService for both a
+	// primary and an extend, so narrow it here for the extend case.
+	extendSite := level == semantic.LvlService && nextDeclDecoratorIsExtend(view, pos)
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
 		names = append(names, name)
@@ -215,6 +220,11 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 		// treating "no levels" as "not applicable here" keeps the
 		// completion list focused on supported decorators.
 		if spec.Levels == 0 || spec.Levels&level == 0 {
+			continue
+		}
+		if extendSite && spec.Levels&semantic.LvlMethod == 0 && name != "group" {
+			// @prefix is the only LvlService decorator with no method-level
+			// form, so it is the one dropped from an extend block's popup.
 			continue
 		}
 		// Per-primitive filter: at field level, drop validators
