@@ -1530,6 +1530,53 @@ service Bare {
 	)
 }
 
+// TestGenerateOpenAPIGroupAddsTag pins that a service's @group value rides
+// along as an OpenAPI tag (appended to any explicit @tags, deduped), while
+// @ignoreTags on a method drops it like the rest of the inherited chain.
+func TestGenerateOpenAPIGroupAddsTag(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type R { id string @path }
+type Resp { ok bool }
+
+@prefix("/v1")
+@group("admin/ops")
+@tags(users)
+service S {
+    get Append /a/{id} { request R  response Resp }
+
+    @ignoreTags
+    get Drop /b/{id} { request R  response Resp }
+}
+
+@prefix("/v2")
+@group("billing")
+@tags(billing)
+service T {
+    get Dedup /c/{id} { request R  response Resp }
+}`)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	src := string(out)
+	mustContainAll(t, src,
+		// Explicit @tags first, then the group value appended.
+		"operationId: Append",
+		"- users",
+		"- admin/ops",
+		// @ignoreTags drops the service chain including the group tag,
+		// so Drop falls back to the service-name default.
+		"operationId: Drop",
+		"- S",
+	)
+	// Group value equal to an explicit tag is deduped to a single entry.
+	if n := strings.Count(src, "- billing"); n != 1 {
+		t.Errorf("@group(\"billing\") + @tags(billing) should dedup to one tag, got %d occurrences:\n%s", n, src)
+	}
+}
+
 // TestGenerateOpenAPIOperationIDDefaultAndOverride pins the rule:
 // default operationId = method name verbatim (PascalCase from DSL),
 // override = whatever string literal `@operationId("...")` supplies.

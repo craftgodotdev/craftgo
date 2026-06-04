@@ -69,7 +69,7 @@ func GenerateServicePackage(pkg *semantic.Package, cfg *config.Config, projectRo
 // service, skipping any that already exist on disk.
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
 	imps := importPathsFor(cfg, pkg, svcName)
-	dir := filepath.Join(projectRoot, cfg.Output.Service, ServiceDir(svcName))
+	dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, serviceGroup(svc.Primary))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}

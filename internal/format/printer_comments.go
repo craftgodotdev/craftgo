@@ -38,6 +38,97 @@ func buildTrailingFromComments(f *ast.File) map[int]string {
 	return out
 }
 
+// chainSpan describes one declaration's decorator chain: the decorators in
+// source order plus the 1-indexed line of the keyword they precede (the
+// `type` / `service` / verb token). A comment written between two decorators,
+// or between the last decorator and the keyword, sits inside this span - the
+// lexer records it in f.Comments but no AST node owns it.
+type chainSpan struct {
+	decs        []*ast.Decorator
+	keywordLine int
+}
+
+// chainSpans returns the decorator chain of every declaration the formatter
+// renders with a vertical (one-per-line) decorator block: the six
+// declDecorators callers plus service methods. Scalars render their
+// decorators inline on the declaration line, so a comment can never sit
+// between them on its own line; they are excluded.
+func chainSpans(f *ast.File) []chainSpan {
+	var out []chainSpan
+	add := func(decs []*ast.Decorator, keywordLine int) {
+		if len(decs) > 0 {
+			out = append(out, chainSpan{decs: decs, keywordLine: keywordLine})
+		}
+	}
+	for _, d := range f.Decls {
+		switch v := d.(type) {
+		case *ast.TypeDecl:
+			add(v.Decorators, v.Pos.Line)
+		case *ast.EnumDecl:
+			add(v.Decorators, v.Pos.Line)
+		case *ast.ErrorDecl:
+			add(v.Decorators, v.Pos.Line)
+		case *ast.MiddlewareDecl:
+			add(v.Decorators, v.Pos.Line)
+		case *ast.ServiceDecl:
+			add(v.Decorators, v.Pos.Line)
+			for _, m := range v.Methods() {
+				add(m.Decorators, m.Pos.Line)
+			}
+		}
+	}
+	return out
+}
+
+// buildInterDecoratorComments routes comments that sit inside a decorator
+// chain to the decorator (or keyword) they immediately precede. The key is
+// the 1-indexed line of that following token; [Printer.declDecorators] flushes
+// the block just before emitting it. The second result is the set of consumed
+// comment lines so [buildLooseFromComments] can skip them - otherwise it would
+// anchor a between-decorators comment to the next declaration and either
+// misplace it or drop it entirely.
+func buildInterDecoratorComments(f *ast.File) (map[int][]string, map[int]bool) {
+	out := map[int][]string{}
+	claimed := map[int]bool{}
+	if f == nil || len(f.Comments) == 0 {
+		return out, claimed
+	}
+	for _, span := range chainSpans(f) {
+		// Boundary tokens after the first decorator, in source order: the
+		// remaining decorators, then the keyword. A leading-comment run
+		// strictly between the previous token and a boundary belongs to it.
+		prev := span.decs[0].Pos.Line
+		boundaries := make([]int, 0, len(span.decs))
+		for _, d := range span.decs[1:] {
+			boundaries = append(boundaries, d.Pos.Line)
+		}
+		boundaries = append(boundaries, span.keywordLine)
+		for _, b := range boundaries {
+			if block := leadingCommentsBetween(f, prev, b, claimed); len(block) > 0 {
+				out[b] = append(out[b], block...)
+			}
+			prev = b
+		}
+	}
+	return out, claimed
+}
+
+// leadingCommentsBetween returns the text of every CommentLeading whose line
+// is strictly between lo and hi, marking each consumed line in claimed.
+func leadingCommentsBetween(f *ast.File, lo, hi int, claimed map[int]bool) []string {
+	var block []string
+	for _, c := range f.Comments {
+		if c == nil || c.Kind != lexer.CommentLeading {
+			continue
+		}
+		if c.Pos.Line > lo && c.Pos.Line < hi {
+			block = append(block, c.Text)
+			claimed[c.Pos.Line] = true
+		}
+	}
+	return block
+}
+
 // buildLooseFromComments walks f.Comments to find leading-comment blocks
 // separated from the following decl by a blank line - the lexer drops
 // those from any AST node's Doc, so without the loose lookup the
@@ -49,7 +140,7 @@ func buildTrailingFromComments(f *ast.File) map[int]string {
 // parser (e.g. closing notes captured from `rbrace.Doc`) are skipped
 // here - otherwise they would also appear above the next anchor decl,
 // double-printing the comment.
-func buildLooseFromComments(f *ast.File) map[int][]string {
+func buildLooseFromComments(f *ast.File, chainClaimed map[int]bool) map[int][]string {
 	out := map[int][]string{}
 	if f == nil || len(f.Comments) == 0 {
 		return out
@@ -85,7 +176,7 @@ func buildLooseFromComments(f *ast.File) map[int][]string {
 		// FreeComment members with Pos = the closing brace, but the
 		// comment text itself sits one or more lines above the brace -
 		// the FreeComment Text length tells us the span.
-		if claimed[startLine] {
+		if claimed[startLine] || chainClaimed[startLine] {
 			i = j
 			continue
 		}

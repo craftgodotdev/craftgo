@@ -5,7 +5,7 @@ package adminservice
 import (
 	"net/http"
 
-	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/admin-service"
+	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/admin-service/ops/v2"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

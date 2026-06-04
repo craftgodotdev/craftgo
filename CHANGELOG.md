@@ -5,6 +5,29 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.1] - 2026-06-04
+
+### Changed
+
+- **`@group` now nests generated files (and tags), not the URL.**
+  `@group("admin/ops")` on a service writes that service's handlers and service
+  stubs under `internal/transport/<service>/admin/ops/` and
+  `internal/service/<service>/admin/ops/`, and adds its value as an OpenAPI tag
+  (appended to any explicit `@tags`, deduped; `@ignoreTags` drops it). It no
+  longer injects the group into the HTTP route or the OpenAPI **path** — use
+  `@prefix` to shape the URL. The value may be nested (`admin/ops`) and is
+  validated as a plain relative path (no `.`/`..`/absolute forms). **Breaking
+  for designs that relied on `@group` appearing in the route**: move that
+  segment into `@prefix`. Because the move changes where the (user-owned)
+  service stub is generated, add `@group` before filling in business logic.
+
+### Fixed
+
+- **`craftgo fmt` no longer drops comments written between decorators.** A `//`
+  comment placed between two service or method decorators (or between the last
+  decorator and the keyword) was silently deleted on format; it is now
+  preserved in place and round-trips idempotently.
+
 ## [1.3.0] - 2026-06-04
 
 ### Deprecated

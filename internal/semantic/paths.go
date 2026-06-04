@@ -148,11 +148,12 @@ func (a *analyzer) checkBasePathFormat() {
 		bp, bad)
 }
 
-// resolveMethodPath joins basePath + @prefix + @group + methodPath
-// using the same rules as `internal/codegen.methodFullPath`. Empty
-// segments are dropped; consecutive slashes are collapsed; the result
-// always starts with `/`. When the method has no inline path the
-// fallback is the kebab-cased method name (matching codegen).
+// resolveMethodPath joins basePath + @prefix + methodPath using the same
+// rules as `internal/codegen.methodFullPath`. Empty segments are dropped;
+// consecutive slashes are collapsed; the result always starts with `/`. When
+// the method has no inline path the fallback is the kebab-cased method name
+// (matching codegen). @group is not part of the route - it only nests the
+// generated files on disk.
 func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
 	return resolveRoute(a.opts.BasePath, svc, m)
 }
@@ -167,9 +168,6 @@ func resolveRoute(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
 	}
 	if p := decoratorString(svc, "prefix"); p != "" {
 		parts = append(parts, p)
-	}
-	if g := decoratorString(svc, "group"); g != "" {
-		parts = append(parts, g)
 	}
 	if m.Path != nil {
 		parts = append(parts, PathString(m.Path))

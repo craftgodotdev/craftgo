@@ -358,8 +358,8 @@ func TestResolveMethodPathFallbackName(t *testing.T) {
 	}
 }
 
-func TestResolveMethodPathWithGroup(t *testing.T) {
-	// @group("admin") stitches between @prefix and method path.
+func TestResolveMethodPathIgnoresGroup(t *testing.T) {
+	// @group nests generated files on disk; it must NOT appear in the route.
 	pkg, diags := AnalyzeWith(parseFiles(t, `@prefix("/v1")
 @group("admin")
 service S { get GetUser /users {} }`), Options{})
@@ -369,8 +369,8 @@ service S { get GetUser /users {} }`), Options{})
 	a := &analyzer{pkg: pkg, opts: Options{}}
 	si := pkg.Services["S"]
 	got := a.resolveMethodPath(si.Primary, si.Methods[0])
-	if got != "/v1/admin/users" {
-		t.Errorf("got %q, want %q", got, "/v1/admin/users")
+	if got != "/v1/users" {
+		t.Errorf("got %q, want %q", got, "/v1/users")
 	}
 }
 

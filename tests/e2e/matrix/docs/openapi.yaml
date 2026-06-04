@@ -9809,6 +9809,7 @@ paths:
       tags:
       - admin
       - ops
+      - ops/v2
   /v1/admin/health:
     get:
       description: |-
@@ -9821,6 +9822,7 @@ paths:
       tags:
       - admin
       - ops
+      - ops/v2
   /v1/admin/profiles:
     get:
       description: |-
@@ -9859,6 +9861,7 @@ paths:
       tags:
       - admin
       - ops
+      - ops/v2
       - snapshot
   /v1/profiles:
     get:
