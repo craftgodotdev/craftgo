@@ -29,16 +29,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sync"
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
 // Version is the server's reported version, surfaced via Initialize so
 // clients can include it in trace logs.
-const Version = "1.3.2"
+const Version = "1.3.3"
 
 // Serve runs the LSP loop on the supplied stdio streams. It blocks until
 // the peer closes the connection or context is cancelled, and returns the
@@ -95,7 +98,7 @@ func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 	case protocol.MethodInitialize:
 		return s.onInitialize(ctx, reply, req)
 	case protocol.MethodInitialized:
-		return reply(ctx, nil, nil)
+		return s.onInitialized(ctx, reply, req)
 	case protocol.MethodShutdown:
 		return reply(ctx, nil, nil)
 	case protocol.MethodExit:
@@ -111,6 +114,13 @@ func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 		// Re-validate on save in case the editor sent a "save without
 		// change" event (e.g. external formatter rewrote the file).
 		return s.onDidSave(ctx, reply, req)
+	case protocol.MethodWorkspaceDidChangeWatchedFiles:
+		// A `.craftgo` file was created / deleted / changed on disk (possibly
+		// outside the editor, or a file the user never opened). Cross-package
+		// resolution re-reads the disk per request, but the diagnostics on
+		// already-open files are only refreshed when those files are edited -
+		// so re-run them now against the new project state.
+		return s.onDidChangeWatchedFiles(ctx, reply, req)
 	case protocol.MethodTextDocumentHover:
 		return s.onHover(ctx, reply, req)
 	case protocol.MethodTextDocumentCompletion:
@@ -257,6 +267,78 @@ func (s *Server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jso
 		URI:         params.TextDocument.URI,
 		Diagnostics: []protocol.Diagnostic{},
 	})
+	return reply(ctx, nil, nil)
+}
+
+// onInitialized registers a workspace file watcher for `**/*.craftgo` so the
+// client forwards create / change / delete events for every design file -
+// including files the user has not opened and changes made outside the editor.
+// Registration is best-effort: a client without dynamic-registration support
+// rejects it, and on-demand features re-walk the disk regardless, so a failure
+// is non-fatal. The `client/registerCapability` request is sent from a
+// goroutine because the jsonrpc2 read loop is single-threaded - blocking the
+// handler on the client's reply here would deadlock the connection.
+func (s *Server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+	go func() {
+		// ctx is the connection-scoped handler context; derive a child that
+		// also unblocks the Call when the connection itself tears down (a
+		// client EOF cancels conn.Done() but not necessarily ctx), so the
+		// goroutine can never outlive the session waiting on a reply.
+		callCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go func() {
+			select {
+			case <-s.conn.Done():
+				cancel()
+			case <-callCtx.Done():
+			}
+		}()
+		_, _ = s.conn.Call(callCtx, protocol.MethodClientRegisterCapability, watchedFilesRegistration(), nil)
+	}()
+	return reply(ctx, nil, nil)
+}
+
+// watchedFilesRegistration is the `client/registerCapability` payload that
+// subscribes the server to create / change / delete events for every
+// `**/*.craftgo` file (Kind omitted → the client watches all three).
+func watchedFilesRegistration() protocol.RegistrationParams {
+	return protocol.RegistrationParams{
+		Registrations: []protocol.Registration{{
+			ID:     "craftgo-watch-design-files",
+			Method: protocol.MethodWorkspaceDidChangeWatchedFiles,
+			RegisterOptions: protocol.DidChangeWatchedFilesRegistrationOptions{
+				Watchers: []protocol.FileSystemWatcher{{GlobPattern: "**/*.craftgo"}},
+			},
+		}},
+	}
+}
+
+// onDidChangeWatchedFiles refreshes diagnostics for every open document after a
+// `.craftgo` file changed on disk. The fresh pass re-walks the project, so a
+// deleted type stops resolving (and a re-added one resolves again) in the
+// squigglies of dependent open files without the user touching them.
+func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+	// publishDiagnostics already re-analyses the whole project and re-publishes
+	// every OTHER open file under the trigger's design root, so calling it once
+	// per distinct root (not once per open doc) refreshes everything while
+	// avoiding an N-times disk re-walk and N*N notifications. Docs with no
+	// resolvable root fall through to publishDiagnostics's single-file path.
+	seenRoots := map[string]bool{}
+	for u := range s.openDocURIs() {
+		src := s.snapshot(u)
+		if src == "" {
+			continue
+		}
+		if path := uriToPath(string(u)); path != "" {
+			if _, _, root, err := config.Find(filepath.Dir(path)); err == nil && root != "" {
+				if seenRoots[root] {
+					continue
+				}
+				seenRoots[root] = true
+			}
+		}
+		s.publishDiagnostics(ctx, u, src)
+	}
 	return reply(ctx, nil, nil)
 }
 

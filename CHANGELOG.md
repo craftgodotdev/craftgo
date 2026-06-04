@@ -5,6 +5,28 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.3] - 2026-06-04
+
+### Added
+
+- **LSP: live cross-file diagnostics when design files change on disk.** The
+  language server now registers a `**/*.craftgo` watcher, so creating, deleting,
+  or changing a design file (including outside the editor, or a file the user
+  never opened) re-runs the project diagnostics pass on every open document — a
+  reference to a just-deleted type starts erroring, and a re-added one stops,
+  without the user editing the dependent file. On-demand features
+  (go-to-definition, completion) already re-read the disk per request. The
+  refresh analyses once per design root, not once per open file.
+
+### Fixed
+
+- **LSP: a `.craftgo` file deleted while still open keeps contributing its live
+  buffer.** Project resolution walked only the disk, so an open-but-deleted file
+  vanished from the project — dependent open files reported spurious
+  "unknown type" errors and the file itself lost its own diagnostics. The walk
+  now re-adds every open buffer the disk no longer holds, honouring the editor
+  cache over disk presence.
+
 ## [1.3.2] - 2026-06-04
 
 ### Changed

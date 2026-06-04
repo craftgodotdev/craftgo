@@ -175,6 +175,7 @@ func (s *Server) collectProjectFiles(fsPath, currentSrc string) ([]projectFile, 
 		return nil, ""
 	}
 	var out []projectFile
+	seen := map[string]bool{}
 	_ = filepath.WalkDir(designDir, func(p string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil || d.IsDir() {
 			return nil
@@ -182,9 +183,28 @@ func (s *Server) collectProjectFiles(fsPath, currentSrc string) ([]projectFile, 
 		if filepath.Ext(p) != ".craftgo" {
 			return nil
 		}
+		seen[p] = true
 		out = append(out, projectFile{path: p, src: s.readFile(p, fsPath, currentSrc)})
 		return nil
 	})
+	// A file open in the editor but absent from disk - deleted while still
+	// open, or an unsaved buffer - is skipped by the disk walk, so its live
+	// content would vanish from the project: dependent files would report
+	// spurious "unknown type" errors and the file itself would lose its own
+	// diagnostics. Re-add the trigger buffer plus any open `.craftgo` buffer
+	// under designDir the walk missed, honouring the editor cache over disk.
+	if !seen[fsPath] {
+		seen[fsPath] = true
+		out = append(out, projectFile{path: fsPath, src: currentSrc})
+	}
+	for u := range s.openDocURIs() {
+		p := uriToPath(string(u))
+		if p == "" || seen[p] || filepath.Ext(p) != ".craftgo" || !isUnderDesignRoot(p, designDir) {
+			continue
+		}
+		seen[p] = true
+		out = append(out, projectFile{path: p, src: s.snapshot(u)})
+	}
 	return out, designDir
 }
 
