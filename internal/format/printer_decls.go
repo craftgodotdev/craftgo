@@ -205,20 +205,28 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 // misattributed entry here does not lose information — it lands on
 // the correct field by way of the trailing map.
 func (p *Printer) printFieldDoc(f *ast.Field) {
-	if len(f.Doc) == 0 {
+	p.printLeadingDoc(f.Doc, f.Pos.Line)
+}
+
+// printLeadingDoc emits a body member's leading doc comments (a field's or an
+// enum value's), filtering out any line the lexer misattributed from the
+// previous member's trailing `//`. The lexer attaches every contiguous `//`
+// block above a token to that token's Doc, so a trailing comment on the member
+// above lands at the FRONT of this member's Doc; those lines are re-emitted
+// from p.trailing on the correct member, so dropping them here loses nothing.
+// posLine is the member's source line; the Doc lines occupy the |Doc|-many
+// source lines immediately above it.
+func (p *Printer) printLeadingDoc(doc []string, posLine int) {
+	if len(doc) == 0 {
 		return
 	}
 	if p.trailing == nil {
-		p.Doc(f.Doc)
+		p.Doc(doc)
 		return
 	}
-	docCount := len(f.Doc)
-	keep := make([]string, 0, docCount)
-	for i, line := range f.Doc {
-		// Doc lines occupy the |Doc|-many source lines immediately
-		// above f. Index i maps back to source line
-		// f.Pos.Line - docCount + i.
-		srcLine := f.Pos.Line - docCount + i
+	keep := make([]string, 0, len(doc))
+	for i, line := range doc {
+		srcLine := posLine - len(doc) + i
 		if _, hit := p.trailing[srcLine]; hit {
 			continue
 		}
@@ -247,6 +255,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 	for _, m := range d.Members {
 		switch v := m.(type) {
 		case *ast.EnumValue:
+			p.looseBeforeMember(v.Pos.Line)
 			p.EnumValue(v, maxName)
 		case *ast.FreeComment:
 			p.printFreeComment(v)
@@ -263,6 +272,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 // indentation depth. Each line gets the canonical `// ` prefix.
 
 func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
+	p.printLeadingDoc(v.Doc, v.Pos.Line)
 	p.indent()
 	p.write(v.Name)
 	switch v.Kind {

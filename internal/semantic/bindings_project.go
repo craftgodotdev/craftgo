@@ -427,7 +427,7 @@ func (r *refResolver) checkMapKeysProject(t *ast.TypeRef, f *ast.Field) {
 	if t.Map != nil {
 		if k := t.Map.Key; k != nil && k.Named != nil && k.Named.Name != nil && len(k.Named.Name.Parts) == 2 && !r.projectKeyMarshalable(k) {
 			r.diag(f.Pos, lexer.SeverityError, CodeMapKeyType,
-				"map key %s is not a usable map key: a JSON object key is a string, so encoding/json supports only a string / int* / uint* key (or a scalar / enum over one). A bool, float, struct, slice, map, bytes, or generic type-parameter key either fails to compile or panics at json.Marshal. Use a string / int* / uint* / string- or int-scalar / enum key.",
+				"map key %s is not a usable map key: a JSON object key is a string, so encoding/json supports only a string / int* / uint* key (or a scalar / enum over one). An optional (`?`), bool, float, struct, slice, map, bytes, or generic type-parameter key either fails to compile or panics at json.Marshal. Use a non-optional string / int* / uint* / string- or int-scalar / enum key.",
 				describeTypeRef(t.Map.Key))
 		}
 		r.checkMapKeysProject(t.Map.Value, f)

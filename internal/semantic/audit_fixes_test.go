@@ -407,6 +407,49 @@ func TestMapKeyInGenericArgValidClean(t *testing.T) {
 type Uses { b Box<map<string, int>> }`)
 }
 
+// TestDeclNamedAfterBuiltinRejected: a type/enum/scalar/error named after a
+// built-in spelling shadows the built-in in generated Go and won't compile, so
+// it is rejected. Middleware names live in a separate Go namespace (exempt).
+func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
+	expectError(t, `scalar int string`, CodeDeclBuiltinName)
+	expectError(t, `type string { a int }`, CodeDeclBuiltinName)
+	expectError(t, `enum bool { X Y }`, CodeDeclBuiltinName)
+	expectError(t, `error NotFound any`, CodeDeclBuiltinName)
+	// Middleware lives in a separate Go namespace, so a builtin name is NOT a
+	// collision error (it may still warn about the lowercase name).
+	if _, diags := AnalyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
+		t.Error("middleware named after a builtin should not be a builtin-collision error")
+	}
+	mustClean(t, `scalar Email string  scalar UserID string`)
+}
+
+// TestObjectFieldTypeRejected: `object` is a broken half-alias (its Go renderer
+// emits an undefined type + dangling $ref); reject it and point at `any`.
+func TestObjectFieldTypeRejected(t *testing.T) {
+	expectError(t, `type X { f object }`, CodeRefUnknownSymbol)
+	expectError(t, `type X { f object[] }`, CodeRefUnknownSymbol)
+	// `any` is the valid arbitrary type.
+	mustClean(t, `type X { f any  g any[] }`)
+}
+
+// TestOptionalMapKeyRejected: an optional `?` map key renders map[*K]V, which
+// encoding/json cannot marshal (pointer object keys fail) - so it is rejected
+// for every underlying key kind (primitive, enum, scalar), local and
+// cross-package. A re-added non-optional key is the control.
+func TestOptionalMapKeyRejected(t *testing.T) {
+	for _, key := range []string{"string?", "int?", "Color?", "Code?"} {
+		expectError(t, "enum Color { Red Green }\nscalar Code string\ntype T { m map<"+key+", int> }", CodeMapKeyType)
+	}
+	root, files := projectFixture(t, map[string]string{
+		"lib/l.craftgo": "package lib\nscalar ID string",
+		"api.craftgo":   "package design\ntype T { m map<lib.ID?, int> }",
+	})
+	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); findCode(diags, CodeMapKeyType) == nil {
+		t.Fatalf("expected cross-pkg optional map-key rejection; got %v", codes(diags))
+	}
+	mustClean(t, "enum Color { Red Green }\ntype T { m map<string, int>  n map<Color, int> }")
+}
+
 // @uniqueItems over a generic instance whose non-comparability arrives via a
 // GENERIC MIXIN of the type-param (`Box<bytes>` where `Box<T>` embeds
 // `Inner<T>` and `Inner{ val T }`) must be rejected. The comparability walk

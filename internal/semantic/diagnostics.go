@@ -107,6 +107,10 @@ const (
 	// CodeDuplicateDecl fires when two top-level declarations share a
 	// name across the merged package.
 	CodeDuplicateDecl = "decl/duplicate"
+	// CodeDeclBuiltinName fires when a type / enum / scalar / error is
+	// named after a built-in type spelling (`int`, `string`, `any`, ...).
+	// The generated Go type would shadow the built-in and fail to compile.
+	CodeDeclBuiltinName = "decl/builtin-name"
 	// CodeDeclNameCase fires (severity warning) when a top-level decl
 	// - type / error / enum / service / middleware / scalar - does
 	// not start with an uppercase letter. Lower-case decl names are

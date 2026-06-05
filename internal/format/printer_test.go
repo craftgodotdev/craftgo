@@ -314,6 +314,33 @@ type Name {
 `,
 			want: []string{"@minLength(1)", "// names are interned downstream", "type Name"},
 		},
+		{
+			name: "leading comment above an enum value",
+			src: `package demo
+
+enum Status {
+	// active is the default
+	Active
+	Inactive
+}
+`,
+			want: []string{"// active is the default", "Active", "Inactive"},
+		},
+		{
+			name: "blank-isolated section comment between enum values",
+			src: `package demo
+
+enum Status {
+	Active
+
+	// terminal states
+
+	Done
+	Cancelled
+}
+`,
+			want: []string{"// terminal states", "Done", "Cancelled"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

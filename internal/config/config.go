@@ -100,7 +100,47 @@ type SecurityScheme struct {
 	Name string `yaml:"name,omitempty"`
 	// OpenIDConnectURL is the discovery URL for openIdConnect.
 	OpenIDConnectURL string `yaml:"openIdConnectUrl,omitempty"`
+	// Flows configures the OAuth2 flows. Required (with at least one flow)
+	// when Type == "oauth2" — the OpenAPI spec mandates a `flows` object, and
+	// omitting it produces an invalid document that downstream client
+	// generators (e.g. @hey-api/openapi-ts) reject.
+	Flows *OAuthFlows `yaml:"flows,omitempty"`
 }
+
+// OAuthFlows mirrors the OpenAPI `oauthFlows` object: the four standard grant
+// flows, each optional but at least one required for a valid oauth2 scheme.
+type OAuthFlows struct {
+	Implicit          *OAuthFlow `yaml:"implicit,omitempty"`
+	Password          *OAuthFlow `yaml:"password,omitempty"`
+	ClientCredentials *OAuthFlow `yaml:"clientCredentials,omitempty"`
+	AuthorizationCode *OAuthFlow `yaml:"authorizationCode,omitempty"`
+}
+
+// OAuthFlow mirrors the OpenAPI `oauthFlow` object for one grant type.
+type OAuthFlow struct {
+	AuthorizationURL string            `yaml:"authorizationUrl,omitempty"`
+	TokenURL         string            `yaml:"tokenUrl,omitempty"`
+	RefreshURL       string            `yaml:"refreshUrl,omitempty"`
+	Scopes           map[string]string `yaml:"scopes,omitempty"`
+}
+
+// flowList returns the non-nil flows in deterministic order, for emission and
+// the "at least one flow" validation.
+func (f *OAuthFlows) flowList() []*OAuthFlow {
+	if f == nil {
+		return nil
+	}
+	var out []*OAuthFlow
+	for _, fl := range []*OAuthFlow{f.Implicit, f.Password, f.ClientCredentials, f.AuthorizationCode} {
+		if fl != nil {
+			out = append(out, fl)
+		}
+	}
+	return out
+}
+
+// HasFlow reports whether at least one OAuth2 flow is configured.
+func (f *OAuthFlows) HasFlow() bool { return len(f.flowList()) > 0 }
 
 // Filename is the canonical project manifest file name. Find walks parent
 // directories looking for it, optionally peeking into a child `design/`

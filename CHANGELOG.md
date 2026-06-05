@@ -5,6 +5,44 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.4] - 2026-06-05
+
+### Fixed
+
+- **Duplicate generic type-parameter names (`type Pair<T, T>`) are now rejected
+  at parse time.** They lowered to `type Pair[T any, T any]`, which the Go
+  compiler rejects (`T redeclared`) — so the design failed downstream with a
+  confusing Go error instead of a clear diagnostic.
+- **`craftgo fmt` no longer drops comments on enum values.** A `//` comment
+  above an enum value (and a blank-isolated section comment between values) was
+  silently deleted on format; both are now preserved and round-trip
+  idempotently (`ast.EnumValue` gained a `Doc` field).
+- **An `oauth2` security scheme now emits a valid OpenAPI `flows` object** from
+  the manifest (`openapi.securitySchemes.<name>.flows`: `implicit` / `password`
+  / `clientCredentials` / `authorizationCode`), and an `oauth2` scheme declared
+  without any flow is rejected at gen time. Previously it emitted an oauth2
+  scheme with no `flows`, which is invalid OpenAPI and crashed client
+  generators such as `@hey-api/openapi-ts`.
+- **A duplicate `request`/`response` clause in a method body is now rejected.**
+  A second clause silently discarded the first with no diagnostic.
+- **A type / enum / scalar / error named after a built-in type** (`scalar int`,
+  `type string`, ...) is now rejected — the generated Go type shadowed the
+  built-in and failed to compile. (Middleware names are exempt — separate Go
+  namespace.)
+- **`object` as a field type is now rejected** with a pointer to `any` — it was
+  a broken half-alias whose Go renderer emitted an undefined type and a dangling
+  OpenAPI `$ref`.
+- **An optional map key (`map<K?, V>`) is now rejected at design time.** It
+  rendered `map[*K]V`, which `encoding/json` cannot use as an object key
+  (marshal/unmarshal fail) — caught for every underlying key kind, local and
+  cross-package.
+- **An empty `@pattern("")` is now rejected.** It is a valid RE2 (matches
+  everything) so it passed the regex check, but it is a meaningless constraint
+  and crashed the validator codegen (the regex interner has no name for it).
+- **A numeric bound whose magnitude exceeds the `float32` range** (`@gte`/`@lte`/
+  `@range` on a `float32` field or scalar) is now rejected — it previously
+  generated a `float32` literal that overflowed and would not compile.
+
 ## [1.3.3] - 2026-06-04
 
 ### Added

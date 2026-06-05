@@ -45,7 +45,16 @@ func (a *analyzer) checkPackageName(files []*ast.File) {
 func (a *analyzer) collectDecls(files []*ast.File) {
 	seen := map[string]lexer.Position{}   // type / enum / scalar / error namespace
 	seenMW := map[string]lexer.Position{} // middleware namespace
-	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position) bool {
+	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position, rejectBuiltin bool) bool {
+		if rejectBuiltin && builtinTypes[name] {
+			// A type / enum / scalar / error named after a built-in spelling
+			// (`int`, `string`, `any`, ...) lowers to a Go type that shadows
+			// the built-in and fails to compile. (Middleware names live in a
+			// separate Go namespace, so they are exempt.)
+			a.diag(pos, pos, lexer.SeverityError, CodeDeclBuiltinName,
+				"declaration name %q collides with a built-in type — it would shadow the built-in in the generated Go; choose a different name", name)
+			return false
+		}
 		if prev, ok := table[name]; ok {
 			d := a.diag(pos, pos, lexer.SeverityError, CodeDuplicateDecl,
 				"duplicate top-level declaration %q", name)
@@ -68,35 +77,35 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if dd == nil {
 					continue
 				}
-				if registerIn(seen, dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Types[dd.Name] = dd
 				}
 			case *ast.EnumDecl:
 				if dd == nil {
 					continue
 				}
-				if registerIn(seen, dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Enums[dd.Name] = dd
 				}
 			case *ast.ErrorDecl:
 				if dd == nil {
 					continue
 				}
-				if registerIn(seen, dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Errors[dd.Name] = dd
 				}
 			case *ast.ScalarDecl:
 				if dd == nil {
 					continue
 				}
-				if registerIn(seen, dd.Name, dd.Pos) {
+				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Scalars[dd.Name] = dd
 				}
 			case *ast.MiddlewareDecl:
 				if dd == nil {
 					continue
 				}
-				if registerIn(seenMW, dd.Name, dd.Pos) {
+				if registerIn(seenMW, dd.Name, dd.Pos, false) {
 					a.pkg.Middlewares[dd.Name] = dd
 				}
 			case *ast.ServiceDecl:

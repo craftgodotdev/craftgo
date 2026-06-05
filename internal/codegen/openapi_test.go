@@ -1214,6 +1214,37 @@ func TestValidateSecurityRefsHappyPath(t *testing.T) {
 	}
 }
 
+func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
+	pkg := analyze(t, `service S {
+    @security(OAuth2)
+    get GetUser /u {}
+}`)
+	base := func(flows *config.OAuthFlows) *config.Config {
+		return &config.Config{Package: "x/y", OpenAPI: config.OpenAPI{
+			SecuritySchemes: map[string]config.SecurityScheme{
+				"OAuth2": {Type: "oauth2", Flows: flows},
+			},
+		}}
+	}
+	// No flows → rejected (would emit invalid OpenAPI).
+	if errs := ValidateSecurityRefs(pkg, base(nil)); len(errs) == 0 {
+		t.Error("expected an error for an oauth2 scheme with no flows")
+	}
+	// With a flow → accepted.
+	withFlow := &config.OAuthFlows{ClientCredentials: &config.OAuthFlow{
+		TokenURL: "https://example.com/token",
+		Scopes:   map[string]string{"read": "Read"},
+	}}
+	if errs := ValidateSecurityRefs(pkg, base(withFlow)); len(errs) != 0 {
+		t.Errorf("oauth2 with a flow should validate, got: %v", errs)
+	}
+	// The emitted scheme carries the flows object.
+	sc := securitySchemeFor("OAuth2", base(withFlow))
+	if sc.Flows == nil || sc.Flows.ClientCredentials == nil || sc.Flows.ClientCredentials.TokenURL == "" {
+		t.Errorf("expected oauth2 flows emitted in the scheme, got %+v", sc.Flows)
+	}
+}
+
 func TestValidateSecurityRefsUnknownScheme(t *testing.T) {
 	pkg := analyze(t, `service S {
     @security(BearAuth)

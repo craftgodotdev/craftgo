@@ -119,6 +119,14 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 	if !ok {
 		return // a non-string arg is already reported by checkPositionalArgs
 	}
+	if s.Value == "" {
+		// An empty pattern is a valid RE2 (matches everything) so it passes
+		// regexp.Compile, but it is a meaningless constraint and the codegen
+		// regex interner has no name for it - reject it at design time.
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
+			"@pattern requires a non-empty regular expression — an empty pattern matches everything and is not a meaningful constraint")
+		return
+	}
 	if _, err := regexp.Compile(s.Value); err != nil {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
 			"@pattern is not a valid regular expression: %v — the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)

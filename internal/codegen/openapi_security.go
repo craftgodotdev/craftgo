@@ -74,10 +74,40 @@ func securitySchemeFor(name string, cfg *config.Config) *openapi3.SecurityScheme
 				In:               sc.In,
 				Name:             sc.Name,
 				OpenIdConnectUrl: sc.OpenIDConnectURL,
+				Flows:            oauthFlowsFor(sc.Flows),
 			}
 		}
 	}
 	return &openapi3.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
+}
+
+// oauthFlowsFor maps the manifest's OAuth2 flow config to the kin-openapi
+// model. Returns nil when no flows are configured (non-oauth2 schemes).
+func oauthFlowsFor(f *config.OAuthFlows) *openapi3.OAuthFlows {
+	if f == nil {
+		return nil
+	}
+	conv := func(fl *config.OAuthFlow) *openapi3.OAuthFlow {
+		if fl == nil {
+			return nil
+		}
+		scopes := fl.Scopes
+		if scopes == nil {
+			scopes = map[string]string{} // OpenAPI requires `scopes` (may be empty)
+		}
+		return &openapi3.OAuthFlow{
+			AuthorizationURL: fl.AuthorizationURL,
+			TokenURL:         fl.TokenURL,
+			RefreshURL:       fl.RefreshURL,
+			Scopes:           scopes,
+		}
+	}
+	return &openapi3.OAuthFlows{
+		Implicit:          conv(f.Implicit),
+		Password:          conv(f.Password),
+		ClientCredentials: conv(f.ClientCredentials),
+		AuthorizationCode: conv(f.AuthorizationCode),
+	}
 }
 
 // ValidateSecurityRefs cross-checks every `@security(scheme)` reference
@@ -95,6 +125,15 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 		return nil
 	}
 	declared := cfg.OpenAPI.SecuritySchemes
+	// An oauth2 scheme without a `flows` object (with at least one flow) emits
+	// an OpenAPI document that violates the spec and crashes downstream client
+	// generators. Reject it here with a clear message instead.
+	var schemeErrs []string
+	for name, sc := range declared {
+		if sc.Type == "oauth2" && !sc.Flows.HasFlow() {
+			schemeErrs = append(schemeErrs, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) — an oauth2 scheme without flows is invalid OpenAPI", name, name))
+		}
+	}
 	collect := func(svcName, scope string, ds []*ast.Decorator, dst map[string]bool) {
 		check := func(e ast.Expr) {
 			id, ok := e.(*ast.IdentExpr)
@@ -129,14 +168,15 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 			collect(svcName, "method "+m.Name, m.Decorators, bad)
 		}
 	}
-	if len(bad) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(bad))
+	out := make([]string, 0, len(bad)+len(schemeErrs))
 	for k := range bad {
 		parts := strings.SplitN(k, "/", 3)
 		// parts: svc, scope, name
 		out = append(out, fmt.Sprintf("@security(%s) on %s %s: scheme %q is not declared in openapi.securitySchemes", parts[2], parts[1], parts[0], parts[2]))
+	}
+	out = append(out, schemeErrs...)
+	if len(out) == 0 {
+		return nil
 	}
 	sort.Strings(out)
 	return out

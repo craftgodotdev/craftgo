@@ -156,7 +156,7 @@ func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []
 	if t.Map != nil {
 		if !a.keyMarshalable(t.Map.Key, typeParams) {
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeMapKeyType,
-				"map key %s is not a usable map key: a JSON object key is a string, so encoding/json supports only a string / int* / uint* key (or a scalar / enum over one). A bool, float, struct, slice, map, bytes, or generic type-parameter key either fails to compile or panics at json.Marshal. Use a string / int* / uint* / string- or int-scalar / enum key.",
+				"map key %s is not a usable map key: a JSON object key is a string, so encoding/json supports only a string / int* / uint* key (or a scalar / enum over one). An optional (`?`), bool, float, struct, slice, map, bytes, or generic type-parameter key either fails to compile or panics at json.Marshal. Use a non-optional string / int* / uint* / string- or int-scalar / enum key.",
 				describeTypeRef(t.Map.Key))
 		}
 		a.mapKeysComparable(t.Map.Value, f, typeParams)
@@ -186,7 +186,12 @@ func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []
 // qualified cross-package key is accepted conservatively (the project pass
 // resolves it); a bare type-parameter is never a valid key.
 func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
-	if key == nil || key.Named == nil || key.Named.Name == nil || key.Array || key.Map != nil {
+	if key == nil || key.Named == nil || key.Named.Name == nil || key.Array || key.Map != nil || key.Optional {
+		// An optional `?` key would render `map[*K]V`; encoding/json cannot
+		// use a pointer as an object key (marshal/unmarshal fail), so it is
+		// rejected here regardless of the underlying type. The Optional check
+		// precedes the cross-package defer below so a qualified `lib.ID?` key
+		// is caught too.
 		return false
 	}
 	name := key.Named.Name.String()
@@ -595,9 +600,10 @@ func intCapacity(primitive string) (lo, hi float64, ok bool) {
 // checkBoundCapacity rejects numeric bound literals that exceed the
 // field's primitive type capacity. Without this, codegen happily emits
 // `if v.Small > 300 { ... }` against an `int8` field, which fails to
-// compile because 300 overflows int8. Floats are skipped — Go float64
-// captures every IntLit we accept, and float64 bounds for float32
-// fields are tolerated.
+// compile because 300 overflows int8. float64 captures every literal we
+// accept, but a float32 field whose bound magnitude exceeds the float32
+// range still emits a float32 literal that overflows and won't compile, so
+// it gets its own guard.
 func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
@@ -606,39 +612,60 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	if sd, ok := a.pkg.Scalars[prim]; ok {
 		prim = sd.Primitive
 	}
-	lo, hi, ok := intCapacity(prim)
-	if !ok {
+	if lo, hi, ok := intCapacity(prim); ok {
+		forEachNumericBound(f, func(d *ast.Decorator, arg *ast.DecoratorArg) {
+			if v, disp, ok := integralBoundValue(arg); ok && (v < lo || v > hi) {
+				a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeBoundOverflow,
+					"@%s bound %s exceeds %s range [%g, %g]", d.Name, disp, prim, lo, hi)
+			}
+		})
 		return
 	}
-	check := func(d *ast.Decorator, arg *ast.DecoratorArg) {
-		var v float64
-		var disp string
-		switch lit := arg.Value.(type) {
-		case *ast.IntLit:
-			v, disp = float64(lit.Value), strconv.FormatInt(lit.Value, 10)
-		case *ast.FloatLit:
-			// An INTEGRAL float bound (`@gte(300.0)`) renders to a bare
-			// whole-number Go literal, so it must be capacity-checked too;
-			// a fractional float is rejected separately by
-			// checkIntBoundFloatLiteral.
-			if lit.Value != float64(int64(lit.Value)) {
+	if prim == "float32" {
+		forEachNumericBound(f, func(d *ast.Decorator, arg *ast.DecoratorArg) {
+			var v float64
+			var disp string
+			switch lit := arg.Value.(type) {
+			case *ast.IntLit:
+				v, disp = float64(lit.Value), strconv.FormatInt(lit.Value, 10)
+			case *ast.FloatLit:
+				v, disp = lit.Value, strconv.FormatFloat(lit.Value, 'g', -1, 64)
+			default:
 				return
 			}
-			v, disp = lit.Value, strconv.FormatInt(int64(lit.Value), 10)
-		default:
-			return
-		}
-		if v < lo || v > hi {
-			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeBoundOverflow,
-				"@%s bound %s exceeds %s range [%g, %g]",
-				d.Name, disp, prim, lo, hi)
-		}
+			if v > math.MaxFloat32 || v < -math.MaxFloat32 {
+				a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeBoundOverflow,
+					"@%s bound %s exceeds float32 range [%g, %g]", d.Name, disp, -math.MaxFloat32, math.MaxFloat32)
+			}
+		})
 	}
+}
+
+// integralBoundValue extracts a whole-number bound value (an IntLit, or an
+// INTEGRAL FloatLit like `@gte(300.0)` that renders to a bare whole-number Go
+// literal). A fractional float is rejected separately by
+// checkIntBoundFloatLiteral, so it returns ok=false here.
+func integralBoundValue(arg *ast.DecoratorArg) (float64, string, bool) {
+	switch lit := arg.Value.(type) {
+	case *ast.IntLit:
+		return float64(lit.Value), strconv.FormatInt(lit.Value, 10), true
+	case *ast.FloatLit:
+		if lit.Value != float64(int64(lit.Value)) {
+			return 0, "", false
+		}
+		return lit.Value, strconv.FormatInt(int64(lit.Value), 10), true
+	}
+	return 0, "", false
+}
+
+// forEachNumericBound invokes check for every numeric-bound decorator argument
+// on f: the single-arg comparisons (@gt/@gte/@lt/@lte/@multipleOf) and both
+// endpoints of dual-arg @range.
+func forEachNumericBound(f *ast.Field, check func(d *ast.Decorator, arg *ast.DecoratorArg)) {
 	for _, d := range f.Decorators {
 		if d == nil {
 			continue
 		}
-		// All single-arg comparison decorators + dual-arg @range.
 		switch d.Name {
 		case "gt", "gte", "lt", "lte", "multipleOf":
 			if len(d.Args) == 1 {

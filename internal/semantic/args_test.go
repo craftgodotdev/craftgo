@@ -121,6 +121,13 @@ func TestPatternAcceptsValidRegex(t *testing.T) {
 	mustClean(t, `type X { ok string @pattern("^[a-z]+$") }`)
 }
 
+func TestPatternRejectsEmpty(t *testing.T) {
+	// An empty pattern is a valid RE2 (matches everything) so it survives
+	// regexp.Compile, but it is a meaningless constraint and codegen's regex
+	// interner has no var name for it (crashes the validator emit). Reject it.
+	expectError(t, `type X { bad string @pattern("") }`, CodeDecoratorArgType)
+}
+
 // TestExampleAcceptsLiteralsAndArrays confirms the kept forms: scalar
 // literals and arrays of scalars (the one non-scalar form that stays
 // legal after the object-example rejection).

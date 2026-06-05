@@ -927,12 +927,43 @@ func TestTypeParamsEmpty(t *testing.T) {
 	}
 }
 
+// A duplicate type-parameter name lowers to `type X[T any, T any]`, which the
+// Go compiler rejects - so it must be rejected at parse time instead of
+// producing non-compiling generated Go.
+func TestTypeParamsDuplicate(t *testing.T) {
+	for _, src := range []string{`type Pair<T, T> { a T  b T }`, `type Triple<T, T, T> { a T }`} {
+		_, errs := parseWithErrors(t, src)
+		if len(errs) == 0 {
+			t.Errorf("expected duplicate-type-parameter error for %q", src)
+		}
+	}
+	// Distinct names are fine.
+	if _, errs := parseWithErrors(t, `type OK<K, V> { k K  v V }`); len(errs) != 0 {
+		t.Errorf("distinct type params should parse clean, got %v", errs)
+	}
+}
+
 // ---------- request without type ----------
 
 func TestMethodMissingRequestType(t *testing.T) {
 	_, errs := parseWithErrors(t, `service S { get Op { request } }`)
 	if len(errs) == 0 {
 		t.Error()
+	}
+}
+
+// A second request/response clause silently discarded the first - reject it.
+func TestMethodDuplicateClause(t *testing.T) {
+	for _, src := range []string{
+		`service S { get G /g { request A  request B  response C } }`,
+		`service S { get G /g { response A  response B } }`,
+	} {
+		if _, errs := parseWithErrors(t, src); len(errs) == 0 {
+			t.Errorf("expected duplicate-clause error for %q", src)
+		}
+	}
+	if _, errs := parseWithErrors(t, `service S { get G /g { request A  response B } }`); len(errs) != 0 {
+		t.Errorf("single request+response should be clean, got %v", errs)
 	}
 }
 

@@ -41,7 +41,7 @@ import (
 
 // Version is the server's reported version, surfaced via Initialize so
 // clients can include it in trace logs.
-const Version = "1.3.3"
+const Version = "1.3.4"
 
 // Serve runs the LSP loop on the supplied stdio streams. It blocks until
 // the peer closes the connection or context is cancelled, and returns the

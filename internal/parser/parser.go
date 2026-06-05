@@ -455,12 +455,22 @@ func (p *Parser) parseTypeParams() []string {
 		return nil
 	}
 	var params []string
+	seen := map[string]bool{}
 	for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
 		t, ok := p.expect(lexer.Ident)
 		if !ok {
 			break
 		}
-		params = append(params, t.Text)
+		// A duplicate type-parameter name lowers to `type X[T any, T any]`,
+		// which the Go compiler rejects ("T redeclared"). Reject it here -
+		// parallel to the empty-list guard above - so the design fails with a
+		// clear diagnostic instead of non-compiling generated Go.
+		if seen[t.Text] {
+			p.errorf(t.Pos, "duplicate type parameter %q", t.Text)
+		} else {
+			seen[t.Text] = true
+			params = append(params, t.Text)
+		}
 		if p.peek().Kind == lexer.Comma {
 			p.advance()
 		}
@@ -707,13 +717,14 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 func (p *Parser) parseEnumValue() *ast.EnumValue {
 	// An enum body holds only value names, so a reserved word here is a
 	// value name (contextual keyword), e.g. `enum Kind { type ... }`.
+	p.captureDoc()
 	t := p.peek()
 	if t.Kind != lexer.Ident && !isKeywordKind(t.Kind) {
 		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
 		return nil
 	}
 	p.advance()
-	v := &ast.EnumValue{Pos: t.Pos, Name: t.Text, Kind: ast.EnumBare}
+	v := &ast.EnumValue{Pos: t.Pos, Doc: p.takeDoc(), Name: t.Text, Kind: ast.EnumBare}
 	if p.peek().Kind == lexer.Equal {
 		p.advance()
 		switch p.peek().Kind {
@@ -900,11 +911,19 @@ func (p *Parser) parseMethod() *ast.Method {
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		switch p.peek().Kind {
 		case lexer.KwRequest:
-			p.advance()
+			kw := p.advance()
+			if m.Request != nil {
+				// A second `request` clause would silently discard the first -
+				// reject it so the ambiguity surfaces instead of vanishing.
+				p.errorf(kw.Pos, "duplicate request clause in method %q", m.Name)
+			}
 			m.Request = p.parseNamedTypeRef()
 			p.rejectMethodTypeSuffix("request")
 		case lexer.KwResponse:
-			p.advance()
+			kw := p.advance()
+			if m.Response != nil {
+				p.errorf(kw.Pos, "duplicate response clause in method %q", m.Name)
+			}
 			mr := &ast.MethodResponse{Pos: p.peek().Pos}
 			mr.Type = p.parseNamedTypeRef()
 			m.Response = mr

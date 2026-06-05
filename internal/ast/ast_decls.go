@@ -132,6 +132,7 @@ const (
 // only meaningful when Kind matches.
 type EnumValue struct {
 	Pos        Pos
+	Doc        []string
 	Name       string
 	Kind       EnumValueKind
 	IntValue   int64

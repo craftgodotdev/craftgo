@@ -240,6 +240,20 @@ func TestFractionalBoundOnFloatOK(t *testing.T) {
 	mustClean(t, `scalar Half float64 @gte(0.5)`)
 }
 
+func TestFloat32BoundOverflow(t *testing.T) {
+	// A bound whose magnitude exceeds the float32 range (~3.4028e38) renders
+	// a float32 literal that overflows and won't compile - reject at design
+	// time, on fields and on float32 scalar declarations alike.
+	const huge = "400000000000000000000000000000000000000.0" // 4e38 > MaxFloat32
+	expectDiag(t, `type X { r float32 @gte(`+huge+`) }`, CodeBoundOverflow)
+	expectDiag(t, `type X { r float32 @lte(`+huge+`) }`, CodeBoundOverflow)
+	expectDiag(t, `type X { r float32 @range(0, `+huge+`) }`, CodeBoundOverflow)
+	expectDiag(t, `scalar Big float32 @lte(`+huge+`)`, CodeBoundOverflow)
+	// Within float32 range, and any magnitude on float64, are clean.
+	mustClean(t, `type X { r float32 @gte(-100.5) @lte(100.5) }`)
+	mustClean(t, `type X { r float64 @lte(`+huge+`) }`)
+}
+
 func TestIntegralFloatBoundOnIntOK(t *testing.T) {
 	// An integral float literal renders to a whole-number Go literal
 	// (`1.0` → `1`), so it compiles fine and is not flagged — the check
