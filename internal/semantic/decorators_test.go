@@ -931,12 +931,15 @@ type User { name string? @default(["x"]) }`, CodeDecoratorArgType)
 
 // ---------- @default + optional combination ----------
 
-func TestDefaultWithoutOptionalIsClean(t *testing.T) {
-	// `@default(x)` on a non-optional field is correct as written: the
-	// codegen advertises it optional (not required) in OpenAPI and
-	// pre-fills it before decode, so no `?` is needed and nothing warns.
+func TestDefaultWithoutOptionalWarns(t *testing.T) {
+	// `@default(x)` on a non-optional field is conceptually optional (the
+	// default fires when the value is absent), so it warns - `craftgo fmt`
+	// adds the `?`, after which types.go / validate.go / OpenAPI agree.
+	expectWarning(t, `package design
+type ListReq { page int @default(1) }`, CodeDefaultNeedsOptional)
+	// With the `?` already present, nothing warns.
 	mustClean(t, `package design
-type ListReq { page int @default(1) }`)
+type ListReq { page int? @default(1) }`)
 }
 
 func TestDefaultOnOptionalFieldClean(t *testing.T) {

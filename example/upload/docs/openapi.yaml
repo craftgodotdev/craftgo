@@ -91,7 +91,7 @@ components:
     UploadResult:
       properties:
         createdAt:
-          format: datetime
+          format: date-time
           type: string
         id:
           maxLength: 64

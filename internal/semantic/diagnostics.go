@@ -45,6 +45,12 @@ const (
 	// a wire-shaping validator like `@length` (sensitive fields never
 	// cross the wire so wire-level constraints are meaningless).
 	CodeDecoratorConflict = "decorator/conflict"
+	// CodeDefaultNeedsOptional fires (severity warning) when `@default` is
+	// placed on a non-optional, non-`@path` field. The default fires when the
+	// value is absent, so the field is conceptually optional; `craftgo fmt`
+	// adds the `?` on save, after which types.go, validate.go, and the OpenAPI
+	// agree (optional + nullable). Until then the artifacts can disagree.
+	CodeDefaultNeedsOptional = "decorator/default-needs-optional"
 	// CodeFlagEmptyParens fires (severity warning) when a Flag
 	// decorator (one that never takes arguments) is written with empty
 	// parens — `@positive()` instead of `@positive`. Warning only:
@@ -207,6 +213,14 @@ const (
 	// dropped at gen time — surfacing it at design time prevents the
 	// silent data loss.
 	CodeBindingVerb = "binding/verb"
+	// CodeFilePosition fires when a `file` field appears where the
+	// multipart binder cannot reach it: inside a response type, or nested
+	// below the top level of a request body. The form-binding codegen scans
+	// only the resolved top-level request fields, so a `file` elsewhere is
+	// silently emitted as a JSON-encoded `*multipart.FileHeader` the server
+	// can never populate. `file` is valid only as a top-level request field
+	// (directly or carried in via a mixin).
+	CodeFilePosition = "binding/file-position"
 	// CodeServiceCollision fires when two packages in the same
 	// project both declare a primary `service` of the same name.
 	// The generated codegen layout keys output directories by

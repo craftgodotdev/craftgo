@@ -106,7 +106,16 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		if hasBodyVerb(m.Verb) {
 			switch {
 			case isMultipart:
-				op.RequestBody = multipartRequestBody(formStrings, formFiles, pkg, registry)
+				// The request type's own decorators carry any type-level
+				// cross-field constraints; pass them so the multipart schema
+				// advertises them like the JSON body schema does.
+				var crossDecs []*ast.Decorator
+				if m.Request != nil && m.Request.Name != nil {
+					if td, ok := pkg.Types[m.Request.Name.String()]; ok {
+						crossDecs = td.Decorators
+					}
+				}
+				op.RequestBody = multipartRequestBody(formStrings, formFiles, crossDecs, pkg, registry)
 			case len(bins.body) > 0:
 				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 					Required: true,
@@ -465,7 +474,7 @@ func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 // runtime validator will accept, so users would upload an arbitrary
 // file and get a 400 from the validator instead of a typed rejection
 // at SDK call time.
-func multipartRequestBody(forms, files []paramBinding, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
+func multipartRequestBody(forms, files []paramBinding, crossDecs []*ast.Decorator, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
 	// required lists every non-optional form/file field so a generated
 	// client mirrors the server's validator (a non-`?` `file @form` field
@@ -506,13 +515,23 @@ func multipartRequestBody(forms, files []paramBinding, pkg *semantic.Package, re
 			}
 		}
 	}
-	mt := &openapi3.MediaType{
-		Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
-			Type:       &openapi3.Types{"object"},
-			Properties: props,
-			Required:   required,
-		}},
+	schema := &openapi3.Schema{
+		Type:       &openapi3.Types{"object"},
+		Properties: props,
+		Required:   required,
 	}
+	// Type-level cross-field constraints (@mutuallyExclusive / @requiresOneOf)
+	// must ride the SERVED multipart schema too - the runtime validator
+	// enforces them, so the spec has to advertise them or a generated client
+	// believes the form fields are independent. Wrap the object in an allOf
+	// with the same fragments the JSON body schema uses.
+	if frags := crossFieldSchemaFragments(crossDecs); len(frags) > 0 {
+		schema = &openapi3.Schema{
+			Type:  &openapi3.Types{"object"},
+			AllOf: append(openapi3.SchemaRefs{{Value: schema}}, frags...),
+		}
+	}
+	mt := &openapi3.MediaType{Schema: &openapi3.SchemaRef{Value: schema}}
 	if len(encoding) > 0 {
 		mt.Encoding = encoding
 	}

@@ -382,7 +382,7 @@ components:
           minLength: 10
           type: string
         datetime:
-          format: datetime
+          format: date-time
           maxLength: 40
           type: string
         email:
@@ -674,12 +674,12 @@ components:
         nesting level.
       properties:
         createdAt:
-          format: datetime
+          format: date-time
           type: string
         createdBy:
           type: string
         updatedAt:
-          format: datetime
+          format: date-time
           type: string
       required:
       - createdAt
@@ -693,10 +693,10 @@ components:
         fields plus their format validators.
       properties:
         createdAt:
-          format: datetime
+          format: date-time
           type: string
         updatedAt:
-          format: datetime
+          format: date-time
           type: string
       required:
       - createdAt
@@ -714,7 +714,7 @@ components:
         actor:
           type: string
         at:
-          format: datetime
+          format: date-time
           type: string
       required:
       - actor
@@ -998,7 +998,7 @@ components:
           maxLength: 64
           type: string
         stamp:
-          format: datetime
+          format: date-time
           type: string
       required:
       - item
@@ -6343,7 +6343,7 @@ components:
           minLength: 10
           type: string
         datetime:
-          format: datetime
+          format: date-time
           maxLength: 40
           type: string
         email:
@@ -7128,7 +7128,7 @@ components:
         XTimestamp is a string-backed scalar with no inherited validator,
         exercising scalar resolution when the scalar has no decorators of
         its own.
-      format: datetime
+      format: date-time
       type: string
     XTypeFields:
       description: |-

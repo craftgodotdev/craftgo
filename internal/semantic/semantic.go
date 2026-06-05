@@ -255,6 +255,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkPathResolution()
 	a.checkOperationIDUniqueness()
 	a.checkCombinationRules(files)
+	a.checkFilePosition()
 }
 
 // runRefPhase resolves every type reference - file-local imports,

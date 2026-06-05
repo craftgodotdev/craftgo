@@ -519,7 +519,16 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool 
 		for _, m := range td.Body {
 			switch v := m.(type) {
 			case *ast.Field:
-				if !a.typeRefComparable(substTypeParam(v.Type, subst), seen) {
+				ft := substTypeParam(v.Type, subst)
+				// An optional `?` non-collection field renders as a Go pointer
+				// (`*T`), which is comparable regardless of what T contains - so
+				// it doesn't break the struct's usability as a map key. Don't
+				// descend past the pointer. (Optional arrays/maps stay non-
+				// comparable: they render as a nil-able slice/map, not a pointer.)
+				if ft != nil && ft.Optional && !ft.Array && ft.Map == nil {
+					continue
+				}
+				if !a.typeRefComparable(ft, seen) {
 					return false
 				}
 			case *ast.Mixin:

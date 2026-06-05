@@ -601,6 +601,31 @@ service S {
 	}
 }
 
+// A type-level cross-field constraint (@mutuallyExclusive / @requiresOneOf) on
+// a multipart request type must ride the SERVED multipart schema (allOf + the
+// constraint fragment), not just the unused component schema - otherwise the
+// runtime validator enforces a rule the spec never advertises.
+func TestGenerateOpenAPIMultipartCrossField(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+@mutuallyExclusive(a, b)
+type UploadReq {
+    a      string?
+    b      string?
+    avatar file    @form
+}
+service S {
+    post Upload /upload { request UploadReq  response UploadReq }
+}`)
+	i := strings.Index(body, "multipart/form-data:")
+	if i < 0 {
+		t.Fatalf("no multipart body:\n%s", body)
+	}
+	block := body[i:]
+	if !strings.Contains(block, "allOf:") || !strings.Contains(block, "not:") {
+		t.Errorf("multipart schema must carry the @mutuallyExclusive fragment (allOf + not):\n%s", block[:min(900, len(block))])
+	}
+}
+
 // TestGenerateOpenAPIMixinFlatten checks that embedded mixins
 // surface in the host schema via OpenAPI's allOf composition so
 // generated TS clients see every field — including those inherited
@@ -685,7 +710,7 @@ service S { get Get /things { response Host } }`)
 		"maximum: 100",                           // @lte(100)
 		"default: 10",                            // @default(10)
 		"maxLength: 64",                          // @maxLength(64)
-		"format: datetime",                       // @format(datetime)
+		"format: date-time",                      // @format(datetime) → standard keyword
 		"Box wraps a value with a bounded count", // type-level description
 	} {
 		if !strings.Contains(block, want) {
@@ -1606,6 +1631,38 @@ service T {
 	if n := strings.Count(src, "- billing"); n != 1 {
 		t.Errorf("@group(\"billing\") + @tags(billing) should dedup to one tag, got %d occurrences:\n%s", n, src)
 	}
+}
+
+// TestGenerateOpenAPIDatetimeFormatKeyword pins that the craftgo @format
+// name `datetime` is emitted as the OpenAPI / JSON Schema standard keyword
+// `date-time`, while a name without a differing standard keyword (`date`)
+// passes through unchanged. The DSL keeps its own spelling; only the
+// generated spec is normalised so validators and client generators
+// recognise the format.
+func TestGenerateOpenAPIDatetimeFormatKeyword(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type R {
+    created string @format(datetime)
+    born    string @format(date)
+}
+
+service S {
+    get Get /a { response R }
+}`)
+	root := t.TempDir()
+	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
+	src := string(out)
+	if strings.Contains(src, "format: datetime") {
+		t.Errorf("expected non-standard 'format: datetime' to be remapped to 'date-time', got:\n%s", src)
+	}
+	mustContainAll(t, src,
+		"format: date-time",
+		"format: date",
+	)
 }
 
 // TestGenerateOpenAPIOperationIDDefaultAndOverride pins the rule:

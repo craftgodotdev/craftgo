@@ -367,7 +367,13 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			if !r.projectComparable(substTypeParam(v.Type, subst), pkgName, conservative, seen) {
+			ft := substTypeParam(v.Type, subst)
+			// An optional `?` non-collection field renders as a comparable Go
+			// pointer (`*T`) - mirror typeRefComparable and don't descend past it.
+			if ft != nil && ft.Optional && !ft.Array && ft.Map == nil {
+				continue
+			}
+			if !r.projectComparable(ft, pkgName, conservative, seen) {
 				return false
 			}
 		case *ast.Mixin:

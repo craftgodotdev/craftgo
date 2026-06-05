@@ -338,6 +338,31 @@ type NReq { items dep.XOuter[] @uniqueItems }`,
 	}
 }
 
+// @uniqueItems on an array of a struct with an OPTIONAL field whose underlying
+// type is non-comparable (a slice inside it) must NOT be rejected: `?` makes
+// the field a Go pointer (`*T`), which is comparable, so the struct is a valid
+// map key. A non-optional such field stays correctly rejected.
+func TestUniqueItemsOptionalFieldComparable(t *testing.T) {
+	mustClean(t, `type Inner { id string  tags string[] }
+type Holder { inner Inner? }
+type R { xs Holder[] @uniqueItems }`)
+	// The non-optional twin is still rejected (Inner embedded by value).
+	expectError(t, `type Inner { id string  tags string[] }
+type Holder { inner Inner }
+type R { xs Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
+	// Cross-package optional field is likewise a comparable pointer.
+	root, files := projectFixture(t, map[string]string{
+		"dep/d.craftgo": `package dep
+type XInner { id string  tags string[] }`,
+		"api.craftgo": `package design
+type Holder { inner dep.XInner? }
+type NReq { items Holder[] @uniqueItems }`,
+	})
+	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); findCode(diags, CodeDecoratorTypeMismatch) != nil {
+		t.Error("optional cross-pkg struct field is a comparable pointer; must not be rejected")
+	}
+}
+
 // @uniqueItems over a cross-package GENERIC instance whose type-arg makes it
 // non-comparable (`shared.Box<shared.User>` where User holds a slice) must be
 // rejected. The comparability walk has to substitute the type-args into the
@@ -657,4 +682,49 @@ type R { items Holder[] @uniqueItems }`,
 	if d := findCode(diags, CodeDecoratorTypeMismatch); d != nil {
 		t.Errorf("comparable cross-pkg field must not be rejected; got: %s", d.Msg)
 	}
+}
+
+// A `file` field nested below the top level of a request body cannot be bound:
+// the multipart binder reads only the resolved top-level request fields, so the
+// `*multipart.FileHeader` stays nil and the upload is silently lost while gen
+// and `go build` both succeed. Reject the nesting. A top-level `file` (direct
+// or flattened in via a mixin) and a `file` carried in a response (including a
+// type echoed back as its own response) stay valid.
+func TestNestedRequestFileRejected(t *testing.T) {
+	expectError(t, `package design
+type Wrap { data file @form }
+type UploadReq { wrapper Wrap }
+type Resp { ok bool }
+service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
+
+	// Reached two levels down.
+	expectError(t, `package design
+type Leaf { data file }
+type Mid { leaf Leaf }
+type UploadReq { mid Mid }
+type Resp { ok bool }
+service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
+
+	mustNoFilePosition := func(label, src string) {
+		t.Helper()
+		_, diags := Analyze(parseFiles(t, src))
+		if d := findCode(diags, CodeFilePosition); d != nil {
+			t.Errorf("%s: unexpected file-position rejection: %s", label, d.Msg)
+		}
+	}
+	// Top-level file binds directly.
+	mustNoFilePosition("top-level", `package design
+type UploadReq { f file @form  name string }
+type Resp { ok bool }
+service S { post Up /up { request UploadReq  response Resp } }`)
+	// A mixin flattens its file into the host's top level.
+	mustNoFilePosition("mixin", `package design
+type Bits { f file @form }
+type UploadReq { Bits  name string }
+type Resp { ok bool }
+service S { post Up /up { request UploadReq  response Resp } }`)
+	// A file echoed back in a response is an established modelling pattern.
+	mustNoFilePosition("echo", `package design
+type Profile { avatar file @form  name string }
+service S { post Up /up { request Profile  response Profile } }`)
 }

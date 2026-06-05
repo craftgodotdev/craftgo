@@ -32,6 +32,38 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`object` as a field type is now rejected** with a pointer to `any` — it was
   a broken half-alias whose Go renderer emitted an undefined type and a dangling
   OpenAPI `$ref`.
+- **A multipart request now advertises its type-level cross-field constraints**
+  (`@mutuallyExclusive` / `@requiresOneOf`) in the served `multipart/form-data`
+  schema (via `allOf`), matching the JSON body schema. The runtime validator
+  already enforced them, so the spec previously hid a rule the server kept.
+- **`@uniqueItems` no longer false-rejects an array of structs that carry an
+  optional non-collection field.** An optional field lowers to a pointer, which
+  is comparable, but the comparability check treated it as non-comparable and
+  rejected the otherwise valid `@uniqueItems` element type.
+- **`craftgo fmt` no longer blanks a comment-only file.** A file with only `//`
+  comments (no package, no declarations) had nothing to anchor the comments to
+  and was reduced to zero bytes; the comments are now preserved and round-trip
+  idempotently.
+- **`@format(datetime)` now emits the standard OpenAPI / JSON Schema keyword
+  `date-time`** instead of the non-standard `datetime`. The DSL keeps its own
+  spelling, but validators and client generators (`@hey-api/openapi-ts`, ...)
+  only recognise the hyphenated keyword. Other `@format` names without a
+  differing standard keyword pass through unchanged.
+- **A `file` field nested below the top level of a request body is now
+  rejected.** The multipart binder reads only the resolved top-level request
+  fields, so a `file` reached through a named struct field (`Req { wrapper Wrap }`
+  where `Wrap` holds the `file`) was decoded as JSON, left the
+  `*multipart.FileHeader` nil, and silently dropped the upload while gen and
+  `go build` both succeeded. A top-level `file` (directly or flattened in via a
+  mixin) and a `file` carried in a response are unaffected.
+
+### Changed
+
+- **`@default` on a non-optional field now warns** (`decorator/default-needs-optional`).
+  The default fires when the value is absent, so the field is conceptually
+  optional; `craftgo fmt` adds the `?`, after which types.go, validate.go, and
+  the OpenAPI agree it is optional (the docs already described this warning, but
+  none was emitted).
 - **An optional map key (`map<K?, V>`) is now rejected at design time.** It
   rendered `map[*K]V`, which `encoding/json` cannot use as an object key
   (marshal/unmarshal fail) — caught for every underlying key kind, local and

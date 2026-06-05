@@ -147,6 +147,19 @@ func buildLooseFromComments(f *ast.File, chainClaimed map[int]bool) map[int][]st
 	}
 	anchors := declAnchorLines(f)
 	if len(anchors) == 0 {
+		// No package and no declarations: there is nothing to anchor the
+		// comments to, but a comment-only file must still round-trip. Collect
+		// every leading comment under the EOF key so the File printer re-emits
+		// them instead of blanking the file.
+		var block []string
+		for _, c := range f.Comments {
+			if c != nil && c.Kind == lexer.CommentLeading {
+				block = append(block, c.Text)
+			}
+		}
+		if len(block) > 0 {
+			out[looseEOFKey] = block
+		}
 		return out
 	}
 	claimed := freeCommentLines(f)

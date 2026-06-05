@@ -20,3 +20,11 @@ openapi:
       bearerFormat: JWT
     oauth2:
       type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth/authorize
+          tokenUrl: https://auth.example.com/oauth/token
+          refreshUrl: https://auth.example.com/oauth/token
+          scopes:
+            catalog:read: Read catalog data
+            orders:write: Create and modify orders

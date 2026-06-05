@@ -366,6 +366,28 @@ enum Status {
 	}
 }
 
+// TestFormatCommentOnlyFilePreserved pins that a file with only comments (no
+// package, no declarations) is not silently blanked by fmt - the comments have
+// no anchor, so they are collected under the EOF key and re-emitted.
+func TestFormatCommentOnlyFilePreserved(t *testing.T) {
+	src := "// just a note\n// another line\n"
+	out, diags := Format("c.craftgo", src)
+	if len(diags) > 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	if strings.TrimSpace(out) == "" {
+		t.Fatalf("comment-only file was blanked: %q", out)
+	}
+	for _, w := range []string{"// just a note", "// another line"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("dropped %q:\n%q", w, out)
+		}
+	}
+	if out2, _ := Format("c.craftgo", out); out != out2 {
+		t.Errorf("not idempotent:\n%q\n%q", out, out2)
+	}
+}
+
 // TestFormatAddsOptionalToDefault pins that `craftgo fmt` makes a
 // `@default` field's optionality explicit by adding `?` (the default fires
 // on an absent / null value, so the field is optional). A `@path` field is

@@ -52,7 +52,7 @@ components:
     AuditFields:
       properties:
         auditedAt:
-          format: datetime
+          format: date-time
           type: string
         auditedBy:
           $ref: '#/components/schemas/NonEmptyID'
@@ -378,7 +378,7 @@ components:
         contact:
           $ref: '#/components/schemas/Contact'
         createdAt:
-          format: datetime
+          format: date-time
           type: string
         email:
           $ref: '#/components/schemas/Email'
@@ -548,7 +548,7 @@ components:
           - number
           - "null"
         capturedAt:
-          format: datetime
+          format: date-time
           type: string
         lat:
           $ref: '#/components/schemas/Latitude'
@@ -664,7 +664,7 @@ components:
       description: ServiceUnavailable error response (HTTP 503).
       properties:
         estimatedEndAt:
-          format: datetime
+          format: date-time
           type: string
         reason:
           $ref: '#/components/schemas/MaintenanceReason'
@@ -687,7 +687,7 @@ components:
     Order:
       properties:
         createdAt:
-          format: datetime
+          format: date-time
           type: string
         createdBy:
           $ref: '#/components/schemas/CustomerRef'
@@ -731,7 +731,7 @@ components:
           - $ref: '#/components/schemas/Payment'
           - type: "null"
         shippedAt:
-          format: datetime
+          format: date-time
           type:
           - string
           - "null"
@@ -1010,10 +1010,10 @@ components:
     Timestamps:
       properties:
         createdAt:
-          format: datetime
+          format: date-time
           type: string
         updatedAt:
-          format: datetime
+          format: date-time
           type: string
       required:
       - createdAt
@@ -1054,6 +1054,14 @@ components:
       scheme: bearer
       type: http
     oauth2:
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth/authorize
+          refreshUrl: https://auth.example.com/oauth/token
+          scopes:
+            catalog:read: Read catalog data
+            orders:write: Create and modify orders
+          tokenUrl: https://auth.example.com/oauth/token
       type: oauth2
 info:
   description: Ecommerce showcase — generics, scalars, deep nesting, mixins, multi-package,
