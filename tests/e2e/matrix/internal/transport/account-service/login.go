@@ -3,8 +3,9 @@
 package accountservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/account-service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
@@ -17,7 +18,7 @@ func Login(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewLoginService(r.Context(), svcCtx)
 		resp, err := l.Login()
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

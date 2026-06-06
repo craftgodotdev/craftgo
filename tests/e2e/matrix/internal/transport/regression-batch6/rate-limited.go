@@ -3,9 +3,10 @@
 package regressionbatch6
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/regression-batch6"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
@@ -18,7 +19,7 @@ func RateLimited(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewRateLimitedService(r.Context(), svcCtx)
 		resp, err := l.RateLimited()
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("X-Rate-Limit", strconv.Itoa(resp.Limit))

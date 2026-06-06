@@ -3,8 +3,9 @@
 package orderservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/order-service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
@@ -32,7 +33,7 @@ func CreateOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewCreateOrderService(r.Context(), svcCtx)
 		resp, err := l.CreateOrder(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -3,8 +3,9 @@
 package regressionbatch2
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/regression-batch2"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/regression"
@@ -38,7 +39,7 @@ func DoReq(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewDoReqService(r.Context(), svcCtx)
 		err := l.DoReq(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

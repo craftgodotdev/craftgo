@@ -266,7 +266,6 @@ func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRo
 			fn    func() error
 		}{
 			{"transport(" + name + ")", func() error { return codegen.GenerateTransportResolved(p, cfg, projectRoot, r) }},
-			{"transport-helpers(" + name + ")", func() error { return codegen.GenerateTransportHelpers(p, cfg, projectRoot) }},
 			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, r.CrossPkg) }},
 			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
 		}

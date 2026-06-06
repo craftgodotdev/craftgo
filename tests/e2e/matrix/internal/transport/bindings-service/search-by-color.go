@@ -3,8 +3,9 @@
 package bindingsservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/bindings-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
@@ -36,7 +37,7 @@ func SearchByColor(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewSearchByColorService(r.Context(), svcCtx)
 		resp, err := l.SearchByColor(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

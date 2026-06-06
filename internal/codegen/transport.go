@@ -145,7 +145,6 @@ type paramBinding struct {
 }
 
 // helpersData is the template input for `handler_helpers.tmpl`.
-type helpersData struct{ Package string }
 
 // GenerateTransport emits one `<method>_handler.go` per method per service
 // under `<output.handler>/<servicePackage>/`. Each file contains a single
@@ -868,29 +867,3 @@ func renderWireBindShape(name string, data wireBindData) string {
 // new wire-bound primitive is a template-only change once the Go
 // dispatcher knows which name to pick.
 var transportWireBindTemplate = tmpl("transport_wire_bind.tmpl")
-
-func GenerateTransportHelpers(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
-	t := tmpl("transport_helpers.tmpl")
-	for _, svcName := range sortedServices(pkg) {
-		// Each group folder is a self-contained Go package, so the errors
-		// helper is emitted once per distinct group (including the ungrouped
-		// root) - the handlers there call the local writeError directly.
-		for _, group := range distinctGroups(pkg.Services[svcName]) {
-			dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return err
-			}
-			formatted, err := renderGo(t, helpersData{Package: ServicePackage(svcName)})
-			if err != nil {
-				return fmt.Errorf("render handler helpers: %w", err)
-			}
-			if err := os.WriteFile(filepath.Join(dir, "errors.go"), formatted, 0o644); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}

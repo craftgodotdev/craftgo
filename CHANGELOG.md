@@ -5,7 +5,33 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [1.3.6] - 2026-06-05
+## [1.3.6] - 2026-06-07
+
+### Added
+
+- **`server.SetHandleUnknownError` — a swappable hook for service errors that
+  are not craftgo typed errors.** When a handler returns a bare `errors.New` /
+  `fmt.Errorf` (no `HTTPStatus()`), the framework now logs it at Error level
+  with the request's trace context (`trace_id` / `span_id` / `request_id`) and
+  responds 500 — and apps can replace that with `SetHandleUnknownError` to map a
+  domain error to a status, redact, or return a uniform envelope. This closes
+  the gap noted in the errors guide: validation (`SetDefaultValidationFailed`)
+  and not-found (`SetHandleNotFound`) were already overridable; service errors
+  now are too. The error contract is also named: `server.StatusError` (and the
+  optional `server.ResponseHeaderWriter`) — every `@errors(...)` declaration
+  implements it.
+
+### Changed
+
+- **Service-error rendering moved into the framework (`server.WriteError`),
+  removing the duplicated per-package `errors.go`.** Each generated transport
+  package (and, after per-group `@group` output, each group folder) emitted a
+  byte-identical `writeError` helper. Generated handlers now call the single
+  `server.WriteError`, so no `errors.go` is generated under `internal/transport`
+  at all. Default rendering is unchanged: a typed error renders its declared
+  status + body (or `{code, message}` envelope when bodyless); an unrecognised
+  error goes through `SetHandleUnknownError`. (Typed-error *declaration* files in
+  the types package are unaffected — those legitimately vary per error type.)
 
 ### Fixed
 

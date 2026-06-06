@@ -3,8 +3,9 @@
 package xrefsservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x-refs-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
@@ -24,7 +25,7 @@ func GetTraced(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewGetTracedService(r.Context(), svcCtx)
 		resp, err := l.GetTraced(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("X-Trace-Id", resp.Trace)

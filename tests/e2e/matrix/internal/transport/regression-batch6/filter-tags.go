@@ -3,8 +3,9 @@
 package regressionbatch6
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/regression-batch6"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/regression"
@@ -28,7 +29,7 @@ func FilterTags(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewFilterTagsService(r.Context(), svcCtx)
 		resp, err := l.FilterTags(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

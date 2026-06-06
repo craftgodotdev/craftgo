@@ -104,7 +104,7 @@ func (e *Rg5HdrError) ErrCode() string { return e.code }
 func (e *Rg5HdrError) HTTPStatus() int { return 409 }
 
 // WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the generated `writeError` helper before the JSON body is
+// Called by the framework's server.WriteError before the JSON body is
 // encoded so values reach the wire in a single response.
 func (e *Rg5HdrError) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Request-Id", e.Rid)
@@ -256,7 +256,7 @@ func (e *Rg7SecretErr) ErrCode() string { return e.code }
 func (e *Rg7SecretErr) HTTPStatus() int { return 403 }
 
 // WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the generated `writeError` helper before the JSON body is
+// Called by the framework's server.WriteError before the JSON body is
 // encoded so values reach the wire in a single response.
 func (e *Rg7SecretErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Error-Code", e.Code)

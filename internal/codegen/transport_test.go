@@ -845,37 +845,6 @@ func TestGenerateTransportMissingPackageName(t *testing.T) {
 	}
 }
 
-func TestGenerateTransportHelpers(t *testing.T) {
-	pkg := analyze(t, handlerSampleDSL)
-	root := t.TempDir()
-	cfg := sampleConfig()
-	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/user-service/errors.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustParseGo(t, string(out))
-	if !strings.Contains(string(out), "func writeError") {
-		t.Errorf("expected writeError helper:\n%s", out)
-	}
-	// writeError must dispatch on the WriteResponseHeaders interface so
-	// typed errors with @header / @cookie fields land their wire writes
-	// before the JSON body is encoded.
-	mustContainAll(t, string(out),
-		"WriteResponseHeaders(http.ResponseWriter)",
-		"hw.WriteResponseHeaders(w)",
-	)
-}
-
-func TestGenerateTransportHelpersMissingPackageName(t *testing.T) {
-	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := GenerateTransportHelpers(pkg, sampleConfig(), t.TempDir()); err == nil {
-		t.Fatal("expected error for empty package name")
-	}
-}
-
 // ---------- routes ----------
 
 // TestGenerateRoutesPatterns pins the canonical routes-emit shape
@@ -1015,9 +984,6 @@ service AdminService {
 	if err := GenerateTransport(pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
 
 	// Route pattern carries no group, but the routes file itself lives in the
 	// group folder (the @group replaces the service name on disk, just like the
@@ -1040,12 +1006,12 @@ service AdminService {
 		t.Errorf("@group leaked into the route pattern:\n%s", src)
 	}
 
-	// Handlers + the self-contained errors helper land under the group path
-	// (which replaces the service name on disk).
+	// Handlers land under the group path (which replaces the service name on
+	// disk); error rendering is the framework's server.WriteError, so no
+	// per-package errors helper is emitted.
 	for _, rel := range []string{
 		"internal/transport/admin/ops/list-all.go",
 		"internal/transport/admin/ops/health.go",
-		"internal/transport/admin/ops/errors.go",
 	} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
 			t.Errorf("expected generated file %s: %v", rel, err)
@@ -1083,35 +1049,27 @@ extend service Catalog {
 	if err := GenerateTransport(pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
 
 	// Primary method stays at the service directory; the extend block's
-	// method lands under its own group (which replaces the service name); each
-	// folder carries its own self-contained errors helper.
+	// method lands under its own group (which replaces the service name).
 	for _, rel := range []string{
 		"internal/transport/catalog/list-things.go",
-		"internal/transport/catalog/errors.go",
 		"internal/transport/v2/list-things-v2.go",
-		"internal/transport/v2/errors.go",
 	} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
 			t.Errorf("expected generated file %s: %v", rel, err)
 		}
 	}
 
-	// Both handlers call the unexported writeError in their own package - the
-	// per-group errors helper means no cross-package import.
+	// Both handlers render errors through the framework's server.WriteError -
+	// no per-package helper, no cross-package transport import.
 	grouped, _ := os.ReadFile(filepath.Join(root, "internal/transport/v2/list-things-v2.go"))
 	if strings.Contains(string(grouped), "roottransport") {
-		t.Error("with per-group errors the grouped handler should not import a root package")
+		t.Error("the grouped handler should not import a root transport package")
 	}
-	mustContainAll(t, string(grouped), "writeError(w, err)")
-	errsrc, _ := os.ReadFile(filepath.Join(root, "internal/transport/v2/errors.go"))
-	mustContainAll(t, string(errsrc), "func writeError(")
-	if strings.Contains(string(errsrc), "func WriteError(") {
-		t.Error("per-group errors helper should not export a WriteError wrapper")
+	mustContainAll(t, string(grouped), "server.WriteError(w, r, err)")
+	if _, err := os.Stat(filepath.Join(root, "internal/transport/v2/errors.go")); err == nil {
+		t.Error("no per-package errors.go should be emitted; errors render via server.WriteError")
 	}
 
 	// Routes split per group, mirroring transport: the ungrouped primary method
@@ -1393,7 +1351,6 @@ func TestGeneratePipelineEndToEnd(t *testing.T) {
 	cfg := sampleConfig()
 	for _, step := range []func() error{
 		func() error { return GenerateTransport(pkg, cfg, root) },
-		func() error { return GenerateTransportHelpers(pkg, cfg, root) },
 		func() error { return GenerateRoutes(pkg, cfg, root) },
 		func() error { return GenerateService(pkg, cfg, root) },
 	} {
@@ -1423,9 +1380,6 @@ func TestGenerateHandlerPassthrough(t *testing.T) {
 	if err := GenerateTransport(pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateTransportHelpers(pkg, cfg, root); err != nil {
-		t.Fatal(err)
-	}
 	if err := GenerateService(pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
@@ -1437,7 +1391,7 @@ func TestGenerateHandlerPassthrough(t *testing.T) {
 	mustParseGo(t, hSrc)
 	mustContainAll(t, hSrc,
 		"l.LiveTail(w, r)",
-		"writeError(w, err)",
+		"server.WriteError(w, r, err)",
 		"http.HandlerFunc",
 	)
 	mustContainNone(t, hSrc,

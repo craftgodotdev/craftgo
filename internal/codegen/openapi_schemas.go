@@ -81,7 +81,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 			}
 		}
 		// A bodyless error (no declared fields) or a header/cookie-only
-		// error marshals its body to `{}`. The runtime writeError helper
+		// error marshals its body to `{}`. The framework's server.WriteError
 		// detects that empty marshal and substitutes a `{code, message}`
 		// envelope, so advertise the same shape — otherwise the spec
 		// promises an empty object the server never actually sends.

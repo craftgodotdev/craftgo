@@ -3,8 +3,9 @@
 package profileservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/profile-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/design"
@@ -30,7 +31,7 @@ func CreateProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewCreateProfileService(r.Context(), svcCtx)
 		resp, err := l.CreateProfile(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -35,7 +35,7 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewUploadAvatarService(r.Context(), svcCtx)
 		resp, err := l.UploadAvatar(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

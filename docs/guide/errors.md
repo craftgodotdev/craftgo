@@ -206,13 +206,17 @@ The OpenAPI spec shows each declared error as a per-status response with the sch
 
 If your service returns an error that isn't declared in `@errors(...)`, it still surfaces on the wire correctly (the typed error implements `HTTPStatus()`), but the OpenAPI spec won't list it. Best practice: declare every error you intentionally return.
 
-For unexpected errors (panics, raw `errors.New(...)`), the framework defaults to 500 with a `{code, message}` JSON envelope.
+For unexpected errors (raw `errors.New(...)` / `fmt.Errorf(...)` that carry no HTTP status), the framework logs the error with the request's trace context (`trace_id` / `span_id` / `request_id`) and responds 500 with a `{"message": ...}` JSON envelope.
 
 ## Custom error responses
 
-Override `server.SetDefaultValidationFailed` if you want a different validation envelope.
+The framework funnels every error response through one of three swappable hooks:
 
-For business errors, the typed error pattern with a body struct gives you full control over the response shape. There is no separate hook for general error transformation - if you want a uniform envelope, structure your error types accordingly.
+- `server.SetDefaultValidationFailed` — input that fails `Validate()` or parameter binding (default 400).
+- `server.SetHandleUnknownError` — a service error that is **not** a craftgo typed error (no `HTTPStatus()`); the default logs it with trace context and responds 500. Use it to map a domain error to a status, redact, or return a uniform envelope.
+- `(*server.Server).SetHandleNotFound` — requests that match no route (default 404).
+
+A recognised typed error (one that implements `server.StatusError` — every `@errors(...)` declaration does) is rendered directly from its interface and is **not** logged: a declared 4xx/5xx is an expected outcome. For full control over a business error's wire shape, give the error a body struct.
 
 ## Cross-package errors
 

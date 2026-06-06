@@ -3,9 +3,10 @@
 package headerechoservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/header-echo-service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
@@ -18,7 +19,7 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewListItemsService(r.Context(), svcCtx)
 		resp, err := l.ListItems()
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Count))

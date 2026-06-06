@@ -8,9 +8,7 @@ import (
 	"strconv"
 {{- end}}
 
-{{- if or .HasRequest .BodyDecode .HasResponse}}
 	"github.com/craftgodotdev/craftgo/pkg/server"
-{{- end}}
 
 	service "{{.ServiceImport}}"
 {{- if .NeedsTypes}}
@@ -78,7 +76,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		err := l.{{.Method}}()
 {{- end}}
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 {{- if .HasResponse}}

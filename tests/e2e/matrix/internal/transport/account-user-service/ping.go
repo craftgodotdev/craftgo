@@ -5,6 +5,8 @@ package accountuserservice
 import (
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/account-user-service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
@@ -17,7 +19,7 @@ func Ping(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewPingService(r.Context(), svcCtx)
 		err := l.Ping()
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

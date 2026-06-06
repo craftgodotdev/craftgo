@@ -3,8 +3,9 @@
 package customerservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/customer-service"
 	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
@@ -33,7 +34,7 @@ func ListCustomers(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewListCustomersService(r.Context(), svcCtx)
 		resp, err := l.ListCustomers(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

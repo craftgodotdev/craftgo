@@ -140,7 +140,7 @@ func (e *RateLimitedErr) ErrCode() string { return e.code }
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
 // WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the generated `writeError` helper before the JSON body is
+// Called by the framework's server.WriteError before the JSON body is
 // encoded so values reach the wire in a single response.
 func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))

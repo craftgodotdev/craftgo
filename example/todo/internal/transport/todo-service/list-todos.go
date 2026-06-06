@@ -3,9 +3,10 @@
 package todoservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
 	"strconv"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/todo/internal/service/todo-service"
 	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
@@ -42,7 +43,7 @@ func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewListTodosService(r.Context(), svcCtx)
 		resp, err := l.ListTodos(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Total))

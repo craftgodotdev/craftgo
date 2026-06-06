@@ -5,6 +5,8 @@ package {{.Package}}
 import (
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	service "{{.ServiceImport}}"
 	"{{.SvccontextImport}}"
 )
@@ -20,7 +22,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.New{{.Method}}Service(r.Context(), svcCtx)
 		if err := l.{{.Method}}(w, r); err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 	}

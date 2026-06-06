@@ -79,7 +79,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		err := l.{{.Method}}(&req)
 {{- end}}
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 {{- if .HasResponse}}

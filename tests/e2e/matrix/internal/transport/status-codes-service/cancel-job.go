@@ -3,8 +3,9 @@
 package statuscodesservice
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
 	"net/http"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/status-codes-service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
@@ -25,7 +26,7 @@ func CancelJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		l := service.NewCancelJobService(r.Context(), svcCtx)
 		err := l.CancelJob(&req)
 		if err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

@@ -5,6 +5,8 @@ package streamservice
 import (
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	service "github.com/craftgodotdev/craftgo/example/raw/internal/service/stream-service"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
@@ -17,7 +19,7 @@ func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewIngestService(r.Context(), svcCtx)
 		if err := l.Ingest(w, r); err != nil {
-			writeError(w, err)
+			server.WriteError(w, r, err)
 			return
 		}
 	}
