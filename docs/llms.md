@@ -6,7 +6,7 @@ This page lives at `/llms` so AI tooling can fetch one URL and ingest the full s
 
 ## Quick mental model
 
-1. Write `.craftgo` files describing your API (types, services, methods, validators).
+1. Write `.craftgo` files describing your API (types, services, methods, validators). The shorter `.cg` extension is also accepted, and a project may mix both.
 2. Run `craftgo gen <design-dir>` to generate Go types, validators, HTTP handlers, an OpenAPI 3.1 spec, and stubs for business logic + middleware.
 3. Fill in business logic at `internal/service/<service>/<method>.go` (gen-once - your edits stick).
 4. Run with `go run .`. The framework wraps `net/http` directly.

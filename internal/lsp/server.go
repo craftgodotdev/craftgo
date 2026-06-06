@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"go.lsp.dev/jsonrpc2"
@@ -41,7 +42,7 @@ import (
 
 // Version is the server's reported version, surfaced via Initialize so
 // clients can include it in trace logs.
-const Version = "1.3.4"
+const Version = "1.3.5"
 
 // Serve runs the LSP loop on the supplied stdio streams. It blocks until
 // the peer closes the connection or context is cancelled, and returns the
@@ -298,16 +299,27 @@ func (s *Server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ js
 	return reply(ctx, nil, nil)
 }
 
+// watchedFilesGlob builds the workspace file-watch pattern from the canonical
+// source extensions — e.g. `**/*.{craftgo,cg}`. Brace groups are part of the
+// LSP glob syntax, so a single watcher covers every accepted extension.
+func watchedFilesGlob() string {
+	bare := make([]string, len(config.DesignFileExtensions))
+	for i, e := range config.DesignFileExtensions {
+		bare[i] = strings.TrimPrefix(e, ".")
+	}
+	return "**/*.{" + strings.Join(bare, ",") + "}"
+}
+
 // watchedFilesRegistration is the `client/registerCapability` payload that
-// subscribes the server to create / change / delete events for every
-// `**/*.craftgo` file (Kind omitted → the client watches all three).
+// subscribes the server to create / change / delete events for every craftgo
+// source file (Kind omitted → the client watches all three).
 func watchedFilesRegistration() protocol.RegistrationParams {
 	return protocol.RegistrationParams{
 		Registrations: []protocol.Registration{{
 			ID:     "craftgo-watch-design-files",
 			Method: protocol.MethodWorkspaceDidChangeWatchedFiles,
 			RegisterOptions: protocol.DidChangeWatchedFilesRegistrationOptions{
-				Watchers: []protocol.FileSystemWatcher{{GlobPattern: "**/*.craftgo"}},
+				Watchers: []protocol.FileSystemWatcher{{GlobPattern: watchedFilesGlob()}},
 			},
 		}},
 	}

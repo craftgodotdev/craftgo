@@ -180,7 +180,7 @@ func (s *Server) collectProjectFiles(fsPath, currentSrc string) ([]projectFile, 
 		if walkErr != nil || d.IsDir() {
 			return nil
 		}
-		if filepath.Ext(p) != ".craftgo" {
+		if !config.IsDesignFile(p) {
 			return nil
 		}
 		seen[p] = true
@@ -199,7 +199,7 @@ func (s *Server) collectProjectFiles(fsPath, currentSrc string) ([]projectFile, 
 	}
 	for u := range s.openDocURIs() {
 		p := uriToPath(string(u))
-		if p == "" || seen[p] || filepath.Ext(p) != ".craftgo" || !isUnderDesignRoot(p, designDir) {
+		if p == "" || seen[p] || !config.IsDesignFile(p) || !isUnderDesignRoot(p, designDir) {
 			continue
 		}
 		seen[p] = true

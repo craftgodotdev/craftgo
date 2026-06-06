@@ -40,9 +40,9 @@ package semantic
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -165,7 +165,7 @@ func folderExists(designRoot, importPath string) bool {
 		return false
 	}
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".craftgo") {
+		if !e.IsDir() && config.IsDesignFile(e.Name()) {
 			return true
 		}
 	}

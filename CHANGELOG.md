@@ -5,6 +5,18 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.5] - 2026-06-05
+
+### Added
+
+- **`.cg` is now accepted as a short alias for the `.craftgo` source
+  extension.** `craftgo gen`, `craftgo fmt`, and the language server (project
+  walk + file watcher) all discover `.cg` files, and a single project may mix
+  `.craftgo` and `.cg` freely — including cross-file and cross-package
+  references. `.craftgo` remains the canonical extension. (Editors that launch
+  the language server by file association need a `.cg` association configured on
+  the client side — the bundled VS Code extension does this from v0.4.4.)
+
 ## [1.3.4] - 2026-06-05
 
 ### Fixed

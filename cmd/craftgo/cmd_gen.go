@@ -347,7 +347,7 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 		if info.IsDir() {
 			return nil
 		}
-		if filepath.Ext(path) != ".craftgo" {
+		if !config.IsDesignFile(path) {
 			return nil
 		}
 		data, err := os.ReadFile(path)

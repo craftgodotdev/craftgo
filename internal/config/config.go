@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -146,6 +147,20 @@ func (f *OAuthFlows) HasFlow() bool { return len(f.flowList()) > 0 }
 // directories looking for it, optionally peeking into a child `design/`
 // directory at each level.
 const Filename = "craftgo.design.yaml"
+
+// DesignFileExtensions are the extensions a craftgo source file may carry.
+// `.craftgo` is canonical; `.cg` is the short alias. Both are accepted
+// everywhere design sources are discovered — `craftgo gen`, `craftgo fmt`,
+// and the language server's project walk and file watcher — and a single
+// project may freely mix the two.
+var DesignFileExtensions = []string{".craftgo", ".cg"}
+
+// IsDesignFile reports whether path names a craftgo source file, matching its
+// extension against [DesignFileExtensions]. path may be a full path or a bare
+// file name.
+func IsDesignFile(path string) bool {
+	return slices.Contains(DesignFileExtensions, filepath.Ext(path))
+}
 
 // Find walks upward from `start` until it locates a [Filename]. At every
 // candidate directory two strategies are tried, in order: the directory

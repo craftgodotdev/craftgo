@@ -28,7 +28,7 @@ import (
 
 // version is the CLI's reported version. Kept as a build-time constant for
 // now; release tooling can override via `-ldflags="-X main.version=..."`.
-const version = "1.3.4"
+const version = "1.3.5"
 
 func main() {
 	if len(os.Args) < 2 {

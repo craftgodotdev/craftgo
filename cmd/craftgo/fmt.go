@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/format"
 )
 
@@ -101,7 +102,7 @@ func collectCraftgoFiles(target string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if filepath.Ext(p) == ".craftgo" {
+		if config.IsDesignFile(p) {
 			out = append(out, p)
 		}
 		return nil

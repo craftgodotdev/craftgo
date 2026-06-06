@@ -1,6 +1,6 @@
 # LSP / IDE
 
-craftgo ships its own language server, `craftgo-lsp`. It powers completion, hover, diagnostics, go-to-definition, and formatting for `.craftgo` files.
+craftgo ships its own language server, `craftgo-lsp`. It powers completion, hover, diagnostics, go-to-definition, and formatting for `.craftgo` files (the shorter `.cg` extension is also recognised). The server watches and resolves both extensions; to have your editor launch the server for `.cg` files, associate that extension with the craftgo language on the client side.
 
 The only first-party editor integration today is the **VS Code extension**. Other editors that speak LSP can spawn the binary directly, but they are not officially supported and may need extra setup for syntax highlighting (no shipped grammar package outside the VS Code extension).
 

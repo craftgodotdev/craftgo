@@ -72,7 +72,7 @@ func (s *Server) importPathCompletions(currentURI, currentSrc, prefix string) []
 		entries, _ := os.ReadDir(p)
 		hasCraftgo := false
 		for _, e := range entries {
-			if !e.IsDir() && filepath.Ext(e.Name()) == ".craftgo" {
+			if !e.IsDir() && config.IsDesignFile(e.Name()) {
 				hasCraftgo = true
 				break
 			}

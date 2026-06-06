@@ -116,8 +116,10 @@ func TestWatchedFilesRegistration(t *testing.T) {
 	if !ok || len(opts.Watchers) != 1 {
 		t.Fatalf("register options malformed: %#v", r.RegisterOptions)
 	}
-	if got := opts.Watchers[0].GlobPattern; got != "**/*.craftgo" {
-		t.Errorf("glob = %q, want **/*.craftgo", got)
+	// The glob covers every accepted source extension via a brace group, so a
+	// `.cg` file change is watched alongside `.craftgo`.
+	if got := opts.Watchers[0].GlobPattern; got != "**/*.{craftgo,cg}" {
+		t.Errorf("glob = %q, want **/*.{craftgo,cg}", got)
 	}
 }
 

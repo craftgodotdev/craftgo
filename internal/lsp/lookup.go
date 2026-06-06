@@ -175,7 +175,7 @@ func (s *Server) projectFilesWithRoot(currentPath, currentSrc string) ([]project
 		if walkErr != nil || d.IsDir() {
 			return nil
 		}
-		if filepath.Ext(p) != ".craftgo" {
+		if !config.IsDesignFile(p) {
 			return nil
 		}
 		src := s.readFile(p, currentPath, currentSrc)

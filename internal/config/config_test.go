@@ -156,6 +156,30 @@ func TestFindBadManifest(t *testing.T) {
 	}
 }
 
+func TestIsDesignFile(t *testing.T) {
+	accept := []string{
+		"api.craftgo", "api.cg",
+		"design/users/service.craftgo", "design/users/service.cg",
+		"/abs/path/x.cg", "/abs/path/x.craftgo",
+	}
+	for _, p := range accept {
+		if !IsDesignFile(p) {
+			t.Errorf("IsDesignFile(%q) = false, want true", p)
+		}
+	}
+	reject := []string{
+		"craftgo.design.yaml",              // the manifest, not a source file
+		"types.go", "README.md", "service", // no/other extension
+		"x.craftgo.bak", "x.cgx", "x.c", // near-misses must not match
+		"",
+	}
+	for _, p := range reject {
+		if IsDesignFile(p) {
+			t.Errorf("IsDesignFile(%q) = true, want false", p)
+		}
+	}
+}
+
 func TestFindBadManifestInsideDesign(t *testing.T) {
 	root := t.TempDir()
 	designDir := filepath.Join(root, "design")
