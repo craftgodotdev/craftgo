@@ -5,7 +5,6 @@ package adminservice
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	transportAdmin "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin"
-	transportAdminLegacy "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin/legacy"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -19,5 +18,4 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/v1/admin/dashboard", transportAdmin.DashboardStats(svcCtx), svcCtx.ProfileAuth)
 	srv.Handle("GET /api/v1/admin/health", transportAdmin.Health(svcCtx), svcCtx.ProfileAuth)
 	srv.Handle("GET /api/v1/admin/snapshot", transportAdmin.Snapshot(svcCtx), svcCtx.ProfileAuth, svcCtx.RequestStamp)
-	srv.Handle("GET /api/v1/admin/legacy/ping", transportAdminLegacy.LegacyPing(svcCtx), svcCtx.ProfileAuth)
 }

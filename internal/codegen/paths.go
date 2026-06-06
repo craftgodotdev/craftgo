@@ -185,16 +185,16 @@ func serviceOutputDir(projectRoot, output, svcName, group string) string {
 }
 
 // importPathsForGroup computes the Go import paths for one service+group. A
-// non-empty @group replaces the service-name segment on transport + service;
-// pkg.Name drives types, and routes stay at the service directory so the
-// per-service route file remains the single registration hub even when methods
-// scatter across group folders.
+// non-empty @group replaces the service-name segment on transport + service +
+// routes alike; pkg.Name drives types. Routes are emitted one file per group
+// (in the group's folder), so this group's routes path is the same segment as
+// its transport and service folders.
 func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, group string) importPaths {
 	seg := outputSegFor(svcName, group)
 	return importPaths{
 		Types:      goImportFromRel(cfg.Package, cfg.Output.Types) + "/" + pkg.Name,
 		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + seg,
-		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + ServiceDir(svcName),
+		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + seg,
 		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + seg,
 		Svccontext: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
@@ -268,20 +268,27 @@ func distinctGroups(svc *semantic.ServiceInfo) []string {
 	return out
 }
 
+// groupAliasSuffix is the PascalCased join of a @group's path segments
+// ("admin/ops" → "AdminOps"), or "" for the ungrouped case. Import aliases that
+// must stay distinct per group append it to a stable base.
+func groupAliasSuffix(group string) string {
+	var b strings.Builder
+	for seg := range strings.SplitSeq(group, "/") {
+		if seg == "" {
+			continue
+		}
+		b.WriteString(pascalCase(seg))
+	}
+	return b.String()
+}
+
 // transportAlias derives the Go import alias a service's routes file uses for
 // one group's transport package. The ungrouped package keeps the bare
 // "transport" name; a grouped package appends the PascalCased group segments
 // ("v2" → "transportV2", "admin/ops" → "transportAdminOps") so several group
 // imports coexist without colliding.
 func transportAlias(group string) string {
-	alias := "transport"
-	for _, seg := range strings.Split(group, "/") {
-		if seg == "" {
-			continue
-		}
-		alias += pascalCase(seg)
-	}
-	return alias
+	return "transport" + groupAliasSuffix(group)
 }
 
 // hasBodyVerb reports whether the given HTTP verb conventionally carries a

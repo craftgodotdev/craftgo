@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	adminapitypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
 	runtimetypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/runtime"
 )
 
@@ -164,4 +165,30 @@ func TestServer_UnknownRoute404(t *testing.T) {
 type runtimeUser struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// TestServer_AdminApiNestedGroups exercises one service (AdminApi) whose
+// methods are split across three NESTED @group folders — admin/v1 (primary),
+// admin/v2 and admin/v3 (extend blocks). Each group emits its own routes file
+// (routes/admin/v1, /v2, /v3) registered separately in boot(), mirroring the
+// per-group transport + service split. @group never touches the URL: the paths
+// come from @prefix("/adminapi") + each method path, independent of the on-disk
+// group folder.
+func TestServer_AdminApiNestedGroups(t *testing.T) {
+	ts, _ := boot(t)
+	for _, c := range []struct {
+		path, want string
+	}{
+		{"/api/adminapi/v1/ping", "v1"},
+		{"/api/adminapi/v2/ping", "v2"},
+		{"/api/adminapi/v3/ping", "v3"},
+	} {
+		var r adminapitypes.VerResp
+		if s := getJSON(t, ts, c.path, &r); s != http.StatusOK {
+			t.Fatalf("%s status %d", c.path, s)
+		}
+		if r.Version != c.want || !r.Ok {
+			t.Errorf("%s: got {Version:%q Ok:%v}, want {Version:%q Ok:true}", c.path, r.Version, r.Ok, c.want)
+		}
+	}
 }

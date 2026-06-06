@@ -5,6 +5,22 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.6] - 2026-06-05
+
+### Fixed
+
+- **`@group` now splits the generated routes files per group, mirroring the
+  transport handlers and service stubs.** A `@group` replaces the service-name
+  segment on disk, so the handlers and stubs moved into the group folder
+  (`internal/transport/<group>/`, `internal/service/<group>/`) — but the routes
+  file stayed pinned at `internal/routes/<service-name>/`, so a service split
+  across several groups had its folders out of sync. Routes now emit one file
+  per group, each in its group's folder (`internal/routes/<group>/`), importing
+  only that group's transport and registering only that group's methods. The
+  umbrella `RegisterAll` dispatches to every group's `RegisterRoutes`, so the
+  single-call registration path is unchanged; an ungrouped service is unchanged
+  (one routes file at the service directory).
+
 ## [1.3.5] - 2026-06-05
 
 ### Added

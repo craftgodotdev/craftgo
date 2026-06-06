@@ -6,8 +6,12 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	accountserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account-service"
 	accountuserserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account-user-service"
+	adminserviceAdminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin"
 	admininventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin-inventory-service"
-	adminserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin-service"
+	adminserviceAdminLegacyroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/legacy"
+	adminapiAdminV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v1"
+	adminapiAdminV2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v2"
+	adminapiAdminV3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v3"
 	bindingsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/bindings-service"
 	catalogserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog-service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/collections"
@@ -40,8 +44,12 @@ import (
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	accountserviceroutes.RegisterRoutes(srv, svcCtx)
 	accountuserserviceroutes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminV1routes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminV2routes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminV3routes.RegisterRoutes(srv, svcCtx)
 	admininventoryserviceroutes.RegisterRoutes(srv, svcCtx)
-	adminserviceroutes.RegisterRoutes(srv, svcCtx)
+	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)
+	adminserviceAdminLegacyroutes.RegisterRoutes(srv, svcCtx)
 	bindingsserviceroutes.RegisterRoutes(srv, svcCtx)
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)

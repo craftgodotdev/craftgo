@@ -1,0 +1,37 @@
+package adminapi
+
+// VerResp is a tiny versioned payload so each grouped block has its own
+// server-roundtrip method.
+type VerResp {
+	version string
+	ok      bool
+}
+
+// AdminApi splits its methods across three NESTED @group folders within ONE
+// package: admin/v1 (primary), admin/v2 and admin/v3 (extend blocks). @group
+// sets only the on-disk layout — handlers land in transport/admin/vN and stubs
+// in service/admin/vN — never the URL, which comes from @prefix + the method
+// path. The single per-service routes hub lands in the PRIMARY block's segment
+// (routes/admin/v1) and imports all three transport packages, registering every
+// method under the one service.
+@prefix("/adminapi")
+@group("admin/v1")
+service AdminApi {
+	get PingV1 /v1/ping {
+		response VerResp
+	}
+}
+
+@group("admin/v2")
+extend service AdminApi {
+	get PingV2 /v2/ping {
+		response VerResp
+	}
+}
+
+@group("admin/v3")
+extend service AdminApi {
+	get PingV3 /v3/ping {
+		response VerResp
+	}
+}

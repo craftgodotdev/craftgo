@@ -4160,6 +4160,12 @@ components:
       required:
       - retry_after
       type: object
+    PingV1RespBody:
+      $ref: '#/components/schemas/VerResp'
+    PingV2RespBody:
+      $ref: '#/components/schemas/VerResp'
+    PingV3RespBody:
+      $ref: '#/components/schemas/VerResp'
     PostDefaultReqBody:
       description: |-
         XEnumDefault exercises `@default(Red)` on a cross-pkg enum field:
@@ -6571,6 +6577,19 @@ components:
       type: object
     ValidateStrRespBody:
       $ref: '#/components/schemas/PairsStr'
+    VerResp:
+      description: |-
+        VerResp is a tiny versioned payload so each grouped block has its own
+        server-roundtrip method.
+      properties:
+        ok:
+          type: boolean
+        version:
+          type: string
+      required:
+      - version
+      - ok
+      type: object
     WipeRespBody:
       $ref: '#/components/schemas/HealthResp'
     WireRenameReq:
@@ -7478,6 +7497,42 @@ paths:
           description: OK
       tags:
       - AdminInventoryService
+  /adminapi/v1/ping:
+    get:
+      operationId: PingV1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingV1RespBody'
+          description: OK
+      tags:
+      - admin/v1
+  /adminapi/v2/ping:
+    get:
+      operationId: PingV2
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingV2RespBody'
+          description: OK
+      tags:
+      - admin/v2
+  /adminapi/v3/ping:
+    get:
+      operationId: PingV3
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingV3RespBody'
+          description: OK
+      tags:
+      - admin/v3
   /bindings/by-color:
     get:
       description: Search by colors with an enum-array @query default. An absent `colors`

@@ -1019,10 +1019,10 @@ service AdminService {
 		t.Fatal(err)
 	}
 
-	// Route pattern carries no group; the routes file stays at the service
-	// directory but imports the group package, whose path is the @group value
-	// (the service name is replaced, not nested).
-	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin-service/routes.go"))
+	// Route pattern carries no group, but the routes file itself lives in the
+	// group folder (the @group replaces the service name on disk, just like the
+	// transport handlers) and imports the group transport package.
+	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin/ops/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src,
@@ -1030,6 +1030,9 @@ service AdminService {
 		`"GET /api/v1/health"`,
 		`transport/admin/ops"`,
 	)
+	if _, err := os.Stat(filepath.Join(root, "internal/routes/admin-service")); err == nil {
+		t.Error("a fully-grouped service should not emit a service-name routes dir")
+	}
 	if strings.Contains(src, "transport/admin-service/admin/ops") {
 		t.Errorf("@group should replace the service-name segment, not nest under it:\n%s", src)
 	}
@@ -1055,9 +1058,9 @@ service AdminService {
 
 // TestGenerateExtendGroupNestsPerBlock pins per-block @group: a primary block
 // and an extend block each carry their own @group, so the service's methods
-// split across two transport packages on disk while one routes file imports
-// both and one shared errors helper (at the transport root) serves every
-// group package via its exported WriteError.
+// split across two transport packages on disk — and the routes file follows the
+// same split, one routes file per group folder, each importing only its own
+// group's transport and registering only that group's methods.
 func TestGenerateExtendGroupNestsPerBlock(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1111,16 +1114,28 @@ extend service Catalog {
 		t.Error("per-group errors helper should not export a WriteError wrapper")
 	}
 
-	// One routes file imports both transport packages under distinct aliases
-	// and dispatches each method through its own.
-	routes, _ := os.ReadFile(filepath.Join(root, "internal/routes/catalog/routes.go"))
-	rsrc := string(routes)
-	mustParseGo(t, rsrc)
-	mustContainAll(t, rsrc,
-		`transport "`, `transportV2 "`,
-		"transport.ListThings(svcCtx)",
-		"transportV2.ListThingsV2(svcCtx)",
-	)
+	// Routes split per group, mirroring transport: the ungrouped primary method
+	// has its routes file at the service directory importing the root transport;
+	// the @group("v2") method has its own routes file under v2/ importing only
+	// the v2 transport. Neither file mentions the other group's package.
+	primaryRoutes, _ := os.ReadFile(filepath.Join(root, "internal/routes/catalog/routes.go"))
+	psrc := string(primaryRoutes)
+	mustParseGo(t, psrc)
+	mustContainAll(t, psrc, `transport "`, "transport.ListThings(svcCtx)")
+	if strings.Contains(psrc, "ListThingsV2") || strings.Contains(psrc, "transport/v2") {
+		t.Errorf("primary routes file must not register the v2 group:\n%s", psrc)
+	}
+
+	groupRoutes, _ := os.ReadFile(filepath.Join(root, "internal/routes/v2/routes.go"))
+	gsrc := string(groupRoutes)
+	mustParseGo(t, gsrc)
+	mustContainAll(t, gsrc, `transportV2 "`, "transportV2.ListThingsV2(svcCtx)")
+	if strings.Contains(gsrc, "ListThings(svcCtx)") {
+		t.Errorf("v2 group routes file must not register the primary method:\n%s", gsrc)
+	}
+	if _, err := os.Stat(filepath.Join(root, "internal/routes/catalog-v2")); err == nil {
+		t.Error("group routes should nest at the group segment, not a service-name variant")
+	}
 }
 
 // TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for

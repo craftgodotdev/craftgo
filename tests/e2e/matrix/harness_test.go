@@ -13,7 +13,11 @@ import (
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/middleware"
 	accountroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account-user-service"
-	adminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin-service"
+	adminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin"
+	adminlegacyroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/legacy"
+	adminapiv1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v1"
+	adminapiv2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v2"
+	adminapiv3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v3"
 	catalogroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog-service"
 	ordersroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders-service"
 	profileroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/profile-service"
@@ -36,7 +40,13 @@ func boot(t *testing.T) (*httptest.Server, *svccontext.ServiceContext) {
 	catalogroutes.RegisterRoutes(srv, svc)
 	accountroutes.RegisterRoutes(srv, svc)
 	profileroutes.RegisterRoutes(srv, svc)
+	// AdminService and AdminApi each split across @group folders, so every
+	// group hub registers separately (the umbrella RegisterAll does the same).
 	adminroutes.RegisterRoutes(srv, svc)
+	adminlegacyroutes.RegisterRoutes(srv, svc)
+	adminapiv1routes.RegisterRoutes(srv, svc)
+	adminapiv2routes.RegisterRoutes(srv, svc)
+	adminapiv3routes.RegisterRoutes(srv, svc)
 	ts := httptest.NewServer(srv.Mux())
 	t.Cleanup(ts.Close)
 	return ts, svc

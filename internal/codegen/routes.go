@@ -290,6 +290,8 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	type svcEntry struct {
 		name    string
 		pkgName string
+		group   string
+		seg     string
 	}
 	var entries []svcEntry
 	for pkgName, p := range proj.Packages {
@@ -297,7 +299,11 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 			continue
 		}
 		for _, svcName := range sortedServices(p) {
-			entries = append(entries, svcEntry{name: svcName, pkgName: pkgName})
+			// One umbrella entry per (service, group) — routes are emitted per
+			// group folder, so the umbrella must register every group's hub.
+			for _, g := range distinctGroups(p.Services[svcName]) {
+				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g)})
+			}
 		}
 	}
 	if len(entries) == 0 {
@@ -316,8 +322,8 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	}
 	for _, e := range entries {
 		data.Imports = append(data.Imports, routesAllImport{
-			Alias: ServicePackage(e.name) + "routes",
-			Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + ServiceDir(e.name),
+			Alias: ServicePackage(e.name) + groupAliasSuffix(e.group) + "routes",
+			Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + e.seg,
 		})
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
@@ -359,10 +365,14 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
 	for _, name := range names {
-		data.Imports = append(data.Imports, routesAllImport{
-			Alias: ServicePackage(name) + "routes",
-			Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + ServiceDir(name),
-		})
+		// One import per (service, group): routes are per group folder, so the
+		// package umbrella registers every group's hub.
+		for _, g := range distinctGroups(pkg.Services[name]) {
+			data.Imports = append(data.Imports, routesAllImport{
+				Alias: ServicePackage(name) + groupAliasSuffix(g) + "routes",
+				Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + outputSegFor(name, g),
+			})
+		}
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
 	if err != nil {
@@ -373,40 +383,51 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 
 // generateRoutesFor emits the routes.go file for a single service.
 func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	dir := filepath.Join(projectRoot, cfg.Output.Routes, ServiceDir(svcName))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
 	groups := methodGroups(svc)
-	data := routesData{
-		Package:          ServicePackage(svcName),
-		Service:          svcName,
-		SvccontextImport: importPathsForGroup(cfg, pkg, svcName, "").Svccontext,
-	}
-	// One aliased transport import per distinct group the methods live in.
+	// Emit one routes file per distinct @group, each in that group's folder,
+	// registering only the methods declared in that group and importing only
+	// that group's transport package. This mirrors the per-group split of the
+	// transport handlers and service stubs; the umbrella RegisterAll dispatches
+	// to every group's RegisterRoutes. An ungrouped service has a single group
+	// ("") and so emits one file at the service directory, unchanged.
 	for _, g := range distinctGroups(svc) {
-		data.TransportImports = append(data.TransportImports, transportImport{
-			Alias: transportAlias(g),
-			Path:  importPathsForGroup(cfg, pkg, svcName, g).Transport,
-		})
-	}
-	for _, m := range svc.Methods {
-		full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
-		mws := middlewareNames(m, svc.Primary)
-		call := buildHandlerCall(m, transportAlias(groups[m.Name]))
-		if strings.Contains(call, "time.") {
-			data.NeedsTime = true
+		dir := filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(outputSegFor(svcName, g)))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
 		}
-		data.Routes = append(data.Routes, routeEntry{
-			Pattern:     httpVerb(m.Verb) + " " + full,
-			Method:      m.Name,
-			HandlerCall: call,
-			Middlewares: buildMiddlewareArgs(mws),
-		})
+		data := routesData{
+			Package:          ServicePackage(svcName),
+			Service:          svcName,
+			SvccontextImport: importPathsForGroup(cfg, pkg, svcName, "").Svccontext,
+			TransportImports: []transportImport{{
+				Alias: transportAlias(g),
+				Path:  importPathsForGroup(cfg, pkg, svcName, g).Transport,
+			}},
+		}
+		for _, m := range svc.Methods {
+			if groups[m.Name] != g {
+				continue
+			}
+			full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
+			mws := middlewareNames(m, svc.Primary)
+			call := buildHandlerCall(m, transportAlias(g))
+			if strings.Contains(call, "time.") {
+				data.NeedsTime = true
+			}
+			data.Routes = append(data.Routes, routeEntry{
+				Pattern:     httpVerb(m.Verb) + " " + full,
+				Method:      m.Name,
+				HandlerCall: call,
+				Middlewares: buildMiddlewareArgs(mws),
+			})
+		}
+		formatted, err := renderGo(tmpl("routes.tmpl"), data)
+		if err != nil {
+			return fmt.Errorf("render routes: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644); err != nil {
+			return err
+		}
 	}
-	formatted, err := renderGo(tmpl("routes.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render routes: %w", err)
-	}
-	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
+	return nil
 }
