@@ -31,7 +31,7 @@ export default defineConfig({
       { text: "Tutorials", link: "/tutorials/todo-api" },
       { text: "AI Reference", link: "/llms" },
       {
-        text: "v1.3.7",
+        text: "v1.3.8",
         items: [
           {
             text: "Changelog",
