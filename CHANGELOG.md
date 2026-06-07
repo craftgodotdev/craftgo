@@ -16,6 +16,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   service-name folder. The service-level `@group` is now the default for every
   block; an extend still overrides by declaring its own `@group`. (Consistent
   with how extend blocks already inherit `@middlewares` / `@tags` / `@security`.)
+- **Sized numeric types now emit their OpenAPI `format` / bounds.** `int32` →
+  `format: int32`, `int64` → `format: int64`, `float32` → `format: float`,
+  `float64` → `format: double`, and every unsigned type (`uint`, `uint8`…
+  `uint64`) advertises `minimum: 0` (a user `@gte` still tightens it). Before,
+  all integer widths collapsed to a bare `type: integer` and both floats to a
+  bare `type: number`, so a client generator could not tell `int32` from `int64`
+  or `float` from `double`, and unsigned fields advertised no lower bound.
+  `int` / `int8` / `int16` stay bare — OpenAPI registers no standard format for
+  those widths.
 
 ## [1.3.6] - 2026-06-07
 

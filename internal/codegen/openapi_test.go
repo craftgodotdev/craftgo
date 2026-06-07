@@ -1665,6 +1665,76 @@ service S {
 	)
 }
 
+// TestGenerateOpenAPINumericFormats pins the primitive numeric OpenAPI mapping:
+// int32/int64 and float32/float64 carry their standard format keywords so a
+// client can distinguish widths; int/int8/int16 stay bare (no registered
+// standard format); every unsigned type advertises minimum: 0; and a user
+// @gte tightens that minimum (it never loosens below 0).
+func TestGenerateOpenAPINumericFormats(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type R {
+    i8  int8
+    i16 int16
+    i32 int32
+    i64 int64
+    ii  int
+    f32 float32
+    f64 float64
+    u32 uint32
+    ug  uint32 @gte(5)
+}
+service S { get Get /a { response R } }`)
+
+	// block returns the property lines of one schema field: the lines more
+	// deeply indented than the `<field>:` line, stopping at the next sibling.
+	block := func(field string) string {
+		lines := strings.Split(body, "\n")
+		start, indent := -1, 0
+		for i, ln := range lines {
+			t := strings.TrimSpace(ln)
+			if t == field+":" {
+				start = i
+				indent = len(ln) - len(strings.TrimLeft(ln, " "))
+				break
+			}
+		}
+		if start < 0 {
+			t.Fatalf("field %q not found in:\n%s", field, body)
+		}
+		var out []string
+		for _, ln := range lines[start+1:] {
+			if strings.TrimSpace(ln) == "" {
+				out = append(out, ln)
+				continue
+			}
+			if len(ln)-len(strings.TrimLeft(ln, " ")) <= indent {
+				break // back to sibling / parent indent
+			}
+			out = append(out, ln)
+		}
+		return strings.Join(out, "\n")
+	}
+	want := map[string]string{
+		"i32": "format: int32",
+		"i64": "format: int64",
+		"f32": "format: float",
+		"f64": "format: double",
+		"u32": "minimum: 0",
+		"ug":  "minimum: 5", // user @gte(5) tightens the unsigned floor
+	}
+	for f, sub := range want {
+		if b := block(f); !strings.Contains(b, sub) {
+			t.Errorf("field %s: expected %q in:\n%s", f, sub, b)
+		}
+	}
+	// int / int8 / int16 have no standard format keyword — must stay bare.
+	for _, f := range []string{"ii", "i8", "i16"} {
+		if b := block(f); strings.Contains(b, "format:") {
+			t.Errorf("field %s should carry no format (no standard keyword), got:\n%s", f, b)
+		}
+	}
+}
+
 // TestGenerateOpenAPIOperationIDDefaultAndOverride pins the rule:
 // default operationId = method name verbatim (PascalCase from DSL),
 // override = whatever string literal `@operationId("...")` supplies.

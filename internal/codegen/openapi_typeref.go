@@ -295,10 +295,24 @@ func primitiveSchema(name string) *openapi3.Schema {
 		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
 	case "bool":
 		return &openapi3.Schema{Type: &openapi3.Types{"boolean"}}
-	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+	case "int32":
+		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int32"}
+	case "int64":
+		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int64"}
+	case "int", "int8", "int16":
+		// No distinct standard OpenAPI integer format for these widths
+		// (only int32 / int64 are registered), so emit a bare integer.
 		return &openapi3.Schema{Type: &openapi3.Types{"integer"}}
-	case "float32", "float64":
-		return &openapi3.Schema{Type: &openapi3.Types{"number"}}
+	case "uint", "uint8", "uint16", "uint32", "uint64":
+		// Unsigned: advertise the implicit lower bound. There is no standard
+		// "uint" format keyword, so width is conveyed via minimum, not format.
+		// A user @gte tightens this (setMin keeps the largest), never loosens.
+		zero := 0.0
+		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Min: &zero}
+	case "float32":
+		return &openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "float"}
+	case "float64":
+		return &openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "double"}
 	case "bytes":
 		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "byte"}
 	case "file":

@@ -1033,10 +1033,12 @@ components:
         claim a location outside the WGS84 envelope.
       properties:
         lat:
+          format: double
           maximum: 90
           minimum: -90
           type: number
         lng:
+          format: double
           maximum: 180
           minimum: -180
           type: number
@@ -1318,21 +1320,25 @@ components:
       properties:
         w32:
           default: 7
+          format: int32
           type:
           - integer
           - "null"
         w64:
           default: 9
+          format: int64
           type:
           - integer
           - "null"
         wf32:
           default: 1.5
+          format: float
           type:
           - number
           - "null"
         wu16:
           default: 3
+          minimum: 0
           type:
           - integer
           - "null"
@@ -1472,6 +1478,7 @@ components:
         matching the int64 the validator enforces.
       properties:
         "n":
+          format: int64
           multipleOf: 9007199254740993
           type: integer
       required:
@@ -1486,9 +1493,11 @@ components:
         small bounds keep the native form.
       properties:
         bigmin:
+          format: int64
           minimum: 9223372036854775807
           type: integer
         minId:
+          format: int64
           minimum: 9007199254740993
           type: integer
         small:
@@ -2251,21 +2260,25 @@ components:
       properties:
         w32:
           default: 7
+          format: int32
           type:
           - integer
           - "null"
         w64:
           default: 9
+          format: int64
           type:
           - integer
           - "null"
         wf32:
           default: 1.5
+          format: float
           type:
           - number
           - "null"
         wu16:
           default: 3
+          minimum: 0
           type:
           - integer
           - "null"
@@ -3139,6 +3152,7 @@ components:
           type: integer
         int32Full:
           description: int32 full range
+          format: int32
           maximum: 2147483647
           minimum: -2147483648
           type: integer
@@ -3193,10 +3207,12 @@ components:
         gtLtInt32:
           exclusiveMaximum: 2147483647
           exclusiveMinimum: -2147483648
+          format: int32
           type: integer
         gtLtInt64:
           exclusiveMaximum: 1000000000000
           exclusiveMinimum: 0
+          format: int64
           type: integer
         gteLteInt:
           maximum: 1000
@@ -3211,10 +3227,12 @@ components:
           minimum: -32000
           type: integer
         gteLteInt32:
+          format: int32
           maximum: 2147483647
           minimum: 0
           type: integer
         gteLteInt64:
+          format: int64
           maximum: 9000000000000000000
           minimum: -9000000000000000000
           type: integer
@@ -3227,6 +3245,7 @@ components:
           type: integer
         posInt64:
           exclusiveMinimum: 0
+          format: int64
           type: integer
         rangeInt:
           description: |-
@@ -3247,11 +3266,13 @@ components:
           type: integer
         rangeInt32:
           description: int32 — tests MaxInt32-ish boundaries.
+          format: int32
           maximum: 2000000000
           minimum: -2000000000
           type: integer
         rangeInt64:
           description: int64 — the widest signed.
+          format: int64
           maximum: 1000000000
           minimum: -1000000000
           type: integer
@@ -3260,6 +3281,7 @@ components:
           multipleOf: 5
           type: integer
         stepInt64:
+          format: int64
           multipleOf: 100
           type: integer
       required:
@@ -3303,6 +3325,7 @@ components:
           type: integer
         exactlyHalf:
           description: Only value = 0.5
+          format: double
           maximum: 0.5
           minimum: 0.5
           type: number
@@ -3317,6 +3340,7 @@ components:
         floatGtLte:
           description: Asymmetric float
           exclusiveMinimum: 0
+          format: double
           maximum: 1
           type: number
         gtLte:
@@ -3353,6 +3377,7 @@ components:
       properties:
         defaultFloat:
           default: 3.14
+          format: double
           type:
           - number
           - "null"
@@ -3382,6 +3407,7 @@ components:
           - integer
           - "null"
         nullableFloat:
+          format: double
           maximum: 1
           minimum: 0
           type:
@@ -3397,6 +3423,7 @@ components:
           - integer
           - "null"
         optFloat:
+          format: double
           maximum: 1
           minimum: 0
           type:
@@ -3430,36 +3457,45 @@ components:
         gtLtF32:
           exclusiveMaximum: 1
           exclusiveMinimum: 0
+          format: float
           type: number
         gtLtF64:
           exclusiveMaximum: 0.9999
           exclusiveMinimum: 0.0001
+          format: double
           type: number
         gteLteF32:
+          format: float
           maximum: 1.5
           minimum: 0.5
           type: number
         gteLteF64:
+          format: double
           maximum: 1.5
           minimum: -1.5
           type: number
         negFloat:
           exclusiveMaximum: 0
+          format: double
           type: number
         posF32:
           exclusiveMinimum: 0
+          format: float
           type: number
         posFloat:
           description: '@positive / @negative on floats.'
           exclusiveMinimum: 0
+          format: double
           type: number
         rangeF32:
           description: float32 — narrower precision but same decorator surface.
+          format: float
           maximum: 1
           minimum: 0
           type: number
         rangeF64:
           description: float64 — the wide form. Includes a high-precision bound.
+          format: double
           maximum: 0.9
           minimum: 0.1
           type: number
@@ -3483,22 +3519,27 @@ components:
         gtLtUint:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
+          minimum: 0
           type: integer
         gtLtUint8:
           exclusiveMaximum: 255
           exclusiveMinimum: 0
+          minimum: 0
           type: integer
         gtLtUint16:
           exclusiveMaximum: 65535
           exclusiveMinimum: 0
+          minimum: 0
           type: integer
         gtLtUint32:
           exclusiveMaximum: 4294967295
           exclusiveMinimum: 0
+          minimum: 0
           type: integer
         gtLtUint64:
           exclusiveMaximum: 1000000000000
           exclusiveMinimum: 0
+          minimum: 0
           type: integer
         gteLteUint:
           maximum: 1000
@@ -3526,6 +3567,7 @@ components:
             unsigned domain makes @negative semantically vacuous (it is
             still accepted at the decorator layer, so we don't test that).
           exclusiveMinimum: 0
+          minimum: 0
           type: integer
         rangeUint:
           description: uint
@@ -4098,6 +4140,7 @@ components:
       description: |-
         Percent is a 0-1 ratio. @gte/@lte on a float64 scalar exercises
         the numeric-bound emitter on a non-integer primitive.
+      format: double
       maximum: 1
       minimum: 0
       type: number
@@ -4731,9 +4774,11 @@ components:
         small bounds keep the native form.
       properties:
         bigmin:
+          format: int64
           minimum: 9223372036854775807
           type: integer
         minId:
+          format: int64
           minimum: 9007199254740993
           type: integer
         small:
@@ -4961,6 +5006,7 @@ components:
         matching the int64 the validator enforces.
       properties:
         "n":
+          format: int64
           multipleOf: 9007199254740993
           type: integer
       required:
@@ -6859,6 +6905,7 @@ components:
       properties:
         g32:
           default: 7
+          format: int32
           type:
           - integer
           - "null"
@@ -6978,6 +7025,7 @@ components:
       - properties:
           p64:
             default: 9
+            format: int64
             type:
             - integer
             - "null"
@@ -10165,6 +10213,7 @@ paths:
         name: g32
         schema:
           default: 7
+          format: int32
           type:
           - integer
           - "null"
@@ -10172,6 +10221,7 @@ paths:
         name: p64
         schema:
           default: 9
+          format: int64
           type:
           - integer
           - "null"
@@ -10249,6 +10299,7 @@ paths:
         name: limit
         schema:
           default: 50
+          format: int32
           type:
           - integer
           - "null"
