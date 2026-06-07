@@ -68,7 +68,7 @@ type CreateOrderReq {
 }
 
 type FilterOrdersReq {
-	status     OrderStatus   @path
+	status     OrderStatus   @query
 	method     PaymentMethod @query
 	limit      int           @query @gte(0) @lte(100)
 	maxPrice   int           @query

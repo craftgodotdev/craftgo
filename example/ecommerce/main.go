@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"log"
 	"net/http"
 	"os"
@@ -28,6 +29,12 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
+
+// openapiSpec is the generated OpenAPI document, embedded so the docs page
+// (config.docs) serves it without shipping a separate file.
+//
+//go:embed docs/openapi.yaml
+var openapiSpec []byte
 
 func main() {
 	cfg, err := config.Load(config.Path())
@@ -95,6 +102,17 @@ func main() {
 	// One call wires every service. The umbrella RegisterAll is
 	// generated from the DSL service set on every `craftgo gen`.
 	routes.RegisterAll(srv, svc)
+
+	// Serve the API-reference docs (config.docs). The OpenAPI document is
+	// embedded above; the UI assets load from a CDN.
+	if cfg.Docs.Enabled {
+		srv.ServeDocs(server.DocsOptions{
+			Spec:     openapiSpec,
+			UI:       cfg.Docs.UI,
+			Path:     cfg.Docs.Path,
+			SpecPath: cfg.Docs.SpecPath,
+		})
+	}
 
 	go func() {
 		log.Printf("listening on %s (api)", cfg.Server.Addr)

@@ -47,3 +47,10 @@ metrics:
                               # HTTP example: "http://collector:4318"
   adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
   path: /metrics              # route the scrape is exposed on (prometheus only)
+
+# In-process API reference docs, served on the public API listener.
+docs:
+  enabled: true               # false → no docs/spec routes registered
+  ui: redoc                   # redoc | swagger | scalar (assets loaded from a CDN)
+  path: /docs                 # HTML docs page route
+  specPath: /openapi.yaml     # route serving the raw OpenAPI document

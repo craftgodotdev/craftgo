@@ -109,6 +109,12 @@ func runGen(args []string) error {
 	if err := validateSecurityRefs(proj, cfg, pkgNames); err != nil {
 		return err
 	}
+	// Pre-flight: reject route patterns that net/http's ServeMux would refuse
+	// to register together, so an ambiguous-route design fails at gen time
+	// instead of panicking at server boot.
+	if msgs := codegen.ValidateRouteConflicts(proj, cfg); len(msgs) > 0 {
+		return fmt.Errorf("conflicting routes:\n  %s", strings.Join(msgs, "\n  "))
+	}
 	// Pre-flight: catch operationId / component-schema name collisions
 	// before any file is written, so a clash fails the whole run up front
 	// rather than after types/transport are already on disk.

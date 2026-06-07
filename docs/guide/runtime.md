@@ -125,6 +125,33 @@ srv.AddHealthCheck("db", func(ctx context.Context) error {
 
 Disable with `server.WithoutDefaultHealth()` if you do not want them.
 
+## API reference docs
+
+A freshly generated project serves its OpenAPI document and a rendered docs page
+out of the box, configured under `docs` in `config.yaml`:
+
+```yaml
+docs:
+  enabled: true            # off → no docs/spec routes
+  ui: redoc                # redoc | swagger | scalar (assets load from a CDN)
+  path: /docs              # HTML docs page
+  specPath: /openapi.yaml  # raw OpenAPI document
+```
+
+`main.go` embeds the generated `openapi.yaml` and wires it via
+`server.ServeDocs(...)`. To add it to a hand-written server (or an existing
+project whose gen-once `main.go` predates the feature):
+
+```go
+//go:embed docs/openapi.yaml
+var openapiSpec []byte
+
+srv.ServeDocs(server.DocsOptions{Spec: openapiSpec, UI: "redoc"})
+```
+
+This registers `GET /openapi.yaml` (the spec) and `GET /docs` (the UI page). It
+is a no-op when `Spec` is empty.
+
 ## Graceful shutdown
 
 ```go

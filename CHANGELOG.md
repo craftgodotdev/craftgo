@@ -5,6 +5,45 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.8] - 2026-06-07
+
+### Added
+
+- **In-process API reference docs.** Generated servers can now serve the OpenAPI
+  document and a rendered docs page directly, configured under a new `docs`
+  section in `config.yaml` (and the `config.Config` struct):
+
+  ```yaml
+  docs:
+    enabled: true            # default in a freshly generated project
+    ui: redoc                # redoc | swagger | scalar (assets load from a CDN)
+    path: /docs              # HTML docs page
+    specPath: /openapi.yaml  # raw OpenAPI document
+  ```
+
+  When enabled, `main.go` embeds the generated `openapi.yaml` (`//go:embed`) and
+  wires `server.ServeDocs(...)`, which registers `GET <specPath>` (the spec) and
+  `GET <path>` (an HTML page loading the chosen UI from a CDN, pointed at the
+  spec). The new `server.ServeDocs` / `server.DocsOptions` are also callable
+  directly from hand-written servers. `main.go` and `config.go` are gen-once, so
+  existing projects keep theirs — add the `docs` block + `srv.ServeDocs(...)` by
+  hand, or delete the scaffold to regenerate. Docs wiring is skipped when the
+  OpenAPI output is disabled (`output.openapi: "-"`) or lives outside the main
+  package's tree (a `go:embed` cannot cross `..`).
+
+### Fixed
+
+- **Conflicting routes are now rejected at gen time instead of panicking at
+  server boot.** Two routes that overlap with neither more specific — e.g.
+  `GET /orders/{id}/track` and `GET /orders/by-status/{status}`, which both match
+  `/orders/by-status/track` — are rejected by Go 1.22's `net/http.ServeMux` at
+  registration, so the generated server *compiled and shipped* but crashed on
+  startup. `craftgo gen` now detects this across every service in the project
+  (one mux backs `RegisterAll`) and fails with a message naming both routes and
+  suggesting a fix. The ecommerce example's `FilterOrders` is updated to take
+  `status` as `@query` (`GET /orders/by-status?status=...`) so it no longer
+  collides with the `/orders/{id}/...` actions.
+
 ## [1.3.7] - 2026-06-07
 
 ### Fixed

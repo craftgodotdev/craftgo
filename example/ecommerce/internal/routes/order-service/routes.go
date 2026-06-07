@@ -18,7 +18,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/orders/list-orders", transport.ListOrders(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
 	srv.Handle("GET /api/orders/{id}", transport.GetOrder(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
 	srv.Handle("POST /api/orders", transport.CreateOrder(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
-	srv.Handle("GET /api/orders/by-status/{status}", transport.FilterOrders(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
+	srv.Handle("GET /api/orders/by-status", transport.FilterOrders(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
 	srv.Handle("POST /api/orders/defaults", transport.Defaults(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired)
 	srv.Handle("POST /api/orders/{id}/cancel", transport.CancelOrder(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit, svcCtx.Timeout)
 	srv.Handle("POST /api/orders/{id}/ship", transport.ForceShip(svcCtx), svcCtx.RequestID, svcCtx.RateLimit, svcCtx.CORS, svcCtx.AuthRequired, svcCtx.BodyLimit, svcCtx.Timeout)

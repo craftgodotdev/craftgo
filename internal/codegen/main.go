@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -25,6 +26,14 @@ type mainData struct {
 	// `github.com/craftgodotdev/craftgo/example`) so traces self-label
 	// without needing a manual edit.
 	OperationName string
+	// HasDocs gates the in-process API-docs wiring: the `embed` import, the
+	// embedded spec var, and the cfg.Docs ServeDocs call. False when the
+	// OpenAPI document is disabled or lives outside the main package's tree
+	// (go:embed cannot reach a `../` path).
+	HasDocs bool
+	// OpenAPIEmbed is the forward-slash path of the generated OpenAPI document
+	// relative to main.go's directory, for the `//go:embed` directive.
+	OpenAPIEmbed string
 }
 
 // GenerateProjectMain scaffolds the project's main.go (`output.main`)
@@ -99,6 +108,19 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 		}
 	}
 	d.HasMiddlewares = len(d.Middlewares) > 0
+
+	// Wire the in-process API docs only when the OpenAPI document is emitted
+	// and lives under main.go's directory (go:embed cannot cross `..`).
+	if spec := cfg.Output.OpenAPI; spec != "" && spec != "-" {
+		mainDir := filepath.Dir(filepath.Clean(cfg.Output.Main))
+		if rel, err := filepath.Rel(mainDir, filepath.Clean(spec)); err == nil {
+			rel = filepath.ToSlash(rel)
+			if !strings.HasPrefix(rel, "../") {
+				d.HasDocs = true
+				d.OpenAPIEmbed = rel
+			}
+		}
+	}
 	return d
 }
 

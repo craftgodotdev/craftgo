@@ -26,8 +26,8 @@ service OrderService {
 		response Order
 	}
 
-	@doc("Filter orders by status — showcases @path/@query/@header/@cookie on one DTO.")
-	get FilterOrders /by-status/{status} {
+	@doc("Filter orders by status — showcases @query/@header/@cookie on one DTO. Status is a @query filter (a literal sub-path keeps it from colliding with /{id}/... actions on the ServeMux).")
+	get FilterOrders /by-status {
 		request  FilterOrdersReq
 		response shared.Page<Order>
 	}

@@ -43,6 +43,25 @@ type Config struct {
 	Server  ServerConfig     `yaml:"server"`
 	OTel    craftotel.Config `yaml:"otel"`
 	Metrics metrics.Config   `yaml:"metrics"`
+	Docs    DocsConfig       `yaml:"docs"`
+}
+
+// DocsConfig controls the in-process API-reference docs page. When enabled,
+// main.go serves the generated OpenAPI document plus an HTML page that renders
+// it with the chosen UI (assets loaded from a CDN).
+type DocsConfig struct {
+	// Enabled toggles the docs + spec routes. Default true.
+	Enabled bool `yaml:"enabled"`
+
+	// UI is the renderer: "redoc" (default), "swagger", or "scalar".
+	UI string `yaml:"ui"`
+
+	// Path is the HTML docs page route. Default "/docs".
+	Path string `yaml:"path"`
+
+	// SpecPath is the route serving the raw OpenAPI document. Default
+	// "/openapi.yaml".
+	SpecPath string `yaml:"specPath"`
 }
 
 // ServerConfig configures the public API listener that handles HTTP
@@ -165,5 +184,15 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Metrics.Path == "" {
 		c.Metrics.Path = "/metrics"
+	}
+
+	if c.Docs.UI == "" {
+		c.Docs.UI = "redoc"
+	}
+	if c.Docs.Path == "" {
+		c.Docs.Path = "/docs"
+	}
+	if c.Docs.SpecPath == "" {
+		c.Docs.SpecPath = "/openapi.yaml"
 	}
 }

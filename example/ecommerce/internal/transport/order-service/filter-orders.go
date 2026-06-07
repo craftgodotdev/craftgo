@@ -17,8 +17,11 @@ import (
 func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.FilterOrdersReq
-		req.Status = types.OrderStatus(r.PathValue("status"))
 		_q := r.URL.Query()
+		if !server.RequirePresent(w, r, _q.Has("status"), "status", "query") {
+			return
+		}
+		req.Status = types.OrderStatus(_q.Get("status"))
 		if !server.RequirePresent(w, r, _q.Has("method"), "method", "query") {
 			return
 		}

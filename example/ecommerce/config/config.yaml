@@ -24,3 +24,9 @@ metrics:
   endpoint: ""
   adminAddr: ":9090"
   path: /metrics
+
+docs:
+  enabled: false
+  ui: scalar
+  path: /docs
+  specPath: /openapi.yaml

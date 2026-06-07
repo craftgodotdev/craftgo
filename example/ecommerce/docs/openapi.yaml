@@ -1546,13 +1546,14 @@ paths:
       - bearer: []
       tags:
       - orders
-  /orders/by-status/{status}:
+  /orders/by-status:
     get:
-      description: Filter orders by status — showcases @path/@query/@header/@cookie
-        on one DTO.
+      description: Filter orders by status — showcases @query/@header/@cookie on one
+        DTO. Status is a @query filter (a literal sub-path keeps it from colliding
+        with /{id}/... actions on the ServeMux).
       operationId: FilterOrders
       parameters:
-      - in: path
+      - in: query
         name: status
         required: true
         schema:
