@@ -182,6 +182,9 @@ func TestServer_AdminApiNestedGroups(t *testing.T) {
 		{"/api/adminapi/v1/ping", "v1"},
 		{"/api/adminapi/v2/ping", "v2"},
 		{"/api/adminapi/v3/ping", "v3"},
+		// PingInherit is on an extend block with NO @group; it inherits the
+		// primary's @group("admin/v1"), so it serves through the same v1 hub.
+		{"/api/adminapi/inherit/ping", "inherit"},
 	} {
 		var r adminapitypes.VerResp
 		if s := getJSON(t, ts, c.path, &r); s != http.StatusOK {

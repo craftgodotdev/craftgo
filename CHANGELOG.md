@@ -5,6 +5,18 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.7] - 2026-06-07
+
+### Fixed
+
+- **An `extend service` block without its own `@group` now inherits the primary
+  block's `@group`.** Previously each block was grouped strictly independently,
+  so a primary `@group("admin")` left an un-decorated extend's methods at the
+  ungrouped service root — splitting one service across `admin/` and the
+  service-name folder. The service-level `@group` is now the default for every
+  block; an extend still overrides by declaring its own `@group`. (Consistent
+  with how extend blocks already inherit `@middlewares` / `@tags` / `@security`.)
+
 ## [1.3.6] - 2026-06-07
 
 ### Added

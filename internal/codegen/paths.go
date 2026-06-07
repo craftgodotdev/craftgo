@@ -200,27 +200,38 @@ func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, gro
 	}
 }
 
-// methodGroups maps each of a service's method names to the @group of the
-// block that declared it: the primary block's @group for primary methods, and
-// each extend block's own @group for its methods. "" means the method is
-// ungrouped (its files stay at the service root). @group is service-level, so
-// every method in one block shares that block's group. Keyed by name (unique
-// within a service) rather than pointer because later passes - generic
-// monomorphisation, the OpenAPI builder - hand codegen cloned method values
-// whose pointers no longer match the parsed block members.
+// effectiveGroup returns the @group that applies to a service block. The block's
+// own @group wins; an extend block that declares none inherits the primary
+// block's @group, so `@group("admin")` on the service covers its extend blocks
+// too unless an extend explicitly overrides with its own @group. Pass the
+// primary block's group as primaryGroup (it is its own effective group).
+func effectiveGroup(block *ast.ServiceDecl, primaryGroup string) string {
+	if g := serviceGroup(block); g != "" {
+		return g
+	}
+	return primaryGroup
+}
+
+// methodGroups maps each of a service's method names to the @group that applies
+// to it: the primary block's @group for primary methods, and each extend block's
+// own @group for its methods - or, when an extend declares none, the primary's
+// @group (see [effectiveGroup]). "" means ungrouped (files stay at the service
+// root). Keyed by name (unique within a service) rather than pointer because
+// later passes - generic monomorphisation, the OpenAPI builder - hand codegen
+// cloned method values whose pointers no longer match the parsed block members.
 func methodGroups(svc *semantic.ServiceInfo) map[string]string {
 	out := map[string]string{}
 	if svc == nil {
 		return out
 	}
+	primaryGroup := serviceGroup(svc.Primary)
 	if svc.Primary != nil {
-		g := serviceGroup(svc.Primary)
 		for _, m := range svc.Primary.Methods() {
-			out[m.Name] = g
+			out[m.Name] = primaryGroup
 		}
 	}
 	for _, e := range svc.Extends {
-		g := serviceGroup(e)
+		g := effectiveGroup(e, primaryGroup)
 		for _, m := range e.Methods() {
 			out[m.Name] = g
 		}
@@ -235,17 +246,18 @@ func methodGroupOf(svc *semantic.ServiceInfo, m *ast.Method) string {
 	if svc == nil || m == nil {
 		return ""
 	}
+	primaryGroup := serviceGroup(svc.Primary)
 	if svc.Primary != nil {
 		for _, pm := range svc.Primary.Methods() {
 			if pm.Name == m.Name {
-				return serviceGroup(svc.Primary)
+				return primaryGroup
 			}
 		}
 	}
 	for _, e := range svc.Extends {
 		for _, em := range e.Methods() {
 			if em.Name == m.Name {
-				return serviceGroup(e)
+				return effectiveGroup(e, primaryGroup)
 			}
 		}
 	}

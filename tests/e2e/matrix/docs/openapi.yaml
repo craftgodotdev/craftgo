@@ -4160,6 +4160,8 @@ components:
       required:
       - retry_after
       type: object
+    PingInheritRespBody:
+      $ref: '#/components/schemas/VerResp'
     PingV1RespBody:
       $ref: '#/components/schemas/VerResp'
     PingV2RespBody:
@@ -7497,6 +7499,18 @@ paths:
           description: OK
       tags:
       - AdminInventoryService
+  /adminapi/inherit/ping:
+    get:
+      operationId: PingInherit
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingInheritRespBody'
+          description: OK
+      tags:
+      - admin/v1
   /adminapi/v1/ping:
     get:
       operationId: PingV1

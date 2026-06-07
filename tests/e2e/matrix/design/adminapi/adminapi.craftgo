@@ -35,3 +35,12 @@ extend service AdminApi {
 		response VerResp
 	}
 }
+
+// This extend block declares NO @group, so it inherits the primary's
+// @group("admin/v1"): PingInherit lands in transport/admin/v1 + service/admin/v1
+// and registers through the routes/admin/v1 hub, not the ungrouped service root.
+extend service AdminApi {
+	get PingInherit /inherit/ping {
+		response VerResp
+	}
+}

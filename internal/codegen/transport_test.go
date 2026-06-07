@@ -1096,6 +1096,62 @@ extend service Catalog {
 	}
 }
 
+// TestGenerateExtendInheritsPrimaryGroup pins that an extend block WITHOUT its
+// own @group inherits the primary block's @group: its handlers, stubs and routes
+// land in the primary's group folder, not the ungrouped service root. An extend
+// that DOES declare a @group still overrides.
+func TestGenerateExtendInheritsPrimaryGroup(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+@prefix("/v1")
+@group("admin")
+service Catalog {
+    get ListThings /things { response Thing }
+}
+
+extend service Catalog {
+    get Inherited /more { response Thing }
+}
+
+@group("legacy")
+extend service Catalog {
+    get Old /old { response Thing }
+}`)
+	root := t.TempDir()
+	cfg := sampleConfig()
+	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateTransport(pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+
+	// Primary + the ungrouped extend both land under the primary's "admin"
+	// group; the @group("legacy") extend overrides into its own folder.
+	for _, rel := range []string{
+		"internal/transport/admin/list-things.go",
+		"internal/transport/admin/inherited.go", // inherited the primary @group
+		"internal/transport/legacy/old.go",      // own @group overrides
+	} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("expected generated file %s: %v", rel, err)
+		}
+	}
+	// The inherited method must NOT fall back to the ungrouped service root.
+	if _, err := os.Stat(filepath.Join(root, "internal/transport/catalog/inherited.go")); err == nil {
+		t.Error("ungrouped extend must inherit the primary @group, not land at the service root")
+	}
+
+	// One routes hub at the primary's group registers both primary and the
+	// inherited extend method.
+	adminRoutes, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin/routes.go"))
+	rsrc := string(adminRoutes)
+	mustParseGo(t, rsrc)
+	mustContainAll(t, rsrc, "transportAdmin.ListThings(svcCtx)", "transportAdmin.Inherited(svcCtx)")
+}
+
 // TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for
 // methods declaring `@timeout` / `@maxBodySize`. Routes get wrapped
 // in `server.WithLimits(handler, server.Limits{...})` at the call

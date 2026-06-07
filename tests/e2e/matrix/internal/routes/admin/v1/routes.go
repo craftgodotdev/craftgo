@@ -16,4 +16,5 @@ import (
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/adminapi/v1/ping", transportAdminV1.PingV1(svcCtx))
+	srv.Handle("GET /api/adminapi/inherit/ping", transportAdminV1.PingInherit(svcCtx))
 }
