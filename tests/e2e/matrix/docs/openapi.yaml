@@ -393,10 +393,6 @@ components:
           format: hexcolor
           maxLength: 7
           type: string
-        hostname:
-          format: hostname
-          maxLength: 253
-          type: string
         ipv4:
           format: ipv4
           maxLength: 15
@@ -444,7 +440,6 @@ components:
       - date
       - timeField
       - phone
-      - hostname
       - ipv4
       - ipv6
       - cidr
@@ -6408,10 +6403,6 @@ components:
           format: hexcolor
           maxLength: 7
           type: string
-        hostname:
-          format: hostname
-          maxLength: 253
-          type: string
         ipv4:
           format: ipv4
           maxLength: 15
@@ -6459,7 +6450,6 @@ components:
       - date
       - timeField
       - phone
-      - hostname
       - ipv4
       - ipv6
       - cidr

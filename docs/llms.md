@@ -283,7 +283,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
 | `@mimeTypes([...])` | file      | string array       | Multipart MIME allow-list     |
 
-**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`.
+**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`.
 
 Validators on `errorField` are emitted as OpenAPI schema constraints only (no runtime check on server-emitted error bodies).
 

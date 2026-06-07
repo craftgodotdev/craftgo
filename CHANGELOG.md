@@ -5,6 +5,20 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.9] - 2026-06-07
+
+### Removed
+
+- **`@format(hostname)` is removed.** Its built-in regex approximated RFC 1123
+  but did not enforce the 63-character-per-label limit (a 100-char label passed),
+  and the total-length cap can't be expressed in Go's RE2 regex anyway — a
+  half-correct validator that gave false confidence. `@format(hostname)` now
+  fails with an "unknown format" error listing the valid values. To validate a
+  hostname, use a scalar with an explicit `@pattern(...)` (and `@maxLength` for
+  the total bound) tuned to your needs. craftgo no longer emits the OpenAPI
+  `format: hostname` keyword. (Designs that used `@format(hostname)` must switch
+  to a `@pattern`.)
+
 ## [1.3.8] - 2026-06-07
 
 ### Added

@@ -74,7 +74,7 @@ The tables below cover validators with the examples that matter for *validation*
 | `@pattern("regex")`         | Must match `regexp`                                   |
 | `@format(name)`             | Built-in format check (see below)                     |
 
-Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. The RFC-compliant subset (`email`, `ipv4`/`ipv6`, `cidr`, `mac`, `datetime`/`date`/`time`, `base64`, `json`) delegates to the Go standard library; the rest use regex.
+Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. The RFC-compliant subset (`email`, `ipv4`/`ipv6`, `cidr`, `mac`, `datetime`/`date`/`time`, `base64`, `json`) delegates to the Go standard library; the rest use regex.
 
 ```craftgo
 type Profile {

@@ -87,11 +87,6 @@ var formatValidators = map[string]formatValidator{
 	"uuid": regexFormat("UUID",
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`),
 
-	// RFC 1123 hostname - alphanumeric labels with optional hyphens
-	// in the middle, separated by dots.
-	"hostname": regexFormat("hostname",
-		`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`),
-
 	// RFC 791 IPv4 - net.ParseIP + To4 disambiguates from the
 	// IPv6 form (which net.ParseIP also accepts).
 	"ipv4": stmtFormat("IPv4", []string{"net"},

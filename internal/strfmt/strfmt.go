@@ -16,6 +16,6 @@ package strfmt
 // argument enum; codegen must provide a validator for every entry.
 var Names = []string{
 	"email", "url", "uri", "uuid", "datetime", "date", "time",
-	"phone", "hostname", "ipv4", "ipv6", "cidr", "mac",
+	"phone", "ipv4", "ipv6", "cidr", "mac",
 	"creditcard", "base64", "base64url", "hexcolor", "json",
 }

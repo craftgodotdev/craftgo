@@ -96,7 +96,6 @@ type AllFormats {
 	date       string @format(date) @length(10, 10)
 	timeField  string @format(time) @length(8, 8)
 	phone      string @format(phone) @maxLength(20)
-	hostname   string @format(hostname) @maxLength(253)
 	ipv4       string @format(ipv4) @maxLength(15)
 	ipv6       string @format(ipv6) @maxLength(45)
 	cidr       string @format(cidr) @maxLength(43)

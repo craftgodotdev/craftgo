@@ -201,7 +201,7 @@ binary length — and are not advertised in the OpenAPI schema (an OpenAPI
 `maxLength` on a `bytes` field would count base64 characters, a different
 number).
 
-**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `hostname`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. RFC-compliant validators (email, ipv4/ipv6, cidr, mac, datetime/date/time, base64, json) delegate to Go stdlib (`net`, `net/mail`, `net/url`, `time`, `encoding/*`); the remainder use regex.
+**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. RFC-compliant validators (email, ipv4/ipv6, cidr, mac, datetime/date/time, base64, json) delegate to Go stdlib (`net`, `net/mail`, `net/url`, `time`, `encoding/*`); the remainder use regex.
 
 ```craftgo
 type User {

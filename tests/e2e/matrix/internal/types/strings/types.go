@@ -15,7 +15,6 @@ type AllFormats struct {
 	Date       string `json:"date"`
 	TimeField  string `json:"timeField"`
 	Phone      string `json:"phone"`
-	Hostname   string `json:"hostname"`
 	Ipv4       string `json:"ipv4"`
 	Ipv6       string `json:"ipv6"`
 	Cidr       string `json:"cidr"`
