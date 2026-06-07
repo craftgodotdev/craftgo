@@ -5,6 +5,29 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.10] - 2026-06-07
+
+### Fixed
+
+- **Validation errors on scalar / enum fields now report the field name, not
+  the type name.** A field `domain StoreDomain` (scalar) or `status Status`
+  (enum) used to fail with `StoreDomain: ...` / `Status: invalid Status value`
+  — the type name — because the constraint lives on the type's shared
+  `Validate()` method, which the parent returned verbatim. The shared method's
+  message is now subject-less (`length greater than 253`, `invalid Status
+  value`) and the field's caller wraps it with the field name
+  (`domain: length greater than 253`, `status: invalid Status value`),
+  including through arrays and maps of scalars/enums. Nested struct fields are
+  unchanged (their `Validate()` already names the inner field). The shared
+  `Validate()` method (and generic-over-scalar dispatch) is otherwise intact.
+- **Validation errors on bound fields now report the wire alias, not the DSL
+  field name.** A field bound with an explicit name —
+  `src Host @header("x-source-domain")`, `page int @query("p")` — used to fail
+  with `src: ...` / `page: ...` (the DSL name), which doesn't match what the
+  caller sent. The message now uses the wire name (`x-source-domain: ...`,
+  `p: ...`) for every `@path`/`@query`/`@header`/`@cookie`/`@form` field, across
+  all validators. Body fields are unchanged (their JSON key is the field name).
+
 ## [1.3.9] - 2026-06-07
 
 ### Removed

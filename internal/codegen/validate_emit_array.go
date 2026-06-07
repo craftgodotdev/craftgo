@@ -35,7 +35,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	}
 	uses["fmt"] = true
 	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
-	msg := fmt.Sprintf(`"%s: %s %d"`, f.Name, label, n)
+	msg := fmt.Sprintf(`"%s: %s %d"`, fieldWireName(f), label, n)
 	check := ifReturnf(cond, msg)
 	// A nil slice / map at an optional or `@nullable` field is the valid
 	// "absent / null" state the OpenAPI null-union advertises, so skip the
@@ -91,7 +91,7 @@ return fmt.Errorf("%s: items must be unique")
 }
 seen[item] = struct{}{}
 }
-}`, elem, access, access, f.Name)
+}`, elem, access, access, fieldWireName(f))
 }
 
 // ----- file --------------------------------------------------------------
@@ -110,7 +110,7 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 	}
 	uses["fmt"] = true
 	cond := fmt.Sprintf("%s != nil && %s.Size > %d", access, access, bytes)
-	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, f.Name, bytes)
+	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, fieldWireName(f), bytes)
 	return ifReturnf(cond, msg)
 }
 
@@ -142,5 +142,5 @@ case %s:
 default:
 return fmt.Errorf("%s: disallowed content type")
 }
-}`, access, access, strings.Join(cases, ", "), f.Name)
+}`, access, access, strings.Join(cases, ", "), fieldWireName(f))
 }

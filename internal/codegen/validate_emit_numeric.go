@@ -54,7 +54,7 @@ func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label 
 	val := numericValueExpr(f, access)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s %s", guard, val, flip, n)
-	msg := fmt.Sprintf(`"%s: %s %s"`, f.Name, label, n)
+	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(fieldWireName(f)), label, n)
 	return ifReturnf(cond, msg)
 }
 
@@ -83,7 +83,7 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]b
 		// twice. Compiler folds the duplicate deref.
 		cond = fmt.Sprintf("%s(%s < %s || %s > %s)", guard, val, lo, val, hi)
 	}
-	msg := fmt.Sprintf(`"%s: out of range [%s, %s]"`, f.Name, lo, hi)
+	msg := fmt.Sprintf(`"%sout of range [%s, %s]"`, errSubject(fieldWireName(f)), lo, hi)
 	return ifReturnf(cond, msg)
 }
 
@@ -103,7 +103,7 @@ func signCheck(f *ast.Field, access, kind string, uses map[string]bool) string {
 	val := numericValueExpr(f, access)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s 0", guard, val, op)
-	msg := fmt.Sprintf(`"%s: %s"`, f.Name, label)
+	msg := fmt.Sprintf(`"%s%s"`, errSubject(fieldWireName(f)), label)
 	return ifReturnf(cond, msg)
 }
 
@@ -132,6 +132,6 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, uses map[str
 	val := numericValueExpr(f, access)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s%%%d != 0", guard, val, n)
-	msg := fmt.Sprintf(`"%s: must be a multiple of %d"`, f.Name, n)
+	msg := fmt.Sprintf(`"%smust be a multiple of %d"`, errSubject(fieldWireName(f)), n)
 	return ifReturnf(cond, msg)
 }

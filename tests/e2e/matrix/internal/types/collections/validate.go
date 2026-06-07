@@ -95,7 +95,7 @@ func (v *Arr_Tag2D) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
 			if err := v.Grid[i0][i1].Validate(); err != nil {
-				return err
+				return fmt.Errorf("grid: %w", err)
 			}
 		}
 	}
@@ -108,7 +108,7 @@ func (v *Arr_Tag2DOptional) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
 			if err := v.Grid[i0][i1].Validate(); err != nil {
-				return err
+				return fmt.Errorf("grid: %w", err)
 			}
 		}
 	}
@@ -122,7 +122,7 @@ func (v *Arr_Tag3D) Validate() error {
 		for i1 := range v.Cube[i0] {
 			for i2 := range v.Cube[i0][i1] {
 				if err := v.Cube[i0][i1][i2].Validate(); err != nil {
-					return err
+					return fmt.Errorf("cube: %w", err)
 				}
 			}
 		}
@@ -150,7 +150,7 @@ func (v *Arr_TagSlice) Validate() error {
 	}
 	for i0 := range v.Tags {
 		if err := v.Tags[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("tags: %w", err)
 		}
 	}
 	return nil
@@ -162,7 +162,7 @@ func (v *Map_ArrayValue) Validate() error {
 	for _, val := range v.Buckets {
 		for i0 := range val {
 			if err := val[i0].Validate(); err != nil {
-				return err
+				return fmt.Errorf("buckets: %w", err)
 			}
 		}
 	}
@@ -186,10 +186,10 @@ func (v *Map_Bounds) Validate() error {
 func (v *Map_KeyAndValue) Validate() error {
 	for key, val := range v.Index {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("index: %w", err)
 		}
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("index: %w", err)
 		}
 	}
 	return nil
@@ -212,7 +212,7 @@ func (v *Map_Plain) Validate() error {
 func (v *Map_ScalarValue) Validate() error {
 	for _, val := range v.Labels {
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("labels: %w", err)
 		}
 	}
 	return nil
@@ -247,7 +247,7 @@ func (v *User) Validate() error {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	return nil
 }
@@ -256,10 +256,10 @@ func (v *User) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
-		return fmt.Errorf("Email: not a valid email")
+		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
-		return fmt.Errorf("Email: length greater than 254")
+		return fmt.Errorf("length greater than 254")
 	}
 	return nil
 }
@@ -268,10 +268,10 @@ func (v Email) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v NonEmptyID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("NonEmptyID: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	if utf8.RuneCountInString(string(v)) > 64 {
-		return fmt.Errorf("NonEmptyID: length greater than 64")
+		return fmt.Errorf("length greater than 64")
 	}
 	return nil
 }
@@ -280,13 +280,13 @@ func (v NonEmptyID) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Tag) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("Tag: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	if utf8.RuneCountInString(string(v)) > 20 {
-		return fmt.Errorf("Tag: length greater than 20")
+		return fmt.Errorf("length greater than 20")
 	}
 	if !_pattern0.MatchString(string(v)) {
-		return fmt.Errorf("Tag: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }

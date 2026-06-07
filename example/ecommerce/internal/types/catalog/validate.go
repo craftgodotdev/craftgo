@@ -18,13 +18,13 @@ func (v *Category) Validate() error {
 		return err
 	}
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
 	}
 	if err := v.Slug.Validate(); err != nil {
-		return err
+		return fmt.Errorf("slug: %w", err)
 	}
 	if v.Parent != nil {
 		if err := v.Parent.Validate(); err != nil {
@@ -38,7 +38,7 @@ func (v *Category) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CategoryRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -50,7 +50,7 @@ func (v *CategoryRef) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateProductReq) Validate() error {
 	if err := v.Sku.Validate(); err != nil {
-		return err
+		return fmt.Errorf("sku: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -59,15 +59,15 @@ func (v *CreateProductReq) Validate() error {
 		return fmt.Errorf("description: length greater than 5000")
 	}
 	if err := v.PriceCents.Validate(); err != nil {
-		return err
+		return fmt.Errorf("priceCents: %w", err)
 	}
 	if v.Currency != nil {
 		if err := v.Currency.Validate(); err != nil {
-			return err
+			return fmt.Errorf("currency: %w", err)
 		}
 	}
 	if err := v.CategoryID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("categoryId: %w", err)
 	}
 	if v.Tags != nil {
 		if len(v.Tags) > 20 {
@@ -114,10 +114,10 @@ func (v *Product) Validate() error {
 		return err
 	}
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Sku.Validate(); err != nil {
-		return err
+		return fmt.Errorf("sku: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -132,11 +132,11 @@ func (v *Product) Validate() error {
 		}
 	}
 	if err := v.PriceCents.Validate(); err != nil {
-		return err
+		return fmt.Errorf("priceCents: %w", err)
 	}
 	if v.Currency != nil {
 		if err := v.Currency.Validate(); err != nil {
-			return err
+			return fmt.Errorf("currency: %w", err)
 		}
 	}
 	if err := v.Category.Validate(); err != nil {
@@ -156,12 +156,12 @@ func (v *Product) Validate() error {
 	}
 	if v.BonusBp != nil {
 		if err := v.BonusBp.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bonusBP: %w", err)
 		}
 	}
 	if v.SiteURL != nil {
 		if err := v.SiteURL.Validate(); err != nil {
-			return err
+			return fmt.Errorf("siteUrl: %w", err)
 		}
 	}
 	return nil
@@ -171,7 +171,7 @@ func (v *Product) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ProductRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")

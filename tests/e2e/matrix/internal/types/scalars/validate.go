@@ -53,7 +53,7 @@ func (v *Audited) Validate() error {
 		return err
 	}
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -78,7 +78,7 @@ func (v *Bag) Validate() error {
 	}
 	for i0 := range v.Tags {
 		if err := v.Tags[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("tags: %w", err)
 		}
 	}
 	return nil
@@ -174,7 +174,7 @@ func (v *GenericOverScalar) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetOrderReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (v *GetOrderReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListOrdersReq) Validate() error {
 	if err := v.Limit.Validate(); err != nil {
-		return err
+		return fmt.Errorf("limit: %w", err)
 	}
 	return nil
 }
@@ -238,22 +238,22 @@ func (v *OptionalPage) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Order) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	if err := v.Amount.Validate(); err != nil {
-		return err
+		return fmt.Errorf("amount: %w", err)
 	}
 	if err := v.Rate.Validate(); err != nil {
-		return err
+		return fmt.Errorf("rate: %w", err)
 	}
 	if err := v.Tag.Validate(); err != nil {
-		return err
+		return fmt.Errorf("tag: %w", err)
 	}
 	if err := v.Country.Validate(); err != nil {
-		return err
+		return fmt.Errorf("country: %w", err)
 	}
 	return nil
 }
@@ -351,10 +351,10 @@ func (v *ProductPage) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ProductRef) Validate() error {
 	if err := v.Sku.Validate(); err != nil {
-		return err
+		return fmt.Errorf("sku: %w", err)
 	}
 	if err := v.Price.Validate(); err != nil {
-		return err
+		return fmt.Errorf("price: %w", err)
 	}
 	return nil
 }
@@ -378,7 +378,7 @@ func (v *ScalarFieldOverrides) Validate() error {
 		}
 	}
 	if err := v.Amount.Validate(); err != nil {
-		return err
+		return fmt.Errorf("amount: %w", err)
 	}
 	if v.Discount != nil {
 		_sv := int(*v.Discount)
@@ -388,7 +388,7 @@ func (v *ScalarFieldOverrides) Validate() error {
 	}
 	if v.Discount != nil {
 		if err := v.Discount.Validate(); err != nil {
-			return err
+			return fmt.Errorf("discount: %w", err)
 		}
 	}
 	{
@@ -398,7 +398,7 @@ func (v *ScalarFieldOverrides) Validate() error {
 		}
 	}
 	if err := v.Code.Validate(); err != nil {
-		return err
+		return fmt.Errorf("code: %w", err)
 	}
 	return nil
 }
@@ -408,12 +408,12 @@ func (v *ScalarFieldOverrides) Validate() error {
 func (v *Search) Validate() error {
 	for i0 := range v.Keywords {
 		if err := v.Keywords[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("keywords: %w", err)
 		}
 	}
 	if v.Limit != nil {
 		if err := v.Limit.Validate(); err != nil {
-			return err
+			return fmt.Errorf("limit: %w", err)
 		}
 	}
 	return nil
@@ -450,10 +450,10 @@ func (v *Wrapped) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Cents) Validate() error {
 	if int(v) < 0 {
-		return fmt.Errorf("Cents: below minimum 0")
+		return fmt.Errorf("below minimum 0")
 	}
 	if int(v) > 1000000000 {
-		return fmt.Errorf("Cents: above maximum 1000000000")
+		return fmt.Errorf("above maximum 1000000000")
 	}
 	return nil
 }
@@ -462,10 +462,10 @@ func (v Cents) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
-		return fmt.Errorf("Email: not a valid email")
+		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
-		return fmt.Errorf("Email: length greater than 254")
+		return fmt.Errorf("length greater than 254")
 	}
 	return nil
 }
@@ -474,10 +474,10 @@ func (v Email) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v ISO3) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 3 || l > 3 {
-		return fmt.Errorf("ISO3: length must be 3")
+		return fmt.Errorf("length must be 3")
 	}
 	if !_pattern0.MatchString(string(v)) {
-		return fmt.Errorf("ISO3: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -486,7 +486,7 @@ func (v ISO3) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v NonEmpty) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("NonEmpty: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	return nil
 }
@@ -495,10 +495,10 @@ func (v NonEmpty) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Percent) Validate() error {
 	if float64(v) < 0 {
-		return fmt.Errorf("Percent: below minimum 0")
+		return fmt.Errorf("below minimum 0")
 	}
 	if float64(v) > 1 {
-		return fmt.Errorf("Percent: above maximum 1")
+		return fmt.Errorf("above maximum 1")
 	}
 	return nil
 }
@@ -507,13 +507,13 @@ func (v Percent) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Tag) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("Tag: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	if utf8.RuneCountInString(string(v)) > 20 {
-		return fmt.Errorf("Tag: length greater than 20")
+		return fmt.Errorf("length greater than 20")
 	}
 	if !_pattern1.MatchString(string(v)) {
-		return fmt.Errorf("Tag: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -522,7 +522,7 @@ func (v Tag) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v URL) Validate() error {
 	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
-		return fmt.Errorf("URL: not a valid URL")
+		return fmt.Errorf("not a valid URL")
 	}
 	return nil
 }
@@ -531,7 +531,7 @@ func (v URL) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v UUID) Validate() error {
 	if !_pattern2.MatchString(string(v)) {
-		return fmt.Errorf("UUID: not a valid UUID")
+		return fmt.Errorf("not a valid UUID")
 	}
 	return nil
 }
@@ -542,7 +542,7 @@ func (v Priority) Validate() error {
 	switch v {
 	case PriorityLow, PriorityMedium, PriorityHigh:
 	default:
-		return fmt.Errorf("Priority: invalid Priority value")
+		return fmt.Errorf("invalid Priority value")
 	}
 	return nil
 }

@@ -54,7 +54,7 @@ func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 		return ""
 	}
 	uses["fmt"] = true
-	return ifReturnf(cond, fmt.Sprintf(`"%s: required"`, f.Name))
+	return ifReturnf(cond, fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 }
 
 // requiredCheckEnumAware adds enum support on top of `requiredCheck`. An
@@ -87,7 +87,7 @@ func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, 
 					return ""
 				}
 				uses["fmt"] = true
-				return ifReturnf(access+" == 0", fmt.Sprintf(`"%s: required"`, f.Name))
+				return ifReturnf(access+" == 0", fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 			}
 			// A string-enum that defines "" as a real member (`Unknown = ""`)
 			// can't use "" as the "absent" sentinel either — the presence
@@ -97,7 +97,7 @@ func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, 
 				return ""
 			}
 			uses["fmt"] = true
-			return ifReturnf(access+` == ""`, fmt.Sprintf(`"%s: required"`, f.Name))
+			return ifReturnf(access+` == ""`, fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 		}
 	}
 	return requiredCheck(f, access, uses)

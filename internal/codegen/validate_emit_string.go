@@ -42,9 +42,9 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	}
 	var msg string
 	if lo == hi {
-		msg = fmt.Sprintf(`"%s: length must be %d"`, f.Name, lo)
+		msg = fmt.Sprintf(`"%slength must be %d"`, errSubject(fieldWireName(f)), lo)
 	} else {
-		msg = fmt.Sprintf(`"%s: length out of range [%d, %d]"`, f.Name, lo, hi)
+		msg = fmt.Sprintf(`"%slength out of range [%d, %d]"`, errSubject(fieldWireName(f)), lo, hi)
 	}
 	return ifReturnf(cond, msg)
 }
@@ -68,7 +68,7 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, uses), op, n)
-	msg := fmt.Sprintf(`"%s: length %s %d"`, f.Name, label, n)
+	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(fieldWireName(f)), label, n)
 	return ifReturnf(cond, msg)
 }
 
@@ -104,7 +104,7 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	guard := optionalGuard(f, access)
 	patVar := ctx.regexes.intern(s)
 	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
-	msg := fmt.Sprintf(`"%s: does not match pattern"`, f.Name)
+	msg := fmt.Sprintf(`"%sdoes not match pattern"`, errSubject(fieldWireName(f)))
 	return ifReturnf(cond, msg)
 }
 
@@ -132,7 +132,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	}
 	ctx.uses["fmt"] = true
 	val := stringValueExpr(f, access)
-	msg := fmt.Sprintf(`"%s: not a valid %s"`, f.Name, v.label)
+	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), v.label)
 	// Regex-backed formats intern their pattern in the package-level
 	// registry so `MustCompile` runs once; stdlib-backed formats
 	// (mail/url/time/...) emit their init-stmt verbatim.

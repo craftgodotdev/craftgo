@@ -5,7 +5,38 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
+
+// fieldWireName returns the name a client uses for f: the wire alias of a bound
+// field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
+// `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
+// the field name). Validation messages use it so a failure reports what the
+// caller actually sent — `x-source-domain: ...`, not the DSL field name. The
+// scalar synth field (no name, no decorators) maps to "", keeping the shared
+// scalar/enum Validate() message subject-less.
+func fieldWireName(f *ast.Field) string {
+	kind := semantic.BindingKind(f.Decorators)
+	switch kind {
+	case "path", "query", "header", "cookie", "form":
+		return semantic.WireName(f, kind)
+	default:
+		return f.Name
+	}
+}
+
+// errSubject renders the leading "<field>: " of a validation message, or "" when
+// the field has no name. A scalar's / enum's own Validate() body is emitted with
+// an empty name so its message carries only the constraint ("length less than
+// 3"); the field that uses that type restores the subject by wrapping the error
+// with the field name (see nestedValidateCall). Regular struct fields pass their
+// real name and keep the "<field>: " prefix.
+func errSubject(name string) string {
+	if name == "" {
+		return ""
+	}
+	return name + ": "
+}
 
 // This file collects every function that produces Go source for a
 // validator. Each per-decorator emitter is paired with a comment

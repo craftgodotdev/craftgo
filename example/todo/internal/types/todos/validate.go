@@ -31,11 +31,11 @@ func (v *CreateTodoReq) Validate() error {
 		return fmt.Errorf("status: required")
 	}
 	if err := v.Status.Validate(); err != nil {
-		return err
+		return fmt.Errorf("status: %w", err)
 	}
 	if v.Priority != nil {
 		if err := v.Priority.Validate(); err != nil {
-			return err
+			return fmt.Errorf("priority: %w", err)
 		}
 	}
 	if v.Tags != nil {
@@ -75,12 +75,12 @@ func (v *ListTodosReq) Validate() error {
 	}
 	if v.Status != nil {
 		if err := v.Status.Validate(); err != nil {
-			return err
+			return fmt.Errorf("status: %w", err)
 		}
 	}
 	if v.Tag != nil {
 		if err := v.Tag.Validate(); err != nil {
-			return err
+			return fmt.Errorf("tag: %w", err)
 		}
 	}
 	return nil
@@ -108,11 +108,11 @@ func (v *Todo) Validate() error {
 		return fmt.Errorf("status: required")
 	}
 	if err := v.Status.Validate(); err != nil {
-		return err
+		return fmt.Errorf("status: %w", err)
 	}
 	if v.Priority != nil {
 		if err := v.Priority.Validate(); err != nil {
-			return err
+			return fmt.Errorf("priority: %w", err)
 		}
 	}
 	if len(v.Tags) > 10 {
@@ -142,7 +142,7 @@ func (v *TodoList) Validate() error {
 		}
 	}
 	if err := v.TookMs.Validate(); err != nil {
-		return err
+		return fmt.Errorf("X-Response-Time: %w", err)
 	}
 	return nil
 }
@@ -161,12 +161,12 @@ func (v *UpdateTodoReq) Validate() error {
 	}
 	if v.Status != nil {
 		if err := v.Status.Validate(); err != nil {
-			return err
+			return fmt.Errorf("status: %w", err)
 		}
 	}
 	if v.Priority != nil {
 		if err := v.Priority.Validate(); err != nil {
-			return err
+			return fmt.Errorf("priority: %w", err)
 		}
 	}
 	return nil
@@ -176,7 +176,7 @@ func (v *UpdateTodoReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Millis) Validate() error {
 	if int(v) < 0 {
-		return fmt.Errorf("Millis: below minimum 0")
+		return fmt.Errorf("below minimum 0")
 	}
 	return nil
 }
@@ -185,10 +185,10 @@ func (v Millis) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Tag) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 1 || l > 40 {
-		return fmt.Errorf("Tag: length out of range [1, 40]")
+		return fmt.Errorf("length out of range [1, 40]")
 	}
 	if !_pattern0.MatchString(string(v)) {
-		return fmt.Errorf("Tag: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -199,7 +199,7 @@ func (v TodoPriority) Validate() error {
 	switch v {
 	case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
 	default:
-		return fmt.Errorf("TodoPriority: invalid TodoPriority value")
+		return fmt.Errorf("invalid TodoPriority value")
 	}
 	return nil
 }
@@ -210,7 +210,7 @@ func (v TodoStatus) Validate() error {
 	switch v {
 	case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
 	default:
-		return fmt.Errorf("TodoStatus: invalid TodoStatus value")
+		return fmt.Errorf("invalid TodoStatus value")
 	}
 	return nil
 }

@@ -52,7 +52,7 @@ func (v *DefaultsConflict) Validate() error {
 func (v *DefaultsEnum) Validate() error {
 	if v.C != nil {
 		if err := v.C.Validate(); err != nil {
-			return err
+			return fmt.Errorf("c: %w", err)
 		}
 	}
 	return nil
@@ -63,7 +63,7 @@ func (v *DefaultsEnum) Validate() error {
 func (v *DefaultsScalar) Validate() error {
 	if v.Size != nil {
 		if err := v.Size.Validate(); err != nil {
-			return err
+			return fmt.Errorf("size: %w", err)
 		}
 	}
 	return nil
@@ -85,7 +85,7 @@ func (v *KeywordFieldNames) Validate() error {
 		return fmt.Errorf("kind: required")
 	}
 	if err := v.Kind.Validate(); err != nil {
-		return err
+		return fmt.Errorf("kind: %w", err)
 	}
 	return nil
 }
@@ -195,34 +195,34 @@ func (v *XPkgEnum) Validate() error {
 		return fmt.Errorf("flat: required")
 	}
 	if err := v.Flat.Validate(); err != nil {
-		return err
+		return fmt.Errorf("flat: %w", err)
 	}
 	for i0 := range v.Many {
 		if err := v.Many[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("many: %w", err)
 		}
 	}
 	if v.Maybe != nil {
 		if err := v.Maybe.Validate(); err != nil {
-			return err
+			return fmt.Errorf("maybe: %w", err)
 		}
 	}
 	for _, val := range v.ByString {
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byString: %w", err)
 		}
 	}
 	for key := range v.ByEnum {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byEnum: %w", err)
 		}
 	}
 	for key, val := range v.BothEnum {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bothEnum: %w", err)
 		}
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bothEnum: %w", err)
 		}
 	}
 	return nil
@@ -232,10 +232,10 @@ func (v *XPkgEnum) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v PageSize) Validate() error {
 	if int(v) < 1 {
-		return fmt.Errorf("PageSize: below minimum 1")
+		return fmt.Errorf("below minimum 1")
 	}
 	if int(v) > 100 {
-		return fmt.Errorf("PageSize: above maximum 100")
+		return fmt.Errorf("above maximum 100")
 	}
 	return nil
 }
@@ -246,7 +246,7 @@ func (v Color) Validate() error {
 	switch v {
 	case ColorRed, ColorGreen, ColorBlue:
 	default:
-		return fmt.Errorf("Color: invalid Color value")
+		return fmt.Errorf("invalid Color value")
 	}
 	return nil
 }
@@ -257,7 +257,7 @@ func (v DiscKind) Validate() error {
 	switch v {
 	case DiscKindType, DiscKindCombo, DiscKindStandalone:
 	default:
-		return fmt.Errorf("DiscKind: invalid DiscKind value")
+		return fmt.Errorf("invalid DiscKind value")
 	}
 	return nil
 }

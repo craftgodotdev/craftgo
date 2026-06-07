@@ -75,7 +75,7 @@ func (v *FormFileReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetItemReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func (v *HeaderReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Item) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -125,7 +125,7 @@ func (v *PathEnumReq) Validate() error {
 		return fmt.Errorf("c: required")
 	}
 	if err := v.C.Validate(); err != nil {
-		return err
+		return fmt.Errorf("c: %w", err)
 	}
 	return nil
 }
@@ -134,7 +134,7 @@ func (v *PathEnumReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathExplicitNameReq) Validate() error {
 	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
-		return fmt.Errorf("userId: length out of range [1, 64]")
+		return fmt.Errorf("user_id: length out of range [1, 64]")
 	}
 	return nil
 }
@@ -143,7 +143,7 @@ func (v *PathExplicitNameReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathScalarReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -162,7 +162,7 @@ func (v *PathStringReq) Validate() error {
 func (v *QueryArrayEnumDefaultReq) Validate() error {
 	for i0 := range v.Colors {
 		if err := v.Colors[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("colors: %w", err)
 		}
 	}
 	return nil
@@ -191,7 +191,7 @@ func (v *QueryBoolReq) Validate() error {
 func (v *QueryEnumReq) Validate() error {
 	if v.C != nil {
 		if err := v.C.Validate(); err != nil {
-			return err
+			return fmt.Errorf("c: %w", err)
 		}
 	}
 	return nil
@@ -244,7 +244,7 @@ func (v *SearchReq) Validate() error {
 	}
 	if v.Sort != nil {
 		if err := v.Sort.Validate(); err != nil {
-			return err
+			return fmt.Errorf("sort: %w", err)
 		}
 	}
 	if v.Offset != nil && *v.Offset < 0 {
@@ -260,20 +260,20 @@ func (v *UploadReq) Validate() error {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if v.File == nil {
-		return fmt.Errorf("file: required")
+		return fmt.Errorf("avatar_file: required")
 	}
 	if v.File != nil && v.File.Size > 5242880 {
-		return fmt.Errorf("file: file size exceeds 5242880 bytes")
+		return fmt.Errorf("avatar_file: file size exceeds 5242880 bytes")
 	}
 	if v.File != nil {
 		switch v.File.Header.Get("Content-Type") {
 		case "image/png", "image/jpeg":
 		default:
-			return fmt.Errorf("file: disallowed content type")
+			return fmt.Errorf("avatar_file: disallowed content type")
 		}
 	}
 	if v.Caption != nil && utf8.RuneCountInString(*v.Caption) > 280 {
-		return fmt.Errorf("caption: length greater than 280")
+		return fmt.Errorf("note: length greater than 280")
 	}
 	return nil
 }
@@ -297,7 +297,7 @@ func (v *UserAvatar) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *WireRenameReq) Validate() error {
 	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
-		return fmt.Errorf("userId: length out of range [1, 64]")
+		return fmt.Errorf("user_id: length out of range [1, 64]")
 	}
 	return nil
 }
@@ -306,7 +306,7 @@ func (v *WireRenameReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v UUID) Validate() error {
 	if !_pattern0.MatchString(string(v)) {
-		return fmt.Errorf("UUID: not a valid UUID")
+		return fmt.Errorf("not a valid UUID")
 	}
 	return nil
 }
@@ -317,7 +317,7 @@ func (v Color) Validate() error {
 	switch v {
 	case ColorRed, ColorGreen, ColorBlue:
 	default:
-		return fmt.Errorf("Color: invalid Color value")
+		return fmt.Errorf("invalid Color value")
 	}
 	return nil
 }

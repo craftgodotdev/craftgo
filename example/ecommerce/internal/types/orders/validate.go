@@ -22,7 +22,7 @@ var (
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateOrderReq) Validate() error {
 	if err := v.CustomerID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("customerId: %w", err)
 	}
 	if len(v.Items) < 1 {
 		return fmt.Errorf("items: minItems 1")
@@ -40,7 +40,7 @@ func (v *CreateOrderReq) Validate() error {
 	}
 	if v.Currency != nil {
 		if err := v.Currency.Validate(); err != nil {
-			return err
+			return fmt.Errorf("currency: %w", err)
 		}
 	}
 	if v.Tags != nil {
@@ -65,17 +65,17 @@ func (v *CreateOrderReq) Validate() error {
 func (v *DefaultsShowcaseReq) Validate() error {
 	if v.Currency != nil {
 		if err := v.Currency.Validate(); err != nil {
-			return err
+			return fmt.Errorf("currency: %w", err)
 		}
 	}
 	if v.Status != nil {
 		if err := v.Status.Validate(); err != nil {
-			return err
+			return fmt.Errorf("status: %w", err)
 		}
 	}
 	for i0 := range v.AllowedMethods {
 		if err := v.AllowedMethods[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("allowedMethods: %w", err)
 		}
 	}
 	return nil
@@ -88,13 +88,13 @@ func (v *FilterOrdersReq) Validate() error {
 		return fmt.Errorf("status: required")
 	}
 	if err := v.Status.Validate(); err != nil {
-		return err
+		return fmt.Errorf("status: %w", err)
 	}
 	if v.Method == "" {
 		return fmt.Errorf("method: required")
 	}
 	if err := v.Method.Validate(); err != nil {
-		return err
+		return fmt.Errorf("method: %w", err)
 	}
 	if v.Limit < 0 {
 		return fmt.Errorf("limit: below minimum 0")
@@ -124,7 +124,7 @@ func (v *LineItem) Validate() error {
 		return err
 	}
 	if err := v.Sku.Validate(); err != nil {
-		return err
+		return fmt.Errorf("sku: %w", err)
 	}
 	if v.Quantity < 1 {
 		return fmt.Errorf("quantity: below minimum 1")
@@ -139,11 +139,11 @@ func (v *LineItem) Validate() error {
 		}
 	}
 	if err := v.UnitCents.Validate(); err != nil {
-		return err
+		return fmt.Errorf("unitCents: %w", err)
 	}
 	if v.BonusBp != nil {
 		if err := v.BonusBp.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bonusBP: %w", err)
 		}
 	}
 	if v.Note != nil && utf8.RuneCountInString(*v.Note) > 200 {
@@ -163,7 +163,7 @@ func (v *ListOrdersReq) Validate() error {
 	}
 	if v.Status != nil {
 		if err := v.Status.Validate(); err != nil {
-			return err
+			return fmt.Errorf("status: %w", err)
 		}
 	}
 	return nil
@@ -173,7 +173,7 @@ func (v *ListOrdersReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Order) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Customer.Validate(); err != nil {
 		return err
@@ -201,13 +201,13 @@ func (v *Order) Validate() error {
 		}
 	}
 	if err := v.TotalCents.Validate(); err != nil {
-		return err
+		return fmt.Errorf("totalCents: %w", err)
 	}
 	if v.Status == "" {
 		return fmt.Errorf("status: required")
 	}
 	if err := v.Status.Validate(); err != nil {
-		return err
+		return fmt.Errorf("status: %w", err)
 	}
 	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
@@ -219,7 +219,7 @@ func (v *Order) Validate() error {
 	}
 	if v.Currency != nil {
 		if err := v.Currency.Validate(); err != nil {
-			return err
+			return fmt.Errorf("currency: %w", err)
 		}
 	}
 	if len(v.Tags) < 1 {
@@ -253,7 +253,7 @@ func (v *Payment) Validate() error {
 		return fmt.Errorf("method: required")
 	}
 	if err := v.Method.Validate(); err != nil {
-		return err
+		return fmt.Errorf("method: %w", err)
 	}
 	if v.CardLast4 != nil && (utf8.RuneCountInString(*v.CardLast4) < 4 || utf8.RuneCountInString(*v.CardLast4) > 4) {
 		return fmt.Errorf("cardLast4: length must be 4")
@@ -262,11 +262,11 @@ func (v *Payment) Validate() error {
 		return fmt.Errorf("cardLast4: does not match pattern")
 	}
 	if err := v.ReferenceID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("referenceId: %w", err)
 	}
 	if v.ReceiptURL != nil {
 		if err := v.ReceiptURL.Validate(); err != nil {
-			return err
+			return fmt.Errorf("receiptURL: %w", err)
 		}
 	}
 	return nil
@@ -278,7 +278,7 @@ func (v OrderStatus) Validate() error {
 	switch v {
 	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
 	default:
-		return fmt.Errorf("OrderStatus: invalid OrderStatus value")
+		return fmt.Errorf("invalid OrderStatus value")
 	}
 	return nil
 }
@@ -289,7 +289,7 @@ func (v PaymentMethod) Validate() error {
 	switch v {
 	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
 	default:
-		return fmt.Errorf("PaymentMethod: invalid PaymentMethod value")
+		return fmt.Errorf("invalid PaymentMethod value")
 	}
 	return nil
 }
@@ -300,7 +300,7 @@ func (v SuspensionReason) Validate() error {
 	switch v {
 	case SuspensionReasonPolicyViolation, SuspensionReasonPaymentFailure, SuspensionReasonOperatorAction:
 	default:
-		return fmt.Errorf("SuspensionReason: invalid SuspensionReason value")
+		return fmt.Errorf("invalid SuspensionReason value")
 	}
 	return nil
 }
@@ -312,7 +312,7 @@ func (v *ActionDeniedBody) Validate() error {
 		return fmt.Errorf("reason: required")
 	}
 	if err := v.Reason.Validate(); err != nil {
-		return err
+		return fmt.Errorf("reason: %w", err)
 	}
 	return nil
 }
@@ -324,7 +324,7 @@ func (v *PaymentFailedBody) Validate() error {
 		return fmt.Errorf("method: required")
 	}
 	if err := v.Method.Validate(); err != nil {
-		return err
+		return fmt.Errorf("method: %w", err)
 	}
 	if err := v.ChargedBy.Validate(); err != nil {
 		return err

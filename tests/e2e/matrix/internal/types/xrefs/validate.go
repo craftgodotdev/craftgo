@@ -39,7 +39,7 @@ func (v *XByKeyReq) Validate() error {
 func (v *XEnumDefault) Validate() error {
 	if v.Color != nil {
 		if err := v.Color.Validate(); err != nil {
-			return err
+			return fmt.Errorf("color: %w", err)
 		}
 	}
 	return nil
@@ -50,20 +50,20 @@ func (v *XEnumDefault) Validate() error {
 func (v *XEnumMaps) Validate() error {
 	for _, val := range v.ByString {
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byString: %w", err)
 		}
 	}
 	for key := range v.ByEnum {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byEnum: %w", err)
 		}
 	}
 	for key, val := range v.BothEnum {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bothEnum: %w", err)
 		}
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bothEnum: %w", err)
 		}
 	}
 	return nil
@@ -76,16 +76,16 @@ func (v *XEnumScalar) Validate() error {
 		return fmt.Errorf("flat: required")
 	}
 	if err := v.Flat.Validate(); err != nil {
-		return err
+		return fmt.Errorf("flat: %w", err)
 	}
 	if v.Maybe != nil {
 		if err := v.Maybe.Validate(); err != nil {
-			return err
+			return fmt.Errorf("maybe: %w", err)
 		}
 	}
 	for i0 := range v.Many {
 		if err := v.Many[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("many: %w", err)
 		}
 	}
 	return nil
@@ -137,19 +137,19 @@ func (v *XNestedReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XScalarBindings) Validate() error {
 	if err := v.Path.Validate(); err != nil {
-		return err
+		return fmt.Errorf("path: %w", err)
 	}
 	if err := v.Q.Validate(); err != nil {
-		return err
+		return fmt.Errorf("q: %w", err)
 	}
 	if err := v.Hdr.Validate(); err != nil {
-		return err
+		return fmt.Errorf("hdr: %w", err)
 	}
 	if err := v.Ck.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ck: %w", err)
 	}
 	if err := v.Num.Validate(); err != nil {
-		return err
+		return fmt.Errorf("num: %w", err)
 	}
 	return nil
 }
@@ -158,21 +158,21 @@ func (v *XScalarBindings) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XScalarFields) Validate() error {
 	if err := v.Flat.Validate(); err != nil {
-		return err
+		return fmt.Errorf("flat: %w", err)
 	}
 	if v.Maybe != nil {
 		if err := v.Maybe.Validate(); err != nil {
-			return err
+			return fmt.Errorf("maybe: %w", err)
 		}
 	}
 	for i0 := range v.Many {
 		if err := v.Many[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("many: %w", err)
 		}
 	}
 	for i0 := range v.Stamps {
 		if err := v.Stamps[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("stamps: %w", err)
 		}
 	}
 	return nil
@@ -182,16 +182,16 @@ func (v *XScalarFields) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XSearchReq) Validate() error {
 	if err := v.Q.Validate(); err != nil {
-		return err
+		return fmt.Errorf("q: %w", err)
 	}
 	if err := v.Hdr.Validate(); err != nil {
-		return err
+		return fmt.Errorf("hdr: %w", err)
 	}
 	if err := v.Ck.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ck: %w", err)
 	}
 	if err := v.Num.Validate(); err != nil {
-		return err
+		return fmt.Errorf("num: %w", err)
 	}
 	return nil
 }

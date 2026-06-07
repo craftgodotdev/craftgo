@@ -73,13 +73,13 @@ func (v *Rg2Maps) Validate() error {
 	for i0 := range v.M {
 		for _, val := range v.M[i0] {
 			if err := val.Validate(); err != nil {
-				return err
+				return fmt.Errorf("m: %w", err)
 			}
 		}
 	}
 	for _, val := range v.Plain {
 		if err := val.Validate(); err != nil {
-			return err
+			return fmt.Errorf("plain: %w", err)
 		}
 	}
 	return nil
@@ -144,12 +144,12 @@ func (v *Rg3Contact) Validate() error {
 func (v *Rg3Defaults) Validate() error {
 	if v.C != nil {
 		if err := v.C.Validate(); err != nil {
-			return err
+			return fmt.Errorf("c: %w", err)
 		}
 	}
 	if v.L != nil {
 		if err := v.L.Validate(); err != nil {
-			return err
+			return fmt.Errorf("l: %w", err)
 		}
 	}
 	return nil
@@ -170,7 +170,7 @@ func (v *Rg3NestedMaps) Validate() error {
 	for _, val := range v.Mm {
 		for _, v0 := range val {
 			if err := v0.Validate(); err != nil {
-				return err
+				return fmt.Errorf("mm: %w", err)
 			}
 		}
 	}
@@ -178,7 +178,7 @@ func (v *Rg3NestedMaps) Validate() error {
 		for i0 := range val {
 			for _, v1 := range val[i0] {
 				if err := v1.Validate(); err != nil {
-					return err
+					return fmt.Errorf("maa: %w", err)
 				}
 			}
 		}
@@ -205,7 +205,7 @@ func (v *Rg3Resp) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg3Zero) Validate() error {
 	if err := v.Status.Validate(); err != nil {
-		return err
+		return fmt.Errorf("status: %w", err)
 	}
 	return nil
 }
@@ -281,7 +281,7 @@ func (v *Rg4Secret) Validate() error {
 func (v *Rg5Bag) Validate() error {
 	for key, val := range v.ByUser {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byUser: %w", err)
 		}
 		if err := val.Validate(); err != nil {
 			return err
@@ -304,7 +304,7 @@ func (v *Rg5Composite) Validate() error {
 func (v *Rg5Defaults) Validate() error {
 	for i0 := range v.Methods {
 		if err := v.Methods[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("methods: %w", err)
 		}
 	}
 	return nil
@@ -538,12 +538,12 @@ func (v *RgContact) Validate() error {
 func (v *RgEnumMaps) Validate() error {
 	for key := range v.ByColor {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byColor: %w", err)
 		}
 	}
 	for key := range v.ByPrio {
 		if err := key.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byPrio: %w", err)
 		}
 	}
 	return nil
@@ -568,13 +568,13 @@ func (v *RgInner) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RgItemPath) Validate() error {
 	if err := v.Uid.Validate(); err != nil {
-		return err
+		return fmt.Errorf("uid: %w", err)
 	}
 	if v.Kind == "" {
 		return fmt.Errorf("kind: required")
 	}
 	if err := v.Kind.Validate(); err != nil {
-		return err
+		return fmt.Errorf("kind: %w", err)
 	}
 	return nil
 }
@@ -589,7 +589,7 @@ func (v *RgItemView) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RgLengths) Validate() error {
 	if err := v.Code.Validate(); err != nil {
-		return err
+		return fmt.Errorf("code: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Inline); l < 6 || l > 6 {
 		return fmt.Errorf("inline: length must be 6")
@@ -598,7 +598,7 @@ func (v *RgLengths) Validate() error {
 		return fmt.Errorf("rng: length out of range [2, 8]")
 	}
 	if err := v.Token.Validate(); err != nil {
-		return err
+		return fmt.Errorf("token: %w", err)
 	}
 	if v.NulToken != nil {
 		_sv := []byte(v.NulToken)
@@ -608,7 +608,7 @@ func (v *RgLengths) Validate() error {
 	}
 	if v.NulToken != nil {
 		if err := v.NulToken.Validate(); err != nil {
-			return err
+			return fmt.Errorf("nulToken: %w", err)
 		}
 	}
 	if len(v.Raw) < 4 {
@@ -628,7 +628,7 @@ func (v *RgNullableScalars) Validate() error {
 	}
 	if v.NulCapped != nil {
 		if err := v.NulCapped.Validate(); err != nil {
-			return err
+			return fmt.Errorf("nulCapped: %w", err)
 		}
 	}
 	if v.OptCapped != nil {
@@ -639,12 +639,12 @@ func (v *RgNullableScalars) Validate() error {
 	}
 	if v.OptCapped != nil {
 		if err := v.OptCapped.Validate(); err != nil {
-			return err
+			return fmt.Errorf("optCapped: %w", err)
 		}
 	}
 	if v.NulEmail != nil {
 		if err := v.NulEmail.Validate(); err != nil {
-			return err
+			return fmt.Errorf("nulEmail: %w", err)
 		}
 	}
 	{
@@ -654,7 +654,7 @@ func (v *RgNullableScalars) Validate() error {
 		}
 	}
 	if err := v.PlainCents.Validate(); err != nil {
-		return err
+		return fmt.Errorf("plainCents: %w", err)
 	}
 	return nil
 }
@@ -687,19 +687,19 @@ func (v *RgRefMeta) Validate() error {
 	}
 	if v.NulColor != nil {
 		if err := v.NulColor.Validate(); err != nil {
-			return err
+			return fmt.Errorf("nulColor: %w", err)
 		}
 	}
 	if v.RoleReq != nil {
 		if err := v.RoleReq.Validate(); err != nil {
-			return err
+			return fmt.Errorf("roleReq: %w", err)
 		}
 	}
 	if v.DepColor == "" {
 		return fmt.Errorf("depColor: required")
 	}
 	if err := v.DepColor.Validate(); err != nil {
-		return err
+		return fmt.Errorf("depColor: %w", err)
 	}
 	return nil
 }
@@ -709,7 +709,7 @@ func (v *RgRefMeta) Validate() error {
 func (v *RgSearch) Validate() error {
 	if v.ColorQ != nil {
 		if err := v.ColorQ.Validate(); err != nil {
-			return err
+			return fmt.Errorf("colorQ: %w", err)
 		}
 	}
 	return nil
@@ -719,10 +719,10 @@ func (v *RgSearch) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Rg2Tag) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("Rg2Tag: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	if utf8.RuneCountInString(string(v)) > 20 {
-		return fmt.Errorf("Rg2Tag: length greater than 20")
+		return fmt.Errorf("length greater than 20")
 	}
 	return nil
 }
@@ -731,7 +731,7 @@ func (v Rg2Tag) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Rg3Tag) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("Rg3Tag: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	return nil
 }
@@ -740,7 +740,7 @@ func (v Rg3Tag) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Rg5UserID) Validate() error {
 	if int(v) < 1 {
-		return fmt.Errorf("Rg5UserID: below minimum 1")
+		return fmt.Errorf("below minimum 1")
 	}
 	return nil
 }
@@ -749,7 +749,7 @@ func (v Rg5UserID) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v RgCents) Validate() error {
 	if int(v) < 0 {
-		return fmt.Errorf("RgCents: below minimum 0")
+		return fmt.Errorf("below minimum 0")
 	}
 	return nil
 }
@@ -758,7 +758,7 @@ func (v RgCents) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v RgCode) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 4 || l > 4 {
-		return fmt.Errorf("RgCode: length must be 4")
+		return fmt.Errorf("length must be 4")
 	}
 	return nil
 }
@@ -767,7 +767,7 @@ func (v RgCode) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v RgEmail) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
-		return fmt.Errorf("RgEmail: not a valid email")
+		return fmt.Errorf("not a valid email")
 	}
 	return nil
 }
@@ -776,10 +776,10 @@ func (v RgEmail) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v RgToken) Validate() error {
 	if len([]byte(v)) < 16 {
-		return fmt.Errorf("RgToken: length less than 16")
+		return fmt.Errorf("length less than 16")
 	}
 	if len([]byte(v)) > 16 {
-		return fmt.Errorf("RgToken: length greater than 16")
+		return fmt.Errorf("length greater than 16")
 	}
 	return nil
 }
@@ -790,7 +790,7 @@ func (v Rg3Color) Validate() error {
 	switch v {
 	case Rg3ColorRed, Rg3ColorGreen:
 	default:
-		return fmt.Errorf("Rg3Color: invalid Rg3Color value")
+		return fmt.Errorf("invalid Rg3Color value")
 	}
 	return nil
 }
@@ -801,7 +801,7 @@ func (v Rg3Level) Validate() error {
 	switch v {
 	case Rg3LevelLow, Rg3LevelHigh:
 	default:
-		return fmt.Errorf("Rg3Level: invalid Rg3Level value")
+		return fmt.Errorf("invalid Rg3Level value")
 	}
 	return nil
 }
@@ -812,7 +812,7 @@ func (v Rg3Status) Validate() error {
 	switch v {
 	case Rg3StatusInactive, Rg3StatusActive, Rg3StatusBanned:
 	default:
-		return fmt.Errorf("Rg3Status: invalid Rg3Status value")
+		return fmt.Errorf("invalid Rg3Status value")
 	}
 	return nil
 }
@@ -823,7 +823,7 @@ func (v Rg5Method) Validate() error {
 	switch v {
 	case Rg5MethodCard, Rg5MethodBank:
 	default:
-		return fmt.Errorf("Rg5Method: invalid Rg5Method value")
+		return fmt.Errorf("invalid Rg5Method value")
 	}
 	return nil
 }
@@ -834,7 +834,7 @@ func (v RgColor) Validate() error {
 	switch v {
 	case RgColorRed, RgColorGreen, RgColorBlue:
 	default:
-		return fmt.Errorf("RgColor: invalid RgColor value")
+		return fmt.Errorf("invalid RgColor value")
 	}
 	return nil
 }
@@ -845,7 +845,7 @@ func (v RgPriority) Validate() error {
 	switch v {
 	case RgPriorityLow, RgPriorityMedium, RgPriorityHigh:
 	default:
-		return fmt.Errorf("RgPriority: invalid RgPriority value")
+		return fmt.Errorf("invalid RgPriority value")
 	}
 	return nil
 }

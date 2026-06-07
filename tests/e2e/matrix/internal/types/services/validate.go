@@ -11,7 +11,7 @@ import (
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccountLoginResp) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -20,7 +20,7 @@ func (v *AccountLoginResp) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AccountProfile) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -71,7 +71,7 @@ func (v *AcctUser) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AsyncJobResp) Validate() error {
 	if err := v.JobID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("jobId: %w", err)
 	}
 	return nil
 }
@@ -80,7 +80,7 @@ func (v *AsyncJobResp) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CancelJobReq) Validate() error {
 	if err := v.JobID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("jobId: %w", err)
 	}
 	return nil
 }
@@ -98,7 +98,7 @@ func (v *CreateJobReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DeleteAccountReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }
@@ -129,7 +129,7 @@ func (v *HealthResp) Validate() error {
 func (v *InventoryListResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -163,11 +163,11 @@ func (v *ListUsersResp) Validate() error {
 func (v *PaginatedResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if err := v.TraceID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("X-Trace-Id: %w", err)
 	}
 	return nil
 }
@@ -176,7 +176,7 @@ func (v *PaginatedResp) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Project) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
@@ -220,10 +220,10 @@ func (v *User) Validate() error {
 		return err
 	}
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
@@ -235,10 +235,10 @@ func (v *User) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UserRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	return nil
 }
@@ -249,7 +249,7 @@ func (v AcctPriority) Validate() error {
 	switch v {
 	case AcctPriorityLow, AcctPriorityMed, AcctPriorityHigh:
 	default:
-		return fmt.Errorf("AcctPriority: invalid AcctPriority value")
+		return fmt.Errorf("invalid AcctPriority value")
 	}
 	return nil
 }
@@ -260,7 +260,7 @@ func (v AcctRole) Validate() error {
 	switch v {
 	case AcctRoleAdmin, AcctRoleUser, AcctRoleGuest:
 	default:
-		return fmt.Errorf("AcctRole: invalid AcctRole value")
+		return fmt.Errorf("invalid AcctRole value")
 	}
 	return nil
 }

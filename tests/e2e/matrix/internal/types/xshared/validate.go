@@ -14,10 +14,10 @@ import (
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XAudit) Validate() error {
 	if err := v.CreatedAt.Validate(); err != nil {
-		return err
+		return fmt.Errorf("createdAt: %w", err)
 	}
 	if err := v.UpdatedAt.Validate(); err != nil {
-		return err
+		return fmt.Errorf("updatedAt: %w", err)
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func (v *XOwner) Validate() error {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	return nil
 }
@@ -117,12 +117,12 @@ func (v *XPromoteBody) Validate() error {
 	}
 	if v.Size != nil {
 		if err := v.Size.Validate(); err != nil {
-			return err
+			return fmt.Errorf("size: %w", err)
 		}
 	}
 	if v.Tone != nil {
 		if err := v.Tone.Validate(); err != nil {
-			return err
+			return fmt.Errorf("tone: %w", err)
 		}
 	}
 	return nil
@@ -132,7 +132,7 @@ func (v *XPromoteBody) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XPromoteWire) Validate() error {
 	if err := v.Q.Validate(); err != nil {
-		return err
+		return fmt.Errorf("q: %w", err)
 	}
 	return nil
 }
@@ -144,7 +144,7 @@ func (v *XThirdReq) Validate() error {
 		return fmt.Errorf("sev: required")
 	}
 	if err := v.Sev.Validate(); err != nil {
-		return err
+		return fmt.Errorf("sev: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -165,10 +165,10 @@ func (v *XWrapInBag[T]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v XEmail) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
-		return fmt.Errorf("XEmail: not a valid email")
+		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
-		return fmt.Errorf("XEmail: length greater than 254")
+		return fmt.Errorf("length greater than 254")
 	}
 	return nil
 }
@@ -177,10 +177,10 @@ func (v XEmail) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v XNodeID) Validate() error {
 	if int(v) < 1 {
-		return fmt.Errorf("XNodeID: below minimum 1")
+		return fmt.Errorf("below minimum 1")
 	}
 	if int(v) > 1000000 {
-		return fmt.Errorf("XNodeID: above maximum 1000000")
+		return fmt.Errorf("above maximum 1000000")
 	}
 	return nil
 }
@@ -189,10 +189,10 @@ func (v XNodeID) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v XSize) Validate() error {
 	if int(v) < 1 {
-		return fmt.Errorf("XSize: below minimum 1")
+		return fmt.Errorf("below minimum 1")
 	}
 	if int(v) > 100 {
-		return fmt.Errorf("XSize: above maximum 100")
+		return fmt.Errorf("above maximum 100")
 	}
 	return nil
 }
@@ -201,7 +201,7 @@ func (v XSize) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v XTimestamp) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, string(v)); _err != nil {
-		return fmt.Errorf("XTimestamp: not a valid RFC 3339 datetime")
+		return fmt.Errorf("not a valid RFC 3339 datetime")
 	}
 	return nil
 }
@@ -212,7 +212,7 @@ func (v XColor) Validate() error {
 	switch v {
 	case XColorRed, XColorGreen, XColorBlue:
 	default:
-		return fmt.Errorf("XColor: invalid XColor value")
+		return fmt.Errorf("invalid XColor value")
 	}
 	return nil
 }

@@ -58,10 +58,10 @@ func (v *Pagination) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
-		return fmt.Errorf("Email: not a valid email")
+		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
-		return fmt.Errorf("Email: length greater than 254")
+		return fmt.Errorf("length greater than 254")
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func (v Email) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v ID) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 1 || l > 64 {
-		return fmt.Errorf("ID: length out of range [1, 64]")
+		return fmt.Errorf("length out of range [1, 64]")
 	}
 	return nil
 }
@@ -81,7 +81,7 @@ func (v Severity) Validate() error {
 	switch v {
 	case SeverityInfo, SeverityWarning, SeverityError, SeverityCritical:
 	default:
-		return fmt.Errorf("Severity: invalid Severity value")
+		return fmt.Errorf("invalid Severity value")
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func (v *ConflictErrBody) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *NotFoundErrBody) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	return nil
 }

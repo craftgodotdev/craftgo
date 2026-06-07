@@ -29,7 +29,7 @@ var (
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AuditFields) Validate() error {
 	if err := v.AuditedBy.Validate(); err != nil {
-		return err
+		return fmt.Errorf("auditedBy: %w", err)
 	}
 	if _, _err := time.Parse(time.RFC3339, v.AuditedAt); _err != nil {
 		return fmt.Errorf("auditedAt: not a valid RFC 3339 datetime")
@@ -111,7 +111,7 @@ func (v *Result[T, E]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Cents) Validate() error {
 	if int(v) < 0 {
-		return fmt.Errorf("Cents: below minimum 0")
+		return fmt.Errorf("below minimum 0")
 	}
 	return nil
 }
@@ -120,10 +120,10 @@ func (v Cents) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CountryCode) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 2 || l > 2 {
-		return fmt.Errorf("CountryCode: length must be 2")
+		return fmt.Errorf("length must be 2")
 	}
 	if !_pattern0.MatchString(string(v)) {
-		return fmt.Errorf("CountryCode: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -132,10 +132,10 @@ func (v CountryCode) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CurrencyCode) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 3 || l > 3 {
-		return fmt.Errorf("CurrencyCode: length must be 3")
+		return fmt.Errorf("length must be 3")
 	}
 	if !_pattern1.MatchString(string(v)) {
-		return fmt.Errorf("CurrencyCode: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -144,10 +144,10 @@ func (v CurrencyCode) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
-		return fmt.Errorf("Email: not a valid email")
+		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
-		return fmt.Errorf("Email: length greater than 254")
+		return fmt.Errorf("length greater than 254")
 	}
 	return nil
 }
@@ -156,10 +156,10 @@ func (v Email) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Latitude) Validate() error {
 	if float64(v) < -90 {
-		return fmt.Errorf("Latitude: below minimum -90")
+		return fmt.Errorf("below minimum -90")
 	}
 	if float64(v) > 90 {
-		return fmt.Errorf("Latitude: above maximum 90")
+		return fmt.Errorf("above maximum 90")
 	}
 	return nil
 }
@@ -168,10 +168,10 @@ func (v Latitude) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Longitude) Validate() error {
 	if float64(v) < -180 {
-		return fmt.Errorf("Longitude: below minimum -180")
+		return fmt.Errorf("below minimum -180")
 	}
 	if float64(v) > 180 {
-		return fmt.Errorf("Longitude: above maximum 180")
+		return fmt.Errorf("above maximum 180")
 	}
 	return nil
 }
@@ -180,13 +180,13 @@ func (v Longitude) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v NonEmptyID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("NonEmptyID: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	if utf8.RuneCountInString(string(v)) > 128 {
-		return fmt.Errorf("NonEmptyID: length greater than 128")
+		return fmt.Errorf("length greater than 128")
 	}
 	if !_pattern2.MatchString(string(v)) {
-		return fmt.Errorf("NonEmptyID: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -195,10 +195,10 @@ func (v NonEmptyID) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v PercentBP) Validate() error {
 	if int(v) < 0 {
-		return fmt.Errorf("PercentBP: below minimum 0")
+		return fmt.Errorf("below minimum 0")
 	}
 	if int(v) > 10000 {
-		return fmt.Errorf("PercentBP: above maximum 10000")
+		return fmt.Errorf("above maximum 10000")
 	}
 	return nil
 }
@@ -207,7 +207,7 @@ func (v PercentBP) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v SKU) Validate() error {
 	if !_pattern3.MatchString(string(v)) {
-		return fmt.Errorf("SKU: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -216,10 +216,10 @@ func (v SKU) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v SafeURL) Validate() error {
 	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
-		return fmt.Errorf("SafeURL: not a valid URL")
+		return fmt.Errorf("not a valid URL")
 	}
 	if utf8.RuneCountInString(string(v)) > 2048 {
-		return fmt.Errorf("SafeURL: length greater than 2048")
+		return fmt.Errorf("length greater than 2048")
 	}
 	return nil
 }
@@ -228,13 +228,13 @@ func (v SafeURL) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Slug) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
-		return fmt.Errorf("Slug: length less than 1")
+		return fmt.Errorf("length less than 1")
 	}
 	if utf8.RuneCountInString(string(v)) > 64 {
-		return fmt.Errorf("Slug: length greater than 64")
+		return fmt.Errorf("length greater than 64")
 	}
 	if !_pattern4.MatchString(string(v)) {
-		return fmt.Errorf("Slug: does not match pattern")
+		return fmt.Errorf("does not match pattern")
 	}
 	return nil
 }
@@ -245,7 +245,7 @@ func (v MaintenanceReason) Validate() error {
 	switch v {
 	case MaintenanceReasonScheduled, MaintenanceReasonIncident, MaintenanceReasonCapacity:
 	default:
-		return fmt.Errorf("MaintenanceReason: invalid MaintenanceReason value")
+		return fmt.Errorf("invalid MaintenanceReason value")
 	}
 	return nil
 }
@@ -257,7 +257,7 @@ func (v *MaintenanceWindowBody) Validate() error {
 		return fmt.Errorf("reason: required")
 	}
 	if err := v.Reason.Validate(); err != nil {
-		return err
+		return fmt.Errorf("reason: %w", err)
 	}
 	if _, _err := time.Parse(time.RFC3339, v.EstimatedEndAt); _err != nil {
 		return fmt.Errorf("estimatedEndAt: not a valid RFC 3339 datetime")

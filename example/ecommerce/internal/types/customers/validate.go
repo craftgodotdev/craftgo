@@ -41,7 +41,7 @@ func (v *Address) Validate() error {
 		return fmt.Errorf("postalCode: does not match pattern")
 	}
 	if err := v.Country.Validate(); err != nil {
-		return err
+		return fmt.Errorf("country: %w", err)
 	}
 	if v.Geo != nil {
 		if err := v.Geo.Validate(); err != nil {
@@ -56,7 +56,7 @@ func (v *Address) Validate() error {
 func (v *Contact) Validate() error {
 	if v.Email != nil {
 		if err := v.Email.Validate(); err != nil {
-			return err
+			return fmt.Errorf("email: %w", err)
 		}
 	}
 	if v.Phone != nil && !_pattern1.MatchString(*v.Phone) {
@@ -84,7 +84,7 @@ func (v *Contact) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateCustomerReq) Validate() error {
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
@@ -105,10 +105,10 @@ func (v *CreateCustomerReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Customer) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Email.Validate(); err != nil {
-		return err
+		return fmt.Errorf("email: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
@@ -153,7 +153,7 @@ func (v *Customer) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CustomerRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
-		return err
+		return fmt.Errorf("id: %w", err)
 	}
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 120 {
 		return fmt.Errorf("name: length out of range [1, 120]")
@@ -165,10 +165,10 @@ func (v *CustomerRef) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Geocode) Validate() error {
 	if err := v.Lat.Validate(); err != nil {
-		return err
+		return fmt.Errorf("lat: %w", err)
 	}
 	if err := v.Lng.Validate(); err != nil {
-		return err
+		return fmt.Errorf("lng: %w", err)
 	}
 	if v.Altitude != nil && *v.Altitude < -500 {
 		return fmt.Errorf("altitude: below minimum -500")

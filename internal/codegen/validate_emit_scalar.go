@@ -157,7 +157,11 @@ func scalarDeclHasValidators(sd *ast.ScalarDecl) bool {
 // drives the validator dispatch, targeting `v`.
 func scalarValidateChecks(sd *ast.ScalarDecl, ctx emitCtx) []string {
 	synth := &ast.Field{
-		Name: sd.Name,
+		// Empty Name → subject-less messages ("length less than 3"). The field
+		// that uses this scalar restores the subject by wrapping with the field
+		// name (see nestedValidateCall), so a failure reports the field, not the
+		// scalar type.
+		Name: "",
 		Type: &ast.TypeRef{
 			Named: &ast.NamedTypeRef{
 				Name: &ast.QualifiedIdent{Parts: []string{scalarPrimitiveDSL(sd.Primitive)}},
@@ -189,5 +193,7 @@ func enumValidateChecks(ed *ast.EnumDecl) []string {
 	if ed == nil || len(ed.EnumValues()) == 0 {
 		return nil
 	}
-	return []string{enumSwitchBody(ed, "", "v", ed.Name)}
+	// Empty label → subject-less message ("invalid Color value"); the using
+	// field wraps it with the field name (see nestedValidateCall).
+	return []string{enumSwitchBody(ed, "", "v", "")}
 }

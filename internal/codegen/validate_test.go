@@ -770,12 +770,20 @@ type Alert { level Sev @doc("severity") @deprecated }`)
 	if !strings.Contains(src, "if err := v.Level.Validate(); err != nil {") {
 		t.Errorf("expected enum field to dispatch through Validate():\n%s", src)
 	}
-	// @doc / @deprecated produce no runtime code. The file holds
-	// exactly two error returns: the required-presence check in
-	// Alert.Validate and the value-set rejection in Sev.Validate.
+	// The enum's own message is subject-less; the field wraps it with the field
+	// name so a failure reports `level: ...`, not `Sev: ...`.
+	if !strings.Contains(src, `return fmt.Errorf("level: %w", err)`) {
+		t.Errorf("expected enum field error wrapped with the field name:\n%s", src)
+	}
+	if !strings.Contains(src, `"invalid Sev value"`) || strings.Contains(src, `"Sev: invalid Sev value"`) {
+		t.Errorf("enum value-set message should be subject-less:\n%s", src)
+	}
+	// @doc / @deprecated produce no runtime code. Three error returns: the
+	// required-presence check + the field-name wrap (both in Alert.Validate),
+	// and the subject-less value-set rejection in Sev.Validate.
 	count := strings.Count(src, "return fmt.Errorf")
-	if count != 2 {
-		t.Errorf("expected exactly 2 error returns total, got %d:\n%s", count, src)
+	if count != 3 {
+		t.Errorf("expected exactly 3 error returns total, got %d:\n%s", count, src)
 	}
 }
 
