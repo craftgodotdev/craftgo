@@ -31,6 +31,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   OpenAPI output is disabled (`output.openapi: "-"`) or lives outside the main
   package's tree (a `go:embed` cannot cross `..`).
 
+### Changed
+
+- **Generated `main.go` boots through craftgo's structured logger
+  (`pkg/log`) instead of the standard-library `log`.** The bootstrap lines
+  (config / OTel / metrics init, listener startup, fatal errors) now emit the
+  same structured records as the rest of the runtime (access logs, error hooks)
+  — e.g. `{"level":"info","msg":"listening","addr":":8080"}` — rather than plain
+  `2006/01/02 ... ` text, so boot output is consistent and machine-parseable.
+  `main.go` is gen-once, so existing projects keep theirs.
+
 ### Fixed
 
 - **Conflicting routes are now rejected at gen time instead of panicking at

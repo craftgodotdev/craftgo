@@ -44,9 +44,9 @@ import (
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	accountserviceroutes.RegisterRoutes(srv, svcCtx)
 	accountuserserviceroutes.RegisterRoutes(srv, svcCtx)
-	adminapiAdminV1routes.RegisterRoutes(srv, svcCtx)
-	adminapiAdminV3routes.RegisterRoutes(srv, svcCtx)
 	adminapiAdminV2routes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminV3routes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminV1routes.RegisterRoutes(srv, svcCtx)
 	admininventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	adminserviceAdminLegacyroutes.RegisterRoutes(srv, svcCtx)
 	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)

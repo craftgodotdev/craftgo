@@ -13,13 +13,13 @@ package main
 import (
 	"context"
 	_ "embed"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/metrics"
 	craftotel "github.com/craftgodotdev/craftgo/pkg/otel"
 	"github.com/craftgodotdev/craftgo/pkg/server"
@@ -39,25 +39,28 @@ var openapiSpec []byte
 func main() {
 	cfg, err := config.Load(config.Path())
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		log.Default().Error("load config", log.Err(err))
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
 
 	tracerProvider, err := craftotel.InitFromConfig(ctx, cfg.OTel)
 	if err != nil {
-		log.Fatalf("otel: %v", err)
+		log.Default().Error("init otel", log.Err(err))
+		os.Exit(1)
 	}
 
 	metricsProvider, adminSrv, err := metrics.InitFromConfig(ctx, cfg.Metrics)
 	if err != nil {
-		log.Fatalf("metrics: %v", err)
+		log.Default().Error("init metrics", log.Err(err))
+		os.Exit(1)
 	}
 	if adminSrv != nil {
-		log.Printf("metrics scrape listening on %s%s", adminSrv.Addr(), adminSrv.Path())
+		log.Default().Info("metrics scrape listening", log.String("addr", adminSrv.Addr()), log.String("path", adminSrv.Path()))
 		go func() {
 			if err := <-adminSrv.ErrCh(); err != nil {
-				log.Printf("admin metrics listener: %v", err)
+				log.Default().Error("admin metrics listener", log.Err(err))
 			}
 		}()
 	}
@@ -115,9 +118,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("listening on %s (api)", cfg.Server.Addr)
+		log.Default().Info("listening", log.String("addr", cfg.Server.Addr))
 		if err := srv.Start(cfg.Server.Addr); err != nil && err != http.ErrServerClosed {
-			log.Fatal(err)
+			log.Default().Error("server start", log.Err(err))
+			os.Exit(1)
 		}
 	}()
 
