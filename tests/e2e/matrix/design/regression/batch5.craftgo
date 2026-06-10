@@ -21,8 +21,11 @@ type Rg5Defaults {
 	sortBy  string?      @query @default("name")
 }
 
-// A non-string scalar map key carries its constraint into `propertyNames`:
-// the server enforces `@gte(1)` on each key, so the spec advertises it.
+// A non-string scalar map key's constraint runs at runtime (key.Validate
+// enforces @gte(1)) but is NOT advertised in `propertyNames`: JSON object keys
+// are strings, so a numeric `type: integer` would be rejected by a 3.1 validator
+// and a numeric bound has no clean string-pattern form. A string scalar key
+// instead surfaces its pattern / length in propertyNames.
 scalar Rg5UserID int @gte(1)
 
 type Rg5Tag {

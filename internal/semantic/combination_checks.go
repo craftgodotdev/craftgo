@@ -577,7 +577,9 @@ func isFormBindingType(t *ast.TypeRef, pkg *Package) bool {
 		return false
 	}
 	if t.Named.Name.String() == "file" {
-		return !t.Array && t.Map == nil
+		// A single `file` or a 1-D `file[]` (repeated multipart parts) binds;
+		// a map or a multi-dimensional `file[][]` has no multipart encoding.
+		return t.Map == nil && t.ArrayDepth <= 1
 	}
 	return isWireBindingType(t, pkg)
 }
@@ -602,8 +604,17 @@ func (a *analyzer) checkFilePosition() {
 	record := func(name string, body []ast.TypeMember) {
 		bodies[name] = body
 		for _, m := range body {
-			if f, ok := m.(*ast.Field); ok && isFileTypeRef(f.Type) {
-				hasFile = true
+			f, ok := m.(*ast.Field)
+			if !ok || !isFileTypeRef(f.Type) {
+				continue
+			}
+			hasFile = true
+			// A single `file` lowers to one binary blob and a `file[]` to flat
+			// repeated multipart parts; `file[][]` (or deeper) has no wire
+			// encoding and the binder would assign a 1-D slice to a nested one.
+			if f.Type.ArrayDepth > 1 {
+				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
+					"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding — only a single `file` or a 1-D `file[]` is supported", name, f.Name)
 			}
 		}
 	}

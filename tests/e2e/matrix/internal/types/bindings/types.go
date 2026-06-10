@@ -19,6 +19,19 @@ type AddItemReq struct {
 	Notes *string `json:"notes,omitempty"`
 }
 
+// BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
+// `r.MultipartForm.File[name]` (each repeated part is one element), bounded
+// by `@minItems`/`@maxItems`; an optional single `cover` and a repeated
+// `string[] @form` value share the same multipart request. (A
+// multi-dimensional `file[][]` has no multipart encoding and is rejected at
+// gen time.)
+type BatchUploadReq struct {
+	Files []*multipart.FileHeader `json:"files"`
+	Cover *multipart.FileHeader   `json:"cover,omitempty"`
+	Tags  []string                `json:"tags"`
+	Album string                  `json:"album"`
+}
+
 // BodyExplicitReq has one explicit `@body`-bound field. Useful when
 // the wire payload is an opaque string (signed token, raw markdown,
 // etc.) rather than a JSON object.

@@ -441,6 +441,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		// binds to `avatar_file`, not `avatarFile`).
 		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: rf.GoName, Required: fieldIsRequired(f), Field: f}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
+			entry.IsArray = f.Type.Array
 			for _, d := range f.Decorators {
 				if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
 					continue

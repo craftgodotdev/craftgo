@@ -142,6 +142,12 @@ type paramBinding struct {
 	// and skips the limits the server's validator still enforces. nil for
 	// wire-param bindings.
 	Field *ast.Field
+	// IsArray marks a `file[]` (repeated-part) upload. Set by
+	// [collectFormBindings] for file entries so the multipart template binds
+	// from `r.MultipartForm.File[name]` (`[]*multipart.FileHeader`) instead of
+	// the single-file `r.FormFile`, and [multipartRequestBody] emits an
+	// `array` schema. Single-file and text bindings leave it false.
+	IsArray bool
 }
 
 // helpersData is the template input for `handler_helpers.tmpl`.

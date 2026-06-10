@@ -64,9 +64,13 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		{{.Bind}}
 {{- end}}
 {{- range .FormFiles}}
+{{- if .IsArray}}
+		req.{{.GoName}} = r.MultipartForm.File["{{.DSLName}}"]
+{{- else}}
 		if _, header, err := r.FormFile("{{.DSLName}}"); err == nil {
 			req.{{.GoName}} = header
 		}
+{{- end}}
 {{- end}}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

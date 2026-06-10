@@ -781,6 +781,76 @@ components:
       type: object
     BanUserRespBody:
       $ref: '#/components/schemas/ServicesUser'
+    BatchUploadReq:
+      description: |-
+        BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
+        `r.MultipartForm.File[name]` (each repeated part is one element), bounded
+        by `@minItems`/`@maxItems`; an optional single `cover` and a repeated
+        `string[] @form` value share the same multipart request. (A
+        multi-dimensional `file[][]` has no multipart encoding and is rejected at
+        gen time.)
+      properties:
+        album:
+          maxLength: 100
+          minLength: 1
+          type: string
+        cover:
+          format: binary
+          type:
+          - string
+          - "null"
+        files:
+          items:
+            format: binary
+            type: string
+          maxItems: 10
+          minItems: 1
+          type: array
+        tags:
+          items:
+            type: string
+          type: array
+      required:
+      - files
+      - tags
+      - album
+      type: object
+    BatchUploadReqBody:
+      description: |-
+        BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
+        `r.MultipartForm.File[name]` (each repeated part is one element), bounded
+        by `@minItems`/`@maxItems`; an optional single `cover` and a repeated
+        `string[] @form` value share the same multipart request. (A
+        multi-dimensional `file[][]` has no multipart encoding and is rejected at
+        gen time.)
+      properties:
+        album:
+          maxLength: 100
+          minLength: 1
+          type: string
+        cover:
+          format: binary
+          type:
+          - string
+          - "null"
+        files:
+          items:
+            format: binary
+            type: string
+          maxItems: 10
+          minItems: 1
+          type: array
+        tags:
+          items:
+            type: string
+          type: array
+      required:
+      - files
+      - tags
+      - album
+      type: object
+    BatchUploadRespBody:
+      $ref: '#/components/schemas/Item'
     BindingsColor:
       description: |-
         Color is a string-backed enum (bare-ident form, default string
@@ -5322,8 +5392,11 @@ components:
       type: object
     Rg5UserID:
       description: |-
-        A non-string scalar map key carries its constraint into `propertyNames`:
-        the server enforces `@gte(1)` on each key, so the spec advertises it.
+        A non-string scalar map key's constraint runs at runtime (key.Validate
+        enforces @gte(1)) but is NOT advertised in `propertyNames`: JSON object keys
+        are strings, so a numeric `type: integer` would be rejected by a 3.1 validator
+        and a numeric bound has no clean string-pattern form. A string scalar key
+        instead surfaces its pattern / length in propertyNames.
       minimum: 1
       type: integer
     Rg6ArrReq:
@@ -7699,6 +7772,50 @@ paths:
           description: OK
       tags:
       - admin/v3
+  /bindings/batch:
+    post:
+      description: Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader,
+        @minItems/@maxItems); cover is one optional file; tags is a repeated form
+        value.
+      operationId: BatchUpload
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                album:
+                  maxLength: 100
+                  minLength: 1
+                  type: string
+                cover:
+                  format: binary
+                  type: string
+                files:
+                  items:
+                    format: binary
+                    type: string
+                  maxItems: 10
+                  minItems: 1
+                  type: array
+                tags:
+                  items:
+                    type: string
+                  type: array
+              required:
+              - tags
+              - album
+              - files
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchUploadRespBody'
+          description: Created
+      tags:
+      - bindings
   /bindings/by-color:
     get:
       description: Search by colors with an enum-array @query default. An absent `colors`

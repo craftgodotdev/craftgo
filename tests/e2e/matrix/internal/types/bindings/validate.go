@@ -37,6 +37,21 @@ func (v *AddItemReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on BatchUploadReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *BatchUploadReq) Validate() error {
+	if len(v.Files) < 1 {
+		return fmt.Errorf("files: minItems 1")
+	}
+	if len(v.Files) > 10 {
+		return fmt.Errorf("files: maxItems 10")
+	}
+	if l := utf8.RuneCountInString(v.Album); l < 1 || l > 100 {
+		return fmt.Errorf("album: length out of range [1, 100]")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on BodyExplicitReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *BodyExplicitReq) Validate() error {

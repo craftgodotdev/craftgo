@@ -7,6 +7,24 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [1.3.11] - 2026-06-10
 
+### Added
+
+- **Multiple-file uploads via `file[]`.** A `file[]` form field now binds every
+  repeated multipart part into a `[]*multipart.FileHeader` (from
+  `r.MultipartForm.File["<name>"]`), validated by `@minItems`/`@maxItems`, and
+  the OpenAPI multipart schema renders it as `{type: array, items: {type:
+  string, format: binary}}` (so generated clients type it as an array of files —
+  heyapi: `Array<Blob | File>`). Previously a `file[]` field compiled the type
+  (`[]*multipart.FileHeader`) but the binder used the single-file `r.FormFile`,
+  producing non-compiling Go. A single `file` is unchanged. A
+  multi-dimensional `file[][]` (which has no multipart encoding) is now rejected
+  at gen time with a clear diagnostic instead of emitting non-compiling Go. An
+  optional file (`cover file?`) is rendered as `{type: string, format: binary}`
+  and simply omitted from the multipart `required[]` — a binary part is
+  present-or-absent, never JSON `null`, so it no longer carries a
+  `type: [string, "null"]` union (which is meaningless for a file and breaks
+  Swagger UI's file picker).
+
 ### Fixed
 
 - **`@nullable` on a form-bound field no longer emits non-compiling Go.** A

@@ -502,10 +502,26 @@ func multipartRequestBody(forms, files []paramBinding, crossDecs []*ast.Decorato
 	}
 	encoding := map[string]*openapi3.Encoding{}
 	for _, f := range files {
-		props[f.DSLName] = &openapi3.SchemaRef{Value: &openapi3.Schema{
-			Type:   &openapi3.Types{"string"},
-			Format: "binary",
-		}}
+		// A multipart file part is present or absent (its optionality lives in
+		// `required[]`), never JSON null - so build the schema from a
+		// non-optional copy of the type and skip applyFieldMetadata's nullable
+		// union (`type: [string, "null"]` is meaningless for a binary part and
+		// breaks Swagger UI's file picker). schemaForTypeRef maps `file` ->
+		// {type:string, format:binary}; a `file[]` upload therefore becomes
+		// {type:array, items:{binary}}, and applyArrayConstraints adds the
+		// @minItems / @maxItems the validator enforces.
+		var ref *openapi3.SchemaRef
+		if f.Field != nil && f.Field.Type != nil {
+			ft := *f.Field.Type
+			ft.Optional = false
+			ref = schemaForTypeRef(&ft, pkg, registry)
+			if ref.Value != nil {
+				applyArrayConstraints(f.Field.Decorators, ref.Value)
+			}
+		} else {
+			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}}
+		}
+		props[f.DSLName] = ref
 		if f.Required {
 			required = append(required, f.DSLName)
 		}

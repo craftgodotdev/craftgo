@@ -52,6 +52,18 @@ service BindingsService {
 		response UserAvatar
 	}
 
+	// BatchUpload pins the `file[]` (repeated multipart parts) shape:
+	// `files` binds from `r.MultipartForm.File["files"]` as
+	// `[]*multipart.FileHeader`, with `@minItems`/`@maxItems` validating
+	// the slice length; a single optional `cover file?` and a repeated
+	// `string[] @form` value ride the same request. The OpenAPI multipart
+	// schema renders `files` as `{type: array, items: {format: binary}}`.
+	@doc("Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader, @minItems/@maxItems); cover is one optional file; tags is a repeated form value.")
+	post BatchUpload /batch {
+		request  BatchUploadReq
+		response Item
+	}
+
 	// NullableForm pins that a `@nullable` body field in a multipart
 	// request (form-bound because the sibling `doc file` makes the
 	// request multipart) binds as `*string` with a present-guard. The
@@ -168,6 +180,19 @@ type UploadReq {
 type NullableFormReq {
 	doc  file   @form
 	meta string @nullable @maxLength(120)
+}
+
+// BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
+// `r.MultipartForm.File[name]` (each repeated part is one element), bounded
+// by `@minItems`/`@maxItems`; an optional single `cover` and a repeated
+// `string[] @form` value share the same multipart request. (A
+// multi-dimensional `file[][]` has no multipart encoding and is rejected at
+// gen time.)
+type BatchUploadReq {
+	files file[]   @minItems(1) @maxItems(10)
+	cover file?
+	tags  string[] @form
+	album string   @form @length(1, 100)
 }
 
 // AddItemReq is the canonical JSON body for the POST /items
