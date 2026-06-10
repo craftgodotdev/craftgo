@@ -109,7 +109,7 @@ func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 		a.checkDuplicateWireNames(dd.Name, dd.Body)
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
-			a.checkMethodCombinations(dd.Name, m)
+			a.checkMethodCombinations(dd, m)
 		}
 	}
 }
@@ -199,7 +199,7 @@ func (a *analyzer) checkDuplicateAutoWireNames(svcName string, m *ast.Method) {
 	if !ok {
 		return // cross-package request — not modelled here
 	}
-	pathSegs := pathSegments(m)
+	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
 	bodyVerb := isBodyVerb(m.Verb)
 	reqName := m.Request.Name.String()
 	type binding struct {
@@ -785,10 +785,11 @@ func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 //   - `@passthrough` methods must not declare a `request` or `response`
 //     block - logic handles the wire format directly, so any framework-
 //     managed shape would be silently ignored.
-func (a *analyzer) checkMethodCombinations(svcName string, m *ast.Method) {
+func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) {
+	svcName := svc.Name
 	a.checkPassthroughBody(svcName, m)
 	a.checkBodyBindingVerb(svcName, m)
-	a.checkDuplicatePathVars(svcName, m)
+	a.checkDuplicatePathVars(svc, m)
 	a.checkAutoPathField(svcName, m)
 	a.checkDuplicateAutoWireNames(svcName, m)
 	a.checkNoContentStatusBody(svcName, m)
@@ -911,7 +912,7 @@ func (a *analyzer) checkAutoPathField(svcName string, m *ast.Method) {
 	if !ok {
 		return // cross-package request — handled by checkProjectAutoPathField
 	}
-	pathSegs := pathSegments(m)
+	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
 	if len(pathSegs) == 0 {
 		return
 	}
@@ -1058,7 +1059,7 @@ func (r *refResolver) checkProjectAutoPathField() {
 				if !ok {
 					continue
 				}
-				pathSegs := pathSegments(m)
+				pathSegs := MethodRoutePathVars(m, pkg.Services)
 				if len(pathSegs) == 0 {
 					continue
 				}
@@ -1087,16 +1088,33 @@ func (r *refResolver) checkProjectAutoPathField() {
 // variable name (`/items/{id}/x/{id}`). net/http's ServeMux panics at
 // registration on a duplicate wildcard, so gen would produce a server
 // that crashes on boot — caught here at design time instead.
-func (a *analyzer) checkDuplicatePathVars(svcName string, m *ast.Method) {
+func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	if m == nil || m.Path == nil {
 		return
 	}
+	svcName := svc.Name
+	// Seed with the service @prefix's path variables. The registered route is
+	// prefix + method path (see resolveRoute), so a method segment that reuses
+	// a prefix variable produces a duplicate wildcard in the combined route
+	// exactly as a method-internal repeat does — and ServeMux panics on it at
+	// boot all the same.
 	seen := map[string]bool{}
+	fromPrefix := map[string]bool{}
+	for _, name := range prefixPathVars(svc) {
+		seen[name] = true
+		fromPrefix[name] = true
+	}
 	for _, seg := range m.Path.Segments {
 		if !seg.Param {
 			continue
 		}
 		if seen[seg.Literal] {
+			if fromPrefix[seg.Literal] {
+				a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+					"%s.%s route repeats the path variable {%s} already bound by the service @prefix: the registered route is prefix + method path, so net/http's ServeMux panics on the duplicate wildcard at registration. Drop {%s} from the method path.",
+					svcName, m.Name, seg.Literal, seg.Literal)
+				return
+			}
 			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
 				"%s.%s route repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one segment.",
 				svcName, m.Name, seg.Literal)
@@ -1104,6 +1122,54 @@ func (a *analyzer) checkDuplicatePathVars(svcName string, m *ast.Method) {
 		}
 		seen[seg.Literal] = true
 	}
+}
+
+// prefixPathVars returns the `{name}` path-variable names declared in a
+// service's @prefix (e.g. @prefix("/tenant/{tenantID}") → ["tenantID"]).
+// Empty when the service is nil, has no prefix, or no variable segments.
+func prefixPathVars(svc *ast.ServiceDecl) []string {
+	if svc == nil {
+		return nil
+	}
+	p := decoratorString(svc, "prefix")
+	if p == "" {
+		return nil
+	}
+	var out []string
+	for seg := range strings.SplitSeq(p, "/") {
+		if len(seg) > 2 && strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+			out = append(out, seg[1:len(seg)-1])
+		}
+	}
+	return out
+}
+
+// MethodRoutePathVars returns the path-variable names in method m's full
+// registered route — its owning service's @prefix variables PLUS the method
+// path variables. The auto-binding rule ([RequestFieldBinding]) and the
+// auto-@path / body-verb checks read this rather than the method path alone,
+// so they agree with the route that actually registers: a field whose name
+// matches a @prefix variable auto-binds to @path exactly like one matching a
+// method-path variable (without it, the field would wrongly fall through to
+// @query on a GET or @body on a POST, and the path value would never bind).
+// services is the analysed package's service table (pkg.Services), used to
+// find m's owning service for its prefix.
+func MethodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
+	vars := pathSegments(m)
+	for _, si := range services {
+		if si == nil {
+			continue
+		}
+		for _, sm := range si.Methods {
+			if sm == m {
+				for _, name := range prefixPathVars(si.Primary) {
+					vars[name] = true
+				}
+				return vars
+			}
+		}
+	}
+	return vars
 }
 
 // checkBodyBindingVerb rejects `@body` / `@form` request fields on a
@@ -1136,7 +1202,7 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	// surface. Mirrors the codegen request flatten.
 	verb := strings.ToUpper(m.Verb)
 	reqName := m.Request.Name.String()
-	pathSegs := pathSegments(m)
+	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
 	emit := func(start, end lexer.Position, code, format string, args ...any) {
 		a.diag(start, end, lexer.SeverityError, code, format, args...)
 	}
@@ -1228,7 +1294,7 @@ func (r *refResolver) checkProjectBodyBindingVerb() {
 				}
 				verb := strings.ToUpper(m.Verb)
 				reqName := m.Request.Name.String()
-				pathSegs := pathSegments(m)
+				pathSegs := MethodRoutePathVars(m, pkg.Services)
 				fields := map[string]*ast.Field{}
 				r.collectGroupFieldsProject(parts[0], td.Body, fields, map[string]bool{})
 				emit := func(start, end lexer.Position, code, format string, args ...any) {

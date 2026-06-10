@@ -33,6 +33,7 @@ import (
 	securedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/secured-service"
 	statuscodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/status-codes-service"
 	stringsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/strings-service"
+	tenantserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/tenant-service"
 	userserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/user-service"
 	xrefsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x-refs-service"
 
@@ -44,12 +45,12 @@ import (
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	accountserviceroutes.RegisterRoutes(srv, svcCtx)
 	accountuserserviceroutes.RegisterRoutes(srv, svcCtx)
-	adminapiAdminV3routes.RegisterRoutes(srv, svcCtx)
 	adminapiAdminV1routes.RegisterRoutes(srv, svcCtx)
 	adminapiAdminV2routes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminV3routes.RegisterRoutes(srv, svcCtx)
 	admininventoryserviceroutes.RegisterRoutes(srv, svcCtx)
-	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)
 	adminserviceAdminLegacyroutes.RegisterRoutes(srv, svcCtx)
+	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)
 	bindingsserviceroutes.RegisterRoutes(srv, svcCtx)
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
@@ -71,6 +72,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	securedserviceroutes.RegisterRoutes(srv, svcCtx)
 	statuscodesserviceroutes.RegisterRoutes(srv, svcCtx)
 	stringsserviceroutes.RegisterRoutes(srv, svcCtx)
+	tenantserviceroutes.RegisterRoutes(srv, svcCtx)
 	userserviceroutes.RegisterRoutes(srv, svcCtx)
 	xrefsserviceroutes.RegisterRoutes(srv, svcCtx)
 }

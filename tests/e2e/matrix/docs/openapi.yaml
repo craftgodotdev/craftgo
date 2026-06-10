@@ -1181,6 +1181,17 @@ components:
       type: object
     CreateProfileRespBody:
       $ref: '#/components/schemas/Profile'
+    CreateTenantItemReqBody:
+      properties:
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+      required:
+      - name
+      type: object
+    CreateTenantItemRespBody:
+      $ref: '#/components/schemas/TenantItem'
     Cube:
       description: |-
         Cube is the 3-D slice of nested case. Three nested for-loops
@@ -2724,6 +2735,8 @@ components:
       $ref: '#/components/schemas/ListProfilesResp'
     ListProjectsRespBody:
       $ref: '#/components/schemas/ProjectsResp'
+    ListTenantItemsRespBody:
+      $ref: '#/components/schemas/TenantItemList'
     ListUsersReq:
       allOf:
       - $ref: '#/components/schemas/Pagination'
@@ -3125,6 +3138,50 @@ components:
       - resource
       - id
       type: object
+    NullableFormReq:
+      description: |-
+        NullableFormReq is a multipart request (the `doc` file makes it
+        multipart) carrying a `@nullable` body field. `meta` has no binding
+        decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
+        and the binder pointer-wraps the present value (nil when the form value
+        is absent). Contrast with `@nullable @query`/`@header`, which are
+        rejected — an explicit wire param is a string with no JSON-null form.
+      properties:
+        doc:
+          format: binary
+          type: string
+        meta:
+          maxLength: 120
+          type:
+          - string
+          - "null"
+      required:
+      - doc
+      - meta
+      type: object
+    NullableFormReqBody:
+      description: |-
+        NullableFormReq is a multipart request (the `doc` file makes it
+        multipart) carrying a `@nullable` body field. `meta` has no binding
+        decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
+        and the binder pointer-wraps the present value (nil when the form value
+        is absent). Contrast with `@nullable @query`/`@header`, which are
+        rejected — an explicit wire param is a string with no JSON-null form.
+      properties:
+        doc:
+          format: binary
+          type: string
+        meta:
+          maxLength: 120
+          type:
+          - string
+          - "null"
+      required:
+      - doc
+      - meta
+      type: object
+    NullableFormRespBody:
+      $ref: '#/components/schemas/Item'
     NumberBoundary:
       description: |-
         NumberBoundary pins bounds at the exact type-capacity edges. The
@@ -6204,6 +6261,63 @@ components:
       required:
       - members
       type: object
+    TenantCreateReq:
+      description: |-
+        TenantCreateReq: tenantID again auto-binds to the @prefix path segment;
+        name is the only body field.
+      properties:
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        tenantID:
+          minLength: 1
+          type: string
+      required:
+      - tenantID
+      - name
+      type: object
+    TenantItem:
+      properties:
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+      required:
+      - id
+      - name
+      type: object
+    TenantItemList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TenantItem'
+          type: array
+        tenant:
+          type: string
+        total:
+          type:
+          - integer
+          - "null"
+      required:
+      - tenant
+      - items
+      type: object
+    TenantListReq:
+      description: |-
+        TenantListReq: tenantID has no binding decorator. It matches the @prefix
+        {tenantID} segment, so it auto-binds to @path.
+      properties:
+        tenantID:
+          minLength: 1
+          type: string
+      required:
+      - tenantID
+      type: object
     TreeOfScalarsOrder:
       description: |-
         Tree<T> is the marquee recursive-generic test: the body references
@@ -7769,6 +7883,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/BindingsServiceGetItemRespBody'
           description: OK
+      tags:
+      - bindings
+  /bindings/nullable-form:
+    post:
+      description: Upload a doc with optional-null metadata. The @nullable `meta`
+        body field form-binds as *string (nil when the form value is absent).
+      operationId: NullableForm
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                doc:
+                  format: binary
+                  type: string
+                meta:
+                  maxLength: 120
+                  type:
+                  - string
+                  - "null"
+              required:
+              - meta
+              - doc
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NullableFormRespBody'
+          description: Created
       tags:
       - bindings
   /bindings/users/{id}/avatar:
@@ -9770,6 +9916,61 @@ paths:
           description: Created
       tags:
       - strings
+  /tenant/{tenantID}/items:
+    get:
+      description: List a tenant's items. tenantID auto-binds to the @prefix path
+        segment; without the prefix-aware rule it would read from the query string
+        instead.
+      operationId: ListTenantItems
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema:
+          minLength: 1
+          type: string
+      - in: query
+        name: limit
+        required: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTenantItemsRespBody'
+          description: OK
+      tags:
+      - prefixvar
+    post:
+      description: Create an item under a tenant. tenantID binds from the path; the
+        JSON body carries only name.
+      operationId: CreateTenantItem
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema:
+          minLength: 1
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantItemReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTenantItemRespBody'
+          description: Created
+      tags:
+      - prefixvar
   /users:
     get:
       operationId: ListUsers

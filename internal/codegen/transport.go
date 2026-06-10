@@ -736,7 +736,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		// (`?x=`) both leave the field unset: nil for an optional pointer,
 		// the zero value for a required field.
 		if prim.parser == "" {
-			if f.Type.Optional {
+			if goFieldIsPointer(f, pkg, r) {
 				if cast == "" {
 					shape = renderWireBindShape("optionalStringNoCast", data)
 				} else {
@@ -756,7 +756,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 				shape = renderWireBindShape("directSingle", data)
 			}
 		} else {
-			if f.Type.Optional {
+			if goFieldIsPointer(f, pkg, r) {
 				shape = renderWireBindShape("optionalParsed", data)
 			} else {
 				shape = renderWireBindShape("singleParsed", data)

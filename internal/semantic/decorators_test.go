@@ -585,6 +585,20 @@ service S { get Get /items/{id}/x/{id} { request Req  response Resp } }`, CodeDu
 	mustClean(t, `type Resp { ok bool }
 type Req { id int @path  sub int @path }
 service S { get Get /items/{id}/x/{sub} { request Req  response Resp } }`)
+
+	// A method path segment reusing a variable already bound by the service
+	// @prefix produces a duplicate wildcard in the combined route — the
+	// registered pattern is prefix + method path, so ServeMux panics at boot.
+	expectDiag(t, `type Resp { items string[] }
+type Req { tenantID string @path }
+@prefix("/tenant/{tenantID}")
+service S { get List /{tenantID}/items { request Req  response Resp } }`, CodeDuplicatePathVar)
+	// A prefix variable plus a DISTINCT method variable (both bound by
+	// fields) is clean.
+	mustClean(t, `type Resp { ok bool }
+type Req { tenantID string @path  id string @path }
+@prefix("/tenant/{tenantID}")
+service S { get Get /{id} { request Req  response Resp } }`)
 }
 
 // TestDuplicateWireNameRejected pins that two fields binding to the same

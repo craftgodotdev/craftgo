@@ -81,6 +81,17 @@ type ItemList struct {
 	Total  *int    `json:"total,omitempty"`
 }
 
+// NullableFormReq is a multipart request (the `doc` file makes it
+// multipart) carrying a `@nullable` body field. `meta` has no binding
+// decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
+// and the binder pointer-wraps the present value (nil when the form value
+// is absent). Contrast with `@nullable @query`/`@header`, which are
+// rejected — an explicit wire param is a string with no JSON-null form.
+type NullableFormReq struct {
+	Doc  *multipart.FileHeader `json:"doc"`
+	Meta *string               `json:"meta"`
+}
+
 // PathEnumReq drives the enum-typed @path binder. The wire value is
 // a string ("red" / "green" / "blue"); req.Validate() rejects any
 // value outside the enum's declared set.

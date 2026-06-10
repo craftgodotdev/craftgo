@@ -52,6 +52,18 @@ service BindingsService {
 		response UserAvatar
 	}
 
+	// NullableForm pins that a `@nullable` body field in a multipart
+	// request (form-bound because the sibling `doc file` makes the
+	// request multipart) binds as `*string` with a present-guard. The
+	// transport's pointer decision uses the same predicate as the type
+	// emitter, so `types.go` (`*string`) and the binder agree — a bare
+	// direct assign against a pointer field would not compile.
+	@doc("Upload a doc with optional-null metadata. The @nullable `meta` body field form-binds as *string (nil when the form value is absent).")
+	post NullableForm /nullable-form {
+		request  NullableFormReq
+		response Item
+	}
+
 	// AddItem carries the typical "create" envelope: a JSON body
 	// plus the per-method @errors declaration listing both a Conflict
 	// (DuplicateKey) and a BadRequest (InvalidInput).
@@ -145,6 +157,17 @@ type UploadReq {
 	id      string  @path @length(1, 64)
 	file    file    @form("avatar_file") @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
 	caption string? @form("note") @maxLength(280)
+}
+
+// NullableFormReq is a multipart request (the `doc` file makes it
+// multipart) carrying a `@nullable` body field. `meta` has no binding
+// decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
+// and the binder pointer-wraps the present value (nil when the form value
+// is absent). Contrast with `@nullable @query`/`@header`, which are
+// rejected — an explicit wire param is a string with no JSON-null form.
+type NullableFormReq {
+	doc  file   @form
+	meta string @nullable @maxLength(120)
 }
 
 // AddItemReq is the canonical JSON body for the POST /items

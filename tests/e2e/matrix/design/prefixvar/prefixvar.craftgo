@@ -1,0 +1,54 @@
+// Pins the prefix-path-variable auto-binding rule: a field whose name
+// matches a {var} in the service @prefix auto-binds to @path (r.PathValue)
+// — exactly like one matching a method-path {var}, and on EVERY verb. The
+// binding rule reads the full route's path variables (prefix + method), not
+// the method path alone, so codegen and the analyser agree on where the
+// field rides. Without it, an un-decorated `tenantID` would wrongly fall
+// through to @query (a body-less GET) or @body (a body verb), and the value
+// in the URL path would never reach the field.
+package prefixvar
+
+@prefix("/tenant/{tenantID}")
+@tags(prefixvar)
+service TenantService {
+	// GET: `tenantID` (no @path) auto-binds to the @prefix segment and
+	// reads from r.PathValue; `limit` is a plain @query.
+	@doc("List a tenant's items. tenantID auto-binds to the @prefix path segment; without the prefix-aware rule it would read from the query string instead.")
+	get ListTenantItems /items {
+		request  TenantListReq
+		response TenantItemList
+	}
+
+	// POST: the same un-decorated `tenantID` still binds from the path (not
+	// the JSON body) — the body carries only `name`.
+	@doc("Create an item under a tenant. tenantID binds from the path; the JSON body carries only name.")
+	post CreateTenantItem /items {
+		request  TenantCreateReq
+		response TenantItem
+	}
+}
+
+// TenantListReq: tenantID has no binding decorator. It matches the @prefix
+// {tenantID} segment, so it auto-binds to @path.
+type TenantListReq {
+	tenantID string @minLength(1)
+	limit    int    @query @gte(1) @lte(100)
+}
+
+// TenantCreateReq: tenantID again auto-binds to the @prefix path segment;
+// name is the only body field.
+type TenantCreateReq {
+	tenantID string @minLength(1)
+	name     string @length(1, 200)
+}
+
+type TenantItem {
+	id   string @length(1, 64)
+	name string @length(1, 200)
+}
+
+type TenantItemList {
+	tenant string
+	items  TenantItem[]
+	total  int?
+}

@@ -118,6 +118,18 @@ func (v *ItemList) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on NullableFormReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *NullableFormReq) Validate() error {
+	if v.Doc == nil {
+		return fmt.Errorf("doc: required")
+	}
+	if v.Meta != nil && utf8.RuneCountInString(*v.Meta) > 120 {
+		return fmt.Errorf("meta: length greater than 120")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PathEnumReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathEnumReq) Validate() error {

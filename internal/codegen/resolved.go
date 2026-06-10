@@ -188,14 +188,11 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 	if td == nil {
 		return nil
 	}
-	pathNames := map[string]bool{}
-	if m.Path != nil {
-		for _, seg := range m.Path.Segments {
-			if seg.Param {
-				pathNames[seg.Literal] = true
-			}
-		}
-	}
+	// Full-route path variables (the owning service's @prefix vars + the method
+	// path vars), so a field matching a @prefix variable auto-binds to @path —
+	// the same shared rule the analyser's binding checks read, so codegen and
+	// semantics can't disagree on where the field rides.
+	pathNames := semantic.MethodRoutePathVars(m, pkg.Services)
 	bodyVerb := hasBodyVerb(m.Verb)
 	fields := resolveFieldsWithPrefix(td, prefix, pkg, r)
 	for i := range fields {

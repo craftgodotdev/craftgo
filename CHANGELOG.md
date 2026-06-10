@@ -5,6 +5,41 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.3.11] - 2026-06-10
+
+### Fixed
+
+- **`@nullable` on a form-bound field no longer emits non-compiling Go.** A
+  `@nullable` body field in a multipart request (form-bound because a sibling
+  `file` field makes the request multipart) is rendered as `*T` by the type
+  emitter, but the wire binder decided pointer-vs-direct from `f.Type.Optional`
+  alone — blind to `@nullable` — and emitted a bare `req.F = r.FormValue(...)`
+  (a `string` assigned to `*string`). The binder now uses the same
+  `goFieldIsPointer` predicate as the type emitter, so the two can't disagree on
+  pointer-ness (it pointer-wraps with a present-guard: `if _v := r.FormValue(k);
+  _v != "" { req.F = &_v }`). (`@nullable` on an explicit `@query`/`@header`/
+  `@cookie` was already rejected and stays rejected.)
+- **A method path variable that reuses a `@prefix` path variable is now rejected
+  at gen time.** `@prefix("/tenant/{tenantID}")` + method path `/{tenantID}/items`
+  concatenates to `/tenant/{tenantID}/{tenantID}/items` — a duplicate wildcard
+  that `net/http`'s ServeMux panics on at registration. The duplicate-path-var
+  check only scanned the method path; it now seeds from the prefix's path
+  variables too and fails with a clear diagnostic ("…already bound by the
+  service @prefix… Drop {tenantID} from the method path.") instead of generating
+  a server that crashes on boot.
+- **A field matching a `@prefix` path variable now auto-binds to `@path`
+  instead of being silently dropped.** An un-decorated field whose name matches
+  a `{var}` in the service `@prefix` (e.g. `tenantID` under
+  `@prefix("/tenant/{tenantID}")`) was bound from the **query** (on a body-less
+  GET) or the **JSON body** (on a POST) instead of `r.PathValue` — so the value
+  in the URL path never reached the field (no compile error, no panic: a request
+  to `/tenant/acme/items` left `tenantID` empty, or 400'd demanding `?tenantID=`).
+  The auto-binding rule scanned only the method path; both the analyser and
+  codegen now read the **full route's** path variables (prefix + method) through
+  one shared `MethodRoutePathVars`, so a prefix-variable field binds from the
+  path on every verb — exactly like a method-path-variable field. (Explicit
+  `@path` already worked; only the auto-bind case was affected.)
+
 ## [1.3.10] - 2026-06-08
 
 ### Fixed
