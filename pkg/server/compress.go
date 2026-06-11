@@ -90,16 +90,23 @@ func Compress(opts ...CompressOptions) Middleware {
 }
 
 // negotiateEncoding returns "gzip", "deflate", or "" based on what the
-// client advertises. Quality values are ignored; the first supported
-// token wins.
+// client advertises. The first supported token with a non-zero quality wins; a
+// token carrying `;q=0` is an explicit refusal of that coding (RFC 7231
+// §5.3.1) and is skipped, so a client sending `gzip;q=0` receives an
+// uncompressed response.
 func negotiateEncoding(accept string) string {
 	if accept == "" {
 		return ""
 	}
 	for part := range strings.SplitSeq(accept, ",") {
 		token := strings.TrimSpace(part)
+		params := ""
 		if i := strings.IndexByte(token, ';'); i >= 0 {
+			params = token[i+1:]
 			token = token[:i]
+		}
+		if qualityIsZero(params) {
+			continue
 		}
 		switch strings.ToLower(strings.TrimSpace(token)) {
 		case "gzip":
@@ -109,6 +116,22 @@ func negotiateEncoding(accept string) string {
 		}
 	}
 	return ""
+}
+
+// qualityIsZero reports whether an Accept-Encoding parameter list pins the
+// quality to zero (`q=0`, `q=0.0`, ...) — an explicit "do not use this coding".
+func qualityIsZero(params string) bool {
+	for seg := range strings.SplitSeq(params, ";") {
+		k, v, ok := strings.Cut(strings.TrimSpace(seg), "=")
+		if !ok || strings.ToLower(strings.TrimSpace(k)) != "q" {
+			continue
+		}
+		switch strings.TrimSpace(v) {
+		case "0", "0.", "0.0", "0.00", "0.000":
+			return true
+		}
+	}
+	return false
 }
 
 // resettableWriter is the subset of gzip.Writer / flate.Writer the
@@ -150,6 +173,13 @@ func (cw *compressWriter) WriteHeader(code int) {
 	cw.statusCode = code
 	cw.headerSet = true
 }
+
+// Unwrap exposes the wrapped writer so http.ResponseController (and net/http's
+// hijack path) can reach the underlying Hijacker — a connection Hijack (e.g. a
+// WebSocket upgrade) takes over the raw conn and bypasses compression, which is
+// the correct behaviour. Without Unwrap the upgrade fails with "feature not
+// supported" when Compress is in the chain.
+func (cw *compressWriter) Unwrap() http.ResponseWriter { return cw.ResponseWriter }
 
 // Write accumulates bytes until the threshold is crossed, then commits
 // to compressed encoding. Once committed, every subsequent Write goes

@@ -99,3 +99,91 @@ func (a *analyzer) checkOperationIDUniqueness() {
 		}
 	}
 }
+
+// checkProjectOperationIDUniqueness is the cross-package twin of
+// [analyzer.checkOperationIDUniqueness]. The single emitted OpenAPI document
+// merges every package's services, so two methods anywhere in the project that
+// resolve to the same operationId clash — yet the per-package pass only ever
+// sees one package. Method-name counts are taken PROJECT-WIDE (matching the
+// merged document), so an auto id shared by services in different packages is
+// service-prefixed and does not clash; an explicit @operationId override is
+// taken verbatim and can. Only collisions spanning two or more packages are
+// reported here, with a source position the editor can underline; same-package
+// pairs stay with the per-package pass, so nothing double-fires. Without this,
+// a cross-package duplicate surfaces only as a position-less gen-time error.
+func (r *refResolver) checkProjectOperationIDUniqueness() {
+	counts := map[string]int{}
+	for _, pkg := range r.proj.Packages {
+		if pkg == nil {
+			continue
+		}
+		for _, si := range pkg.Services {
+			if si == nil {
+				continue
+			}
+			for _, m := range si.Methods {
+				counts[m.Name]++
+			}
+		}
+	}
+	type owner struct {
+		ref string
+		pkg string
+		pos lexer.Position
+	}
+	owners := map[string][]owner{}
+	pkgNames := make([]string, 0, len(r.proj.Packages))
+	for name := range r.proj.Packages {
+		pkgNames = append(pkgNames, name)
+	}
+	sort.Strings(pkgNames)
+	for _, pkgName := range pkgNames {
+		pkg := r.proj.Packages[pkgName]
+		if pkg == nil {
+			continue
+		}
+		svcNames := make([]string, 0, len(pkg.Services))
+		for name := range pkg.Services {
+			svcNames = append(svcNames, name)
+		}
+		sort.Strings(svcNames)
+		for _, svcName := range svcNames {
+			si := pkg.Services[svcName]
+			if si == nil {
+				continue
+			}
+			for _, m := range si.Methods {
+				id := OperationID(m, OperationBaseName(svcName, m, counts))
+				owners[id] = append(owners[id], owner{ref: pkgName + "." + svcName + "." + m.Name, pkg: pkgName, pos: m.Pos})
+			}
+		}
+	}
+	ids := make([]string, 0, len(owners))
+	for id := range owners {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		who := owners[id]
+		if len(who) < 2 {
+			continue
+		}
+		pkgs := map[string]bool{}
+		for _, o := range who {
+			pkgs[o.pkg] = true
+		}
+		if len(pkgs) < 2 {
+			continue // same-package collision — the per-package pass owns it
+		}
+		refs := make([]string, len(who))
+		for i, o := range who {
+			refs[i] = o.ref
+		}
+		joined := strings.Join(refs, ", ")
+		for _, o := range who {
+			r.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation,
+				"operationId %q is shared across packages by %s — give each method a distinct @operationId(...)",
+				id, joined)
+		}
+	}
+}

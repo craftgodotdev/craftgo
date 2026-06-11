@@ -176,7 +176,11 @@ func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 	return s
 }
 
-// SetDefaultWriteTimeout configures the default per-method write timeout.
+// SetDefaultWriteTimeout sets the http.Server WriteTimeout — a hard deadline on
+// the entire response write. It defaults to 0 (unbounded) so streaming, SSE,
+// @passthrough, and large/slow downloads are not cut off mid-response; set a
+// ceiling here for a server that only serves bounded JSON and wants socket-level
+// slow-drain protection on top of the per-handler Timeout middleware.
 func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
 	s.defaultWriteTimeout = d
 	return s
@@ -308,8 +312,19 @@ func (s *Server) Start(addr string) error {
 		// recommends.
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       s.defaultReadTimeout,
-		WriteTimeout:      s.defaultWriteTimeout,
-		MaxHeaderBytes:    s.defaultMaxHeaderKB * 1024,
+		// WriteTimeout is a HARD deadline on the whole response write, so it
+		// defaults to 0 (unbounded) on purpose: a non-zero value would kill
+		// legitimate slow/large downloads and streaming / SSE / @passthrough
+		// handlers mid-response. The per-handler bound is the Timeout
+		// middleware (`@timeout` / config handlerTimeout); set a socket-level
+		// ceiling explicitly with SetDefaultWriteTimeout for plain JSON APIs.
+		WriteTimeout: s.defaultWriteTimeout,
+		// IdleTimeout reaps idle keep-alive connections between requests (it
+		// does NOT touch an in-flight response), so a client that opens
+		// connections and never reuses them can't accumulate goroutines
+		// indefinitely — safe to default without breaking streaming.
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: s.defaultMaxHeaderKB * 1024,
 	}
 	srv := s.httpSrv
 	s.mu.Unlock()

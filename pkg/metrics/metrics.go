@@ -15,6 +15,7 @@ package metrics
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
@@ -85,22 +86,35 @@ func WithPrometheusReader() Option {
 	}
 }
 
-// WithOTLPgRPCReader adds a periodic OTLP gRPC push exporter pointed
-// at addr (e.g. `"otel-collector.observability:4317"`). Push interval
-// defaults to 60s - the OTel SDK default; pass
-// `otlpmetricgrpc.WithCompressor("gzip")` and friends through opts
-// for transport tuning. By default the connection is INSECURE
-// (plain-text, no TLS) so collectors on the local k8s network work
-// out of the box; supply `otlpmetricgrpc.WithTLSCredentials(...)` to
-// override for cross-cluster traffic.
+// WithOTLPgRPCReader adds a periodic OTLP gRPC push exporter pointed at addr,
+// which is either:
+//
+//   - a bare `host:port` (e.g. `"otel-collector.observability:4317"`) —
+//     connects INSECURE (plain-text), the convention for collectors on a
+//     trusted local network; or
+//   - a full URL whose SCHEME selects transport security —
+//     `http://host:4317` (plaintext) or `https://host:4317` (TLS).
+//
+// The URL form lets a project enable TLS straight from config.yaml
+// (`endpoint: https://...`) instead of needing code. Push interval defaults to
+// 60s — the OTel SDK default; pass `otlpmetricgrpc.WithCompressor("gzip")` and
+// friends through opts for transport tuning.
 func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc.Option) Option {
 	return func(c *config) {
 		if c.err != nil {
 			return
 		}
-		base := []otlpmetricgrpc.Option{
-			otlpmetricgrpc.WithEndpoint(addr),
-			otlpmetricgrpc.WithInsecure(),
+		var base []otlpmetricgrpc.Option
+		if strings.Contains(addr, "://") {
+			// URL form — WithEndpointURL parses host/port and derives
+			// insecure-vs-TLS from the scheme.
+			base = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpointURL(addr)}
+		} else {
+			// Bare host:port form — plaintext (insecure).
+			base = []otlpmetricgrpc.Option{
+				otlpmetricgrpc.WithEndpoint(addr),
+				otlpmetricgrpc.WithInsecure(),
+			}
 		}
 		exporter, err := otlpmetricgrpc.New(ctx, append(base, opts...)...)
 		if err != nil {
@@ -111,19 +125,19 @@ func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc
 	}
 }
 
-// WithOTLPHTTPReader adds a periodic OTLP HTTP/protobuf push exporter
-// pointed at endpoint (e.g. `"http://collector:4318"` for plain HTTP
-// or `"https://collector.example.com"` for TLS). Same insecure-by-
-// default trade-off as [WithOTLPgRPCReader]; pass
-// `otlpmetrichttp.WithTLSClientConfig(...)` to opt into TLS.
+// WithOTLPHTTPReader adds a periodic OTLP HTTP/protobuf push exporter pointed at
+// endpoint, a full URL including scheme: `"http://collector:4318"` (plaintext)
+// or `"https://collector.example.com"` (TLS). The URL SCHEME selects transport
+// security — `http` connects insecurely, `https` uses TLS — so no separate
+// insecure/TLS toggle is needed; pass `otlpmetrichttp.WithTLSClientConfig(...)`
+// in opts only for a custom certificate.
 func WithOTLPHTTPReader(ctx context.Context, endpoint string, opts ...otlpmetrichttp.Option) Option {
 	return func(c *config) {
 		if c.err != nil {
 			return
 		}
 		base := []otlpmetrichttp.Option{
-			otlpmetrichttp.WithEndpoint(endpoint),
-			otlpmetrichttp.WithInsecure(),
+			otlpmetrichttp.WithEndpointURL(endpoint),
 		}
 		exporter, err := otlpmetrichttp.New(ctx, append(base, opts...)...)
 		if err != nil {
@@ -263,7 +277,12 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 	case "otlp_http":
 		opts = append(opts, WithOTLPHTTPReader(ctx, c.Endpoint))
 	case "none":
-		// no readers - meter installed but silent
+		// Install a manual reader so the meter exists but is silent: a
+		// ManualReader only collects on an explicit Collect() call, which
+		// nothing here makes, so nothing is ever pushed or served. Without
+		// a reader, Init() falls back to the Prometheus default — which
+		// would secretly serve metrics that "none" promises to suppress.
+		opts = append(opts, WithReader(sdkmetric.NewManualReader()))
 	default:
 		// "prometheus" + any unknown value default to scrape so a typo
 		// never silently turns metrics off.

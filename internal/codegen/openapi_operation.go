@@ -127,12 +127,11 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 				}}
 			}
 		}
-		// Parameters keep individual entries - that's the OpenAPI norm -
-		// but each field's `schema:` $refs into the matching
-		// `<Method>Req<Kind>` schema, which holds the canonical
-		// definition. Multipart skips path/query/header params here too
-		// since the form-data body covers the regular fields; only true
-		// path/query/header bindings remain (handled in paramsFromBins).
+		// Each parameter inlines its field schema directly (a $ref to the
+		// field's component type, or an inline shape) — there is no per-kind
+		// wrapper component. A multipart request still emits its
+		// path/query/header/cookie parameters here; only the @form fields
+		// move out of `parameters[]` and into the multipart body schema.
 		if !isMultipart {
 			op.Parameters = paramsFromBins(bins, pkg, registry)
 		} else {

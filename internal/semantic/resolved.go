@@ -1,4 +1,4 @@
-// Resolved field IR (M3, step 6): the single, LAYER-AGNOSTIC view of a
+// Resolved field IR: the single, LAYER-AGNOSTIC view of a
 // field's resolved facts — what the field MEANS in the DSL (its category,
 // underlying primitive, home package, nilability), independent of how Go
 // renders it. The LSP and the semantic checks read these directly; codegen

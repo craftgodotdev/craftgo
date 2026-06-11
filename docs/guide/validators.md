@@ -34,11 +34,11 @@ craftgo generates:
 
 ```go
 func (v *CreateUserReq) Validate() error {
-    if l := len(v.Name); l < 1 || l > 80 {
+    if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
         return fmt.Errorf("name: length out of range [1, 80]")
     }
-    if !_pattern0.MatchString(v.Email) {
-        return fmt.Errorf("email: does not match pattern")
+    if _, err := mail.ParseAddress(v.Email); err != nil {
+        return fmt.Errorf("email: not a valid email")
     }
     if v.Age != nil {
         if *v.Age < 0 {
@@ -55,7 +55,7 @@ func (v *CreateUserReq) Validate() error {
 Plain Go. No reflection. No struct tag parsing. The handler calls `req.Validate()` after JSON decode and before your business logic.
 
 ::: tip Required-by-default
-A non-optional field (no `?`) is required, but craftgo only emits an explicit presence check when the field has a meaningful empty value the JSON decoder accepts (e.g. `any`, an enum). For a plain `string`, the decoder already rejects a literal `null`, and an empty `""` is a legal value unless you add `@length` / `@minLength`. That's why `name` above shows only its `@length` check, not a separate "required" line. The `@format(email)` regex is compiled once into a package-level `_pattern0` var, not per call.
+A non-optional field (no `?`) is required, but craftgo only emits an explicit presence check when the field has a meaningful empty value the JSON decoder accepts (e.g. `any`, an enum). For a plain `string`, the decoder already rejects a literal `null`, and an empty `""` is a legal value unless you add `@length` / `@minLength`. That's why `name` above shows only its `@length` check, not a separate "required" line. String lengths count **characters** (`utf8.RuneCountInString`), matching `minLength`/`maxLength` in the OpenAPI spec. `@format(email)` delegates to `net/mail.ParseAddress`; the regex-backed formats (uuid, phone, …) compile their pattern once into a package-level var, not per call.
 :::
 
 ## Built-in validators
@@ -74,7 +74,7 @@ The tables below cover validators with the examples that matter for *validation*
 | `@pattern("regex")`         | Must match `regexp`                                   |
 | `@format(name)`             | Built-in format check (see below)                     |
 
-Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. The RFC-compliant subset (`email`, `ipv4`/`ipv6`, `cidr`, `mac`, `datetime`/`date`/`time`, `base64`, `json`) delegates to the Go standard library; the rest use regex.
+Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Most delegate to the Go standard library — `email` (`net/mail`), `url`/`uri` (`net/url`), `ipv4`/`ipv6`/`cidr`/`mac` (`net`), `datetime`/`date`/`time` (`time`), `base64`/`base64url` (`encoding/base64`), `json` (`encoding/json`); the remainder (`uuid`, `phone`, `creditcard`, `hexcolor`) use a compiled regex.
 
 ```craftgo
 type Profile {

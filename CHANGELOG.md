@@ -7,6 +7,19 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [1.3.11] - 2026-06-11
 
+### Security
+
+- **The default 500 handler no longer leaks raw error text to the client.** A
+  service error with no HTTP status was serialised as `{"message": err.Error()}`
+  — and `err.Error()` routinely carries DSNs, file paths, upstream URLs, and
+  other internal detail. The default now logs the full error (with trace
+  context) and returns an opaque `{"message": "internal server error"}`;
+  `SetHandleUnknownError` still installs a richer envelope when wanted.
+- **OTLP metrics exporters honour TLS from the endpoint scheme.** The gRPC and
+  HTTP metric readers hard-wired `WithInsecure()`, so an `https://collector`
+  endpoint silently sent plaintext. They now use the same scheme-detection as
+  the trace exporters (`WithEndpointURL`), so `https://` upgrades to TLS.
+
 ### Added
 
 - **Multiple-file uploads via `file[]`.** A `file[]` form field now binds every
@@ -27,6 +40,29 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **Cross-package duplicate `operationId`s are reported at analysis time with a
+  source position.** Two methods in different packages pinned to the same
+  explicit `@operationId(...)` collide in the single merged OpenAPI document; the
+  per-package check never saw both, so this surfaced only as a position-less
+  gen-time error. A project-level pass now flags it in the editor and at gen with
+  both methods named. (Auto ids that share a method name are service-prefixed in
+  the merged document and do not collide.)
+- **`Accept-Encoding: gzip;q=0` is honoured as a refusal.** Compression read the
+  coding token and ignored the quality value, so a client that explicitly
+  refused gzip with `q=0` still received a compressed response (RFC 7231
+  §5.3.1). A `q=0` directive now skips that coding.
+- **`Hijack` / WebSocket upgrades work through the `AccessLog` and `Compress`
+  middleware.** `statusRecorder` and `compressWriter` now implement `Unwrap()`,
+  so `http.ResponseController` can reach the underlying `Hijacker` instead of
+  failing with "feature not supported".
+- **`metrics.exporter: "none"` no longer secretly serves Prometheus.** The
+  `none` path installed no reader, so `Init` fell back to its Prometheus default
+  and started serving metrics. It now installs a silent manual reader.
+- **A default `IdleTimeout` (120s) reaps idle keep-alive connections.** Prevents
+  unbounded goroutine/connection accumulation from clients that never reuse a
+  connection, without touching in-flight responses. `WriteTimeout` stays 0 by
+  default on purpose (a hard value would cut off streaming / large downloads);
+  set one with `SetDefaultWriteTimeout` for bounded-JSON servers.
 - **Cross-package route duplicates are now rejected at analysis time with
   source positions.** Two services in *different* packages whose methods
   resolve to the same VERB + route shape (`alpha.AlphaService GET /things/items`

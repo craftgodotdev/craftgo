@@ -67,9 +67,8 @@ func shape(f *ast.Field, access string, body func(elem string) string) string {
 		// The Go field is *T — from `?` (optional) OR `@nullable`
 		// (required-but-nullable). Key on the actual pointer-ness, not
 		// just the `?` suffix: a `@nullable` enum/scalar field lowers to
-		// *T too, and the old `f.Type.Optional`-only branch emitted
-		// `switch v.F` on a *T (compile error) and never nil-guarded
-		// (nil deref panic). Nil-guard, then deref. Parenthesise the
+		// *T too. Nil-guard before the deref (a nil *T would panic), then
+		// deref. Parenthesise the
 		// deref so callers can prefix operators (`len(...)`, `&`, method
 		// calls) without Go precedence surprises — `(*v.Avatar).Validate()`
 		// works; `*v.Avatar.Validate()` parses as `*(v.Avatar.Validate())`.

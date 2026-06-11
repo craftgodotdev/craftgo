@@ -308,9 +308,8 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		}
 		// The request type's own generic type-args reach further packages
 		// (`genpkg.Box<argpkg.Owner>` → `var req genpkg.Box[argpkg.Owner]`),
-		// so import every arg package — the transport sibling of the service
-		// scaffold's addRefExtras, which fixed the scaffold but left this
-		// handler emitter dropping the arg import (`undefined: argpkg`).
+		// so import every arg package; missing one leaves the handler
+		// referencing an unimported package (`undefined: argpkg`).
 		argSet := map[string]bool{}
 		walkCrossPkgImports(&ast.TypeRef{Named: m.Request}, crossPkg, argSet)
 		pathAlias := map[string]string{}
@@ -473,24 +472,6 @@ func resolveDescription(decs []*ast.Decorator, doc []string) string {
 		return ""
 	}
 	return strings.Join(doc, "\n")
-}
-
-func pathString(p *ast.Path) string {
-	if p == nil {
-		return ""
-	}
-	var sb strings.Builder
-	for _, seg := range p.Segments {
-		sb.WriteByte('/')
-		if seg.Param {
-			sb.WriteByte('{')
-			sb.WriteString(seg.Literal)
-			sb.WriteByte('}')
-		} else {
-			sb.WriteString(seg.Literal)
-		}
-	}
-	return sb.String()
 }
 
 // queryPrim is the per-primitive recipe for parsing a query-string

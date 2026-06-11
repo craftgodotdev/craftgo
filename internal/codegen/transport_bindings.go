@@ -471,7 +471,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 	for _, c := range nonFile {
 		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, bindingWireName(c.field, "form"), c.entry.GoName, formSource())
 		if lerr != nil {
-			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
 			return
 		}
 		if needs {
@@ -548,7 +548,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 				if rf.AutoBound {
 					continue
 				}
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
 				return
 			}
 			path = append(path, paramBinding{
@@ -559,7 +559,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		case BindQuery:
 			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, querySource())
 			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
 				return
 			}
 			if needs {
@@ -569,7 +569,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		case BindHeader:
 			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, headerSource())
 			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
 				return
 			}
 			if needs {
@@ -579,7 +579,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		case BindCookie:
 			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, cookieSource())
 			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), pathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
 				return
 			}
 			if needs {

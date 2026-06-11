@@ -103,28 +103,34 @@ type ResponseHeaderWriter interface {
 // UnknownErrorHandler renders an error that is NOT a recognised [StatusError] -
 // a bare errors.New / fmt.Errorf returned by service logic that carries no HTTP
 // status. It receives the request so it can read trace context for logging. The
-// default logs the error with the request's trace IDs and responds 500 with a
-// `{"message": ...}` body; [SetHandleUnknownError] swaps it process-wide.
+// default logs the full error with the request's trace IDs and responds 500 with
+// an opaque `{"message": "internal server error"}` body - the raw error text
+// stays in the log, never on the wire; [SetHandleUnknownError] swaps it
+// process-wide.
 type UnknownErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 
 // defaultUnknownError is the wire default for errors without an HTTP status. An
-// unknown error is an unhandled failure, so it is logged at Error level with
-// the request's trace context (trace_id / span_id / request_id ride the line
-// via WithContext) before a 500 with the error text as the JSON message body is
-// written - operators can find the failure by trace, and the client still gets
-// a discriminable response.
+// unknown error is an unhandled failure, so the full error is logged at Error
+// level with the request's trace context (trace_id / span_id / request_id ride
+// the line via WithContext) and the client receives only a generic 500 with a
+// static message. The raw err.Error() text - which routinely carries DSNs, file
+// paths, upstream URLs, or other internal detail - is never written to the
+// response. Operators correlate the 500 to the logged cause by trace id;
+// applications that want a richer client envelope install one via
+// [SetHandleUnknownError].
 func defaultUnknownError(w http.ResponseWriter, r *http.Request, err error) {
 	log.Default().WithContext(r.Context()).Error("unhandled service error", log.Err(err))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusInternalServerError)
-	_ = JSON().Encode(w, map[string]string{"message": err.Error()})
+	_ = JSON().Encode(w, map[string]string{"message": "internal server error"})
 }
 
 // SetHandleUnknownError installs a process-wide handler for service errors that
 // are not craftgo typed errors (no HTTPStatus) - use it to map a domain error
 // to a status, redact, or return a uniform envelope. Pass nil to revert to the
-// default (log with trace context + 500 + message). Safe to call concurrently
-// with dispatch; a single-pointer atomic swap keeps the hot path lock-free.
+// default (log the full error with trace context + 500 + opaque message). Safe
+// to call concurrently with dispatch; a single-pointer atomic swap keeps the hot
+// path lock-free.
 func SetHandleUnknownError(h UnknownErrorHandler) {
 	if h == nil {
 		h = defaultUnknownError

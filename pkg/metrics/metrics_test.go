@@ -271,3 +271,38 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// Both OTLP readers must accept a bare host:port AND a full URL (the URL scheme
+// drives TLS), matching the trace exporter — a metrics endpoint of
+// https://collector must not silently downgrade to plaintext.
+func TestOTLPMetricReadersAcceptHostPortAndURL(t *testing.T) {
+	resetForTest(t)
+	ctx := context.Background()
+	for _, addr := range []string{"collector:4317", "http://collector:4318", "https://collector:4318"} {
+		if _, err := Init(WithOTLPgRPCReader(ctx, addr)); err != nil {
+			t.Errorf("grpc reader for %q: %v", addr, err)
+		}
+		resetForTest(t)
+		if _, err := Init(WithOTLPHTTPReader(ctx, addr)); err != nil {
+			t.Errorf("http reader for %q: %v", addr, err)
+		}
+		resetForTest(t)
+	}
+}
+
+// Exporter "none" installs a silent meter — it must NOT fall back to the
+// Prometheus reader (which would secretly serve the metrics "none" suppresses).
+func TestNoneExporterDoesNotServePrometheus(t *testing.T) {
+	resetForTest(t)
+	p, admin, err := InitFromConfig(context.Background(), Config{Enabled: true, Exporter: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Shutdown(context.Background()) }()
+	if admin != nil {
+		t.Errorf("'none' must not start an admin scrape listener")
+	}
+	if mfs, _ := registry.Gather(); len(mfs) != 0 {
+		t.Errorf("'none' must not register Prometheus collectors; got %d metric families", len(mfs))
+	}
+}

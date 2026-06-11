@@ -263,3 +263,37 @@ func TestCompressGzipPreferredOverDeflate(t *testing.T) {
 		t.Fatalf("negotiateEncoding with q-values = %q, want gzip", got)
 	}
 }
+
+// A client that pins q=0 on gzip explicitly refuses it (RFC 7231 §5.3.1) and
+// must receive an uncompressed response.
+func TestNegotiateEncodingHonorsQZero(t *testing.T) {
+	cases := map[string]string{
+		"gzip;q=0":                  "",
+		"gzip; q=0.0":               "",
+		"gzip;q=0, deflate":         "deflate",
+		"gzip;q=0,deflate;q=0":      "",
+		"gzip":                      "gzip",
+		"gzip;q=1.0":                "gzip",
+		"deflate;q=0.5, gzip;q=0.9": "deflate", // first non-zero wins
+		"":                          "",
+	}
+	for in, want := range cases {
+		if got := negotiateEncoding(in); got != want {
+			t.Errorf("negotiateEncoding(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// statusRecorder and compressWriter must expose Unwrap so http.ResponseController
+// can reach the underlying writer (Hijack/Flush) through the middleware stack.
+func TestResponseWritersUnwrap(t *testing.T) {
+	base := httptest.NewRecorder()
+	var sr http.ResponseWriter = &statusRecorder{ResponseWriter: base}
+	if u, ok := sr.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {
+		t.Errorf("statusRecorder.Unwrap must return the wrapped writer")
+	}
+	var cw http.ResponseWriter = &compressWriter{ResponseWriter: base}
+	if u, ok := cw.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {
+		t.Errorf("compressWriter.Unwrap must return the wrapped writer")
+	}
+}

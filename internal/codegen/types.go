@@ -142,8 +142,8 @@ func renderImports(imps []string) string {
 // both directly-declared fields AND embedded mixins, whose generic args may
 // name a cross-package type (`Box<mod.Owner>` → embedded `Box[mod.Owner]`).
 // It is the single home for the body import walk so the type emitter and the
-// error emitter can't drift: a mixin-only cross-package ref used to be
-// collected for types but dropped for errors, yielding `undefined: <pkg>`.
+// error emitter can't drift: a mixin-only cross-package ref must be collected
+// for both, or the side that misses it emits `undefined: <pkg>`.
 func collectBodyImports(body []ast.TypeMember, crossPkg CrossPkg, imports map[string]bool) {
 	for _, m := range body {
 		switch v := m.(type) {

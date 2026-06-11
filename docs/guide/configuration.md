@@ -176,6 +176,12 @@ metrics:
   endpoint: ""
   adminAddr: ":9090"
   path: /metrics
+
+docs:
+  enabled: true
+  ui: redoc
+  path: /docs
+  specPath: /openapi.yaml
 ```
 
 ### `server`
@@ -211,6 +217,20 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 | `endpoint`   | OTLP collector address (ignored for prometheus / none).                |
 | `adminAddr`  | Listen address for `/metrics` scrape (prometheus only).                |
 | `path`       | URL path for the scrape (default `/metrics`).                          |
+
+For `otlp_grpc` / `otlp_http`, `endpoint` may be a bare `host:port` (plaintext)
+or a full URL whose scheme selects transport security — `http://…` (plaintext)
+or `https://…` (TLS). `exporter: none` installs a silent meter (no scrape, no
+push).
+
+### `docs`
+
+| Key        | Effect                                                                 |
+| ---------- | ---------------------------------------------------------------------- |
+| `enabled`  | Serve the OpenAPI document + a rendered docs page (on by default).     |
+| `ui`       | `redoc` / `swagger` / `scalar` — the renderer (assets load from a CDN). |
+| `path`     | HTML docs page route (default `/docs`).                                |
+| `specPath` | Raw OpenAPI document route (default `/openapi.yaml`).                   |
 
 The admin listener runs separately from the public API listener.
 

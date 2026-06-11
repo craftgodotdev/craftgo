@@ -103,14 +103,19 @@ Example value rendered in the OpenAPI schema for this field.
 
 | Sites | field |
 | -------- | -------- |
-| Args  | a literal (string / int / float / bool) or `{key: value}` object |
+| Args  | a literal (string / int / float / bool / null) or an array of those |
 
 ```craftgo
 type User {
-    name  string @example("alice")
-    meta  object @example({tier: "gold", trial: false})
+    name  string   @example("alice")
+    tier  string   @example("gold")
+    roles string[] @example(["admin", "editor"])
 }
 ```
+
+An object literal (`@example({...})`) is rejected — a struct's example is
+composed by OpenAPI tooling from each field's own `@example`, so document the
+fields individually rather than the whole object.
 
 ## OpenAPI file-header
 

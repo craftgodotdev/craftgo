@@ -178,6 +178,12 @@ func (s *statusRecorder) Flush() {
 	}
 }
 
+// Unwrap exposes the wrapped writer so http.ResponseController (and net/http's
+// hijack path) can walk past this layer to reach the underlying Hijacker /
+// ReaderFrom — without it a WebSocket upgrade or raw Hijack under AccessLog
+// fails with "feature not supported".
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 // newRequestID returns a 16-char hex string suitable for X-Request-Id.
 // Uses crypto/rand so collisions across nodes are vanishingly unlikely.
 func newRequestID() string {

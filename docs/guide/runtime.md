@@ -118,10 +118,12 @@ No framework runtime in the hot path.
 `Server` mounts `/healthz` (liveness) and `/readyz` (readiness) by default. Add custom checks:
 
 ```go
-srv.AddHealthCheck("db", func(ctx context.Context) error {
+srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
     return db.PingContext(ctx)
 })
 ```
+
+The second argument is a per-check timeout — the check fails if it runs longer.
 
 Disable with `server.WithoutDefaultHealth()` if you do not want them.
 

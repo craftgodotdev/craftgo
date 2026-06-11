@@ -68,9 +68,10 @@ func TestWriteError_TypedErrorRendersStatusNoLog(t *testing.T) {
 	}
 }
 
-// TestWriteError_UnknownErrorLogsWithTrace pins the new requirement: an error
-// that is NOT a typed StatusError (a bare fmt.Errorf) is logged at Error level
-// with the request's trace context (trace_id / span_id) and answered 500.
+// TestWriteError_UnknownErrorLogsWithTrace pins the contract: an error that is
+// NOT a typed StatusError (a bare fmt.Errorf) is logged at Error level with the
+// request's trace context (trace_id / span_id) and answered 500 with an OPAQUE
+// body — the raw error text stays in the log and never leaks to the client.
 func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	logs := observeLogs(t)
 	rec := httptest.NewRecorder()
@@ -79,8 +80,11 @@ func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("unknown error must answer 500, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), context.DeadlineExceeded.Error()) {
-		t.Errorf("expected error text in body, got %q", rec.Body.String())
+	if strings.Contains(rec.Body.String(), context.DeadlineExceeded.Error()) {
+		t.Errorf("raw error text must NOT leak into the 500 body, got %q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "internal server error") {
+		t.Errorf("500 body should carry the opaque message, got %q", rec.Body.String())
 	}
 	entries := logs.FilterMessage("unhandled service error").All()
 	if len(entries) != 1 {
@@ -92,6 +96,10 @@ func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	}
 	if _, ok := fields["span_id"]; !ok {
 		t.Errorf("log line must carry span_id; fields: %v", fields)
+	}
+	// The full error must reach the LOG (it is kept off the wire).
+	if got, _ := fields["error"].(string); got != context.DeadlineExceeded.Error() {
+		t.Errorf("log line must carry the real error; got error=%q", got)
 	}
 }
 

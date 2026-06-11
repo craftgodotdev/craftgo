@@ -14,9 +14,11 @@ Every `craftgo gen` produces `docs/openapi.yaml` with:
 
 The spec renders directly in **Swagger UI** and **ReDoc**, and feeds `openapi-generator` for client libraries in any language — the day-to-day tools accept it as-is.
 
-::: warning Strict 3.1 validators
-The document declares `openapi: 3.1.0` but currently uses the OpenAPI **3.0** `nullable: true` idiom for optional fields (3.1 replaces it with `type: [..., "null"]`). Lenient consumers (Swagger UI, ReDoc, openapi-generator) accept this, but a strict 3.1 validator — Spectral or Redocly in default config — will flag every `nullable` occurrence. Migrating the nullable emit to the 3.1 idiom is tracked for an upcoming release. If you gate CI on strict linting today, allowlist the `nullable` rule.
-:::
+Nullability uses the canonical 3.1 idiom — `type: [T, "null"]` for inline types
+and `anyOf: [{$ref}, {type: "null"}]` for named/generic refs — not the removed
+3.0 `nullable: true` boolean, so strict 3.1 validators (Spectral, Redocly) and
+client generators (hey-api, openapi-typescript) keep the `| null` union instead
+of silently dropping it.
 
 The rest of this page walks through what's emitted and how to render or consume it.
 
@@ -131,7 +133,7 @@ Field-level validators map to OpenAPI keywords:
 | ------------------------------ | ------------------------ |
 | Non-optional field (no `?`)    | listed in `required: [...]` |
 | `name string?`                 | omitted from `required: [...]` |
-| `@nullable`                    | `nullable: true`         |
+| `@nullable`                    | `type: [T, "null"]` (or `anyOf: [{$ref}, {type: "null"}]`) |
 | `@default(v)`                  | `default: v`             |
 | `@length(1, 80)`               | `minLength: 1, maxLength: 80` |
 | `@minLength(1)`, `@maxLength(80)` | same as above         |
@@ -234,9 +236,9 @@ The spec carries the security requirement; runtime enforcement is your middlewar
 
 ## Spec location
 
-By default `docs/openapi.yaml`. Change with `output.docs` in `craftgo.design.yaml`:
+By default `docs/openapi.yaml`. Change with `output.openapi` in `craftgo.design.yaml`:
 
 ```yaml
 output:
-  docs: api/openapi
+  openapi: ./api/openapi.yaml
 ```

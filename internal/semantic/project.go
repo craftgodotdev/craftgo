@@ -123,6 +123,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectBindings()
 	r.checkProjectPathParams()
 	r.checkProjectPathCollision()
+	r.checkProjectOperationIDUniqueness()
 	r.checkProjectAutoPathField()
 	r.checkProjectBodyBindingVerb()
 	r.checkProjectRequestBodyType()

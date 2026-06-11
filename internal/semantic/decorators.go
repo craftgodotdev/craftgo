@@ -493,7 +493,7 @@ var Registry = map[string]Spec{
 	},
 	"group": {
 		Name: "group", Levels: LvlService,
-		Doc:  "Nests the service's generated handlers and service stubs under <service>/<group>/ on disk; does not affect the route or OpenAPI path. Accepts a nested path like \"admin/ops\".",
+		Doc:  "Nests the service's generated handlers and service stubs under <service>/<group>/ on disk and adds its value as an OpenAPI tag on every method; does not affect the route or OpenAPI path. Accepts a nested path like \"admin/ops\".",
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 	},
 	"middlewares": {

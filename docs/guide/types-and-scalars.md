@@ -208,15 +208,19 @@ type Order {
 
 Scalars centralize validation rules. Change `Email` to allow longer addresses and every field that uses it picks up the change with zero edits.
 
-In Go output, scalars become type aliases:
+In Go output, scalars become **defined types** (not aliases), so each can carry
+its own `Validate()` method holding the declared constraints:
 
 ```go
-type Email = string
-type OrderID = string
-type Cents = int
+type Email string
+type OrderID string
+type Cents int
 ```
 
-The alias means `Email == string` at the type system level. No conversions needed at API boundaries.
+Because they are distinct types, assigning a raw `string` to an `Email` value
+needs a conversion (`Email("a@b.com")`) — the small price for centralised,
+method-carrying validation. Generated request structs already use the scalar
+type, so wire decoding and validation stay automatic.
 
 ### Restrictions
 
