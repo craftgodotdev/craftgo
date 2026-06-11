@@ -26,6 +26,11 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 			return
 		}
+		// Remove the temp files the parser spilled to disk as soon as the
+		// handler returns. net/http sweeps them again at end-of-response, but
+		// the explicit cleanup releases disk before the response flush and
+		// still runs on panic paths that bypass that sweep.
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadReq
 		req.ID = r.PathValue("id")
 		if _v := r.FormValue("note"); _v != "" {

@@ -5,7 +5,7 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [1.3.11] - 2026-06-10
+## [1.3.11] - 2026-06-11
 
 ### Added
 
@@ -27,6 +27,22 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **Cross-package route duplicates are now rejected at analysis time with
+  source positions.** Two services in *different* packages whose methods
+  resolve to the same VERB + route shape (`alpha.AlphaService GET /things/items`
+  vs `beta.BetaService GET /things/items`, including `{id}` vs `{uid}` renames)
+  register the same `net/http` pattern, so the second registration panics at
+  boot. The route-collision scan only saw one package at a time; a project-level
+  twin (`checkProjectPathCollision`) now reports the cross-package pair with a
+  file:line diagnostic naming both methods — in the editor (LSP) and at
+  `craftgo gen` — instead of the late, position-less gen-time conflict error.
+  Same-package pairs stay with the per-package pass (no double-fire).
+- **Generated multipart handlers clean up their temp files on return.** The
+  handler now `defer`s `r.MultipartForm.RemoveAll()` right after a successful
+  `ParseMultipartForm`, releasing parts the parser spilled to disk as soon as
+  the handler finishes. `net/http` sweeps these at end-of-response too; the
+  explicit cleanup releases disk before the response flush and still runs on
+  panic paths that bypass that sweep.
 - **`@nullable` on a form-bound field no longer emits non-compiling Go.** A
   `@nullable` body field in a multipart request (form-bound because a sibling
   `file` field makes the request multipart) is rendered as `*T` by the type

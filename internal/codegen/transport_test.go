@@ -1488,6 +1488,10 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
 		"r.ParseMultipartForm(",
+		// Temp-file cleanup must follow the parse: handler-scoped removal
+		// releases disk before the response flush and covers panic paths
+		// that bypass net/http's end-of-response sweep.
+		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.FormValue("note")`,
 		`r.FormFile("avatar")`,
 		"req.Avatar = header",

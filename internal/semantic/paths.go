@@ -20,6 +20,7 @@ package semantic
 // without pulling template machinery.
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -88,6 +89,67 @@ func (a *analyzer) checkPathResolution() {
 			// don't double-fire.
 			if _, dup := seen[key]; !dup {
 				seen[key] = routeMeta{pos: m.Pos, service: svcName, method: m.Name}
+			}
+		}
+	}
+}
+
+// checkProjectPathCollision is the cross-package twin of the route-collision
+// scan in [analyzer.checkPathResolution]: two methods in DIFFERENT packages
+// that resolve to the same VERB + route shape register the same net/http
+// pattern, so the second registration panics at boot. The per-package pass
+// only sees its own package's services (same-package pairs stay its job, and
+// [checkServiceMethods] owns same-service duplicates); this pass reports just
+// the cross-package pairs, so nothing double-fires. Packages and services
+// iterate in sorted order so "first declared here" is deterministic.
+func (r *refResolver) checkProjectPathCollision() {
+	type routeKey struct {
+		verb string
+		path string
+	}
+	type routeMeta struct {
+		pos     lexer.Position
+		pkg     string
+		service string
+		method  string
+	}
+	pkgNames := make([]string, 0, len(r.proj.Packages))
+	for name := range r.proj.Packages {
+		pkgNames = append(pkgNames, name)
+	}
+	sort.Strings(pkgNames)
+	seen := map[routeKey]routeMeta{}
+	for _, pkgName := range pkgNames {
+		pkg := r.proj.Packages[pkgName]
+		if pkg == nil {
+			continue
+		}
+		svcNames := make([]string, 0, len(pkg.Services))
+		for name := range pkg.Services {
+			svcNames = append(svcNames, name)
+		}
+		sort.Strings(svcNames)
+		for _, svcName := range svcNames {
+			si := pkg.Services[svcName]
+			if si == nil {
+				continue
+			}
+			for _, m := range si.Methods {
+				route := resolveRoute(r.basePath, si.Primary, m)
+				key := routeKey{verb: strings.ToUpper(m.Verb), path: routeShape(route)}
+				prev, dup := seen[key]
+				if !dup {
+					seen[key] = routeMeta{pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name}
+					continue
+				}
+				if prev.pkg == pkgName {
+					// Same package — the per-package pass owns the pair.
+					continue
+				}
+				d := r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
+					"method %s.%s resolves to %s %s, which already binds %s.%s (package %s)",
+					svcName, m.Name, key.verb, route, prev.service, prev.method, prev.pkg)
+				d.Related = related(prev.pos, "first declared here")
 			}
 		}
 	}

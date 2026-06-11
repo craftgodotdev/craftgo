@@ -23,6 +23,11 @@ func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 			return
 		}
+		// Remove the temp files the parser spilled to disk as soon as the
+		// handler returns. net/http sweeps them again at end-of-response, but
+		// the explicit cleanup releases disk before the response flush and
+		// still runs on panic paths that bypass that sweep.
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadAttachmentReq
 		req.NoteID = r.PathValue("noteId")
 		if _, header, err := r.FormFile("blob"); err == nil {

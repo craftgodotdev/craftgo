@@ -450,3 +450,90 @@ service S { post C /c { request Req  response Req } }`,
 		t.Errorf("cross-pkg-promoted scalar-over-string member wrongly rejected: %v", codes(diags))
 	}
 }
+
+// Two methods in DIFFERENT packages resolving to the same VERB + route
+// register the same net/http pattern — the second registration panics at
+// boot, so the project pass rejects it with both sides named.
+func TestProjectPathCollisionCrossPkg(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"alpha/a.craftgo": `package alpha
+type AResp { ok bool }
+@prefix("/things")
+service AlphaService { get List /items { response AResp } }`,
+		"beta/b.craftgo": `package beta
+type BResp { ok bool }
+@prefix("/things")
+service BetaService { get Fetch /items { response BResp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodePathCollision)
+	if d == nil {
+		t.Fatalf("cross-package route duplicate should collide; got %v", codes(diags))
+	}
+	if len(d.Related) == 0 {
+		t.Errorf("collision should point at the first declaration via Related")
+	}
+}
+
+// Collisions key on route SHAPE: `{id}` vs `{uid}` is the same net/http
+// pattern, so renaming the variable does not dodge the check.
+func TestProjectPathCollisionCrossPkgShape(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"alpha/a.craftgo": `package alpha
+type AReq { id string @path }
+type AResp { ok bool }
+service AlphaService { get Get /users/{id} { request AReq  response AResp } }`,
+		"beta/b.craftgo": `package beta
+type BReq { uid string @path }
+type BResp { ok bool }
+service BetaService { get Read /users/{uid} { request BReq  response BResp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodePathCollision) == nil {
+		t.Errorf("same-shape cross-package routes should collide; got %v", codes(diags))
+	}
+}
+
+// Distinct verbs (or distinct paths) on the same route never collide.
+func TestProjectPathCollisionCleanCases(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"alpha/a.craftgo": `package alpha
+type AResp { ok bool }
+service AlphaService { get List /items { response AResp } }`,
+		"beta/b.craftgo": `package beta
+type BReq { name string }
+type BResp { ok bool }
+service BetaService {
+	post Create /items { request BReq  response BResp }
+	get Others /entries { response BResp }
+}`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := findCode(diags, CodePathCollision); d != nil {
+		t.Errorf("distinct verb/path must not collide: %s", d.Msg)
+	}
+}
+
+// A SAME-package duplicate stays the per-package pass's report — the project
+// pass skips it, so the pair yields exactly one diagnostic, not two.
+func TestProjectPathCollisionSamePkgNoDoubleFire(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"alpha/a.craftgo": `package alpha
+type AResp { ok bool }
+service FirstService { get List /items { response AResp } }
+service SecondService { get Fetch /items { response AResp } }`,
+		"beta/b.craftgo": `package beta
+type BResp { ok bool }
+service BetaService { get Other /entries { response BResp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	n := 0
+	for _, d := range diags {
+		if d.Code == CodePathCollision {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("same-package duplicate should report exactly once (per-package pass), got %d: %v", n, codes(diags))
+	}
+}
