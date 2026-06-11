@@ -1,0 +1,2 @@
+# runtime upload destination (see internal/service/media-service/helpers.go)
+uploads/

@@ -9,6 +9,110 @@ import (
 	"unicode/utf8"
 )
 
+// Validate checks every field-level constraint declared on CreateGalleryReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *CreateGalleryReq) Validate() error {
+	if l := utf8.RuneCountInString(v.AlbumID); l < 1 || l > 64 {
+		return fmt.Errorf("albumId: length out of range [1, 64]")
+	}
+	if len(v.Photos) < 1 {
+		return fmt.Errorf("photos: minItems 1")
+	}
+	if len(v.Photos) > 20 {
+		return fmt.Errorf("photos: maxItems 20")
+	}
+	if v.Cover != nil && v.Cover.Size > 5242880 {
+		return fmt.Errorf("cover: file size exceeds 5242880 bytes")
+	}
+	if v.Cover != nil {
+		switch v.Cover.Header.Get("Content-Type") {
+		case "image/png", "image/jpeg", "image/webp":
+		default:
+			return fmt.Errorf("cover: disallowed content type")
+		}
+	}
+	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
+		return fmt.Errorf("title: length out of range [1, 200]")
+	}
+	if v.Description != nil && utf8.RuneCountInString(*v.Description) > 2000 {
+		return fmt.Errorf("description: length greater than 2000")
+	}
+	if v.Visibility == "" {
+		return fmt.Errorf("visibility: required")
+	}
+	if err := v.Visibility.Validate(); err != nil {
+		return fmt.Errorf("visibility: %w", err)
+	}
+	if v.Priority < 0 {
+		return fmt.Errorf("priority: below minimum 0")
+	}
+	if v.Priority > 100 {
+		return fmt.Errorf("priority: above maximum 100")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Gallery.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Gallery) Validate() error {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
+		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	if l := utf8.RuneCountInString(v.AlbumID); l < 1 || l > 64 {
+		return fmt.Errorf("albumId: length out of range [1, 64]")
+	}
+	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
+		return fmt.Errorf("title: length out of range [1, 200]")
+	}
+	if v.Visibility == "" {
+		return fmt.Errorf("visibility: required")
+	}
+	if err := v.Visibility.Validate(); err != nil {
+		return fmt.Errorf("visibility: %w", err)
+	}
+	if v.Priority < 0 {
+		return fmt.Errorf("priority: below minimum 0")
+	}
+	if v.Priority > 100 {
+		return fmt.Errorf("priority: above maximum 100")
+	}
+	if v.Cover != nil {
+		if err := v.Cover.Validate(); err != nil {
+			return err
+		}
+	}
+	for i0 := range v.Photos {
+		if err := v.Photos[i0].Validate(); err != nil {
+			return err
+		}
+	}
+	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
+		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on GalleryPhoto.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *GalleryPhoto) Validate() error {
+	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
+		return fmt.Errorf("id: length out of range [1, 64]")
+	}
+	if l := utf8.RuneCountInString(v.Filename); l < 1 || l > 256 {
+		return fmt.Errorf("filename: length out of range [1, 256]")
+	}
+	if v.SizeBytes < 0 {
+		return fmt.Errorf("sizeBytes: below minimum 0")
+	}
+	if l := utf8.RuneCountInString(v.Sha256); l < 64 || l > 64 {
+		return fmt.Errorf("sha256: length must be 64")
+	}
+	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {
+		return fmt.Errorf("mimeType: length out of range [1, 128]")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on GetMediaReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GetMediaReq) Validate() error {
@@ -108,11 +212,25 @@ func (v *UploadResult) Validate() error {
 	if v.SizeBytes < 0 {
 		return fmt.Errorf("sizeBytes: below minimum 0")
 	}
+	if l := utf8.RuneCountInString(v.Sha256); l < 64 || l > 64 {
+		return fmt.Errorf("sha256: length must be 64")
+	}
 	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {
 		return fmt.Errorf("mimeType: length out of range [1, 128]")
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Visibility.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Visibility) Validate() error {
+	switch v {
+	case VisibilityPrivate, VisibilityUnlisted, VisibilityPublic:
+	default:
+		return fmt.Errorf("invalid Visibility value")
 	}
 	return nil
 }

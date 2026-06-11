@@ -35,6 +35,5 @@ func NewUploadAttachmentService(ctx context.Context, svcCtx *svccontext.ServiceC
 // UploadAttachment is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *UploadAttachmentService) UploadAttachment(req *types.UploadAttachmentReq) (*types.UploadResult, error) {
-	// TODO: implement
-	return nil, nil
+	return storeUpload(l.svcCtx.Store, req.Blob)
 }

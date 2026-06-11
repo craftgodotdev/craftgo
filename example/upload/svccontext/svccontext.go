@@ -30,6 +30,10 @@ type ServiceContext struct {
 	// through the embedding so handlers don't need to look them up
 	// by name.
 	Middlewares
+
+	// Store is the example's in-memory media store. A real app swaps it
+	// for object storage + a database; handlers only touch its methods.
+	Store *MediaStore
 }
 
 // NewServiceContext returns a ServiceContext seeded with the supplied
@@ -37,5 +41,5 @@ type ServiceContext struct {
 // pools, redis clients, http.Clients with custom transport, ...)
 // here so every request handler reaches them through `svc.X`.
 func NewServiceContext(cfg *config.Config) *ServiceContext {
-	return &ServiceContext{Config: cfg}
+	return &ServiceContext{Config: cfg, Store: NewMediaStore()}
 }

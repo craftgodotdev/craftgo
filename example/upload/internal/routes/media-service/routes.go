@@ -18,6 +18,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/media/users/{userId}/avatar", transport.UploadAvatar(svcCtx))
 	srv.Handle("POST /api/media/documents", transport.UploadDocument(svcCtx))
 	srv.Handle("POST /api/media/notes/{noteId}/attachments", transport.UploadAttachment(svcCtx))
+	srv.Handle("POST /api/media/albums/{albumId}/gallery", transport.CreateGallery(svcCtx))
 	srv.Handle("GET /api/media/{id}", transport.GetMedia(svcCtx))
 	srv.Handle("DELETE /api/media/{id}", transport.DeleteMedia(svcCtx))
 }

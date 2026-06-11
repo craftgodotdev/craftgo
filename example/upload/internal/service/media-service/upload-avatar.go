@@ -35,6 +35,5 @@ func NewUploadAvatarService(ctx context.Context, svcCtx *svccontext.ServiceConte
 // UploadAvatar is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *UploadAvatarService) UploadAvatar(req *types.UploadAvatarReq) (*types.UploadResult, error) {
-	// TODO: implement
-	return nil, nil
+	return storeUpload(l.svcCtx.Store, req.Image)
 }

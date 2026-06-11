@@ -21,7 +21,14 @@ service MediaService {
 		response UploadResult
 	}
 
+	@doc("Create a gallery from a BATCH of uploaded photos. Showcases `file[]` (many files, 1–20) + an optional `cover` file + form values of every shape — text, a repeated `tags string[]`, an enum, a bool and an int — in one multipart/form-data request.")
+	post CreateGallery /albums/{albumId}/gallery {
+		request  CreateGalleryReq
+		response Gallery
+	}
+
 	@doc("Get media metadata.")
+	@errors(MediaNotFound)
 	get GetMedia /{id} {
 		request  GetMediaReq
 		response UploadResult

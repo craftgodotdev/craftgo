@@ -4,6 +4,7 @@ type UploadResult {
 	id        string @length(1, 64)
 	url       string @format(url) @maxLength(2048)
 	sizeBytes int    @gte(0)
+	sha256    string @length(64, 64)
 	mimeType  string @length(1, 128)
 	createdAt string @format(datetime)
 }

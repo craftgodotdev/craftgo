@@ -6,6 +6,57 @@ import (
 	"mime/multipart"
 )
 
+// CreateGalleryReq is the showcase multi-file upload: MANY files via
+// `photos file[]`, an optional single `cover` file, and form values of every
+// shape — required/optional text, a repeated `tags string[]` value array, an
+// enum, a bool, and a bounded int — all in ONE multipart/form-data request,
+// with the album id bound from the path.
+//
+// On the wire the repeated parts share a field name: each photo is a `photos`
+// part and each tag a `tags` part, e.g.
+//
+//	curl -X POST http://localhost:8080/api/media/albums/sum25/gallery \
+//	  -F "photos=@a.jpg" -F "photos=@b.jpg" -F "photos=@c.jpg" \
+//	  -F "cover=@hero.png" \
+//	  -F "title=Summer 2026" -F "description=Beach trip" \
+//	  -F "tags=summer" -F "tags=beach" \
+//	  -F "visibility=public" -F "featured=true" -F "priority=10"
+type CreateGalleryReq struct {
+	AlbumID     string                  `json:"-"`
+	Photos      []*multipart.FileHeader `json:"photos"`
+	Cover       *multipart.FileHeader   `json:"cover,omitempty"`
+	Title       string                  `json:"title"`
+	Description *string                 `json:"description,omitempty"`
+	Tags        []string                `json:"tags"`
+	Visibility  Visibility              `json:"visibility"`
+	Featured    bool                    `json:"featured"`
+	Priority    int                     `json:"priority"`
+}
+
+// Gallery is the created gallery echoed back to the client.
+type Gallery struct {
+	ID          string         `json:"id"`
+	AlbumID     string         `json:"albumId"`
+	Title       string         `json:"title"`
+	Description *string        `json:"description,omitempty"`
+	Visibility  Visibility     `json:"visibility"`
+	Featured    bool           `json:"featured"`
+	Priority    int            `json:"priority"`
+	Tags        []string       `json:"tags"`
+	Cover       *GalleryPhoto  `json:"cover,omitempty"`
+	Photos      []GalleryPhoto `json:"photos"`
+	CreatedAt   string         `json:"createdAt"`
+}
+
+// GalleryPhoto is one stored photo's metadata.
+type GalleryPhoto struct {
+	ID        string `json:"id"`
+	Filename  string `json:"filename"`
+	SizeBytes int    `json:"sizeBytes"`
+	Sha256    string `json:"sha256"`
+	MimeType  string `json:"mimeType"`
+}
+
 type GetMediaReq struct {
 	ID string `json:"-"`
 }
@@ -34,6 +85,7 @@ type UploadResult struct {
 	ID        string `json:"id"`
 	URL       string `json:"url"`
 	SizeBytes int    `json:"sizeBytes"`
+	Sha256    string `json:"sha256"`
 	MimeType  string `json:"mimeType"`
 	CreatedAt string `json:"createdAt"`
 }

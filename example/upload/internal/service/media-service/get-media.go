@@ -35,6 +35,8 @@ func NewGetMediaService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // GetMedia is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *GetMediaService) GetMedia(req *types.GetMediaReq) (*types.UploadResult, error) {
-	// TODO: implement
-	return nil, nil
+	if m, ok := l.svcCtx.Store.GetMedia(req.ID); ok {
+		return m, nil
+	}
+	return nil, types.NewMediaNotFoundErr()
 }

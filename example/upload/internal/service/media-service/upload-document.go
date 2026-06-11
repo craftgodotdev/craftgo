@@ -35,6 +35,7 @@ func NewUploadDocumentService(ctx context.Context, svcCtx *svccontext.ServiceCon
 // UploadDocument is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *UploadDocumentService) UploadDocument(req *types.UploadDocumentReq) (*types.UploadResult, error) {
-	// TODO: implement
-	return nil, nil
+	// title / notes are validated form fields; a real service would persist
+	// them alongside the blob. Here we store the file and echo its metadata.
+	return storeUpload(l.svcCtx.Store, req.PDF)
 }

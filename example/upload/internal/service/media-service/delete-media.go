@@ -35,6 +35,7 @@ func NewDeleteMediaService(ctx context.Context, svcCtx *svccontext.ServiceContex
 // DeleteMedia is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *DeleteMediaService) DeleteMedia(req *types.GetMediaReq) (*types.OkResp, error) {
-	// TODO: implement
-	return nil, nil
+	// Idempotent: deleting an unknown id is a no-op success.
+	l.svcCtx.Store.DeleteMedia(req.ID)
+	return &types.OkResp{Ok: true}, nil
 }
