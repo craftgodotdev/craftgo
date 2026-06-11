@@ -210,6 +210,14 @@ func InitDefault() *sdktrace.TracerProvider {
 // here keeps the dispatch logic in the library (so projects do not
 // re-implement the exporter switch in their own main.go) and gives the
 // generated config package a canonical type to import.
+// Exporter selector values for [Config.Exporter].
+const (
+	ExporterNone     = "none"
+	ExporterStdout   = "stdout"
+	ExporterOTLPgRPC = "otlp_grpc"
+	ExporterOTLPHTTP = "otlp_http"
+)
+
 type Config struct {
 	// Enabled flips both the TracerProvider install and the HTTP
 	// middleware gate. False is a complete no-op - no exporter, no
@@ -245,11 +253,11 @@ func InitFromConfig(ctx context.Context, c Config) (*sdktrace.TracerProvider, er
 	}
 	opts := []Option{WithServiceName(c.ServiceName)}
 	switch c.Exporter {
-	case "otlp_grpc":
+	case ExporterOTLPgRPC:
 		opts = append(opts, WithOTLPgRPCExporter(ctx, c.Endpoint))
-	case "otlp_http":
+	case ExporterOTLPHTTP:
 		opts = append(opts, WithOTLPHTTPExporter(ctx, c.Endpoint))
-	case "stdout":
+	case ExporterStdout:
 		opts = append(opts, WithStdoutExporter())
 	}
 	return Init(opts...)

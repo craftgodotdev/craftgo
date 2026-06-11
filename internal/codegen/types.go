@@ -19,6 +19,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // GenerateTypes emits a `types.go` file under outDir/<pkg.Name>/ containing
@@ -532,7 +533,7 @@ func jsonTag(f *ast.Field) string {
 // / cookies - never from the body - so the generated struct should hide
 // them from JSON entirely.
 func isNonBodyBound(f *ast.Field) bool {
-	switch semantic.BindingKind(f.Decorators) {
+	switch wire.BindingKind(f.Decorators) {
 	case "path", "query", "header", "cookie":
 		return true
 	}

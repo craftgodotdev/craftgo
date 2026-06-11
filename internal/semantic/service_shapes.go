@@ -6,6 +6,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
 func (a *analyzer) checkServiceMethods() {
@@ -27,11 +28,11 @@ func (a *analyzer) checkServiceMethods() {
 			// methods of one verb — whose auto-routes differ (`/ping` vs
 			// `/health`) — no longer collide on an empty path, while `/x/{id}`
 			// and `/x/{id1}` still do.
-			route := a.resolveMethodPath(si.Primary, m)
-			key := m.Verb + " " + routeShape(route)
+			rt := a.resolveMethodPath(si.Primary, m)
+			key := m.Verb + " " + route.Shape(rt)
 			if prev, ok := seenRoute[key]; ok {
 				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateRoute,
-					"duplicate route %q", m.Verb+" "+route)
+					"duplicate route %q", m.Verb+" "+rt)
 				d.Related = related(prev, "first declared here")
 			} else {
 				seenRoute[key] = m.Pos
@@ -47,24 +48,6 @@ func (a *analyzer) checkServiceMethods() {
 // walk every scope that can carry decorators: the file header, top-level
 // declarations, fields inside type / error bodies, enum values, service
 // methods, and middleware-declaration sites.
-
-func PathString(p *ast.Path) string {
-	if p == nil {
-		return ""
-	}
-	var sb strings.Builder
-	for _, s := range p.Segments {
-		sb.WriteByte('/')
-		if s.Param {
-			sb.WriteByte('{')
-			sb.WriteString(s.Literal)
-			sb.WriteByte('}')
-		} else {
-			sb.WriteString(s.Literal)
-		}
-	}
-	return sb.String()
-}
 
 // PathShape is PathString with every {param} replaced by `{}`. Two
 // routes that route to the same HTTP destination have the same shape

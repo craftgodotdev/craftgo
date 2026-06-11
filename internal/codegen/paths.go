@@ -22,7 +22,7 @@ func ServicePackage(svcName string) string { return strings.ToLower(svcName) }
 // for filesystem paths and import segments - `UserService` becomes
 // `user-service`. The Go package declaration inside the directory still
 // uses [ServicePackage] (no hyphens) so the source remains compilable.
-func ServiceDir(svcName string) string { return kebabCase(svcName) }
+func ServiceDir(svcName string) string { return idents.KebabCase(svcName) }
 
 // goImportFromRel converts a project-relative directory like
 // "./internal/handler" into the Go import path "<modulePath>/internal/handler".
@@ -49,23 +49,6 @@ func fileDirRel(filePath string) string {
 		return ""
 	}
 	return dir
-}
-
-// servicePrefix returns the path prefix declared on a service via the
-// @prefix("/...") decorator, or the empty string when absent.
-func servicePrefix(svc *ast.ServiceDecl) string {
-	if svc == nil {
-		return ""
-	}
-	for _, d := range svc.Decorators {
-		if d.Name != "prefix" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
-			return s.Value
-		}
-	}
-	return ""
 }
 
 // serviceGroup returns the cleaned slash-delimited path derived from the
@@ -106,41 +89,6 @@ func cleanGroupPath(raw string) string {
 		kept = append(kept, s)
 	}
 	return strings.Join(kept, "/")
-}
-
-// methodFullPath joins the OpenAPI base path, the service prefix, and the
-// method's own path into a single absolute route. Empty segments are dropped;
-// consecutive slashes are collapsed; the result always begins with '/'.
-// @group is deliberately absent - it nests generated files on disk, not the
-// URL.
-//
-// When the method declares no inline path the fallback is the method name
-// in kebab-case ("Ping" → "/ping"). This avoids collisions when several
-// pathless methods share the same service prefix.
-func methodFullPath(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
-	parts := []string{}
-	if basePath != "" {
-		parts = append(parts, basePath)
-	}
-	if p := servicePrefix(svc); p != "" {
-		parts = append(parts, p)
-	}
-	if m.Path != nil {
-		parts = append(parts, semantic.PathString(m.Path))
-	} else {
-		parts = append(parts, "/"+kebabCase(m.Name))
-	}
-	joined := strings.Join(parts, "/")
-	for strings.Contains(joined, "//") {
-		joined = strings.ReplaceAll(joined, "//", "/")
-	}
-	if joined == "" || joined[0] != '/' {
-		joined = "/" + joined
-	}
-	if len(joined) > 1 {
-		joined = strings.TrimRight(joined, "/")
-	}
-	return joined
 }
 
 // httpVerb maps DSL verb keywords to canonical HTTP method strings used in
@@ -301,25 +249,6 @@ func groupAliasSuffix(group string) string {
 // imports coexist without colliding.
 func transportAlias(group string) string {
 	return "transport" + groupAliasSuffix(group)
-}
-
-// hasBodyVerb reports whether the given HTTP verb conventionally carries a
-// request body. The handler generator only emits JSON-decode scaffolding
-// for body-bearing verbs.
-func hasBodyVerb(verb string) bool {
-	switch strings.ToUpper(verb) {
-	case "POST", "PUT", "PATCH":
-		return true
-	}
-	return false
-}
-
-// kebabCase splits a PascalCase / camelCase identifier into its component
-// words and joins them with hyphens. `GetUser` → `get-user`, `HTTPRequest`
-// → `http-request`. Used for generated filenames so directory listings
-// stay readable on case-sensitive filesystems.
-func kebabCase(s string) string {
-	return idents.KebabCase(s)
 }
 
 // renderDoc returns the user's leading `//` comments verbatim, with the

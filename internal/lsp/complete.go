@@ -46,7 +46,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// available package paths.
 	if isInsideImportString(view, pos) {
 		prefix := importStringPrefix(view, pos)
-		return s.importPathCompletions(currentURI, currentSrc, prefix)
+		return s.importPathCompletions(currentURI, prefix)
 	}
 	// After `extend service ` - list every primary service name in
 	// the project so the user can pick which one this block extends.

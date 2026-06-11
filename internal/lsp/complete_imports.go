@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -45,7 +46,7 @@ func isInsideImportString(view snapshotView, pos protocol.Position) bool {
 // only whitespace, which the tokenizer has already stripped). Returns ok
 // = false when the previous token is not an identifier.
 
-func (s *Server) importPathCompletions(currentURI, currentSrc, prefix string) []protocol.CompletionItem {
+func (s *Server) importPathCompletions(currentURI, prefix string) []protocol.CompletionItem {
 	fsPath := uriToPath(currentURI)
 	if fsPath == "" {
 		return nil
@@ -188,7 +189,7 @@ func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSr
 			targetDir = importTargetDir(root, imp.Path)
 			break
 		}
-		if imp.Alias == "" && lastPathSegment(imp.Path) == pkg {
+		if imp.Alias == "" && idents.LastSegment(imp.Path) == pkg {
 			targetDir = importTargetDir(root, imp.Path)
 			break
 		}

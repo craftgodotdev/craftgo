@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -31,12 +32,12 @@ func TestPatternsConflict(t *testing.T) {
 		{"/a/{x}/c", "/a/b/{y}", true},
 	}
 	for _, c := range cases {
-		if got := patternsConflict(c.a, c.b); got != c.want {
-			t.Errorf("patternsConflict(%q,%q) = %v, want %v", c.a, c.b, got, c.want)
+		if got := route.PatternsConflict(c.a, c.b); got != c.want {
+			t.Errorf("route.PatternsConflict(%q,%q) = %v, want %v", c.a, c.b, got, c.want)
 		}
 		// Symmetric.
-		if got := patternsConflict(c.b, c.a); got != c.want {
-			t.Errorf("patternsConflict(%q,%q) [swapped] = %v, want %v", c.b, c.a, got, c.want)
+		if got := route.PatternsConflict(c.b, c.a); got != c.want {
+			t.Errorf("route.PatternsConflict(%q,%q) [swapped] = %v, want %v", c.b, c.a, got, c.want)
 		}
 	}
 }

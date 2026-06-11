@@ -54,12 +54,12 @@ jobs:
             go run ./cmd/craftgo gen "$d/design"
           done
 
-      # - name: drift gate (gen output must match committed)
-      #   run: |
-      #     if ! git diff --exit-code; then
-      #       echo "::error::generated files drifted from committed output — run \`make gen-all\` and commit the diff"
-      #       exit 1
-      #     fi
+      - name: drift gate (gen output must match committed)
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::generated files drifted from committed output — run \`make gen-all\` and commit the diff"
+            exit 1
+          fi
 
       # ---- test -------------------------------------------------------------
       # Core (lexer / parser / ast / semantic) is the language-shape

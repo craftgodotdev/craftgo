@@ -163,7 +163,7 @@ func (l *Lexer) Next() Token {
 	}
 
 	pos := l.pos()
-	r, _ := l.peek()
+	r := l.peek()
 
 	var tok Token
 	switch {
@@ -209,7 +209,7 @@ func (l *Lexer) consumeTrailingComment(tokenLine int) string {
 	saveOffset, saveLine, saveCol := l.offset, l.line, l.column
 	// Skip space/tab on the current line (newline ends the search).
 	for l.offset < len(l.src) {
-		r, _ := l.peek()
+		r := l.peek()
 		if r != ' ' && r != '\t' {
 			break
 		}
@@ -225,7 +225,7 @@ func (l *Lexer) consumeTrailingComment(tokenLine int) string {
 	l.advance() // second '/'
 	start := l.offset
 	for l.offset < len(l.src) {
-		r, _ := l.peek()
+		r := l.peek()
 		if r == '\n' {
 			break
 		}
@@ -294,7 +294,7 @@ func (l *Lexer) lexPunct(pos Position, r rune) Token {
 func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 	start := l.offset
 	for {
-		r, _ := l.peek()
+		r := l.peek()
 		if !(isLetter(r) || isDigit(r) || r == '_') {
 			break
 		}
@@ -315,18 +315,18 @@ func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 func (l *Lexer) lexNumber(pos Position) Token {
 	start := l.offset
 	for {
-		r, _ := l.peek()
+		r := l.peek()
 		if !isDigit(r) {
 			break
 		}
 		l.advance()
 	}
 	isFloat := false
-	if r, _ := l.peek(); r == '.' && l.digitFollowsDot() {
+	if r := l.peek(); r == '.' && l.digitFollowsDot() {
 		isFloat = true
 		l.advance()
 		for {
-			r, _ := l.peek()
+			r := l.peek()
 			if !isDigit(r) {
 				break
 			}
@@ -337,7 +337,7 @@ func (l *Lexer) lexNumber(pos Position) Token {
 
 	suffStart := l.offset
 	for {
-		r, _ := l.peek()
+		r := l.peek()
 		if !(isLetter(r) || r == 'µ') {
 			break
 		}
@@ -389,7 +389,7 @@ func (l *Lexer) lexString(pos Position) Token {
 		if l.offset >= len(l.src) {
 			return l.errorf(pos, "unterminated string literal")
 		}
-		r, _ := l.peek()
+		r := l.peek()
 		if r == '\n' {
 			return l.errorf(pos, "newline in string literal")
 		}
@@ -404,7 +404,7 @@ func (l *Lexer) lexString(pos Position) Token {
 			if l.offset >= len(l.src) {
 				return l.errorf(pos, "unterminated escape sequence")
 			}
-			esc, _ := l.peek()
+			esc := l.peek()
 			switch esc {
 			case 'n', 't', 'r', '"', '\\':
 				sb.WriteRune(esc)
@@ -430,7 +430,7 @@ func (l *Lexer) lexString(pos Position) Token {
 // closing `}` must appear. Returns false when any of those constraints is
 // violated; the caller wraps that into a single user-facing error.
 func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
-	r, _ := l.peek()
+	r := l.peek()
 	if r != '{' {
 		return false
 	}
@@ -438,7 +438,7 @@ func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
 	l.advance()
 	n := 0
 	for n < 6 {
-		rr, _ := l.peek()
+		rr := l.peek()
 		if rr == '}' {
 			if n == 0 {
 				return false
@@ -454,7 +454,7 @@ func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
 		l.advance()
 		n++
 	}
-	rr, _ := l.peek()
+	rr := l.peek()
 	if rr != '}' {
 		return false
 	}
@@ -477,7 +477,7 @@ func (l *Lexer) lexRawString(pos Position) Token {
 		if l.offset >= len(l.src) {
 			return l.errorf(pos, "unterminated raw string literal")
 		}
-		r, _ := l.peek()
+		r := l.peek()
 		if r == '`' {
 			sb.WriteByte('`')
 			l.advance()
@@ -494,7 +494,7 @@ func (l *Lexer) lexRawString(pos Position) Token {
 func (l *Lexer) skipWhitespaceAndComments() {
 	consecutiveNewlines := 0
 	for l.offset < len(l.src) {
-		r, _ := l.peek()
+		r := l.peek()
 		switch {
 		case r == '\n':
 			consecutiveNewlines++
@@ -515,7 +515,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 			commentPos := l.pos()
 			start := l.offset + 2 // skip the two slashes
 			for l.offset < len(l.src) {
-				rr, _ := l.peek()
+				rr := l.peek()
 				if rr == '\n' {
 					break
 				}
@@ -559,14 +559,15 @@ func (l *Lexer) skipWhitespaceAndComments() {
 func (l *Lexer) Comments() []*Comment { return l.allComments }
 
 // peek returns the rune at the current offset without consuming it. Returns
-// `(0, 0)` at EOF - callers should treat rune 0 as a sentinel and not try to
+// 0 at EOF - callers should treat rune 0 as a sentinel and not try to
 // classify it as a valid character (none of the [isLetter] / [isDigit] /
 // [isHex] helpers accept it).
-func (l *Lexer) peek() (rune, int) {
+func (l *Lexer) peek() rune {
 	if l.offset >= len(l.src) {
-		return 0, 0
+		return 0
 	}
-	return utf8.DecodeRuneInString(l.src[l.offset:])
+	r, _ := utf8.DecodeRuneInString(l.src[l.offset:])
+	return r
 }
 
 // advance consumes one rune. Callers MUST ensure l.offset < len(l.src) by

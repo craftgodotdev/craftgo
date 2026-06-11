@@ -6,6 +6,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
 func parseFiles(t *testing.T, sources ...string) []*ast.File {
@@ -407,12 +408,12 @@ func TestCombinationPassthroughAccepted(t *testing.T) {
 // ---------- PathString ----------
 
 func TestPathString(t *testing.T) {
-	if PathString(nil) != "" {
+	if route.PathString(nil) != "" {
 		t.Error("nil path")
 	}
 	pkg := mustClean(t, `type R { id string }
 service S { get A /users/{id}/posts { request R } }`)
-	got := PathString(pkg.Services["S"].Methods[0].Path)
+	got := route.PathString(pkg.Services["S"].Methods[0].Path)
 	if got != "/users/{id}/posts" {
 		t.Errorf("got %q", got)
 	}

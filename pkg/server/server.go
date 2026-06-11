@@ -57,7 +57,16 @@ type Middleware func(http.Handler) http.Handler
 // Option configures a Server at construction time.
 type Option func(*Server)
 
-// HealthPaths is the override pair for `/healthz` and `/readyz`.
+// DefaultLivenessPath / DefaultReadinessPath are the health routes a fresh
+// [Server] mounts. Exported so other layers (the analyzer's reserved-route
+// check) can reference the same values instead of re-spelling them.
+const (
+	DefaultLivenessPath  = "/healthz"
+	DefaultReadinessPath = "/readyz"
+)
+
+// HealthPaths is the override pair for [DefaultLivenessPath] and
+// [DefaultReadinessPath].
 type HealthPaths struct {
 	Liveness  string
 	Readiness string
@@ -89,7 +98,7 @@ func New(_ any, opts ...Option) *Server {
 		logger:             log.New(),
 		codec:              defaultCodec{},
 		healthChecks:       map[string]healthCheck{},
-		healthPaths:        HealthPaths{Liveness: "/healthz", Readiness: "/readyz"},
+		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
 		defaultReadTimeout: 30 * time.Second,
 		defaultMaxBodySize: 10 << 20, // 10 MiB

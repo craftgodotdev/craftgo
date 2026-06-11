@@ -38,8 +38,43 @@ breaking change to the DSL or the generated layout bumps the major version.
   `type: [string, "null"]` union (which is meaningless for a file and breaks
   Swagger UI's file picker).
 
+### Changed
+
+- **Internal decide-once consolidation (no behavior change; generated output is
+  byte-identical).** The route join (basePath + @prefix + method path) is now a
+  single exported `semantic.ResolveRoute` that the analyzer, the routes/OpenAPI
+  emitters, and the route-conflict detector all call — the codegen copy
+  (`methodFullPath`/`servicePrefix`) is gone. `IsBodyVerb` is the one body-verb
+  rule (was duplicated per layer; now built on `http.Method*`). The binding-kind
+  vocabulary ("path"/"query"/"header"/"cookie"/"form"/"body"/"sensitive") is a
+  set of shared `semantic.Binding*` constants used by both layers instead of
+  repeated string literals, and the otel/metrics `exporter:` selector values are
+  exported constants. `pkg/server` exports `DefaultLivenessPath`/
+  `DefaultReadinessPath`; a test pins the analyzer's reserved-route mirror to
+  them. Two new leaf packages now hold the cross-layer authorities:
+  `internal/wire` (binding-kind vocabulary, wire names, the request
+  auto-binding rule, body-verb) and `internal/route` (route assembly, path
+  strings, route shape, ServeMux pattern-overlap) — the analyzer, codegen, and
+  the LSP all import the same implementation. The biggest source files were
+  split by topic for maintainability: `parser.go` (1,115 lines, the whole
+  package in one file) into five files, `semantic/combination_checks.go`
+  (1,412) into six, `semantic/ranges.go` (1,011) into three,
+  `semantic/imports.go` (930) into four, `lsp/lookup.go` into three, and
+  `codegen/transport.go` into two. Small duplications folded into one home:
+  `idents.LastSegment` replaces the identical path-segment helpers in
+  semantic and the LSP, and codegen's `kebabCase` alias is gone (callers use
+  `idents.KebabCase` directly). Codegen templates parse once per process
+  (were re-parsed on every render). Dead plumbing removed: the always-false request-side `needsStrconv`
+  return, two unused parameters (`Lexer.peek` width, LSP completion source),
+  and four unused `svcName` parameters on method-level checks.
+
 ### Fixed
 
+- **`craftgo gen` output is fully deterministic.** The umbrella `routes.go`
+  sorted its (service, group) registrations by service name only, so a service
+  with several `@group`s registered them in map-iteration order — different on
+  every run. The sort now tie-breaks on group; `RegisterAll` is byte-stable and
+  the CI drift gate (gen output must match the committed files) is re-enabled.
 - **Cross-package duplicate `operationId`s are reported at analysis time with a
   source position.** Two methods in different packages pinned to the same
   explicit `@operationId(...)` collide in the single merged OpenAPI document; the

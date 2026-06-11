@@ -6,7 +6,9 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // flattenFields returns td's fields with embedded mixins expanded in
@@ -240,7 +242,7 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{}) {
 		f := ff.Field
 		kind := bindingFromDecorators(f.Decorators)
-		if kind != "header" && kind != "cookie" {
+		if kind != wire.BindingHeader && kind != wire.BindingCookie {
 			continue
 		}
 		stmt, ns := renderResponseWrite(f, pkg, r, kind, accessVar, ff.GoName)
@@ -249,9 +251,9 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 		}
 		entry := paramBinding{Bind: stmt}
 		switch kind {
-		case "header":
+		case wire.BindingHeader:
 			headers = append(headers, entry)
-		case "cookie":
+		case wire.BindingCookie:
 			cookies = append(cookies, entry)
 		}
 	}
@@ -269,14 +271,14 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 // generated file, normalises the indentation.
 func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, kind, accessVar, goName string) (stmt string, needsStrconv bool) {
 	prim, declName := wirePrimName(f, pkg, r)
-	wire := bindingWireName(f, kind)
+	wireName := bindingWireName(f, kind)
 	field := accessVar + "." + goName
 
 	set := func(valueExpr string) string {
-		if kind == "cookie" {
-			return fmt.Sprintf("http.SetCookie(w, &http.Cookie{Name: %q, Value: %s})", wire, valueExpr)
+		if kind == wire.BindingCookie {
+			return fmt.Sprintf("http.SetCookie(w, &http.Cookie{Name: %q, Value: %s})", wireName, valueExpr)
 		}
-		return fmt.Sprintf("w.Header().Set(%q, %s)", wire, valueExpr)
+		return fmt.Sprintf("w.Header().Set(%q, %s)", wireName, valueExpr)
 	}
 
 	switch {
@@ -284,9 +286,9 @@ func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver
 		// Header arrays write one line per element; @cookie arrays are
 		// rejected at semantic time so this branch is header-only.
 		expr, ns := formatToString(prim, declName, "_v")
-		return fmt.Sprintf("for _, _v := range %s {\nw.Header().Add(%q, %s)\n}", field, wire, expr), ns
+		return fmt.Sprintf("for _, _v := range %s {\nw.Header().Add(%q, %s)\n}", field, wireName, expr), ns
 	case f.Type != nil && f.Type.Optional:
-		// Optional is restricted to string-backed types by the wire
+		// Optional is restricted to string-backed types by the wireName
 		// check, so the nil-guarded value is safe to deref + format.
 		expr, ns := formatToString(prim, declName, "*"+field)
 		return fmt.Sprintf("if %s != nil {\n%s\n}", field, set(expr)), ns
@@ -411,9 +413,9 @@ func formatToString(prim, declName, access string) (expr string, needsStrconv bo
 // `needsStrconv` is true when any text field's binding line reaches
 // into the strconv package - flows through to the multipart template
 // import block.
-func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (text, files []paramBinding, needsStrconv bool, err error) {
+func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (text, files []paramBinding, err error) {
 	if m.Request == nil {
-		return nil, nil, false, nil
+		return nil, nil, nil
 	}
 	// First pass: find file fields. Without one, the handler renders
 	// as a plain JSON body decoder and we have nothing to emit here.
@@ -439,7 +441,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		// schema property name both match what the client sends, rather
 		// than falling back to the Go field name (`@form("avatar_file")`
 		// binds to `avatar_file`, not `avatarFile`).
-		entry := paramBinding{DSLName: bindingWireName(f, "form"), GoName: rf.GoName, Required: fieldIsRequired(f), Field: f}
+		entry := paramBinding{DSLName: bindingWireName(f, wire.BindingForm), GoName: rf.GoName, Required: rf.SpecRequired, Field: f}
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file" {
 			entry.IsArray = f.Type.Array
 			for _, d := range f.Decorators {
@@ -464,28 +466,25 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 	if len(files) == 0 {
 		// No multipart handler will be emitted; surrender the
 		// non-file fields back to the JSON body path.
-		return nil, nil, false, nil
+		return nil, nil, nil
 	}
 	// Second pass: render bindings for the text fields now that we
 	// know the handler is multipart.
 	for _, c := range nonFile {
-		line, needs, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, bindingWireName(c.field, "form"), c.entry.GoName, formSource())
+		line, lerr := renderWireBindLine(c.field, pkg, r, pkgAlias, bindingWireName(c.field, wire.BindingForm), c.entry.GoName, formSource())
 		if lerr != nil {
-			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
+			err = fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), c.field.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 			return
-		}
-		if needs {
-			needsStrconv = true
 		}
 		c.entry.Bind = line
 		text = append(text, c.entry)
 	}
-	return text, files, needsStrconv, nil
+	return text, files, nil
 }
 
 // collectBindings walks the request type's fields and returns per-kind
-// binding tables (path, query, header, cookie) plus a flag noting
-// whether any emitted block reaches into `strconv`.
+// binding tables (path, query, header, cookie). Request-side parsing runs
+// through the generic server bind helpers, so no strconv import is needed.
 //
 // Resolution order for a field's bucket:
 //  1. Explicit `@path` / `@query` / `@header` / `@cookie` decorator wins.
@@ -504,7 +503,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 // Unsupported binding shapes (struct/[]struct/map on @query, non-string
 // on @path/@header/@cookie) return a non-nil error so the misuse is
 // flagged at `craftgo gen` time rather than skipped.
-func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (path, query, header, cookie []paramBinding, needsStrconv bool, err error) {
+func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *ProjectResolver) (path, query, header, cookie []paramBinding, err error) {
 	if m.Request == nil {
 		return
 	}
@@ -543,12 +542,12 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, describeFieldType(f))
 				return
 			}
-			line, _, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, pathSource())
+			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, pathSource())
 			if lerr != nil {
 				if rf.AutoBound {
 					continue
 				}
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
 			}
 			path = append(path, paramBinding{
@@ -557,33 +556,24 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 				Bind:    line,
 			})
 		case BindQuery:
-			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, querySource())
+			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, querySource())
 			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
-			}
-			if needs {
-				needsStrconv = true
 			}
 			query = append(query, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		case BindHeader:
-			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, headerSource())
+			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, headerSource())
 			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
-			}
-			if needs {
-				needsStrconv = true
 			}
 			header = append(header, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		case BindCookie:
-			line, needs, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, cookieSource())
+			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, cookieSource())
 			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), semantic.PathString(m.Path), lerr)
+				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
-			}
-			if needs {
-				needsStrconv = true
 			}
 			cookie = append(cookie, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		}
@@ -688,10 +678,10 @@ func isQualifiedNamedWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
 // from the Go field name. `kind` selects which decorator to inspect
 // (`path`/`query`/`header`/`cookie`) so the same field may carry the
 // wrong-decorator's arg without leakage. The rule lives in
-// [semantic.WireName] so the analyser's binding checks and these binders
+// [wire.WireName] so the analyser's binding checks and these binders
 // agree on the emitted name.
 func bindingWireName(f *ast.Field, kind string) string {
-	return semantic.WireName(f, kind)
+	return wire.WireName(f, kind)
 }
 
 // describeFieldType renders a short human-readable form of f's type

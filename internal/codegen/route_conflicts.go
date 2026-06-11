@@ -5,9 +5,9 @@ package codegen
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -48,7 +48,7 @@ func ValidateRouteConflicts(proj *semantic.Project, cfg *config.Config) []string
 			for _, m := range svc.Methods {
 				routes = append(routes, routeEntryForConflict{
 					verb:    httpVerb(m.Verb),
-					pattern: methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m),
+					pattern: route.Resolve(cfg.OpenAPI.BasePath, svc.Primary, m),
 					label:   svcName + "." + m.Name,
 				})
 			}
@@ -59,7 +59,7 @@ func ValidateRouteConflicts(proj *semantic.Project, cfg *config.Config) []string
 	for i := 0; i < len(routes); i++ {
 		for j := i + 1; j < len(routes); j++ {
 			a, b := routes[i], routes[j]
-			if a.verb != b.verb || !patternsConflict(a.pattern, b.pattern) {
+			if a.verb != b.verb || !route.PatternsConflict(a.pattern, b.pattern) {
 				continue
 			}
 			msgs = append(msgs, fmt.Sprintf(
@@ -70,50 +70,4 @@ func ValidateRouteConflicts(proj *semantic.Project, cfg *config.Config) []string
 	}
 	sort.Strings(msgs)
 	return msgs
-}
-
-// patternsConflict reports whether two same-verb mux patterns overlap with
-// neither strictly more specific - the exact condition net/http rejects. It
-// models craftgo's single-segment wildcards (`{name}`): patterns of different
-// segment counts can never overlap, and at each shared position a literal beats
-// a wildcard. The pair conflicts when one is more specific at some segment AND
-// the other is more specific at another (a cross-over), or when they are the
-// same pattern (every segment ties) - i.e. neither side wins outright.
-func patternsConflict(a, b string) bool {
-	as, bs := splitRouteSegments(a), splitRouteSegments(b)
-	if len(as) != len(bs) {
-		return false
-	}
-	aMoreSpecific, bMoreSpecific := false, false
-	for i := range as {
-		aWild, bWild := isWildcardSeg(as[i]), isWildcardSeg(bs[i])
-		switch {
-		case !aWild && !bWild:
-			if as[i] != bs[i] {
-				return false // disjoint at this literal segment
-			}
-		case !aWild && bWild:
-			aMoreSpecific = true
-		case aWild && !bWild:
-			bMoreSpecific = true
-			// both wildcard → tie, no winner at this segment
-		}
-	}
-	// Overlapping (no disjoint segment). Conflict unless exactly one side is
-	// strictly more specific overall.
-	return aMoreSpecific == bMoreSpecific
-}
-
-func splitRouteSegments(pattern string) []string {
-	var out []string
-	for s := range strings.SplitSeq(pattern, "/") {
-		if s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func isWildcardSeg(seg string) bool {
-	return strings.HasPrefix(seg, "{")
 }

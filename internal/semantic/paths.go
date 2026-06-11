@@ -15,22 +15,24 @@ package semantic
 //   - [CodePathHealthConflict] - declared route equals a reserved
 //     health path.
 //
-// A slim copy of `methodFullPath` lives here rather than imported
-// from codegen: semantic stays codegen-free so the LSP can reuse it
-// without pulling template machinery.
+// [ResolveRoute] below is the single route-computation authority for the
+// whole pipeline: codegen's routes / OpenAPI / route-conflict emitters call
+// it too, so the analyzer and the generated server cannot disagree on a route.
 
 import (
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// defaultHealthPaths is the runtime's auto-registered set, mirrored
-// here so the analyser can flag collisions without depending on the
-// runtime package. Keep in sync with `pkg/server` defaults.
+// defaultHealthPaths is the runtime's auto-registered set, mirrored here so
+// the analyser can flag collisions without importing the runtime package.
+// TestHealthPathsMatchRuntime asserts these equal pkg/server's
+// DefaultLivenessPath / DefaultReadinessPath, so the mirror cannot drift.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
 // checkPathResolution runs the four route-level validations described
@@ -61,27 +63,27 @@ func (a *analyzer) checkPathResolution() {
 
 	for svcName, si := range a.pkg.Services {
 		for _, m := range si.Methods {
-			route := a.resolveMethodPath(si.Primary, m)
+			rt := a.resolveMethodPath(si.Primary, m)
 			verb := strings.ToUpper(m.Verb)
 
-			if healthSet[route] {
+			if healthSet[rt] {
 				a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathHealthConflict,
 					"method %s.%s resolves to %s, which is a reserved health path",
-					svcName, m.Name, route)
+					svcName, m.Name, rt)
 			}
 
 			if !a.opts.skipPathParamCheck {
-				checkMethodPathParams(svcName, m, route, a.pathParamEnv())
+				checkMethodPathParams(svcName, m, rt, a.pathParamEnv())
 			}
 
 			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide — they
 			// register against the same net/http pattern at boot. The
 			// displayed route keeps the literal form for the diagnostic.
-			key := routeKey{verb: verb, path: routeShape(route)}
+			key := routeKey{verb: verb, path: route.Shape(rt)}
 			if prev, dup := seen[key]; dup && prev.service != svcName {
 				diag := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathCollision,
 					"method %s.%s resolves to %s %s, which already binds %s.%s",
-					svcName, m.Name, verb, route, prev.service, prev.method)
+					svcName, m.Name, verb, rt, prev.service, prev.method)
 				diag.Related = related(prev.pos, "first declared here")
 				continue
 			}
@@ -113,30 +115,22 @@ func (r *refResolver) checkProjectPathCollision() {
 		service string
 		method  string
 	}
-	pkgNames := make([]string, 0, len(r.proj.Packages))
-	for name := range r.proj.Packages {
-		pkgNames = append(pkgNames, name)
-	}
-	sort.Strings(pkgNames)
+	pkgNames := slices.Sorted(maps.Keys(r.proj.Packages))
 	seen := map[routeKey]routeMeta{}
 	for _, pkgName := range pkgNames {
 		pkg := r.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
-		svcNames := make([]string, 0, len(pkg.Services))
-		for name := range pkg.Services {
-			svcNames = append(svcNames, name)
-		}
-		sort.Strings(svcNames)
+		svcNames := slices.Sorted(maps.Keys(pkg.Services))
 		for _, svcName := range svcNames {
 			si := pkg.Services[svcName]
 			if si == nil {
 				continue
 			}
 			for _, m := range si.Methods {
-				route := resolveRoute(r.basePath, si.Primary, m)
-				key := routeKey{verb: strings.ToUpper(m.Verb), path: routeShape(route)}
+				rt := route.Resolve(r.basePath, si.Primary, m)
+				key := routeKey{verb: strings.ToUpper(m.Verb), path: route.Shape(rt)}
 				prev, dup := seen[key]
 				if !dup {
 					seen[key] = routeMeta{pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name}
@@ -148,36 +142,11 @@ func (r *refResolver) checkProjectPathCollision() {
 				}
 				d := r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
 					"method %s.%s resolves to %s %s, which already binds %s.%s (package %s)",
-					svcName, m.Name, key.verb, route, prev.service, prev.method, prev.pkg)
+					svcName, m.Name, key.verb, rt, prev.service, prev.method, prev.pkg)
 				d.Related = related(prev.pos, "first declared here")
 			}
 		}
 	}
-}
-
-// routeShape strips parameter names from a resolved route string,
-// replacing every `{name}` segment with `{}`. Mirrors PathShape but
-// operates on the already-joined route (post-prefix, post-basePath)
-// that resolveMethodPath produces.
-func routeShape(route string) string {
-	var sb strings.Builder
-	sb.Grow(len(route))
-	i := 0
-	for i < len(route) {
-		if route[i] == '{' {
-			end := strings.IndexByte(route[i:], '}')
-			if end < 0 {
-				sb.WriteString(route[i:])
-				break
-			}
-			sb.WriteString("{}")
-			i += end + 1
-			continue
-		}
-		sb.WriteByte(route[i])
-		i++
-	}
-	return sb.String()
 }
 
 // checkBasePathFormat emits a warning when the configured basePath
@@ -210,61 +179,10 @@ func (a *analyzer) checkBasePathFormat() {
 		bp, bad)
 }
 
-// resolveMethodPath joins basePath + @prefix + methodPath using the same
-// rules as `internal/codegen.methodFullPath`. Empty segments are dropped;
-// consecutive slashes are collapsed; the result always starts with `/`. When
-// the method has no inline path the fallback is the kebab-cased method name
-// (matching codegen). @group is not part of the route - it only nests the
-// generated files on disk.
+// resolveMethodPath is the analyzer-bound shorthand for [ResolveRoute] with
+// the configured basePath applied.
 func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
-	return resolveRoute(a.opts.BasePath, svc, m)
-}
-
-// resolveRoute is the analyzer-independent core of [analyzer.resolveMethodPath]
-// so the project-level path-param pass can compute the same route without an
-// analyzer instance.
-func resolveRoute(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
-	parts := []string{}
-	if basePath != "" {
-		parts = append(parts, basePath)
-	}
-	if p := decoratorString(svc, "prefix"); p != "" {
-		parts = append(parts, p)
-	}
-	if m.Path != nil {
-		parts = append(parts, PathString(m.Path))
-	} else {
-		parts = append(parts, "/"+idents.KebabCase(m.Name))
-	}
-	joined := strings.Join(parts, "/")
-	for strings.Contains(joined, "//") {
-		joined = strings.ReplaceAll(joined, "//", "/")
-	}
-	if joined == "" || joined[0] != '/' {
-		joined = "/" + joined
-	}
-	if len(joined) > 1 {
-		joined = strings.TrimRight(joined, "/")
-	}
-	return joined
-}
-
-// decoratorString returns the first string-literal positional arg of
-// `@name(...)` on the service decl, or "" when absent. Used to read
-// `@prefix` and `@group` without depending on codegen helpers.
-func decoratorString(svc *ast.ServiceDecl, name string) string {
-	if svc == nil {
-		return ""
-	}
-	for _, d := range svc.Decorators {
-		if d.Name != name || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
-			return s.Value
-		}
-	}
-	return ""
+	return route.Resolve(a.opts.BasePath, svc, m)
 }
 
 // checkMethodPathParams validates that `{name}` segments in route
@@ -408,7 +326,7 @@ func (r *refResolver) checkProjectPathParams() {
 				continue
 			}
 			for _, m := range si.Methods {
-				checkMethodPathParams(svcName, m, resolveRoute(r.basePath, si.Primary, m), env)
+				checkMethodPathParams(svcName, m, route.Resolve(r.basePath, si.Primary, m), env)
 			}
 		}
 	}

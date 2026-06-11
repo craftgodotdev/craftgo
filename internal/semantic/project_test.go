@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
@@ -279,8 +280,8 @@ func TestLastSegment(t *testing.T) {
 		"a/b/c":      "c",
 	}
 	for in, want := range cases {
-		if got := lastSegment(in); got != want {
-			t.Errorf("lastSegment(%q) = %q, want %q", in, got, want)
+		if got := idents.LastSegment(in); got != want {
+			t.Errorf("idents.LastSegment(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

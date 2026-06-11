@@ -18,6 +18,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 func (r *refResolver) checkProjectBindings() {
@@ -57,14 +58,14 @@ func (r *refResolver) checkBindingsInBody(parent string, members []ast.TypeMembe
 func (r *refResolver) checkBindingsOnQualifiedField(parent string, f *ast.Field) {
 	for _, d := range f.Decorators {
 		switch d.Name {
-		case "path":
+		case wire.BindingPath:
 			if r.qualifiedIsPathBindable(f.Type) {
 				continue
 			}
 			r.diagBinding(d, "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 				parent, f.Name, describeTypeRef(f.Type))
-		case "query", "header", "cookie":
-			if d.Name == "cookie" && f.Type.Array {
+		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
+			if d.Name == wire.BindingCookie && f.Type.Array {
 				r.diagBinding(d, "field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name",
 					parent, f.Name)
 				continue
@@ -74,7 +75,7 @@ func (r *refResolver) checkBindingsOnQualifiedField(parent string, f *ast.Field)
 			}
 			r.diagBinding(d, "field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s",
 				parent, f.Name, d.Name, describeTypeRef(f.Type))
-		case "form":
+		case wire.BindingForm:
 			if r.qualifiedIsFormBindable(f.Type) {
 				continue
 			}

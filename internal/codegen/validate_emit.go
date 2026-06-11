@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // fieldWireName returns the name a client uses for f: the wire alias of a bound
@@ -16,10 +16,10 @@ import (
 // scalar synth field (no name, no decorators) maps to "", keeping the shared
 // scalar/enum Validate() message subject-less.
 func fieldWireName(f *ast.Field) string {
-	kind := semantic.BindingKind(f.Decorators)
+	kind := wire.BindingKind(f.Decorators)
 	switch kind {
-	case "path", "query", "header", "cookie", "form":
-		return semantic.WireName(f, kind)
+	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
+		return wire.WireName(f, kind)
 	default:
 		return f.Name
 	}

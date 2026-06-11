@@ -8,7 +8,9 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 const handlerSampleDSL = `package design
@@ -1377,16 +1379,14 @@ func TestPathHelpers(t *testing.T) {
 	if got := fileDirRel("main.go"); got != "" {
 		t.Errorf("got %q (expected empty)", got)
 	}
-	if !hasBodyVerb("post") || !hasBodyVerb("PUT") || !hasBodyVerb("PATCH") {
+	if !wire.IsBodyVerb("post") || !wire.IsBodyVerb("PUT") || !wire.IsBodyVerb("PATCH") {
 		t.Error("expected body verbs to be true")
 	}
-	if hasBodyVerb("GET") || hasBodyVerb("DELETE") {
+	if wire.IsBodyVerb("GET") || wire.IsBodyVerb("DELETE") {
 		t.Error("expected non-body verbs to be false")
 	}
-	if servicePrefix(nil) != "" {
-		t.Error("nil service should yield empty prefix")
-	}
-	// service with non-prefix decorator should yield "".
+	// A malformed @prefix (no args / non-string arg) contributes nothing to
+	// the route; the method path stands alone.
 	svc := &ast.ServiceDecl{
 		Decorators: []*ast.Decorator{
 			{Name: "tags", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
@@ -1394,8 +1394,12 @@ func TestPathHelpers(t *testing.T) {
 			{Name: "prefix", Args: []*ast.DecoratorArg{{Value: &ast.IntLit{Value: 1}}}}, // wrong type → ignored
 		},
 	}
-	if got := servicePrefix(svc); got != "" {
-		t.Errorf("got %q", got)
+	m := &ast.Method{Name: "Ping"}
+	if got := route.Resolve("", svc, m); got != "/ping" {
+		t.Errorf("malformed @prefix must be ignored; got %q", got)
+	}
+	if got := route.Resolve("", nil, m); got != "/ping" {
+		t.Errorf("nil service must yield bare method route; got %q", got)
 	}
 }
 

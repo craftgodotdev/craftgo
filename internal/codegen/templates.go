@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"go/format"
+	"sync"
 	"text/template"
 )
 
@@ -16,15 +17,26 @@ import (
 //go:embed templates/*.tmpl
 var builtinTemplates embed.FS
 
-// tmpl loads a single named template from [builtinTemplates]. Templates
-// are parsed lazily on first use so test failures are fail-fast and a
-// missing template panics with a clear name rather than at startup.
+// tmplCache memoizes parsed templates by name. The embedded sources are
+// immutable for the process lifetime and an executed *template.Template is
+// safe for concurrent use, so each template parses exactly once no matter how
+// many services / methods render through it.
+var tmplCache sync.Map // name → *template.Template
+
+// tmpl loads a single named template from [builtinTemplates], parsing it on
+// first use and serving the cached parse afterwards. Lazy parsing keeps a
+// missing/broken template failing at its first render with a clear name
+// rather than at process start.
 func tmpl(name string) *template.Template {
+	if t, ok := tmplCache.Load(name); ok {
+		return t.(*template.Template)
+	}
 	t, err := template.ParseFS(builtinTemplates, "templates/"+name)
 	if err != nil {
 		panic(fmt.Sprintf("codegen: parse %s: %v", name, err))
 	}
-	return t
+	actual, _ := tmplCache.LoadOrStore(name, t)
+	return actual.(*template.Template)
 }
 
 // renderGo executes tmpl with data, then runs `go/format.Source` over the

@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -309,9 +310,16 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	if len(entries) == 0 {
 		return nil
 	}
-	// Stable iteration order: by service name (services have unique
-	// names within a project after merging).
-	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+	// Stable iteration order: by (service name, group). Service names are
+	// project-unique after merging, but one service contributes one entry PER
+	// GROUP — without the group tie-break the equal-name entries land in map
+	// iteration order and the emitted file differs run to run.
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].name != entries[j].name {
+			return entries[i].name < entries[j].name
+		}
+		return entries[i].group < entries[j].group
+	})
 
 	dir := filepath.Join(projectRoot, cfg.Output.Routes)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -408,7 +416,7 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 			if groups[m.Name] != g {
 				continue
 			}
-			full := methodFullPath(cfg.OpenAPI.BasePath, svc.Primary, m)
+			full := route.Resolve(cfg.OpenAPI.BasePath, svc.Primary, m)
 			mws := middlewareNames(m, svc.Primary)
 			call := buildHandlerCall(m, transportAlias(g))
 			if strings.Contains(call, "time.") {

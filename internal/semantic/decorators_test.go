@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // ---------- BindingKind (shared with codegen) ----------
@@ -32,8 +33,8 @@ func TestBindingKind(t *testing.T) {
 		{[]string{"doc"}, ""},
 	}
 	for _, c := range cases {
-		if got := BindingKind(mk(c.decs...)); got != c.want {
-			t.Errorf("BindingKind(%v) = %q, want %q", c.decs, got, c.want)
+		if got := wire.BindingKind(mk(c.decs...)); got != c.want {
+			t.Errorf("wire.BindingKind(%v) = %q, want %q", c.decs, got, c.want)
 		}
 	}
 }
@@ -65,9 +66,9 @@ func TestRequestFieldBinding(t *testing.T) {
 		{field("payload"), true, "body", false}, // un-decorated on a body verb
 	}
 	for _, c := range cases {
-		kind, auto := RequestFieldBinding(c.f, paths, c.bodyVerb)
+		kind, auto := wire.RequestFieldBinding(c.f, paths, c.bodyVerb)
 		if kind != c.kind || auto != c.auto {
-			t.Errorf("RequestFieldBinding(%q, bodyVerb=%v) = (%q,%v), want (%q,%v)", c.f.Name, c.bodyVerb, kind, auto, c.kind, c.auto)
+			t.Errorf("wire.RequestFieldBinding(%q, bodyVerb=%v) = (%q,%v), want (%q,%v)", c.f.Name, c.bodyVerb, kind, auto, c.kind, c.auto)
 		}
 	}
 }
@@ -82,16 +83,16 @@ func TestWireName(t *testing.T) {
 		}
 		return &ast.Field{Name: field, Decorators: []*ast.Decorator{d}}
 	}
-	if got := WireName(mk("traceId", "header", "X-Trace-Id"), "header"); got != "X-Trace-Id" {
+	if got := wire.WireName(mk("traceId", "header", "X-Trace-Id"), "header"); got != "X-Trace-Id" {
 		t.Errorf("explicit arg should win: got %q, want X-Trace-Id", got)
 	}
-	if got := WireName(mk("page", "query", ""), "query"); got != "page" {
+	if got := wire.WireName(mk("page", "query", ""), "query"); got != "page" {
 		t.Errorf("no arg falls back to field name: got %q, want page", got)
 	}
-	if got := WireName(mk("traceId", "header", "X-Trace-Id"), "query"); got != "traceId" {
+	if got := wire.WireName(mk("traceId", "header", "X-Trace-Id"), "query"); got != "traceId" {
 		t.Errorf("a wrong-kind arg must not leak: got %q, want traceId", got)
 	}
-	if got := WireName(nil, "query"); got != "" {
+	if got := wire.WireName(nil, "query"); got != "" {
 		t.Errorf("nil field: got %q, want empty", got)
 	}
 }

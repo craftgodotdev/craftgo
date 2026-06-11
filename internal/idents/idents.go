@@ -222,3 +222,16 @@ func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Colli
 	}
 	return resolved, collisions
 }
+
+// LastSegment returns the trailing slash-delimited segment of a DSL import
+// path — the piece that becomes the package's referencing identifier
+// (`import "auth/types"` → alias `types`). Returns p unchanged when it has
+// no slash, and "" for an empty or slash-terminated path.
+func LastSegment(p string) string {
+	for i := len(p) - 1; i >= 0; i-- {
+		if p[i] == '/' {
+			return p[i+1:]
+		}
+	}
+	return p
+}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
 // parseFileMap parses src as a slice of named files and returns the AST
@@ -181,7 +182,7 @@ service S {
 `,
 	})
 	pkg, _ := Analyze(files)
-	got := PathString(pkg.Services["S"].Methods[0].Path)
+	got := route.PathString(pkg.Services["S"].Methods[0].Path)
 	if got != "/api/v1/users/{id}" {
 		t.Errorf("PathString = %q", got)
 	}

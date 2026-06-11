@@ -8,6 +8,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -78,7 +79,7 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		filename := kebabCase(m.Name) + ".go"
+		filename := idents.KebabCase(m.Name) + ".go"
 		fullPath := filepath.Join(dir, filename)
 		if _, err := os.Stat(fullPath); err == nil {
 			continue

@@ -228,6 +228,16 @@ func InitDefault() (*sdkmetric.MeterProvider, error) {
 	return provider, nil
 }
 
+// Exporter selector values for [Config.Exporter]. An empty or unknown value
+// falls back to [ExporterPrometheus] so a typo never silently disables
+// metrics.
+const (
+	ExporterPrometheus = "prometheus"
+	ExporterOTLPgRPC   = "otlp_grpc"
+	ExporterOTLPHTTP   = "otlp_http"
+	ExporterNone       = "none"
+)
+
 // Config is the YAML-shaped meter configuration the generated runtime
 // hands to [InitFromConfig]. Mirrors the `metrics:` block in
 // `config/config.yaml` so the call site reads
@@ -272,11 +282,11 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 		runtimeStats bool
 	)
 	switch c.Exporter {
-	case "otlp_grpc":
+	case ExporterOTLPgRPC:
 		opts = append(opts, WithOTLPgRPCReader(ctx, c.Endpoint))
-	case "otlp_http":
+	case ExporterOTLPHTTP:
 		opts = append(opts, WithOTLPHTTPReader(ctx, c.Endpoint))
-	case "none":
+	case ExporterNone:
 		// Install a manual reader so the meter exists but is silent: a
 		// ManualReader only collects on an explicit Collect() call, which
 		// nothing here makes, so nothing is ever pushed or served. Without

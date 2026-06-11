@@ -8,7 +8,9 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
@@ -16,7 +18,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
-			full := methodFullPath("", svc.Primary, m)
+			full := route.Resolve("", svc.Primary, m)
 			base := operationBaseName(svcName, m, counts)
 			addRequestBodySchema(doc, m, pkg, registry, base, names)
 			addPerOperationResponseSchema(doc, m, pkg, registry, base, names)
@@ -296,7 +298,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 	}
 	out := openapi3.Headers{}
 	for _, f := range headers {
-		name := bindingWireName(f, "header")
+		name := bindingWireName(f, wire.BindingHeader)
 		schema := schemaForTypeRef(f.Type, pkg, registry)
 		// Carry @example / @deprecated / field constraints onto the header
 		// schema, and @deprecated onto the Header Object itself — the same
@@ -316,7 +318,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 	if len(cookies) > 0 {
 		names := make([]string, 0, len(cookies))
 		for _, f := range cookies {
-			names = append(names, bindingWireName(f, "cookie"))
+			names = append(names, bindingWireName(f, wire.BindingCookie))
 		}
 		desc := "Sets cookies: " + strings.Join(names, ", ")
 		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{

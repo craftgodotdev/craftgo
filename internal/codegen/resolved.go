@@ -15,6 +15,7 @@ package codegen
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // Binding is where a field's value rides on the wire, derived from its
@@ -37,19 +38,19 @@ const (
 func (b Binding) String() string {
 	switch b {
 	case BindPath:
-		return "path"
+		return wire.BindingPath
 	case BindQuery:
-		return "query"
+		return wire.BindingQuery
 	case BindHeader:
-		return "header"
+		return wire.BindingHeader
 	case BindCookie:
-		return "cookie"
+		return wire.BindingCookie
 	case BindForm:
-		return "form"
+		return wire.BindingForm
 	case BindSensitive:
-		return "sensitive"
+		return wire.BindingSensitive
 	default:
-		return "body"
+		return wire.BindingBody
 	}
 }
 
@@ -108,22 +109,22 @@ func (rf ResolvedField) WireName() string {
 	}
 }
 
-// bindingFromKind maps a binding-kind string (from [semantic.BindingKind] /
-// [semantic.RequestFieldBinding]) to the codegen Binding enum. "body" and the
+// bindingFromKind maps a binding-kind string (from [wire.BindingKind] /
+// [wire.RequestFieldBinding]) to the codegen Binding enum. "body" and the
 // empty string both map to BindBody.
 func bindingFromKind(kind string) Binding {
 	switch kind {
-	case "path":
+	case wire.BindingPath:
 		return BindPath
-	case "query":
+	case wire.BindingQuery:
 		return BindQuery
-	case "header":
+	case wire.BindingHeader:
 		return BindHeader
-	case "cookie":
+	case wire.BindingCookie:
 		return BindCookie
-	case "form":
+	case wire.BindingForm:
 		return BindForm
-	case "sensitive":
+	case wire.BindingSensitive:
 		return BindSensitive
 	default:
 		return BindBody
@@ -193,7 +194,7 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 	// the same shared rule the analyser's binding checks read, so codegen and
 	// semantics can't disagree on where the field rides.
 	pathNames := semantic.MethodRoutePathVars(m, pkg.Services)
-	bodyVerb := hasBodyVerb(m.Verb)
+	bodyVerb := wire.IsBodyVerb(m.Verb)
 	fields := resolveFieldsWithPrefix(td, prefix, pkg, r)
 	for i := range fields {
 		rf := &fields[i]
@@ -203,10 +204,10 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 		if rf.Binding != BindBody || bindingFromDecorators(rf.Field.Decorators) != "" {
 			continue
 		}
-		// The auto-binding rule lives in semantic.RequestFieldBinding so the
+		// The auto-binding rule lives in wire.RequestFieldBinding so the
 		// analyser's binding checks and this resolver agree on where the field
 		// rides.
-		kind, auto := semantic.RequestFieldBinding(rf.Field, pathNames, bodyVerb)
+		kind, auto := wire.RequestFieldBinding(rf.Field, pathNames, bodyVerb)
 		rf.Binding = bindingFromKind(kind)
 		rf.AutoBound = auto
 		rf.OnWireBody = rf.Binding == BindBody

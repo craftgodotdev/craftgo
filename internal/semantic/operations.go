@@ -9,7 +9,8 @@ package semantic
 // editor surfaces what would otherwise be a codegen-only error.
 
 import (
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -65,11 +66,7 @@ func (a *analyzer) checkOperationIDUniqueness() {
 	}
 	owners := map[string][]owner{}
 
-	svcNames := make([]string, 0, len(a.pkg.Services))
-	for name := range a.pkg.Services {
-		svcNames = append(svcNames, name)
-	}
-	sort.Strings(svcNames)
+	svcNames := slices.Sorted(maps.Keys(a.pkg.Services))
 	for _, svcName := range svcNames {
 		for _, m := range a.pkg.Services[svcName].Methods {
 			id := OperationID(m, OperationBaseName(svcName, m, counts))
@@ -77,11 +74,7 @@ func (a *analyzer) checkOperationIDUniqueness() {
 		}
 	}
 
-	ids := make([]string, 0, len(owners))
-	for id := range owners {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(owners))
 	for _, id := range ids {
 		who := owners[id]
 		if len(who) < 2 {
@@ -132,21 +125,13 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 		pos lexer.Position
 	}
 	owners := map[string][]owner{}
-	pkgNames := make([]string, 0, len(r.proj.Packages))
-	for name := range r.proj.Packages {
-		pkgNames = append(pkgNames, name)
-	}
-	sort.Strings(pkgNames)
+	pkgNames := slices.Sorted(maps.Keys(r.proj.Packages))
 	for _, pkgName := range pkgNames {
 		pkg := r.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
-		svcNames := make([]string, 0, len(pkg.Services))
-		for name := range pkg.Services {
-			svcNames = append(svcNames, name)
-		}
-		sort.Strings(svcNames)
+		svcNames := slices.Sorted(maps.Keys(pkg.Services))
 		for _, svcName := range svcNames {
 			si := pkg.Services[svcName]
 			if si == nil {
@@ -158,11 +143,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 			}
 		}
 	}
-	ids := make([]string, 0, len(owners))
-	for id := range owners {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(owners))
 	for _, id := range ids {
 		who := owners[id]
 		if len(who) < 2 {

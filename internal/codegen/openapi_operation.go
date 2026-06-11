@@ -12,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
@@ -93,7 +94,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		// numeric @form, ...) are surfaced by the transport gen pass;
 		// silently drop them here so a single source of truth owns
 		// the diagnostic.
-		if fs, ff, _, err := collectFormBindings(m, pkg, "", nil); err == nil && len(ff) > 0 {
+		if fs, ff, err := collectFormBindings(m, pkg, "", nil); err == nil && len(ff) > 0 {
 			isMultipart = true
 			formStrings, formFiles = fs, ff
 		}
@@ -103,7 +104,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		// Body-bearing verbs $ref the per-method body schema. The
 		// per-kind schemas live in components.schemas so consumers have
 		// a single canonical reference for each binding kind.
-		if hasBodyVerb(m.Verb) {
+		if wire.IsBodyVerb(m.Verb) {
 			switch {
 			case isMultipart:
 				// The request type's own decorators carry any type-level
@@ -396,9 +397,9 @@ func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package) (headers,
 	// which writes the promoted field via WriteResponseHeaders.
 	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, nil, map[string]bool{}) {
 		switch bindingFromDecorators(f.Decorators) {
-		case "header":
+		case wire.BindingHeader:
 			headers = append(headers, f)
-		case "cookie":
+		case wire.BindingCookie:
 			cookies = append(cookies, f)
 		}
 	}
@@ -452,7 +453,7 @@ func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 		}
 		params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 			Name:     seg.Literal,
-			In:       "path",
+			In:       wire.BindingPath,
 			Required: true,
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
 				Type: &openapi3.Types{"string"},
@@ -597,10 +598,10 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 			}})
 		}
 	}
-	add("path", bins.path, true)
-	add("query", bins.query, false)
-	add("header", bins.header, false)
-	add("cookie", bins.cookie, false)
+	add(wire.BindingPath, bins.path, true)
+	add(wire.BindingQuery, bins.query, false)
+	add(wire.BindingHeader, bins.header, false)
+	add(wire.BindingCookie, bins.cookie, false)
 	return params
 }
 
@@ -609,7 +610,7 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 // `@body` and `@form` are returned verbatim so the caller can recognise
 // and skip them - body-shaped fields land in requestBody, not parameters.
 func bindingFromDecorators(ds []*ast.Decorator) string {
-	return semantic.BindingKind(ds)
+	return wire.BindingKind(ds)
 }
 
 // hasOwnDecorator reports whether ds carries a non-propagated decorator
@@ -652,14 +653,14 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	}
 }
 
-// fieldIsRequired reports whether f must be present in the request
-// payload. craftgo's "required by default" model: a field is required
-// unless its type carries the `?` suffix that explicitly marks it
-// optional, OR it carries a `@default` — the transport pre-fills the
-// default before decode (for both wire params and body fields), so an
-// absent value is valid. Advertising such a field `required: true`
-// contradicts the `default` the same schema carries and disagrees with
-// the server, which never rejects its absence.
+// fieldIsRequired is THE spec-required rule — craftgo's "required by
+// default" model: a field must be present unless its type carries the `?`
+// suffix, OR it carries `@default` (the transport pre-fills the default
+// before decode, so an absent value is valid; advertising it required would
+// contradict the very default the schema carries). ResolvedField.SpecRequired
+// is computed from this function; raw-field call sites (the parameter/body
+// emitters, which work from field bins) call it directly — one rule, one
+// function.
 func fieldIsRequired(f *ast.Field) bool {
 	if f == nil || f.Type == nil || f.Type.Optional {
 		return false

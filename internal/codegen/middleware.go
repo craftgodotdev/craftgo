@@ -9,6 +9,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -90,7 +91,7 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *s
 	tpl := tmpl("middleware.tmpl")
 	declByName := projectMiddlewareDecls(proj)
 	for _, name := range names {
-		filename := kebabCase(name) + "-middleware.go"
+		filename := idents.KebabCase(name) + "-middleware.go"
 		dest := filepath.Join(dir, filename)
 		if _, err := os.Stat(dest); err == nil {
 			continue
