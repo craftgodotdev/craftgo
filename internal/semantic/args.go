@@ -24,7 +24,7 @@ import (
 
 func (a *analyzer) checkDecoratorArgs(files []*ast.File) {
 	for _, f := range files {
-		a.checkArgsScope(LvlFile, f.Decorators)
+		a.checkArgsScope(f.Decorators)
 		for _, d := range f.Decls {
 			a.checkDeclArgs(d)
 		}
@@ -36,46 +36,45 @@ func (a *analyzer) checkDecoratorArgs(files []*ast.File) {
 func (a *analyzer) checkDeclArgs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		a.checkArgsScope(LvlType, dd.Decorators)
-		a.checkFieldArgs(LvlField, dd.Body)
+		a.checkArgsScope(dd.Decorators)
+		a.checkFieldArgs(dd.Body)
 	case *ast.EnumDecl:
-		a.checkArgsScope(LvlEnum, dd.Decorators)
+		a.checkArgsScope(dd.Decorators)
 		for _, v := range dd.EnumValues() {
-			a.checkArgsScope(LvlEnumValue, v.Decorators)
+			a.checkArgsScope(v.Decorators)
 		}
 	case *ast.ErrorDecl:
-		a.checkArgsScope(LvlError, dd.Decorators)
-		a.checkFieldArgs(LvlErrorField, dd.Body)
+		a.checkArgsScope(dd.Decorators)
+		a.checkFieldArgs(dd.Body)
 	case *ast.ScalarDecl:
-		a.checkArgsScope(LvlScalar, dd.Decorators)
+		a.checkArgsScope(dd.Decorators)
 	case *ast.MiddlewareDecl:
-		a.checkArgsScope(LvlMiddleware, dd.Decorators)
+		a.checkArgsScope(dd.Decorators)
 	case *ast.ServiceDecl:
 		if !dd.Extend {
-			a.checkArgsScope(LvlService, dd.Decorators)
+			a.checkArgsScope(dd.Decorators)
 		}
 		for _, m := range dd.Methods() {
-			a.checkArgsScope(LvlMethod, m.Decorators)
+			a.checkArgsScope(m.Decorators)
 		}
 	}
 }
 
 // checkFieldArgs walks fields in a type or error body. Mixin members
-// have no decorators and are skipped. site is [LvlField] for type
-// bodies and [LvlErrorField] for error bodies.
-func (a *analyzer) checkFieldArgs(site Level, members []ast.TypeMember) {
+// have no decorators and are skipped.
+func (a *analyzer) checkFieldArgs(members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
 		if !ok {
 			continue
 		}
-		a.checkArgsScope(site, f.Decorators)
+		a.checkArgsScope(f.Decorators)
 		a.checkFieldDefault(f)
 		a.checkFieldExample(f)
 	}
 }
 
-func (a *analyzer) checkArgsScope(site Level, decs []*ast.Decorator) {
+func (a *analyzer) checkArgsScope(decs []*ast.Decorator) {
 	for _, d := range decs {
 		if d == nil {
 			continue
@@ -84,14 +83,14 @@ func (a *analyzer) checkArgsScope(site Level, decs []*ast.Decorator) {
 		if !ok {
 			continue
 		}
-		a.checkDecoratorArg(site, d, spec)
+		a.checkDecoratorArg(d, spec)
 	}
 }
 
 // checkDecoratorArg validates one decorator against its [Spec]. Flag
 // decorators (`@positive`, `@uniqueItems`, ...) warn on empty parens;
 // everything else goes through the generic positional check.
-func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
+func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
 	// Flag decorators never take arguments — empty parens are
 	// stylistically wrong. Warn (not error); `craftgo fmt` strips
 	// them on save.
@@ -103,7 +102,7 @@ func (a *analyzer) checkDecoratorArg(site Level, d *ast.Decorator, spec Spec) {
 	a.checkExampleArg(d)
 	a.checkPatternArg(d)
 	a.checkGroupArg(d)
-	a.checkPositionalArgs(site, d, spec)
+	a.checkPositionalArgs(d, spec)
 }
 
 // checkPatternArg verifies the @pattern argument is a compilable RE2
@@ -237,7 +236,7 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 //
 // Stops on the first arity mismatch because subsequent kind errors
 // would just compound the user's confusion.
-func (a *analyzer) checkPositionalArgs(site Level, d *ast.Decorator, spec Spec) {
+func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 	// Named args are reserved for decorators with custom shape hooks
 	// (currently none). Reject them globally so users get a single
 	// clear error instead of a silently-ignored argument.
@@ -256,7 +255,7 @@ func (a *analyzer) checkPositionalArgs(site Level, d *ast.Decorator, spec Spec) 
 	if rule.AllowArrayShortcut && len(pos) == 1 {
 		if arr, ok := pos[0].Value.(*ast.ArrayLit); ok {
 			a.checkArrayShortcut(d, rule, arr)
-			a.checkEnumOnFirst(site, d, spec, pos)
+			a.checkEnumOnFirst(d, spec, pos)
 			return
 		}
 	}
@@ -292,7 +291,7 @@ func (a *analyzer) checkPositionalArgs(site Level, d *ast.Decorator, spec Spec) 
 		}
 	}
 
-	a.checkEnumOnFirst(site, d, spec, pos)
+	a.checkEnumOnFirst(d, spec, pos)
 }
 
 // checkArrayShortcut validates the elements of an array passed as the
@@ -331,8 +330,7 @@ func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.
 // instead of `@format(email)`) the canonical form is the bare ident.
 // Emit a soft `CodeArgPreferIdent` warning so the IDE surfaces the
 // non-canonical form; `craftgo fmt` rewrites on save.
-func (a *analyzer) checkEnumOnFirst(site Level, d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
-	_ = site
+func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
 	enum := spec.Args.Enum
 	if len(enum) == 0 || len(pos) == 0 {
 		return

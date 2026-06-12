@@ -98,7 +98,6 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 				// type-compat pass tolerates unknown spellings on
 				// purpose so future primitive additions don't break
 				// projects that pulled them in via dependencies.
-				_ = v
 			case *ast.ServiceDecl:
 				for _, m := range v.Methods() {
 					if m.Request != nil {

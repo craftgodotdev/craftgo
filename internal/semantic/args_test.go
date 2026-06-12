@@ -96,8 +96,8 @@ func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
 func TestArgsScopeNilEntry(t *testing.T) {
 	// Defensive: nil decorator entries silently skip.
 	a := &analyzer{pkg: &Package{}}
-	a.checkArgsScope(LvlField, []*ast.Decorator{nil})
-	a.checkArgsScope(LvlField, []*ast.Decorator{{Name: "doesNotExist"}})
+	a.checkArgsScope([]*ast.Decorator{nil})
+	a.checkArgsScope([]*ast.Decorator{{Name: "doesNotExist"}})
 	if len(a.diags) != 0 {
 		t.Errorf("nil entry / unknown name should not diag, got %v", a.diags)
 	}

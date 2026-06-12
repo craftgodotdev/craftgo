@@ -41,7 +41,7 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 			return sizeCompletions(prev, mid)
 		}
 	}
-	return decoratorArgCompletions(view, pos, name)
+	return decoratorArgCompletions(name)
 }
 
 // httpStatusCompletions surfaces the canonical HTTP status code set
@@ -138,21 +138,15 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 	return "", false
 }
 
-// defaultEnumCompletions returns the enum's value names when the
-// cursor sits inside `@default(...)` on a field whose declared type
-// (or array-element type) is an enum reachable from the current
-// package. Lookup spans every sibling file in the project so
-// multi-file packages where the enum lives in a separate
-// `*.craftgo` file still surface the values. Returns nil when the
-// field type isn't an enum so the caller falls through.
-
-func decoratorArgCompletions(view snapshotView, pos protocol.Position, name string) []protocol.CompletionItem {
+// decoratorArgCompletions returns the registry-declared enum values for
+// @name's first argument (e.g. @format's format set) as completion items.
+// Returns nil when the decorator declares no argument enum so the caller
+// falls through to the generic completions.
+func decoratorArgCompletions(name string) []protocol.CompletionItem {
 	spec, ok := semantic.Registry[name]
 	if !ok {
 		return nil
 	}
-	_ = view
-	_ = pos
 	values := spec.Args.Enum
 	if len(values) == 0 {
 		return nil

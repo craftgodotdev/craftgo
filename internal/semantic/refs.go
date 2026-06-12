@@ -62,7 +62,8 @@ func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
 func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		_ = dd
+		// Cross-field groups on types run via checkLocalDecoratorRefs —
+		// skipped here to avoid double-emission.
 	case *ast.ErrorDecl:
 		// Errors don't currently carry @requiresOneOf or
 		// @mutuallyExclusive (the placement matrix gates this); the

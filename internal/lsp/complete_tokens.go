@@ -104,11 +104,6 @@ func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 	return nil
 }
 
-// decoratorArgCompletions returns enum-value completions for the
-// decorator at the cursor when the spec restricts them. Returns nil
-// to signal "no enum applies - let the next branch handle this
-// position".
-
 func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx < 0 {

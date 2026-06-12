@@ -250,7 +250,6 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // (`shared.ID @path`) also flows through the resolver.
 func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *ProjectResolver) (transportData, error) {
 	crossPkg := r.crossPkgMap()
-	scalars := r.scalars()
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	// NeedsTypes triggers the `types` import in the template. The
@@ -333,10 +332,6 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		if err != nil {
 			return transportData{}, err
 		}
-		// collectBindings reads crossPkg/scalars off the resolver
-		// itself, so the locals are unused here.
-		_ = crossPkg
-		_ = scalars
 		// JSON body decode is only needed when at least one field is
 		// body-bound (default for body verbs unless explicitly tagged).
 		d.BodyDecode = wire.IsBodyVerb(m.Verb) && hasUnboundField(m, pkg, r)
