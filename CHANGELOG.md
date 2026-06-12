@@ -70,6 +70,16 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **Every generated route is smoke-tested over real HTTP.** The e2e matrix
+  gains a spec-driven probe (`TestEveryRouteRegisteredAndHandled`): it boots
+  the full umbrella `RegisterAll` server through the production handler chain
+  and walks every operation in the committed OpenAPI document — 155 operations
+  across all 32 route hubs — asserting each one is mounted and its
+  parse→validate chain answers (an app-level 404 counts as alive; only the
+  mux's own "404 page not found" fails). Previously only 9 of 29 services were
+  ever exercised over HTTP, the exact blind spot that let boot-time route
+  panics ship.
+
 - **`craftgo gen` output is fully deterministic.** The umbrella `routes.go`
   sorted its (service, group) registrations by service name only, so a service
   with several `@group`s registered them in map-iteration order — different on

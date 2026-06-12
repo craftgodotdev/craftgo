@@ -2,7 +2,10 @@ module github.com/craftgodotdev/craftgo/tests/e2e/matrix
 
 go 1.24.2
 
-require github.com/craftgodotdev/craftgo v0.0.0
+require (
+	github.com/craftgodotdev/craftgo v0.0.0
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	go.opentelemetry.io/otel v1.38.0 // indirect
