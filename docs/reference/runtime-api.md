@@ -142,6 +142,6 @@ Or build a `CORSOptions` value directly for fine control over methods, headers, 
 
 ## Related packages
 
-- `pkg/log` — the structured `Logger` interface and default slog-backed implementation.
+- `pkg/log` — the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
 - `pkg/metrics` — Prometheus-style counters/histograms the access log can feed.
 - `pkg/otel` — OpenTelemetry tracing helpers. Generated `main.go` wires these when enabled.

@@ -5,6 +5,7 @@ package log
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -65,19 +66,63 @@ func Err(err error) Field               { return Field{Key: "error", Value: err}
 func Any(k string, v any) Field         { return Field{Key: k, Value: v} }
 func Group(k string, fs ...Field) Field { return Field{Key: k, Value: fs} }
 
+// level is the process-wide minimum level shared by every Logger built
+// through [New] and [NewConsole]. Those loggers wrap this one
+// zap.AtomicLevel rather than a copy each, so [SetLevel] retunes the
+// server logger and the generated logic layer together from a single
+// call. Loggers brought in via [NewZap] carry their own level and are
+// unaffected.
+var level = zap.NewAtomicLevelAt(toZapLevel(LevelInfo))
+
+// SetLevel retunes the process-wide level for every Logger created by
+// [New] and [NewConsole], including the instance mirrored into [Default]
+// and the one held by the server. The swap is atomic and takes effect on
+// the next log call without replacing any logger. Loggers wrapped via
+// [NewZap] manage their own level and ignore this.
+func SetLevel(l Level) { level.SetLevel(toZapLevel(l)) }
+
+// GetLevel reports the current process-wide level.
+func GetLevel() Level { return fromZapLevel(level.Level()) }
+
+// ParseLevel maps a config string ("debug" / "info" / "warn" / "error",
+// case- and space-insensitive) onto a Level. The bool reports whether the
+// string was recognised so callers can keep their current level on a
+// blank or misspelled value instead of silently snapping to one.
+func ParseLevel(s string) (Level, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return LevelDebug, true
+	case "info":
+		return LevelInfo, true
+	case "warn", "warning":
+		return LevelWarn, true
+	case "error":
+		return LevelError, true
+	default:
+		return LevelInfo, false
+	}
+}
+
 // New returns the default Logger: a production-configured zap logger
-// writing JSON to stderr.
+// writing JSON to stderr. Its threshold tracks the process-wide level
+// (info by default); call [SetLevel] to retune it.
 func New() Logger {
-	z, _ := zap.NewProduction(zap.AddCallerSkip(1))
+	cfg := zap.NewProductionConfig()
+	cfg.Level = level
+	z, _ := cfg.Build(zap.AddCallerSkip(1))
 	return NewZap(z)
 }
 
 // NewConsole returns a development-configured Logger that emits
 // human-readable, colour-tagged lines to stderr. Same Logger contract
 // as [New] - drop into `srv.SetLogger(log.NewConsole())` for local
-// `go run` sessions and switch back to [New] for production.
+// `go run` sessions and switch back to [New] for production. It shares
+// the process-wide level with [New]; call `log.SetLevel(log.LevelDebug)`
+// for verbose local runs.
 func NewConsole() Logger {
-	z, _ := zap.NewDevelopment(zap.AddCallerSkip(1))
+	cfg := zap.NewDevelopmentConfig()
+	cfg.Level = level
+	z, _ := cfg.Build(zap.AddCallerSkip(1))
 	return NewZap(z)
 }
 
@@ -256,5 +301,21 @@ func toZapLevel(l Level) zapcore.Level {
 		return zapcore.WarnLevel
 	default:
 		return zapcore.ErrorLevel
+	}
+}
+
+// fromZapLevel maps zap's level back onto the public Level enum, snapping
+// anything at or below debug onto LevelDebug and anything at or above
+// error onto LevelError.
+func fromZapLevel(l zapcore.Level) Level {
+	switch {
+	case l <= zapcore.DebugLevel:
+		return LevelDebug
+	case l == zapcore.InfoLevel:
+		return LevelInfo
+	case l == zapcore.WarnLevel:
+		return LevelWarn
+	default:
+		return LevelError
 	}
 }

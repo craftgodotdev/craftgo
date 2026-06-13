@@ -145,6 +145,68 @@ func TestErrFieldNamedError(t *testing.T) {
 	}
 }
 
+// TestSetLevelGatesSharedLoggers pins the global-level contract: a logger
+// whose core reads the package-level atomic drops entries below the level
+// set by SetLevel and keeps the rest, with no logger swap in between. This
+// is the same atomic that New / NewConsole - and therefore the server and
+// generated logic - share, so one SetLevel call retunes them together.
+func TestSetLevelGatesSharedLoggers(t *testing.T) {
+	t.Cleanup(func() { SetLevel(LevelInfo) })
+	core, logs := observer.New(level)
+	l := NewZap(zap.New(core))
+
+	SetLevel(LevelWarn)
+	l.Debug("dropped-debug")
+	l.Info("dropped-info")
+	l.Warn("kept-warn")
+	l.Error("kept-error")
+	if logs.Len() != 2 {
+		t.Fatalf("want 2 entries at warn, got %d", logs.Len())
+	}
+
+	SetLevel(LevelDebug)
+	l.Debug("now-kept")
+	if logs.Len() != 3 {
+		t.Fatalf("want 3 entries after lowering to debug, got %d", logs.Len())
+	}
+}
+
+// TestGetLevelRoundTrip confirms SetLevel/GetLevel agree across the enum,
+// including the clamp that snaps sub-debug and super-error inputs.
+func TestGetLevelRoundTrip(t *testing.T) {
+	t.Cleanup(func() { SetLevel(LevelInfo) })
+	for _, want := range []Level{LevelDebug, LevelInfo, LevelWarn, LevelError} {
+		SetLevel(want)
+		if got := GetLevel(); got != want {
+			t.Errorf("SetLevel(%d): GetLevel returned %d", want, got)
+		}
+	}
+}
+
+// TestParseLevel pins the config-string mapping main.go relies on,
+// including the case/space insensitivity and the false flag on unknown
+// input that lets callers keep their default.
+func TestParseLevel(t *testing.T) {
+	ok := map[string]Level{
+		"debug":   LevelDebug,
+		"INFO":    LevelInfo,
+		" warn ":  LevelWarn,
+		"warning": LevelWarn,
+		"Error":   LevelError,
+	}
+	for in, want := range ok {
+		got, recognised := ParseLevel(in)
+		if !recognised || got != want {
+			t.Errorf("ParseLevel(%q) = (%d, %v), want (%d, true)", in, got, recognised, want)
+		}
+	}
+	for _, in := range []string{"", "verbose", "trace"} {
+		if _, recognised := ParseLevel(in); recognised {
+			t.Errorf("ParseLevel(%q) should be unrecognised", in)
+		}
+	}
+}
+
 func TestToZapLevelMapping(t *testing.T) {
 	if toZapLevel(LevelDebug-1).String() != "debug" {
 		t.Error("below-debug should map to debug")

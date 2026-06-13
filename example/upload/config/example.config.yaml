@@ -29,6 +29,12 @@ server:
     minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
     level: 0                  # gzip level 1..9; 0 → DefaultCompression
 
+# Process-wide logger. main.go feeds level to log.SetLevel, which retunes
+# the server and the generated logic layer together. Format (JSON vs
+# console) is chosen in main.go, not here.
+logging:
+  level: info                 # debug | info | warn | error; unknown → info
+
 # Distributed tracing via OpenTelemetry.
 otel:
   enabled: true               # false → middleware no-op, no spans, no traceparent header

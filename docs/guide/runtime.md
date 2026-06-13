@@ -183,6 +183,17 @@ func (l *GetUserLogic) GetUser(req *pb.GetUserReq) (*pb.User, error) {
 
 `trace_id`, `span_id`, and `request_id` flow into every log line automatically when OTel is enabled.
 
+### Log level
+
+The level is process-wide, not per-logger. `srv.SetLogger` mirrors one logger into both the server and `log.Default()`, and `New`/`NewConsole` build that logger over a shared `zap.AtomicLevel`, so a single call retunes the server and the generated logic layer together:
+
+```go
+log.SetLevel(log.LevelDebug)   // LevelDebug / LevelInfo / LevelWarn / LevelError
+current := log.GetLevel()
+```
+
+The default is `LevelInfo`. The swap is atomic and takes effect on the next log call — no logger replacement needed, so it is safe to wire to a `/debug/loglevel` endpoint or a config reload. Loggers you build yourself and pass to `log.NewZap` keep their own level and ignore `SetLevel`.
+
 ## Tracing and metrics
 
 OTel HTTP middleware is a one-liner:

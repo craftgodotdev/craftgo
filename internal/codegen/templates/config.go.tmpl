@@ -40,10 +40,23 @@ import (
 // in main.go can pass `cfg.OTel` / `cfg.Metrics` straight into the
 // dispatch helpers without re-mapping fields.
 type Config struct {
-	Server  ServerConfig    `yaml:"server"`
+	Server  ServerConfig     `yaml:"server"`
+	Logging LogConfig        `yaml:"logging"`
 	OTel    craftotel.Config `yaml:"otel"`
 	Metrics metrics.Config   `yaml:"metrics"`
 	Docs    DocsConfig       `yaml:"docs"`
+}
+
+// LogConfig controls the process-wide logger. Only the minimum level is
+// modelled here; format (JSON vs console) and output destination are
+// wired in main.go, where you can swap log.New / log.NewConsole or
+// install your own logger via srv.SetLogger.
+type LogConfig struct {
+	// Level is the minimum level emitted: "debug", "info" (default),
+	// "warn", or "error". main.go feeds it to log.SetLevel, which retunes
+	// the server and the generated logic layer together. An unrecognised
+	// value leaves the info default in place.
+	Level string `yaml:"level"`
 }
 
 // DocsConfig controls the in-process API-reference docs page. When enabled,
@@ -167,6 +180,10 @@ func Load(cfgPath string) (*Config, error) {
 func (c *Config) applyDefaults() {
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":8080"
+	}
+
+	if c.Logging.Level == "" {
+		c.Logging.Level = "info"
 	}
 
 	if c.OTel.Exporter == "" {

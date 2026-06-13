@@ -5,6 +5,30 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.4.1] - 2026-06-13
+
+### Added
+
+- **Process-wide log level via `config.logging.level`.** Generated `config.yaml`
+  now carries a `logging.level` key (`debug` / `info` / `warn` / `error`;
+  default `info`) and the scaffolded `main.go` feeds it to the new
+  `log.SetLevel` at boot. The server logger and the generated logic layer share
+  one `zap.AtomicLevel` behind `log.New` / `log.NewConsole`, so a single call
+  retunes both — no per-logger wiring, and the swap is atomic so it can back a
+  `/debug/loglevel` endpoint or a config reload. `log.SetLevel`, `log.GetLevel`,
+  and `log.ParseLevel` (config-string → `Level`, reporting unknown values rather
+  than snapping) are exported for that. Loggers brought in via `log.NewZap` keep
+  their own level. An unrecognised level string leaves the `info` default in
+  place.
+
+### Changed
+
+- **`log.NewConsole` follows the shared process-wide level instead of
+  hard-coding debug.** Both `log.New` and `log.NewConsole` now build over the
+  same package-level `zap.AtomicLevel` (default `info`); `NewConsole` still
+  differs only in format (human-readable, colour-tagged). Call
+  `log.SetLevel(log.LevelDebug)` for verbose local runs.
+
 ## [1.4.0] - 2026-06-12
 
 ### Security

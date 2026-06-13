@@ -42,6 +42,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// config.logging.level retunes the shared logger for both the server
+	// and the generated logic layer. An unrecognised value keeps the
+	// info default.
+	if lvl, ok := log.ParseLevel(cfg.Logging.Level); ok {
+		log.SetLevel(lvl)
+	}
+
 	ctx := context.Background()
 
 	tracerProvider, err := craftotel.InitFromConfig(ctx, cfg.OTel)
