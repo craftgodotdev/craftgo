@@ -214,7 +214,7 @@ const ErrCodeRg7Secret = "RG7SECRET"
 type Rg7SecretBody struct {
 	Secret string  `json:"-"`
 	Reason *string `json:"reason,omitempty"`
-	Code   string  `json:"-"`
+	Code   string  `json:"-" header:"X-Error-Code"`
 	Note   string  `json:"note"`
 }
 

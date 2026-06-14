@@ -3,7 +3,7 @@
 package stream
 
 type HealthReq struct {
-	Verbose bool `json:"-"`
+	Verbose bool `json:"-" query:"verbose"`
 }
 
 type HealthResp struct {

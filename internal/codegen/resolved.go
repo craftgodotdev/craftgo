@@ -66,7 +66,6 @@ type ResolvedField struct {
 	DSLName string // wire/json base name (the source identifier)
 	GoName  string // exported Go field identifier
 	GoType  string // final Go type, including any *T nullable wrap
-	JSONTag string // struct json tag, including ,omitempty / "-"
 
 	Binding    Binding // wire placement (after request auto-binding, if any)
 	OnWireBody bool    // appears as a property in the JSON body schema/struct
@@ -254,7 +253,6 @@ func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) Resol
 		DSLName:       f.Name,
 		GoName:        GoFieldName(f.Name),
 		GoType:        goFieldType(f, pkg, r),
-		JSONTag:       jsonTag(f),
 		Binding:       explicitBinding(f),
 		OnWireBody:    !isNonBodyBound(f) && !hasSensitiveDecorator(f.Decorators),
 		IsPointer:     goFieldIsPointer(f, pkg, r),

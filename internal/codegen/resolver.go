@@ -160,17 +160,6 @@ func (r *ProjectResolver) LookupMiddleware(name string) *ast.MiddlewareDecl {
 	return r.Middlewares[name]
 }
 
-// scalars returns the resolver's underlying [ScalarTable] for
-// emitters that still take the table directly (scalar-inheritance
-// walker in validate_registry.go). nil receiver yields nil, which
-// the scalar walker already treats as "no inheritance".
-func (r *ProjectResolver) scalars() ScalarTable {
-	if r == nil {
-		return nil
-	}
-	return r.Scalars
-}
-
 // crossPkgMap returns the underlying [CrossPkg] alias→import map for
 // emitters that still consume the bare map (transport's
 // resolveTypeRef, collectRequestFieldImports, …). nil receiver

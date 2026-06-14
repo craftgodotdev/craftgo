@@ -17,17 +17,17 @@ type CreateTodoReq struct {
 }
 
 type GetTodoReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 type ListTodosReq struct {
-	Cursor *string     `json:"-"`
-	Limit  int         `json:"-"`
-	Status *TodoStatus `json:"-"`
+	Cursor *string     `json:"-" query:"cursor"`
+	Limit  int         `json:"-" query:"limit"`
+	Status *TodoStatus `json:"-" query:"status"`
 	// tag is a scalar (Tag) filter bound from the query string. The
 	// scalar's inherited @length / @pattern run during req.Validate(),
 	// so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
-	Tag *Tag `json:"-"`
+	Tag *Tag `json:"-" query:"tag"`
 }
 
 type OkResp struct {
@@ -50,14 +50,14 @@ type TodoList struct {
 	// total rides the X-Total-Count response header instead of the JSON
 	// body — a non-string @header value the generated handler formats
 	// with strconv.Itoa.
-	Total int `json:"-"`
+	Total int `json:"-" header:"X-Total-Count"`
 	// tookMs is a scalar-typed (Millis = int) header: it resolves to its
 	// underlying primitive and formats the same as a plain int.
-	TookMs Millis `json:"-"`
+	TookMs Millis `json:"-" header:"X-Response-Time"`
 }
 
 type UpdateTodoReq struct {
-	ID       string        `json:"-"`
+	ID       string        `json:"-" path:"id"`
 	Title    *string       `json:"title,omitempty"`
 	Notes    *string       `json:"notes,omitempty"`
 	Status   *TodoStatus   `json:"status,omitempty"`

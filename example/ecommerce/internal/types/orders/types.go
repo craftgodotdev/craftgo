@@ -28,18 +28,18 @@ type DefaultsShowcaseReq struct {
 }
 
 type FilterOrdersReq struct {
-	Status     OrderStatus   `json:"-"`
-	Method     PaymentMethod `json:"-"`
-	Limit      int           `json:"-"`
-	MaxPrice   int           `json:"-"`
-	IdemKey    *string       `json:"-"`
-	RetryAfter int           `json:"-"`
-	LastSeen   *string       `json:"-"`
-	Tier       int           `json:"-"`
+	Status     OrderStatus   `json:"-" query:"status"`
+	Method     PaymentMethod `json:"-" query:"method"`
+	Limit      int           `json:"-" query:"limit"`
+	MaxPrice   int           `json:"-" query:"maxPrice"`
+	IdemKey    *string       `json:"-" header:"idemKey"`
+	RetryAfter int           `json:"-" header:"retryAfter"`
+	LastSeen   *string       `json:"-" cookie:"lastSeen"`
+	Tier       int           `json:"-" cookie:"tier"`
 }
 
 type GetOrderReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 type LineItem struct {
@@ -54,7 +54,7 @@ type LineItem struct {
 type ListOrdersReq struct {
 	Cursor *string      `json:"cursor,omitempty"`
 	Limit  int          `json:"limit"`
-	Status *OrderStatus `json:"-"`
+	Status *OrderStatus `json:"-" query:"status"`
 }
 
 type Order struct {

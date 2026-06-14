@@ -67,7 +67,7 @@ type XGeneric struct {
 }
 
 type XGetReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 type XLocalItem struct {
@@ -87,11 +87,11 @@ type XNestedReq struct {
 //   - `req.Path = xshared.XEmail(r.PathValue("path"))`
 //   - `req.Q = xshared.XEmail(r.URL.Query().Get("q"))`
 type XScalarBindings struct {
-	Path xshared.XEmail  `json:"-"`
-	Q    xshared.XEmail  `json:"-"`
-	Hdr  xshared.XEmail  `json:"-"`
-	Ck   xshared.XEmail  `json:"-"`
-	Num  xshared.XNodeID `json:"-"`
+	Path xshared.XEmail  `json:"-" path:"path"`
+	Q    xshared.XEmail  `json:"-" query:"q"`
+	Hdr  xshared.XEmail  `json:"-" header:"hdr"`
+	Ck   xshared.XEmail  `json:"-" cookie:"ck"`
+	Num  xshared.XNodeID `json:"-" query:"num"`
 }
 
 // XScalarFields exercises cross-pkg scalar refs in every shape. Each
@@ -110,10 +110,10 @@ type XScalarFields struct {
 // .Get("q"))`) so the assignment type-checks against the
 // `*xshared.XEmail` field.
 type XSearchReq struct {
-	Q   xshared.XEmail  `json:"-"`
-	Hdr xshared.XEmail  `json:"-"`
-	Ck  xshared.XEmail  `json:"-"`
-	Num xshared.XNodeID `json:"-"`
+	Q   xshared.XEmail  `json:"-" query:"q"`
+	Hdr xshared.XEmail  `json:"-" header:"hdr"`
+	Ck  xshared.XEmail  `json:"-" cookie:"ck"`
+	Num xshared.XNodeID `json:"-" query:"num"`
 }
 
 // XTypeFields exercises cross-pkg type refs in every shape. Each field

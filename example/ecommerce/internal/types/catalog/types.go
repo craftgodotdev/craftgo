@@ -31,14 +31,14 @@ type CreateProductReq struct {
 }
 
 type GetProductReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 type ListProductsReq struct {
 	Cursor   *string `json:"cursor,omitempty"`
 	Limit    int     `json:"limit"`
-	Category *string `json:"-"`
-	Tag      *string `json:"-"`
+	Category *string `json:"-" query:"category"`
+	Tag      *string `json:"-" query:"tag"`
 }
 
 // Deprecated: rename to Item in v2 — kept for backward compat

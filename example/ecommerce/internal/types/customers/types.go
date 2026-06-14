@@ -58,10 +58,10 @@ type Geocode struct {
 }
 
 type GetCustomerReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 type UploadAvatarReq struct {
-	ID    string                `json:"-"`
+	ID    string                `json:"-" path:"id"`
 	Image *multipart.FileHeader `json:"image"`
 }

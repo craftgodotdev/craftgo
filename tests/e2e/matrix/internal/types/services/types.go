@@ -42,7 +42,7 @@ type AcctGetUserReq struct {
 }
 
 type AcctUpdateUserReq struct {
-	ID   string            `json:"-"`
+	ID   string            `json:"-" path:"id"`
 	Name string            `json:"name"`
 	Age  *int              `json:"age,omitempty"`
 	Tags []string          `json:"tags"`
@@ -98,7 +98,7 @@ type EntitlementsAuditTrail struct {
 // `id` field is a local `string @path` that replays shared.ID's length
 // cap inline via @length(1, 64).
 type GetUserReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 // HealthResp is a minimal envelope for the liveness probe - a single
@@ -144,11 +144,11 @@ type ListUsersResp struct {
 // the JSON body via the runtime header/cookie writers.
 type PaginatedResp struct {
 	Items    []shared.ID `json:"items"`
-	Count    int         `json:"-"`
-	TraceID  shared.ID   `json:"-"`
-	NextPage *string     `json:"-"`
-	HasMore  bool        `json:"-"`
-	Session  string      `json:"-"`
+	Count    int         `json:"-" header:"X-Total-Count"`
+	TraceID  shared.ID   `json:"-" header:"X-Trace-Id"`
+	NextPage *string     `json:"-" header:"X-Next-Page"`
+	HasMore  bool        `json:"-" cookie:"has_more"`
+	Session  string      `json:"-" cookie:"session_id"`
 }
 
 // Project carries the cross-package `shared.ID` scalar (Go field

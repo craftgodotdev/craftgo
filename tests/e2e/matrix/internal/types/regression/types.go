@@ -67,9 +67,9 @@ type Rg2Only struct {
 // Required (non-optional, no-@default) wire parameters; an absent key
 // returns 400, a present-but-empty value passes.
 type Rg2Required struct {
-	Q     string `json:"-"`
-	Limit int    `json:"-"`
-	Tok   string `json:"-"`
+	Q     string `json:"-" query:"q"`
+	Limit int    `json:"-" query:"limit"`
+	Tok   string `json:"-" header:"X-Tok"`
 }
 
 // A request mixing wire-bound mixin fields (traceId, sortBy), a body-only
@@ -77,8 +77,8 @@ type Rg2Required struct {
 // and surface as OpenAPI parameters; the body fields, including the
 // mixin's, ride the request body schema.
 type Rg2WireMix struct {
-	TraceID string  `json:"-"`
-	SortBy  *string `json:"-"`
+	TraceID string  `json:"-" header:"X-Trace-Id"`
+	SortBy  *string `json:"-" query:"sortBy"`
 }
 
 // A response mixing a mixin and a @header field keeps the mixin's body
@@ -117,7 +117,7 @@ type Rg3Pair struct {
 
 type Rg3Resp struct {
 	Rg3Audit
-	Etag string `json:"-"`
+	Etag string `json:"-" header:"ETag"`
 	Name string `json:"name"`
 }
 
@@ -145,8 +145,8 @@ type Rg4Collide struct {
 // assign `req.SortBy` and `req.SortBy_2` from their distinct query keys
 // rather than clobbering one.
 type Rg4CollideQuery struct {
-	SortBy   *string `json:"-"`
-	SortBy_2 *string `json:"-"`
+	SortBy   *string `json:"-" query:"sortBy"`
+	SortBy_2 *string `json:"-" query:"sort_by"`
 }
 
 type Rg4Host struct {
@@ -170,7 +170,7 @@ type Rg4Page[T any] struct {
 // excluded from the OpenAPI params): the binder never reads it from the
 // query string, so only `visible` binds.
 type Rg4Secret struct {
-	Visible string `json:"-"`
+	Visible string `json:"-" query:"visible"`
 	Secret  string `json:"-"`
 }
 
@@ -187,7 +187,7 @@ type Rg5Composite struct {
 // rather than required — the transport pre-fills both before decode.
 type Rg5Defaults struct {
 	Methods []Rg5Method `json:"methods,omitempty"`
-	SortBy  *string     `json:"-"`
+	SortBy  *string     `json:"-" query:"sortBy"`
 }
 
 type Rg5Empty struct {
@@ -196,7 +196,7 @@ type Rg5Empty struct {
 // A `@header` field promoted through a mixin into an error writes a
 // response header and is documented as one.
 type Rg5HdrMeta struct {
-	Rid  string `json:"-"`
+	Rid  string `json:"-" header:"X-Request-Id"`
 	Note string `json:"note"`
 }
 
@@ -209,7 +209,7 @@ type Rg5Item struct {
 // A wire-bound field (`@query`) stays out of the JSON body schema even
 // though it shares a type with body fields — it rides the query string.
 type Rg5Mixed struct {
-	Filter  string `json:"-"`
+	Filter  string `json:"-" query:"filter"`
 	Payload string `json:"payload"`
 }
 
@@ -233,7 +233,7 @@ type Rg5Page[T any] struct {
 // A required cookie 400s when absent, matching the `required: true` the
 // spec advertises.
 type Rg5Session struct {
-	Sid string `json:"-"`
+	Sid string `json:"-" cookie:"sid"`
 }
 
 type Rg5Tag struct {
@@ -243,7 +243,7 @@ type Rg5Tag struct {
 // A required array @query parameter returns 400 when its key is absent,
 // matching the required:true the spec advertises (an empty `?tags=` passes).
 type Rg6ArrReq struct {
-	Tags []string `json:"-"`
+	Tags []string `json:"-" query:"tags"`
 }
 
 type Rg6Ok struct {
@@ -253,7 +253,7 @@ type Rg6Ok struct {
 // A @header field promoted into a response through a mixin is written on
 // the wire by the handler, matching the response header the spec documents.
 type Rg6RateMeta struct {
-	Limit int `json:"-"`
+	Limit int `json:"-" header:"X-Rate-Limit"`
 }
 
 type Rg6Resp struct {
@@ -281,7 +281,7 @@ type Rg7Box[T any] struct {
 type Rg7Headed struct {
 	//
 	// Deprecated: use If-Match
-	Etag string `json:"-"`
+	Etag string `json:"-" header:"ETag"`
 	Ok   bool   `json:"ok"`
 }
 
@@ -336,9 +336,9 @@ type RgInner struct {
 // scalar (parsed via server.Parse*), kind as a string enum (cast, no
 // parse).
 type RgItemPath struct {
-	ID   int     `json:"-"`
-	Uid  RgCents `json:"-"`
-	Kind RgColor `json:"-"`
+	ID   int     `json:"-" path:"id"`
+	Uid  RgCents `json:"-" path:"uid"`
+	Kind RgColor `json:"-" path:"kind"`
 }
 
 type RgItemView struct {
@@ -389,7 +389,7 @@ type RgRefMeta struct {
 // String-backed wire params with @default; the default applies when the
 // request omits the parameter.
 type RgSearch struct {
-	SortQ  *string  `json:"-"`
-	ColorQ *RgColor `json:"-"`
-	LimitQ *int     `json:"-"`
+	SortQ  *string  `json:"-" query:"sortQ"`
+	ColorQ *RgColor `json:"-" query:"colorQ"`
+	LimitQ *int     `json:"-" query:"limitQ"`
 }

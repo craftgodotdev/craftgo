@@ -43,7 +43,7 @@ type XBag[T any] struct {
 // the case the codegen flattener and the path-param check must qualify as
 // `xshared.XGrand`, or `gKey`'s @path and `g32`'s @default silently drop.
 type XGrand struct {
-	GKey string `json:"-"`
+	GKey string `json:"-" path:"gKey"`
 	G32  *int32 `json:"g32,omitempty"`
 }
 
@@ -55,8 +55,8 @@ type XGrand struct {
 // while OpenAPI still advertises the header/cookie.
 type XHeaderResp struct {
 	ID    string `json:"id"`
-	Trace string `json:"-"`
-	Sess  string `json:"-"`
+	Trace string `json:"-" header:"X-Trace-Id"`
+	Sess  string `json:"-" cookie:"xs-session"`
 }
 
 // XHolder is used as a QUALIFIED request type (`request xshared.XHolder`) by
@@ -66,7 +66,7 @@ type XHeaderResp struct {
 // silently dropped from the handler while the validator still enforces them.
 type XHolder struct {
 	XHolderSub
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 // XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields —
@@ -77,9 +77,9 @@ type XHolder struct {
 // without it the binder binds `limit` but the documented `default: 50` never
 // seeds, so an omitted param yields 0 instead of 50.
 type XHolderSub struct {
-	Q     string `json:"-"`
+	Q     string `json:"-" query:"q"`
 	Bod   string `json:"bod"`
-	Limit *int32 `json:"-"`
+	Limit *int32 `json:"-" query:"limit"`
 }
 
 // XOwner is a cross-package type used in field positions, exercising
@@ -103,7 +103,7 @@ type XParent struct {
 // sibling-package mixin, so the project-level path-param check owns the
 // verdict — the same cross-package flattening the codegen binder does.
 type XPathKey struct {
-	Key string `json:"-"`
+	Key string `json:"-" path:"key"`
 }
 
 // XPromoteBody bundles fields a consumer reaches only by EMBEDDING it
@@ -123,7 +123,7 @@ type XPromoteBody struct {
 // the xshared import, both of which need the promoted field's type
 // re-qualified to its home package.
 type XPromoteWire struct {
-	Q XEmail `json:"-"`
+	Q XEmail `json:"-" query:"q"`
 }
 
 // XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by
@@ -132,8 +132,8 @@ type XPromoteWire struct {
 // qualified request through the project resolver and pull in `shared` — or
 // the cast compiles to `undefined: shared`.
 type XThirdReq struct {
-	Sev shared.Severity `json:"-"`
-	ID  string          `json:"-"`
+	Sev shared.Severity `json:"-" query:"sev"`
+	ID  string          `json:"-" path:"id"`
 }
 
 // XParametric is a generic mixin host: `XWrapInBag` embeds `XBag<T>` and a

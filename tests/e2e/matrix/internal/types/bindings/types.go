@@ -42,7 +42,7 @@ type BodyExplicitReq struct {
 // CookieReq drives the cookie binder with an explicit wire name — the
 // runtime fetches the cookie named `session_id`.
 type CookieReq struct {
-	Session string `json:"-"`
+	Session string `json:"-" cookie:"session_id"`
 }
 
 // FormFileReq drives the multipart-form upload path. The `file` type
@@ -50,7 +50,7 @@ type CookieReq struct {
 // validator pair enforces the upload envelope at boundary-validate
 // time.
 type FormFileReq struct {
-	ID   string                `json:"-"`
+	ID   string                `json:"-" path:"id"`
 	File *multipart.FileHeader `json:"file"`
 }
 
@@ -58,14 +58,14 @@ type FormFileReq struct {
 // Two operations sharing one DTO is fine — they both want the same
 // "lookup by id" handle.
 type GetItemReq struct {
-	ID UUID `json:"-"`
+	ID UUID `json:"-" path:"id"`
 }
 
 // HeaderOptionalReq exercises a required header bound to an explicit
 // wire name (`X-Trace-Id`). The binder treats an absent header as the
 // empty string.
 type HeaderOptionalReq struct {
-	TraceID string `json:"-"`
+	TraceID string `json:"-" header:"X-Trace-Id"`
 }
 
 // HeaderReq carries a required X-API-Key style header. The explicit
@@ -73,7 +73,7 @@ type HeaderOptionalReq struct {
 // generated handler reads from the canonical HTTP name rather than
 // the Go field's PascalCase form (`r.Header.Get("X-API-Key")`).
 type HeaderReq struct {
-	APIKey string `json:"-"`
+	APIKey string `json:"-" header:"X-API-Key"`
 }
 
 // Item is the canonical entity returned by every read / write that
@@ -109,7 +109,7 @@ type NullableFormReq struct {
 // a string ("red" / "green" / "blue"); req.Validate() rejects any
 // value outside the enum's declared set.
 type PathEnumReq struct {
-	C Color `json:"-"`
+	C Color `json:"-" path:"c"`
 }
 
 // PathExplicitNameReq exercises the `@path("user_id")` form where the
@@ -117,7 +117,7 @@ type PathEnumReq struct {
 // (`{user_id}`). The codegen binds against the explicit wire name so
 // the generated handler reads `r.PathValue("user_id")`.
 type PathExplicitNameReq struct {
-	UserID string `json:"-"`
+	UserID string `json:"-" path:"user_id"`
 }
 
 // PathScalarReq replaces the bare `string` with the UUID scalar. The
@@ -125,14 +125,14 @@ type PathExplicitNameReq struct {
 // lands as the typed alias and the inherited @format(uuid) validator
 // fires at request time.
 type PathScalarReq struct {
-	ID UUID `json:"-"`
+	ID UUID `json:"-" path:"id"`
 }
 
 // PathStringReq is the canonical path-bound DTO: a single `id string`
 // field that auto-binds (or explicitly binds) to the `{id}` segment
 // of `/items/{id}`.
 type PathStringReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 // QueryArrayEnumDefaultReq drives the enum-array @query @default path.
@@ -143,14 +143,14 @@ type PathStringReq struct {
 // consults resolves the enum-member array literal so it agrees with the
 // pre-fill that emitted the default.
 type QueryArrayEnumDefaultReq struct {
-	Colors []Color `json:"-"`
+	Colors []Color `json:"-" query:"colors"`
 }
 
 // QueryArrayIntReq drives the `[]int @query` shape. Each repeated
 // value goes through strconv.ParseInt + append; one bad value fails
 // the whole request with HTTP 400.
 type QueryArrayIntReq struct {
-	Ids []int `json:"-"`
+	Ids []int `json:"-" query:"ids"`
 }
 
 // QueryArrayStringReq exercises the `[]string @query` shape. The
@@ -158,47 +158,47 @@ type QueryArrayIntReq struct {
 // `?tags=a&tags=b` lands as `["a", "b"]`. CSV (`?tags=a,b`) is NOT
 // auto-split.
 type QueryArrayStringReq struct {
-	Tags []string `json:"-"`
+	Tags []string `json:"-" query:"tags"`
 }
 
 // QueryBoolReq is the optional-bool query path: present → `*bool`,
 // absent / empty → nil.
 type QueryBoolReq struct {
-	Active *bool `json:"-"`
+	Active *bool `json:"-" query:"active"`
 }
 
 // QueryEnumReq drives the enum cast path through @query. Enums are
 // string-shape on the wire, so optional is fine — the binder reads
 // the raw string and casts up to the Color alias.
 type QueryEnumReq struct {
-	C *Color `json:"-"`
+	C *Color `json:"-" query:"c"`
 }
 
 // QueryIntReq is the optional-int query path. The binder reads the raw
 // string, parses it on presence, and writes a `*int`; an absent or empty
 // `?page=` leaves the field nil. `@gte(1)` runs on the dereferenced value.
 type QueryIntReq struct {
-	Page *int `json:"-"`
+	Page *int `json:"-" query:"page"`
 }
 
 // QueryIntRequiredReq is the required-int variant: an absent `page`
 // leaves the field at its zero value, and `@gte(1)` then rejects it.
 type QueryIntRequiredReq struct {
-	Page int `json:"-"`
+	Page int `json:"-" query:"page"`
 }
 
 // QueryRequiredReq is the canonical "always required, capped" query
 // param. Codegen emits the int parser with @gte / @lte gates so
 // `?limit=0` and `?limit=101` are both rejected.
 type QueryRequiredReq struct {
-	Limit int `json:"-"`
+	Limit int `json:"-" query:"limit"`
 }
 
 // QueryStringReq exercises the optional-string query path. The
 // generator emits a nil-guarded pointer write because Go has a clean
 // "absent vs empty" sentinel for `*string`.
 type QueryStringReq struct {
-	Q *string `json:"-"`
+	Q *string `json:"-" query:"q"`
 }
 
 // SearchReq mixes every supported @query shape in one struct. Note
@@ -207,13 +207,13 @@ type QueryStringReq struct {
 // shape on the wire, so the optional binder works just like for
 // plain strings).
 type SearchReq struct {
-	Cursor  *string `json:"-"`
-	Limit   int     `json:"-"`
-	Sort    *Color  `json:"-"`
-	Ids     []int   `json:"-"`
-	Active  bool    `json:"-"`
-	Offset  *int    `json:"-"`
-	Verbose *bool   `json:"-"`
+	Cursor  *string `json:"-" query:"cursor"`
+	Limit   int     `json:"-" query:"limit"`
+	Sort    *Color  `json:"-" query:"sort"`
+	Ids     []int   `json:"-" query:"ids"`
+	Active  bool    `json:"-" query:"active"`
+	Offset  *int    `json:"-" query:"offset"`
+	Verbose *bool   `json:"-" query:"verbose"`
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The
@@ -228,7 +228,7 @@ type SearchReq struct {
 // r.FormFile / r.FormValue key both equal the wire name (`avatar_file`
 // / `note`), not the field name (`file` / `caption`).
 type UploadReq struct {
-	ID      string                `json:"-"`
+	ID      string                `json:"-" path:"id"`
 	File    *multipart.FileHeader `json:"file"`
 	Caption *string               `json:"caption,omitempty"`
 }
@@ -248,8 +248,8 @@ type UserAvatar struct {
 // stay non-optional (the binder rejects `string? @header`); the query
 // field is optional to also cover the optional-param wire-name path.
 type WireRenameReq struct {
-	UserID  string  `json:"-"`
-	APIKey  string  `json:"-"`
-	Session string  `json:"-"`
-	Q       *string `json:"-"`
+	UserID  string  `json:"-" path:"user_id"`
+	APIKey  string  `json:"-" header:"X-API-Key"`
+	Session string  `json:"-" cookie:"session_id"`
+	Q       *string `json:"-" query:"search_q"`
 }
