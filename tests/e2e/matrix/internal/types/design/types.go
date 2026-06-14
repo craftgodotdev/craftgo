@@ -44,10 +44,10 @@ type ListProfilesResp struct {
 // payload containing the new display name. The handler binds each from
 // the matching part of the HTTP request.
 type PatchProfileReq struct {
-	ID             string `json:"-"`
-	DryRun         string `json:"-"`
-	IdempotencyKey string `json:"-"`
-	SessionToken   string `json:"-"`
+	ID             string `json:"-" path:"id"`
+	DryRun         string `json:"-" query:"dryRun"`
+	IdempotencyKey string `json:"-" header:"idempotencyKey"`
+	SessionToken   string `json:"-" cookie:"sessionToken"`
 	DisplayName    string `json:"displayName"`
 }
 

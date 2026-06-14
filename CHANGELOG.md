@@ -5,6 +5,22 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Changed
+
+- **Generated structs name a non-body field's wire location in its tag.** A
+  field bound to `@path` / `@query` / `@header` / `@cookie` previously rendered
+  as `json:"-"` alone; it now carries a second tag key — `path:"id"`,
+  `query:"page"`, `header:"X-Trace-Id"`, `cookie:"session"` — whose value is
+  the explicit wire-name override when given, else the field name. The
+  `json:"-"` stays (the field is still off the JSON body in both directions),
+  so the only change is the added, documentary key, letting a reader see where
+  a value rides without opening the handler. craftgo binds these fields by
+  generated code, not tag reflection, so Go ignores the key. `@form` and
+  `@sensitive` fields are unchanged. The tag is rendered once (`structTag`),
+  shared by the type and error-body emitters.
+
 ## [1.4.1] - 2026-06-13
 
 ### Added

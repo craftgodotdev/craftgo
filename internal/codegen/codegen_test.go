@@ -123,6 +123,48 @@ type User { id string  internal string @sensitive }`)
 	}
 }
 
+// A field bound to @path / @query / @header / @cookie carries json:"-" (off
+// the JSON body) plus a binding key naming the wire location, so the
+// generated struct documents where the value rides. The key's value is the
+// decorator's wire-name override when present, else the field name.
+func TestGenerateTypesNonBodyBindingTag(t *testing.T) {
+	pkg := analyze(t, `package design
+type LookupReq {
+    id    string @path
+    page  int    @query("page_num")
+    trace string @header("X-Trace-Id")
+    token string @cookie("session")
+    name  string
+}
+service Lookups {
+    get Lookup /items/{id} {
+        request LookupReq
+    }
+}`)
+	dir := t.TempDir()
+	if err := GenerateTypes(pkg, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	norm := strings.Join(strings.Fields(src), " ")
+	for _, want := range []string{
+		`ID string ` + "`json:\"-\" path:\"id\"`",              // no override → field name
+		`Page int ` + "`json:\"-\" query:\"page_num\"`",        // override wins
+		`Trace string ` + "`json:\"-\" header:\"X-Trace-Id\"`", // header name kept verbatim
+		`Token string ` + "`json:\"-\" cookie:\"session\"`",    // override wins
+		`Name string ` + "`json:\"name\"`",                     // plain body field unchanged
+	} {
+		if !strings.Contains(norm, want) {
+			t.Errorf("missing struct tag %q in:\n%s", want, src)
+		}
+	}
+}
+
 func TestGenerateTypesBasic(t *testing.T) {
 	pkg := analyze(t, `package design
 type User { id string  name string  age int? }`)
@@ -616,13 +658,14 @@ error TooManyRequests RateLimited {
 	mustParseGo(t, src)
 	norm := strings.Join(strings.Fields(src), " ")
 
-	// Header / cookie fields must carry json:"-" so they don't double up
-	// in the JSON body alongside the response-header / cookie write.
-	if !strings.Contains(norm, `RetryAfter string `+"`json:\"-\"`") {
-		t.Errorf("retryAfter should have json:\"-\":\n%s", src)
+	// Header / cookie fields carry json:"-" so they don't double up in the
+	// JSON body alongside the response-header / cookie write, plus a binding
+	// key naming the wire location (header:"retryAfter", cookie:"sessionToken").
+	if !strings.Contains(norm, `RetryAfter string `+"`json:\"-\" header:\"retryAfter\"`") {
+		t.Errorf("retryAfter should be json:\"-\" header:\"retryAfter\":\n%s", src)
 	}
-	if !strings.Contains(norm, `SessionToken string `+"`json:\"-\"`") {
-		t.Errorf("sessionToken should have json:\"-\":\n%s", src)
+	if !strings.Contains(norm, `SessionToken string `+"`json:\"-\" cookie:\"sessionToken\"`") {
+		t.Errorf("sessionToken should be json:\"-\" cookie:\"sessionToken\":\n%s", src)
 	}
 	// Optional non-bound field keeps its real JSON tag, with omitempty (the
 	// canonical jsonTag rule — an optional error-body field is omittable).

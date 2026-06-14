@@ -287,8 +287,8 @@ func resolvedGoFieldNames(members []ast.TypeMember) []string {
 
 // renderField returns one struct field line (with leading tab). The
 // caller passes the dedup-resolved Go identifier so collision pairs
-// get `_2`, `_3`, ... suffixes; the JSON tag is computed by
-// [jsonTag] from the DSL name verbatim, so the wire shape always
+// get `_2`, `_3`, ... suffixes; the struct tag is computed by
+// [structTag] from the DSL name verbatim, so the wire shape always
 // reflects what the user typed regardless of any Go-side rename.
 //
 // The Go type comes from [goFieldType] rather than [GoTypeRef]
@@ -298,7 +298,7 @@ func resolvedGoFieldNames(members []ast.TypeMember) []string {
 func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
 	return renderDoc(f.Doc, "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
-		fmt.Sprintf("\t%s %s `json:%s`\n", goName, goFieldType(f, pkg, r), strconv.Quote(jsonTag(f)))
+		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r), structTag(f))
 }
 
 // goFieldType returns the final Go type expression for a field, taking
@@ -482,6 +482,23 @@ func GoFieldName(name string) string {
 	return idents.GoFieldName(name)
 }
 
+// structTag renders the full back-tick struct tag for a field: the `json`
+// key (see [jsonTag]) plus, for a non-body binding, a second key naming the
+// wire location the value rides — `path:"id"`, `query:"page"`,
+// `header:"X-Trace-Id"`, `cookie:"session"`. The binding key carries the
+// same wire name the transport binder and the OpenAPI parameter use, so a
+// reader can see where a `json:"-"` field is read from / written to without
+// opening the handler. craftgo binds these fields by generated code, not by
+// tag reflection, and Go ignores tag keys it doesn't recognise, so the
+// binding key is purely documentary.
+func structTag(f *ast.Field) string {
+	tag := "json:" + strconv.Quote(jsonTag(f))
+	if kind := nonBodyBindingKind(f); kind != "" {
+		tag += " " + kind + ":" + strconv.Quote(wire.WireName(f, kind))
+	}
+	return tag
+}
+
 // jsonTag renders the JSON tag for a field. Per the project convention
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is
 // used verbatim.
@@ -527,15 +544,21 @@ func jsonTag(f *ast.Field) string {
 	return f.Name
 }
 
-// isNonBodyBound reports whether f carries an explicit binding decorator
-// that places its value outside the JSON body (`@path`, `@query`,
-// `@header`, `@cookie`). Those values are populated from the URL / headers
-// / cookies - never from the body - so the generated struct should hide
-// them from JSON entirely.
-func isNonBodyBound(f *ast.Field) bool {
-	switch wire.BindingKind(f.Decorators) {
-	case "path", "query", "header", "cookie":
-		return true
+// nonBodyBindingKind returns the wire location an explicit binding decorator
+// places a field in — path / query / header / cookie, the bindings served
+// outside the JSON body — or "" for a body, form, sensitive, or undecorated
+// field. It is the single authority for "this field rides off the JSON
+// body": [jsonTag] reads it to emit `json:"-"`, and [structTag] reads it to
+// name the wire location in the field's own tag key. Values bound here are
+// populated from the URL / headers / cookies, never from the body.
+func nonBodyBindingKind(f *ast.Field) string {
+	switch kind := wire.BindingKind(f.Decorators); kind {
+	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
+		return kind
 	}
-	return false
+	return ""
 }
+
+// isNonBodyBound reports whether f is bound outside the JSON body — see
+// [nonBodyBindingKind].
+func isNonBodyBound(f *ast.Field) bool { return nonBodyBindingKind(f) != "" }

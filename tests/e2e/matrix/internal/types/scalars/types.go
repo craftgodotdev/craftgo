@@ -132,7 +132,7 @@ type GenericOverScalar struct {
 // GetOrderReq pins a UUID-typed path parameter. The scalar's
 // @format(uuid) inherits onto the field-level @path binding.
 type GetOrderReq struct {
-	ID UUID `json:"-"`
+	ID UUID `json:"-" path:"id"`
 }
 
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.

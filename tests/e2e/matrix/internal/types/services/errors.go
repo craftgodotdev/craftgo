@@ -99,7 +99,7 @@ const ErrCodeRateLimited = "RATE_LIMITED"
 // User code instantiates this struct and hands it to NewRateLimitedErr; the
 // framework wraps it with the type-bound code / message metadata.
 type RateLimitedBody struct {
-	RetryAfter int `json:"-"`
+	RetryAfter int `json:"-" header:"Retry-After"`
 }
 
 // RateLimitedErr is the typed TooManyRequests error generated for `RateLimited`.

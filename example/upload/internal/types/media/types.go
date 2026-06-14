@@ -22,7 +22,7 @@ import (
 //	  -F "tags=summer" -F "tags=beach" \
 //	  -F "visibility=public" -F "featured=true" -F "priority=10"
 type CreateGalleryReq struct {
-	AlbumID     string                  `json:"-"`
+	AlbumID     string                  `json:"-" path:"albumId"`
 	Photos      []*multipart.FileHeader `json:"photos"`
 	Cover       *multipart.FileHeader   `json:"cover,omitempty"`
 	Title       string                  `json:"title"`
@@ -58,7 +58,7 @@ type GalleryPhoto struct {
 }
 
 type GetMediaReq struct {
-	ID string `json:"-"`
+	ID string `json:"-" path:"id"`
 }
 
 type OkResp struct {
@@ -66,12 +66,12 @@ type OkResp struct {
 }
 
 type UploadAttachmentReq struct {
-	NoteID string                `json:"-"`
+	NoteID string                `json:"-" path:"noteId"`
 	Blob   *multipart.FileHeader `json:"blob"`
 }
 
 type UploadAvatarReq struct {
-	UserID string                `json:"-"`
+	UserID string                `json:"-" path:"userId"`
 	Image  *multipart.FileHeader `json:"image"`
 }
 

@@ -356,12 +356,25 @@ type GetUserReq {
 }
 ```
 
+In the generated Go struct these fields carry `json:"-"` (they ride the URL / headers / cookies, never the JSON body) plus a binding key naming the wire location, so the struct documents where each value comes from:
+
+```go
+type GetUserReq struct {
+    ID      string `json:"-" path:"id"`
+    Page    int    `json:"-" query:"page"`
+    APIKey  string `json:"-" header:"X-API-Key"`
+    Session string `json:"-" cookie:"sid"`
+}
+```
+
+The binding key's value is the explicit wire name when given, otherwise the field name. craftgo binds these fields by generated code, not by tag reflection — the key is documentary, so Go ignores it.
+
 A field with no binding decorator falls back to:
 
 - `body` for body verbs (POST / PUT / PATCH)
 - `query` for non-body verbs (GET / DELETE / HEAD / OPTIONS)
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body — the JSON tag is automatically `json:"-"` so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body — the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {

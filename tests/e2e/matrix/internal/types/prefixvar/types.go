@@ -24,5 +24,5 @@ type TenantItemList struct {
 // {tenantID} segment, so it auto-binds to @path.
 type TenantListReq struct {
 	TenantID string `json:"tenantID"`
-	Limit    int    `json:"-"`
+	Limit    int    `json:"-" query:"limit"`
 }
