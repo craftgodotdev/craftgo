@@ -21,6 +21,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@sensitive` fields are unchanged. The tag is rendered once (`structTag`),
   shared by the type and error-body emitters.
 
+### Docs
+
+- **Search-engine metadata for the documentation site.** The VitePress docs
+  site now generates a `sitemap.xml` and stamps a canonical link plus per-page
+  Open Graph / Twitter tags on every page; the home, getting-started, and
+  why-design-first pages carry unique meta descriptions (previously every page
+  shared the site-level description). The published location sits behind a
+  single `SITE_ORIGIN` / `BASE` constant so moving to a custom domain is a
+  two-line change, and the Google Search Console verification tag is wired into
+  the global `<head>`. Documentation-only — the craftgo tool and its generated
+  output are unchanged.
+
 ## [1.4.1] - 2026-06-13
 
 ### Added
