@@ -1,3 +1,7 @@
+---
+description: "Why craftgo puts the API design first: one DSL source generates Go types, validators, net/http handlers, and OpenAPI that can never drift apart — versus the code-first sprawl of Gin or Echo."
+---
+
 # Why Design-first
 
 Most Go web frameworks are code-first. You write Go structs with tags, register handlers, and the API shape lives across many files. craftgo flips that: write the API spec first, generate the rest.

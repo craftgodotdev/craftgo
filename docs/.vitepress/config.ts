@@ -1,18 +1,71 @@
 import { defineConfig } from "vitepress";
 import grammar from "./craftgo.tmLanguage.json" with { type: "json" };
 
+// Single source of truth for the published location. The sitemap, canonical
+// links, and Open Graph URLs all derive from these, so moving to a custom
+// domain is a two-line change here (plus a `docs/public/CNAME` file and the
+// repo's Pages domain setting): set SITE_ORIGIN to the domain and BASE to "/".
+const SITE_ORIGIN = "https://craftgodotdev.github.io";
+const BASE = "/craftgo/";
+const SITE_URL = SITE_ORIGIN + BASE; // canonical root, trailing slash included
+const SITE_TITLE = "craftgo";
+const SITE_DESCRIPTION =
+  "Design-first Go framework on net/http. Spec your API, generate everything.";
+
 export default defineConfig({
-  title: "craftgo",
-  description:
-    "Design-first Go framework on net/http. Spec your API, generate everything.",
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   // GitHub Pages project site: served under https://craftgodotdev.github.io/craftgo/.
   // The leading+trailing slashes are required; VitePress prefixes every
   // asset URL and internal link with this base, so a wrong/missing base
   // breaks every link on the deployed site.
-  base: "/craftgo/",
+  base: BASE,
   cleanUrls: true,
   lastUpdated: true,
   ignoreDeadLinks: true,
+
+  // Emit /sitemap.xml so crawlers can discover every page in one fetch;
+  // submit this URL in Google Search Console. The hostname includes BASE and
+  // VitePress appends each page's path, so entries read as full absolute URLs.
+  sitemap: {
+    hostname: SITE_URL,
+  },
+
+  // Site-wide social-share + crawl metadata. Per-page canonical / og:title /
+  // og:description are injected in transformPageData below so each page
+  // advertises a unique identity instead of all sharing the site description.
+  head: [
+    // Google Search Console ownership proof;
+    [
+      "meta",
+      {
+        name: "google-site-verification",
+        content: "y4FgKl1K8zkkt1qgxlR3UFCWo6R-cXo6fc2sjnb4ghw",
+      },
+    ],
+    ["meta", { property: "og:type", content: "website" }],
+    ["meta", { property: "og:site_name", content: SITE_TITLE }],
+    ["meta", { name: "twitter:card", content: "summary" }],
+  ],
+
+  transformPageData(pageData) {
+    const path = pageData.relativePath
+      .replace(/index\.md$/, "")
+      .replace(/\.md$/, "");
+    const canonical = SITE_URL + path;
+    const pageTitle = pageData.frontmatter.title || pageData.title;
+    const title = pageTitle ? `${pageTitle} | ${SITE_TITLE}` : SITE_TITLE;
+    const description = pageData.frontmatter.description || SITE_DESCRIPTION;
+    pageData.frontmatter.head ??= [];
+    pageData.frontmatter.head.push(
+      ["link", { rel: "canonical", href: canonical }],
+      ["meta", { property: "og:url", content: canonical }],
+      ["meta", { property: "og:title", content: title }],
+      ["meta", { property: "og:description", content: description }],
+      ["meta", { name: "twitter:title", content: title }],
+      ["meta", { name: "twitter:description", content: description }],
+    );
+  },
 
   markdown: {
     languages: [
@@ -31,7 +84,7 @@ export default defineConfig({
       { text: "Tutorials", link: "/tutorials/todo-api" },
       { text: "AI Reference", link: "/llms" },
       {
-        text: "v1.4.0",
+        text: "v1.4.1",
         items: [
           {
             text: "Changelog",

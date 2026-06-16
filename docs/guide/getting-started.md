@@ -1,3 +1,7 @@
+---
+description: "Install craftgo, write your first API in the DSL, and generate a runnable Go server — typed structs, validators, net/http routes, and an OpenAPI spec — in about 5 minutes."
+---
+
 # Getting Started
 
 This page walks through creating a craftgo project, defining one endpoint, and running it. About 5 minutes.
