@@ -47,9 +47,6 @@ func TestServerHandleFuncAndDefaults(t *testing.T) {
 	if rec.Body.String() != "pong" {
 		t.Errorf("body = %q", rec.Body.String())
 	}
-	if rec.Header().Get("Content-Type") == "" {
-		// no content-type set by handler is fine; nothing to assert.
-	}
 }
 
 func TestServerRecoveryConvertsPanic(t *testing.T) {

@@ -5,9 +5,43 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [1.4.2] - 2026-06-17
+## [1.4.2] - 2026-06-17 [UTC+7]
+
+### Security
+
+- **OpenTelemetry bumped to v1.44 to patch two advisories the runtime reaches.**
+  `govulncheck` flagged GO-2026-4985 (oversized OTLP/HTTP response → memory
+  exhaustion, in the metric/trace HTTP exporters) and GO-2026-4394 (OTel SDK
+  arbitrary code execution via PATH hijacking) as called by `pkg/otel` /
+  `pkg/metrics`. Updating the OTel family clears both; `govulncheck` now reports
+  zero reachable vulnerabilities.
+
+### Added
+
+- **CI hardened and broadened.** `go vet` + `gofmt` now run alongside a
+  `govulncheck` gate; the test suite runs on Linux, macOS, and Windows — the
+  three release targets — instead of Linux only, catching path / file /
+  line-ending bugs a single-OS run misses (race detector on Linux/macOS).
+  Dependabot keeps Go modules, GitHub Actions, and the docs npm deps current,
+  and every workflow declares least-privilege `permissions` plus
+  run-cancelling `concurrency`.
+
+- **Cross-platform release binaries via GoReleaser.** Pushing a `v*` tag now
+  runs `.github/workflows/release.yml`, which cross-compiles the `craftgo` CLI
+  and `craftgo-lsp` for linux / macOS / windows × amd64 / arm64, bundles both
+  binaries per archive (`.tar.gz`; `.zip` on Windows) alongside the licence and
+  changelog, writes `checksums.txt`, and publishes a GitHub Release with
+  generated notes. The git tag is injected as the reported version, so
+  `craftgo version` / `craftgo-lsp -version` match the release. Build config
+  lives in `.goreleaser.yaml`; verify locally with
+  `goreleaser release --snapshot --clean`. (`version` / `lsp.Version` became
+  `var`s so the tag can be linked in via `-ldflags -X`.)
 
 ### Changed
+
+- **Minimum Go is now 1.26.4** (was 1.24.2, which is past end-of-life — Go
+  supports only the two latest releases). Required by the OpenTelemetry security
+  update; building craftgo from source now needs Go 1.26+.
 
 - **Generated structs name a non-body field's wire location in its tag.** A
   field bound to `@path` / `@query` / `@header` / `@cookie` previously rendered

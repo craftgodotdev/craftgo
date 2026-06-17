@@ -41,8 +41,11 @@ import (
 )
 
 // Version is the server's reported version, surfaced via Initialize so
-// clients can include it in trace logs.
-const Version = "1.4.2"
+// clients can include it in trace logs. The source value is the fallback for
+// `go install`; release builds inject the git tag via
+// `-ldflags="-X ...internal/lsp.Version=<tag>"` (see .goreleaser.yaml), so it
+// must be a var — `-X` cannot write a const.
+var Version = "1.4.2"
 
 // Serve runs the LSP loop on the supplied stdio streams. It blocks until
 // the peer closes the connection or context is cancelled, and returns the

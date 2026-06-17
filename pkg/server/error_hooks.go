@@ -179,5 +179,5 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		_ = codec.Encode(w, env)
 		return
 	}
-	w.Write(buf.Bytes())
+	_, _ = w.Write(buf.Bytes())
 }
