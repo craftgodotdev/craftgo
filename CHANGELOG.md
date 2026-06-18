@@ -55,6 +55,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@sensitive` fields are unchanged. The tag is rendered once (`structTag`),
   shared by the type and error-body emitters.
 
+### Fixed
+
+- **The language server now resolves project mode on Windows.** A `file:///C:/…`
+  URI was converted to the invalid path `/C:/…` (and the reverse produced the
+  malformed `file://C:\…`), so the design-root lookup failed and the editor fell
+  back to single-file diagnostics. Both conversions now handle the drive letter,
+  restoring cross-file diagnostics, go-to-definition, and completion on Windows.
+  (Surfaced by the new Windows CI runner; a `.gitattributes` forces LF so golden
+  fixtures compare identically there.)
+
 ### Docs
 
 - **Search-engine metadata for the documentation site.** The VitePress docs

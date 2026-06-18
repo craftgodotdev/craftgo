@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"path/filepath"
+	"strings"
 
 	"go.lsp.dev/protocol"
 
@@ -138,5 +139,12 @@ func pathToFileURIString(path string) string {
 			abs = a
 		}
 	}
-	return "file://" + abs
+	// URIs use forward slashes and need a leading slash before a Windows drive
+	// letter (C:\x → /C:/x) so the result is file:///C:/x. A POSIX path already
+	// starts with "/", so this stays file:///home/x unchanged.
+	slashed := filepath.ToSlash(abs)
+	if !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	return "file://" + slashed
 }

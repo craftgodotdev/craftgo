@@ -1,0 +1,5 @@
+# Force LF in the working tree on every platform. Without this, a Windows
+# checkout converts committed Go source, generated fixtures, and golden files
+# to CRLF, breaking golden-file and path round-trip comparisons whose generated
+# side is always LF.
+* text=auto eol=lf

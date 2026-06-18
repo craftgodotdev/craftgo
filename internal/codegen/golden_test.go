@@ -49,10 +49,13 @@ func expectGolden(t *testing.T, name, actual string) {
 		}
 		t.Fatalf("read golden %s: %v", path, err)
 	}
-	if string(want) == actual {
+	// Compare with CRLF normalised: a Windows checkout may give the golden
+	// file CRLF line endings while the generated output is always LF.
+	wantStr := strings.ReplaceAll(string(want), "\r\n", "\n")
+	if wantStr == actual {
 		return
 	}
-	t.Errorf("golden mismatch (%s) - diff first divergence:\n%s", path, firstDiff(string(want), actual))
+	t.Errorf("golden mismatch (%s) - diff first divergence:\n%s", path, firstDiff(wantStr, actual))
 }
 
 // firstDiff returns a short side-by-side preview of where want and
