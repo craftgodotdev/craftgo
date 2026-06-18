@@ -1,10 +1,8 @@
 package lsp
 
 import (
-	"path/filepath"
-	"strings"
-
 	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -133,18 +131,7 @@ func pathToFileURIString(path string) string {
 	if path == "" {
 		return ""
 	}
-	abs := path
-	if !filepath.IsAbs(abs) {
-		if a, err := filepath.Abs(abs); err == nil {
-			abs = a
-		}
-	}
-	// URIs use forward slashes and need a leading slash before a Windows drive
-	// letter (C:\x → /C:/x) so the result is file:///C:/x. A POSIX path already
-	// starts with "/", so this stays file:///home/x unchanged.
-	slashed := filepath.ToSlash(abs)
-	if !strings.HasPrefix(slashed, "/") {
-		slashed = "/" + slashed
-	}
-	return "file://" + slashed
+	// uri.File handles the Windows drive letter and percent-encoding and
+	// absolutises a relative path, matching what the editor would send.
+	return string(uri.File(path))
 }

@@ -255,14 +255,7 @@ func uriToPath(u string) string {
 // pathToURI is the inverse helper, used to build URIs that line up with
 // what the editor would have sent for a sibling file.
 func pathToURI(p string) string {
-	if filepath.IsAbs(p) {
-		return "file://" + p
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "file://" + p
-	}
-	return "file://" + abs
+	return string(uri.File(p))
 }
 
 // keyOf collapses identical diagnostics that some passes may emit
