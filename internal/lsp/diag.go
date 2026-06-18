@@ -242,20 +242,20 @@ func uriToPath(u string) string {
 	if parsed.Scheme != "file" {
 		return ""
 	}
-	return parsed.Path
+	p := parsed.Path
+	// A Windows file URI (file:///C:/x) parses to "/C:/x"; drop the leading
+	// slash before the drive letter so filepath sees a valid "C:/x", then
+	// switch to OS-native separators. No-op for POSIX paths ("/home/x").
+	if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+		p = p[1:]
+	}
+	return filepath.FromSlash(p)
 }
 
 // pathToURI is the inverse helper, used to build URIs that line up with
 // what the editor would have sent for a sibling file.
 func pathToURI(p string) string {
-	if filepath.IsAbs(p) {
-		return "file://" + p
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "file://" + p
-	}
-	return "file://" + abs
+	return string(uri.File(p))
 }
 
 // keyOf collapses identical diagnostics that some passes may emit

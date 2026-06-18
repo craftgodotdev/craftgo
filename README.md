@@ -12,7 +12,7 @@ craftgo is a design-first framework for Go HTTP services. You describe your API 
 
 ## Quickstart
 
-Requires Go 1.24+.
+Requires Go 1.26+.
 
 ```bash
 # 1. Install the CLI

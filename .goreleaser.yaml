@@ -1,0 +1,75 @@
+# GoReleaser builds the cross-platform release artifacts and publishes the
+# GitHub Release. Triggered by .github/workflows/release.yml on a `v*` tag.
+# Verify changes locally without publishing:
+#   go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+version: 2
+
+project_name: craftgo
+
+builds:
+  # The craftgo CLI. The git tag is injected as main.version so a released
+  # binary reports the tag instead of the source fallback.
+  - id: craftgo
+    main: ./cmd/craftgo
+    binary: craftgo
+    env:
+      - CGO_ENABLED=0 # pure-Go: static binaries that cross-compile anywhere
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}" # reproducible builds
+
+  # The language server shipped to the editor extensions. Same tag injected as
+  # internal/lsp.Version so `craftgo-lsp -version` matches the release.
+  - id: craftgo-lsp
+    main: ./cmd/craftgo-lsp
+    binary: craftgo-lsp
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/craftgodotdev/craftgo/internal/lsp.Version={{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # One archive per OS/arch carrying BOTH binaries plus the docs/licence.
+  - id: craftgo
+    ids:
+      - craftgo
+      - craftgo-lsp
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip] # Windows users expect .zip, not .tar.gz
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+# Release notes are generated from the commit log; noise commits are dropped.
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  # A tag like v1.5.0-rc.1 is published as a pre-release automatically.
+  prerelease: auto

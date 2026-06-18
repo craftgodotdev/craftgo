@@ -1,0 +1,36 @@
+name: Release
+
+# Push a version tag to cut a release:
+#   git tag v1.4.3 && git push origin v1.4.3
+# GoReleaser then cross-compiles every binary, archives them, writes
+# checksums, and publishes a GitHub Release with generated notes.
+# Config lives in .goreleaser.yaml.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the release and upload archives
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags so GoReleaser can derive the version and the
+          # changelog since the previous tag.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          # Provided automatically; contents:write above lets it create the release.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

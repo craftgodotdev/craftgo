@@ -101,7 +101,7 @@ type Resp {}
 `)
 
 	s := newTestServer()
-	perFile, designRoot := s.buildProjectDiagnostics(uri.New("file://"+servicePath), readFileT(t, servicePath))
+	perFile, designRoot := s.buildProjectDiagnostics(uri.File(servicePath), readFileT(t, servicePath))
 	if designRoot == "" {
 		t.Fatal("expected project mode (design root resolved), got single-file fallback")
 	}
@@ -118,7 +118,7 @@ type Resp {}
 type Req {}
 type Resp {}
 `)
-	perFile2, _ := s.buildProjectDiagnostics(uri.New("file://"+servicePath), readFileT(t, servicePath))
+	perFile2, _ := s.buildProjectDiagnostics(uri.File(servicePath), readFileT(t, servicePath))
 	if len(perFile2[servicePath]) == 0 {
 		t.Fatalf("expected path-param-missing diag for service file after sibling lost the field; got: %v", perFile2)
 	}
@@ -169,7 +169,7 @@ type Req { id string }
 type Resp {}
 `)
 	s := newTestServer()
-	if perFile, _ := s.buildProjectDiagnostics(uri.New("file://"+typesPath), readFileT(t, typesPath)); len(perFile[servicePath]) != 0 {
+	if perFile, _ := s.buildProjectDiagnostics(uri.File(typesPath), readFileT(t, typesPath)); len(perFile[servicePath]) != 0 {
 		t.Fatalf("expected service to be clean initially, got %+v", perFile[servicePath])
 	}
 
@@ -178,7 +178,7 @@ type Resp {}
 type Req { id1 string }
 type Resp {}
 `)
-	if perFile, _ := s.buildProjectDiagnostics(uri.New("file://"+typesPath), readFileT(t, typesPath)); len(perFile[servicePath]) == 0 {
+	if perFile, _ := s.buildProjectDiagnostics(uri.File(typesPath), readFileT(t, typesPath)); len(perFile[servicePath]) == 0 {
 		t.Fatalf("expected service path-param error after rename; got: %+v", perFile)
 	}
 
@@ -190,7 +190,7 @@ type Resp {}
 type Req { id string }
 type Resp {}
 `)
-	perFile, _ := s.buildProjectDiagnostics(uri.New("file://"+typesPath), readFileT(t, typesPath))
+	perFile, _ := s.buildProjectDiagnostics(uri.File(typesPath), readFileT(t, typesPath))
 	if len(perFile[servicePath]) != 0 {
 		t.Errorf("expected service diags to clear after revert, got %+v", perFile[servicePath])
 	}

@@ -38,8 +38,8 @@ openapi:
 	mustWrite(t, bPath, "package things\ntype B { a A }\n")
 
 	s := &Server{docs: map[uri.URI]*document{}}
-	aURI := uri.New("file://" + aPath)
-	bURI := uri.New("file://" + bPath)
+	aURI := uri.File(aPath)
+	bURI := uri.File(bPath)
 	aSrc := readFileT(t, aPath)
 	s.storeDoc(aURI, aSrc, 1)
 	s.storeDoc(bURI, readFileT(t, bPath), 1)
@@ -168,8 +168,8 @@ openapi:
 
 	conn := &recordingConn{}
 	s := &Server{docs: map[uri.URI]*document{}, conn: conn}
-	s.storeDoc(uri.New("file://"+aPath), readFileT(t, aPath), 1)
-	s.storeDoc(uri.New("file://"+bPath), readFileT(t, bPath), 1)
+	s.storeDoc(uri.File(aPath), readFileT(t, aPath), 1)
+	s.storeDoc(uri.File(bPath), readFileT(t, bPath), 1)
 
 	if err := s.onDidChangeWatchedFiles(context.Background(), func(context.Context, any, error) error { return nil }, nil); err != nil {
 		t.Fatal(err)

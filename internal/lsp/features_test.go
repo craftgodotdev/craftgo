@@ -335,10 +335,10 @@ openapi:
 	}
 	view := parseSnapshot(srcPath, src)
 	srv := &Server{docs: map[uri.URI]*document{}}
-	uri := "file://" + srcPath
+	fileURI := string(uri.File(srcPath))
 	// Cursor right after `@security(` - line 2 (0-indexed), char 10.
 	pos := protocol.Position{Line: 2, Character: 10}
-	items := srv.completionsAt(view, pos, uri, src)
+	items := srv.completionsAt(view, pos, fileURI, src)
 	got := make(map[string]string, len(items))
 	for _, it := range items {
 		got[it.Label] = it.Detail
@@ -373,7 +373,7 @@ func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 	pos := protocol.Position{Line: 2, Character: 10}
 	// Must not panic; an empty result is acceptable since there are
 	// no schemes to suggest.
-	_ = srv.completionsAt(view, pos, "file://"+srcPath, src)
+	_ = srv.completionsAt(view, pos, string(uri.File(srcPath)), src)
 }
 
 // keys returns the keys of m in arbitrary order. Tiny helper used

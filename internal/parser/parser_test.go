@@ -873,10 +873,8 @@ func TestVerbFromTokenInvalid(t *testing.T) {
 
 func TestPeekAtOutOfRange(t *testing.T) {
 	p := New("", "x")
+	// peekAt past EOF returns a zero-value fallback token without panicking.
 	tok := p.peekAt(100)
-	if tok.Kind == 0 && tok.Text != "" {
-		// Just ensure we got a fallback token.
-	}
 	_ = tok
 }
 

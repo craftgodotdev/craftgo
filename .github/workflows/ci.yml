@@ -5,17 +5,27 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege: every job only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same branch / PR to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  ci:
+  # Lint, vulnerability scan, and the codegen drift gate. All OS-independent,
+  # so they run once on Linux; the cross-OS suite is the `test` job below.
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.2"
+          go-version-file: go.mod # single source of truth for the Go version
           cache: true
 
-      # ---- lint -------------------------------------------------------------
       - name: vet
         run: go vet ./...
 
@@ -26,7 +36,11 @@ jobs:
             echo "unformatted files:"; echo "$diff"; exit 1
           fi
 
-      # ---- build ------------------------------------------------------------
+      # Fails on a known vulnerability that the code actually reaches (call-graph
+      # analysis); advisory-only findings in unused code do not break the build.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       - name: build root (CLI + LSP)
         run: go build ./...
 
@@ -39,9 +53,8 @@ jobs:
             (cd "$d" && go build ./...)
           done
 
-      # ---- generate + drift gate -------------------------------------------
-      # Regenerate every example / e2e fixture from current source. Any
-      # diff against the committed output is a codegen regression.
+      # Regenerate every example / e2e fixture from current source; any diff
+      # against the committed output is a codegen regression.
       - name: generate
         run: |
           set -e
@@ -61,37 +74,50 @@ jobs:
             exit 1
           fi
 
-      # ---- test -------------------------------------------------------------
-      # Core (lexer / parser / ast / semantic) is the language-shape
-      # surface. Race detector + coverage profile collected for inspection,
-      # but no enforced threshold — many helpers in internal/ast are
-      # cross-package (used by parser/semantic/codegen tests) and per-
-      # package coverage under-counts them, producing noisy false misses.
-      - name: test core
-        run: |
-          go test -race -count=1 -coverprofile=core.cov -covermode=atomic \
-            ./internal/lexer/... \
-            ./internal/parser/... \
-            ./internal/ast/... \
-            ./internal/semantic/...
-          go tool cover -func=core.cov | tail -20
+  # The project ships binaries for Linux, macOS, and Windows, so the suite runs
+  # on each — catching path / file / line-ending bugs a Linux-only run misses.
+  # The race detector needs a C toolchain the Windows runner lacks, so it is
+  # enabled on Linux/macOS only.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, race: "-race" }
+          - { os: macos-latest, race: "-race" }
+          - { os: windows-latest, race: "" }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash # Git Bash on Windows, so the loops below work everywhere
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-      # Everything else: codegen / lsp / config / format / idents /
-      # pkg/* / cmd/*. Drift gate above is the primary signal for codegen;
-      # race detector covers concurrency.
+      - name: build root + submodules
+        run: |
+          set -e
+          go build ./...
+          for d in example/todo example/upload example/raw example/ecommerce \
+                   tests/e2e/matrix; do
+            (cd "$d" && go build ./...)
+          done
+
+      - name: test core (lexer / parser / ast / semantic)
+        run: |
+          go test ${{ matrix.race }} -count=1 \
+            ./internal/lexer/... ./internal/parser/... \
+            ./internal/ast/... ./internal/semantic/...
+
       - name: test rest (root module)
         run: |
-          go test -race -count=1 \
-            ./internal/codegen/... \
-            ./internal/lsp/... \
-            ./internal/idents/... \
-            ./internal/errcat/... \
-            ./internal/strfmt/... \
-            ./internal/format/... \
-            ./internal/config/... \
-            ./internal/bench/... \
-            ./pkg/... \
-            ./cmd/...
+          go test ${{ matrix.race }} -count=1 \
+            ./internal/codegen/... ./internal/lsp/... ./internal/idents/... \
+            ./internal/errcat/... ./internal/strfmt/... ./internal/format/... \
+            ./internal/config/... ./internal/bench/... ./pkg/... ./cmd/...
 
       - name: test e2e orchestrator
         run: go test -count=1 ./tests/e2e/...
@@ -102,5 +128,5 @@ jobs:
           for d in example/todo example/upload example/raw example/ecommerce \
                    tests/e2e/matrix; do
             echo "→ test $d"
-            (cd "$d" && go test -count=1 ./...)
+            (cd "$d" && go test ${{ matrix.race }} -count=1 ./...)
           done
