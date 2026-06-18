@@ -8,7 +8,7 @@ This page walks through creating a craftgo project, defining one endpoint, and r
 
 ## Prerequisites
 
-- Go 1.24 or later
+- Go 1.26 or later
 - A terminal
 
 ## Install the CLI
