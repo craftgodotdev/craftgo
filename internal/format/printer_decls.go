@@ -82,7 +82,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			}
 			ts := p.typeRefString(f.Type)
 			// Auto-fix: a field carrying `@default(...)` is conceptually
-			// optional — the default fires when the value is absent or null.
+			// optional - the default fires when the value is absent or null.
 			// If the author hasn't typed `?`, the formatter adds it on save so
 			// the source makes the optionality explicit. A `@path` field is
 			// exempt: a path segment is always present, so the semantic gate
@@ -125,7 +125,7 @@ func (p *Printer) looseBeforeMember(line int) {
 		return
 	}
 	// Blank line on BOTH sides keeps the section-separator shape and makes
-	// the result re-parse as the same loose block (idempotent) — without the
+	// the result re-parse as the same loose block (idempotent) - without the
 	// trailing blank, a second fmt would read the comment as the next
 	// member's leading doc and shift the layout.
 	p.nl()
@@ -202,7 +202,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 //
 // The preceding field's printer pulls its trailing text from
 // p.trailing (built in [scanTrailingComments]), so dropping the
-// misattributed entry here does not lose information — it lands on
+// misattributed entry here does not lose information - it lands on
 // the correct field by way of the trailing map.
 func (p *Printer) printFieldDoc(f *ast.Field) {
 	p.printLeadingDoc(f.Doc, f.Pos.Line)

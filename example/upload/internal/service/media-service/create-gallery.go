@@ -36,7 +36,7 @@ func NewCreateGalleryService(ctx context.Context, svcCtx *svccontext.ServiceCont
 // CreateGallery reads the batch of uploaded photos (and the optional cover),
 // records the gallery, and echoes it back. `req` arrives fully validated:
 // 1–20 photos, the cover within its size/mime allowlist, and every form field
-// in range — so the handler can read the files without re-checking shape.
+// in range - so the handler can read the files without re-checking shape.
 func (l *CreateGalleryService) CreateGallery(req *types.CreateGalleryReq) (*types.Gallery, error) {
 	photos := make([]types.GalleryPhoto, 0, len(req.Photos))
 	for _, fh := range req.Photos {

@@ -29,8 +29,8 @@ type XAudit struct {
 }
 
 // XBag is a cross-package generic. xrefs instantiates it as
-// `xshared.XBag<X>` for various X — local types, primitives, and
-// xshared types — covering the qualified-generic codegen path.
+// `xshared.XBag<X>` for various X - local types, primitives, and
+// xshared types - covering the qualified-generic codegen path.
 type XBag[T any] struct {
 	Items []T `json:"items"`
 	Cap   int `json:"cap"`
@@ -39,7 +39,7 @@ type XBag[T any] struct {
 // XGrand is a leaf mixin reached only through a CHAIN of mixins: XParent
 // embeds it (bare, same-package ref inside xshared), and a consumer in
 // another package embeds XParent. So a field here sits two mixin levels
-// deep, the inner link being a bare ref inside a cross-package mixin —
+// deep, the inner link being a bare ref inside a cross-package mixin -
 // the case the codegen flattener and the path-param check must qualify as
 // `xshared.XGrand`, or `gKey`'s @path and `g32`'s @default silently drop.
 type XGrand struct {
@@ -50,7 +50,7 @@ type XGrand struct {
 // XHeaderResp is used as a QUALIFIED cross-package response
 // (`response xshared.XHeaderResp`) by xrefs. Its @header / @cookie fields
 // must be written by the handler even though the response type is
-// cross-package — the response-binding collector resolves it through the
+// cross-package - the response-binding collector resolves it through the
 // project resolver, or the values silently drop (the fields are `json:"-"`)
 // while OpenAPI still advertises the header/cookie.
 type XHeaderResp struct {
@@ -61,7 +61,7 @@ type XHeaderResp struct {
 
 // XHolder is used as a QUALIFIED request type (`request xshared.XHolder`) by
 // xrefs' service. Because the request type lives here, its bare nested mixin
-// XHolderSub resolves in xshared — the binder must thread xshared as the
+// XHolderSub resolves in xshared - the binder must thread xshared as the
 // flatten prefix, or `q` (the @query param) and `bod` (the body field) are
 // silently dropped from the handler while the validator still enforces them.
 type XHolder struct {
@@ -69,8 +69,8 @@ type XHolder struct {
 	ID string `json:"-" path:"id"`
 }
 
-// XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields —
-// a @query param, a JSON-body field, and a defaulted @query param — must
+// XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields -
+// a @query param, a JSON-body field, and a defaulted @query param - must
 // survive when XHolder is used as a QUALIFIED request type from another
 // package. The `limit` default must also PRE-FILL in the handler (the
 // default-collection pass threads the same xshared prefix as the binder);
@@ -101,7 +101,7 @@ type XParent struct {
 // xrefs embeds it in a request whose route declares `{key}`; the path
 // segment binds through the mixin. The per-package pass can't expand a
 // sibling-package mixin, so the project-level path-param check owns the
-// verdict — the same cross-package flattening the codegen binder does.
+// verdict - the same cross-package flattening the codegen binder does.
 type XPathKey struct {
 	Key string `json:"-" path:"key"`
 }
@@ -129,7 +129,7 @@ type XPromoteWire struct {
 // XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by
 // xrefs, and its field reaches a THIRD package (`shared`). The xrefs handler
 // casts `shared.Severity(...)`, so the import collector must resolve the
-// qualified request through the project resolver and pull in `shared` — or
+// qualified request through the project resolver and pull in `shared` - or
 // the cast compiles to `undefined: shared`.
 type XThirdReq struct {
 	Sev shared.Severity `json:"-" query:"sev"`

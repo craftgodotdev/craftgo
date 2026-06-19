@@ -4,8 +4,8 @@
 // argument and the codegen emits a Validate() call against the
 // concrete element type.
 //
-// Mixin: a bare PascalCase identifier inside a type body — NOT the
-// keyword `mixin Name` — embeds the referenced type's fields into
+// Mixin: a bare PascalCase identifier inside a type body - NOT the
+// keyword `mixin Name` - embeds the referenced type's fields into
 // the host. The semantic phase flattens fields, detects conflicts,
 // and the validator emitter walks the host's expanded field set.
 package scalars
@@ -20,7 +20,7 @@ type Page<T> {
 }
 
 // Envelope<T> wraps a single value plus an optional meta string.
-// Exercises generic decl WITHOUT an array field — codegen still
+// Exercises generic decl WITHOUT an array field - codegen still
 // emits a parametric Validate() receiver for it.
 type Envelope<T> {
 	data T
@@ -49,7 +49,7 @@ type OrderPage {
 	page Page<Order>
 }
 
-// ProductPage instantiates Page<ProductRef> — separate scalar set
+// ProductPage instantiates Page<ProductRef> - separate scalar set
 // proves that two concrete instantiations coexist without name
 // clashes in the Validate generator.
 type ProductPage {
@@ -63,7 +63,7 @@ type Wrapped {
 	results Page<Envelope<Order>>
 }
 
-// AuditFields is the mixin source — two timestamp fields with
+// AuditFields is the mixin source - two timestamp fields with
 // @format(datetime). Any host that mixes this in inherits both
 // fields plus their format validators.
 type AuditFields {
@@ -149,7 +149,7 @@ type AuditedPage {
 // `Tree<T>` itself through the `kids` field. The instance registers
 // as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted
 // to `Tree<Order>[]`, asks the registry for the component name, finds
-// `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` — the
+// `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` - the
 // cycle terminates as a reference.
 type Tree<T> {
 	val  T

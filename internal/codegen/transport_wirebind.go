@@ -96,8 +96,8 @@ func cookieSource() wireSource {
 // no multi-value form, so arrayExpr returns "" and [renderWireBindLine]
 // rejects an array-typed @path field. A matched route always supplies
 // the segment, so the value is treated as present (the semantic layer
-// rejects an optional @path field, so only the required shapes —
-// directSingle / singleParsed — are ever emitted here).
+// rejects an optional @path field, so only the required shapes -
+// directSingle / singleParsed - are ever emitted here).
 func pathSource() wireSource {
 	return wireSource{
 		kind:       wire.BindingPath,
@@ -147,7 +147,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		// Local first (cheap, matches the pre-resolver shape), then
 		// project-wide for qualified `pkg.X` refs. For cross-pkg the
 		// declName is already the full qualified name (`xshared.XEmail`),
-		// which is also the correct Go cast — no extra prefix needed.
+		// which is also the correct Go cast - no extra prefix needed.
 		if pkg != nil {
 			if sc, scOk := pkg.Scalars[declName]; scOk && sc != nil {
 				if p2, pOk := queryPrims[sc.Primitive]; pOk {
@@ -189,7 +189,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	// Local refs get the request-pkg alias prefix (`Email` →
 	// `xrefs.Email`). Qualified refs already carry their pkg
 	// (`xshared.XEmail`) and pass through untouched. Detect by the
-	// presence of `.` — declName from a bare `*ast.QualifiedIdent`
+	// presence of `.` - declName from a bare `*ast.QualifiedIdent`
 	// is dotless.
 	if cast != "" && pkgAlias != "" && !strings.Contains(cast, ".") {
 		cast = pkgAlias + "." + cast
@@ -228,9 +228,9 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		// when the key is present and PRESERVE it when absent. The parsed
 		// path's server.BindValues already does both; the string-slice paths
 		// otherwise overwrite-with-nil (direct) or append (cast), destroying
-		// or polluting the default — so they use presence-guarded variants.
-		// The has-default test uses resolveDefaultValue — the same oracle the
-		// prefill emits from — so an enum-member array default (`[Red, Blue]`,
+		// or polluting the default - so they use presence-guarded variants.
+		// The has-default test uses resolveDefaultValue - the same oracle the
+		// prefill emits from - so an enum-member array default (`[Red, Blue]`,
 		// which defaultValue can't resolve) is seen as a default here too.
 		_, hasDef := resolveDefaultValue(f, pkg)
 		if prim.parser == "" {
@@ -292,7 +292,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	// of silently accepting the zero value. This covers arrays too (a
 	// required array @query / @header 400s when the key is absent), matching
 	// the required:true the spec carries. A present-but-empty value (`?q=`)
-	// passes — the test is on the key, not the value. @default fields are
+	// passes - the test is on the key, not the value. @default fields are
 	// exempt (the default covers absence). The check sits OUTSIDE the
 	// cookie-guard wrap so an absent required cookie 400s rather than
 	// skipping silently.

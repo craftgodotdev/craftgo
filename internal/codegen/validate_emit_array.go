@@ -10,7 +10,7 @@ import (
 )
 
 func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
-	// Applies to arrays (element count) and maps (entry count) — both
+	// Applies to arrays (element count) and maps (entry count) - both
 	// answer to len(). Anything else has no countable size, so the check
 	// is a no-op (the OpenAPI side likewise emits min/maxProperties only
 	// for the map shape).

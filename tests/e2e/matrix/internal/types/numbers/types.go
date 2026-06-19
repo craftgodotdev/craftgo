@@ -47,12 +47,12 @@ type NumberBoundary struct {
 // both), @gt/@lt (strict both). Also adds @positive, @negative, and
 // @multipleOf on int to cover the marquee combinations.
 type NumberCounter struct {
-	// int — defaults to the platform's native word width but the
+	// int - defaults to the platform's native word width but the
 	// semantic capacity check treats it as int64 for portability.
 	RangeInt  int `json:"rangeInt"`
 	GteLteInt int `json:"gteLteInt"`
 	GtLtInt   int `json:"gtLtInt"`
-	// int8 — bound capacity edge (the validator should narrow safely).
+	// int8 - bound capacity edge (the validator should narrow safely).
 	RangeInt8  int8 `json:"rangeInt8"`
 	GteLteInt8 int8 `json:"gteLteInt8"`
 	GtLtInt8   int8 `json:"gtLtInt8"`
@@ -60,15 +60,15 @@ type NumberCounter struct {
 	RangeInt16  int16 `json:"rangeInt16"`
 	GteLteInt16 int16 `json:"gteLteInt16"`
 	GtLtInt16   int16 `json:"gtLtInt16"`
-	// int32 — tests MaxInt32-ish boundaries.
+	// int32 - tests MaxInt32-ish boundaries.
 	RangeInt32  int32 `json:"rangeInt32"`
 	GteLteInt32 int32 `json:"gteLteInt32"`
 	GtLtInt32   int32 `json:"gtLtInt32"`
-	// int64 — the widest signed.
+	// int64 - the widest signed.
 	RangeInt64  int64 `json:"rangeInt64"`
 	GteLteInt64 int64 `json:"gteLteInt64"`
 	GtLtInt64   int64 `json:"gtLtInt64"`
-	// @positive / @negative — flag decorators (no parens).
+	// @positive / @negative - flag decorators (no parens).
 	PosInt   int   `json:"posInt"`
 	NegInt   int   `json:"negInt"`
 	PosInt64 int64 `json:"posInt64"`
@@ -78,7 +78,7 @@ type NumberCounter struct {
 }
 
 // NumberExact is the boundary case where @gte and @lte share the
-// same value — exactly one accepted value. The semantic allows this
+// same value - exactly one accepted value. The semantic allows this
 // closed-form pair; only the strict variants on equal endpoints
 // (e.g. @gt(5) @lt(5)) emit empty-range diagnostics.
 type NumberExact struct {
@@ -96,7 +96,7 @@ type NumberMixed struct {
 	GtLte int `json:"gtLte"`
 	// inclusive-lower + strict-upper
 	GteLt int `json:"gteLt"`
-	// All-negative inclusive range — only negative values accepted.
+	// All-negative inclusive range - only negative values accepted.
 	NegRange int `json:"negRange"`
 	// All-negative strict range.
 	NegStrict int `json:"negStrict"`
@@ -107,12 +107,12 @@ type NumberMixed struct {
 // NumberOptional exercises the optional / nullable / default axes
 // against numeric primitives.
 type NumberOptional struct {
-	// Bare optional ints/floats with bound — the decoder treats
+	// Bare optional ints/floats with bound - the decoder treats
 	// "missing key" as zero-value, and Validate skips when nil.
 	OptInt   *int     `json:"optInt,omitempty"`
 	OptFloat *float64 `json:"optFloat,omitempty"`
 	OptUint  *uint    `json:"optUint,omitempty"`
-	// @nullable on a non-optional numeric — forces a pointer in
+	// @nullable on a non-optional numeric - forces a pointer in
 	// codegen so the wire can carry explicit null.
 	NullableInt   *int     `json:"nullableInt"`
 	NullableFloat *float64 `json:"nullableFloat"`
@@ -122,7 +122,7 @@ type NumberOptional struct {
 	// Defaults: @default fills in the value when the field is absent.
 	DefaultInt   *int     `json:"defaultInt,omitempty"`
 	DefaultFloat *float64 `json:"defaultFloat,omitempty"`
-	// Default + range — present and below-default sends 0 which still
+	// Default + range - present and below-default sends 0 which still
 	// passes the @gte(0).
 	DefaultStep *int `json:"defaultStep,omitempty"`
 }
@@ -131,11 +131,11 @@ type NumberOptional struct {
 // Float-typed literals such as @gte(0.5) and @range(0.1, 0.9) must
 // round-trip cleanly through parse → semantic → codegen.
 type NumberPrice struct {
-	// float32 — narrower precision but same decorator surface.
+	// float32 - narrower precision but same decorator surface.
 	RangeF32  float32 `json:"rangeF32"`
 	GteLteF32 float32 `json:"gteLteF32"`
 	GtLtF32   float32 `json:"gtLtF32"`
-	// float64 — the wide form. Includes a high-precision bound.
+	// float64 - the wide form. Includes a high-precision bound.
 	RangeF64  float64 `json:"rangeF64"`
 	GteLteF64 float64 `json:"gteLteF64"`
 	GtLtF64   float64 `json:"gtLtF64"`
@@ -153,7 +153,7 @@ type NumberUnsigned struct {
 	RangeUint  uint `json:"rangeUint"`
 	GteLteUint uint `json:"gteLteUint"`
 	GtLtUint   uint `json:"gtLtUint"`
-	// uint8 — full capacity test.
+	// uint8 - full capacity test.
 	RangeUint8  uint8 `json:"rangeUint8"`
 	GteLteUint8 uint8 `json:"gteLteUint8"`
 	GtLtUint8   uint8 `json:"gtLtUint8"`
@@ -161,15 +161,15 @@ type NumberUnsigned struct {
 	RangeUint16  uint16 `json:"rangeUint16"`
 	GteLteUint16 uint16 `json:"gteLteUint16"`
 	GtLtUint16   uint16 `json:"gtLtUint16"`
-	// uint32 — boundary at MaxUint32.
+	// uint32 - boundary at MaxUint32.
 	RangeUint32  uint32 `json:"rangeUint32"`
 	GteLteUint32 uint32 `json:"gteLteUint32"`
 	GtLtUint32   uint32 `json:"gtLtUint32"`
-	// uint64 — even bigger.
+	// uint64 - even bigger.
 	RangeUint64  uint64 `json:"rangeUint64"`
 	GteLteUint64 uint64 `json:"gteLteUint64"`
 	GtLtUint64   uint64 `json:"gtLtUint64"`
-	// @positive on uint — semantically equivalent to @gt(0), but the
+	// @positive on uint - semantically equivalent to @gt(0), but the
 	// unsigned domain makes @negative semantically vacuous (it is
 	// still accepted at the decorator layer, so we don't test that).
 	PosUint uint `json:"posUint"`

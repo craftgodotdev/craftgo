@@ -91,12 +91,12 @@ func (a *analyzer) checkArgsScope(decs []*ast.Decorator) {
 // decorators (`@positive`, `@uniqueItems`, ...) warn on empty parens;
 // everything else goes through the generic positional check.
 func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
-	// Flag decorators never take arguments — empty parens are
+	// Flag decorators never take arguments - empty parens are
 	// stylistically wrong. Warn (not error); `craftgo fmt` strips
 	// them on save.
 	if spec.Flag && d.HasParens {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeFlagEmptyParens,
-			"@%s never accepts arguments — drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
+			"@%s never accepts arguments - drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
 			d.Name, d.Name)
 	}
 	a.checkExampleArg(d)
@@ -107,7 +107,7 @@ func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
 
 // checkPatternArg verifies the @pattern argument is a compilable RE2
 // regex. The validator lowers it to `regexp.MustCompile`, which panics
-// at package-init time on an invalid expression — crashing every handler
+// at package-init time on an invalid expression - crashing every handler
 // in the generated package on first use. Catching it here at design time
 // is the free-form equivalent of the fixed-enum check @format gets.
 func (a *analyzer) checkPatternArg(d *ast.Decorator) {
@@ -123,19 +123,19 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 		// regexp.Compile, but it is a meaningless constraint and the codegen
 		// regex interner has no name for it - reject it at design time.
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
-			"@pattern requires a non-empty regular expression — an empty pattern matches everything and is not a meaningful constraint")
+			"@pattern requires a non-empty regular expression - an empty pattern matches everything and is not a meaningful constraint")
 		return
 	}
 	if _, err := regexp.Compile(s.Value); err != nil {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
-			"@pattern is not a valid regular expression: %v — the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)
+			"@pattern is not a valid regular expression: %v - the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)
 	}
 }
 
 // checkGroupArg verifies a @group value is a clean relative path. @group nests
 // a service's generated transport handlers and service stubs under
 // <service>/<group>/ on disk (it never touches the HTTP route), so the value
-// must be a slash-delimited list of plain segments — letters, digits, '-', or
+// must be a slash-delimited list of plain segments - letters, digits, '-', or
 // '_'. Absolute paths, empty values, and "." / ".." segments are rejected so a
 // group can only ever nest deeper inside the service directory, never escape
 // the output tree.
@@ -155,7 +155,7 @@ func (a *analyzer) checkGroupArg(d *ast.Decorator) {
 		hasSegment = true
 		if seg == "." || seg == ".." {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
-				"@group segment %q is not allowed — @group nests generated files under the service directory and must be a plain relative path like \"admin\" or \"admin/ops\"", seg)
+				"@group segment %q is not allowed - @group nests generated files under the service directory and must be a plain relative path like \"admin\" or \"admin/ops\"", seg)
 			return
 		}
 		if !isPlainPathSegment(seg) {
@@ -166,7 +166,7 @@ func (a *analyzer) checkGroupArg(d *ast.Decorator) {
 	}
 	if !hasSegment {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
-			"@group value %q is empty after trimming slashes — provide a path like \"admin\" or \"admin/ops\"", s.Value)
+			"@group value %q is empty after trimming slashes - provide a path like \"admin\" or \"admin/ops\"", s.Value)
 	}
 }
 
@@ -203,7 +203,7 @@ func (a *analyzer) checkExampleArg(d *ast.Decorator) {
 		}
 		if ag.Value == nil {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
-				"@example takes a literal (string/int/float/bool) or an array of those, not an object — a struct example is composed from each field's own @example; for a free-form any/map field, describe the shape with @doc")
+				"@example takes a literal (string/int/float/bool) or an array of those, not an object - a struct example is composed from each field's own @example; for a free-form any/map field, describe the shape with @doc")
 			return
 		}
 	}

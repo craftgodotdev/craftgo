@@ -176,7 +176,7 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text, Primitive: prim.Text}
 	// Trailing decorators on the same line as the primitive belong to the
 	// scalar (`scalar Email string @pattern(...)`). A decorator on a later
-	// line is the leading decorator of the next declaration, so stop —
+	// line is the leading decorator of the next declaration, so stop -
 	// consuming it here would steal it from the following type/enum/service.
 	for p.peek().Kind == lexer.At && p.peek().Pos.Line == prim.Pos.Line {
 		sd.Decorators = append(sd.Decorators, p.parseDecorator())

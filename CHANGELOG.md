@@ -2,7 +2,7 @@
 
 All notable changes to craftgo are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and craftgo follows
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) — from 1.0.0 on, a
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
 ## [1.4.2] - 2026-06-17 [UTC+7]
@@ -19,8 +19,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 ### Added
 
 - **CI hardened and broadened.** `go vet` + `gofmt` now run alongside a
-  `govulncheck` gate; the test suite runs on Linux, macOS, and Windows — the
-  three release targets — instead of Linux only, catching path / file /
+  `govulncheck` gate; the test suite runs on Linux, macOS, and Windows - the
+  three release targets - instead of Linux only, catching path / file /
   line-ending bugs a single-OS run misses (race detector on Linux/macOS).
   Dependabot keeps Go modules, GitHub Actions, and the docs npm deps current,
   and every workflow declares least-privilege `permissions` plus
@@ -39,14 +39,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Changed
 
-- **Minimum Go is now 1.26.4** (was 1.24.2, which is past end-of-life — Go
+- **Minimum Go is now 1.26.4** (was 1.24.2, which is past end-of-life - Go
   supports only the two latest releases). Required by the OpenTelemetry security
   update; building craftgo from source now needs Go 1.26+.
 
 - **Generated structs name a non-body field's wire location in its tag.** A
   field bound to `@path` / `@query` / `@header` / `@cookie` previously rendered
-  as `json:"-"` alone; it now carries a second tag key — `path:"id"`,
-  `query:"page"`, `header:"X-Trace-Id"`, `cookie:"session"` — whose value is
+  as `json:"-"` alone; it now carries a second tag key - `path:"id"`,
+  `query:"page"`, `header:"X-Trace-Id"`, `cookie:"session"` - whose value is
   the explicit wire-name override when given, else the field name. The
   `json:"-"` stays (the field is still off the JSON body in both directions),
   so the only change is the added, documentary key, letting a reader see where
@@ -74,7 +74,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   shared the site-level description). The published location sits behind a
   single `SITE_ORIGIN` / `BASE` constant so moving to a custom domain is a
   two-line change, and the Google Search Console verification tag is wired into
-  the global `<head>`. Documentation-only — the craftgo tool and its generated
+  the global `<head>`. Documentation-only - the craftgo tool and its generated
   output are unchanged.
 
 ## [1.4.1] - 2026-06-13
@@ -86,7 +86,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   default `info`) and the scaffolded `main.go` feeds it to the new
   `log.SetLevel` at boot. The server logger and the generated logic layer share
   one `zap.AtomicLevel` behind `log.New` / `log.NewConsole`, so a single call
-  retunes both — no per-logger wiring, and the swap is atomic so it can back a
+  retunes both - no per-logger wiring, and the swap is atomic so it can back a
   `/debug/loglevel` endpoint or a config reload. `log.SetLevel`, `log.GetLevel`,
   and `log.ParseLevel` (config-string → `Level`, reporting unknown values rather
   than snapping) are exported for that. Loggers brought in via `log.NewZap` keep
@@ -107,7 +107,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **The default 500 handler no longer leaks raw error text to the client.** A
   service error with no HTTP status was serialised as `{"message": err.Error()}`
-  — and `err.Error()` routinely carries DSNs, file paths, upstream URLs, and
+  - and `err.Error()` routinely carries DSNs, file paths, upstream URLs, and
   other internal detail. The default now logs the full error (with trace
   context) and returns an opaque `{"message": "internal server error"}`;
   `SetHandleUnknownError` still installs a richer envelope when wanted.
@@ -122,14 +122,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   repeated multipart part into a `[]*multipart.FileHeader` (from
   `r.MultipartForm.File["<name>"]`), validated by `@minItems`/`@maxItems`, and
   the OpenAPI multipart schema renders it as `{type: array, items: {type:
-  string, format: binary}}` (so generated clients type it as an array of files —
+  string, format: binary}}` (so generated clients type it as an array of files -
   heyapi: `Array<Blob | File>`). Previously a `file[]` field compiled the type
   (`[]*multipart.FileHeader`) but the binder used the single-file `r.FormFile`,
   producing non-compiling Go. A single `file` is unchanged. A
   multi-dimensional `file[][]` (which has no multipart encoding) is now rejected
   at gen time with a clear diagnostic instead of emitting non-compiling Go. An
   optional file (`cover file?`) is rendered as `{type: string, format: binary}`
-  and simply omitted from the multipart `required[]` — a binary part is
+  and simply omitted from the multipart `required[]` - a binary part is
   present-or-absent, never JSON `null`, so it no longer carries a
   `type: [string, "null"]` union (which is meaningless for a file and breaks
   Swagger UI's file picker).
@@ -139,7 +139,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Internal decide-once consolidation (no behavior change; generated output is
   byte-identical).** The route join (basePath + @prefix + method path) is now a
   single exported `semantic.ResolveRoute` that the analyzer, the routes/OpenAPI
-  emitters, and the route-conflict detector all call — the codegen copy
+  emitters, and the route-conflict detector all call - the codegen copy
   (`methodFullPath`/`servicePrefix`) is gone. `IsBodyVerb` is the one body-verb
   rule (was duplicated per layer; now built on `http.Method*`). The binding-kind
   vocabulary ("path"/"query"/"header"/"cookie"/"form"/"body"/"sensitive") is a
@@ -150,7 +150,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   them. Two new leaf packages now hold the cross-layer authorities:
   `internal/wire` (binding-kind vocabulary, wire names, the request
   auto-binding rule, body-verb) and `internal/route` (route assembly, path
-  strings, route shape, ServeMux pattern-overlap) — the analyzer, codegen, and
+  strings, route shape, ServeMux pattern-overlap) - the analyzer, codegen, and
   the LSP all import the same implementation. The biggest source files were
   split by topic for maintainability: `parser.go` (1,115 lines, the whole
   package in one file) into five files, `semantic/combination_checks.go`
@@ -169,8 +169,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Every generated route is smoke-tested over real HTTP.** The e2e matrix
   gains a spec-driven probe (`TestEveryRouteRegisteredAndHandled`): it boots
   the full umbrella `RegisterAll` server through the production handler chain
-  and walks every operation in the committed OpenAPI document — 155 operations
-  across all 32 route hubs — asserting each one is mounted and its
+  and walks every operation in the committed OpenAPI document - 155 operations
+  across all 32 route hubs - asserting each one is mounted and its
   parse→validate chain answers (an app-level 404 counts as alive; only the
   mux's own "404 page not found" fails). Previously only 9 of 29 services were
   ever exercised over HTTP, the exact blind spot that let boot-time route
@@ -178,7 +178,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **`craftgo gen` output is fully deterministic.** The umbrella `routes.go`
   sorted its (service, group) registrations by service name only, so a service
-  with several `@group`s registered them in map-iteration order — different on
+  with several `@group`s registered them in map-iteration order - different on
   every run. The sort now tie-breaks on group; `RegisterAll` is byte-stable and
   the CI drift gate (gen output must match the committed files) is re-enabled.
 - **Cross-package duplicate `operationId`s are reported at analysis time with a
@@ -211,8 +211,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   register the same `net/http` pattern, so the second registration panics at
   boot. The route-collision scan only saw one package at a time; a project-level
   twin (`checkProjectPathCollision`) now reports the cross-package pair with a
-  file:line diagnostic naming both methods — in the editor (LSP) and at
-  `craftgo gen` — instead of the late, position-less gen-time conflict error.
+  file:line diagnostic naming both methods - in the editor (LSP) and at
+  `craftgo gen` - instead of the late, position-less gen-time conflict error.
   Same-package pairs stay with the per-package pass (no double-fire).
 - **Generated multipart handlers clean up their temp files on return.** The
   handler now `defer`s `r.MultipartForm.RemoveAll()` right after a successful
@@ -224,7 +224,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@nullable` body field in a multipart request (form-bound because a sibling
   `file` field makes the request multipart) is rendered as `*T` by the type
   emitter, but the wire binder decided pointer-vs-direct from `f.Type.Optional`
-  alone — blind to `@nullable` — and emitted a bare `req.F = r.FormValue(...)`
+  alone - blind to `@nullable` - and emitted a bare `req.F = r.FormValue(...)`
   (a `string` assigned to `*string`). The binder now uses the same
   `goFieldIsPointer` predicate as the type emitter, so the two can't disagree on
   pointer-ness (it pointer-wraps with a present-guard: `if _v := r.FormValue(k);
@@ -232,7 +232,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@cookie` was already rejected and stays rejected.)
 - **A method path variable that reuses a `@prefix` path variable is now rejected
   at gen time.** `@prefix("/tenant/{tenantID}")` + method path `/{tenantID}/items`
-  concatenates to `/tenant/{tenantID}/{tenantID}/items` — a duplicate wildcard
+  concatenates to `/tenant/{tenantID}/{tenantID}/items` - a duplicate wildcard
   that `net/http`'s ServeMux panics on at registration. The duplicate-path-var
   check only scanned the method path; it now seeds from the prefix's path
   variables too and fails with a clear diagnostic ("…already bound by the
@@ -242,13 +242,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   instead of being silently dropped.** An un-decorated field whose name matches
   a `{var}` in the service `@prefix` (e.g. `tenantID` under
   `@prefix("/tenant/{tenantID}")`) was bound from the **query** (on a body-less
-  GET) or the **JSON body** (on a POST) instead of `r.PathValue` — so the value
+  GET) or the **JSON body** (on a POST) instead of `r.PathValue` - so the value
   in the URL path never reached the field (no compile error, no panic: a request
   to `/tenant/acme/items` left `tenantID` empty, or 400'd demanding `?tenantID=`).
   The auto-binding rule scanned only the method path; both the analyser and
   codegen now read the **full route's** path variables (prefix + method) through
   one shared `MethodRoutePathVars`, so a prefix-variable field binds from the
-  path on every verb — exactly like a method-path-variable field. (Explicit
+  path on every verb - exactly like a method-path-variable field. (Explicit
   `@path` already worked; only the auto-bind case was affected.)
 
 ## [1.3.10] - 2026-06-08
@@ -258,7 +258,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Validation errors on scalar / enum fields now report the field name, not
   the type name.** A field `domain StoreDomain` (scalar) or `status Status`
   (enum) used to fail with `StoreDomain: ...` / `Status: invalid Status value`
-  — the type name — because the constraint lives on the type's shared
+  - the type name - because the constraint lives on the type's shared
   `Validate()` method, which the parent returned verbatim. The shared method's
   message is now subject-less (`length greater than 253`, `invalid Status
   value`) and the field's caller wraps it with the field name
@@ -267,8 +267,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   unchanged (their `Validate()` already names the inner field). The shared
   `Validate()` method (and generic-over-scalar dispatch) is otherwise intact.
 - **Validation errors on bound fields now report the wire alias, not the DSL
-  field name.** A field bound with an explicit name —
-  `src Host @header("x-source-domain")`, `page int @query("p")` — used to fail
+  field name.** A field bound with an explicit name -
+  `src Host @header("x-source-domain")`, `page int @query("p")` - used to fail
   with `src: ...` / `page: ...` (the DSL name), which doesn't match what the
   caller sent. The message now uses the wire name (`x-source-domain: ...`,
   `p: ...`) for every `@path`/`@query`/`@header`/`@cookie`/`@form` field, across
@@ -280,7 +280,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **`@format(hostname)` is removed.** Its built-in regex approximated RFC 1123
   but did not enforce the 63-character-per-label limit (a 100-char label passed),
-  and the total-length cap can't be expressed in Go's RE2 regex anyway — a
+  and the total-length cap can't be expressed in Go's RE2 regex anyway - a
   half-correct validator that gave false confidence. `@format(hostname)` now
   fails with an "unknown format" error listing the valid values. To validate a
   hostname, use a scalar with an explicit `@pattern(...)` (and `@maxLength` for
@@ -309,7 +309,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   `GET <path>` (an HTML page loading the chosen UI from a CDN, pointed at the
   spec). The new `server.ServeDocs` / `server.DocsOptions` are also callable
   directly from hand-written servers. `main.go` and `config.go` are gen-once, so
-  existing projects keep theirs — add the `docs` block + `srv.ServeDocs(...)` by
+  existing projects keep theirs - add the `docs` block + `srv.ServeDocs(...)` by
   hand, or delete the scaffold to regenerate. Docs wiring is skipped when the
   OpenAPI output is disabled (`output.openapi: "-"`) or lives outside the main
   package's tree (a `go:embed` cannot cross `..`).
@@ -320,16 +320,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`pkg/log`) instead of the standard-library `log`.** The bootstrap lines
   (config / OTel / metrics init, listener startup, fatal errors) now emit the
   same structured records as the rest of the runtime (access logs, error hooks)
-  — e.g. `{"level":"info","msg":"listening","addr":":8080"}` — rather than plain
+  - e.g. `{"level":"info","msg":"listening","addr":":8080"}` - rather than plain
   `2006/01/02 ... ` text, so boot output is consistent and machine-parseable.
   `main.go` is gen-once, so existing projects keep theirs.
 
 ### Fixed
 
 - **Conflicting routes are now rejected at gen time instead of panicking at
-  server boot.** Two routes that overlap with neither more specific — e.g.
+  server boot.** Two routes that overlap with neither more specific - e.g.
   `GET /orders/{id}/track` and `GET /orders/by-status/{status}`, which both match
-  `/orders/by-status/track` — are rejected by Go 1.22's `net/http.ServeMux` at
+  `/orders/by-status/track` - are rejected by Go 1.22's `net/http.ServeMux` at
   registration, so the generated server *compiled and shipped* but crashed on
   startup. `craftgo gen` now detects this across every service in the project
   (one mux backs `RegisterAll`) and fails with a message naming both routes and
@@ -344,7 +344,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **An `extend service` block without its own `@group` now inherits the primary
   block's `@group`.** Previously each block was grouped strictly independently,
   so a primary `@group("admin")` left an un-decorated extend's methods at the
-  ungrouped service root — splitting one service across `admin/` and the
+  ungrouped service root - splitting one service across `admin/` and the
   service-name folder. The service-level `@group` is now the default for every
   block; an extend still overrides by declaring its own `@group`. (Consistent
   with how extend blocks already inherit `@middlewares` / `@tags` / `@security`.)
@@ -355,23 +355,23 @@ breaking change to the DSL or the generated layout bumps the major version.
   all integer widths collapsed to a bare `type: integer` and both floats to a
   bare `type: number`, so a client generator could not tell `int32` from `int64`
   or `float` from `double`, and unsigned fields advertised no lower bound.
-  `int` / `int8` / `int16` stay bare — OpenAPI registers no standard format for
+  `int` / `int8` / `int16` stay bare - OpenAPI registers no standard format for
   those widths.
 
 ## [1.3.6] - 2026-06-07
 
 ### Added
 
-- **`server.SetHandleUnknownError` — a swappable hook for service errors that
+- **`server.SetHandleUnknownError` - a swappable hook for service errors that
   are not craftgo typed errors.** When a handler returns a bare `errors.New` /
   `fmt.Errorf` (no `HTTPStatus()`), the framework now logs it at Error level
   with the request's trace context (`trace_id` / `span_id` / `request_id`) and
-  responds 500 — and apps can replace that with `SetHandleUnknownError` to map a
+  responds 500 - and apps can replace that with `SetHandleUnknownError` to map a
   domain error to a status, redact, or return a uniform envelope. This closes
   the gap noted in the errors guide: validation (`SetDefaultValidationFailed`)
   and not-found (`SetHandleNotFound`) were already overridable; service errors
   now are too. The error contract is also named: `server.StatusError` (and the
-  optional `server.ResponseHeaderWriter`) — every `@errors(...)` declaration
+  optional `server.ResponseHeaderWriter`) - every `@errors(...)` declaration
   implements it.
 
 ### Changed
@@ -384,14 +384,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   at all. Default rendering is unchanged: a typed error renders its declared
   status + body (or `{code, message}` envelope when bodyless); an unrecognised
   error goes through `SetHandleUnknownError`. (Typed-error *declaration* files in
-  the types package are unaffected — those legitimately vary per error type.)
+  the types package are unaffected - those legitimately vary per error type.)
 
 ### Fixed
 
 - **`@group` now splits the generated routes files per group, mirroring the
   transport handlers and service stubs.** A `@group` replaces the service-name
   segment on disk, so the handlers and stubs moved into the group folder
-  (`internal/transport/<group>/`, `internal/service/<group>/`) — but the routes
+  (`internal/transport/<group>/`, `internal/service/<group>/`) - but the routes
   file stayed pinned at `internal/routes/<service-name>/`, so a service split
   across several groups had its folders out of sync. Routes now emit one file
   per group, each in its group's folder (`internal/routes/<group>/`), importing
@@ -407,10 +407,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`.cg` is now accepted as a short alias for the `.craftgo` source
   extension.** `craftgo gen`, `craftgo fmt`, and the language server (project
   walk + file watcher) all discover `.cg` files, and a single project may mix
-  `.craftgo` and `.cg` freely — including cross-file and cross-package
+  `.craftgo` and `.cg` freely - including cross-file and cross-package
   references. `.craftgo` remains the canonical extension. (Editors that launch
   the language server by file association need a `.cg` association configured on
-  the client side — the bundled VS Code extension does this from v0.4.4.)
+  the client side - the bundled VS Code extension does this from v0.4.4.)
 
 ## [1.3.4] - 2026-06-05
 
@@ -418,7 +418,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **Duplicate generic type-parameter names (`type Pair<T, T>`) are now rejected
   at parse time.** They lowered to `type Pair[T any, T any]`, which the Go
-  compiler rejects (`T redeclared`) — so the design failed downstream with a
+  compiler rejects (`T redeclared`) - so the design failed downstream with a
   confusing Go error instead of a clear diagnostic.
 - **`craftgo fmt` no longer drops comments on enum values.** A `//` comment
   above an enum value (and a blank-isolated section comment between values) was
@@ -433,10 +433,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A duplicate `request`/`response` clause in a method body is now rejected.**
   A second clause silently discarded the first with no diagnostic.
 - **A type / enum / scalar / error named after a built-in type** (`scalar int`,
-  `type string`, ...) is now rejected — the generated Go type shadowed the
-  built-in and failed to compile. (Middleware names are exempt — separate Go
+  `type string`, ...) is now rejected - the generated Go type shadowed the
+  built-in and failed to compile. (Middleware names are exempt - separate Go
   namespace.)
-- **`object` as a field type is now rejected** with a pointer to `any` — it was
+- **`object` as a field type is now rejected** with a pointer to `any` - it was
   a broken half-alias whose Go renderer emitted an undefined type and a dangling
   OpenAPI `$ref`.
 - **A multipart request now advertises its type-level cross-field constraints**
@@ -473,13 +473,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   none was emitted).
 - **An optional map key (`map<K?, V>`) is now rejected at design time.** It
   rendered `map[*K]V`, which `encoding/json` cannot use as an object key
-  (marshal/unmarshal fail) — caught for every underlying key kind, local and
+  (marshal/unmarshal fail) - caught for every underlying key kind, local and
   cross-package.
 - **An empty `@pattern("")` is now rejected.** It is a valid RE2 (matches
   everything) so it passed the regex check, but it is a meaningless constraint
   and crashed the validator codegen (the regex interner has no name for it).
 - **A numeric bound whose magnitude exceeds the `float32` range** (`@gte`/`@lte`/
-  `@range` on a `float32` field or scalar) is now rejected — it previously
+  `@range` on a `float32` field or scalar) is now rejected - it previously
   generated a `float32` literal that overflowed and would not compile.
 
 ## [1.3.3] - 2026-06-04
@@ -489,7 +489,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **LSP: live cross-file diagnostics when design files change on disk.** The
   language server now registers a `**/*.craftgo` watcher, so creating, deleting,
   or changing a design file (including outside the editor, or a file the user
-  never opened) re-runs the project diagnostics pass on every open document — a
+  never opened) re-runs the project diagnostics pass on every open document - a
   reference to a just-deleted type starts erroring, and a re-added one stops,
   without the user editing the dependent file. On-demand features
   (go-to-definition, completion) already re-read the disk per request. The
@@ -499,7 +499,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **LSP: a `.craftgo` file deleted while still open keeps contributing its live
   buffer.** Project resolution walked only the disk, so an open-but-deleted file
-  vanished from the project — dependent open files reported spurious
+  vanished from the project - dependent open files reported spurious
   "unknown type" errors and the file itself lost its own diagnostics. The walk
   now re-adds every open buffer the disk no longer holds, honouring the editor
   cache over disk presence.
@@ -512,7 +512,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   nesting under it: `@group("v2")` on any service emits to
   `internal/transport/v2/` (not `internal/transport/<service>/v2/`), giving the
   author full control of the layout. Because the group replaces the service
-  name it is a **global namespace** — two services that share a group land in
+  name it is a **global namespace** - two services that share a group land in
   the same directory and Go package, so keep groups unique per service (embed
   the service name in the group when in doubt).
 
@@ -524,7 +524,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   block plus an `@group("checkout/v2")` extend) while a single routes file
   imports each group's transport package and registers every method under the
   one service. Each group folder is a self-contained package with its own
-  `writeError` helper — no cross-package imports. `@prefix` remains
+  `writeError` helper - no cross-package imports. `@prefix` remains
   primary-only.
 
 ### Fixed
@@ -551,7 +551,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   stubs under `internal/transport/<service>/admin/ops/` and
   `internal/service/<service>/admin/ops/`, and adds its value as an OpenAPI tag
   (appended to any explicit `@tags`, deduped; `@ignoreTags` drops it). It no
-  longer injects the group into the HTTP route or the OpenAPI **path** — use
+  longer injects the group into the HTTP route or the OpenAPI **path** - use
   `@prefix` to shape the URL. The value may be nested (`admin/ops`) and is
   validated as a plain relative path (no `.`/`..`/absolute forms). **Breaking
   for designs that relied on `@group` appearing in the route**: move that
@@ -570,7 +570,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 ### Deprecated
 
 - The DSL `import "<subfolder>"` statement is **deprecated and no longer
-  required**. Cross-package types resolve automatically — reference a
+  required**. Cross-package types resolve automatically - reference a
   declaration from another folder by qualifying it with that package's name
   (`shared.Type`), and the codegen wires the matching Go import on its own.
   `import` lines are still accepted (so existing designs keep working) but are
@@ -581,16 +581,16 @@ breaking change to the DSL or the generated layout bumps the major version.
 ### Fixed
 
 - A **bare scalar or enum request type** (`request Token` where `Token` is a
-  scalar/enum) is now rejected — a fieldless type has nothing to bind or decode
+  scalar/enum) is now rejected - a fieldless type has nothing to bind or decode
   as a body, so the payload was silently dropped (and a constraint-free scalar
   produced non-compiling Go). Wrap the value in a `type`.
 - An **integral-float numeric bound** (`@gte(300.0)`) is now capacity-checked
-  like its integer form, and `@default` on a `file` field is rejected — both
+  like its integer form, and `@default` on a `file` field is rejected - both
   previously produced non-compiling Go.
 - An **auto-bound path field with a non-bindable type** (struct/map/array/
   generic) is rejected, matching the explicit `@path` form (it was silently
   dropped and emitted an invalid non-scalar path parameter).
-- Repeated `@errors` decorators are no longer false-rejected as a duplicate —
+- Repeated `@errors` decorators are no longer false-rejected as a duplicate -
   `@errors` aggregates like `@tags`/`@security`/`@middlewares`, so the
   extend-service inheritance idiom works. The decl-collision check now uses the
   same smart `Err`/`Error` suffix codegen emits, so an error named `…Err`/
@@ -605,7 +605,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   time instead of generating non-compiling / reject-everything Go. A negative
   single-arg `@length(-1)` is likewise rejected.
 - **Array-shortcut decorator forms** (`@errors([A, B])`, `@tags([A, B])`,
-  `@middlewares([A, B])`) are now honoured by codegen — they were accepted by
+  `@middlewares([A, B])`) are now honoured by codegen - they were accepted by
   the analyzer but silently contributed nothing, dropping error responses,
   tags, and the entire middleware chain. (`@security([...])` already worked.)
 - **OpenAPI exclusive bounds intersect** instead of overwriting: stacking
@@ -613,14 +613,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`exclusiveMinimum: 5`) the order-invariant validator enforces, rather than
   the looser last-writer value.
 - A request field diverted to `@query`/`@header`/`@cookie`/`@body` no longer
-  satisfies the path-coverage check for a same-named `{segment}` — the segment
+  satisfies the path-coverage check for a same-named `{segment}` - the segment
   is reported missing instead of producing an OpenAPI spec with no `in: path`
   parameter and a handler that never reads the value.
 - Explicit `@path @default` is rejected (a matched route always supplies the
   segment), matching the auto-`@path` form, and a no-content success status
   (`@status(204)`/`304`/`1xx`) on a body-returning method is rejected.
 - The multipart handler no longer emits an unused (or duplicate) `types`
-  import when the request type lives in another package — it now carries the
+  import when the request type lives in another package - it now carries the
   same `NeedsTypes` guard the JSON transport and service templates use.
 - A generic type parameter in a **map value** position (`map<K, T>`) is now
   validated (its values walked via the reflective fallback) instead of being
@@ -642,7 +642,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - A **scalar over `bytes`** (`scalar Blob bytes`) marked optional (`?`) or
   `@nullable` now renders as the bare named slice (`Blob`) rather than a
-  redundant pointer (`*Blob`) — the named slice already holds nil, exactly like
+  redundant pointer (`*Blob`) - the named slice already holds nil, exactly like
   a raw `bytes` field. The pointer decision is resolved once through the scalar
   table so the struct field, the validator nil-guards, and the field-level
   checks agree; a null / absent value still skips the scalar's own `Validate()`.
@@ -650,7 +650,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   (its presence is emptiness, not a clean `!= nil`), matching raw `bytes` / `any`.
 - A field-level `@doc` / `@example` on a field whose type is a **named ref**
   (a component `$ref`) is now carried onto an `allOf` / `anyOf` wrapper instead
-  of being silently dropped — a bare `$ref` cannot hold sibling keywords
+  of being silently dropped - a bare `$ref` cannot hold sibling keywords
   portably, so the metadata rode nowhere before.
 - A method's `@errors(...)` reference now **follows the OpenAPI merge's rename**
   when two packages declare an error of the same name. The merge renames the
@@ -664,7 +664,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   body-decode decision and the handler-import collector thread the project
   resolver. Concretely:
   - a request whose only body fields come from a cross-package mixin now emits
-    the JSON body decode (previously skipped — the body was never read and
+    the JSON body decode (previously skipped - the body was never read and
     required fields failed validation against zero values);
   - a cross-package scalar / enum bound to `@query` / `@path` / `@header` /
     `@cookie` through a mixin now binds (previously aborted gen with
@@ -694,13 +694,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   was absent (destroying the default), and a parsed array appended the request
   onto the prefilled default (`[7,8]` + `?ids=4&ids=5` → `[7,8,4,5]`). Array
   wire-binding now preserves the default when the key is absent and replaces
-  (not appends) when present — `server.BindValues` resets before binding and the
+  (not appends) when present - `server.BindValues` resets before binding and the
   string paths are presence-guarded.
 - An **enum-array** `@query` / `@header` parameter with a `@default` corrupted
   the default: the prefill resolved the member array (`@default([Red, Blue])` →
   `[]Color{ColorRed, ColorBlue}`) but the binder's has-default test could not
   (it routed the array literal through a converter with no enum-member case and
-  returned "no default"), so the field used the bare appending shape — `?colors=
+  returned "no default"), so the field used the bare appending shape - `?colors=
   Green` yielded `[Red Green Blue]` instead of `[Green]`, every appended value
   passing validation, so the corruption was silent. The binder now consults the
   same default-resolution oracle the prefill emits from, so the two agree and the
@@ -714,16 +714,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   guard lives in the shared `isWireBindingType` predicate (and its cross-package
   twin), so every path agrees: the explicit `int[][] @query` / `@header` /
   `@form` form **and** the implicit auto-`@query` promotion of an undecorated
-  field on a body-less verb (`get`/`delete`) — the latter previously slipped past
+  field on a body-less verb (`get`/`delete`) - the latter previously slipped past
   the depth check and shipped non-compiling Go. The check is structural
   (independent of the element type), so cross-package element types are caught
   too. Single-level arrays and multi-dim arrays in the JSON body are unaffected.
 - A cross-field group (`@requiresOneOf` / `@mutuallyExclusive`) referencing a
   field promoted by a **cross-package mixin** is no longer falsely rejected as
-  "not a field of this type" — the per-package pass defers (it can't expand the
+  "not a field of this type" - the per-package pass defers (it can't expand the
   foreign mixin) and the field set is resolved project-wide. The deferral is now
-  backed by a **project-level re-check**: a member that no field provides —
-  including a typo sitting alongside a legitimately-promoted one — is rejected at
+  backed by a **project-level re-check**: a member that no field provides -
+  including a typo sitting alongside a legitimately-promoted one - is rejected at
   design time instead of slipping through to codegen, which substituted a literal
   `false` and emitted a validator that silently never fired (the whole group,
   De-Morgan'd, went dead). The re-check resolves nested cross-package mixins too.
@@ -732,30 +732,30 @@ breaking change to the DSL or the generated layout bumps the major version.
   can't resolve, so a future resolver gap can't ship as a no-op validator. The
   re-check also re-applies the per-field quality rules to a cross-package-promoted
   member (must be optional / `@nullable`, not `@sensitive`, not wire-bound, not
-  `@default`) — extracted into one shared helper both passes call — so a plain or
+  `@default`) - extracted into one shared helper both passes call - so a plain or
   otherwise-ineligible promoted member is rejected exactly as a local one is,
   rather than only its name being checked.
-- A numeric **`@default` outside the field primitive's capacity** — a negative on
+- A numeric **`@default` outside the field primitive's capacity** - a negative on
   an unsigned type (`uint @default(-5)`) or an out-of-range magnitude on a narrow
-  int (`int8 @default(200)`) — is now rejected at design time. Codegen otherwise
+  int (`int8 @default(200)`) - is now rejected at design time. Codegen otherwise
   emitted a pre-fill cast (`uint(-5)` / `int8(200)`) that failed `go build` with
   `constant overflows`, and OpenAPI advertised the out-of-range default. The
   capacity check reuses the same range logic the numeric-bound guard uses.
 - A **`@default` on a `bytes` field** is now rejected. A bytes value has no
-  unambiguous literal form — the Go side needs `[]byte(...)` while OpenAPI's
+  unambiguous literal form - the Go side needs `[]byte(...)` while OpenAPI's
   `format: byte` default is base64, and the only literal kind the gate accepted
   (string) compiled straight into the `[]byte` slot as a bare quoted string,
   which never built. `bytes[]` is rejected identically.
 - A **multi-dimensional array `@default`** (`int[][]? @default([[1, 2], [3, 4]])`,
   `Color[][]? @default(...)`) is now rejected at design time. `@default` targets a
-  primitive, scalar, enum, or a single-level array of those — a nested-array
+  primitive, scalar, enum, or a single-level array of those - a nested-array
   default has no real use and an exotic nested-literal form. The check is
   structural (array depth), so it fires for cross-package element types too.
   Single-level array defaults are unaffected.
 - A required **`any @sensitive`** field made its endpoint reject every request
   with `400 … required`. A `@sensitive` field is `json:"-"` (dropped before
   decode), yet it still received the runtime presence check a required field
-  gets — an unsatisfiable gate, since the client can never send the value. The
+  gets - an unsatisfiable gate, since the client can never send the value. The
   presence check now excludes `@sensitive` fields, matching their exclusion from
   the wire body.
 - A `@query` / `@header` / `@cookie` / `@form` / `@path` **binding rejection over
@@ -763,20 +763,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   diagnostic now renders the map type (`got map<string, int>`). The rejection
   itself was already correct.
 - An **empty `@path("")` wire-name argument** no longer false-rejects the
-  path-param check with a nonsensical `field ""` message — it falls back to the
+  path-param check with a nonsensical `field ""` message - it falls back to the
   field name, mirroring the explicit-name fallback every other binding decorator
   already applies.
 - A **cross-package qualified request type** (`request shared.Holder`) silently
   dropped every field of its bare nested mixins from the transport binder: a
   `@query` member never bound and a body member never decoded, while the
   validator (and the semantic path-param check, which derived the package
-  correctly) still enforced them — so a conformant request failed validation
+  correctly) still enforced them - so a conformant request failed validation
   against zero values. The request-field resolver now derives the flatten prefix
   from the qualified request name, so bare mixins resolve in the request type's
   home package, matching the semantic side.
 - `@uniqueItems` over a **cross-package element that is only transitively
-  non-comparable** — reached through a bare member of the foreign struct that
-  itself holds a slice / map — was accepted, then emitted a non-compiling
+  non-comparable** - reached through a bare member of the foreign struct that
+  itself holds a slice / map - was accepted, then emitted a non-compiling
   `map[pkg.T]struct{}` dedup. The comparability walk now threads the foreign
   struct's home package into its recursion, so a bare nested member resolves in
   that package instead of being conservatively accepted as "unknown".
@@ -801,17 +801,17 @@ breaking change to the DSL or the generated layout bumps the major version.
   it non-comparable (`shared.Box<shared.User>[]`, `User` holding a slice) was
   accepted, then emitted a non-compiling `map[shared.Box[...]]struct{}`. The
   cross-package comparability walk now substitutes the type-args into the generic
-  decl's fields — mirroring the same-package twin — so a `T` field is judged
+  decl's fields - mirroring the same-package twin - so a `T` field is judged
   against its concrete argument; comparable instances (`Box<string>`) still pass.
 - A required **cross-package enum body field** got no field-named presence check
   (only the enum's own value-set rejection), so an omitted field reported
   `"Sev: invalid Sev value"` instead of `"field: required"`, and the check ran in
   a different order than a local enum's. The required-check now resolves a
   qualified enum through the project resolver, matching the local-enum path. (The
-  accept/reject decision was already correct — this is the diagnostic + ordering.)
+  accept/reject decision was already correct - this is the diagnostic + ordering.)
 - The project binding-type pass **double-visited every request body** (request
   types are already in the package's type set), emitting byte-identical duplicate
-  diagnostics — N+1× for a type reused across N methods. The redundant second
+  diagnostics - N+1× for a type reused across N methods. The redundant second
   pass is removed; each binding error now reports once.
 - The per-request / per-response codegen passes (field resolver, default
   pre-fill, **import collector**, **response header/cookie writers**) each
@@ -821,12 +821,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   helper (local then project resolver, with the home-package flatten prefix),
   fixing two more leaks:
   - a **qualified cross-package response** (`response shared.Resp`) now writes
-    its `@header` / `@cookie` fields — previously the writers were dropped (the
+    its `@header` / `@cookie` fields - previously the writers were dropped (the
     fields are `json:"-"`, so the values went to neither header/cookie nor body)
     while OpenAPI still advertised them;
   - a **qualified request whose field reaches a third package** (`request
     b.Holder`, `b.Holder.cid` typed `c.CID`) now imports that third package for
-    the cast / `@default` pre-fill — previously the import was dropped →
+    the cast / `@default` pre-fill - previously the import was dropped →
     `undefined: c`, non-compiling.
 - A **non-marshalable map key nested inside a generic type-argument**
   (`Box<map<StructKey, V>>`, `lib.Box<map<lib.FloatKey, V>>`) was accepted, then
@@ -843,7 +843,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   through a **generic mixin of the type-parameter** (`Box<bytes>[]`, where
   `Box<T>` embeds `Inner<T>` and `Inner` holds a `T`) was accepted, then emitted
   a non-compiling `map[Box[[]byte]]struct{}`. The comparability walk now
-  substitutes the outer type-args into a mixin ref before descending — the
+  substitutes the outer type-args into a mixin ref before descending - the
   mixin branch was the one spot the Field branch's substitution didn't mirror.
 - A **cross-package mixin embedded in an error body** dropped its package
   import from the generated `errors.go` → `undefined: <pkg>`. The error
@@ -875,7 +875,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   a decorator on the wrong category (`@minLength` on an `int` scalar, `@gt` on a
   `string` scalar), `@multipleOf` on a float scalar (Go's modulus is
   integer-only), `@uniqueItems` over a non-comparable element (a `bytes` scalar
-  or a struct containing a slice — previously a non-compiling `map[T]struct{}`),
+  or a struct containing a slice - previously a non-compiling `map[T]struct{}`),
   and a `map` whose key is a bool / float / struct / bytes scalar (not a usable
   JSON object key). Each fires only on the qualified form, matching the
   bare/local behaviour without double-reporting.
@@ -883,13 +883,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   package) is now rejected with the bare-name fix, instead of emitting a
   self-import the package can't satisfy (`undefined: design`) and dropping the
   field's validator.
-- Two mixins that **lower to the same Go embedded-field name** — a local `Leaf`
-  and an imported `shared.Leaf`, or `shared.Leaf` and `other.Leaf` — are now
+- Two mixins that **lower to the same Go embedded-field name** - a local `Leaf`
+  and an imported `shared.Leaf`, or `shared.Leaf` and `other.Leaf` - are now
   rejected together with the exact-duplicate case; all would redeclare the field
   `Leaf` in the generated struct. (The duplicate-embed check now keys on the
   unqualified leaf name, not the dotted reference.)
 - A **mixin embedded more than once** in one type body is now rejected at design
-  time — the generated Go struct would declare the embedded type twice and fail
+  time - the generated Go struct would declare the embedded type twice and fail
   to compile (`X redeclared`).
 - A contradictory numeric bound on a **cross-package scalar** is now caught at
   design time: `@negative` / `@lt(0)` on a `shared.Count` over a `uint*`
@@ -904,7 +904,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   because `0` is itself an in-range value.
 - A field reached through a mixin **nested inside a cross-package mixin**
   (`Req { shared.Outer }`, where `shared.Outer` embeds a sibling-package
-  `shared.Inner`) was silently dropped from the generated handler — it
+  `shared.Inner`) was silently dropped from the generated handler - it
   never bound, defaulted, or appeared in the wire binder, while OpenAPI
   (built from a flattened merged package) still advertised it, so a client
   sent a value the server ignored. The codegen flattener (and the
@@ -925,7 +925,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@path` field) is no longer falsely reported as `path/param-missing`.
   The per-package analyser can't expand a sibling-package mixin, so the
   segment-to-field check now runs at the project level with cross-package
-  mixin resolution — the same flattening the codegen binder already does,
+  mixin resolution - the same flattening the codegen binder already does,
   so the design-time check and the generated handler agree. A genuinely
   missing segment or an orphaned `@path` field is still reported, now
   across the package boundary.
@@ -943,7 +943,7 @@ breaking change to the DSL or the generated layout bumps the major version.
 - Reserved words (`type`, `error`, `map`, `delete`, `request`, ...) are
   accepted as field names and enum value names. A type body holds only fields
   and mixins and an enum body only value names, so a leading keyword reads as
-  the identifier — `type string @pattern(...)` and `enum Kind { type ... }`
+  the identifier - `type string @pattern(...)` and `enum Kind { type ... }`
   parse, and lower to exported Go fields (`Type`) with the keyword as the JSON
   tag.
 - Optional non-string primitives bind to `@query` / `@header` / `@cookie`
@@ -951,16 +951,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   pointer on presence and leaves it nil when the param is absent or empty
   (`?page=`); a present-but-unparseable value is a 400. Previously only
   optional strings were allowed on those sources.
-- `@path` accepts any wire-bindable type — `int*` / `uint*` / `float*` /
-  `bool`, or a scalar / enum over one — not just strings. `/users/{id}`
+- `@path` accepts any wire-bindable type - `int*` / `uint*` / `float*` /
+  `bool`, or a scalar / enum over one - not just strings. `/users/{id}`
   with `id int` parses the segment through the same `server.Parse*`
   helper a numeric `@query` field uses; the OpenAPI path parameter is
   typed (`type: integer`, or a `$ref` to the scalar/enum) and the client
-  follows. Optional and array `@path` fields stay rejected — a matched
+  follows. Optional and array `@path` fields stay rejected - a matched
   route always supplies exactly one value per segment.
 - A required (non-optional, no-`@default`) single-value `@query` / `@header`
   parameter now returns 400 when its key is absent, matching the
-  `required: true` the OpenAPI spec already advertised — previously the
+  `required: true` the OpenAPI spec already advertised - previously the
   handler silently accepted the zero value. A present-but-empty value
   (`?q=`) still passes; optional and defaulted parameters are unaffected.
 - A file-header `@version("1.2.3")` decorator now sets the OpenAPI
@@ -974,18 +974,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   `utf8.RuneCountInString` instead of `len()`, so a multi-byte value like
   `"日本語"` (3 characters / 9 bytes) passes `@maxLength(3)`. This aligns the
   runtime check with the OpenAPI `minLength`/`maxLength` keyword (JSON Schema
-  counts characters) and a Postgres `varchar(n)` — previously the validator
+  counts characters) and a Postgres `varchar(n)` - previously the validator
   rejected a value the spec advertised as valid. A `bytes` field still counts
   bytes (binary length, not advertised in OpenAPI); use `@maxBodySize` to cap
   raw network size.
 - Wire-bind parse failures (`?page=abc`) and JSON body-decode failures now go
-  through `server.WriteValidationError` — the same swappable hook as
-  `req.Validate()` failures — so all request-input errors share one response
+  through `server.WriteValidationError` - the same swappable hook as
+  `req.Validate()` failures - so all request-input errors share one response
   envelope. The default hook still writes a plain 400.
 - Generated handlers bind parsed primitives through the generic `server.Bind*`
   / `server.Parse*` helpers (one call per field) instead of an inline
   strconv block, so the handlers no longer import `strconv` / `errors` and
-  shrink by ~a third. No reflection — the helpers are compile-time
+  shrink by ~a third. No reflection - the helpers are compile-time
   monomorphized and preserve per-type overflow checks.
 - A handler parses `r.URL.Query()` once into a local instead of per query
   field. For a request with N query parameters this is one query-string parse
@@ -1006,7 +1006,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   advertised incorrectly.
 - An un-decorated request field that auto-binds to `@query` on a non-body
   verb but can't ride a query string (a struct / map / `bytes` / generic)
-  is now rejected by the semantic analyser — the same combination the
+  is now rejected by the semantic analyser - the same combination the
   codegen already refused, but reported in the editor with a source
   position so the LSP and `craftgo gen` agree.
 
@@ -1026,7 +1026,7 @@ pinned by a new `tests/e2e/cornercase/design/regression` fixture:
 
 - A `@nullable` scalar field carrying a field-level constraint
   (`x Plain @nullable @lte(50)`) generated **non-compiling** `validate.go`
-  — the dereferenced primitive local was treated as a pointer
+  - the dereferenced primitive local was treated as a pointer
   (`_sv != nil` / `*_sv`), breaking the whole types package build. It now
   compiles and enforces the bound.
 - `@nullable` on a named-type field (scalar / enum / struct / generic)
@@ -1046,7 +1046,7 @@ pinned by a new `tests/e2e/cornercase/design/regression` fixture:
   fields, dangled a `$ref` to a bare generic type parameter (breaking
   client generation), and dropped type-level `@requiresOneOf` /
   `@mutuallyExclusive`. A pure-body request now reuses the full type
-  schema — mixins flattened via `allOf`, a generic instance `$ref`-ing its
+  schema - mixins flattened via `allOf`, a generic instance `$ref`-ing its
   monomorphised component (`PageOfEmail`), and the cross-field fragments
   carried.
 - Map-key enum `propertyNames` listed the DSL value names (`Red`, `Low`)
@@ -1065,7 +1065,7 @@ A second, deeper audit re-ran after the fixes above and found a further
 cluster, now fixed and pinned by the `regression` fixture:
 
 - An array of maps whose value carries a validator (`map<string, Tag>[]`)
-  generated **non-compiling** `validate.go` — the map walk ran on the
+  generated **non-compiling** `validate.go` - the map walk ran on the
   slice and called `Validate()` on a whole map. The array dimensions are
   now peeled before the map is ranged.
 - A `@nullable` string carrying `@format` (`a string @nullable
@@ -1073,10 +1073,10 @@ cluster, now fixed and pinned by the `regression` fixture:
   the validator on `{"a": null}`. The guard now keys on the field's
   pointer-ness, not just the `?` suffix.
 - Integer bounds beyond 2^53 (`@gte(9007199254740993)`,
-  `@gte(math.MaxInt64)`) lost precision in OpenAPI — the float64 the spec
+  `@gte(math.MaxInt64)`) lost precision in OpenAPI - the float64 the spec
   carried rounded, so the advertised bound disagreed with the exact int64
   the validator enforced (at the extreme an unsatisfiable spec). Large
-  integer bounds — and `@multipleOf` divisors — now emit as exact
+  integer bounds - and `@multipleOf` divisors - now emit as exact
   `json.Number`s.
 - Fields a request **inherits through a mixin** were resolved for the body
   schema and the validator but skipped by the wire-binding, OpenAPI
@@ -1106,15 +1106,15 @@ A third audit pass closed the remaining cross-stage gaps:
   dropped the mixin's body fields from the per-operation response schema;
   they are now included.
 - A type-level `@requiresOneOf` / `@mutuallyExclusive` may now reference a
-  mixin-promoted field — the validator resolves it through field promotion
+  mixin-promoted field - the validator resolves it through field promotion
   instead of emitting a no-op check.
 - Embedding an instantiated generic as a mixin (`type Host { Page<Item> }`)
   generated a struct embedding the bare, un-instantiable `Page` (a Go
   compile error) and a dangling OpenAPI `$ref`. The embed now monomorphises
-  to `Page[Item]` — which Go accepts and promotes the fields of — and the
+  to `Page[Item]` - which Go accepts and promotes the fields of - and the
   schema `allOf`-refs the `PageOfItem` component.
 - A `@sensitive` field with no explicit binding auto-promoted to `@query`
-  on a non-body verb — reading a server-only value from the URL and adding
+  on a non-body verb - reading a server-only value from the URL and adding
   a required parameter the OpenAPI never documents. The binder now skips
   `@sensitive` fields entirely, matching the `json:"-"` / schema exclusion.
 - `@multipleOf` on a float scalar, `@pattern` / `@format` on a `bytes`
@@ -1122,7 +1122,7 @@ A third audit pass closed the remaining cross-stage gaps:
   generic type-parameter field are rejected at design time: each was
   advertised in OpenAPI but unenforceable by the generated validator.
 - A field whose Go field-name equals an embedded mixin's type name
-  (`type Host { Pagination  pagination int }` — the embed and the field
+  (`type Host { Pagination  pagination int }` - the embed and the field
   both become the Go identifier `Pagination`) generated a struct that
   declared the same identifier twice and failed to compile. The
   collision is now reported at design time, alongside the existing
@@ -1159,7 +1159,7 @@ fixture (Rg5-prefixed).
   value; requiring pointer-backed fields makes "present" mean the same on
   both sides.
 - An error-body field carrying `@nullable` was rendered as a non-pointer
-  Go field while the validator nil-guarded it — non-compiling Go — and
+  Go field while the validator nil-guarded it - non-compiling Go - and
   the OpenAPI advertised `type: [T, "null"]` the server could never
   marshal. Error bodies now honour `@nullable` (pointer field + nil
   guard), matching entity types.
@@ -1181,19 +1181,19 @@ fixture (Rg5-prefixed).
   `propertyNames`, mirroring the scalar's own schema.
 - A wire parameter with `@default` was advertised `required: true` while
   the server treats it as optional (the default fills absence). A
-  defaulted field — wire param or body — is no longer marked required, so
+  defaulted field - wire param or body - is no longer marked required, so
   the spec stops contradicting the `default` it carries.
 - A required `@cookie` was advertised `required: true` but the transport
   never enforced presence. A required cookie now returns 400 when absent,
   matching `@query` / `@header` (a present-but-empty value still passes).
-- A user-declared `code` / `message` error field — which is marshalled on
-  the wire and validated — was excluded from the OpenAPI error schema
+- A user-declared `code` / `message` error field - which is marshalled on
+  the wire and validated - was excluded from the OpenAPI error schema
   along with its constraints. It is now emitted like any other property.
 - A constraint declared on the element of a composite generic argument
   (`Page<map<string, Item>>`, `Page<Item[]>`) was advertised in OpenAPI
   but never enforced: the parametric `any(x).(Validate)` probe can't reach
   a map / slice element. A generic type-parameter validator now falls
-  back to a reflection walk (`validateValue`) that validates each leaf —
+  back to a reflection walk (`validateValue`) that validates each leaf -
   the only reflection in generated code, scoped to generic type-params
   and only reached when the direct probe finds no `Validate()`.
 - On a nilable Go type (`bytes` → `[]byte`, slices, maps), `@nullable` /
@@ -1206,9 +1206,9 @@ A fifth full-syntax verification pass (every stage incl. client-spec
 consumability, LSP↔build parity, and `craftgo fmt`) closed a further
 cluster, pinned by the `regression` fixture (Rg6-prefixed):
 
-- A map keyed by a non-comparable type — a generic type-parameter
+- A map keyed by a non-comparable type - a generic type-parameter
   (`map<K, V>` → `map[K any]`) or a struct / generic containing a slice /
-  map / `bytes` — was accepted by gen but emitted Go that does not compile
+  map / `bytes` - was accepted by gen but emitted Go that does not compile
   (`invalid map key type`). The key's comparability is now checked at
   design time, like `@uniqueItems` element comparability.
 - A route template repeating a path variable (`/items/{id}/x/{id}`) and
@@ -1216,7 +1216,7 @@ cluster, pinned by the `regression` fixture (Rg6-prefixed):
 b @query("x")`) are rejected: the first panics net/http's ServeMux at
   registration, the second emits a duplicate OpenAPI parameter.
 - `@requiresOneOf` / `@mutuallyExclusive` over a wire-bound (`@query` /
-  `@header` / `@cookie`) or `@default` member is rejected — the wire field
+  `@header` / `@cookie`) or `@default` member is rejected - the wire field
   isn't in the JSON body so a body-level group can't reference it, and a
   defaulted member is always present so the group is a no-op the spec
   contradicts. The OpenAPI fragment now also requires each member be
@@ -1237,14 +1237,14 @@ null}}}`), matching the runtime's `!= nil` check on an explicit JSON
   `required: true` but never presence-checked; it now returns 400 on an
   absent key, matching the single-value params.
 - A numeric scalar map key (`map<UserID, …>`, `UserID int @gte(1)`) no
-  longer emits `propertyNames: {type: integer}` — a conformant 3.1
+  longer emits `propertyNames: {type: integer}` - a conformant 3.1
   validator rejects it because JSON object keys are strings. A numeric key
   bound has no consumable spec form, so it is left to the runtime; a
   string scalar key still carries its length / pattern / format.
 - `craftgo fmt` no longer silently drops or corrupts comments: a trailing
   `//` on a non-last decorator in a multi-line chain (`@minLength(1) //
 note` above `@maxLength(5)`) folded the following decorators into the
-  comment — **deleting a real constraint** — and now lands the comment at
+  comment - **deleting a real constraint** - and now lands the comment at
   the end of the collapsed line with every decorator intact; an
   end-of-file comment block (after the last declaration) and a
   blank-line-isolated separator comment inside a type body were both
@@ -1259,7 +1259,7 @@ remaining divergences:
   The trailing `?` has no single, well-defined position once the argument
   is substituted into the decl's body: substituted into `items T[]` the Go
   side lowers it to a nullable element (`[]*Item`) while the OpenAPI array
-  items stay a non-null `$ref` — the two stages disagree, and the AST's
+  items stay a non-null `$ref` - the two stages disagree, and the AST's
   single optionality flag can't distinguish "array of nullable element"
   from "nullable array". Declare the nullability on a concrete field of the
   generic instead (`type Box<T> { item T? }`, used as `Box<Item>`), where
@@ -1267,26 +1267,26 @@ remaining divergences:
 
 - An error body that embeds a mixin now validates the mixin's promoted
   fields. The body struct embeds the mixin and the OpenAPI `allOf`
-  advertises its constraints, but `<Error>Body.Validate()` skipped them —
+  advertises its constraints, but `<Error>Body.Validate()` skipped them -
   it walked the error's direct fields only. It now dispatches to the
   mixin's `Validate()`, the same as any other type that embeds a mixin.
 - `@multipleOf` with a fractional divisor (`@multipleOf(2.5)`) on an
   integer field or scalar is rejected. Go's modulus is integer-only, so
   the validator can't enforce a fractional divisor while the OpenAPI
-  advertises it — the same rule already applied to a whole-valued float
+  advertises it - the same rule already applied to a whole-valued float
   literal is now extended to a genuinely fractional one.
 - A `@requiresOneOf` / `@mutuallyExclusive` member that is `@sensitive`
   (server-only, `json:"-"`, excluded from the schema) or whose Go type is
   nilable-but-not-a-pointer (a slice / map, or a raw `bytes` / `any`) is
   rejected. A `@sensitive` member names a property the public schema never
   carries; the nilable-non-pointer members have no clean `!= nil` presence
-  check — a slice / map is checked by emptiness (`len(...) > 0`, so an empty
+  check - a slice / map is checked by emptiness (`len(...) > 0`, so an empty
   `[]` / `{}` reads as absent) and a `bytes` / `any` member is always treated
-  as present — so both diverge from the group's OpenAPI present-and-non-null.
-  (A pointer-backed field — string, number, bool, struct, enum, or a scalar —
+  as present - so both diverge from the group's OpenAPI present-and-non-null.
+  (A pointer-backed field - string, number, bool, struct, enum, or a scalar -
   is the unambiguous case the group needs.)
 - A map keyed by a type that compiles but `encoding/json` can't marshal
-  as an object key — `bool`, `float*`, or a scalar over them — is now
+  as an object key - `bool`, `float*`, or a scalar over them - is now
   rejected at design time alongside the non-comparable keys. `json.Marshal`
   fails at runtime on such a key (`unsupported type`) even though the Go
   map itself is valid, so only string / integer-kind keys (and scalars /
@@ -1305,7 +1305,7 @@ now fixed:
 - An integer literal beyond the signed 64-bit range (e.g. a `uint64`
   `@lte(18446744073709551615)`) is now rejected at parse time instead of
   being silently clamped to `9223372036854775807` in both the validator
-  and the spec — the bound was corrupted identically on both sides, so it
+  and the spec - the bound was corrupted identically on both sides, so it
   passed a naive cross-stage diff while diverging from the design. (Full
   `uint64` bounds above the int64 max remain a future addition.)
 - Two pathless methods of the same verb in one service
@@ -1350,7 +1350,7 @@ now fixed:
 
 First stable release. craftgo turns a small `.craftgo` DSL into typed Go,
 request validation, `net/http` handlers, route wiring, and an OpenAPI 3.1
-spec — all from one source.
+spec - all from one source.
 
 ### DSL
 
@@ -1364,7 +1364,7 @@ spec — all from one source.
 
 ### Validation
 
-- Declarative validators compiled to plain Go `if` statements — no reflection,
+- Declarative validators compiled to plain Go `if` statements - no reflection,
   no runtime struct tags. `Validate()` is fail-fast.
 - String: `@length`, `@minLength`, `@maxLength`, `@pattern`, `@format`.
 - Numeric: `@gt`, `@gte`, `@lt`, `@lte`, `@range`, `@positive`, `@negative`,
@@ -1375,7 +1375,7 @@ spec — all from one source.
 
 ### Wire binding
 
-- `@path`, `@query`, `@header`, `@cookie`, `@body`, `@form` — including
+- `@path`, `@query`, `@header`, `@cookie`, `@body`, `@form` - including
   cross-package scalar/enum casts and `@default` pre-fill.
 
 ### Codegen
@@ -1390,7 +1390,7 @@ spec — all from one source.
 
 ### Runtime (`pkg/`)
 
-- `pkg/server`: a thin `net/http` wrapper — `*http.ServeMux`, a middleware
+- `pkg/server`: a thin `net/http` wrapper - `*http.ServeMux`, a middleware
   `Chain`, a swappable JSON codec, health checks, CORS, and per-method timeout
   / body-size limits.
 - `pkg/log`, `pkg/metrics`, `pkg/otel` for logging, metrics, and tracing.

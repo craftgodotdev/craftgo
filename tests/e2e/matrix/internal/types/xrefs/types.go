@@ -21,7 +21,7 @@ type XBodyPromoteReq struct {
 	xshared.XPromoteBody
 }
 
-// XByKeyReq draws its only field — the `@path`-bound `key` — from the
+// XByKeyReq draws its only field - the `@path`-bound `key` - from the
 // cross-package mixin xshared.XPathKey. The GetByKey route's `{key}`
 // segment binds through that mixin; the per-package path-param pass can't
 // expand a sibling-package mixin, so the project-level check owns it.
@@ -76,7 +76,7 @@ type XLocalItem struct {
 
 // XNestedReq reaches fields through a mixin nested INSIDE a cross-package
 // mixin: xshared.XParent embeds xshared.XGrand. So `gKey` (@path) and
-// `g32` (@default) live two mixin levels deep — the flattener must
+// `g32` (@default) live two mixin levels deep - the flattener must
 // qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
 type XNestedReq struct {
 	xshared.XParent

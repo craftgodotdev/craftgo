@@ -12,7 +12,7 @@ type Rg7Maps {
 }
 
 // A: a @sensitive error-body field stays `json:"-"` (server-only, never on the
-// wire) and an optional field carries `,omitempty` — the canonical jsonTag
+// wire) and an optional field carries `,omitempty` - the canonical jsonTag
 // rule regular types follow, applied to the error emitter. A `code`-named
 // @header field is written onto the response (not dropped by the envelope
 // name-skip), and @example on an error field renders into the schema.
@@ -23,7 +23,7 @@ error Forbidden Rg7Secret {
 	note   string
 }
 
-// F: a Conflict-category error sharing the success @status(409) — the success
+// F: a Conflict-category error sharing the success @status(409) - the success
 // body and the error merge into a oneOf instead of the error overwriting (and
 // orphaning) the success shape.
 error Conflict Rg7Dup {
@@ -39,7 +39,7 @@ type Rg7Headed {
 }
 
 // I: an optional parametric array element (`opt T[]?`) is validated
-// per-element — the generated probe targets `&v.Opt[i]`, not the whole slice.
+// per-element - the generated probe targets `&v.Opt[i]`, not the whole slice.
 type Rg7Item {
 	id string @format(uuid)
 }

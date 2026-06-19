@@ -95,7 +95,7 @@ func TestProjectResolverNilTolerant(t *testing.T) {
 		r.LookupScalar("y") != nil ||
 		r.LookupError("z") != nil ||
 		r.LookupMiddleware("m") != nil {
-		t.Error("nil receiver Lookup* must always return nil — emit sites use the result without a guard")
+		t.Error("nil receiver Lookup* must always return nil - emit sites use the result without a guard")
 	}
 	if r.ImportPath("shared") != "" {
 		t.Error("nil receiver ImportPath must return empty string")
@@ -125,7 +125,7 @@ func TestProjectResolverQualifierFor(t *testing.T) {
 	}
 
 	// Unknown package alias: prefix kept (still a qualified ref),
-	// import path empty (no CrossPkg entry) — caller decides whether
+	// import path empty (no CrossPkg entry) - caller decides whether
 	// emit is safe.
 	q, path = r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"unknown", "X"}}})
 	if q != "unknown." {

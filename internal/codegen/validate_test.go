@@ -32,7 +32,7 @@ func runValidateGen(t *testing.T, src string) string {
 func TestEnumCaseListDedupsCollidingMembers(t *testing.T) {
 	// A case-colliding enum (Active / active both PascalCase to "Active")
 	// emits deduped consts (StatusActive / StatusActive_2). The validate
-	// case-list must use the SAME deduped names — a non-deduped walk emits
+	// case-list must use the SAME deduped names - a non-deduped walk emits
 	// `case StatusActive, StatusActive`, a duplicate case that fails to
 	// compile.
 	src := runValidateGen(t, `package design
@@ -48,7 +48,7 @@ type Req { s Status }`)
 
 func TestRequiredStringEnumWithEmptyMember(t *testing.T) {
 	// A required string-enum field whose enum defines "" as a real member
-	// (`Unknown = ""`) must NOT emit a `== ""` presence check — "" is the Go
+	// (`Unknown = ""`) must NOT emit a `== ""` presence check - "" is the Go
 	// zero value, so the check would reject that legal member before the
 	// value-set switch runs. Mirrors the int-0 guard.
 	src := runValidateGen(t, `package design
@@ -262,7 +262,7 @@ func TestValidateMapStructValueRecurses(t *testing.T) {
 	// `map<K, V>` walks values when V is a user-defined type so the
 	// inner Validate() (format/length/pattern decorators on V's
 	// fields) actually runs per entry. Array and optional shapes of
-	// V follow the same path — `map<string, User[]>` and
+	// V follow the same path - `map<string, User[]>` and
 	// `map<string, User?>` each cascade through their per-element
 	// or nil-guard wrapper.
 	src := runValidateGen(t, `package design
@@ -291,7 +291,7 @@ func TestValidateRegexHoisted(t *testing.T) {
 	// Patterns and regex-backed format catalogue entries compile
 	// ONCE at package init via `var _pattern0 = regexp.MustCompile(...)`.
 	// Inline compilation inside Validate() would pay the parser cost
-	// on every call — unacceptable on the hot per-request path.
+	// on every call - unacceptable on the hot per-request path.
 	src := runValidateGen(t, `package design
 type X {
     code   string @pattern("^[A-Z]+$")
@@ -323,7 +323,7 @@ type X {
 
 func TestValidateMixinCascade(t *testing.T) {
 	// Embedded mixins inherit field-promotion in Go but their own
-	// Validate() doesn't fire automatically — the host emits an
+	// Validate() doesn't fire automatically - the host emits an
 	// explicit call so decorators declared on mixin fields validate.
 	src := runValidateGen(t, `package design
 type Audit { createdAt string @format(datetime) }
@@ -558,7 +558,7 @@ type Pick {
 	// shared's validate.go, so app neither inlines the switch nor needs
 	// the shared import (it calls a method on a value whose type is
 	// already declared in app's types.go). gofmt -s simplification must
-	// also not flag the map loops — CI's fmt-check runs `gofmt -l -s`
+	// also not flag the map loops - CI's fmt-check runs `gofmt -l -s`
 	// and any rewrite there would fail.
 	mustContainNone(t, src,
 		"switch v.One",
@@ -576,7 +576,7 @@ type Pick {
 func TestValidateWalksMapKeyUserType(t *testing.T) {
 	// A cross-package scalar key (string-backed, so JSON-marshalable) with
 	// its own validator: the generated code walks the keys and calls
-	// key.Validate(). A struct key would be rejected at design time — a
+	// key.Validate(). A struct key would be rejected at design time - a
 	// struct isn't a usable JSON map key (covered by the semantic pass).
 	root, files := projectFiles(t, map[string]string{
 		"shared/t.craftgo": `package shared
@@ -739,7 +739,7 @@ func TestValidateEnumOptionalNilGuard(t *testing.T) {
 enum Pri { Low  High }
 type T { p Pri? }`)
 	// Optional enum: nil-guard then dispatch. The value method has a
-	// value receiver, so calling it on the *Pri pointer auto-derefs —
+	// value receiver, so calling it on the *Pri pointer auto-derefs -
 	// no explicit `*v.P` deref is emitted in the host.
 	if !strings.Contains(src, "if v.P != nil {") {
 		t.Errorf("expected nil-guard on optional enum:\n%s", src)
@@ -932,7 +932,7 @@ type X { counts map<string, int> @minItems(1) @maxItems(10) }`)
 
 // TestValidateNullableNestedNilGuarded covers a @nullable nested
 // struct / enum / generic-instance field: it lowers to a Go pointer,
-// so Validate() nil-guards it — decoding JSON null (or omitting the
+// so Validate() nil-guards it - decoding JSON null (or omitting the
 // field) would otherwise nil-deref and PANIC the handler.
 func TestValidateNullableNestedNilGuarded(t *testing.T) {
 	src := runValidateGen(t, `package design
@@ -958,7 +958,7 @@ type Host {
 }
 
 // TestUniqueItemsCrossPkgElementImport pins that @uniqueItems over a
-// cross-package element type registers the foreign package's import — the
+// cross-package element type registers the foreign package's import - the
 // dedupe `make(map[shared.Name]struct{})` references it and would
 // otherwise be non-compiling.
 func TestUniqueItemsCrossPkgElementImport(t *testing.T) {

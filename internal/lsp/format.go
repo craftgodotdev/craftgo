@@ -44,7 +44,7 @@ func wholeDocumentRange(src string) protocol.Range {
 	if i := strings.LastIndexByte(src, '\n'); i >= 0 {
 		lastLine = src[i+1:]
 	}
-	// LSP character offsets are UTF-16 code units, not bytes — a last line
+	// LSP character offsets are UTF-16 code units, not bytes - a last line
 	// holding multi-byte UTF-8 (Vietnamese, CJK, emoji) would otherwise
 	// over-shoot and the formatting TextEdit would target the wrong range.
 	return protocol.Range{

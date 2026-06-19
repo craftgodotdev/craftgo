@@ -160,7 +160,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *ProjectResolver) s
 		// The error Body struct renders through the SAME walk regular type
 		// structs use (renderTypeBody), so an error body's fields carry their
 		// docs, @deprecated comments, dedup-resolved Go names, and source-order
-		// interleaving with embedded mixins — instead of the bare,
+		// interleaving with embedded mixins - instead of the bare,
 		// mixins-first shape the dedicated error emitter once produced.
 		BodyInterior:       renderTypeBody(ed.Body, pkg, r),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
@@ -192,7 +192,7 @@ func toErrorBindings(in []paramBinding) []errorBinding {
 }
 
 // errorBodyHasMembers reports whether the error declares any body field or
-// embedded mixin — the condition under which a `<Name>Body` struct is emitted
+// embedded mixin - the condition under which a `<Name>Body` struct is emitted
 // and the constructor takes a body argument.
 func errorBodyHasMembers(ed *ast.ErrorDecl) bool {
 	for _, m := range ed.Body {

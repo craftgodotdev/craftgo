@@ -48,7 +48,7 @@ type TodoList struct {
 	Items  []Todo  `json:"items"`
 	Cursor *string `json:"cursor,omitempty"`
 	// total rides the X-Total-Count response header instead of the JSON
-	// body — a non-string @header value the generated handler formats
+	// body - a non-string @header value the generated handler formats
 	// with strconv.Itoa.
 	Total int `json:"-" header:"X-Total-Count"`
 	// tookMs is a scalar-typed (Millis = int) header: it resolves to its

@@ -7,7 +7,7 @@ import (
 )
 
 // looseEOFKey is the sentinel loose-map key for end-of-file comment
-// blocks — those that follow the last declaration and so have no decl
+// blocks - those that follow the last declaration and so have no decl
 // anchor. Negative so it never collides with a 1-indexed source line.
 const looseEOFKey = -1
 
@@ -196,7 +196,7 @@ func buildLooseFromComments(f *ast.File, chainClaimed map[int]bool) map[int][]st
 		// Anchor = first decl line >= lastLine + 1.
 		anchor := nextAnchor(anchors, lastLine+1)
 		if anchor == 0 {
-			// No declaration follows — an end-of-file comment block. Keep it
+			// No declaration follows - an end-of-file comment block. Keep it
 			// under the EOF key so the printer re-emits it after the last
 			// decl instead of dropping it.
 			if existing, ok := out[looseEOFKey]; ok {
@@ -277,7 +277,7 @@ func markFreeCommentSpan(fc *ast.FreeComment, out map[int]bool) {
 //
 // Includes:
 //   - imports (Import.Doc captures comments directly above)
-//   - top-level decls (each Decl.Doc — see [declFirstSourceLine] for
+//   - top-level decls (each Decl.Doc - see [declFirstSourceLine] for
 //     the decorator-aware anchor)
 //   - body members that carry leading doc: fields, methods, enum values
 //

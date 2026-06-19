@@ -60,7 +60,7 @@ type RgLengths {
 	raw      bytes    @minLength(4)
 }
 
-// Enum-keyed maps whose propertyNames carry the wire values — "red"/"green"
+// Enum-keyed maps whose propertyNames carry the wire values - "red"/"green"
 // for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
 // strings).
 type RgEnumMaps {

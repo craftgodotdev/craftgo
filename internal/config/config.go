@@ -102,7 +102,7 @@ type SecurityScheme struct {
 	// OpenIDConnectURL is the discovery URL for openIdConnect.
 	OpenIDConnectURL string `yaml:"openIdConnectUrl,omitempty"`
 	// Flows configures the OAuth2 flows. Required (with at least one flow)
-	// when Type == "oauth2" — the OpenAPI spec mandates a `flows` object, and
+	// when Type == "oauth2" - the OpenAPI spec mandates a `flows` object, and
 	// omitting it produces an invalid document that downstream client
 	// generators (e.g. @hey-api/openapi-ts) reject.
 	Flows *OAuthFlows `yaml:"flows,omitempty"`
@@ -150,8 +150,8 @@ const Filename = "craftgo.design.yaml"
 
 // DesignFileExtensions are the extensions a craftgo source file may carry.
 // `.craftgo` is canonical; `.cg` is the short alias. Both are accepted
-// everywhere design sources are discovered — `craftgo gen`, `craftgo fmt`,
-// and the language server's project walk and file watcher — and a single
+// everywhere design sources are discovered - `craftgo gen`, `craftgo fmt`,
+// and the language server's project walk and file watcher - and a single
 // project may freely mix the two.
 var DesignFileExtensions = []string{".craftgo", ".cg"}
 

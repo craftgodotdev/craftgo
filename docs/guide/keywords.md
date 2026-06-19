@@ -7,7 +7,7 @@ The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
 | Keyword      | Position    | Purpose                                                       |
 | ------------ | ----------- | ------------------------------------------------------------- |
 | `package`    | first line  | The package every declaration in this file belongs to         |
-| `import`     | header area | Legacy/optional — cross-package refs resolve without it       |
+| `import`     | header area | Legacy/optional - cross-package refs resolve without it       |
 | `type`       | top level   | Declare a request / response struct                           |
 | `enum`       | top level   | Declare a closed value set                                    |
 | `error`      | top level   | Declare a typed error with HTTP status mapping                |
@@ -65,7 +65,7 @@ The package name does not need to match the folder name (though doing so reads c
 
 ## Cross-package references
 
-Reach a declaration from a different design subfolder by qualifying it with that package's name — no import statement is needed:
+Reach a declaration from a different design subfolder by qualifying it with that package's name - no import statement is needed:
 
 ```craftgo
 package design
@@ -77,7 +77,7 @@ type User {
 
 craftgo resolves `<pkg>.<Type>` against every package in the project (the `package X` declaration is the name) and wires the matching Go import in the generated code automatically. Middleware names are global across the project; type / enum / error / scalar names live in their declaring package and must be qualified at the call site (`shared.Audit`, `users.User`).
 
-> **Note:** an explicit `import "<subfolder>"` line is still accepted for backward compatibility but is **no longer required and will be removed** in a future release — qualified references resolve on their own.
+> **Note:** an explicit `import "<subfolder>"` line is still accepted for backward compatibility but is **no longer required and will be removed** in a future release - qualified references resolve on their own.
 
 ## `type`
 
@@ -89,7 +89,7 @@ type CreateUserReq {
     email string @format(email)
 }
 
-type Page<T> {                  // generic — bare ident, no constraint
+type Page<T> {                  // generic - bare ident, no constraint
     items T[]
     total int
 }
@@ -107,7 +107,7 @@ enum Priority { Low = 1  Medium = 2  High = 3 }
 enum Color { Red = "red"  Green = "green"  Blue = "blue" }
 ```
 
-All values inside one enum must share the same form. Mixing them (e.g. `Active = 1  Inactive = "off"`) raises `enum/mixed-types`. Enums are not generic — only `type` declarations support `<T, U, ...>` parameters.
+All values inside one enum must share the same form. Mixing them (e.g. `Active = 1  Inactive = "off"`) raises `enum/mixed-types`. Enums are not generic - only `type` declarations support `<T, U, ...>` parameters.
 
 See [Enums](/guide/enums).
 
@@ -194,7 +194,7 @@ middleware RateLimit
 middleware CORS
 ```
 
-Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and an empty stub at `internal/middleware/<name>-middleware.go` you fill in. Methods opt in via `@middlewares(Name, ...)`. Middleware names are global across the project — `@middlewares(AuthRequired)` resolves the same regardless of package — because middleware represents runtime behavior, not data; type / enum / error / scalar names stay package-scoped and must be qualified across packages.
+Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and an empty stub at `internal/middleware/<name>-middleware.go` you fill in. Methods opt in via `@middlewares(Name, ...)`. Middleware names are global across the project - `@middlewares(AuthRequired)` resolves the same regardless of package - because middleware represents runtime behavior, not data; type / enum / error / scalar names stay package-scoped and must be qualified across packages.
 
 See [Middleware](/guide/middleware).
 
@@ -222,7 +222,7 @@ type Settings {
 }
 ```
 
-The first generic argument is the key type and the second is the value type (any DSL type). The key must be a string- or integer-kind primitive (`string`, `int*`, `uint*`) or a scalar/enum over one — `encoding/json` can only marshal those as object keys. A `bool`, `float*`, or struct key is rejected at design time (it would compile but fail `json.Marshal` at runtime).
+The first generic argument is the key type and the second is the value type (any DSL type). The key must be a string- or integer-kind primitive (`string`, `int*`, `uint*`) or a scalar/enum over one - `encoding/json` can only marshal those as object keys. A `bool`, `float*`, or struct key is rejected at design time (it would compile but fail `json.Marshal` at runtime).
 
 ## Reserved names you cannot use as identifiers
 

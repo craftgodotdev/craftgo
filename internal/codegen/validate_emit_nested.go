@@ -25,7 +25,7 @@ return fmt.Errorf(%s)
 // is consumed it elides the second loop variable
 // (`for key := range m`, `for _, val := range m`) instead of
 // emitting `for key, _ := range m` which the simplifier would
-// rewrite — keeping `make fmt-check` clean.
+// rewrite - keeping `make fmt-check` clean.
 func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
 	switch {
 	case keyHas && valHas:
@@ -43,7 +43,7 @@ func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
 
 // enumCaseList renders the comma-separated list of fully-qualified
 // constant names, read from the shared enumMembers resolver so the case
-// list uses the SAME deduped const names the enum declaration emits — a
+// list uses the SAME deduped const names the enum declaration emits - a
 // case-colliding enum (`Active` / `active`) yields `EActive, EActive_2`,
 // not the `EActive, EActive` a non-deduped walk produced (which failed to
 // compile). When the enum lives in a sibling DSL package, qualifier
@@ -78,15 +78,15 @@ func typeParamValidateCall(f *ast.Field, goName string, uses map[string]bool) st
 		probe := "&" + elem
 		// An optional non-array `T?` lowers to a `*T` whose access is already
 		// the pointer to probe. An optional ARRAY (`T[]?`) still iterates
-		// per-element, so the element pointer `&elem` is correct — the
+		// per-element, so the element pointer `&elem` is correct - the
 		// whole-slice access would never satisfy the Validate() interface.
 		if f.Type.Optional && !f.Type.Array {
 			probe = access
 		}
 		// The direct probe handles a T that itself has Validate() (struct /
-		// scalar / enum) with no reflection. When it doesn't — T is
+		// scalar / enum) with no reflection. When it doesn't - T is
 		// instantiated as a composite (map / slice) whose ELEMENT carries
-		// the constraint — fall back to validateValue, which walks the
+		// the constraint - fall back to validateValue, which walks the
 		// composite and validates each element. Without the fallback a
 		// `Page<map<string, Item>>` advertises Item's constraints in OpenAPI
 		// but never enforces them.
@@ -112,8 +112,8 @@ return err
 // `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
 // the pointer-receiver Validate either way, and the cleaner form is
 // what a human would write by hand.
-// namedIsScalarOrEnum reports whether n names a scalar or enum type — whose
-// generated Validate() emits a subject-less message — as opposed to a struct,
+// namedIsScalarOrEnum reports whether n names a scalar or enum type - whose
+// generated Validate() emits a subject-less message - as opposed to a struct,
 // whose Validate() already names its own fields. A field of a scalar/enum type
 // wraps the error with the field name (see [validateDispatch]); a struct field
 // does not, to avoid a synthetic outer path prefix.
@@ -140,7 +140,7 @@ func namedIsScalarOrEnum(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectR
 }
 
 // validateDispatch emits the recursive `.Validate()` call for elem. wrapName !=
-// "" wraps the error as `<wrapName>: %w` — restoring the field-name subject for a
+// "" wraps the error as `<wrapName>: %w` - restoring the field-name subject for a
 // scalar/enum whose own message is subject-less; "" returns the error verbatim
 // (a struct, which already names its own fields).
 func validateDispatch(elem, wrapName string) string {
@@ -169,7 +169,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 	// that carries its own Validate(). Map keys can't be array or
 	// optional in the DSL grammar, so the key side stays flat. The
 	// walk keeps `map<K, User>` / `map<UserID, V>` (where UserID is a
-	// struct-shaped type — uncommon but legal) entries checked,
+	// struct-shaped type - uncommon but legal) entries checked,
 	// upholding the recursive-validation contract.
 	if f.Type.Map != nil {
 		k := f.Type.Map.Key
@@ -196,7 +196,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 		}
 		// `map<K,V>[]` (and deeper, `map<K,V>[][]`) carries BOTH Map and
 		// Array on the SAME TypeRef. Peel each array dimension with an index
-		// loop first, then walk the map at the leaf — ranging `access`
+		// loop first, then walk the map at the leaf - ranging `access`
 		// directly would iterate the SLICE as if it were a map and call
 		// Validate() on a whole map element.
 		if f.Type.Array {
@@ -227,7 +227,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 		}
 		return emitNestedForLoops(access, depth, dispatch)
 	case fieldNeedsNilGuard(f, pkg, r):
-		// The Go field can be nil in the valid "absent / null" state —
+		// The Go field can be nil in the valid "absent / null" state -
 		// either a *Type (`?` optional / `@nullable` value type) OR a
 		// scalar over a nilable primitive (`scalar Blob bytes` → `[]byte`),
 		// which carries no extra pointer but is still nil when absent.
@@ -263,7 +263,7 @@ func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 }
 
 // nestedValueChecks recursively emits Validate() dispatch for a value of
-// type t reached through `access` — used for a map value, which may itself
+// type t reached through `access` - used for a map value, which may itself
 // be a nested map, an array, an optional, or a validator-carrying named
 // type. depth namespaces the loop variables so nested ranges don't shadow.
 // outerName is the using field's name: a scalar/enum leaf (subject-less
@@ -284,7 +284,7 @@ func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.P
 	case t.Array:
 		// An array (incl. `map<K,V>[]`, which carries BOTH Array and Map on
 		// the same TypeRef): peel ONE array dimension first, then recurse on
-		// the element — checking Map before Array would range the slice as a
+		// the element - checking Map before Array would range the slice as a
 		// map.
 		iv := fmt.Sprintf("i%d", depth)
 		elem := *t
@@ -341,7 +341,7 @@ func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *Pro
 	// Local first: a single-part name resolved here matches the
 	// receiver-package lookup that pre-existed the resolver plumbing.
 	// Structs and enums always carry a Validate(); a scalar carries
-	// one only when it declares at least one validator decorator —
+	// one only when it declares at least one validator decorator -
 	// matching exactly when [buildValidateData] emits the method.
 	if _, ok := pkg.Types[name]; ok {
 		return true

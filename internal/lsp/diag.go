@@ -276,7 +276,7 @@ func keyOf(d lexer.Diagnostic) string {
 //
 // srcByFile maps a diagnostic's source filename to that file's text so
 // positions land on UTF-16 code-unit columns (the LSP unit) rather than
-// the lexer's rune columns — they differ on any line carrying
+// the lexer's rune columns - they differ on any line carrying
 // supplementary runes. A missing entry (empty string) degrades to a
 // rune→unit copy via [utf16Position], which is correct for the BMP.
 func toLSP(d lexer.Diagnostic, srcByFile map[string]string) protocol.Diagnostic {

@@ -27,16 +27,16 @@ service UserService {
 }
 ```
 
-This page is the **example-driven walkthrough** — what each decorator means, with snippets and the inheritance / opt-out mechanics. For a scannable lookup table (every decorator's levels, args, and effect in one grid), see the [Decorator Registry](/reference/decorator-registry).
+This page is the **example-driven walkthrough** - what each decorator means, with snippets and the inheritance / opt-out mechanics. For a scannable lookup table (every decorator's levels, args, and effect in one grid), see the [Decorator Registry](/reference/decorator-registry).
 
 ### Names from other tools
 
-The decorator set is closed — an unknown decorator fires `decorator/unknown`. If you're coming from JSON Schema, Zod, OpenAPI, or class-validator, a few reflexes map to different spellings:
+The decorator set is closed - an unknown decorator fires `decorator/unknown`. If you're coming from JSON Schema, Zod, OpenAPI, or class-validator, a few reflexes map to different spellings:
 
 | You might reach for | craftgo uses | Why |
 | ------------------- | ------------ | --- |
 | `@min(n)` / `@max(n)` | `@gte(n)` / `@lte(n)` (inclusive), `@gt` / `@lt` (strict) | One spelling for inclusive vs strict, consistent with `@range(min, max)`. |
-| `@required` | nothing — fields are **required by default** | A field is required unless its type carries `?`. Use `?` to opt out. |
+| `@required` | nothing - fields are **required by default** | A field is required unless its type carries `?`. Use `?` to opt out. |
 | `title` / `externalDocs` on an operation | `craftgo.design.yaml` `openapi.title`; `@doc("… https://…")` | Document-level metadata lives in the manifest, not per-decorator. |
 
 ## Sites
@@ -113,7 +113,7 @@ type User {
 }
 ```
 
-An object literal (`@example({...})`) is rejected — a struct's example is
+An object literal (`@example({...})`) is rejected - a struct's example is
 composed by OpenAPI tooling from each field's own `@example`, so document the
 fields individually rather than the whole object.
 
@@ -171,15 +171,15 @@ Each referenced field must be optional (`?`) or `@nullable` so it has an
 unambiguous present/absent state. A plain field (checked by zero-value
 emptiness), a `@query` / `@header` / `@cookie` / `@form` parameter, a
 `@default` field, a `@sensitive` field, and a collection (`T[]` / `map<…>` /
-`bytes` / `any`) are all rejected at design time — their runtime presence
+`bytes` / `any`) are all rejected at design time - their runtime presence
 can't match the `present-and-non-null` the OpenAPI fragment advertises.
 :::
 
 ## Field validators
 
-> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator — to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
+> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
 
-> **Error-body validators are spec-only.** Validators (`@minLength`, `@pattern`, `@range`, ...) on `error` body fields surface in the generated OpenAPI schema constraints but produce **no runtime check** — errors are emitted server-side from your handler, so the framework cannot validate something it just constructed. Treat the constraints on error fields as documentation contracts that consumer SDKs read; the handler is responsible for shaping the values correctly before calling `NewFooErr(...)`.
+> **Error-body validators are spec-only.** Validators (`@minLength`, `@pattern`, `@range`, ...) on `error` body fields surface in the generated OpenAPI schema constraints but produce **no runtime check** - errors are emitted server-side from your handler, so the framework cannot validate something it just constructed. Treat the constraints on error fields as documentation contracts that consumer SDKs read; the handler is responsible for shaping the values correctly before calling `NewFooErr(...)`.
 
 ### Strings
 
@@ -194,15 +194,15 @@ Run on `string` and `bytes` fields, and on scalars whose primitive is one of tho
 | `@format(name)`             | bare ident or string  | Named format check (see below)      |
 
 On a **`string`** field, length validators count **Unicode characters**
-(runes), not bytes — the generated Go validator uses
+(runes), not bytes - the generated Go validator uses
 `utf8.RuneCountInString(s)`. This matches the OpenAPI `minLength` / `maxLength`
 keyword (JSON Schema counts characters) and a Postgres `varchar(n)` (also
 characters), so the runtime, the spec, and the database agree. `"日本語"` (3
 characters / 9 bytes) passes `@maxLength(3)`. To cap the raw network size
 instead, use `@maxBodySize` (which polices bytes).
 
-On a **`bytes`** field, length validators count **bytes** (`len(b)`) — the
-binary length — and are not advertised in the OpenAPI schema (an OpenAPI
+On a **`bytes`** field, length validators count **bytes** (`len(b)`) - the
+binary length - and are not advertised in the OpenAPI schema (an OpenAPI
 `maxLength` on a `bytes` field would count base64 characters, a different
 number).
 
@@ -367,14 +367,14 @@ type GetUserReq struct {
 }
 ```
 
-The binding key's value is the explicit wire name when given, otherwise the field name. craftgo binds these fields by generated code, not by tag reflection — the key is documentary, so Go ignores it.
+The binding key's value is the explicit wire name when given, otherwise the field name. craftgo binds these fields by generated code, not by tag reflection - the key is documentary, so Go ignores it.
 
 A field with no binding decorator falls back to:
 
 - `body` for body verbs (POST / PUT / PATCH)
 - `query` for non-body verbs (GET / DELETE / HEAD / OPTIONS)
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body — the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {
@@ -409,7 +409,7 @@ service UserService {
 
 ### `@group(path)`
 
-Does two things: (1) sets where the service's generated **files** land on disk — the value **replaces** the service-name segment, so the files go to `<output>/<group>/` instead of `<output>/<service-name>/` — and (2) adds its value as an **OpenAPI tag**. It does **not** change the HTTP route or the OpenAPI *path* — use `@prefix` for that.
+Does two things: (1) sets where the service's generated **files** land on disk - the value **replaces** the service-name segment, so the files go to `<output>/<group>/` instead of `<output>/<service-name>/` - and (2) adds its value as an **OpenAPI tag**. It does **not** change the HTTP route or the OpenAPI *path* - use `@prefix` for that.
 
 | Sites | service, extend service |
 | -------- | -------- |
@@ -423,9 +423,9 @@ service AdminService {
 }
 ```
 
-With the above, the handler and service stub for `DashboardStats` are written to `internal/transport/admin/ops/dashboard-stats.go` and `internal/service/admin/ops/dashboard-stats.go` (the `admin-service` segment is gone — the group took its place), while the route stays `/v1/admin/dashboard`. The value is a relative path: a single segment (`admin`) or nested (`admin/ops`). Routes and types are unaffected — only transport handlers and service stubs move.
+With the above, the handler and service stub for `DashboardStats` are written to `internal/transport/admin/ops/dashboard-stats.go` and `internal/service/admin/ops/dashboard-stats.go` (the `admin-service` segment is gone - the group took its place), while the route stays `/v1/admin/dashboard`. The value is a relative path: a single segment (`admin`) or nested (`admin/ops`). Routes and types are unaffected - only transport handlers and service stubs move.
 
-> **The group is a global namespace.** Because it replaces the service name, two services that pick the *same* `@group` land in the same directory (and Go package), where their method names can collide. Keep groups unique per service — embed the service name in the group (`@group("admin/ops")`) when in doubt.
+> **The group is a global namespace.** Because it replaces the service name, two services that pick the *same* `@group` land in the same directory (and Go package), where their method names can collide. Keep groups unique per service - embed the service name in the group (`@group("admin/ops")`) when in doubt.
 
 The group value also rides along as an OpenAPI **tag**, appended to any explicit `@tags` and deduped. So `@group("admin/ops") @tags(users)` tags every operation `[users, admin/ops]`; `@group("admin") @tags(admin)` collapses to a single `admin`. `@ignoreTags` on a method drops the group tag along with the rest of the inherited service tags.
 
@@ -503,9 +503,9 @@ service UserService {
 ```
 
 > [!IMPORTANT]
-> **`@security` is OpenAPI metadata only — it does NOT enforce anything at runtime.** The decorator drives the `security` block in the generated OpenAPI spec so SDKs and Swagger UI know what the operation expects; no middleware is auto-attached, no header is auto-checked. Pair `@security(Bearer)` with an `AuthRequired` (or equivalent) middleware to actually verify the credential.
+> **`@security` is OpenAPI metadata only - it does NOT enforce anything at runtime.** The decorator drives the `security` block in the generated OpenAPI spec so SDKs and Swagger UI know what the operation expects; no middleware is auto-attached, no header is auto-checked. Pair `@security(Bearer)` with an `AuthRequired` (or equivalent) middleware to actually verify the credential.
 
-`@ignoreSecurity` on a method clears the inherited service-level `@security` chain — useful for a single public endpoint (liveness probe, etc.) inside an otherwise-protected service.
+`@ignoreSecurity` on a method clears the inherited service-level `@security` chain - useful for a single public endpoint (liveness probe, etc.) inside an otherwise-protected service.
 
 ### Service-level decorators and inheritance
 
@@ -557,7 +557,7 @@ So `@ignoreMiddleware` + `@middlewares(Audit)` = method chain is exactly `[Audit
 
 The `@ignore*` decorators only apply at method level. They take no arguments. Repeating them is a `decorator/duplicate` error.
 
-When the service is split across an `extend service` block, `@ignore*` clears the **combined** inherited chain — both decorators on the primary `service { ... }` declaration AND decorators on the `extend service` block. A method that opts out walks back to an empty chain regardless of which side of the split introduced the inheritance.
+When the service is split across an `extend service` block, `@ignore*` clears the **combined** inherited chain - both decorators on the primary `service { ... }` declaration AND decorators on the `extend service` block. A method that opts out walks back to an empty chain regardless of which side of the split introduced the inheritance.
 
 > [!NOTE]
 > Earlier versions of the DSL used `@security(noauth)` as a sentinel for public endpoints. That syntax is removed - use `@ignoreSecurity` instead. The `@ignore*` form is symmetrical across security/middleware/tags and avoids tying a magic name to one specific decorator.
@@ -661,7 +661,7 @@ Override the success status code. By default it is chosen from the verb and resp
 | `GET` / `PUT` / `PATCH` / `DELETE` returning a body | `200 OK` |
 | any method with no response body | `204 No Content` |
 
-`@status(code)` overrides that default — for example a `POST` that updates rather than creates:
+`@status(code)` overrides that default - for example a `POST` that updates rather than creates:
 
 | Sites | method |
 | -------- | -------- |
@@ -672,7 +672,7 @@ Override the success status code. By default it is chosen from the verb and resp
 post SearchUsers /users/search { ... }
 ```
 
-The generated handler writes the code with `w.WriteHeader` (only when it differs from the implicit `200`), and the OpenAPI spec lists the same code as the success response — the two never drift.
+The generated handler writes the code with `w.WriteHeader` (only when it differs from the implicit `200`), and the OpenAPI spec lists the same code as the success response - the two never drift.
 
 ### `@errors(E1, E2, ...)`
 
@@ -687,11 +687,11 @@ Declare which error types this method may return. Drives OpenAPI's per-status re
 post CreateUser /users { ... }
 ```
 
-### Content negotiation — `@consumes` / `@produces` / `@accepts`
+### Content negotiation - `@consumes` / `@produces` / `@accepts`
 
 Not supported. craftgo's transport hardcodes `application/json` for
 both request decode and response encode, so a content-negotiation
-decorator would parse but produce no runtime or spec effect — which
+decorator would parse but produce no runtime or spec effect - which
 hides the JSON-only constraint from authors. The decorator surface
 stays small and honest: the transport pipeline is JSON in, JSON out,
 and the codec is swappable wholesale via `server.SetGlobalJSONCodec`
@@ -729,8 +729,8 @@ post ProcessImage /images/process { ... }
 
 Cap the request body size in bytes. Two enforcement points fire:
 
-1. **Pre-check on `Content-Length`** — when the client declares a length bigger than the cap, the middleware returns 413 immediately without touching the body. Catches oversized requests even when downstream validation would short-circuit before reading.
-2. **`http.MaxBytesReader` wraps `r.Body`** — JSON decoders that read past the cap get a normal Read error, which the handler maps to 400.
+1. **Pre-check on `Content-Length`** - when the client declares a length bigger than the cap, the middleware returns 413 immediately without touching the body. Catches oversized requests even when downstream validation would short-circuit before reading.
+2. **`http.MaxBytesReader` wraps `r.Body`** - JSON decoders that read past the cap get a normal Read error, which the handler maps to 400.
 
 For multipart uploads, `@maxBodySize` also lifts the in-memory parser budget above the stdlib's 32 MiB floor so files up to the declared cap stay in memory without spilling to a temp file.
 
@@ -755,7 +755,7 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 
 ## See also
 
-- [Decorator Registry](/reference/decorator-registry) — the full lookup table (levels, args, effect)
+- [Decorator Registry](/reference/decorator-registry) - the full lookup table (levels, args, effect)
 - [Validators](/guide/validators) for runtime semantics
 - [Middleware](/guide/middleware) for `@middlewares` and middleware declaration
 - [Errors](/guide/errors) for `@errors` and the category-to-status mapping

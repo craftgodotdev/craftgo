@@ -27,7 +27,7 @@ func TestCORSVaryOriginOnSpecificOrigin(t *testing.T) {
 	}
 }
 
-// TestCORSWildcardNoVary confirms the wildcard "*" path needs no Vary —
+// TestCORSWildcardNoVary confirms the wildcard "*" path needs no Vary -
 // the response is identical for every origin.
 func TestCORSWildcardNoVary(t *testing.T) {
 	h := corsMiddleware(CORSPermissive())(corsOK())

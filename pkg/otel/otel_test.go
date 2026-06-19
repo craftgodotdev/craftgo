@@ -114,7 +114,7 @@ func TestOTLPHTTPExporterHitsEndpointURL(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	// srv.URL is "http://127.0.0.1:PORT" — pass it verbatim, scheme and all.
+	// srv.URL is "http://127.0.0.1:PORT" - pass it verbatim, scheme and all.
 	tp, err := Init(WithOTLPHTTPExporter(ctx, srv.URL))
 	if err != nil {
 		t.Fatalf("init with otlp http exporter: %v", err)
@@ -136,13 +136,13 @@ func TestOTLPHTTPExporterHitsEndpointURL(t *testing.T) {
 			t.Errorf("collector hit on %q, want /v1/traces", path)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("OTLP collector was never hit — endpoint URL not parsed/connected correctly")
+		t.Fatal("OTLP collector was never hit - endpoint URL not parsed/connected correctly")
 	}
 }
 
 // TestOTLPgRPCExporterAcceptsHostPortAndURL pins the address contract:
 // the gRPC exporter accepts a bare host:port (plaintext) AND a full
-// URL whose scheme selects TLS (https://) — both construct cleanly.
+// URL whose scheme selects TLS (https://) - both construct cleanly.
 func TestOTLPgRPCExporterAcceptsHostPortAndURL(t *testing.T) {
 	ctx := context.Background()
 	for _, addr := range []string{"collector:4317", "http://collector:4317", "https://collector:4317"} {

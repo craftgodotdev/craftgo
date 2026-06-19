@@ -35,7 +35,7 @@ func NewListTodosService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 
 // ListTodos is the service entry point. Returns a small demo page; a
 // real service would read from svcCtx's store. req here is already
-// decoded AND validated by the generated handler — req.Tag, for
+// decoded AND validated by the generated handler - req.Tag, for
 // example, passed the Tag scalar's @length / @pattern checks, so we can
 // use it without re-validating.
 func (l *ListTodosService) ListTodos(req *types.ListTodosReq) (*types.TodoList, error) {
@@ -75,6 +75,6 @@ func (l *ListTodosService) ListTodos(req *types.ListTodosReq) (*types.TodoList, 
 	return &types.TodoList{Items: items, Total: len(items), TookMs: 7}, nil
 }
 
-// ptr returns a pointer to v — a tiny helper for setting optional (T?)
+// ptr returns a pointer to v - a tiny helper for setting optional (T?)
 // fields like Priority in a struct literal.
 func ptr[T any](v T) *T { return &v }

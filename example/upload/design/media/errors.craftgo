@@ -1,4 +1,4 @@
 package media
 
-// MediaNotFound is returned by GetMedia for an unknown id — maps to HTTP 404.
+// MediaNotFound is returned by GetMedia for an unknown id - maps to HTTP 404.
 error NotFound MediaNotFound

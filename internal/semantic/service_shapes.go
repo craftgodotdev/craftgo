@@ -25,8 +25,8 @@ func (a *analyzer) checkServiceMethods() {
 			// (prefix / group / basePath joined, with the kebab method-name
 			// fallback applied for a pathless method) with param names stripped
 			// to `{}`. This matches the cross-service check, so two pathless
-			// methods of one verb — whose auto-routes differ (`/ping` vs
-			// `/health`) — no longer collide on an empty path, while `/x/{id}`
+			// methods of one verb - whose auto-routes differ (`/ping` vs
+			// `/health`) - no longer collide on an empty path, while `/x/{id}`
 			// and `/x/{id1}` still do.
 			rt := a.resolveMethodPath(si.Primary, m)
 			key := m.Verb + " " + route.Shape(rt)
@@ -51,7 +51,7 @@ func (a *analyzer) checkServiceMethods() {
 
 // PathShape is PathString with every {param} replaced by `{}`. Two
 // routes that route to the same HTTP destination have the same shape
-// even when their parameter names differ — e.g. `/u/{id}` and
+// even when their parameter names differ - e.g. `/u/{id}` and
 // `/u/{userId}` both reduce to `/u/{}`. Collision-detection keys
 // MUST use this rather than PathString, otherwise a parameter rename
 // silently bypasses the duplicate guard and net/http's mux panics at

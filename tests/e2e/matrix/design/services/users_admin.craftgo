@@ -1,4 +1,4 @@
-// `extend service UserService` — splits the admin operations of
+// `extend service UserService` - splits the admin operations of
 // UserService into a separate file in the SAME PACKAGE. The
 // analyser enforces:
 //
@@ -6,7 +6,7 @@
 //     in package `services` (orphan extends fire
 //     `service/extend-orphan`).
 //   - `extend service` blocks may NOT carry service-level decorators
-//     — those live on the primary; per-method `@middlewares(...)`
+//     - those live on the primary; per-method `@middlewares(...)`
 //     and `@errors(...)` are still fair game (and APPEND to the
 //     primary's chain).
 //

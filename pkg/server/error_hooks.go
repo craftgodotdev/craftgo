@@ -142,11 +142,11 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 // returns a non-nil error. It splits on whether the error is a recognised
 // craftgo typed error:
 //
-//   - a [StatusError] is rendered directly from its interface — the declared
+//   - a [StatusError] is rendered directly from its interface - the declared
 //     HTTP status, the optional `@header`/`@cookie` writes via
 //     [ResponseHeaderWriter], then a JSON body: the codec encodes the error's
-//     declared body struct, or — when the error declares no body and would
-//     marshal to `{}` — a `{code, message}` envelope built from `ErrCode()` /
+//     declared body struct, or - when the error declares no body and would
+//     marshal to `{}` - a `{code, message}` envelope built from `ErrCode()` /
 //     `Error()` so clients can still discriminate the failure. A typed error is
 //     an expected outcome (a declared 4xx/5xx), so it is NOT logged;
 //   - anything else (a bare errors.New / fmt.Errorf) is delegated to the

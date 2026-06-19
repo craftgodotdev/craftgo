@@ -127,7 +127,7 @@ func (p *Parser) parseMethod() *ast.Method {
 // immediately by an identifier-shaped token and a `}`.
 //
 // Reserved keywords (`service`, `file`, `type`, ...) and verb tokens
-// (`get`, `post`, ...) are accepted as parameter names — they're URL-level
+// (`get`, `post`, ...) are accepted as parameter names - they're URL-level
 // labels, not language constructs, so collisions with the DSL keyword
 // table do not propagate to route grammar (`/logs/{service}` is a path-param
 // named `service`, not a literal `/logs/` plus a method body opened by the

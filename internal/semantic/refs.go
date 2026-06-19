@@ -35,7 +35,7 @@ func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 }
 
 // checkLocalDecoratorRefs runs only the field-group refs
-// (`@requiresOneOf` / `@mutuallyExclusive`) — these never cross
+// (`@requiresOneOf` / `@mutuallyExclusive`) - these never cross
 // package boundaries (their targets are same-type field names) so
 // they're safe to validate in the per-package pass that
 // [AnalyzeProject] runs with `skipMiddlewareRefCheck=true`. A typoed
@@ -57,12 +57,12 @@ func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
 // checkDeclRefs dispatches by declaration kind. Field-group refs
 // (`@requiresOneOf` / `@mutuallyExclusive`) run via
 // [checkLocalDecoratorRefs] before this path because they're always
-// local — TypeDecl bodies skipped here to avoid double-emission.
+// local - TypeDecl bodies skipped here to avoid double-emission.
 // Method / service refs delegate to a shared helper.
 func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		// Cross-field groups on types run via checkLocalDecoratorRefs —
+		// Cross-field groups on types run via checkLocalDecoratorRefs -
 		// skipped here to avoid double-emission.
 	case *ast.ErrorDecl:
 		// Errors don't currently carry @requiresOneOf or
@@ -90,8 +90,8 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			return fieldSet
 		}
 		fieldSet = map[string]*ast.Field{}
-		// Mixin-promoted fields ARE fields of this type — the host struct
-		// embeds them and the validator runs their checks — so a cross-field
+		// Mixin-promoted fields ARE fields of this type - the host struct
+		// embeds them and the validator runs their checks - so a cross-field
 		// decorator may reference them, not only the directly-declared ones.
 		incomplete = a.collectGroupFields(body, fieldSet, map[string]bool{})
 		return fieldSet
@@ -138,12 +138,12 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			}
 		}
 		// `@mutuallyExclusive` with 0 or 1 distinct fields renders
-		// the counter check (`n > 1`) unreachable — dead code that
+		// the counter check (`n > 1`) unreachable - dead code that
 		// silently never fires. Flag it so the author either adds
 		// fields or removes the decorator.
 		if d.Name == "mutuallyExclusive" && len(seen) < 2 {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeMutExSingleField,
-				"@mutuallyExclusive needs at least 2 distinct fields (got %d) — the runtime check can never fire",
+				"@mutuallyExclusive needs at least 2 distinct fields (got %d) - the runtime check can never fire",
 				len(seen))
 		}
 	}
@@ -153,7 +153,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 // member names against the full field set, including fields promoted from
 // cross-package mixins. The per-package pass ([analyzer.checkFieldGroupRefs])
 // defers the "not a field" reject for any type whose mixin closure reaches a
-// cross-package mixin — its promoted fields aren't visible there. This pass
+// cross-package mixin - its promoted fields aren't visible there. This pass
 // closes that gap: a typoed member would otherwise reach codegen, which
 // substitutes a literal `false` for the unknown name and emits a validator
 // that never fires.
@@ -169,13 +169,13 @@ func (r *refResolver) checkProjectFieldGroups() {
 }
 
 // checkOneTypeFieldGroups runs the authoritative member check for one type,
-// but only when its mixin closure crossed a package boundary — that is
+// but only when its mixin closure crossed a package boundary - that is
 // exactly the set the per-package pass deferred. Re-checking a type the
 // per-package pass already fully resolved would double-report. For each
 // member it (1) rejects a name no field provides and (2) re-applies the
 // per-field quality rules to a member promoted from a foreign mixin (which
 // the per-package pass never saw, so never checked); members the per-package
-// pass already had — direct fields and same-package-mixin-promoted ones — are
+// pass already had - direct fields and same-package-mixin-promoted ones - are
 // skipped to avoid double-reporting.
 func (r *refResolver) checkOneTypeFieldGroups(currentPkg string, td *ast.TypeDecl) {
 	if td == nil || !hasFieldGroupDecorator(td.Decorators) {
@@ -218,7 +218,7 @@ func (r *refResolver) checkOneTypeFieldGroups(currentPkg string, td *ast.TypeDec
 // pkg, so a field promoted across a package boundary carries a name the
 // project resolver can resolve (`base.Blob` rather than a bare `Blob`).
 // Builtins and already-qualified refs are returned unchanged. A COPY is
-// returned — the original field (and the AST codegen reads) is never mutated.
+// returned - the original field (and the AST codegen reads) is never mutated.
 func requalifyFieldType(f *ast.Field, pkg string) *ast.Field {
 	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return f
@@ -244,7 +244,7 @@ func requalifyFieldType(f *ast.Field, pkg string) *ast.Field {
 // packages. A name already present is not overwritten (first by body order
 // wins, mirroring [analyzer.collectGroupFields]). It returns `deferred` =
 // true when the closure reached a qualified cross-package mixin the
-// per-package pass could not expand — the signal that the type's members
+// per-package pass could not expand - the signal that the type's members
 // were left for this project pass to validate.
 func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) (deferred bool) {
 	for _, m := range body {
@@ -263,7 +263,7 @@ func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.Ty
 				// Requalify the field's bare named type to the package it was
 				// collected from (currentPkg), so a promoted field carries
 				// `base.Blob` rather than a bare `Blob` the project resolver
-				// can't see — the cross-package-promoted scalar nilability gap.
+				// can't see - the cross-package-promoted scalar nilability gap.
 				// ResolveField then resolves it through proj. A copy keeps the
 				// original AST (and codegen) untouched.
 				out[v.Name] = requalifyFieldType(v, currentPkg)
@@ -357,7 +357,7 @@ func hasFieldGroupDecorator(decs []*ast.Decorator) bool {
 // each violation. It is the single home for these rules so the per-package
 // pass ([analyzer.checkFieldGroupRefs]) and the project-level re-check
 // ([refResolver.checkOneTypeFieldGroups], which sees fields promoted across
-// package boundaries) apply them identically — whether the member is a local
+// package boundaries) apply them identically - whether the member is a local
 // field or one promoted from a foreign mixin. The presence-unclean case
 // returns early (it subsumes the optional check); the remaining rules are
 // independent so a field can violate several at once.
@@ -373,7 +373,7 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 	// pointer-backed field instead.
 	if presenceUnclean(rf) {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
-			"@%s on type %s: field %q has no clean present/absent state for a cross-field group — a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
+			"@%s on type %s: field %q has no clean present/absent state for a cross-field group - a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
 			decName, typeName, memberName))
 		return
 	}
@@ -383,7 +383,7 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 	// field falls back to zero-value emptiness, which disagrees with the spec.
 	if !f.Type.Optional && !ast.HasDecorator(f.Decorators, "nullable") {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
-			"@%s on type %s: field %q must be optional (`?`) or `@nullable` — a cross-field group needs an unambiguous present/absent state, but a plain field is checked by zero-value emptiness, which disagrees with the OpenAPI schema",
+			"@%s on type %s: field %q must be optional (`?`) or `@nullable` - a cross-field group needs an unambiguous present/absent state, but a plain field is checked by zero-value emptiness, which disagrees with the OpenAPI schema",
 			decName, typeName, memberName))
 	}
 	// A `@sensitive` member is server-only (`json:"-"`, excluded from the
@@ -398,7 +398,7 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 	// A wire-bound member (`@query`/`@header`/`@cookie`/`@path`/`@form`) is
 	// excluded from the JSON body schema, so a body-level cross-field group
 	// referencing it advertises a constraint over a property the body never
-	// carries — an unsatisfiable / meaningless schema.
+	// carries - an unsatisfiable / meaningless schema.
 	if kind, _, bound := wireBinding(f); bound {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q is bound to @%s and does not ride the JSON body, so it can't participate in a body-level cross-field group. Reference a body field instead.",
@@ -406,7 +406,7 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 	}
 	// A `@default` member is pre-filled before decode, so the runtime group
 	// is always satisfied while the OpenAPI still requires the client to send
-	// it — they disagree on an empty body.
+	// it - they disagree on an empty body.
 	if ast.HasDecorator(f.Decorators, "default") {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q carries @default, so it is always present at runtime and the cross-field check is a no-op the OpenAPI contradicts. Drop @default or the cross-field reference.",
@@ -418,9 +418,9 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 // but not a pointer, so its runtime presence can't be the clean `!= nil`
 // check that matches the group's OpenAPI present-and-non-null. A slice / map
 // is checked by emptiness (`len(...) > 0`); a raw `bytes` (`[]byte`) or `any`
-// (`interface{}`) member — or a scalar over either, which lowers to the bare
-// named slice / interface — has no presence expression and is always treated
-// as present. A `file` is `*multipart.FileHeader` — already a pointer — so it
+// (`interface{}`) member - or a scalar over either, which lowers to the bare
+// named slice / interface - has no presence expression and is always treated
+// as present. A `file` is `*multipart.FileHeader` - already a pointer - so it
 // stays pointer-backed and is not flagged. The nilability fact comes from the
 // resolved IR ([ResolveField]), the single source the codegen pointer-wrap
 // decision reads too, so the cross-field check and the emitted Go agree.
@@ -433,7 +433,7 @@ func presenceUnclean(rf ResolvedField) bool {
 // cross-field decorator can reference a promoted field. `seen` breaks
 // mixin cycles; an unresolved mixin ref is skipped (its own decl reports
 // the resolution error). A name already present (the host's own field)
-// is not overwritten by a promoted one — the host wins, matching Go
+// is not overwritten by a promoted one - the host wins, matching Go
 // embedding.
 func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) (incomplete bool) {
 	for _, m := range body {
@@ -458,7 +458,7 @@ func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast
 			} else {
 				// A cross-package (or otherwise unresolvable) mixin: its
 				// promoted fields aren't visible to the per-package pass, so
-				// the field set is incomplete — codegen resolves them via the
+				// the field set is incomplete - codegen resolves them via the
 				// project resolver. Signal so the caller doesn't false-reject
 				// a member that the mixin in fact provides.
 				incomplete = true

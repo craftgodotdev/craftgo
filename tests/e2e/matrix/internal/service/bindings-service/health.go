@@ -30,7 +30,7 @@ func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *H
 	}
 }
 
-// Health is the bodyless probe — no request type, no response
+// Health is the bodyless probe - no request type, no response
 // type. Only the @errors declaration rides on the method line so
 // the OpenAPI doc still lists the rate-limit envelope.
 // Health is the service entry point. Replace the

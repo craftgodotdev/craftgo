@@ -12,7 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// TagSlice exercises the scalar-array case — per-element Tag
+// TagSlice exercises the scalar-array case - per-element Tag
 // validators (minLength + maxLength + pattern) fire on every
 // element via the scalar-leaves walk.
 // TagSlice returns the http.HandlerFunc for the

@@ -119,7 +119,7 @@ func negotiateEncoding(accept string) string {
 }
 
 // qualityIsZero reports whether an Accept-Encoding parameter list pins the
-// quality to zero (`q=0`, `q=0.0`, ...) — an explicit "do not use this coding".
+// quality to zero (`q=0`, `q=0.0`, ...) - an explicit "do not use this coding".
 func qualityIsZero(params string) bool {
 	for seg := range strings.SplitSeq(params, ";") {
 		k, v, ok := strings.Cut(strings.TrimSpace(seg), "=")
@@ -175,7 +175,7 @@ func (cw *compressWriter) WriteHeader(code int) {
 }
 
 // Unwrap exposes the wrapped writer so http.ResponseController (and net/http's
-// hijack path) can reach the underlying Hijacker — a connection Hijack (e.g. a
+// hijack path) can reach the underlying Hijacker - a connection Hijack (e.g. a
 // WebSocket upgrade) takes over the raw conn and bypasses compression, which is
 // the correct behaviour. Without Unwrap the upgrade fails with "feature not
 // supported" when Compress is in the chain.

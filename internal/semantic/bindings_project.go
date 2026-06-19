@@ -27,14 +27,14 @@ func (r *refResolver) checkProjectBindings() {
 			continue
 		}
 		// Every request type is a declared type already in pkg.Types, so
-		// iterating the type set once covers them too — a second pass over
+		// iterating the type set once covers them too - a second pass over
 		// service request types would re-emit byte-identical diagnostics.
 		for _, td := range pkg.Types {
 			r.checkBindingsInBody(td.Name, td.Body)
 		}
 		// Error bodies carry @header / @cookie response bindings too, so a
 		// qualified cross-package field on one must satisfy the same wire-type
-		// rule — the per-package pass defers qualified refs to here. Mirrors
+		// rule - the per-package pass defers qualified refs to here. Mirrors
 		// checkProjectFieldRules, which already iterates both sets.
 		for _, ed := range pkg.Errors {
 			r.checkBindingsInBody(ed.Name, ed.Body)
@@ -117,7 +117,7 @@ func (r *refResolver) qualifiedIsWireBindable(t *ast.TypeRef) bool {
 }
 
 func (r *refResolver) qualifiedIsFormBindable(t *ast.TypeRef) bool {
-	// `file` is never qualified — bare primitive only — so the form
+	// `file` is never qualified - bare primitive only - so the form
 	// check on a qualified ref collapses to the wire rules.
 	return r.qualifiedIsWireBindable(t)
 }
@@ -138,8 +138,8 @@ func enumWireKindOK(ed *ast.EnumDecl) bool {
 
 // checkProjectFieldRules is the project-level twin of every per-package
 // field guard that resolves a field's primitive / category through a
-// LOCAL table — `a.pkg.Scalars` / `a.pkg.Enums` / `a.pkg.Types` /
-// `fieldPrim` — and therefore silently no-ops on a QUALIFIED
+// LOCAL table - `a.pkg.Scalars` / `a.pkg.Enums` / `a.pkg.Types` /
+// `fieldPrim` - and therefore silently no-ops on a QUALIFIED
 // cross-package ref (`shared.X` misses the bare-keyed local map). It
 // resolves the referenced scalar / enum / type ONCE via the project
 // resolver and re-runs the decorator-category (AppliesTo), @multipleOf
@@ -180,7 +180,7 @@ func (r *refResolver) checkFieldRules(currentPkg, parent string, body []ast.Type
 		if f.Type.Array {
 			r.checkUniqueItemsProject(currentPkg, f)
 		}
-		// A map with a qualified key that JSON can't marshal — at the field's
+		// A map with a qualified key that JSON can't marshal - at the field's
 		// top level, inside an array, or nested in a generic type-argument
 		// (`Box<map<bad, V>>`). checkMapKeysProject walks all three; it is a
 		// no-op for a type that holds no map, so call it unconditionally.
@@ -223,7 +223,7 @@ func (r *refResolver) checkAppliesToProject(parent string, f *ast.Field, cat Pri
 }
 
 // checkMultipleOfFloatProject rejects `@multipleOf` on a qualified FLOAT
-// scalar — Go's modulus is integer-only, so the validator silently drops
+// scalar - Go's modulus is integer-only, so the validator silently drops
 // it ([analyzer.checkMultipleOfTarget] misses the cross-package primitive).
 func (r *refResolver) checkMultipleOfFloatProject(f *ast.Field, prim string) {
 	if prim != "float32" && prim != "float64" {
@@ -232,13 +232,13 @@ func (r *refResolver) checkMultipleOfFloatProject(f *ast.Field, prim string) {
 	for _, d := range f.Decorators {
 		if d != nil && d.Name == "multipleOf" {
 			r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@multipleOf does not support float fields — Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
+				"@multipleOf does not support float fields - Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
 		}
 	}
 }
 
 // checkUniqueItemsProject rejects `@uniqueItems` on an array whose element is
-// non-comparable due to a CROSS-PACKAGE type — either the element itself is a
+// non-comparable due to a CROSS-PACKAGE type - either the element itself is a
 // qualified non-comparable type (`shared.Blob[]` over `scalar Blob bytes`), or
 // a LOCAL element transitively reaches one through a field (`Holder{ b
 // lib.Wrap<bytes> }`). Both would emit a non-compiling `map[T]struct{}`. A
@@ -254,10 +254,10 @@ func (r *refResolver) checkUniqueItemsProject(currentPkg string, f *ast.Field) {
 	var nonComparable bool
 	switch len(elem.Named.Name.Parts) {
 	case 2:
-		// Qualified element — owned entirely by this pass (per-package skips it).
+		// Qualified element - owned entirely by this pass (per-package skips it).
 		nonComparable = !r.projectComparable(elem, "", false, map[string]bool{})
 	case 1:
-		// Local element — reject only when resolving its cross-package fields
+		// Local element - reject only when resolving its cross-package fields
 		// changes the verdict (the per-package pass, which can't see them,
 		// passed it). A purely-local non-comparable element is left to that pass.
 		localView := r.projectComparable(elem, currentPkg, true, map[string]bool{})
@@ -274,7 +274,7 @@ func (r *refResolver) checkUniqueItemsProject(currentPkg string, f *ast.Field) {
 			continue
 		}
 		r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
-			"@uniqueItems requires comparable elements (usable as a map key) — %s is not (a slice / map / `any`, or a struct/generic containing one, possibly through a cross-package field). Restructure the element into a comparable shape, or drop @uniqueItems.",
+			"@uniqueItems requires comparable elements (usable as a map key) - %s is not (a slice / map / `any`, or a struct/generic containing one, possibly through a cross-package field). Restructure the element into a comparable shape, or drop @uniqueItems.",
 			describeTypeRef(elem))
 	}
 }
@@ -283,7 +283,7 @@ func (r *refResolver) checkUniqueItemsProject(currentPkg string, f *ast.Field) {
 // [analyzer.typeRefComparable]: a value usable as a Go map key. Arrays /
 // maps / `any` / `bytes` are not; a qualified struct is comparable only
 // when every member is. `currentPkg` is the package a BARE named ref
-// resolves against — empty at the (qualified) top-level call, and set to a
+// resolves against - empty at the (qualified) top-level call, and set to a
 // foreign struct's own package when recursing into its members, so a bare
 // member of a foreign struct (`XInner` inside `dep.XOuter`) is followed into
 // that package rather than conservatively accepted (which let a transitively
@@ -292,8 +292,8 @@ func (r *refResolver) checkUniqueItemsProject(currentPkg string, f *ast.Field) {
 // is treated as comparable without resolving it, exactly as the per-package
 // pass does (it has no project view). Running once conservative and once full
 // and rejecting only when the two DISAGREE isolates a non-comparability that
-// arrives through a cross-package field of an otherwise-local element — which
-// the per-package pass misses — without double-reporting a fully-local
+// arrives through a cross-package field of an otherwise-local element - which
+// the per-package pass misses - without double-reporting a fully-local
 // non-comparable element the per-package pass already rejects.
 func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conservative bool, seen map[string]bool) bool {
 	if t == nil || t.Array || t.Map != nil || t.Named == nil || t.Named.Name == nil {
@@ -310,7 +310,7 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 	}
 	// Resolve the named type's home package + symbol. A qualified ref names
 	// its package; a bare ref takes its symbol directly and inherits
-	// currentPkg (the struct it belongs to) — splitQualified yields no symbol
+	// currentPkg (the struct it belongs to) - splitQualified yields no symbol
 	// for a bare name, so read Parts here.
 	parts := t.Named.Name.Parts
 	var pkgName, sym string
@@ -319,14 +319,14 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 		pkgName, sym = currentPkg, parts[0]
 	case 2:
 		if conservative {
-			return true // cross-package ref — mimic the per-package view
+			return true // cross-package ref - mimic the per-package view
 		}
 		pkgName, sym = parts[0], parts[1]
 	default:
 		return true
 	}
 	if pkgName == "" {
-		return true // no resolution context — per-package pass owns it
+		return true // no resolution context - per-package pass owns it
 	}
 	pkg := r.proj.Packages[pkgName]
 	if pkg == nil {
@@ -340,7 +340,7 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 	}
 	td, ok := pkg.Types[sym]
 	if !ok {
-		return true // unresolved — conservative
+		return true // unresolved - conservative
 	}
 	// Key the back-edge guard by the instantiated identity (name + args), not
 	// the bare decl name, so different instantiations of one generic stay
@@ -353,7 +353,7 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 	seen[key] = true
 	// For a generic instance (`Box<shared.User>`) substitute the type-args
 	// into the decl's fields so a field typed `T` is judged against the
-	// concrete argument — mirroring the same-package twin typeRefComparable.
+	// concrete argument - mirroring the same-package twin typeRefComparable.
 	// Without it a bare `T` resolves to nothing and falls through to
 	// "conservatively comparable", letting a non-comparable instance pass and
 	// then emit a non-compiling `map[Box[...]]struct{}`.
@@ -381,7 +381,7 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 			if v.Ref != nil && v.Ref.Name != nil {
 				// Substitute the outer decl's type-args into the mixin ref too
 				// (`Inner<T>` → `Inner<shared.User>`), mirroring the Field
-				// branch — without it a bare `T` inside a generic mixin escapes.
+				// branch - without it a bare `T` inside a generic mixin escapes.
 				if !r.projectComparable(substTypeParam(&ast.TypeRef{Named: v.Ref}, subst), pkgName, conservative, seen) {
 					return false
 				}
@@ -391,8 +391,8 @@ func (r *refResolver) projectComparable(t *ast.TypeRef, currentPkg string, conse
 	return true
 }
 
-// comparableKey renders a stable identity for a type instance — its name plus
-// generic args, with array / map structure — for the comparability back-edge
+// comparableKey renders a stable identity for a type instance - its name plus
+// generic args, with array / map structure - for the comparability back-edge
 // guard ([typeRefComparable] / [refResolver.projectComparable]). Keying the
 // `seen` set by this rather than the bare decl name keeps different
 // instantiations of one generic (`Wrap<string>` vs `Wrap<bytes>`) distinct, so
@@ -424,7 +424,7 @@ func comparableKey(t *ast.TypeRef) string {
 }
 
 // checkMapKeysProject walks t for map keys that are a QUALIFIED type JSON
-// can't marshal (a bool / float / struct / bytes scalar key) — Go either
+// can't marshal (a bool / float / struct / bytes scalar key) - Go either
 // won't compile or panics at json.Marshal. Mirrors
 // [analyzer.mapKeysComparable] cross-package.
 func (r *refResolver) checkMapKeysProject(t *ast.TypeRef, f *ast.Field) {
@@ -492,12 +492,12 @@ func (r *refResolver) checkScalarBoundContradictions(f *ast.Field, prim string) 
 			switch d.Name {
 			case "negative":
 				r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@negative cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or drop @negative", prim)
+					"@negative cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or drop @negative", prim)
 			case "lt":
 				if len(d.Args) == 1 {
 					if il, ok := d.Args[0].Value.(*ast.IntLit); ok && il.Value == 0 {
 						r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
-							"@lt(0) cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or a positive bound", prim)
+							"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
 					}
 				}
 			}
@@ -531,7 +531,7 @@ func (r *refResolver) checkScalarBoundContradictions(f *ast.Field, prim string) 
 		}
 	}
 	// Fractional float bound on an integer scalar (`@lte(2.5)` over
-	// `scalar X int`) — the per-package [checkBoundLiteralKind] misses it
+	// `scalar X int`) - the per-package [checkBoundLiteralKind] misses it
 	// cross-package for the same local-table reason.
 	if integerPrim(prim) {
 		for _, d := range f.Decorators {

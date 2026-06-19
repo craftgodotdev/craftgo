@@ -25,7 +25,7 @@ func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMemb
 		key := kind + "\x00" + wire.CanonicalWireName(kind, name)
 		if prev, dup := seen[key]; dup {
 			d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
-				"%s.%s: @%s(%q) reuses a wire name already bound on the same source — the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names.",
+				"%s.%s: @%s(%q) reuses a wire name already bound on the same source - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names.",
 				parent, f.Name, kind, name)
 			d.Related = related(prev, "first bound here")
 			continue
@@ -35,7 +35,7 @@ func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMemb
 }
 
 // checkDuplicateAutoWireNames catches a wire-name collision that involves an
-// AUTO-bound field — an undecorated field promoted to @path (its name matches
+// AUTO-bound field - an undecorated field promoted to @path (its name matches
 // a {segment}) or to @query (on a body-less verb). The per-declaration
 // [analyzer.checkDuplicateWireNames] sees only EXPLICIT decorators, so an
 // auto-bound field colliding with an explicit (or another auto) binding slips
@@ -49,7 +49,7 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	}
 	td, ok := a.pkg.Types[m.Request.Name.String()]
 	if !ok {
-		return // cross-package request — not modelled here
+		return // cross-package request - not modelled here
 	}
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
 	bodyVerb := wire.IsBodyVerb(m.Verb)
@@ -71,7 +71,7 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 		if prev, dup := seen[key]; dup {
 			if auto || prev.auto {
 				d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
-					"%s.%s on %s %s: this field auto-binds to @%s(%q), already bound by another field — the binder reads both from one value and the OpenAPI carries a duplicate parameter. Give one an explicit, distinct binding.",
+					"%s.%s on %s %s: this field auto-binds to @%s(%q), already bound by another field - the binder reads both from one value and the OpenAPI carries a duplicate parameter. Give one an explicit, distinct binding.",
 					reqName, f.Name, strings.ToUpper(m.Verb), m.Name, kind, name)
 				d.Related = related(prev.pos, "first bound here")
 			}

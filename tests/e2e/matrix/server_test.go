@@ -168,7 +168,7 @@ type runtimeUser struct {
 }
 
 // TestServer_AdminApiNestedGroups exercises one service (AdminApi) whose
-// methods are split across three NESTED @group folders — admin/v1 (primary),
+// methods are split across three NESTED @group folders - admin/v1 (primary),
 // admin/v2 and admin/v3 (extend blocks). Each group emits its own routes file
 // (routes/admin/v1, /v2, /v3) registered separately in boot(), mirroring the
 // per-group transport + service split. @group never touches the URL: the paths

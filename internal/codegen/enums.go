@@ -117,7 +117,7 @@ func firstEnumKind(ed *ast.EnumDecl) ast.EnumValueKind {
 // enumMember is the fully-resolved projection of one enum member, computed
 // ONCE per enum so every stage reads the same answer instead of
 // re-switching on the kind / re-deriving the const name. ConstName applies
-// the case-collision dedup a single time — the const declaration, the
+// the case-collision dedup a single time - the const declaration, the
 // validate case-list, and the transport default const must all use it (a
 // case-list built from a non-deduped name produced `case X, X` and failed
 // to compile for a case-colliding enum).
@@ -166,7 +166,7 @@ func enumMemberWire(v *ast.EnumValue) any {
 }
 
 // enumMemberWireString returns a member's wire value as it appears as a
-// JSON object key / propertyNames entry — an int-backed member stringifies
+// JSON object key / propertyNames entry - an int-backed member stringifies
 // to its decimal form because JSON keys are strings.
 func enumMemberWireString(v *ast.EnumValue) string {
 	switch v.Kind {

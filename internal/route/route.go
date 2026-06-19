@@ -2,7 +2,7 @@
 // method's final route is assembled (base path + @prefix + method path),
 // the string form of a DSL path, the shape key two colliding routes share,
 // and net/http's pattern-overlap rule. The analyzer, the routes/OpenAPI
-// emitters, and the route-conflict detector all read these — one
+// emitters, and the route-conflict detector all read these - one
 // implementation, so the route the editor diagnoses is byte-for-byte the
 // route the generated server mounts.
 package route
@@ -19,7 +19,7 @@ import (
 // the OpenAPI document advertises. Empty segments are dropped, consecutive
 // slashes collapse, the result always begins with '/', and a pathless method
 // falls back to its kebab-cased name ("Ping" → "/ping"). @group is absent on
-// purpose — it nests generated files on disk, never the URL.
+// purpose - it nests generated files on disk, never the URL.
 //
 // This is THE route authority: the analyzer's path checks and every codegen
 // emitter (routes, OpenAPI paths, route-conflict detection) call it, so the

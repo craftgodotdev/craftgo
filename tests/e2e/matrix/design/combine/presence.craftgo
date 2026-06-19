@@ -9,7 +9,7 @@
 // `string` so the generated Go type, the validator emit-order, the
 // JSON unmarshal path, and the OpenAPI `required[]` / `type` /
 // `default` keys can be diffed row-by-row. Nullability is emitted in the
-// OpenAPI 3.1 canonical form — `type: [string, "null"]` — not the
+// OpenAPI 3.1 canonical form - `type: [string, "null"]` - not the
 // removed 3.0 `nullable: true` keyword.
 package combine
 

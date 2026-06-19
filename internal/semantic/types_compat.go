@@ -82,7 +82,7 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	actual := PrimFromName(sd.Primitive)
 	if actual == 0 || actual == PrimFile {
 		// Not a recognised scalar primitive. `file` resolves to PrimFile
-		// (non-zero) but is a multipart-upload wire keyword, not a Go type —
+		// (non-zero) but is a multipart-upload wire keyword, not a Go type -
 		// `scalar X file` would emit non-compiling `type X file`, so reject it
 		// like an unknown primitive (mirroring the `any` rejection). Flag
 		// explicitly so the user sees it at design time rather than via a

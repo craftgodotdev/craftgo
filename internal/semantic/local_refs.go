@@ -215,7 +215,7 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 		// an undefined `object` type and a dangling OpenAPI $ref - it is a
 		// broken half-alias. Point the user at the forms that actually work.
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-			"`object` is not a usable field type — use `any` for an arbitrary JSON value, or `map<string, V>` / a declared `type` for a structured object")
+			"`object` is not a usable field type - use `any` for an arbitrary JSON value, or `map<string, V>` / a declared `type` for a structured object")
 		return
 	}
 	if builtinTypes[name] {

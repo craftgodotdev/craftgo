@@ -90,12 +90,12 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 		// has no single place to live once the argument is substituted into
 		// the decl's body: substituted into `items T[]` the Go side lowers
 		// it to a nullable element (`[]*Item`) while the OpenAPI array items
-		// stay a non-null `$ref` — the two stages disagree. Nullability
+		// stay a non-null `$ref` - the two stages disagree. Nullability
 		// belongs on a concrete field of the generic (`type Box<T> { item
 		// T? }`), where it lowers to a clean pointer on both sides.
 		if arg != nil && arg.Optional {
 			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeGenericOptionalArg,
-				"a generic type argument cannot be optional (`?`) — the optionality has no well-defined position after substitution, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a field inside the generic (e.g. `type Box<T> { item T? }`) instead.")
+				"a generic type argument cannot be optional (`?`) - the optionality has no well-defined position after substitution, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a field inside the generic (e.g. `type Box<T> { item T? }`) instead.")
 		}
 		a.walkTypeRefGenerics(arg, typeParams)
 	}

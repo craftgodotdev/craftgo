@@ -2,20 +2,20 @@
 // of the import / mixin / scalar / extend matrix. Every interesting
 // edge sits here:
 //
-//   - `import "shared"` — bare-package import; the implicit alias
+//   - `import "shared"` - bare-package import; the implicit alias
 //     `shared` is what `shared.<Name>` references resolve through.
-//   - `shared.ID` / `shared.Email` — cross-package scalar refs.
+//   - `shared.ID` / `shared.Email` - cross-package scalar refs.
 //     The generated Go field type lands as `string` (the underlying
 //     primitive) but the validator inherits the scalar's @length /
 //     @format constraint stack.
-//   - `shared.Audit` / `shared.Pagination` mixin — cross-package
+//   - `shared.Audit` / `shared.Pagination` mixin - cross-package
 //     embedded type. The mixin syntax is implicit (bare qualified
 //     ident inside a `type { ... }` body) so the parser threads
 //     `shared.Audit` through `parseTypeMember`'s mixin branch.
-//   - `@middlewares(shared.AuthRequired)` at service level —
+//   - `@middlewares(shared.AuthRequired)` at service level -
 //     qualified middleware reference from another package.
 //   - `@errors(shared.NotFoundErr, shared.ConflictErr)` on a
-//     per-method decorator — qualified error references.
+//     per-method decorator - qualified error references.
 //
 // The companion `users_admin.craftgo` adds the `extend service`
 // half of the showcase; `projects.craftgo` covers the same-package
@@ -62,7 +62,7 @@ type ListUsersReq {
 
 // ListUsersResp wraps a page of Users with the canonical pagination
 // envelope. `meta` is a NESTED reference (not a mixin) so the
-// pagination summary lands in its own JSON sub-object — the
+// pagination summary lands in its own JSON sub-object - the
 // distinction between "embed at root" (mixin) and "embed as nested
 // object" (field) is captured cleanly across these two consumers.
 type ListUsersResp {

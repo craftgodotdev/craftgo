@@ -30,7 +30,7 @@ type Arr_BoundsBasic struct {
 	Tags []string `json:"tags"`
 }
 
-// Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
+// Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair -
 // semantically "this slice must always be empty". The dead-code
 // lower-bound check from Arr_MinZero applies here too; the upper bound
 // (`> 0`) is the meaningful check that actually rejects values.
@@ -55,36 +55,36 @@ type Arr_OptionalBound struct {
 
 // Arr_PlainInts is a bare int slice with no per-element validators.
 // To constrain elements, declare a scalar (`scalar NonNegInt int @gte(0)`)
-// and type the field as `NonNegInt[]` — the scalar-leaves walker emits
+// and type the field as `NonNegInt[]` - the scalar-leaves walker emits
 // the per-element check automatically.
 type Arr_PlainInts struct {
 	Scores []int `json:"scores"`
 }
 
 // Arr_PlainStrings is the string-array baseline. No per-element
-// constraints — the generated validator should be the bare presence
+// constraints - the generated validator should be the bare presence
 // check on `v.Codes` (slice == nil) only. `codes` also carries an
 // array-of-scalar @example, the one non-scalar example form that stays
-// legal (object examples are rejected — see semantic checkExampleArg).
+// legal (object examples are rejected - see semantic checkExampleArg).
 type Arr_PlainStrings struct {
 	Codes []string `json:"codes"`
 }
 
-// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+// Arr_Tag2D - `Tag[][]` is the 2D scalar array. The generator emits
 // doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
 // validators.
 type Arr_Tag2D struct {
 	Grid [][]Tag `json:"grid"`
 }
 
-// Arr_Tag2DOptional — `Tag[][]?` is the optional 2D scalar array.
+// Arr_Tag2DOptional - `Tag[][]?` is the optional 2D scalar array.
 // Outer nil-guard wraps the doubly-nested for-loops; the inner pair
 // runs only when the slice is non-nil.
 type Arr_Tag2DOptional struct {
 	Grid [][]Tag `json:"grid,omitempty"`
 }
 
-// Arr_Tag3D — `Tag[][][]` exercises THREE-deep iteration. Three
+// Arr_Tag3D - `Tag[][][]` exercises THREE-deep iteration. Three
 // nested `for iN := range ...` loops, with Tag's per-element
 // validators in the innermost body.
 type Arr_Tag3D struct {
@@ -93,7 +93,7 @@ type Arr_Tag3D struct {
 
 // Arr_TagSlice is the array-of-scalar case. `Tag[]` inherits Tag's
 // per-element @minLength + @maxLength + @pattern via the scalar-leaves
-// walk — the field carries NO per-element decorators because the
+// walk - the field carries NO per-element decorators because the
 // scalar already does. Field-level @minItems / @maxItems still apply
 // on top.
 type Arr_TagSlice struct {
@@ -115,7 +115,7 @@ type Map_Bounds struct {
 	Counts map[string]int `json:"counts"`
 }
 
-// Map_KeyAndValue puts scalars on BOTH sides — NonEmptyID on the key,
+// Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
 // Email on the value. Generator should emit TWO loops: one for keys
 // (`for k0 := range v.Index`) and one for values
 // (`for _, val0 := range v.Index`), each running the matching
@@ -131,7 +131,7 @@ type Map_Optional struct {
 	Counts map[string]int `json:"counts,omitempty"`
 }
 
-// Map_Plain is the simplest case — no validators, no scalars, no
+// Map_Plain is the simplest case - no validators, no scalars, no
 // optionality. The generator should emit NO validator block for this
 // field (presence is implicit; len() > 0 is not enforced).
 type Map_Plain struct {

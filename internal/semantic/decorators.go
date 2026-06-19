@@ -277,7 +277,7 @@ type Spec struct {
 	//   - `craftgo fmt` strips empty parens (`@positive()` →
 	//     `@positive`) so canonical form is parens-free.
 	//   - The parser emits [CodeFlagEmptyParens] (warning) when a Flag
-	//     decorator is written with empty `()`. Warning only — the
+	//     decorator is written with empty `()`. Warning only - the
 	//     formatter rewrites it on save.
 	//
 	// The invariant is `Flag == true ⇒ Args.Max == 0`.
@@ -320,7 +320,7 @@ var Registry = map[string]Spec{
 	"example": {
 		Name:   "example",
 		Levels: LvlField | LvlErrorField,
-		Doc:    "Example value rendered in the OpenAPI schema for this field. Argument is a literal (string / int / float / bool / null) or an array of those. Object examples are not accepted — a struct example is composed from each field's own @example; document a free-form any/map field's shape with @doc.",
+		Doc:    "Example value rendered in the OpenAPI schema for this field. Argument is a literal (string / int / float / bool / null) or an array of those. Object examples are not accepted - a struct example is composed from each field's own @example; document a free-form any/map field's shape with @doc.",
 		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
 	// ---- OpenAPI file-header metadata ----
@@ -423,7 +423,7 @@ var Registry = map[string]Spec{
 	},
 	"range": {
 		Name: "range", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Numeric range [min, max] — both bounds inclusive.",
+		Doc:       "Numeric range [min, max] - both bounds inclusive.",
 		Args:      ArgsRule{Min: 2, Max: 2, Kinds: []ArgKind{ArgNumber, ArgNumber}},
 		AppliesTo: PrimNumber,
 	},

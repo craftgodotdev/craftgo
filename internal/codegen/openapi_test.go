@@ -119,7 +119,7 @@ service S { post Send /m { request Req } }`)
 		// Cents
 		"minimum: 0",
 		"maximum: 1000000",
-		// Step — @gt(0) is the 3.1 numeric exclusive bound, not a boolean
+		// Step - @gt(0) is the 3.1 numeric exclusive bound, not a boolean
 		"exclusiveMinimum: 0",
 		"multipleOf: 5",
 	)
@@ -205,7 +205,7 @@ service S {
 
 // TestGenerateOpenAPIErrorResponseHeaders pins that an error type's
 // @header field is documented on its OpenAPI error response (with the
-// field's typed schema), matching the runtime WriteResponseHeaders —
+// field's typed schema), matching the runtime WriteResponseHeaders -
 // so the spec and the wire agree for error headers too, not just
 // success responses.
 func TestGenerateOpenAPIErrorResponseHeaders(t *testing.T) {
@@ -287,7 +287,7 @@ func TestGenerateOpenAPIDuplicateOperationIDBackstop(t *testing.T) {
 	// operationId (see TestOperationID* in internal/semantic). GenerateOpenAPI
 	// keeps a backstop so a direct, un-analysed caller still fails fast instead
 	// of writing an invalid duplicate-operationId spec. AService.Find is pinned
-	// to "Lookup"; BService.Lookup defaults to "Lookup" — they collide.
+	// to "Lookup"; BService.Lookup defaults to "Lookup" - they collide.
 	src := `package design
 type R { x string }
 service AService { @operationId("Lookup") get Find /a { response R } }
@@ -326,7 +326,7 @@ service S { get Get /g { response Resp } }`
 }
 
 // TestGenerateOpenAPITypeSchemaExcludesHeaderFields checks that @header /
-// @cookie fields are dropped from a type's component schema — they ride
+// @cookie fields are dropped from a type's component schema - they ride
 // on response headers / cookies (json:"-"), never the JSON body, so a
 // generated client (e.g. @hey-api/openapi-ts) does not emit a type with
 // a field the wire never carries.
@@ -395,7 +395,7 @@ service S {
 
 // TestGenerateOpenAPISameStatusErrorsMerge checks the @errors merge:
 // two error decls sharing one HTTP status (e.g. both Conflict) render
-// as `oneOf` so neither vanishes from the spec — without the merge a
+// as `oneOf` so neither vanishes from the spec - without the merge a
 // second op.Responses.Set call overwrites the first.
 func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
 	src := `package design
@@ -537,7 +537,7 @@ service S { post Make /m { request Order  response Order } }`)
 // multipart/form-data `encoding[field].contentType` so generated
 // client SDKs can pre-check / warn the user when the upload's MIME
 // falls outside the contract. Without the encoding entry, only the
-// runtime validator carries the allowlist — client SDKs upload blind.
+// runtime validator carries the allowlist - client SDKs upload blind.
 func TestGenerateOpenAPIMultipartMimeTypes(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq {
@@ -592,7 +592,7 @@ service S {
 		t.Errorf("required file `avatar` must be listed under multipart required[]:\n%s", reqList)
 	}
 	// `userId` is path-bound (not in the body) and `caption` is optional
-	// (`?`) — neither may appear in the multipart required list.
+	// (`?`) - neither may appear in the multipart required list.
 	if strings.Contains(reqList, "caption") {
 		t.Errorf("optional form field `caption` must NOT be in multipart required[]:\n%s", reqList)
 	}
@@ -628,7 +628,7 @@ service S {
 
 // TestGenerateOpenAPIMixinFlatten checks that embedded mixins
 // surface in the host schema via OpenAPI's allOf composition so
-// generated TS clients see every field — including those inherited
+// generated TS clients see every field - including those inherited
 // from the mixin. Without it, runtime requests carrying mixin
 // fields (`createdAt`, `updatedAt`, ...) fail type-checks against
 // the spec because the host schema lists only its own properties.
@@ -1483,8 +1483,8 @@ service S {
 	}
 }
 
-// @body / @form on a non-body verb is rejected at semantic time — see
-// TestBodyFormOnNonBodyVerbRejected in internal/semantic — so there is
+// @body / @form on a non-body verb is rejected at semantic time - see
+// TestBodyFormOnNonBodyVerbRejected in internal/semantic - so there is
 // no codegen behaviour for the "GET with body" case to assert here.
 
 // TestGenerateOpenAPICookieAndHeaderInline pins the rule that path /
@@ -1530,7 +1530,7 @@ service S {
 	)
 	// Parameters render inline; the wrapper
 	// `<Method>Req{Query,Header,Cookie,Path}` schemas are NOT registered
-	// (never $ref'd — they only bloated the spec and broke generators
+	// (never $ref'd - they only bloated the spec and broke generators
 	// that can't name a property-walk $ref path).
 	mustContainNone(t, src, "CallReqQuery:", "CallReqHeader:", "CallReqCookie:", "CallReqPath:")
 }
@@ -1727,7 +1727,7 @@ service S { get Get /a { response R } }`)
 			t.Errorf("field %s: expected %q in:\n%s", f, sub, b)
 		}
 	}
-	// int / int8 / int16 have no standard format keyword — must stay bare.
+	// int / int8 / int16 have no standard format keyword - must stay bare.
 	for _, f := range []string{"ii", "i8", "i16"} {
 		if b := block(f); strings.Contains(b, "format:") {
 			t.Errorf("field %s should carry no format (no standard keyword), got:\n%s", f, b)

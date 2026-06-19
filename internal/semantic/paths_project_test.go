@@ -5,7 +5,7 @@ import "testing"
 // A request type can embed a mixin from a SIBLING package whose fields
 // supply the @path binding. The per-package pass can't expand that mixin,
 // so the project-level check ([refResolver.checkProjectPathParams]) owns
-// the verdict — matching the codegen binder's cross-package flattening.
+// the verdict - matching the codegen binder's cross-package flattening.
 
 // Cross-package mixin supplies the @path field → the {id} segment binds,
 // no false "no matching field" error.
@@ -27,7 +27,7 @@ service S {
 }
 
 // The check still fires when the cross-package mixin supplies the wrong
-// field — the segment genuinely has nothing to bind to.
+// field - the segment genuinely has nothing to bind to.
 func TestProjectPathParamCrossPkgMixinMissing(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/holder.craftgo": `package shared
@@ -86,7 +86,7 @@ service S {
 }
 
 // W3 (#16): a cross-package request (request shared.R) with an auto-path
-// field carrying @nullable is rejected by the project twin — the per-package
+// field carrying @nullable is rejected by the project twin - the per-package
 // pass returns early for cross-pkg requests, so without the twin it silently
 // emitted non-compiling Go (a plain string written into a *string slot).
 func TestProjectAutoPathFieldCrossPkgNullableRejected(t *testing.T) {
@@ -157,7 +157,7 @@ service S { post Do /do { request shared.Email  response Resp } }`,
 }
 
 // W5: a cross-package request whose field auto-binds to a path segment but is
-// a STRUCT (no path-string form) silently lost its binding — codegen emitted a
+// a STRUCT (no path-string form) silently lost its binding - codegen emitted a
 // handler that left the field zero with no error. The project twin resolves
 // the cross-package type through the IR and rejects it at design time, matching
 // the per-package pass.
@@ -178,7 +178,7 @@ service S { get G /u/{id} { request base.R  response Resp } }`,
 }
 
 // Control: a cross-package SCALAR (over a wire primitive) auto-binding to a
-// path segment is bindable and must NOT be false-rejected — the local table
+// path segment is bindable and must NOT be false-rejected - the local table
 // can't resolve it, so only the IR-backed twin gets this right.
 func TestProjectAutoPathFieldCrossPkgScalarClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -270,7 +270,7 @@ service S { post C /c { request R  response Resp } }`,
 }
 
 // A cross-package scalar @default exceeding the underlying primitive's
-// capacity must be rejected the SAME as its local twin — the project default
+// capacity must be rejected the SAME as its local twin - the project default
 // validator now shares the per-package literal check (kind + capacity), so it
 // no longer accepts an out-of-range cross-pkg default that codegen can't cast.
 func TestProjectCrossPkgDefaultOverflowRejected(t *testing.T) {
@@ -308,7 +308,7 @@ service S { post C /c { request R  response Resp } }`,
 
 // A cross-field group member that is a DIRECT field whose TYPE is a
 // cross-package scalar over bytes (`rawData shared.Blob?`) must be rejected
-// like its local twin — the per-package presence check resolves it with
+// like its local twin - the per-package presence check resolves it with
 // proj=nil so the bytes primitive never surfaces; the project pass must run
 // (deferred) even though no cross-package MIXIN was traversed.
 func TestProjectCrossFieldDirectCrossPkgScalarBytesRejected(t *testing.T) {
@@ -329,7 +329,7 @@ service S { post C /c { request Pick  response Resp } }`,
 }
 
 // Control: the same direct member over a VALUE primitive (`shared.Code` over
-// string) is pointer-backed and clean — must NOT be false-rejected.
+// string) is pointer-backed and clean - must NOT be false-rejected.
 func TestProjectCrossFieldDirectCrossPkgScalarStringClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -348,7 +348,7 @@ service S { post C /c { request Pick  response Resp } }`,
 }
 
 // A cross-package qualified struct (or other non-wire type) bound with
-// @header on an ERROR body field must be rejected — the per-package pass
+// @header on an ERROR body field must be rejected - the per-package pass
 // defers qualified refs, and checkProjectBindings once iterated only
 // pkg.Types, so the error field slipped past both passes into non-compiling
 // `string(e.Detail)` Go. The project binding check now sweeps pkg.Errors too.
@@ -389,7 +389,7 @@ service S { @errors(NF) post C /c { request Resp  response Resp } }`,
 // Cross-package twin of the Go-name collision: two mixins from DIFFERENT
 // packages each promote a field that lowers to the same Go identifier
 // (`userId` from m1.A, `user_id` from m2.B → both `UserID`). The project mixin
-// pass must reject it — without this codegen emits an ambiguous selector
+// pass must reject it - without this codegen emits an ambiguous selector
 // (`v.UserID`) that won't compile.
 func TestProjectMixinCrossPkgGoNameCollision(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -452,7 +452,7 @@ service S { post C /c { request Req  response Req } }`,
 }
 
 // Two methods in DIFFERENT packages resolving to the same VERB + route
-// register the same net/http pattern — the second registration panics at
+// register the same net/http pattern - the second registration panics at
 // boot, so the project pass rejects it with both sides named.
 func TestProjectPathCollisionCrossPkg(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -514,7 +514,7 @@ service BetaService {
 	}
 }
 
-// A SAME-package duplicate stays the per-package pass's report — the project
+// A SAME-package duplicate stays the per-package pass's report - the project
 // pass skips it, so the pair yields exactly one diagnostic, not two.
 func TestProjectPathCollisionSamePkgNoDoubleFire(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{

@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Root Go module — one grouped PR per week instead of one per dependency.
+  # Root Go module - one grouped PR per week instead of one per dependency.
   - package-ecosystem: gomod
     directory: /
     schedule:

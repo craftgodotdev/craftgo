@@ -1,6 +1,6 @@
 // Pins the prefix-path-variable auto-binding rule: a field whose name
 // matches a {var} in the service @prefix auto-binds to @path (r.PathValue)
-// — exactly like one matching a method-path {var}, and on EVERY verb. The
+// - exactly like one matching a method-path {var}, and on EVERY verb. The
 // binding rule reads the full route's path variables (prefix + method), not
 // the method path alone, so codegen and the analyser agree on where the
 // field rides. Without it, an un-decorated `tenantID` would wrongly fall
@@ -20,7 +20,7 @@ service TenantService {
 	}
 
 	// POST: the same un-decorated `tenantID` still binds from the path (not
-	// the JSON body) — the body carries only `name`.
+	// the JSON body) - the body carries only `name`.
 	@doc("Create an item under a tenant. tenantID binds from the path; the JSON body carries only name.")
 	post CreateTenantItem /items {
 		request  TenantCreateReq

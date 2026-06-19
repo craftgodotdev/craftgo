@@ -37,7 +37,7 @@ type genericRegistry struct {
 	// across runs (maps iterate randomly in Go).
 	order []string
 	// dups collects synthetic component names that TWO structurally
-	// distinct instances resolve to — e.g. `Page<int[]>` and
+	// distinct instances resolve to - e.g. `Page<int[]>` and
 	// `Page<IntArray>` both name-collapse to `PageOfIntArray`. Without
 	// this they silently share one schema and one field is advertised with
 	// the wrong shape; the generator rejects up front instead.
@@ -78,7 +78,7 @@ func (r *genericRegistry) register(decl *ast.TypeDecl, args []*ast.TypeRef) stri
 	if existing, ok := r.instances[name]; ok {
 		// Same synthetic name, but if the args are structurally different
 		// (e.g. an array arg int[] vs a struct named IntArray both yield the
-		// "IntArray" fragment) the two instances are NOT the same schema —
+		// "IntArray" fragment) the two instances are NOT the same schema -
 		// record the collision rather than silently aliasing them.
 		if existing.decl != decl || !typeRefsEqual(existing.args, args) {
 			r.dups[name] = true

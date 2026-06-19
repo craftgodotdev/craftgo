@@ -89,15 +89,15 @@ func WithPrometheusReader() Option {
 // WithOTLPgRPCReader adds a periodic OTLP gRPC push exporter pointed at addr,
 // which is either:
 //
-//   - a bare `host:port` (e.g. `"otel-collector.observability:4317"`) —
+//   - a bare `host:port` (e.g. `"otel-collector.observability:4317"`) -
 //     connects INSECURE (plain-text), the convention for collectors on a
 //     trusted local network; or
-//   - a full URL whose SCHEME selects transport security —
+//   - a full URL whose SCHEME selects transport security -
 //     `http://host:4317` (plaintext) or `https://host:4317` (TLS).
 //
 // The URL form lets a project enable TLS straight from config.yaml
 // (`endpoint: https://...`) instead of needing code. Push interval defaults to
-// 60s — the OTel SDK default; pass `otlpmetricgrpc.WithCompressor("gzip")` and
+// 60s - the OTel SDK default; pass `otlpmetricgrpc.WithCompressor("gzip")` and
 // friends through opts for transport tuning.
 func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc.Option) Option {
 	return func(c *config) {
@@ -106,11 +106,11 @@ func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc
 		}
 		var base []otlpmetricgrpc.Option
 		if strings.Contains(addr, "://") {
-			// URL form — WithEndpointURL parses host/port and derives
+			// URL form - WithEndpointURL parses host/port and derives
 			// insecure-vs-TLS from the scheme.
 			base = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpointURL(addr)}
 		} else {
-			// Bare host:port form — plaintext (insecure).
+			// Bare host:port form - plaintext (insecure).
 			base = []otlpmetricgrpc.Option{
 				otlpmetricgrpc.WithEndpoint(addr),
 				otlpmetricgrpc.WithInsecure(),
@@ -128,7 +128,7 @@ func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc
 // WithOTLPHTTPReader adds a periodic OTLP HTTP/protobuf push exporter pointed at
 // endpoint, a full URL including scheme: `"http://collector:4318"` (plaintext)
 // or `"https://collector.example.com"` (TLS). The URL SCHEME selects transport
-// security — `http` connects insecurely, `https` uses TLS — so no separate
+// security - `http` connects insecurely, `https` uses TLS - so no separate
 // insecure/TLS toggle is needed; pass `otlpmetrichttp.WithTLSClientConfig(...)`
 // in opts only for a custom certificate.
 func WithOTLPHTTPReader(ctx context.Context, endpoint string, opts ...otlpmetrichttp.Option) Option {
@@ -173,7 +173,7 @@ func WithReader(r sdkmetric.Reader) Option {
 //	// Push (OTLP gRPC to collector):
 //	metrics.Init(metrics.WithOTLPgRPCReader(ctx, "collector:4317"))
 //
-//	// Both — side-by-side scrape and push:
+//	// Both - side-by-side scrape and push:
 //	metrics.Init(
 //	    metrics.WithPrometheusReader(),
 //	    metrics.WithOTLPgRPCReader(ctx, "collector:4317"),
@@ -290,7 +290,7 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 		// Install a manual reader so the meter exists but is silent: a
 		// ManualReader only collects on an explicit Collect() call, which
 		// nothing here makes, so nothing is ever pushed or served. Without
-		// a reader, Init() falls back to the Prometheus default — which
+		// a reader, Init() falls back to the Prometheus default - which
 		// would secretly serve metrics that "none" promises to suppress.
 		opts = append(opts, WithReader(sdkmetric.NewManualReader()))
 	default:

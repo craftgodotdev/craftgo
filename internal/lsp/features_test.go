@@ -878,7 +878,7 @@ func findToken(t *testing.T, view snapshotView, needle string) protocol.Position
 // mustHoverAt parses src, finds the first occurrence of needle, and
 // returns the hover markdown text. It bundles the
 // `parseSnapshot → findToken → tokenAt → hoverForToken → nil check`
-// sequence into one call. Fails when no hover is produced — tests use
+// sequence into one call. Fails when no hover is produced - tests use
 // the return value to assert on contents directly.
 func mustHoverAt(t *testing.T, path, src, needle string) string {
 	t.Helper()
@@ -933,7 +933,7 @@ func expectLabels(t *testing.T, items []protocol.CompletionItem, wants ...string
 
 // expectNoLabels is the negative-filter partner: every banned label
 // MUST NOT appear in items. Used by tests that pin "this category /
-// kind must NOT leak into this completion site" — e.g. number-only
+// kind must NOT leak into this completion site" - e.g. number-only
 // validators on a string scalar.
 func expectNoLabels(t *testing.T, items []protocol.CompletionItem, banned ...string) {
 	t.Helper()

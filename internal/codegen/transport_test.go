@@ -98,7 +98,7 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 // TestGenerateTransportSuccessStatus pins the verb-aware success status.
 // A POST that returns a body defaults to 201 Created (written before the
 // body is encoded); GET/PUT keep the implicit 200 (no explicit
-// WriteHeader — the encoder already produces 200); a bodiless method is
+// WriteHeader - the encoder already produces 200); a bodiless method is
 // 204; and @status(N) overrides the verb default.
 func TestGenerateTransportSuccessStatus(t *testing.T) {
 	src := `package design
@@ -306,7 +306,7 @@ service S {
 // TestGenerateTransportEnumArrayQueryDefault pins the enum-array
 // @query @default binder. The slice is pre-filled with the default
 // members' wire values; a present param must REPLACE that pre-fill,
-// not append to it — the `req.X = req.X[:0]` clear is what guards
+// not append to it - the `req.X = req.X[:0]` clear is what guards
 // against `?colors=green` yielding `[red green blue]` instead of
 // `[green]`. The has-default oracle the binder consults resolves the
 // enum-member array literal so it agrees with the pre-fill emission.
@@ -341,7 +341,7 @@ service S {
 }
 
 // TestGenerateTransportWholeNumberFloatDefault pins that a whole-number
-// float `@default(1.0)` renders as a float literal (`1.0`), not `1` — which
+// float `@default(1.0)` renders as a float literal (`1.0`), not `1` - which
 // would infer `int` and make the optional-field pointer pre-fill `*int`
 // instead of `*float64`. A fractional default (`2.5`) is unchanged and
 // carries no cast.
@@ -376,7 +376,7 @@ service S {
 // TestCollectRequestFieldImports covers the cross-package import
 // walk for request type fields. A request with a `shared.ID` field
 // auto-promoted to @path emits `req.ID = shared.ID(...)` in the
-// handler — without scanning field types for cross-pkg refs the
+// handler - without scanning field types for cross-pkg refs the
 // `shared` import never lands and the handler fails to compile.
 func TestCollectRequestFieldImports(t *testing.T) {
 	method := &ast.Method{
@@ -450,7 +450,7 @@ service S {
 // wire binding: numeric / bool fields can ride @query, @header,
 // @cookie, AND @form through the same parse + 400 idiom. The only
 // difference between bindings is the source extraction (Query().Get
-// vs Header.Get vs c.Value vs FormValue) — everything else (parse
+// vs Header.Get vs c.Value vs FormValue) - everything else (parse
 // call, cast, error path) is shared by [renderWireBindLine].
 //
 // `int @header` etc. parse the wire value, with parse failures
@@ -881,7 +881,7 @@ func TestGenerateRoutesMissingPackageName(t *testing.T) {
 // `@middlewares(S)`, the generated `srv.Handle` call lists service-
 // level middlewares first (outermost) followed by the method's, in
 // source order. Server.Handle wraps variadic middlewares right-to-left
-// so the first arg ends up the outermost frame at runtime — the route
+// so the first arg ends up the outermost frame at runtime - the route
 // line reads top-to-bottom the same way the request flows through
 // (Auth wraps RateLimit wraps RequestCounter wraps the handler).
 func TestGenerateRoutesMultipleMiddlewares(t *testing.T) {
@@ -1026,7 +1026,7 @@ service AdminService {
 
 // TestGenerateExtendGroupNestsPerBlock pins per-block @group: a primary block
 // and an extend block each carry their own @group, so the service's methods
-// split across two transport packages on disk — and the routes file follows the
+// split across two transport packages on disk - and the routes file follows the
 // same split, one routes file per group folder, each importing only its own
 // group's transport and registering only that group's methods.
 func TestGenerateExtendGroupNestsPerBlock(t *testing.T) {
@@ -1531,7 +1531,7 @@ service UploadService {
 	)
 	// The Go field names must NOT leak through as the form keys.
 	if strings.Contains(string(handler), `r.FormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
-		t.Errorf("explicit @form name ignored — form key fell back to the field name:\n%s", handler)
+		t.Errorf("explicit @form name ignored - form key fell back to the field name:\n%s", handler)
 	}
 }
 
@@ -1576,7 +1576,7 @@ type Req { shared.Outer  own string }`,
 // TestResolveRequestFieldsQualifiedRequestNestedMixin pins that a QUALIFIED
 // request type (`request shared.Holder`) has its bare nested mixin's fields
 // resolved and bound. The request type lives in `shared`, so its bare mixin
-// `Sub` resolves there — without threading that package as the flatten
+// `Sub` resolves there - without threading that package as the flatten
 // prefix, `q` and `bod` were silently dropped from the binder while the
 // validator and the semantic path-param check still enforced them.
 func TestResolveRequestFieldsQualifiedRequestNestedMixin(t *testing.T) {

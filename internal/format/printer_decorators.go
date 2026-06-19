@@ -26,7 +26,7 @@ func (p *Printer) decoratorCore(d *ast.Decorator) {
 	name := d.Name
 	p.write(name)
 	// Canonical: emit parens only when there are real args. Empty
-	// `()` is stripped on save — both `@positive()` (Flag decorator
+	// `()` is stripped on save - both `@positive()` (Flag decorator
 	// authored with parens) and `@deprecated()` (no-arg form) round-
 	// trip to bare `@positive` / `@deprecated`.
 	if len(d.Args) > 0 {
@@ -45,7 +45,7 @@ func (p *Printer) decoratorCore(d *ast.Decorator) {
 // of the host decorator name + position index. The only context-
 // sensitive rewrite today is the string-to-ident canonicalisation
 // for `@format`: `@format("email")` is rewritten to `@format(email)`.
-// Rule — when the argument names a registered identifier (format
+// Rule - when the argument names a registered identifier (format
 // name, security scheme, ...), bare ident is canonical; free-form
 // values (regex, paths) stay quoted. Every other decorator falls
 // through to the generic [Printer.DecoratorArg] path unchanged.
@@ -60,7 +60,7 @@ func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.De
 }
 
 // isPlainIdent reports whether s would parse as a bare identifier in
-// craftgo — leading letter / underscore, followed by letters / digits /
+// craftgo - leading letter / underscore, followed by letters / digits /
 // underscores. The string→ident format rewrite uses it as a guard so
 // strings with hyphens, dots, or spaces fall back to the quoted form
 // instead of producing an unparseable rewrite.

@@ -212,11 +212,11 @@ For unexpected errors (raw `errors.New(...)` / `fmt.Errorf(...)` that carry no H
 
 The framework funnels every error response through one of three swappable hooks:
 
-- `server.SetDefaultValidationFailed` — input that fails `Validate()` or parameter binding (default 400).
-- `server.SetHandleUnknownError` — a service error that is **not** a craftgo typed error (no `HTTPStatus()`); the default logs it with trace context and responds 500. Use it to map a domain error to a status, redact, or return a uniform envelope.
-- `(*server.Server).SetHandleNotFound` — requests that match no route (default 404).
+- `server.SetDefaultValidationFailed` - input that fails `Validate()` or parameter binding (default 400).
+- `server.SetHandleUnknownError` - a service error that is **not** a craftgo typed error (no `HTTPStatus()`); the default logs it with trace context and responds 500. Use it to map a domain error to a status, redact, or return a uniform envelope.
+- `(*server.Server).SetHandleNotFound` - requests that match no route (default 404).
 
-A recognised typed error (one that implements `server.StatusError` — every `@errors(...)` declaration does) is rendered directly from its interface and is **not** logged: a declared 4xx/5xx is an expected outcome. For full control over a business error's wire shape, give the error a body struct.
+A recognised typed error (one that implements `server.StatusError` - every `@errors(...)` declaration does) is rendered directly from its interface and is **not** logged: a declared 4xx/5xx is an expected outcome. For full control over a business error's wire shape, give the error a body struct.
 
 ## Cross-package errors
 

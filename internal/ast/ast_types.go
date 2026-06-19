@@ -35,7 +35,7 @@ type TypeRef struct {
 
 // ElemTypeRef returns a copy of t with ONE array dimension peeled: the depth
 // is decremented and Array re-set while an inner dimension remains, so a
-// multi-dimensional element keeps its array shape. Optional is dropped — the
+// multi-dimensional element keeps its array shape. Optional is dropped - the
 // `?` belongs to the outer field, not each element. Returns nil for a nil
 // receiver. The semantic type-checker (literal type-fit) and the codegen
 // default pre-fill both peel array elements this way; sharing one definition

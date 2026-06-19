@@ -1,6 +1,6 @@
 // Package `bindings` exercises the request-binding decorators (`@path`,
 // `@query`, `@header`, `@cookie`, `@body`, `@form`) plus the typing
-// rules that gate each — `@path` requires string-shape, `@query`
+// rules that gate each - `@path` requires string-shape, `@query`
 // accepts the full primitive + array matrix, `@header` / `@cookie` are
 // string-only, and `@form` carries the `file` upload pair.
 //
@@ -12,7 +12,7 @@ package bindings
 // ---------------------------------------------------------------
 // Path bindings.
 //
-// `@path` requires the field to be string-shaped — `string`, a
+// `@path` requires the field to be string-shaped - `string`, a
 // string-backed scalar, or a string-backed enum. The wire name is the
 // DSL field name (the explicit-name form `@path("user_id")` is parsed
 // but the codegen always emits `r.PathValue(<f.Name>)`).
@@ -65,7 +65,7 @@ type PathExplicitNameReq {
 
 // PathIntReq is the DELIBERATELY-INVALID shape: `@path` requires
 // string-shape and `int` is not. Codegen rejects this at gen time
-// with a clear error message — uncomment the field + PathIntProbe
+// with a clear error message - uncomment the field + PathIntProbe
 // method to reproduce. Captured diagnostic:
 //
 //   bindings.craftgo:NN:9: field PathIntReq.id: @path requires a
@@ -112,14 +112,14 @@ type QueryBoolReq {
 }
 
 // QueryEnumReq drives the enum cast path through @query. Enums are
-// string-shape on the wire, so optional is fine — the binder reads
+// string-shape on the wire, so optional is fine - the binder reads
 // the raw string and casts up to the Color alias.
 type QueryEnumReq {
 	c Color? @query
 }
 
 // QueryArrayStringReq exercises the `[]string @query` shape. The
-// generator emits `req.Tags = r.URL.Query()["tags"]` — repeated
+// generator emits `req.Tags = r.URL.Query()["tags"]` - repeated
 // `?tags=a&tags=b` lands as `["a", "b"]`. CSV (`?tags=a,b`) is NOT
 // auto-split.
 type QueryArrayStringReq {
@@ -143,7 +143,7 @@ type QueryRequiredReq {
 // QueryArrayEnumDefaultReq drives the enum-array @query @default path.
 // The slice is pre-filled with the wire values of the default members
 // ([Red, Blue]); the binder must REPLACE that pre-fill when the param
-// is present, not append to it — so `?colors=green` yields ["green"],
+// is present, not append to it - so `?colors=green` yields ["green"],
 // never ["red", "green", "blue"]. The has-default oracle the binder
 // consults resolves the enum-member array literal so it agrees with the
 // pre-fill that emitted the default.
@@ -156,7 +156,7 @@ type QueryArrayEnumDefaultReq {
 //
 // Both are string-shape only on the wire. Codegen rejects @header /
 // @cookie on a non-string-shape field at gen time. Optional `string?`
-// is fine — the absent header reads as the empty string, which the
+// is fine - the absent header reads as the empty string, which the
 // generator stores as a nil pointer.
 // ---------------------------------------------------------------
 
@@ -175,7 +175,7 @@ type HeaderOptionalReq {
 	traceId string @header("X-Trace-Id")
 }
 
-// CookieReq drives the cookie binder with an explicit wire name — the
+// CookieReq drives the cookie binder with an explicit wire name - the
 // runtime fetches the cookie named `session_id`.
 type CookieReq {
 	session string @cookie("session_id")

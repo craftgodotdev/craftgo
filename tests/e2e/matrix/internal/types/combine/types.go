@@ -12,9 +12,9 @@ type PageSize int
 // DefaultsBoundary parks each default literal AT or near the validator
 // boundary so the pre-fill / validate ordering is visible.
 //
-//   - zero:   @default(0) with @gte(0) — default sits on the closed lo.
+//   - zero:   @default(0) with @gte(0) - default sits on the closed lo.
 //   - bool:   @default(true) on a plain bool. No validator to clash with.
-//   - negOne: @default(-1) with strict @lt(0) — the default is the
+//   - negOne: @default(-1) with strict @lt(0) - the default is the
 //     largest value that still satisfies the strict bound.
 type DefaultsBoundary struct {
 	Zero   *int  `json:"zero,omitempty"`
@@ -24,10 +24,10 @@ type DefaultsBoundary struct {
 
 // DefaultsCollection covers the collection / map default shapes.
 //
-//   - arr:  @default([1, 2, 3]) — array literal default on int[]?.
+//   - arr:  @default([1, 2, 3]) - array literal default on int[]?.
 //     Combined with @minItems(0) the default trivially satisfies the
 //     bound (3 >= 0); the test is that the array literal renders.
-//   - obj:  @default({key: "v"}) on a map<string, string>? — object
+//   - obj:  @default({key: "v"}) on a map<string, string>? - object
 //     literal defaults are NOT in the semantics layer's allow-list
 //     (only primitives / enums / scalars / arrays of those). Expect a
 //     rejection at codegen time.
@@ -38,7 +38,7 @@ type DefaultsBoundary struct {
 //	 enums, scalars (wrapping primitives), and arrays of those are
 //	 allowed`
 //
-// This is the expected design — object-literal defaults aren't in
+// This is the expected design - object-literal defaults aren't in
 // the allow-list. The intended DSL line is commented out below; the
 // active type keeps only the array-literal default so the rest of
 // the combine package proceeds past the semantics gate.
@@ -67,7 +67,7 @@ type DefaultsEnum struct {
 }
 
 // DefaultsScalar uses a numeric-scalar default. The literal is a plain
-// int — the codegen casts it to the scalar's defined type
+// int - the codegen casts it to the scalar's defined type
 // (`PageSize(20)`) so the pointer pre-fill `__d := PageSize(20)` keeps
 // the field's `*PageSize` type.
 type DefaultsScalar struct {
@@ -102,7 +102,7 @@ type KeywordFieldNames struct {
 // PairsArr stacks the array-level decorators (@minItems, @maxItems,
 // @uniqueItems). Per-element constraints belong on a scalar: declare
 // the element type as a named scalar and the validator walker emits
-// the inner checks automatically through scalar leaf inheritance —
+// the inner checks automatically through scalar leaf inheritance -
 // no explicit per-element decorator required.
 //
 //	scalar Tag string @length(1, 20)
@@ -147,7 +147,7 @@ type PairsNum struct {
 // PairsStr stacks every string validator the generator supports on a
 // single field, plus a separate field for the cheap baseline.
 //
-//   - email: @length + @format(email) + @pattern — all four constraints
+//   - email: @length + @format(email) + @pattern - all four constraints
 //     fire in declaration order. The pattern is a domain restriction
 //     on top of the format check.
 type PairsStr struct {

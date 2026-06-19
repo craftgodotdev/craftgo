@@ -26,7 +26,7 @@ type PaginatedResp {
 }
 
 // RateLimited surfaces the back-off hint on a non-string `Retry-After`
-// response header — exercising @header value formatting on the error
+// response header - exercising @header value formatting on the error
 // path (errorResponseBindings) the same way PaginatedResp does for the
 // success path.
 error TooManyRequests RateLimited {

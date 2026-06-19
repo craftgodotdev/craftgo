@@ -11,7 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Health is the bodyless probe — no request type, no response
+// Health is the bodyless probe - no request type, no response
 // type. Only the @errors declaration rides on the method line so
 // the OpenAPI doc still lists the rate-limit envelope.
 // Health returns the http.HandlerFunc for the

@@ -44,7 +44,7 @@ import (
 // clients can include it in trace logs. The source value is the fallback for
 // `go install`; release builds inject the git tag via
 // `-ldflags="-X ...internal/lsp.Version=<tag>"` (see .goreleaser.yaml), so it
-// must be a var — `-X` cannot write a const.
+// must be a var - `-X` cannot write a const.
 var Version = "1.4.2"
 
 // Serve runs the LSP loop on the supplied stdio streams. It blocks until
@@ -303,7 +303,7 @@ func (s *Server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ js
 }
 
 // watchedFilesGlob builds the workspace file-watch pattern from the canonical
-// source extensions — e.g. `**/*.{craftgo,cg}`. Brace groups are part of the
+// source extensions - e.g. `**/*.{craftgo,cg}`. Brace groups are part of the
 // LSP glob syntax, so a single watcher covers every accepted extension.
 func watchedFilesGlob() string {
 	bare := make([]string, len(config.DesignFileExtensions))

@@ -6,7 +6,7 @@ package design
 // `@middlewares(...)` decorators in another.
 // `profile-service` holds ProfileService split across multiple files
 // (primary + two `extend service` blocks), one folder per service.
-// `admin` holds AdminService — a separate service in its own folder.
+// `admin` holds AdminService - a separate service in its own folder.
 // `xshared` + `xrefs` form the cross-package reference matrix fixture:
 // every shape a `xshared.X` qualified ref can take is exercised in
 // xrefs, covering cross-package resolution across validate / transport

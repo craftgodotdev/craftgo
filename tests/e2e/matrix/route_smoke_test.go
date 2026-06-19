@@ -18,7 +18,7 @@ import (
 )
 
 // bootAll stands up EVERY service in the matrix on one httptest server via the
-// generated umbrella RegisterAll — the same wiring main.go performs — with all
+// generated umbrella RegisterAll - the same wiring main.go performs - with all
 // declared middlewares assigned. The per-feature harness (boot) registers only
 // the services its roundtrip tests implement; this one exists so the route
 // smoke below exercises the full registered surface.
@@ -40,7 +40,7 @@ func bootAll(t *testing.T) *httptest.Server {
 }
 
 // specOperations reads every (method, path) pair from the committed OpenAPI
-// document — the spec is the contract, so walking it keeps the smoke in
+// document - the spec is the contract, so walking it keeps the smoke in
 // lock-step with the design without a hand-maintained route list.
 func specOperations(t *testing.T) [][2]string {
 	t.Helper()
@@ -73,7 +73,7 @@ func specOperations(t *testing.T) [][2]string {
 }
 
 // smokeURL maps a spec path to a request URL: the manifest basePath is
-// prepended (spec paths omit it) and every {param} is filled with a literal —
+// prepended (spec paths omit it) and every {param} is filled with a literal -
 // @path params are string-backed by the binding rules, so "x" always binds
 // (validators may still 400, which the smoke counts as a live handler).
 func smokeURL(specPath string) string {
@@ -99,8 +99,8 @@ func smokeURL(specPath string) string {
 // TestEveryRouteRegisteredAndHandled walks every operation in the OpenAPI
 // document against the fully-registered server. A 404 means the route never
 // registered (the spec advertises an endpoint the server doesn't mount); a
-// 405 means it registered under the wrong verb. Any other status — 2xx from
-// a handler, 400/413 from the binder/validator rejecting the probe input —
+// 405 means it registered under the wrong verb. Any other status - 2xx from
+// a handler, 400/413 from the binder/validator rejecting the probe input -
 // proves the route is live and its parse→validate chain runs. This is the
 // net for registration-time regressions that compile fine and only fail at
 // boot or first request.

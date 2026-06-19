@@ -8,8 +8,8 @@ import (
 
 // CreateGalleryReq is the showcase multi-file upload: MANY files via
 // `photos file[]`, an optional single `cover` file, and form values of every
-// shape — required/optional text, a repeated `tags string[]` value array, an
-// enum, a bool, and a bounded int — all in ONE multipart/form-data request,
+// shape - required/optional text, a repeated `tags string[]` value array, an
+// enum, a bool, and a bounded int - all in ONE multipart/form-data request,
 // with the album id bound from the path.
 //
 // On the wire the repeated parts share a field name: each photo is a `photos`

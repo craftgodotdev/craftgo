@@ -43,7 +43,7 @@ design/
     └── service.craftgo
 ```
 
-Files in the same subfolder share one package and see each other's declarations directly. To use a declaration from another subfolder, just qualify it with that package's name (`shared.Type`) — cross-package references resolve automatically, no import needed.
+Files in the same subfolder share one package and see each other's declarations directly. To use a declaration from another subfolder, just qualify it with that package's name (`shared.Type`) - cross-package references resolve automatically, no import needed.
 
 ## Six declaration kinds
 
@@ -140,7 +140,7 @@ Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`.
 
 Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. `trace` and `connect` are not supported.
 
-**Request and response types are single named structs only.** Generic instantiations such as `response Page<Order>` work; bare-array forms (`response Order[]`) and optional markers (`response User?`) do not — wrap the shape in a struct (`type Items { items Order[] }`) and reference that struct instead.
+**Request and response types are single named structs only.** Generic instantiations such as `response Page<Order>` work; bare-array forms (`response Order[]`) and optional markers (`response User?`) do not - wrap the shape in a struct (`type Items { items Order[] }`) and reference that struct instead.
 
 Path parameters use `{name}` and bind to fields with `@path`:
 
@@ -286,7 +286,7 @@ See [Middleware](/guide/middleware).
 
 ## Cross-package references
 
-Reference a declaration from another folder by qualifying it with that package's name — no import line needed:
+Reference a declaration from another folder by qualifying it with that package's name - no import line needed:
 
 ```craftgo
 package design

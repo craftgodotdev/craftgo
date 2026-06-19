@@ -531,7 +531,7 @@ type Order { currency shared.CurrencyCode? @default(42) }`,
 }
 
 // TestAnalyzeProjectDefaultCrossPkgEnumOK covers @default(EnumValue) on a
-// cross-package enum field — the project pass walks the enum's value
+// cross-package enum field - the project pass walks the enum's value
 // set the same way the per-package pass would for local enums.
 func TestAnalyzeProjectDefaultCrossPkgEnumOK(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -565,7 +565,7 @@ type Customer { tier shared.Tier? @default(Ultimate) }`,
 
 // TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget covers the
 // "you pointed @default at a struct type" case across package
-// boundaries — the cross-pkg ref resolves to a *type*, not a scalar
+// boundaries - the cross-pkg ref resolves to a *type*, not a scalar
 // or enum, so @default should still fire decorator/conflict.
 func TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -600,7 +600,7 @@ type Order { allowed shared.CurrencyCode[]? @default(["USD", "EUR"]) }`,
 }
 
 // hasCode is a tiny test helper for "did any diagnostic come back with
-// this code?" — keeps assertions readable without depending on order
+// this code?" - keeps assertions readable without depending on order
 // or auxiliary messages.
 func hasCode(diags []Diagnostic, code string) bool {
 	for _, d := range diags {

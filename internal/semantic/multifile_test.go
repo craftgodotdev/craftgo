@@ -210,7 +210,7 @@ service S {
 	// pass skips @errors in project mode (it defers cross-package
 	// resolution), so checkProjectErrorRefs is the only validator. A real
 	// multi-package AnalyzeProject run needs an on-disk design root, so we
-	// hand-build the project here — the valid-qualified-ref converse is
+	// hand-build the project here - the valid-qualified-ref converse is
 	// covered by the ecommerce e2e fixture instead.
 	r := &refResolver{proj: &Project{Packages: map[string]*Package{
 		"design": {Name: "design", Errors: map[string]*ast.ErrorDecl{
@@ -232,8 +232,8 @@ service S {
 	}
 }
 
-// Note: the converse — a VALID cross-package @errors(shared.X) must NOT
-// be rejected — is covered by the ecommerce e2e fixture (it uses
+// Note: the converse - a VALID cross-package @errors(shared.X) must NOT
+// be rejected - is covered by the ecommerce e2e fixture (it uses
 // `@errors(shared.UnauthorizedErr)` and gens cleanly through
 // checkProjectErrorRefs). parseFileMap can't simulate the real package
 // directories that import resolution needs, so it isn't unit-tested here.

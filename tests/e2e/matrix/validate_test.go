@@ -4,7 +4,7 @@
 // fixtures COMPILE and regenerate idempotently. These tests go one layer
 // deeper: they construct the generated types and call Validate() to prove the
 // runtime enforces exactly what the OpenAPI schema advertises. A change that
-// silently drops a check — leaving code that still compiles — fails here
+// silently drops a check - leaving code that still compiles - fails here
 // loudly.
 //
 // Every case runs through rejects / accepts so the table reads as a
@@ -41,13 +41,13 @@ func accepts(t *testing.T, name string, v interface{ Validate() error }) {
 }
 
 // ---------------------------------------------------------------------------
-// Scalars and generics — a defined-type scalar (and enum) carries its own
+// Scalars and generics - a defined-type scalar (and enum) carries its own
 // Validate(), so a field-level decorator stacked on a scalar field and a
 // constrained scalar / enum reached through a generic both enforce at runtime.
 // ---------------------------------------------------------------------------
 
 // TestScalarFieldLevelOverride: a decorator on a scalar-typed field narrows
-// the scalar's own bound, and the narrowed bound runs — including on an
+// the scalar's own bound, and the narrowed bound runs - including on an
 // optional scalar field when it is present.
 func TestScalarFieldLevelOverride(t *testing.T) {
 	// Cents allows up to 1e9; the field narrows it to @lte(500).
@@ -92,7 +92,7 @@ func TestGenericOverEnum(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Cross-field groups — @requiresOneOf / @mutuallyExclusive over pointer-backed
+// Cross-field groups - @requiresOneOf / @mutuallyExclusive over pointer-backed
 // fields, including fields a type inherits through a mixin.
 // ---------------------------------------------------------------------------
 
@@ -112,7 +112,7 @@ func TestCrossFieldGroups(t *testing.T) {
 }
 
 // TestCrossFieldOverMixinPromotedField: a group may name fields the type
-// inherits — Rg3Contact's @requiresOneOf(email, phone) targets fields promoted
+// inherits - Rg3Contact's @requiresOneOf(email, phone) targets fields promoted
 // from the embedded Rg3Pair mixin.
 func TestCrossFieldOverMixinPromotedField(t *testing.T) {
 	rejects(t, "neither promoted field set", &regression.Rg3Contact{})
@@ -121,14 +121,14 @@ func TestCrossFieldOverMixinPromotedField(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Constraints across type shapes — nil-guards on nilable types, bound
+// Constraints across type shapes - nil-guards on nilable types, bound
 // intersection, constraints reached through composite generics and scalar map
 // keys, big-integer precision, @multipleOf, and error bodies (incl. mixins).
 // ---------------------------------------------------------------------------
 
 // TestNilableNullableNilGuard: on a nilable Go type (bytes -> []byte, slice,
 // map) an optional / nullable length or items check is nil-guarded, so an
-// explicit null passes while a present-but-too-short value still fails —
+// explicit null passes while a present-but-too-short value still fails -
 // matching the OpenAPI null-union.
 func TestNilableNullableNilGuard(t *testing.T) {
 	accepts(t, "all fields null", &regression.Rg5Nilable{})
@@ -138,7 +138,7 @@ func TestNilableNullableNilGuard(t *testing.T) {
 }
 
 // TestStackedBoundsIntersect: stacked same-family bounds enforce the tightest,
-// matching the spec's intersection — `@gte(10) @lte(90) @range(0,100)` is
+// matching the spec's intersection - `@gte(10) @lte(90) @range(0,100)` is
 // 10..90, and `@length(5) @minLength(3) @maxLength(10)` is exactly 5.
 func TestStackedBoundsIntersect(t *testing.T) {
 	accepts(t, "b and a within the tightest bounds", &regression.Rg6Stacked{B: 50, A: "abcde"})
@@ -162,7 +162,7 @@ func TestConstraintThroughCompositeGeneric(t *testing.T) {
 }
 
 // TestScalarMapKeyAndValueValidated: a non-string scalar map key carries its
-// own constraint at runtime, as does the value — Rg5Bag.byUser is
+// own constraint at runtime, as does the value - Rg5Bag.byUser is
 // map<Rg5UserID @gte(1), Rg5Tag @minLength(1)>.
 func TestScalarMapKeyAndValueValidated(t *testing.T) {
 	bag := func(id regression.Rg5UserID, name string) *regression.Rg5Bag {
@@ -214,9 +214,9 @@ func TestStringLengthCountsCharacters(t *testing.T) {
 	mk := func(exact string) *strtypes.Str_Lengths {
 		return &strtypes.Str_Lengths{ZeroLower: "x", NonEmpty: "x", Exact: exact, OnlyMin: "x", OnlyMax: "x"}
 	}
-	// 5 characters / 6 bytes — passes (a byte count would reject 6 > 5).
+	// 5 characters / 6 bytes - passes (a byte count would reject 6 > 5).
 	accepts(t, "café! is 5 characters at @length(5,5)", mk("café!"))
-	// 4 characters / 5 bytes — fails (a byte count would wrongly accept 5).
+	// 4 characters / 5 bytes - fails (a byte count would wrongly accept 5).
 	rejects(t, "café is 4 characters, not 5, at @length(5,5)", mk("café"))
 	rejects(t, "abcdef is 6 characters at @length(5,5)", mk("abcdef"))
 }

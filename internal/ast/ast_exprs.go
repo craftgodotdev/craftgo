@@ -25,7 +25,7 @@ type Decorator struct {
 // Nested, or Object is populated:
 //
 //   - Value (and optional Name+Named=true) for bare or `name: value` literals;
-//   - Nested for `@inner(...)` arguments — the parser preserves the
+//   - Nested for `@inner(...)` arguments - the parser preserves the
 //     nested-decorator shape so future meta-decorators that consume
 //     another decorator can land without grammar churn;
 //   - Object for `{ key: value, ... }` literals such as `@example({...})`.

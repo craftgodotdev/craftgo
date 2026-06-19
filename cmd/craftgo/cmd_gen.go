@@ -173,8 +173,8 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 
 // fileDecoratorString returns the string argument of the first file-header
 // `@<name>("X")` decorator across the design files, or "" when none is
-// present. Used for the file-level OpenAPI overrides — `@version` (document
-// version) and `@doc` (info.description) — that override the
+// present. Used for the file-level OpenAPI overrides - `@version` (document
+// version) and `@doc` (info.description) - that override the
 // craftgo.design.yaml values.
 func fileDecoratorString(files []*ast.File, name string) string {
 	for _, f := range files {

@@ -1,5 +1,5 @@
 ---
-description: "Why craftgo puts the API design first: one DSL source generates Go types, validators, net/http handlers, and OpenAPI that can never drift apart — versus the code-first sprawl of Gin or Echo."
+description: "Why craftgo puts the API design first: one DSL source generates Go types, validators, net/http handlers, and OpenAPI that can never drift apart - versus the code-first sprawl of Gin or Echo."
 ---
 
 # Why Design-first

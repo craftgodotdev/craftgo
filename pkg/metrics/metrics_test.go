@@ -202,7 +202,7 @@ func TestInitWithOTLPHTTPReaderInstallsPushExporter(t *testing.T) {
 
 // TestInitCombinesPullAndPushReaders pins the multi-reader path:
 // stacking [WithPrometheusReader] + an OTLP push option produces a
-// MeterProvider that fans every recorded metric to BOTH outputs —
+// MeterProvider that fans every recorded metric to BOTH outputs -
 // the side-by-side shape (Prometheus scrape stays live while the
 // OTLP collector is validated).
 func TestInitCombinesPullAndPushReaders(t *testing.T) {
@@ -273,7 +273,7 @@ func truncate(s string, n int) string {
 }
 
 // Both OTLP readers must accept a bare host:port AND a full URL (the URL scheme
-// drives TLS), matching the trace exporter — a metrics endpoint of
+// drives TLS), matching the trace exporter - a metrics endpoint of
 // https://collector must not silently downgrade to plaintext.
 func TestOTLPMetricReadersAcceptHostPortAndURL(t *testing.T) {
 	resetForTest(t)
@@ -290,7 +290,7 @@ func TestOTLPMetricReadersAcceptHostPortAndURL(t *testing.T) {
 	}
 }
 
-// Exporter "none" installs a silent meter — it must NOT fall back to the
+// Exporter "none" installs a silent meter - it must NOT fall back to the
 // Prometheus reader (which would secretly serve the metrics "none" suppresses).
 func TestNoneExporterDoesNotServePrometheus(t *testing.T) {
 	resetForTest(t)

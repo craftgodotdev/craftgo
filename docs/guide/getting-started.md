@@ -1,5 +1,5 @@
 ---
-description: "Install craftgo, write your first API in the DSL, and generate a runnable Go server — typed structs, validators, net/http routes, and an OpenAPI spec — in about 5 minutes."
+description: "Install craftgo, write your first API in the DSL, and generate a runnable Go server - typed structs, validators, net/http routes, and an OpenAPI spec - in about 5 minutes."
 ---
 
 # Getting Started
@@ -163,7 +163,7 @@ curl -X POST http://localhost:8080/api/v1/users \
 name: length out of range [1, 80]
 ```
 
-`Validate()` is fail-fast — it returns the first violation (here `name`), so fixing one surfaces the next. The validators ran without you writing any code.
+`Validate()` is fail-fast - it returns the first violation (here `name`), so fixing one surfaces the next. The validators ran without you writing any code.
 
 ## What just happened
 
@@ -188,5 +188,5 @@ It is a single-page consolidated reference (every keyword, decorator, CLI flag, 
 
 - Read [DSL Basics](/guide/dsl-basics) to learn the syntax in depth.
 - Browse [Decorators](/guide/decorators) to see every decorator with arguments and sites.
-- Install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=craftgo.craftgo) (search "craftgo" in the Extensions panel) — or set up the [LSP](/guide/lsp) for another editor — for completion, hover, and live diagnostics.
+- Install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=craftgo.craftgo) (search "craftgo" in the Extensions panel) - or set up the [LSP](/guide/lsp) for another editor - for completion, hover, and live diagnostics.
 - See [Configuration](/guide/configuration) to relocate generated files or add custom config.

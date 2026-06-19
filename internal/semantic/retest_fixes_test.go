@@ -4,8 +4,8 @@ import "testing"
 
 // Regression tests for the re-test workflow's confirmed edge bugs.
 
-// A field name that normalises to an invalid Go identifier — empty (`_`, `__`)
-// or digit-leading (`_2`) — is rejected rather than silently producing
+// A field name that normalises to an invalid Go identifier - empty (`_`, `__`)
+// or digit-leading (`_2`) - is rejected rather than silently producing
 // uncompilable / unexported Go.
 func TestInvalidGoFieldNameRejected(t *testing.T) {
 	for _, name := range []string{"_2", "_1_2", "_", "__"} {
@@ -19,7 +19,7 @@ func TestLeadingUnderscoreFieldClean(t *testing.T) {
 }
 
 // Two fields bound to case-variant HTTP header names (`X-Trace` / `x-trace`)
-// collide — net/http canonicalises both to one header.
+// collide - net/http canonicalises both to one header.
 func TestDuplicateWireNameHeaderCase(t *testing.T) {
 	expectError(t, `type R { a string @header("X-Trace")  b string @header("x-trace") }`, CodeDuplicateWireName)
 }

@@ -76,7 +76,7 @@ func (a *analyzer) checkPathResolution() {
 				checkMethodPathParams(svcName, m, rt, a.pathParamEnv())
 			}
 
-			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide — they
+			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide - they
 			// register against the same net/http pattern at boot. The
 			// displayed route keeps the literal form for the diagnostic.
 			key := routeKey{verb: verb, path: route.Shape(rt)}
@@ -137,7 +137,7 @@ func (r *refResolver) checkProjectPathCollision() {
 					continue
 				}
 				if prev.pkg == pkgName {
-					// Same package — the per-package pass owns the pair.
+					// Same package - the per-package pass owns the pair.
 					continue
 				}
 				d := r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
@@ -213,7 +213,7 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 	pathParams := extractPathParams(route)
 	// When the route declares `{param}` segments but the method has no
 	// request struct, the generated logic signature drops to bare
-	// `func() error` — path values land nowhere. Surface a warning so
+	// `func() error` - path values land nowhere. Surface a warning so
 	// authors realise they need to declare a request struct (or accept
 	// that the path param is informational only). Downgraded from
 	// error because many test fixtures legitimately use the no-request
@@ -222,7 +222,7 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 	if m.Request == nil {
 		// Passthrough methods receive the raw http.ResponseWriter
 		// and *http.Request, so path params land via `r.PathValue`
-		// at the framework boundary — no struct binding is needed
+		// at the framework boundary - no struct binding is needed
 		// and the diagnostic would be spurious for them.
 		passthrough := false
 		for _, d := range m.Decorators {
@@ -233,7 +233,7 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 		}
 		if len(pathParams) > 0 && !passthrough {
 			env.emit(m.Pos, CodePathParamMissing,
-				"method %s.%s: path declares %v but no request struct — path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
+				"method %s.%s: path declares %v but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
 				svcName, m.Name, pathParams)
 		}
 		return
@@ -406,7 +406,7 @@ func walkBodyForPath(td *ast.TypeDecl, prefix, label string, paramSet map[string
 			// A field auto-binds to a same-named segment ONLY when no other
 			// wire decorator diverts it. `id string @query` on `/u/{id}`
 			// rides the query string, so it does NOT cover the {id} segment
-			// — mirror RequestFieldBinding (auto=false here) or the
+			// - mirror RequestFieldBinding (auto=false here) or the
 			// path-coverage check passes while {id} stays unbound and the
 			// emitted OpenAPI has no `in: path` parameter for it.
 			if paramSet[v.Name] && !hasDivertingWireBinding(v.Decorators) {

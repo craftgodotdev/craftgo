@@ -1,6 +1,6 @@
 package design
 
-// Second `extend service` block — admin-only methods. A single service
+// Second `extend service` block - admin-only methods. A single service
 // can be split across as many extend files as needed; the semantic
 // phase merges them in source order.
 extend service ProfileService {

@@ -38,7 +38,7 @@ func NewEchoWireService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // name, so the emitted OpenAPI parameter name MUST equal the wire
 // name the runtime binder reads (r.PathValue("user_id"),
 // r.Header.Get("X-Trace-Id"), r.Cookie("session_id"),
-// r.URL.Query().Get("search_q")) — never the DSL field name. Guards
+// r.URL.Query().Get("search_q")) - never the DSL field name. Guards
 // the request-param regression: a spec that advertised the field
 // name would make a generated client send a parameter the server
 // never reads, so the binding would silently fail.

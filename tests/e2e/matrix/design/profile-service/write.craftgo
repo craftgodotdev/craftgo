@@ -1,6 +1,6 @@
 package design
 
-// First `extend service` block — writes (Create + Patch). Lives in a
+// First `extend service` block - writes (Create + Patch). Lives in a
 // separate file from the primary declaration; the semantic phase
 // merges contributions across files in the same folder.
 extend service ProfileService {

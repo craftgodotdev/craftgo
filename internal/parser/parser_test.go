@@ -104,7 +104,7 @@ func stringsEqual(a, b []string) bool {
 }
 
 // renderMembers gives a compact dump of a type body for failure
-// messages — `[id string; name string]` is easier to scan than the
+// messages - `[id string; name string]` is easier to scan than the
 // raw `%+v` of nested AST nodes.
 func renderMembers(ms []ast.TypeMember) string {
 	parts := make([]string, len(ms))
@@ -218,7 +218,7 @@ package design`)
 // TypeDecl shape; the assertion goes through [ast.Equal] / [ast.MembersEqual]
 // so adding a new variant is one row, not one function.
 //
-// Decorator presence, doc, comments are NOT asserted here — they have
+// Decorator presence, doc, comments are NOT asserted here - they have
 // their own dedicated table below ([TestParseTypeDecorators]) so a
 // failure in shape parsing doesn't drown out decorator regressions
 // and vice versa.
@@ -294,7 +294,7 @@ func TestParseTypeShapes(t *testing.T) {
 			},
 		},
 		{
-			// PascalCase + builtin must land as a Field, not a Mixin —
+			// PascalCase + builtin must land as a Field, not a Mixin -
 			// users are free to spell JSON keys however they want.
 			name:     "PascalCase + builtin = field",
 			src:      `type X { CreateUser int }`,
@@ -676,7 +676,7 @@ type X {}`)
 func TestDecoratorNested(t *testing.T) {
 	// Parser-level: confirm a decorator-arg in the form `@outer(@inner)`
 	// preserves the nested decorator on `arg.Nested`. The semantic
-	// registry doesn't recognise this decorator pair — that's
+	// registry doesn't recognise this decorator pair - that's
 	// intentional, the parser must keep the grammar shape even when no
 	// downstream consumer claims it, so future meta-decorators can
 	// land without grammar churn.

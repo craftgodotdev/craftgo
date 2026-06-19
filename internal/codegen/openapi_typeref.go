@@ -16,7 +16,7 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		// Peel ONE bracket per recursion so multi-array types
 		// (`Tag[][]`) emit nested OpenAPI `array` schemas. The
 		// inner schemaForTypeRef call sees `Tag[]`, then `Tag`.
-		// Clear Optional on the inner — `Tag[]?` means "the slice
+		// Clear Optional on the inner - `Tag[]?` means "the slice
 		// may be absent", not "each element may be null"; leaving
 		// the flag set would propagate `nullable: true` into the
 		// items schema.
@@ -40,7 +40,7 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		}
 		// OpenAPI 3.1's `propertyNames` constrains the object keys.
 		// JSON keys are always strings on the wire, so plain
-		// string keys carry no extra constraint — but an enum key
+		// string keys carry no extra constraint - but an enum key
 		// implies a closed value-set and a scalar key carries the
 		// scalar's own validators (length / pattern / format). Without
 		// this emit `map<Color, V>` and `map<EmailID, V>` flatten to
@@ -99,15 +99,15 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 }
 
-// nullSchemaRef is the OpenAPI 3.1 `{type: "null"}` sentinel — the null branch
+// nullSchemaRef is the OpenAPI 3.1 `{type: "null"}` sentinel - the null branch
 // of a nullable anyOf wrapper, or the `not` of a never-null guard. Built in one
 // place so the 3.1 null shape is spelled once.
 func nullSchemaRef() *openapi3.SchemaRef {
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}}
 }
 
-// nullableRef builds the OpenAPI 3.1 "ref OR null" wrapper —
-// `anyOf: [{$ref}, {type: null}]` — for an optional named-type or
+// nullableRef builds the OpenAPI 3.1 "ref OR null" wrapper -
+// `anyOf: [{$ref}, {type: null}]` - for an optional named-type or
 // generic-instance field. A bare `$ref` can not portably carry a
 // nullable marker (3.1 removed the `nullable` keyword), so an optional
 // struct field (`boss User?`) must compose the ref with the null type;
@@ -135,7 +135,7 @@ func nullableRef(refName string) *openapi3.SchemaRef {
 //   - non-string scalar key → nil (the wire serialisation would
 //     stringify, but expressing the underlying numeric constraint
 //     via propertyNames is unsupported by every common client SDK
-//     generator — emitting nothing is safer than emitting a
+//     generator - emitting nothing is safer than emitting a
 //     misleading constraint)
 //
 // Resolves through the merged package (OpenAPI generation runs after
@@ -170,10 +170,10 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
 		// Only a string scalar contributes a key constraint: JSON object keys
 		// are strings, so its length / pattern / format apply directly. A
-		// non-string scalar key has no consumable propertyNames form — a
+		// non-string scalar key has no consumable propertyNames form - a
 		// numeric `type: integer` is rejected by a conformant 3.1 validator
 		// (the key is a string), and a numeric bound (`@gte(1)`) has no clean
-		// string-pattern equivalent — so its key constraint is left to the
+		// string-pattern equivalent - so its key constraint is left to the
 		// runtime rather than advertised in a shape clients can't validate.
 		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		applyPatternFormat(sc.Decorators, base)
@@ -207,9 +207,9 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 	// Delegate to the shared body-walk with a populated substitution
 	// map. This is the ONLY behavioural difference from a top-level
 	// type: every field type is substituted (T -> the concrete arg)
-	// before emission. Everything else — per-field validator metadata,
+	// before emission. Everything else - per-field validator metadata,
 	// the type-level description / @deprecated flag, @header/@cookie
-	// exclusion, mixin allOf-flattening, and cross-field fragments — is
+	// exclusion, mixin allOf-flattening, and cross-field fragments - is
 	// applied identically, so a `Page<Order>` instance carries the same
 	// constraints the `Page<T>` decl declared. (Mixin names are never
 	// substituted: only TypeRef args participate; a mixin named after a

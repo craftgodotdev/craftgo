@@ -1,11 +1,11 @@
 // maps.craftgo exercises the map<K, V> corner cases:
 //
 //   - Plain map<string, int> with no validators.
-//   - @minItems / @maxItems applied at the map level — counts the
+//   - @minItems / @maxItems applied at the map level - counts the
 //     number of entries (`len(map)` semantics).
 //   - Map values that are themselves typed (User struct, Address
 //     struct, scalar Tag, nested map<string, Tag[]>).
-//   - Map keys that are typed (NonEmptyID scalar) — key-side
+//   - Map keys that are typed (NonEmptyID scalar) - key-side
 //     validators emit a `for k := range v.M` key-only loop.
 //   - Optional map: `map<K, V>?`.
 //
@@ -14,7 +14,7 @@
 // scalar's leaf validators on each value.
 package collections
 
-// Map_Plain is the simplest case — no validators, no scalars, no
+// Map_Plain is the simplest case - no validators, no scalars, no
 // optionality. The generator should emit NO validator block for this
 // field (presence is implicit; len() > 0 is not enforced).
 type Map_Plain {
@@ -51,7 +51,7 @@ type Map_ArrayValue {
 	buckets map<string, Tag[]>
 }
 
-// Map_KeyAndValue puts scalars on BOTH sides — NonEmptyID on the key,
+// Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
 // Email on the value. Generator should emit TWO loops: one for keys
 // (`for k0 := range v.Index`) and one for values
 // (`for _, val0 := range v.Index`), each running the matching

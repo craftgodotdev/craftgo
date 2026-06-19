@@ -143,12 +143,12 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 // Handle registers an http.Handler under the same Go 1.22 pattern
 // syntax HandleFunc uses. Optional variadic middlewares wrap the
 // handler left-to-right so the FIRST entry ends up the outermost
-// frame — the order a reader scans matches the order a request
+// frame - the order a reader scans matches the order a request
 // flows through. Order chosen so:
 //
 //	srv.Handle("POST /x", h, Auth, RateLimit, CORS)
 //
-// reads "Auth wraps RateLimit wraps CORS wraps h" — request hits
+// reads "Auth wraps RateLimit wraps CORS wraps h" - request hits
 // Auth first, response leaves CORS last.
 //
 // The variadic form keeps the route line flat regardless of chain
@@ -185,7 +185,7 @@ func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 	return s
 }
 
-// SetDefaultWriteTimeout sets the http.Server WriteTimeout — a hard deadline on
+// SetDefaultWriteTimeout sets the http.Server WriteTimeout - a hard deadline on
 // the entire response write. It defaults to 0 (unbounded) so streaming, SSE,
 // @passthrough, and large/slow downloads are not cut off mid-response; set a
 // ceiling here for a server that only serves bounded JSON and wants socket-level
@@ -280,8 +280,8 @@ func (s *Server) Handler() http.Handler {
 	return chain.Then(inner)
 }
 
-// muxWithNotFoundLocked returns s.mux, or — if a custom NotFound
-// handler is installed — a thin wrapper that dispatches unmatched
+// muxWithNotFoundLocked returns s.mux, or - if a custom NotFound
+// handler is installed - a thin wrapper that dispatches unmatched
 // requests to it instead of the stdlib default 404.
 //
 // Caller must hold s.mu; reads s.notFound.
@@ -303,7 +303,7 @@ func (s *Server) muxWithNotFoundLocked() http.Handler {
 // handler chain is built by [Server.Handler] so the wrapping order is
 // identical between live serving and httptest-driven test runs.
 func (s *Server) Start(addr string) error {
-	// Handler() takes s.mu, so build it BEFORE we take the lock —
+	// Handler() takes s.mu, so build it BEFORE we take the lock -
 	// otherwise the same goroutine deadlocks on the sync.Mutex.
 	handler := s.Handler()
 	s.mu.Lock()
@@ -313,7 +313,7 @@ func (s *Server) Start(addr string) error {
 		Handler: handler,
 		// ReadHeaderTimeout caps the time a client may spend sending the
 		// request line + headers. Without it a slow-read client (drip-
-		// feeding 1 byte every 30s) can pin a goroutine indefinitely —
+		// feeding 1 byte every 30s) can pin a goroutine indefinitely -
 		// the classic Slowloris attack. The full ReadTimeout below also
 		// helps but only after a request line arrives; this knob fires
 		// before the handler ever runs. 10s matches Go's
@@ -331,7 +331,7 @@ func (s *Server) Start(addr string) error {
 		// IdleTimeout reaps idle keep-alive connections between requests (it
 		// does NOT touch an in-flight response), so a client that opens
 		// connections and never reuses them can't accumulate goroutines
-		// indefinitely — safe to default without breaking streaming.
+		// indefinitely - safe to default without breaking streaming.
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: s.defaultMaxHeaderKB * 1024,
 	}

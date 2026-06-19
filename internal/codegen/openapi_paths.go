@@ -37,7 +37,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 // (already project-merged) package share each bare method name. Two
 // services with a method of the same name (`ListItems`, `Ping`, ...)
 // would otherwise emit a duplicate operationId and overwrite each
-// other's `<Method>ReqBody` / `<Method>RespBody` component schemas —
+// other's `<Method>ReqBody` / `<Method>RespBody` component schemas -
 // last-writer-wins, leaving one operation pointing at the other's shape.
 func methodNameCounts(pkg *semantic.Package) map[string]int {
 	return semantic.MethodNameCounts(pkg)
@@ -58,7 +58,7 @@ func operationBaseName(svcName string, m *ast.Method, counts map[string]int) str
 // checkOperationIDUniqueness reports an error when two methods would emit
 // the same operationId. The auto-prefixing in [operationBaseName] removes
 // every same-method-name collision on its own, so a duplicate that
-// survives here can only come from an explicit `@operationId("...")` —
+// survives here can only come from an explicit `@operationId("...")` -
 // either two methods pinned to the same value, or an override that
 // happens to equal another method's auto-generated id. Those are the
 // user's to resolve, so codegen fails with an actionable message rather
@@ -79,7 +79,7 @@ func checkOperationIDUniqueness(pkg *semantic.Package) error {
 		}
 	}
 	if len(dups) > 0 {
-		return fmt.Errorf("duplicate operationId %s — give each method a distinct @operationId(...)", strings.Join(dups, "; "))
+		return fmt.Errorf("duplicate operationId %s - give each method a distinct @operationId(...)", strings.Join(dups, "; "))
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 			bins.header = append(bins.header, rf.Field)
 		case BindCookie:
 			bins.cookie = append(bins.cookie, rf.Field)
-		default: // BindBody, BindForm — both ride (or document) the request body
+		default: // BindBody, BindForm - both ride (or document) the request body
 			bins.body = append(bins.body, rf.Field)
 		}
 	}
@@ -126,7 +126,7 @@ func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 // operation's requestBody. Only body-bound fields land here; path/query/
 // header/cookie params are emitted inline by [paramsFromBins], so no
 // `<base>Req{Query,Header,Cookie,Path}` components are registered (they
-// would be orphaned — never $ref'd — and only bloat the spec).
+// would be orphaned - never $ref'd - and only bloat the spec).
 func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
 	if m.Request == nil {
 		return
@@ -140,14 +140,14 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	if !wireBound {
 		// Pure-body request: the JSON body IS the whole request type, so
 		// the schema must carry everything the server decodes and
-		// Validate()s — embedded mixin fields, generic type-argument
+		// Validate()s - embedded mixin fields, generic type-argument
 		// substitution, and type-level @requiresOneOf / @mutuallyExclusive
 		// fragments. schemaFromFields renders only the loose *ast.Field
 		// list and silently drops all three, so reuse the full type-decl
 		// walk (the same one that builds the type's own component schema).
 		if len(m.Request.Args) > 0 && len(td.TypeParams) > 0 {
 			// Generic instance: $ref the registered monomorphised component
-			// (PageOfEmail) — the bare generic decl is never emitted as a
+			// (PageOfEmail) - the bare generic decl is never emitted as a
 			// schema and its fields are typed in the type-parameter T, so
 			// an inline render would dangle a $ref to T.
 			inst := registry.register(td, m.Request.Args)
@@ -179,14 +179,14 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 }
 
 // requestHasBodyContent reports whether m's request contributes anything
-// to a JSON request body — any resolved field that rides the body
+// to a JSON request body - any resolved field that rides the body
 // (OnWireBody). A request whose fields are all @sensitive / @header /
 // @cookie / wire-bound (even through a mixin) has no body schema to emit.
 func requestHasBodyContent(m *ast.Method, pkg *semantic.Package) bool {
 	// Read the resolved IR so this body-presence test uses the SAME
 	// verb-aware, mixin-flattened binding the handler decode-block
 	// (hasUnboundField) and the param categorisation (binRequestFields)
-	// use — a mixin of only @header/@cookie fields contributes no body.
+	// use - a mixin of only @header/@cookie fields contributes no body.
 	for _, rf := range resolveRequestFields(m, pkg, nil) {
 		if rf.OnWireBody {
 			return true
@@ -289,7 +289,7 @@ func binResponseFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 // buildResponseHeaders converts response-side @header / @cookie fields
 // into the OpenAPI `response.headers` map. Cookie fields collapse into
 // a single `Set-Cookie` entry because OpenAPI 3.x has no first-class
-// cookie response slot — listing the cookie names there documents what
+// cookie response slot - listing the cookie names there documents what
 // the runtime writes via http.SetCookie even when the spec format has
 // to round-trip through Set-Cookie.
 func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
@@ -301,7 +301,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 		name := bindingWireName(f, wire.BindingHeader)
 		schema := schemaForTypeRef(f.Type, pkg, registry)
 		// Carry @example / @deprecated / field constraints onto the header
-		// schema, and @deprecated onto the Header Object itself — the same
+		// schema, and @deprecated onto the Header Object itself - the same
 		// metadata every other field-emit site applies (paramsFromBins,
 		// schemaFromFields), so a documented response header isn't silently
 		// stripped of it.
@@ -333,7 +333,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 
 // schemaFromFields builds an inline object schema covering the supplied
 // fields. Required[] lists every non-optional field (required-by-default
-// model — the inverse of the `?` suffix); nested types follow
+// model - the inverse of the `?` suffix); nested types follow
 // schemaForTypeRef. Per-field decorator effects (@default, @example,
 // @nullable, @deprecated, @doc) are applied via [applyFieldMetadata] so
 // per-operation `<Method>Req<Kind>` schemas carry the same metadata

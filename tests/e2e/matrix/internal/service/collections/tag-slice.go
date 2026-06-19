@@ -32,7 +32,7 @@ func NewTagSliceService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// TagSlice exercises the scalar-array case — per-element Tag
+// TagSlice exercises the scalar-array case - per-element Tag
 // validators (minLength + maxLength + pattern) fire on every
 // element via the scalar-leaves walk.
 // TagSlice is the service entry point. Replace the

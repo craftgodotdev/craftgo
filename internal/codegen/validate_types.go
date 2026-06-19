@@ -24,8 +24,8 @@ func isStringOrOptString(f *ast.Field) bool {
 	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
 }
 
-// isLengthCheckable accepts the two len()-checkable primitives — `string`
-// and `bytes` (Go []byte) — for the length validators (@length /
+// isLengthCheckable accepts the two len()-checkable primitives - `string`
+// and `bytes` (Go []byte) - for the length validators (@length /
 // @minLength / @maxLength). `@pattern` / `@format` stay string-only via
 // [isStringOrOptString]; a byte slice has no sensible regexp / format.
 func isLengthCheckable(f *ast.Field) bool {
@@ -152,7 +152,7 @@ func arrayElemType(t *ast.TypeRef) string {
 // empty string - their access is already a concrete value. Both `T?`
 // (optional) and `T @nullable` (forced pointer) end up as Go pointers
 // and are guarded; so is a nilable-typed field (bytes / slice / map)
-// that is optional or `@nullable` — it carries no extra `*`, but a nil
+// that is optional or `@nullable` - it carries no extra `*`, but a nil
 // value is the valid "absent / null" state, so the constraint must
 // skip it rather than run `len(nil)` and reject what the OpenAPI
 // null-union advertises as legal.
@@ -171,8 +171,8 @@ func optionalGuard(f *ast.Field, access string) string {
 // fieldNeedsNilGuard reports whether f's value can be nil in a state the
 // contract treats as valid (absent / null), so a constraint check must
 // nil-guard first. True for any pointer field, and for a nilable Go type
-// — bytes / slice / map, OR a scalar whose underlying primitive is nilable
-// (`scalar Blob bytes`) — marked optional (`?`) or `@nullable`.
+// - bytes / slice / map, OR a scalar whose underlying primitive is nilable
+// (`scalar Blob bytes`) - marked optional (`?`) or `@nullable`.
 func fieldNeedsNilGuard(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
 	if goFieldIsPointer(f, pkg, r) {
 		return true

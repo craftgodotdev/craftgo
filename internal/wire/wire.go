@@ -1,7 +1,7 @@
 // Package wire is the leaf vocabulary of craftgo's wire bindings: where a
 // field's value rides (path / query / header / cookie / form / body /
 // sensitive), how its wire name is derived, and the request auto-binding
-// rule. It sits below both the analyzer and codegen — each rule here is
+// rule. It sits below both the analyzer and codegen - each rule here is
 // decided exactly once and every layer imports the same answer, so the
 // editor's diagnostics, the generated binder, and the OpenAPI document
 // cannot disagree on where a field rides or what it is called.
@@ -30,7 +30,7 @@ const (
 
 // CanonicalWireName folds a wire name to its collision key. HTTP header names
 // are case-insensitive (RFC 7230) and net/http canonicalises them, so two
-// fields bound to `X-Trace` and `x-trace` reach the same header — fold header
+// fields bound to `X-Trace` and `x-trace` reach the same header - fold header
 // names to lower case for the key. Path / query / cookie names are
 // case-sensitive on the wire and pass through unchanged.
 func CanonicalWireName(kind, name string) string {
@@ -40,7 +40,7 @@ func CanonicalWireName(kind, name string) string {
 	return name
 }
 
-// IsBodyVerb reports whether verb carries a request body (POST/PUT/PATCH) —
+// IsBodyVerb reports whether verb carries a request body (POST/PUT/PATCH) -
 // the condition under which an undecorated field rides @body rather than
 // auto-promoting to @query.
 func IsBodyVerb(verb string) bool {
@@ -73,12 +73,12 @@ func WireName(f *ast.Field, kind string) string {
 }
 
 // BindingKind returns the binding kind named by the first binding decorator
-// in ds — "path" / "query" / "header" / "cookie" / "body" / "form" — or "" when
+// in ds - "path" / "query" / "header" / "cookie" / "body" / "form" - or "" when
 // none is present. It is the single "which decorator binds this field"
 // classifier the analyser's binding checks and codegen's binders both read, so
 // the two layers cannot disagree on where a field rides. (Valid input carries
-// at most one binding decorator per field — the single-binding rule rejects
-// the rest — so first-match is unambiguous.)
+// at most one binding decorator per field - the single-binding rule rejects
+// the rest - so first-match is unambiguous.)
 func BindingKind(ds []*ast.Decorator) string {
 	for _, d := range ds {
 		if d == nil {
@@ -94,7 +94,7 @@ func BindingKind(ds []*ast.Decorator) string {
 
 // RequestFieldBinding resolves where a request field rides once method
 // context is applied: its explicit binding decorator if any (or @sensitive),
-// otherwise the auto-binding rule — an un-decorated field auto-binds to "path"
+// otherwise the auto-binding rule - an un-decorated field auto-binds to "path"
 // when its name matches a `{param}` segment, to "query" on a body-less verb
 // (there is no body to decode into), or stays "body". auto is true only for an
 // auto-promoted path/query field. This is the single place the request

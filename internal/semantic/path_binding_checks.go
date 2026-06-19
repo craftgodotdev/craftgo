@@ -17,7 +17,7 @@ import (
 // segment and it carries no explicit binding decorator). A matched route
 // always supplies the segment, so an optional path field is meaningless;
 // `@nullable` lowers the field to a pointer while the path binder writes a
-// plain string into it (`req.ID = r.PathValue(...)` into a `*string` —
+// plain string into it (`req.ID = r.PathValue(...)` into a `*string` -
 // non-compiling); and `@default` can never apply to an always-present
 // segment. The explicit `@path` form is already rejected for these; this
 // mirrors it for the implicit auto-@path path, on every verb.
@@ -27,7 +27,7 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	}
 	td, ok := a.pkg.Types[m.Request.Name.String()]
 	if !ok {
-		return // cross-package request — handled by checkProjectAutoPathField
+		return // cross-package request - handled by checkProjectAutoPathField
 	}
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
 	if len(pathSegs) == 0 {
@@ -67,7 +67,7 @@ func pathSegments(m *ast.Method) map[string]bool {
 // decorator): optional `?` / `@nullable` / `@default` are rejected (a matched
 // route always supplies the segment, with no optional / null / default form,
 // and `@nullable` lowers to a pointer the path binder can't write a plain
-// string into — non-compiling), and a non-bindable field type is rejected
+// string into - non-compiling), and a non-bindable field type is rejected
 // when resolvable. localPkg resolves an unqualified field type's
 // path-bindability; pass nil (project pass) or a qualified type to DEFER the
 // type check to codegen. Shared by the per-package and project passes so the
@@ -82,20 +82,20 @@ func autoPathFieldRule(reqName string, pathSegs map[string]bool, f *ast.Field, t
 	switch {
 	case f.Type.Optional:
 		emit(f.Pos, CodeDecoratorConflict,
-			"field %s.%s auto-binds to the path segment {%s}, which a matched route always supplies — drop the optional `?` (a path parameter is never absent).",
+			"field %s.%s auto-binds to the path segment {%s}, which a matched route always supplies - drop the optional `?` (a path parameter is never absent).",
 			reqName, f.Name, f.Name)
 	case ast.HasDecorator(f.Decorators, "nullable"):
 		emit(f.Pos, CodeDecoratorConflict,
-			"field %s.%s auto-binds to the path segment {%s}, but @nullable makes it a pointer while the path binder writes a plain string — drop @nullable (a path parameter has no null form).",
+			"field %s.%s auto-binds to the path segment {%s}, but @nullable makes it a pointer while the path binder writes a plain string - drop @nullable (a path parameter has no null form).",
 			reqName, f.Name, f.Name)
 	case ast.HasDecorator(f.Decorators, "default"):
 		emit(f.Pos, CodeDecoratorConflict,
-			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply — drop it.",
+			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply - drop it.",
 			reqName, f.Name, f.Name)
 	case typeUnbindable != nil && typeUnbindable(f):
 		// A path segment carries a single primitive/scalar/enum value; a
 		// struct / map / array / generic field that auto-binds to it has no
-		// wire form. The caller decides bindability — the per-package pass
+		// wire form. The caller decides bindability - the per-package pass
 		// against its local table (deferring qualified cross-package refs to
 		// the project twin), the project twin against the resolved IR (which
 		// sees cross-package scalars / enums a local table can't).
@@ -105,7 +105,7 @@ func autoPathFieldRule(reqName string, pathSegs map[string]bool, f *ast.Field, t
 	}
 }
 
-// pathBindableIR reports whether a resolved field can source a path segment —
+// pathBindableIR reports whether a resolved field can source a path segment -
 // a single wire-string value: a wire primitive (string/bool/int*/uint*/
 // float*), a scalar wrapping one, or an enum. Structs, maps, arrays, bytes,
 // any, and file have no path-string form. The optional / array shapes are
@@ -149,7 +149,7 @@ func wireBindableIR(f *ast.Field, proj *Project) bool {
 // `@nullable` (non-compiling) / `?` / `@default` on a cross-package request
 // silently slips through. Only qualified requests are processed here (local
 // ones are already covered, and re-checking would double-report). The
-// type-bindability arm is deferred (localPkg=nil) — the structural decorator
+// type-bindability arm is deferred (localPkg=nil) - the structural decorator
 // checks (the #16 non-compile) need no type resolution.
 func (r *refResolver) checkProjectAutoPathField() {
 	for _, pkg := range r.proj.Packages {
@@ -166,7 +166,7 @@ func (r *refResolver) checkProjectAutoPathField() {
 				}
 				parts := m.Request.Name.Parts
 				if len(parts) != 2 {
-					continue // local request — per-package pass owns it
+					continue // local request - per-package pass owns it
 				}
 				home := r.proj.Packages[parts[0]]
 				if home == nil {
@@ -189,7 +189,7 @@ func (r *refResolver) checkProjectAutoPathField() {
 				// The IR resolves a cross-package field's type (collectGroupFields
 				// Project requalified each promoted field to its home package), so
 				// a foreign struct / array / map that auto-binds to a path segment
-				// is caught here — the gap the per-package pass defers.
+				// is caught here - the gap the per-package pass defers.
 				unbindable := func(f *ast.Field) bool {
 					return !pathBindableIR(ResolveField(f, nil, r.proj))
 				}
@@ -204,7 +204,7 @@ func (r *refResolver) checkProjectAutoPathField() {
 // checkDuplicatePathVars rejects a route template that repeats a path
 // variable name (`/items/{id}/x/{id}`). net/http's ServeMux panics at
 // registration on a duplicate wildcard, so gen would produce a server
-// that crashes on boot — caught here at design time instead.
+// that crashes on boot - caught here at design time instead.
 func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	if m == nil || m.Path == nil {
 		return
@@ -213,7 +213,7 @@ func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	// Seed with the service @prefix's path variables. The registered route is
 	// prefix + method path (see resolveRoute), so a method segment that reuses
 	// a prefix variable produces a duplicate wildcard in the combined route
-	// exactly as a method-internal repeat does — and ServeMux panics on it at
+	// exactly as a method-internal repeat does - and ServeMux panics on it at
 	// boot all the same.
 	seen := map[string]bool{}
 	fromPrefix := map[string]bool{}
@@ -262,7 +262,7 @@ func prefixPathVars(svc *ast.ServiceDecl) []string {
 }
 
 // MethodRoutePathVars returns the path-variable names in method m's full
-// registered route — its owning service's @prefix variables PLUS the method
+// registered route - its owning service's @prefix variables PLUS the method
 // path variables. The auto-binding rule ([RequestFieldBinding]) and the
 // auto-@path / body-verb checks read this rather than the method path alone,
 // so they agree with the route that actually registers: a field whose name
@@ -294,7 +294,7 @@ func MethodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[st
 // the method-level binding checks see a field a request inherits through a
 // mixin. A qualified (cross-package) mixin is skipped here and left to the
 // project resolver, matching the per-package analyzer's scope. `seen`
-// breaks mixin cycles. Generic-argument substitution is not modelled — the
+// breaks mixin cycles. Generic-argument substitution is not modelled - the
 // binding checks key on the field's decorators and shape, which a generic
 // mixin's promoted field carries regardless of the concrete argument.
 func (a *analyzer) flattenRequestFields(body []ast.TypeMember, seen map[string]bool) []*ast.Field {

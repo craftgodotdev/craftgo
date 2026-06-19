@@ -39,7 +39,7 @@ func TestScalarDeclBoundCapacityRejected(t *testing.T) {
 }
 
 // @lt(0) / @negative on an unsigned scalar declaration is an always-false
-// validator — reject like the field path does.
+// validator - reject like the field path does.
 func TestScalarDeclUnsignedContradictionRejected(t *testing.T) {
 	for _, src := range []string{
 		"package p\nscalar X uint @lt(0)\n",
@@ -98,7 +98,7 @@ service S {
 }
 
 // A field named like a path segment but diverted to @query no longer
-// satisfies the path-coverage check — the {id} segment is reported missing.
+// satisfies the path-coverage check - the {id} segment is reported missing.
 func TestWireBoundFieldDoesNotCoverPathSegment(t *testing.T) {
 	src := `package p
 type R { id string @query }
@@ -113,7 +113,7 @@ service S { get M /u/{id} { request R  response Resp } }`
 	}
 }
 
-// A bare scalar/enum request type has no fields to bind/decode — reject it.
+// A bare scalar/enum request type has no fields to bind/decode - reject it.
 func TestBareScalarEnumRequestRejected(t *testing.T) {
 	for _, src := range []string{
 		"package p\nscalar Token string\nservice S { post Do /do { request Token  response Token } }",
@@ -198,7 +198,7 @@ func TestScalarDeclPairOrderingRejected(t *testing.T) {
 	}
 }
 
-// W1 (#22): @example is now type-checked against the field like @default —
+// W1 (#22): @example is now type-checked against the field like @default -
 // a kind mismatch and a non-member enum example are rejected.
 func TestExampleTypeChecked(t *testing.T) {
 	cases := map[string]bool{ // src -> expectReject
@@ -222,7 +222,7 @@ type T { name string @example("alice") }`: false,
 	}
 }
 
-// Parity: @default and @example reject the SAME type mismatch — they share
+// Parity: @default and @example reject the SAME type mismatch - they share
 // checkLiteralType, so a string literal on an int field fails for both.
 func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
 	defDiags := analyzeOneFile(t, "package p\ntype T { n int @default(\"nope\") }")

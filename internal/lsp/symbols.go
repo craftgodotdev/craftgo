@@ -37,7 +37,7 @@ func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 // `.craftgo` file under the design root collecting top-level decls
 // whose names match the query as a (case-insensitive) substring so
 // the editor's Ctrl-T / Cmd-T picker surfaces project-wide symbols
-// in one search. Empty query returns every symbol — that matches the
+// in one search. Empty query returns every symbol - that matches the
 // LSP convention used by gopls / rust-analyzer where an empty query
 // is "show me everything".
 func (s *Server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {

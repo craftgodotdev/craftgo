@@ -33,7 +33,7 @@ The LSP is invoked by editor extensions. You do not run it directly.
 
 ## VS Code extension
 
-Install the **craftgo** extension from the Marketplace — three equivalent ways:
+Install the **craftgo** extension from the Marketplace - three equivalent ways:
 
 - In VS Code: open the Extensions panel (`Cmd/Ctrl+Shift+X`), search **craftgo**, click Install.
 - From the command line: `code --install-extension craftgo.craftgo`

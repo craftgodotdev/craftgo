@@ -131,7 +131,7 @@ func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossP
 
 // GenerateValidatorsResolved is the canonical entry point. It takes a
 // single [ProjectResolver] carrying every cross-package lookup the
-// validator emit chain needs — scalar inheritance, generic Validate
+// validator emit chain needs - scalar inheritance, generic Validate
 // dispatch, cross-pkg enum value-set checks, and the matching Go
 // import registrations. nil resolver is tolerated and degrades to
 // local-only behaviour, matching the legacy single-package shape.
@@ -222,7 +222,7 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	for _, name := range sortedKeys(pkg.Errors) {
 		ed := pkg.Errors[name]
 		// Carry both direct fields and embedded mixins into the synthetic
-		// body type so collectChecks runs the mixin's own Validate() — the
+		// body type so collectChecks runs the mixin's own Validate() - the
 		// error body struct embeds the mixin and the OpenAPI allOf advertises
 		// its constrained fields, so the validator must check them too, the
 		// same as any other type that embeds a mixin.
@@ -266,7 +266,7 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 //
 //  1. Decorator-driven validators (registry dispatch in validate_registry.go).
 //  2. Generic type-parameter fields → runtime type-assertion path.
-//  3. Fields whose type carries a Validate() — user structs, generic
+//  3. Fields whose type carries a Validate() - user structs, generic
 //     instances, enums, and constrained scalars → recursive
 //     `field.Validate()` call (see [nestedValidateCall]).
 //
@@ -276,8 +276,8 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, ctx emitCtx) []string {
 	var out []string
 	// Dedup the Go field identifiers exactly as the struct renderer does, so
-	// the validator reads `v.UserID` / `v.UserID_2` — the same fields the
-	// struct declares — rather than `v.UserID` twice for a colliding pair.
+	// the validator reads `v.UserID` / `v.UserID_2` - the same fields the
+	// struct declares - rather than `v.UserID` twice for a colliding pair.
 	levelNames := resolvedGoFieldNames(td.Body)
 	fieldIdx := 0
 	for _, m := range td.Body {
@@ -492,9 +492,9 @@ func presenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *P
 
 // unresolvedCrossFieldExpr is emitted when a cross-field group member
 // can't be resolved to a real field. Semantic analysis rejects such
-// references before codegen runs — per-package for local types,
+// references before codegen runs - per-package for local types,
 // project-level ([refResolver.checkProjectFieldGroups]) for types
-// promoting cross-package mixin fields — so reaching here means a
+// promoting cross-package mixin fields - so reaching here means a
 // semantic↔codegen drift. Emit an undefined identifier rather than a
 // literal `false`: a `false` slot silently produces a no-op validator
 // that hides the drift, whereas this fails `go build` with the
@@ -567,7 +567,7 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 	for _, name := range names {
 		f, goName := lookupField(td, name, pkg, r)
 		if f == nil {
-			// Unresolved member — semantic analysis rejects this before
+			// Unresolved member - semantic analysis rejects this before
 			// codegen, so this is a drift guard, not a user path. Emit a
 			// loud build failure (see [unresolvedCrossFieldExpr]) rather
 			// than a silent literal that no-ops the validator.

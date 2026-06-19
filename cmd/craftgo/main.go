@@ -29,7 +29,7 @@ import (
 // version is the CLI's reported version. The source value is the fallback for
 // `go install`; release builds inject the git tag via
 // `-ldflags="-X main.version=<tag>"` (see .goreleaser.yaml), so it must be a
-// var — `-X` cannot write a const.
+// var - `-X` cannot write a const.
 var version = "1.4.2"
 
 func main() {

@@ -71,7 +71,7 @@ func TestWriteError_TypedErrorRendersStatusNoLog(t *testing.T) {
 // TestWriteError_UnknownErrorLogsWithTrace pins the contract: an error that is
 // NOT a typed StatusError (a bare fmt.Errorf) is logged at Error level with the
 // request's trace context (trace_id / span_id) and answered 500 with an OPAQUE
-// body — the raw error text stays in the log and never leaks to the client.
+// body - the raw error text stays in the log and never leaks to the client.
 func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	logs := observeLogs(t)
 	rec := httptest.NewRecorder()

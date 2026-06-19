@@ -184,7 +184,7 @@ type Rg5Composite struct {
 
 // An array-of-enum @default lands its wire values in the OpenAPI `default`
 // (`[card, bank]`), and a @default query parameter is advertised optional
-// rather than required — the transport pre-fills both before decode.
+// rather than required - the transport pre-fills both before decode.
 type Rg5Defaults struct {
 	Methods []Rg5Method `json:"methods,omitempty"`
 	SortBy  *string     `json:"-" query:"sortBy"`
@@ -207,7 +207,7 @@ type Rg5Item struct {
 }
 
 // A wire-bound field (`@query`) stays out of the JSON body schema even
-// though it shares a type with body fields — it rides the query string.
+// though it shares a type with body fields - it rides the query string.
 type Rg5Mixed struct {
 	Filter  string `json:"-" query:"filter"`
 	Payload string `json:"payload"`
@@ -290,7 +290,7 @@ type Rg7Holder struct {
 }
 
 // I: an optional parametric array element (`opt T[]?`) is validated
-// per-element — the generated probe targets `&v.Opt[i]`, not the whole slice.
+// per-element - the generated probe targets `&v.Opt[i]`, not the whole slice.
 type Rg7Item struct {
 	ID string `json:"id"`
 }
@@ -315,7 +315,7 @@ type RgContact struct {
 	Sms   *string `json:"sms,omitempty"`
 }
 
-// Enum-keyed maps whose propertyNames carry the wire values — "red"/"green"
+// Enum-keyed maps whose propertyNames carry the wire values - "red"/"green"
 // for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
 // strings).
 type RgEnumMaps struct {

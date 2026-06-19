@@ -472,7 +472,7 @@ components:
       type: object
     Arr_EmptyExact:
       description: |-
-        Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
+        Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair -
         semantically "this slice must always be empty". The dead-code
         lower-bound check from Arr_MinZero applies here too; the upper bound
         (`> 0`) is the meaningful check that actually rejects values.
@@ -517,7 +517,7 @@ components:
       description: |-
         Arr_PlainInts is a bare int slice with no per-element validators.
         To constrain elements, declare a scalar (`scalar NonNegInt int @gte(0)`)
-        and type the field as `NonNegInt[]` — the scalar-leaves walker emits
+        and type the field as `NonNegInt[]` - the scalar-leaves walker emits
         the per-element check automatically.
       properties:
         scores:
@@ -530,10 +530,10 @@ components:
     Arr_PlainStrings:
       description: |-
         Arr_PlainStrings is the string-array baseline. No per-element
-        constraints — the generated validator should be the bare presence
+        constraints - the generated validator should be the bare presence
         check on `v.Codes` (slice == nil) only. `codes` also carries an
         array-of-scalar @example, the one non-scalar example form that stays
-        legal (object examples are rejected — see semantic checkExampleArg).
+        legal (object examples are rejected - see semantic checkExampleArg).
       properties:
         codes:
           example:
@@ -548,7 +548,7 @@ components:
       type: object
     Arr_Tag2D:
       description: |-
-        Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+        Arr_Tag2D - `Tag[][]` is the 2D scalar array. The generator emits
         doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
         validators.
       properties:
@@ -563,7 +563,7 @@ components:
       type: object
     Arr_Tag2DOptional:
       description: |-
-        Arr_Tag2DOptional — `Tag[][]?` is the optional 2D scalar array.
+        Arr_Tag2DOptional - `Tag[][]?` is the optional 2D scalar array.
         Outer nil-guard wraps the doubly-nested for-loops; the inner pair
         runs only when the slice is non-nil.
       properties:
@@ -578,7 +578,7 @@ components:
       type: object
     Arr_Tag3D:
       description: |-
-        Arr_Tag3D — `Tag[][][]` exercises THREE-deep iteration. Three
+        Arr_Tag3D - `Tag[][][]` exercises THREE-deep iteration. Three
         nested `for iN := range ...` loops, with Tag's per-element
         validators in the innermost body.
       properties:
@@ -597,7 +597,7 @@ components:
       description: |-
         Arr_TagSlice is the array-of-scalar case. `Tag[]` inherits Tag's
         per-element @minLength + @maxLength + @pattern via the scalar-leaves
-        walk — the field carries NO per-element decorators because the
+        walk - the field carries NO per-element decorators because the
         scalar already does. Field-level @minItems / @maxItems still apply
         on top.
       properties:
@@ -683,7 +683,7 @@ components:
       type: object
     AuditFields:
       description: |-
-        AuditFields is the mixin source — two timestamp fields with
+        AuditFields is the mixin source - two timestamp fields with
         @format(datetime). Any host that mixes this in inherits both
         fields plus their format validators.
       properties:
@@ -918,7 +918,7 @@ components:
       $ref: '#/components/schemas/RtPong'
     Cents:
       description: |-
-        Cents is the canonical money scalar — non-negative integer with a
+        Cents is the canonical money scalar - non-negative integer with a
         per-request ceiling. Bound stacking (@gte + @lte) demonstrates that
         numeric scalars accept both lower and upper bounds.
       maximum: 1000000000
@@ -1089,7 +1089,7 @@ components:
       type: object
     CookieReq:
       description: |-
-        CookieReq drives the cookie binder with an explicit wire name — the
+        CookieReq drives the cookie binder with an explicit wire name - the
         runtime fetches the cookie named `session_id`.
       type: object
     Coords:
@@ -1285,9 +1285,9 @@ components:
         DefaultsBoundary parks each default literal AT or near the validator
         boundary so the pre-fill / validate ordering is visible.
 
-          - zero:   @default(0) with @gte(0) — default sits on the closed lo.
+          - zero:   @default(0) with @gte(0) - default sits on the closed lo.
           - bool:   @default(true) on a plain bool. No validator to clash with.
-          - negOne: @default(-1) with strict @lt(0) — the default is the
+          - negOne: @default(-1) with strict @lt(0) - the default is the
             largest value that still satisfies the strict bound.
       properties:
         flag:
@@ -1312,10 +1312,10 @@ components:
       description: |-
         DefaultsCollection covers the collection / map default shapes.
 
-          - arr:  @default([1, 2, 3]) — array literal default on int[]?.
+          - arr:  @default([1, 2, 3]) - array literal default on int[]?.
             Combined with @minItems(0) the default trivially satisfies the
             bound (3 >= 0); the test is that the array literal renders.
-          - obj:  @default({key: "v"}) on a map<string, string>? — object
+          - obj:  @default({key: "v"}) on a map<string, string>? - object
             literal defaults are NOT in the semantics layer's allow-list
             (only primitives / enums / scalars / arrays of those). Expect a
             rejection at codegen time.
@@ -1324,7 +1324,7 @@ components:
           `@default is not supported on field "obj": only primitives,
            enums, scalars (wrapping primitives), and arrays of those are
            allowed`
-        This is the expected design — object-literal defaults aren't in
+        This is the expected design - object-literal defaults aren't in
         the allow-list. The intended DSL line is commented out below; the
         active type keeps only the array-literal default so the rest of
         the combine package proceeds past the semantics gate.
@@ -1375,7 +1375,7 @@ components:
     DefaultsScalar:
       description: |-
         DefaultsScalar uses a numeric-scalar default. The literal is a plain
-        int — the codegen casts it to the scalar's defined type
+        int - the codegen casts it to the scalar's defined type
         (`PageSize(20)`) so the pointer pre-fill `__d := PageSize(20)` keeps
         the field's `*PageSize` type.
       properties:
@@ -1592,9 +1592,9 @@ components:
         DefaultsBoundary parks each default literal AT or near the validator
         boundary so the pre-fill / validate ordering is visible.
 
-          - zero:   @default(0) with @gte(0) — default sits on the closed lo.
+          - zero:   @default(0) with @gte(0) - default sits on the closed lo.
           - bool:   @default(true) on a plain bool. No validator to clash with.
-          - negOne: @default(-1) with strict @lt(0) — the default is the
+          - negOne: @default(-1) with strict @lt(0) - the default is the
             largest value that still satisfies the strict bound.
       properties:
         flag:
@@ -1636,10 +1636,10 @@ components:
       description: |-
         DefaultsCollection covers the collection / map default shapes.
 
-          - arr:  @default([1, 2, 3]) — array literal default on int[]?.
+          - arr:  @default([1, 2, 3]) - array literal default on int[]?.
             Combined with @minItems(0) the default trivially satisfies the
             bound (3 >= 0); the test is that the array literal renders.
-          - obj:  @default({key: "v"}) on a map<string, string>? — object
+          - obj:  @default({key: "v"}) on a map<string, string>? - object
             literal defaults are NOT in the semantics layer's allow-list
             (only primitives / enums / scalars / arrays of those). Expect a
             rejection at codegen time.
@@ -1648,7 +1648,7 @@ components:
           `@default is not supported on field "obj": only primitives,
            enums, scalars (wrapping primitives), and arrays of those are
            allowed`
-        This is the expected design — object-literal defaults aren't in
+        This is the expected design - object-literal defaults aren't in
         the allow-list. The intended DSL line is commented out below; the
         active type keeps only the array-literal default so the rest of
         the combine package proceeds past the semantics gate.
@@ -1753,7 +1753,7 @@ components:
       $ref: '#/components/schemas/Cube'
     EchoEnumMapsReqBody:
       description: |-
-        Enum-keyed maps whose propertyNames carry the wire values — "red"/"green"
+        Enum-keyed maps whose propertyNames carry the wire values - "red"/"green"
         for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
         strings).
       properties:
@@ -2163,7 +2163,7 @@ components:
       $ref: '#/components/schemas/RgRefMeta'
     EchoReqBody:
       description: |-
-        Str_EchoReq is the request body for the service's echo endpoint —
+        Str_EchoReq is the request body for the service's echo endpoint -
         it bundles a sample of each interesting validator shape so logic
         code receives a single struct with the full menu of constraints
         already enforced at the handler boundary.
@@ -2223,7 +2223,7 @@ components:
     EchoScalarReqBody:
       description: |-
         DefaultsScalar uses a numeric-scalar default. The literal is a plain
-        int — the codegen casts it to the scalar's defined type
+        int - the codegen casts it to the scalar's defined type
         (`PageSize(20)`) so the pointer pre-fill `__d := PageSize(20)` keeps
         the field's `*PageSize` type.
       properties:
@@ -2434,7 +2434,7 @@ components:
     EnvelopeOfScalarsOrder:
       description: |-
         Envelope<T> wraps a single value plus an optional meta string.
-        Exercises generic decl WITHOUT an array field — codegen still
+        Exercises generic decl WITHOUT an array field - codegen still
         emits a parametric Validate() receiver for it.
       properties:
         data:
@@ -2525,7 +2525,7 @@ components:
     GetItemReq:
       description: |-
         GetItemReq is the path-only DTO reused by GetItem and DeleteItem.
-        Two operations sharing one DTO is fine — they both want the same
+        Two operations sharing one DTO is fine - they both want the same
         "lookup by id" handle.
       type: object
     GetNestedRespBody:
@@ -2694,7 +2694,7 @@ components:
     ItemList:
       description: |-
         ItemList is the SearchItems response envelope. Mirrors the
-        UserList / TaskList shape every other service uses — the parser
+        UserList / TaskList shape every other service uses - the parser
         rejects bare-array response forms in the method body, so list
         endpoints wrap the slice in a per-service envelope.
       properties:
@@ -2750,11 +2750,11 @@ components:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
         The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
-        inside @query — codegen parses the wire string as int then casts
+        inside @query - codegen parses the wire string as int then casts
         up to the alias.
 
         NOTE: limit cannot be `Cents?` because optional numeric primitives
-        cannot bind to query — the transport pass rejects them since
+        cannot bind to query - the transport pass rejects them since
         `*int` from a query string needs a tri-state (absent / empty /
         parsed) that the framework has no clean idiom for. The bare-int
         form uses 0 as the absent sentinel, with @default providing the
@@ -2826,7 +2826,7 @@ components:
       description: |-
         ListUsersResp wraps a page of Users with the canonical pagination
         envelope. `meta` is a NESTED reference (not a mixin) so the
-        pagination summary lands in its own JSON sub-object — the
+        pagination summary lands in its own JSON sub-object - the
         distinction between "embed at root" (mixin) and "embed as nested
         object" (field) is captured cleanly across these two consumers.
       properties:
@@ -2879,7 +2879,7 @@ components:
       type: object
     Map_KeyAndValue:
       description: |-
-        Map_KeyAndValue puts scalars on BOTH sides — NonEmptyID on the key,
+        Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
         Email on the value. Generator should emit TWO loops: one for keys
         (`for k0 := range v.Index`) and one for values
         (`for _, val0 := range v.Index`), each running the matching
@@ -2911,7 +2911,7 @@ components:
       type: object
     Map_Plain:
       description: |-
-        Map_Plain is the simplest case — no validators, no scalars, no
+        Map_Plain is the simplest case - no validators, no scalars, no
         optionality. The generator should emit NO validator block for this
         field (presence is implicit; len() > 0 is not enforced).
       properties:
@@ -2964,7 +2964,7 @@ components:
       type: object
     MapKeyValueReqBody:
       description: |-
-        Map_KeyAndValue puts scalars on BOTH sides — NonEmptyID on the key,
+        Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
         Email on the value. Generator should emit TWO loops: one for keys
         (`for k0 := range v.Index`) and one for values
         (`for _, val0 := range v.Index`), each running the matching
@@ -3079,7 +3079,7 @@ components:
       type: object
     MultiDimReqBody:
       description: |-
-        Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+        Arr_Tag2D - `Tag[][]` is the 2D scalar array. The generator emits
         doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
         validators.
       properties:
@@ -3215,7 +3215,7 @@ components:
         decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
         and the binder pointer-wraps the present value (nil when the form value
         is absent). Contrast with `@nullable @query`/`@header`, which are
-        rejected — an explicit wire param is a string with no JSON-null form.
+        rejected - an explicit wire param is a string with no JSON-null form.
       properties:
         doc:
           format: binary
@@ -3236,7 +3236,7 @@ components:
         decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
         and the binder pointer-wraps the present value (nil when the form value
         is absent). Contrast with `@nullable @query`/`@header`, which are
-        rejected — an explicit wire param is a string with no JSON-null form.
+        rejected - an explicit wire param is a string with no JSON-null form.
       properties:
         doc:
           format: binary
@@ -3362,7 +3362,7 @@ components:
           exclusiveMaximum: 0
           type: integer
         posInt:
-          description: '@positive / @negative — flag decorators (no parens).'
+          description: '@positive / @negative - flag decorators (no parens).'
           exclusiveMinimum: 0
           type: integer
         posInt64:
@@ -3371,13 +3371,13 @@ components:
           type: integer
         rangeInt:
           description: |-
-            int — defaults to the platform's native word width but the
+            int - defaults to the platform's native word width but the
             semantic capacity check treats it as int64 for portability.
           maximum: 1000
           minimum: 0
           type: integer
         rangeInt8:
-          description: int8 — bound capacity edge (the validator should narrow safely).
+          description: int8 - bound capacity edge (the validator should narrow safely).
           maximum: 50
           minimum: -50
           type: integer
@@ -3387,13 +3387,13 @@ components:
           minimum: -1000
           type: integer
         rangeInt32:
-          description: int32 — tests MaxInt32-ish boundaries.
+          description: int32 - tests MaxInt32-ish boundaries.
           format: int32
           maximum: 2000000000
           minimum: -2000000000
           type: integer
         rangeInt64:
-          description: int64 — the widest signed.
+          description: int64 - the widest signed.
           format: int64
           maximum: 1000000000
           minimum: -1000000000
@@ -3431,7 +3431,7 @@ components:
     NumberExact:
       description: |-
         NumberExact is the boundary case where @gte and @lte share the
-        same value — exactly one accepted value. The semantic allows this
+        same value - exactly one accepted value. The semantic allows this
         closed-form pair; only the strict variants on equal endpoints
         (e.g. @gt(5) @lt(5)) emit empty-range diagnostics.
       properties:
@@ -3476,7 +3476,7 @@ components:
           minimum: 0
           type: integer
         negRange:
-          description: All-negative inclusive range — only negative values accepted.
+          description: All-negative inclusive range - only negative values accepted.
           maximum: -1
           minimum: -100
           type: integer
@@ -3512,7 +3512,7 @@ components:
         defaultStep:
           default: 10
           description: |-
-            Default + range — present and below-default sends 0 which still
+            Default + range - present and below-default sends 0 which still
             passes the @gte(0).
           maximum: 100
           minimum: 0
@@ -3537,7 +3537,7 @@ components:
           - "null"
         nullableInt:
           description: |-
-            @nullable on a non-optional numeric — forces a pointer in
+            @nullable on a non-optional numeric - forces a pointer in
             codegen so the wire can carry explicit null.
           maximum: 100
           minimum: 0
@@ -3553,7 +3553,7 @@ components:
           - "null"
         optInt:
           description: |-
-            Bare optional ints/floats with bound — the decoder treats
+            Bare optional ints/floats with bound - the decoder treats
             "missing key" as zero-value, and Validate skips when nil.
           maximum: 100
           minimum: 0
@@ -3610,13 +3610,13 @@ components:
           format: double
           type: number
         rangeF32:
-          description: float32 — narrower precision but same decorator surface.
+          description: float32 - narrower precision but same decorator surface.
           format: float
           maximum: 1
           minimum: 0
           type: number
         rangeF64:
-          description: float64 — the wide form. Includes a high-precision bound.
+          description: float64 - the wide form. Includes a high-precision bound.
           format: double
           maximum: 0.9
           minimum: 0.1
@@ -3685,7 +3685,7 @@ components:
           type: integer
         posUint:
           description: |-
-            @positive on uint — semantically equivalent to @gt(0), but the
+            @positive on uint - semantically equivalent to @gt(0), but the
             unsigned domain makes @negative semantically vacuous (it is
             still accepted at the decorator layer, so we don't test that).
           exclusiveMinimum: 0
@@ -3697,7 +3697,7 @@ components:
           minimum: 0
           type: integer
         rangeUint8:
-          description: uint8 — full capacity test.
+          description: uint8 - full capacity test.
           maximum: 255
           minimum: 0
           type: integer
@@ -3707,12 +3707,12 @@ components:
           minimum: 0
           type: integer
         rangeUint32:
-          description: uint32 — boundary at MaxUint32.
+          description: uint32 - boundary at MaxUint32.
           maximum: 4294967295
           minimum: 0
           type: integer
         rangeUint64:
-          description: uint64 — even bigger.
+          description: uint64 - even bigger.
           maximum: 1000000000000
           minimum: 0
           type: integer
@@ -3939,7 +3939,7 @@ components:
       type: object
     PageSize:
       description: |-
-        PageSize is a numeric scalar — every field of this type inherits
+        PageSize is a numeric scalar - every field of this type inherits
         the @gte/@lte bounds, carried on PageSize.Validate(). Used in
         DefaultScalar below to verify that the @default literal threads
         through the scalar's defined type without losing the inherited
@@ -4046,7 +4046,7 @@ components:
       description: "PairsArr stacks the array-level decorators (@minItems, @maxItems,\n@uniqueItems).
         Per-element constraints belong on a scalar: declare\nthe element type as a
         named scalar and the validator walker emits\nthe inner checks automatically
-        through scalar leaf inheritance —\nno explicit per-element decorator required.\n\n\tscalar
+        through scalar leaf inheritance -\nno explicit per-element decorator required.\n\n\tscalar
         Tag string @length(1, 20)\n\ttype PairsArr { tags Tag[] @minItems(1) @maxItems(10)
         @uniqueItems }"
       properties:
@@ -4172,7 +4172,7 @@ components:
         PairsStr stacks every string validator the generator supports on a
         single field, plus a separate field for the cheap baseline.
 
-          - email: @length + @format(email) + @pattern — all four constraints
+          - email: @length + @format(email) + @pattern - all four constraints
             fire in declaration order. The pattern is a domain restriction
             on top of the format check.
       properties:
@@ -4423,7 +4423,7 @@ components:
       type: string
     ProductPage:
       description: |-
-        ProductPage instantiates Page<ProductRef> — separate scalar set
+        ProductPage instantiates Page<ProductRef> - separate scalar set
         proves that two concrete instantiations coexist without name
         clashes in the Validate generator.
       properties:
@@ -4518,7 +4518,7 @@ components:
       description: |-
         Project carries the cross-package `shared.ID` scalar (Go field
         type: `string`, validators inherited from the scalar decl) and
-        the SAME-PACKAGE `UserRef` nested type — exercise of both the
+        the SAME-PACKAGE `UserRef` nested type - exercise of both the
         qualified and the bare type-reference paths in one DTO.
       properties:
         id:
@@ -4619,7 +4619,7 @@ components:
         QueryArrayEnumDefaultReq drives the enum-array @query @default path.
         The slice is pre-filled with the wire values of the default members
         ([Red, Blue]); the binder must REPLACE that pre-fill when the param
-        is present, not append to it — so `?colors=green` yields ["green"],
+        is present, not append to it - so `?colors=green` yields ["green"],
         never ["red", "green", "blue"]. The has-default oracle the binder
         consults resolves the enum-member array literal so it agrees with the
         pre-fill that emitted the default.
@@ -4633,7 +4633,7 @@ components:
     QueryArrayStringReq:
       description: |-
         QueryArrayStringReq exercises the `[]string @query` shape. The
-        generator emits `req.Tags = r.URL.Query()["tags"]` — repeated
+        generator emits `req.Tags = r.URL.Query()["tags"]` - repeated
         `?tags=a&tags=b` lands as `["a", "b"]`. CSV (`?tags=a,b`) is NOT
         auto-split.
       type: object
@@ -4645,7 +4645,7 @@ components:
     QueryEnumReq:
       description: |-
         QueryEnumReq drives the enum cast path through @query. Enums are
-        string-shape on the wire, so optional is fine — the binder reads
+        string-shape on the wire, so optional is fine - the binder reads
         the raw string and casts up to the Color alias.
       type: object
     QueryIntReq:
@@ -5251,7 +5251,7 @@ components:
       description: |-
         An array-of-enum @default lands its wire values in the OpenAPI `default`
         (`[card, bank]`), and a @default query parameter is advertised optional
-        rather than required — the transport pre-fills both before decode.
+        rather than required - the transport pre-fills both before decode.
       properties:
         methods:
           default:
@@ -5306,7 +5306,7 @@ components:
     Rg5Mixed:
       description: |-
         A wire-bound field (`@query`) stays out of the JSON body schema even
-        though it shares a type with body fields — it rides the query string.
+        though it shares a type with body fields - it rides the query string.
       properties:
         payload:
           minLength: 1
@@ -5489,7 +5489,7 @@ components:
     Rg7Item:
       description: |-
         I: an optional parametric array element (`opt T[]?`) is validated
-        per-element — the generated probe targets `&v.Opt[i]`, not the whole slice.
+        per-element - the generated probe targets `&v.Opt[i]`, not the whole slice.
       properties:
         id:
           format: uuid
@@ -5598,7 +5598,7 @@ components:
       type: string
     RgEnumMaps:
       description: |-
-        Enum-keyed maps whose propertyNames carry the wire values — "red"/"green"
+        Enum-keyed maps whose propertyNames carry the wire values - "red"/"green"
         for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
         strings).
       properties:
@@ -5936,7 +5936,7 @@ components:
         Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
         The keywords field is `Tag[]?` so the wire may omit it entirely; when
         present every element runs Tag's @pattern check. The limit field
-        uses a numeric scalar with @default — the default literal is parsed
+        uses a numeric scalar with @default - the default literal is parsed
         as the underlying primitive (int) and cast up to Cents.
       properties:
         keywords:
@@ -5960,7 +5960,7 @@ components:
         Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
         The keywords field is `Tag[]?` so the wire may omit it entirely; when
         present every element runs Tag's @pattern check. The limit field
-        uses a numeric scalar with @default — the default literal is parsed
+        uses a numeric scalar with @default - the default literal is parsed
         as the underlying primitive (int) and cast up to Cents.
       properties:
         keywords:
@@ -6027,7 +6027,7 @@ components:
       type: string
     SharedEmail:
       description: |-
-        Email is the cross-package email shape — capped at the RFC-5321
+        Email is the cross-package email shape - capped at the RFC-5321
         maximum and gated by the @format(email) validator. Referenced as
         `shared.Email` from anywhere a user-facing email address appears.
       format: email
@@ -6098,7 +6098,7 @@ components:
       type: object
     Str_EchoReq:
       description: |-
-        Str_EchoReq is the request body for the service's echo endpoint —
+        Str_EchoReq is the request body for the service's echo endpoint -
         it bundles a sample of each interesting validator shape so logic
         code receives a single struct with the full menu of constraints
         already enforced at the handler boundary.
@@ -6134,7 +6134,7 @@ components:
     Str_EchoResp:
       description: |-
         Str_EchoResp echoes the request shape back. Identical validators
-        — the response is just the request after a round-trip — so the
+        - the response is just the request after a round-trip - so the
         generated wire contract is symmetric.
       properties:
         bio:
@@ -6168,9 +6168,9 @@ components:
         Str_Lengths probes the boundary forms of @length / @minLength /
         @maxLength. The interesting bits:
 
-          - zeroLower: @length(0, 100) — the lower bound is zero, so any
+          - zeroLower: @length(0, 100) - the lower bound is zero, so any
             `len(x) < 0` check the generator emits would be dead code.
-          - exact: @length(5, 5) — lo == hi, "exactly 5 chars".
+          - exact: @length(5, 5) - lo == hi, "exactly 5 chars".
           - separate min/max: @minLength(1) and @maxLength(100) on
             distinct fields to confirm the single-bound path.
       properties:
@@ -6217,7 +6217,7 @@ components:
       description: |-
         Str_Optionals exercises the optional + validator combinations.
         Each field is `string?` so the generator MUST nil-guard before
-        dereferencing. The interesting case is `pattOpt` — pattern against
+        dereferencing. The interesting case is `pattOpt` - pattern against
         an optional should still emit the nil-guard prefix.
       properties:
         bothOpt:
@@ -6249,7 +6249,7 @@ components:
         Str_Patterns covers @pattern with Go regex syntax. Four flavours:
 
           - Plain anchors + quantifier: ^[A-Z]{2,4}$.
-          - Escaped plus: ^\+?[0-9]+$ — the leading `\+` is a literal `+`,
+          - Escaped plus: ^\+?[0-9]+$ - the leading `\+` is a literal `+`,
             not a regex quantifier.
           - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
           - A regex containing a literal BACKTICK. The validator emits the
@@ -6278,7 +6278,7 @@ components:
       description: |-
         Str_UTF8 carries @example values containing multi-byte UTF-8
         content so the OpenAPI emitter has to preserve them through YAML
-        quoting. No runtime validator difference — the test is purely on
+        quoting. No runtime validator difference - the test is purely on
         the docs side.
       properties:
         jaName:
@@ -6299,7 +6299,7 @@ components:
       description: |-
         Arr_TagSlice is the array-of-scalar case. `Tag[]` inherits Tag's
         per-element @minLength + @maxLength + @pattern via the scalar-leaves
-        walk — the field carries NO per-element decorators because the
+        walk - the field carries NO per-element decorators because the
         scalar already does. Field-level @minItems / @maxItems still apply
         on top.
       properties:
@@ -6397,7 +6397,7 @@ components:
         `Tree<T>` itself through the `kids` field. The instance registers
         as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted
         to `Tree<Order>[]`, asks the registry for the component name, finds
-        `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` — the
+        `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` - the
         cycle terminates as a reference.
       properties:
         kids:
@@ -6467,7 +6467,7 @@ components:
         UploadReq pairs the path-bound id with the form-file upload. The
         id is auto-bound to the `{id}` segment of /users/{id}/avatar; the
         file rides the multipart body and runs @maxSize + @mimeTypes at
-        validate time. `caption` is an OPTIONAL form field — it proves the
+        validate time. `caption` is an OPTIONAL form field - it proves the
         multipart schema's required[] lists only the mandatory file, not the
         optional text field (and never the path-bound `id`).
 
@@ -6653,7 +6653,7 @@ components:
       description: "PairsArr stacks the array-level decorators (@minItems, @maxItems,\n@uniqueItems).
         Per-element constraints belong on a scalar: declare\nthe element type as a
         named scalar and the validator walker emits\nthe inner checks automatically
-        through scalar leaf inheritance —\nno explicit per-element decorator required.\n\n\tscalar
+        through scalar leaf inheritance -\nno explicit per-element decorator required.\n\n\tscalar
         Tag string @length(1, 20)\n\ttype PairsArr { tags Tag[] @minItems(1) @maxItems(10)
         @uniqueItems }"
       properties:
@@ -6787,7 +6787,7 @@ components:
         PairsStr stacks every string validator the generator supports on a
         single field, plus a separate field for the cheap baseline.
 
-          - email: @length + @format(email) + @pattern — all four constraints
+          - email: @length + @format(email) + @pattern - all four constraints
             fire in declaration order. The pattern is a domain restriction
             on top of the format check.
       properties:
@@ -6860,8 +6860,8 @@ components:
     XBagOfMapOfStringAndXColor:
       description: |-
         XBag is a cross-package generic. xrefs instantiates it as
-        `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path.
+        `xshared.XBag<X>` for various X - local types, primitives, and
+        xshared types - covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -6880,8 +6880,8 @@ components:
     XBagOfString:
       description: |-
         XBag is a cross-package generic. xrefs instantiates it as
-        `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path.
+        `xshared.XBag<X>` for various X - local types, primitives, and
+        xshared types - covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -6898,8 +6898,8 @@ components:
     XBagOfXLocalItem:
       description: |-
         XBag is a cross-package generic. xrefs instantiates it as
-        `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path.
+        `xshared.XBag<X>` for various X - local types, primitives, and
+        xshared types - covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -6916,8 +6916,8 @@ components:
     XBagOfXOwner:
       description: |-
         XBag is a cross-package generic. xrefs instantiates it as
-        `xshared.XBag<X>` for various X — local types, primitives, and
-        xshared types — covering the qualified-generic codegen path.
+        `xshared.XBag<X>` for various X - local types, primitives, and
+        xshared types - covering the qualified-generic codegen path.
       properties:
         cap:
           maximum: 1000
@@ -6955,7 +6955,7 @@ components:
       - $ref: '#/components/schemas/XPathKey'
       - type: object
       description: |-
-        XByKeyReq draws its only field — the `@path`-bound `key` — from the
+        XByKeyReq draws its only field - the `@path`-bound `key` - from the
         cross-package mixin xshared.XPathKey. The GetByKey route's `{key}`
         segment binds through that mixin; the per-package path-param pass can't
         expand a sibling-package mixin, so the project-level check owns it.
@@ -6963,7 +6963,7 @@ components:
     XColor:
       description: |-
         XColor exercises cross-package enum refs. Used by xrefs in every
-        shape — direct, optional, array, map-key, map-value — so the
+        shape - direct, optional, array, map-key, map-value - so the
         switch-case validity check, OpenAPI enum schema, and binding casts
         resolve through the resolver rather than the local pkg.Enums.
       enum:
@@ -7076,7 +7076,7 @@ components:
         XGrand is a leaf mixin reached only through a CHAIN of mixins: XParent
         embeds it (bare, same-package ref inside xshared), and a consumer in
         another package embeds XParent. So a field here sits two mixin levels
-        deep, the inner link being a bare ref inside a cross-package mixin —
+        deep, the inner link being a bare ref inside a cross-package mixin -
         the case the codegen flattener and the path-param check must qualify as
         `xshared.XGrand`, or `gKey`'s @path and `g32`'s @default silently drop.
       properties:
@@ -7092,7 +7092,7 @@ components:
         XHeaderResp is used as a QUALIFIED cross-package response
         (`response xshared.XHeaderResp`) by xrefs. Its @header / @cookie fields
         must be written by the handler even though the response type is
-        cross-package — the response-binding collector resolves it through the
+        cross-package - the response-binding collector resolves it through the
         project resolver, or the values silently drop (the fields are `json:"-"`)
         while OpenAPI still advertises the header/cookie.
       properties:
@@ -7108,14 +7108,14 @@ components:
       description: |-
         XHolder is used as a QUALIFIED request type (`request xshared.XHolder`) by
         xrefs' service. Because the request type lives here, its bare nested mixin
-        XHolderSub resolves in xshared — the binder must thread xshared as the
+        XHolderSub resolves in xshared - the binder must thread xshared as the
         flatten prefix, or `q` (the @query param) and `bod` (the body field) are
         silently dropped from the handler while the validator still enforces them.
       type: object
     XHolderSub:
       description: |-
-        XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields —
-        a @query param, a JSON-body field, and a defaulted @query param — must
+        XHolderSub is a mixin embedded (bare) inside XHolder below. Its fields -
+        a @query param, a JSON-body field, and a defaulted @query param - must
         survive when XHolder is used as a QUALIFIED request type from another
         package. The `limit` default must also PRE-FILL in the handler (the
         default-collection pass threads the same xshared prefix as the binder);
@@ -7156,7 +7156,7 @@ components:
       description: |-
         XNestedReq reaches fields through a mixin nested INSIDE a cross-package
         mixin: xshared.XParent embeds xshared.XGrand. So `gKey` (@path) and
-        `g32` (@default) live two mixin levels deep — the flattener must
+        `g32` (@default) live two mixin levels deep - the flattener must
         qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
       type: object
     XNodeID:
@@ -7217,7 +7217,7 @@ components:
         xrefs embeds it in a request whose route declares `{key}`; the path
         segment binds through the mixin. The per-package pass can't expand a
         sibling-package mixin, so the project-level path-param check owns the
-        verdict — the same cross-package flattening the codegen binder does.
+        verdict - the same cross-package flattening the codegen binder does.
       type: object
     XPkgEnum:
       description: |-
@@ -7366,7 +7366,7 @@ components:
         XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by
         xrefs, and its field reaches a THIRD package (`shared`). The xrefs handler
         casts `shared.Severity(...)`, so the import collector must resolve the
-        qualified request through the project resolver and pull in `shared` — or
+        qualified request through the project resolver and pull in `shared` - or
         the cast compiles to `undefined: shared`.
       type: object
     XTimestamp:
@@ -7576,7 +7576,7 @@ paths:
       - AccountUserService
   /account/admin/{id}:
     delete:
-      description: 'Delete an account — admin-only. Chain: [RateLimit, BasicAuth,
+      description: 'Delete an account - admin-only. Chain: [RateLimit, BasicAuth,
         Audit].'
       operationId: DeleteAccount
       parameters:
@@ -7597,7 +7597,7 @@ paths:
       - admin
   /account/admin/reset:
     post:
-      description: Hard reset — bypasses BasicAuth, uses its own minimal chain.
+      description: Hard reset - bypasses BasicAuth, uses its own minimal chain.
       operationId: AccountServiceReset
       responses:
         "201":
@@ -7611,7 +7611,7 @@ paths:
       - admin
   /account/login:
     post:
-      description: Log in — public, only inherits rate limiting.
+      description: Log in - public, only inherits rate limiting.
       operationId: Login
       responses:
         "201":
@@ -7624,7 +7624,7 @@ paths:
       - account
   /account/logout:
     post:
-      description: Logout — inherits RateLimit + AuthRequired. Also appends Audit
+      description: Logout - inherits RateLimit + AuthRequired. Also appends Audit
         at method level.
       operationId: Logout
       responses:
@@ -7640,7 +7640,7 @@ paths:
       - audited
   /account/me:
     get:
-      description: Get the current user — inherits RateLimit + AuthRequired.
+      description: Get the current user - inherits RateLimit + AuthRequired.
       operationId: Me
       responses:
         "200":
@@ -7654,7 +7654,7 @@ paths:
       - authenticated
   /account/signup:
     post:
-      description: Sign up — public, only inherits rate limiting.
+      description: Sign up - public, only inherits rate limiting.
       operationId: Signup
       responses:
         "201":
@@ -7845,7 +7845,7 @@ paths:
       - bindings
   /bindings/health:
     get:
-      description: Health probe. No request, no response — just a 200 OK when the
+      description: Health probe. No request, no response - just a 200 OK when the
         service is reachable, plus the rate-limit 429 envelope.
       operationId: BindingsServiceHealth
       responses:
@@ -7861,7 +7861,7 @@ paths:
       - bindings
   /bindings/items:
     get:
-      description: Search items. Demonstrates the full @query matrix — optional string
+      description: Search items. Demonstrates the full @query matrix - optional string
         cursor, required int limit, optional enum sort, repeated int ids, required
         bool active, optional int offset, optional bool verbose.
       operationId: SearchItems
@@ -8037,7 +8037,7 @@ paths:
   /bindings/users/{id}/avatar:
     post:
       description: Upload a user avatar. Demonstrates the path + multipart-form combo
-        — id from /users/{id}/avatar, file via multipart/form-data with @maxSize +
+        - id from /users/{id}/avatar, file via multipart/form-data with @maxSize +
         @mimeTypes validation.
       operationId: UploadAvatar
       parameters:
@@ -8225,7 +8225,7 @@ paths:
   /collections/tag-slice:
     post:
       description: |-
-        TagSlice exercises the scalar-array case — per-element Tag
+        TagSlice exercises the scalar-array case - per-element Tag
         validators (minLength + maxLength + pattern) fire on every
         element via the scalar-leaves walk.
       operationId: TagSlice
@@ -8287,7 +8287,7 @@ paths:
   /combine/defaults/conflict:
     post:
       description: Echo the deliberate default-vs-validator clash. The empty-string
-        default would fail @minLength(1) — if codegen accepts the design, the handler
+        default would fail @minLength(1) - if codegen accepts the design, the handler
         will reject the pre-filled value.
       operationId: EchoConflict
       requestBody:
@@ -9785,7 +9785,7 @@ paths:
   /scalars/orders:
     get:
       description: List orders with cursor pagination. Demonstrates a generic-instance
-        response (Page<Order>) — codegen emits the parametric struct and substitutes
+        response (Page<Order>) - codegen emits the parametric struct and substitutes
         T=Order at the concrete site.
       operationId: ListOrders
       parameters:
@@ -9853,7 +9853,7 @@ paths:
   /scalars/search:
     post:
       description: Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request
-        DTO — per-element @pattern fires once per item.
+        DTO - per-element @pattern fires once per item.
       operationId: SearchProducts
       requestBody:
         content:
@@ -10015,7 +10015,7 @@ paths:
   /strings/formats:
     post:
       description: Validate every @format(name) in the catalogue. The request body
-        is AllFormats — one field per format — so a malformed value in any slot fails
+        is AllFormats - one field per format - so a malformed value in any slot fails
         the boundary check.
       operationId: ValidateAllFormats
       requestBody:
@@ -10279,10 +10279,10 @@ paths:
       description: |-
         Snapshot stacks an additional method-level middleware on top of
         the service-level ProfileAuth chain. The combined order at gen
-        time is `[ProfileAuth, RequestStamp]` — ProfileAuth wraps
+        time is `[ProfileAuth, RequestStamp]` - ProfileAuth wraps
         outermost, so unauthenticated callers never reach RequestStamp.
         Method-level `@tags(snapshot)` adds to the service-level tags
-        list, NOT replacing it — clients see [admin, ops, snapshot].
+        list, NOT replacing it - clients see [admin, ops, snapshot].
       operationId: Snapshot
       responses:
         "200":
@@ -10506,7 +10506,7 @@ paths:
     get:
       description: Pins a @path + @default nested two mixin levels deep through a
         cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment
-        and g32/p64 defaults must all survive flattening — the bare inner XGrand resolves
+        and g32/p64 defaults must all survive flattening - the bare inner XGrand resolves
         as xshared.XGrand.
       operationId: GetNested
       parameters:
@@ -10587,7 +10587,7 @@ paths:
     post:
       description: Pins a QUALIFIED request type whose fields come from a bare nested
         mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q`
-        from @query and decode `bod` from the body — without threading xshared as
+        from @query and decode `bod` from the body - without threading xshared as
         the flatten prefix both silently drop while the validator still enforces them.
       operationId: PromoteHolder
       parameters:
@@ -10650,7 +10650,7 @@ paths:
   /xrefs/search:
     get:
       description: Pins cross-package scalar BINDING casts. Handler must emit `req.Q
-        = xshared.XEmail(r.URL.Query().Get("q"))` (qualified cast) — bare strings
+        = xshared.XEmail(r.URL.Query().Get("q"))` (qualified cast) - bare strings
         fail to compile against the *xshared.XEmail field type.
       operationId: Search
       parameters:
@@ -10687,7 +10687,7 @@ paths:
     get:
       description: 'Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev
         is shared.Severity). The xrefs handler casts shared.Severity(...), so the
-        import collector must resolve the qualified request and pull in `shared` —
+        import collector must resolve the qualified request and pull in `shared` -
         else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds
         a cross-package mixin, so the error emitter''s import walk must collect xshared.'
       operationId: GetThird
@@ -10723,7 +10723,7 @@ paths:
     get:
       description: Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp).
         The handler must write w.Header().Set / http.SetCookie even though the response
-        type is cross-package — else the values silently drop (json:"-") while OpenAPI
+        type is cross-package - else the values silently drop (json:"-") while OpenAPI
         advertises them.
       operationId: GetTraced
       parameters:
@@ -10756,7 +10756,7 @@ paths:
       description: 'Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>).
         The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it
         must keep the canonical `types` import for the local arg even though the outer
-        type is cross-package — otherwise `undefined: types`.'
+        type is cross-package - otherwise `undefined: types`.'
       operationId: WrapLocal
       requestBody:
         content:

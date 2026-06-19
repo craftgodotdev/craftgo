@@ -28,7 +28,7 @@ func (r *refResolver) checkProjectMixins() {
 		for _, td := range pkg.Types {
 			r.checkOneTypeMixinsProject(currentPkg, td.Name, td.Body)
 			// Embedding a bare type-parameter (`type Box<T> { T }`) is
-			// structural — no cross-package resolution needed — but the
+			// structural - no cross-package resolution needed - but the
 			// per-package pass that would catch it is gated off in project mode,
 			// so mirror it here.
 			for _, tpm := range findTypeParamMixins(td.TypeParams, td.Body) {

@@ -14,7 +14,7 @@ import (
 
 // DeleteItem reuses GetItemReq (path-only DTO) and pins two
 // errors: a 404 (RecordNotFound, bodyless) and a 403
-// (AccessDenied, typed body). Idempotent — repeated deletes
+// (AccessDenied, typed body). Idempotent - repeated deletes
 // surface the same response.
 // DeleteItem returns the http.HandlerFunc for the
 // DELETE DeleteItem endpoint.

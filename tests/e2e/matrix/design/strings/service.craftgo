@@ -19,7 +19,7 @@ service StringsService {
 		response Str_EchoResp
 	}
 
-	@doc("Validate every @format(name) in the catalogue. The request body is AllFormats — one field per format — so a malformed value in any slot fails the boundary check.")
+	@doc("Validate every @format(name) in the catalogue. The request body is AllFormats - one field per format - so a malformed value in any slot fails the boundary check.")
 	post ValidateAllFormats /formats {
 		request  AllFormats
 		response AllFormats

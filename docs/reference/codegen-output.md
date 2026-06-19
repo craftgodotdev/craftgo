@@ -1,6 +1,6 @@
 # Codegen Output
 
-What `craftgo gen` writes to disk, file by file. Output is **deterministic** — the same DSL always produces byte-identical files — and every Go file is run through `go/format`, so generated code is always gofmt-clean.
+What `craftgo gen` writes to disk, file by file. Output is **deterministic** - the same DSL always produces byte-identical files - and every Go file is run through `go/format`, so generated code is always gofmt-clean.
 
 ## Two kinds of file
 
@@ -17,36 +17,36 @@ For a project whose design declares `package design` with a `UserService`:
 
 ```
 internal/
-├── types/<pkg>/                 REGEN — one folder per DSL package
+├── types/<pkg>/                 REGEN - one folder per DSL package
 │   ├── types.go                 structs for every type
 │   ├── validate.go              Validate() method per type
 │   ├── enums.go                 enum constants + String()
 │   └── errors.go                typed error values
-├── transport/<svc>/             REGEN — one folder per service
+├── transport/<svc>/             REGEN - one folder per service
 │   ├── <method>.go              http.HandlerFunc per method
 │   └── errors.go                writeError helper for this service
-├── service/<svc>/               GEN-ONCE — your business logic
+├── service/<svc>/               GEN-ONCE - your business logic
 │   └── <method>.go              the stub you fill in
 ├── routes/
-│   ├── routes.go                REGEN — umbrella RegisterRoutes
-│   └── <svc>/routes.go          REGEN — per-service registration
+│   ├── routes.go                REGEN - umbrella RegisterRoutes
+│   └── <svc>/routes.go          REGEN - per-service registration
 └── middleware/
-    └── <name>-middleware.go     GEN-ONCE — one per declared middleware
+    └── <name>-middleware.go     GEN-ONCE - one per declared middleware
 
 svccontext/
-├── svccontext.go                GEN-ONCE — your dependency container
-└── middlewares.go               REGEN — typed middleware fields
+├── svccontext.go                GEN-ONCE - your dependency container
+└── middlewares.go               REGEN - typed middleware fields
 
-config/                          GEN-ONCE — runtime config loader
+config/                          GEN-ONCE - runtime config loader
 ├── config.go
 ├── config.yaml
 └── example.config.yaml
 
-docs/openapi.yaml                REGEN — OpenAPI 3.1 spec
-main.go                          GEN-ONCE — wired entry point
+docs/openapi.yaml                REGEN - OpenAPI 3.1 spec
+main.go                          GEN-ONCE - wired entry point
 ```
 
-Output directories are configurable in `craftgo.design.yaml` — see [Configuration](/guide/configuration).
+Output directories are configurable in `craftgo.design.yaml` - see [Configuration](/guide/configuration).
 
 ## What each file contains
 
@@ -56,7 +56,7 @@ A Go struct per `type`, with field names mapped to Go conventions (`user_id` →
 
 ### `types/<pkg>/validate.go` (regen)
 
-A `Validate() error` method per type. Every validator decorator becomes a plain `if` statement; there is no reflection and no runtime struct-tag parsing. Regexes (`@pattern`, regex-backed `@format`) compile once into package-level vars. `Validate()` is fail-fast — it returns the first violation. Nested struct fields, generic instances, map values/keys, and embedded mixins all dispatch recursively.
+A `Validate() error` method per type. Every validator decorator becomes a plain `if` statement; there is no reflection and no runtime struct-tag parsing. Regexes (`@pattern`, regex-backed `@format`) compile once into package-level vars. `Validate()` is fail-fast - it returns the first violation. Nested struct fields, generic instances, map values/keys, and embedded mixins all dispatch recursively.
 
 ### `types/<pkg>/enums.go` + `errors.go` (regen)
 
@@ -94,15 +94,15 @@ This is the only place you write code. Everything above and below it is regenera
 
 ### `svccontext/` (gen-once + regen)
 
-`svccontext.go` is your dependency container — add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against.
+`svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against.
 
 ### `docs/openapi.yaml` (regen)
 
-The OpenAPI 3.1 document — paths, component schemas, parameters, request bodies, responses, security schemes. See [OpenAPI](/guide/openapi).
+The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies, responses, security schemes. See [OpenAPI](/guide/openapi).
 
 ### `main.go` (gen-once)
 
-Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. Yours to customize — add a flag, change the listen address, register an extra middleware.
+Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. Yours to customize - add a flag, change the listen address, register an extra middleware.
 
 ## Drift safety
 

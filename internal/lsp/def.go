@@ -374,7 +374,7 @@ func declSitePos(f *ast.File, name string) *lexer.Position {
 // LSP client invokes this on cursor move, so cheapness matters more
 // than completeness (cross-file lookup ships through `references`).
 //
-// Each highlight gets `Kind: Text` — the LSP spec also allows Read /
+// Each highlight gets `Kind: Text` - the LSP spec also allows Read /
 // Write kinds, but the DSL has no notion of "writing" an identifier
 // (decls are immutable from the type checker's view), so the
 // simpler Text kind matches actual semantics.

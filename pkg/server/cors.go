@@ -51,7 +51,7 @@ func corsMiddleware(opts CORSOptions) Middleware {
 				w.Header().Set("Access-Control-Allow-Origin", allowed)
 				if allowed != "*" {
 					// The Allow-Origin value reflects the request Origin, so
-					// shared caches must key on it — without `Vary: Origin`
+					// shared caches must key on it - without `Vary: Origin`
 					// a response cached for origin A could be served to
 					// origin B carrying A's Allow-Origin header. A literal
 					// "*" is identical for every origin, so it needs no Vary.

@@ -15,7 +15,7 @@ enum Rg5Method {
 
 // An array-of-enum @default lands its wire values in the OpenAPI `default`
 // (`[card, bank]`), and a @default query parameter is advertised optional
-// rather than required — the transport pre-fills both before decode.
+// rather than required - the transport pre-fills both before decode.
 type Rg5Defaults {
 	methods Rg5Method[]? @default([Card, Bank])
 	sortBy  string?      @query @default("name")
@@ -51,7 +51,7 @@ type Rg5Composite {
 }
 
 // A wire-bound field (`@query`) stays out of the JSON body schema even
-// though it shares a type with body fields — it rides the query string.
+// though it shares a type with body fields - it rides the query string.
 type Rg5Mixed {
 	filter  string @query
 	payload string @minLength(1)

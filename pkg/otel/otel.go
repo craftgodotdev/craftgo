@@ -11,7 +11,7 @@
 //	otel.Init(otel.WithOTLPgRPCExporter(ctx, "collector:4317"))
 //	otel.Init(otel.WithOTLPHTTPExporter(ctx, "http://collector:4318"))
 //
-// Multiple exporter options can be stacked — every span is fanned
+// Multiple exporter options can be stacked - every span is fanned
 // to each registered processor (e.g. stdout for local debugging
 // while OTLP runs against a real collector).
 package otel
@@ -87,10 +87,10 @@ func WithStdoutExporter() Option {
 // WithOTLPgRPCExporter pushes spans to an OTLP collector via gRPC. addr
 // may be either:
 //
-//   - a bare `host:port` (e.g. `"otel-collector.observability:4317"`) —
+//   - a bare `host:port` (e.g. `"otel-collector.observability:4317"`) -
 //     connects INSECURE (plain-text), the convention for collectors on
 //     a trusted local network; or
-//   - a full URL whose SCHEME selects transport security —
+//   - a full URL whose SCHEME selects transport security -
 //     `http://host:4317` (plaintext) or `https://host:4317` (TLS).
 //
 // The URL form lets a project enable TLS straight from config.yaml
@@ -103,11 +103,11 @@ func WithOTLPgRPCExporter(ctx context.Context, addr string, opts ...otlptracegrp
 		}
 		var base []otlptracegrpc.Option
 		if strings.Contains(addr, "://") {
-			// URL form — WithEndpointURL parses host/port and derives
+			// URL form - WithEndpointURL parses host/port and derives
 			// insecure-vs-TLS from the scheme.
 			base = []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(addr)}
 		} else {
-			// Bare host:port form — plaintext (insecure).
+			// Bare host:port form - plaintext (insecure).
 			base = []otlptracegrpc.Option{
 				otlptracegrpc.WithEndpoint(addr),
 				otlptracegrpc.WithInsecure(),

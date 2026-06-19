@@ -33,7 +33,7 @@ func NewCreateTenantItemService(ctx context.Context, svcCtx *svccontext.ServiceC
 }
 
 // POST: the same un-decorated `tenantID` still binds from the path (not
-// the JSON body) — the body carries only `name`.
+// the JSON body) - the body carries only `name`.
 // CreateTenantItem is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *CreateTenantItemService) CreateTenantItem(req *types.TenantCreateReq) (*types.TenantItem, error) {

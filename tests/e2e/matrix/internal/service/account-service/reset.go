@@ -35,7 +35,7 @@ func NewResetService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Re
 // extend block: drop the inherited chain entirely (RateLimit
 // from primary + BasicAuth + Audit from this extend), then
 // declare the method's own minimal chain. Final chain: [Audit]
-// only — both inherited layers cleared.
+// only - both inherited layers cleared.
 // Reset is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *ResetService) Reset() (*shared.ID, error) {

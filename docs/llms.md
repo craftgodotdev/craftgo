@@ -260,7 +260,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
-> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator — append `?` to the type to opt out (`name string?`).
+> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`).
 
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |
@@ -321,9 +321,9 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@middlewares(A, B, ...)`   | service, method | idents (or array literal)              |
 | `@tags(a, b, ...)`          | service, method | idents/strings (or array literal)      |
 | `@security(A, B, ...)`      | service, method | variadic scheme idents (AND within one decorator, OR across multiple) |
-| `@ignoreMiddleware`         | method          | `()` — clear inherited middleware chain |
-| `@ignoreSecurity`           | method          | `()` — clear inherited security chain   |
-| `@ignoreTags`               | method          | `()` — clear inherited tags             |
+| `@ignoreMiddleware`         | method          | `()` - clear inherited middleware chain |
+| `@ignoreSecurity`           | method          | `()` - clear inherited security chain   |
+| `@ignoreTags`               | method          | `()` - clear inherited tags             |
 | `@summary("...")`           | method          | `(string)`                             |
 | `@operationId("name")`      | method          | `(string)`                             |
 | `@status(code)`             | method          | `(int)`                                |
@@ -510,7 +510,7 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 }
 ```
 
-Plain Go. No reflection. JSON goes through `server.JSON()` — the swappable codec (defaults to `encoding/json`). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
+Plain Go. No reflection. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
 
 ## Generated logic shape
 
@@ -639,7 +639,7 @@ type UploadAvatarReq {
 @prefix("/v1")
 service UserService {
     // craftgo auto-detects multipart from the request's `file @form`
-    // field — no content-type decorator needed.
+    // field - no content-type decorator needed.
     post UploadAvatar /users/{userId}/avatar {
         request  UploadAvatarReq
         response shared.OkResp

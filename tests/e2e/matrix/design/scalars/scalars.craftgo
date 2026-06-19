@@ -15,12 +15,12 @@
 //
 // Cornercase probes (commented out where the framework rejects them):
 //
-//   OptionalEmail    `scalar X string? @format(email)` — the parser
+//   OptionalEmail    `scalar X string? @format(email)` - the parser
 //                    grammar requires the primitive token to be an
 //                    Ident; `string?` is two tokens so it fails at
 //                    parse time. The optionality lives on the FIELD
 //                    instead (`email Email?`).
-//   Composed         `scalar X SomeOtherScalar` — the parser admits
+//   Composed         `scalar X SomeOtherScalar` - the parser admits
 //                    the second token as any Ident, so it compiles
 //                    syntactically; semantic analysis rejects it as
 //                    a non-builtin primitive. Kept commented to
@@ -38,7 +38,7 @@ scalar URL string @format(url)
 // UUID carries the @format(uuid) check.
 scalar UUID string @format(uuid)
 
-// Cents is the canonical money scalar — non-negative integer with a
+// Cents is the canonical money scalar - non-negative integer with a
 // per-request ceiling. Bound stacking (@gte + @lte) demonstrates that
 // numeric scalars accept both lower and upper bounds.
 scalar Cents int @gte(0) @lte(1000000000)
