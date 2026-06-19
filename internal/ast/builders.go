@@ -5,7 +5,7 @@ package ast
 // at every test site bloats fixtures with positional cruft; these
 // helpers collapse the common cases into one-liners.
 //
-// Constructors set position info to the zero value — the equality
+// Constructors set position info to the zero value - the equality
 // helpers ([Equal] methods on TypeRef / NamedTypeRef / ...) ignore
 // positions anyway. Reuse from production code is not intended.
 

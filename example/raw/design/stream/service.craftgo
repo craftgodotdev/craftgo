@@ -23,7 +23,7 @@ service StreamService {
 	@passthrough
 	get Download /download/{file} {}
 
-	@doc("Plain JSON health check — contrasts with the passthrough endpoints above.")
+	@doc("Plain JSON health check - contrasts with the passthrough endpoints above.")
 	get Health /health {
 		request  HealthReq
 		response HealthResp

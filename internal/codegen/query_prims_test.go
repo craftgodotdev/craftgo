@@ -9,8 +9,8 @@ import (
 // TestQueryPrimsMatchWireParseable pins the codegen metadata table
 // (queryPrims, which carries each primitive's strconv parser / Go type /
 // label) to the shared wire-parseable set the analyser rejects against
-// (idents.IsWireParseable). The membership question — "can this primitive be
-// parsed from a single wire string?" — is decided once in idents; queryPrims
+// (idents.IsWireParseable). The membership question - "can this primitive be
+// parsed from a single wire string?" - is decided once in idents; queryPrims
 // only adds the per-primitive rendering. If a primitive is added to one but
 // not the other, the editor and the generator would disagree on what binds.
 func TestQueryPrimsMatchWireParseable(t *testing.T) {

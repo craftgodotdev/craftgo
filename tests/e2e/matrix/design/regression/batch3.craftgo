@@ -1,6 +1,6 @@
 // Fixtures whose behaviour is expressible as generated output. The
-// rejection-only cases — a value constraint on a type-parameter,
-// @pattern/@format on bytes — are excluded since gen refuses them.
+// rejection-only cases - a value constraint on a type-parameter,
+// @pattern/@format on bytes - are excluded since gen refuses them.
 // Rg3-prefixed.
 package regression
 

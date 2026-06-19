@@ -15,8 +15,8 @@ import (
 // silently lost. Both gen and `go build` succeed, so this design-time
 // rejection is the only signal.
 //
-// Only request-side nesting is rejected. A top-level `file` field — directly
-// on the request or flattened in via a mixin — is the supported upload shape.
+// Only request-side nesting is rejected. A top-level `file` field - directly
+// on the request or flattened in via a mixin - is the supported upload shape.
 // A `file` field that appears in a response (or in a type echoed back as a
 // response, e.g. a profile that carries an avatar) is left alone: that is an
 // established modelling pattern, lowered to the OpenAPI `format: binary`
@@ -37,7 +37,7 @@ func (a *analyzer) checkFilePosition() {
 			// encoding and the binder would assign a 1-D slice to a nested one.
 			if f.Type.ArrayDepth > 1 {
 				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
-					"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding — only a single `file` or a 1-D `file[]` is supported", name, f.Name)
+					"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding - only a single `file` or a 1-D `file[]` is supported", name, f.Name)
 			}
 		}
 	}
@@ -58,7 +58,7 @@ func (a *analyzer) checkFilePosition() {
 		}
 		reported[f] = true
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
-			"field %s.%s: a `file` field nested inside a request body (reached through %s) is not bindable — the multipart binder reads only top-level request fields; move the `file` to the top level of the request type (or carry it in via a mixin)", owner, f.Name, path)
+			"field %s.%s: a `file` field nested inside a request body (reached through %s) is not bindable - the multipart binder reads only top-level request fields; move the `file` to the top level of the request type (or carry it in via a mixin)", owner, f.Name, path)
 	}
 	for _, si := range a.pkg.Services {
 		for _, m := range si.Methods {

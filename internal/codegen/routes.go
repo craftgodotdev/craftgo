@@ -53,14 +53,14 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 }
 
 // buildHandlerCall produces the Go expression that lands as the SECOND
-// argument to `srv.Handle` — the handler itself, with `server.WithLimits`
+// argument to `srv.Handle` - the handler itself, with `server.WithLimits`
 // applied when the method declares `@timeout` or `@maxBodySize`. The
 // middleware chain is rendered separately as variadic args by
 // [buildMiddlewareArgs] so the route line stays flat regardless of
 // chain depth.
 //
 // Limits wrap the handler INSIDE the middleware chain so middlewares
-// see the timeout/body-cap-bound handler — the timeout cancels the
+// see the timeout/body-cap-bound handler - the timeout cancels the
 // downstream work, not the middleware's own bookkeeping.
 func buildHandlerCall(m *ast.Method, transportAlias string) string {
 	core := transportAlias + "." + m.Name + "(svcCtx)"
@@ -300,7 +300,7 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 			continue
 		}
 		for _, svcName := range sortedServices(p) {
-			// One umbrella entry per (service, group) — routes are emitted per
+			// One umbrella entry per (service, group) - routes are emitted per
 			// group folder, so the umbrella must register every group's hub.
 			for _, g := range distinctGroups(p.Services[svcName]) {
 				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g)})
@@ -312,7 +312,7 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	}
 	// Stable iteration order: by (service name, group). Service names are
 	// project-unique after merging, but one service contributes one entry PER
-	// GROUP — without the group tie-break the equal-name entries land in map
+	// GROUP - without the group tie-break the equal-name entries land in map
 	// iteration order and the emitted file differs run to run.
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].name != entries[j].name {

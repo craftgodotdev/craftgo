@@ -34,7 +34,7 @@ func NewDeleteItemService(ctx context.Context, svcCtx *svccontext.ServiceContext
 
 // DeleteItem reuses GetItemReq (path-only DTO) and pins two
 // errors: a 404 (RecordNotFound, bodyless) and a 403
-// (AccessDenied, typed body). Idempotent — repeated deletes
+// (AccessDenied, typed body). Idempotent - repeated deletes
 // surface the same response.
 // DeleteItem is the service entry point. Replace the
 // TODO with the real implementation.

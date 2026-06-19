@@ -35,7 +35,7 @@ type ArrayOfGenericInstance struct {
 	Pages []Page[Order] `json:"pages"`
 }
 
-// AuditFields is the mixin source — two timestamp fields with
+// AuditFields is the mixin source - two timestamp fields with
 // @format(datetime). Any host that mixes this in inherits both
 // fields plus their format validators.
 type AuditFields struct {
@@ -102,7 +102,7 @@ type EchoWrappedReq struct {
 }
 
 // Envelope<T> wraps a single value plus an optional meta string.
-// Exercises generic decl WITHOUT an array field — codegen still
+// Exercises generic decl WITHOUT an array field - codegen still
 // emits a parametric Validate() receiver for it.
 type Envelope[T any] struct {
 	Data T       `json:"data"`
@@ -137,11 +137,11 @@ type GetOrderReq struct {
 
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.
 // The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
-// inside @query — codegen parses the wire string as int then casts
+// inside @query - codegen parses the wire string as int then casts
 // up to the alias.
 //
 // NOTE: limit cannot be `Cents?` because optional numeric primitives
-// cannot bind to query — the transport pass rejects them since
+// cannot bind to query - the transport pass rejects them since
 // `*int` from a query string needs a tri-state (absent / empty /
 // parsed) that the framework has no clean idiom for. The bare-int
 // form uses 0 as the absent sentinel, with @default providing the
@@ -256,7 +256,7 @@ type PairUserOrder struct {
 	Pair Pair[Order, ProductRef] `json:"pair"`
 }
 
-// ProductPage instantiates Page<ProductRef> — separate scalar set
+// ProductPage instantiates Page<ProductRef> - separate scalar set
 // proves that two concrete instantiations coexist without name
 // clashes in the Validate generator.
 type ProductPage struct {
@@ -292,7 +292,7 @@ type ScalarFieldOverrides struct {
 // Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
 // The keywords field is `Tag[]?` so the wire may omit it entirely; when
 // present every element runs Tag's @pattern check. The limit field
-// uses a numeric scalar with @default — the default literal is parsed
+// uses a numeric scalar with @default - the default literal is parsed
 // as the underlying primitive (int) and cast up to Cents.
 type Search struct {
 	Keywords []Tag  `json:"keywords,omitempty"`
@@ -303,7 +303,7 @@ type Search struct {
 // `Tree<T>` itself through the `kids` field. The instance registers
 // as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted
 // to `Tree<Order>[]`, asks the registry for the component name, finds
-// `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` — the
+// `TreeOfOrder` already registered, and emits `$ref:TreeOfOrder` - the
 // cycle terminates as a reference.
 type Tree[T any] struct {
 	Val  T         `json:"val"`

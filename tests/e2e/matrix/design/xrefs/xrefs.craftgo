@@ -98,7 +98,7 @@ type XLocalItem {
 
 // XMixinErr is an error whose body embeds a CROSS-PACKAGE mixin
 // (xshared.XOwner). The error emitter's import walk must collect the xshared
-// import — the generated errors.go embeds `xshared.XOwner`, so without the
+// import - the generated errors.go embeds `xshared.XOwner`, so without the
 // mixin branch in the import walk it references an undefined package.
 error Conflict XMixinErr {
 	xshared.XOwner
@@ -111,7 +111,7 @@ type XGetReq {
 	id string @path @length(1, 64)
 }
 
-// XByKeyReq draws its only field — the `@path`-bound `key` — from the
+// XByKeyReq draws its only field - the `@path`-bound `key` - from the
 // cross-package mixin xshared.XPathKey. The GetByKey route's `{key}`
 // segment binds through that mixin; the per-package path-param pass can't
 // expand a sibling-package mixin, so the project-level check owns it.
@@ -121,7 +121,7 @@ type XByKeyReq {
 
 // XNestedReq reaches fields through a mixin nested INSIDE a cross-package
 // mixin: xshared.XParent embeds xshared.XGrand. So `gKey` (@path) and
-// `g32` (@default) live two mixin levels deep — the flattener must
+// `g32` (@default) live two mixin levels deep - the flattener must
 // qualify the bare inner `XGrand` as `xshared.XGrand` to see them.
 type XNestedReq {
 	xshared.XParent
@@ -192,7 +192,7 @@ service XRefsService {
 		response xshared.XOwner
 	}
 
-	@doc("Pins a @path + @default nested two mixin levels deep through a cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment and g32/p64 defaults must all survive flattening — the bare inner XGrand resolves as xshared.XGrand.")
+	@doc("Pins a @path + @default nested two mixin levels deep through a cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment and g32/p64 defaults must all survive flattening - the bare inner XGrand resolves as xshared.XGrand.")
 	get GetNested /nested/{gKey} {
 		request  XNestedReq
 		response xshared.XOwner
@@ -203,7 +203,7 @@ service XRefsService {
 		response xshared.XBag<xshared.XOwner>
 	}
 
-	@doc("Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get(\"q\"))` (qualified cast) — bare strings fail to compile against the *xshared.XEmail field type.")
+	@doc("Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get(\"q\"))` (qualified cast) - bare strings fail to compile against the *xshared.XEmail field type.")
 	get Search /search {
 		request  XSearchReq
 		response xshared.XOwner
@@ -215,25 +215,25 @@ service XRefsService {
 		response xshared.XOwner
 	}
 
-	@doc("Pins a QUALIFIED request type whose fields come from a bare nested mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q` from @query and decode `bod` from the body — without threading xshared as the flatten prefix both silently drop while the validator still enforces them.")
+	@doc("Pins a QUALIFIED request type whose fields come from a bare nested mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q` from @query and decode `bod` from the body - without threading xshared as the flatten prefix both silently drop while the validator still enforces them.")
 	post PromoteHolder /promote-holder/{id} {
 		request  xshared.XHolder
 		response xshared.XOwner
 	}
 
-	@doc("Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>). The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it must keep the canonical `types` import for the local arg even though the outer type is cross-package — otherwise `undefined: types`.")
+	@doc("Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>). The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it must keep the canonical `types` import for the local arg even though the outer type is cross-package - otherwise `undefined: types`.")
 	post WrapLocal /wrap-local {
 		request  xshared.XWrapInBag<XLocalItem>
 		response xshared.XOwner
 	}
 
-	@doc("Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp). The handler must write w.Header().Set / http.SetCookie even though the response type is cross-package — else the values silently drop (json:\"-\") while OpenAPI advertises them.")
+	@doc("Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp). The handler must write w.Header().Set / http.SetCookie even though the response type is cross-package - else the values silently drop (json:\"-\") while OpenAPI advertises them.")
 	get GetTraced /traced/{id} {
 		request  XGetReq
 		response xshared.XHeaderResp
 	}
 
-	@doc("Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev is shared.Severity). The xrefs handler casts shared.Severity(...), so the import collector must resolve the qualified request and pull in `shared` — else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds a cross-package mixin, so the error emitter's import walk must collect xshared.")
+	@doc("Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev is shared.Severity). The xrefs handler casts shared.Severity(...), so the import collector must resolve the qualified request and pull in `shared` - else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds a cross-package mixin, so the error emitter's import walk must collect xshared.")
 	@errors(XMixinErr)
 	get GetThird /third/{id} {
 		request  xshared.XThirdReq

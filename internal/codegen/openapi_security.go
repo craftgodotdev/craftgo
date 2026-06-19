@@ -60,7 +60,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 // scheme name from the manifest's `openapi.securitySchemes` declaration
 // (type / scheme / bearerFormat / in / name / openIdConnectUrl). It falls
 // back to the legacy http/bearer/JWT default only when the manifest
-// declares no schemes at all — in that mode ValidateSecurityRefs skips
+// declares no schemes at all - in that mode ValidateSecurityRefs skips
 // reference validation, so every referenced scheme uses the default. When
 // schemes ARE declared, a referenced-but-undeclared name is already
 // rejected by ValidateSecurityRefs before emission.
@@ -131,7 +131,7 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 	var schemeErrs []string
 	for name, sc := range declared {
 		if sc.Type == "oauth2" && !sc.Flows.HasFlow() {
-			schemeErrs = append(schemeErrs, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) — an oauth2 scheme without flows is invalid OpenAPI", name, name))
+			schemeErrs = append(schemeErrs, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name))
 		}
 	}
 	collect := func(svcName, scope string, ds []*ast.Decorator, dst map[string]bool) {

@@ -15,7 +15,7 @@ import (
 
 // A scalar over the nilable `bytes` primitive lowers to the bare named
 // slice, so an optional / @nullable field of it must NOT carry a
-// redundant pointer — it renders like a raw `bytes` field, and its
+// redundant pointer - it renders like a raw `bytes` field, and its
 // validator nil-guards before calling the scalar's own Validate().
 func TestScalarOverBytesNullableRendersWithoutPointer(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
@@ -61,8 +61,8 @@ type Doc {
 
 // Two fields whose DSL names collide to the same Go identifier (`userId` /
 // `user_id` → `UserID`) get dedup-resolved (`UserID`, `UserID_2`) in the
-// struct. Every consumer — the validator (@minLength + the cross-field
-// @requiresOneOf) and the wire binder — must read the SAME resolved names, so
+// struct. Every consumer - the validator (@minLength + the cross-field
+// @requiresOneOf) and the wire binder - must read the SAME resolved names, so
 // the binder assigns both fields and the validator checks both, rather than
 // `v.UserID` twice with `UserID_2` left unread.
 func TestCollidingGoFieldNamesDedupAcrossConsumers(t *testing.T) {
@@ -110,7 +110,7 @@ service S {
 	mustParseGo(t, string(val))
 	vs := string(val)
 	// @minLength fires on the first field (UserID); the cross-field group
-	// reads BOTH resolved names — not `v.UserID == nil && v.UserID == nil`.
+	// reads BOTH resolved names - not `v.UserID == nil && v.UserID == nil`.
 	mustContainAll(t, vs,
 		"v.UserID != nil",
 		"v.UserID == nil && v.UserID_2 == nil",
@@ -120,7 +120,7 @@ service S {
 // A scalar over a nilable primitive can no longer participate in a
 // cross-field group: it lowers to a non-pointer nilable slice, so its
 // runtime presence is emptiness (not a clean `!= nil`), which disagrees
-// with the group's OpenAPI present-and-non-null — reject like raw bytes.
+// with the group's OpenAPI present-and-non-null - reject like raw bytes.
 func TestScalarOverBytesRejectedInCrossFieldGroup(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"m/m.craftgo": `package m
@@ -147,7 +147,7 @@ type Pick {
 }
 
 // A scalar-over-VALUE primitive (int) stays pointer-backed when
-// optional, so it remains a clean cross-field member — the reject above
+// optional, so it remains a clean cross-field member - the reject above
 // must not over-fire.
 func TestScalarOverValueCrossFieldClean(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
@@ -168,7 +168,7 @@ type Pick {
 }
 
 // @doc / @example on a field whose type is a named ref ($ref) is carried
-// onto an allOf wrapper instead of being dropped — a bare $ref can't hold
+// onto an allOf wrapper instead of being dropped - a bare $ref can't hold
 // sibling keywords portably.
 func TestNamedRefDocExampleWrappedInAllOf(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
@@ -279,7 +279,7 @@ func genDoc(t *testing.T, src map[string]string, cfg *config.Config) *openapi3.T
 // @minItems / @maxItems are array/map count keywords. On a NAMED-TYPE
 // (struct/enum) field they have no meaning, so the OpenAPI must not stamp
 // minProperties/maxProperties onto the field's anyOf-null wrapper (the runtime
-// enforces nothing there — it would be an unenforced, unsatisfiable
+// enforces nothing there - it would be an unenforced, unsatisfiable
 // constraint). A map field still gets minProperties.
 func TestMinItemsNotLeakedOntoNamedTypeWrapper(t *testing.T) {
 	doc := genDoc(t, map[string]string{

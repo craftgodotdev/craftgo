@@ -4,8 +4,8 @@ components:
     CreateGalleryReq:
       description: "CreateGalleryReq is the showcase multi-file upload: MANY files
         via\n`photos file[]`, an optional single `cover` file, and form values of
-        every\nshape — required/optional text, a repeated `tags string[]` value array,
-        an\nenum, a bool, and a bounded int — all in ONE multipart/form-data request,\nwith
+        every\nshape - required/optional text, a repeated `tags string[]` value array,
+        an\nenum, a bool, and a bounded int - all in ONE multipart/form-data request,\nwith
         the album id bound from the path.\n\nOn the wire the repeated parts share
         a field name: each photo is a `photos`\npart and each tag a `tags` part, e.g.\n\n\tcurl
         -X POST http://localhost:8080/api/media/albums/sum25/gallery \\\n\t  -F \"photos=@a.jpg\"
@@ -377,7 +377,7 @@ paths:
     post:
       description: Create a gallery from a BATCH of uploaded photos. Showcases `file[]`
         (many files, 1–20) + an optional `cover` file + form values of every shape
-        — text, a repeated `tags string[]`, an enum, a bool and an int — in one multipart/form-data
+        - text, a repeated `tags string[]`, an enum, a bool and an int - in one multipart/form-data
         request.
       operationId: CreateGallery
       parameters:

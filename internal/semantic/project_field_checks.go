@@ -24,7 +24,7 @@ import (
 //     int vs float vs bool) or the enum's value set, mirroring
 //     [checkDefaultLiteral].
 //
-// Single-package projects never trigger this pass — no qualified refs
+// Single-package projects never trigger this pass - no qualified refs
 // exist for it to re-validate.
 func (r *refResolver) checkProjectFieldDefaults() {
 	scalars, enums := r.buildProjectDecls()
@@ -83,10 +83,10 @@ func (r *refResolver) checkBodyDefaults(members []ast.TypeMember, scalars map[st
 }
 
 // checkOneFieldDefaultExample validates @default AND @example literals on a
-// field whose type is a CROSS-PACKAGE qualified scalar or enum — the case the
+// field whose type is a CROSS-PACKAGE qualified scalar or enum - the case the
 // per-package pass skips (it can't resolve a foreign scalar's primitive).
 // Both decorators share the resolution + the literal check (kind, enum
-// membership, and — for @default — int-capacity / bytes-file). The @default-
+// membership, and - for @default - int-capacity / bytes-file). The @default-
 // only "not a valid target" rejects are gated on the decorator name; @example
 // is lenient (a poor example is harmless), matching the per-package passes.
 func (r *refResolver) checkOneFieldDefaultExample(f *ast.Field, scalars map[string]*ast.ScalarDecl, enums map[string]*ast.EnumDecl) {
@@ -104,7 +104,7 @@ func (r *refResolver) checkOneFieldDefaultExample(f *ast.Field, scalars map[stri
 			t = t.ElemTypeRef()
 		}
 		if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 2 {
-			continue // local type — per-package pass already validated it
+			continue // local type - per-package pass already validated it
 		}
 		qname := t.Named.Name.Parts[0] + "." + t.Named.Name.Parts[1]
 		var prim string
@@ -114,7 +114,7 @@ func (r *refResolver) checkOneFieldDefaultExample(f *ast.Field, scalars map[stri
 			prim = scalars[qname].Primitive
 			if primitiveArgKind(prim) == ArgAny {
 				// Scalar wraps a non-primitive: @default rejects it (no literal
-				// form), @example just ignores it — matching the per-package pass.
+				// form), @example just ignores it - matching the per-package pass.
 				if decName == "default" {
 					r.diag(dec.Pos, lexer.SeverityError, CodeDecoratorConflict,
 						"@default is not supported on field %q: scalar %s does not wrap a primitive", f.Name, qname)
@@ -143,7 +143,7 @@ func (r *refResolver) checkOneFieldDefaultExample(f *ast.Field, scalars map[stri
 		}
 		for _, lit := range defaultArgLiterals(f, dec) {
 			if lit.v == nil {
-				continue // object-literal example — handled per-package
+				continue // object-literal example - handled per-package
 			}
 			checkScalarEnumLiteralValue(decName, f.Name, qname, prim, edDecl, lit.v, lit.pos, emit)
 		}

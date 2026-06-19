@@ -129,7 +129,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 			}
 		}
 		// Each parameter inlines its field schema directly (a $ref to the
-		// field's component type, or an inline shape) — there is no per-kind
+		// field's component type, or an inline shape) - there is no per-kind
 		// wrapper component. A multipart request still emits its
 		// path/query/header/cookie parameters here; only the @form fields
 		// move out of `parameters[]` and into the multipart body schema.
@@ -238,7 +238,7 @@ func methodSuccessStatus(m *ast.Method) int {
 // operation. The handler writes the response itself, so codegen cannot
 // know the real status: `@status(N)` documents it explicitly, otherwise
 // we fall back to 200. The verb-aware default is intentionally NOT
-// applied here — a passthrough POST may write any status, and 201 would
+// applied here - a passthrough POST may write any status, and 201 would
 // frequently be wrong.
 func passthroughStatus(m *ast.Method) string {
 	if code, ok := statusOverride(m); ok {
@@ -291,7 +291,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		entry.categories = append(entry.categories, ed.Category)
 		// An error's @header / @cookie body fields are written onto the
 		// response by the generated WriteResponseHeaders, so document
-		// them as response.headers — mirroring the success-response path.
+		// them as response.headers - mirroring the success-response path.
 		hs, cs := errorHeaderCookieFields(ed, pkg)
 		entry.headers = append(entry.headers, hs...)
 		entry.cookies = append(entry.cookies, cs...)
@@ -322,7 +322,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		// on the method plus a Conflict-category `@errors`): the runtime
 		// returns the success body on the happy path and this error on the
 		// failure path, so merge both into a oneOf rather than letting the
-		// error overwrite — and silently orphan — the success shape.
+		// error overwrite - and silently orphan - the success shape.
 		if existing := op.Responses.Value(status); existing != nil && existing.Value != nil {
 			resp = mergeStatusResponses(existing.Value, resp, schema)
 		}
@@ -388,12 +388,12 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 }
 
 // errorHeaderCookieFields partitions an error declaration's body into
-// its @header and @cookie fields — the ones the runtime writes onto the
+// its @header and @cookie fields - the ones the runtime writes onto the
 // response via WriteResponseHeaders rather than into the JSON body.
 // Mirrors [binResponseFields] for the error path.
 func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package) (headers, cookies []*ast.Field) {
 	// Flatten so a `@header` / `@cookie` field the error inherits through a
-	// mixin is documented as a response header too — matching the runtime,
+	// mixin is documented as a response header too - matching the runtime,
 	// which writes the promoted field via WriteResponseHeaders.
 	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, nil, map[string]bool{}) {
 		switch bindingFromDecorators(f.Decorators) {
@@ -409,7 +409,7 @@ func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package) (headers,
 // errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`
 // chain on the method into a deduplicated list of error declaration
 // names. Both the bare-ident form (`@errors(Foo)`) and the
-// fully-qualified `pkg.Foo` form parse here — qualified refs
+// fully-qualified `pkg.Foo` form parse here - qualified refs
 // collapse to the trailing segment because cross-package resolution
 // isn't yet supported.
 func errorRefsFromDecorators(ds []*ast.Decorator) []string {
@@ -469,7 +469,7 @@ func passthroughPathParams(m *ast.Method) openapi3.Parameters {
 // renders as a file picker.
 //
 // Files carrying `@mimeTypes(["a/b", "c/d"])` surface their allowlist
-// under the OpenAPI `encoding[field].contentType` slot — without this
+// under the OpenAPI `encoding[field].contentType` slot - without this
 // the client SDK has no way to see what MIME types the server's
 // runtime validator will accept, so users would upload an arbitrary
 // file and get a 400 from the validator instead of a typed rejection
@@ -584,7 +584,7 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 				// name via [bindingWireName] (r.Header.Get("X-Trace-Id"),
 				// r.PathValue("user_id"), ...), so emitting f.Name here
 				// instead would advertise a parameter the server never
-				// reads — a generated client would send `trace` while
+				// reads - a generated client would send `trace` while
 				// the handler looks for `X-Trace-Id`, and the binding
 				// silently fails.
 				Name:     bindingWireName(f, in),
@@ -653,13 +653,13 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	}
 }
 
-// fieldIsRequired is THE spec-required rule — craftgo's "required by
+// fieldIsRequired is THE spec-required rule - craftgo's "required by
 // default" model: a field must be present unless its type carries the `?`
 // suffix, OR it carries `@default` (the transport pre-fills the default
 // before decode, so an absent value is valid; advertising it required would
 // contradict the very default the schema carries). ResolvedField.SpecRequired
 // is computed from this function; raw-field call sites (the parameter/body
-// emitters, which work from field bins) call it directly — one rule, one
+// emitters, which work from field bins) call it directly - one rule, one
 // function.
 func fieldIsRequired(f *ast.Field) bool {
 	if f == nil || f.Type == nil || f.Type.Optional {
@@ -672,7 +672,7 @@ func fieldIsRequired(f *ast.Field) bool {
 // decorated with `@operationId("createUserProfile")` overrides the
 // default verbatim (so projects can adopt camelCase / kebab-case /
 // whatever convention their tooling expects). Otherwise it falls back
-// to `base` — the collision-free name from [operationBaseName], which is
+// to `base` - the collision-free name from [operationBaseName], which is
 // the bare method name when unique and service-prefixed when two
 // services share the method name.
 func operationID(m *ast.Method, base string) string {

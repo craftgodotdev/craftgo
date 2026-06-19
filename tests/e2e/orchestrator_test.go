@@ -6,7 +6,7 @@
 // this directory.
 //
 // The fixtures live under `tests/e2e/` (not `testdata/`) on
-// purpose — they are full Go modules with their own tests, not
+// purpose - they are full Go modules with their own tests, not
 // read-only fixture data. Keeping them next to the orchestrator
 // makes the layout self-explanatory.
 package e2e
@@ -20,7 +20,7 @@ import (
 	"testing"
 )
 
-// repoRoot returns the absolute path of the craftgo module root —
+// repoRoot returns the absolute path of the craftgo module root -
 // three levels up from this file (tests/e2e/orchestrator_test.go).
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -38,7 +38,7 @@ func scenariosDir(t *testing.T) string {
 
 // discoverScenarios returns every immediate child of tests/e2e/ that
 // contains a go.mod. Adding a new fixture is just `mkdir + go mod
-// init` — the orchestrator picks it up on the next run.
+// init` - the orchestrator picks it up on the next run.
 func discoverScenarios(t *testing.T) []string {
 	t.Helper()
 	root := scenariosDir(t)

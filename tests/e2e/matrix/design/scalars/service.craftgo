@@ -13,7 +13,7 @@ service ScalarsService {
 		response Order
 	}
 
-	@doc("List orders with cursor pagination. Demonstrates a generic-instance response (Page<Order>) — codegen emits the parametric struct and substitutes T=Order at the concrete site.")
+	@doc("List orders with cursor pagination. Demonstrates a generic-instance response (Page<Order>) - codegen emits the parametric struct and substitutes T=Order at the concrete site.")
 	get ListOrders /orders {
 		request  ListOrdersReq
 		response OrderPage
@@ -25,7 +25,7 @@ service ScalarsService {
 		response Envelope<Order>
 	}
 
-	@doc("Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request DTO — per-element @pattern fires once per item.")
+	@doc("Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request DTO - per-element @pattern fires once per item.")
 	post SearchProducts /search {
 		request  Search
 		response ProductPage
@@ -52,11 +52,11 @@ type GetOrderReq {
 
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.
 // The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
-// inside @query — codegen parses the wire string as int then casts
+// inside @query - codegen parses the wire string as int then casts
 // up to the alias.
 //
 // NOTE: limit cannot be `Cents?` because optional numeric primitives
-// cannot bind to query — the transport pass rejects them since
+// cannot bind to query - the transport pass rejects them since
 // `*int` from a query string needs a tri-state (absent / empty /
 // parsed) that the framework has no clean idiom for. The bare-int
 // form uses 0 as the absent sentinel, with @default providing the

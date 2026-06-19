@@ -1,6 +1,6 @@
 ---
 layout: home
-description: "Design-first Go framework on net/http: write your API once in a small DSL and generate typed structs, validators, net/http handlers, and an OpenAPI 3.1 spec — no reflection, no framework in the hot path."
+description: "Design-first Go framework on net/http: write your API once in a small DSL and generate typed structs, validators, net/http handlers, and an OpenAPI 3.1 spec - no reflection, no framework in the hot path."
 
 hero:
   name: craftgo

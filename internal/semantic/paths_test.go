@@ -13,8 +13,8 @@ import (
 // TestResolveMethodPathPathlessUsesIdentsKebab pins the analyzer's
 // pathless-method auto-route to the canonical word-split codegen registers
 // the route with (idents.SplitFieldName). The two engines diverged on
-// digit-boundary names — `ListV2Items` resolved to `/list-v2-items` here but
-// `/list-v2items` in codegen — so the editor showed (and route-collision
+// digit-boundary names - `ListV2Items` resolved to `/list-v2-items` here but
+// `/list-v2items` in codegen - so the editor showed (and route-collision
 // detection keyed on) a route the server never served.
 func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
 	a := &analyzer{}
@@ -121,7 +121,7 @@ func TestPathDifferentVerbNoCollision(t *testing.T) {
 func TestPathlessMethodsNoFalseCollision(t *testing.T) {
 	// Two pathless methods of the same verb auto-route to distinct kebab
 	// paths (`/ping`, `/health`), so they must NOT be flagged as a duplicate
-	// route — the collision key uses the resolved route, not the empty path.
+	// route - the collision key uses the resolved route, not the empty path.
 	mustClean(t, `service S {
 	get Ping {}
 	get Health {}
@@ -181,7 +181,7 @@ service B { get GetY /items/{itemId} { response R } }`))
 		}
 	})
 	t.Run("nested params", func(t *testing.T) {
-		// Multi-segment route with two params — different names in
+		// Multi-segment route with two params - different names in
 		// BOTH slots must still collapse to the same shape.
 		_, diags := Analyze(parseFiles(t, `type R {}
 service A { get GetX /u/{u}/o/{o} { response R } }
@@ -191,8 +191,8 @@ service B { get GetY /u/{userId}/o/{orderId} { response R } }`))
 		}
 	})
 	t.Run("literal vs param does NOT collide", func(t *testing.T) {
-		// /products/abc and /products/{id} are different routes — net/http
-		// dispatches literals before params — so the shape gate must
+		// /products/abc and /products/{id} are different routes - net/http
+		// dispatches literals before params - so the shape gate must
 		// NOT false-positive here.
 		mustClean(t, `type R {}
 type Req { id string }
@@ -266,7 +266,7 @@ func TestPathParamWarnsWithoutRequest(t *testing.T) {
 
 func TestPathParamPassthroughSkipsWarn(t *testing.T) {
 	// Passthrough handlers reach `r.PathValue` directly through the
-	// raw http.Request, so the warning would be spurious — suppress
+	// raw http.Request, so the warning would be spurious - suppress
 	// it for the passthrough path.
 	mustClean(t, `service S {
 	@passthrough

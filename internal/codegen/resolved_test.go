@@ -10,7 +10,7 @@ import (
 // centralises: an un-decorated field auto-binds to @path (name matches a
 // segment), @query (body-less verb), or @body (body verb); an explicit
 // binding wins. This is the single source for "where does each request
-// field ride" — the per-stage walks read it instead of re-deriving.
+// field ride" - the per-stage walks read it instead of re-deriving.
 func TestResolveRequestFields(t *testing.T) {
 	pkg := analyze(t, `package design
 type GetReq { id string  q string?  hdr string @header("H") }
@@ -84,7 +84,7 @@ type Req {
 		byName[rf.DSLName] = rf
 	}
 
-	// The mixin-promoted field is flattened in — a stage reading the IR
+	// The mixin-promoted field is flattened in - a stage reading the IR
 	// can't miss it the way the per-stage td.Body walks used to.
 	if _, ok := byName["createdAt"]; !ok {
 		t.Fatalf("mixin field createdAt not flattened in: %v", names(got))
@@ -94,7 +94,7 @@ type Req {
 		name string
 		want ResolvedField
 	}{
-		// createdAt: @header via mixin — off the body; a non-optional header
+		// createdAt: @header via mixin - off the body; a non-optional header
 		// is a required parameter, so SpecRequired (= fieldIsRequired) is true.
 		{"createdAt", ResolvedField{Binding: BindHeader, OnWireBody: false, SpecRequired: true}},
 		// name: plain required body field.
@@ -103,9 +103,9 @@ type Req {
 		{"sort", ResolvedField{Binding: BindBody, OnWireBody: true, IsPointer: true, NeedsNilGuard: true, HasDefault: true, SpecRequired: false}},
 		// bio: @nullable non-optional → pointer + nil-guard, still required (must send key, may be null).
 		{"bio", ResolvedField{Binding: BindBody, OnWireBody: true, IsPointer: true, NeedsNilGuard: true, SpecRequired: true}},
-		// token: @query — off the body, wire name from the arg.
+		// token: @query - off the body, wire name from the arg.
 		{"token", ResolvedField{Binding: BindQuery, OnWireBody: false, SpecRequired: true}},
-		// secret: @sensitive — server-only, off the body everywhere. SpecRequired
+		// secret: @sensitive - server-only, off the body everywhere. SpecRequired
 		// is the raw fieldIsRequired (true here); the schema skips it before use.
 		{"secret", ResolvedField{Binding: BindSensitive, OnWireBody: false, SpecRequired: true}},
 		// tags: @nullable nilable slice → nil-guarded but NOT a pointer.
@@ -154,7 +154,7 @@ type Req {
 
 // TestResolveFieldsInvariant asserts the cross-stage invariant the IR
 // exists to guarantee: a field in the OpenAPI required[] (SpecRequired) is
-// never optional and never defaulted — the two facts that used to be
+// never optional and never defaulted - the two facts that used to be
 // re-derived by separate stages and drift.
 func TestResolveFieldsInvariant(t *testing.T) {
 	pkg := analyze(t, `package design
@@ -169,7 +169,7 @@ type T {
 		optional := rf.Field.Type != nil && rf.Field.Type.Optional
 		nullable := hasNullableDecorator(rf.Field.Decorators)
 		if rf.SpecRequired && (optional || rf.HasDefault) {
-			t.Errorf("%s: SpecRequired but optional=%v hasDefault=%v — required[] must exclude both",
+			t.Errorf("%s: SpecRequired but optional=%v hasDefault=%v - required[] must exclude both",
 				rf.DSLName, optional, rf.HasDefault)
 		}
 		if !rf.SpecRequired && !optional && !rf.HasDefault {
@@ -178,7 +178,7 @@ type T {
 		// RuntimeEnforced (validator presence check) excludes optional and
 		// @nullable; it does NOT exclude @default. So the two facts diverge
 		// exactly on @default (spec-optional but runtime-checked) and
-		// @nullable (runtime-skipped but spec-required) — pin that the
+		// @nullable (runtime-skipped but spec-required) - pin that the
 		// divergence is only ever for one of those reasons.
 		if rf.RuntimeEnforced != (!optional && !nullable) {
 			t.Errorf("%s: RuntimeEnforced=%v, want %v", rf.DSLName, rf.RuntimeEnforced, !optional && !nullable)

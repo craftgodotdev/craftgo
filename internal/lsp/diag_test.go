@@ -163,7 +163,7 @@ service S {
     }
 }
 `)
-	// Initial: types provides matching `id` field — clean state.
+	// Initial: types provides matching `id` field - clean state.
 	mustWrite(t, typesPath, `package things
 type Req { id string }
 type Resp {}
@@ -183,7 +183,7 @@ type Resp {}
 	}
 
 	// Revert: rename back. The service file's slot in perFile MUST be
-	// non-nil even though it now carries zero diagnostics — otherwise
+	// non-nil even though it now carries zero diagnostics - otherwise
 	// the publisher would send JSON `null` and the LSP client would
 	// keep the stale squiggly.
 	mustWrite(t, typesPath, `package things
@@ -198,7 +198,7 @@ type Resp {}
 	// slice so the wire payload is `[]` (clears) not `null` (ignored).
 	cleared := diagsFor(perFile, servicePath)
 	if cleared == nil {
-		t.Error("diagsFor returned nil; LSP clients treat JSON null as no-op — should be empty slice")
+		t.Error("diagsFor returned nil; LSP clients treat JSON null as no-op - should be empty slice")
 	}
 	if len(cleared) != 0 {
 		t.Errorf("expected empty cleared slice, got %d entries", len(cleared))

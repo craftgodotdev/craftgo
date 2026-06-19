@@ -38,7 +38,7 @@ func NewSearchItemsService(ctx context.Context, svcCtx *svccontext.ServiceContex
 //
 // The response is wrapped in a per-service `ItemList` envelope
 // because the parser rejects bare-array response forms (`Item[]`)
-// in the method body — wrapping in a typed list is the idiomatic
+// in the method body - wrapping in a typed list is the idiomatic
 // shape every other service uses.
 // SearchItems is the service entry point. Replace the
 // TODO with the real implementation.

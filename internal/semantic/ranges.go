@@ -55,7 +55,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		// (`scalar X uint8 @lte(300)`) or an always-false bound (`scalar X
 		// uint @lt(0)`) slipped through and generated non-compiling /
 		// reject-everything Go. Run them via a synthetic field typed as the
-		// scalar's primitive — exactly the decorators a using field inherits.
+		// scalar's primitive - exactly the decorators a using field inherits.
 		scalarAsField := &ast.Field{
 			Name:       dd.Name,
 			Type:       &ast.TypeRef{Named: &ast.NamedTypeRef{Pos: dd.Pos, Name: &ast.QualifiedIdent{Pos: dd.Pos, Parts: []string{dd.Primitive}}}},
@@ -64,8 +64,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBoundCapacity(scalarAsField)
 		a.checkNegativeOnUnsigned(scalarAsField)
 		// Pair-ordering (@gte/@lte, @gt/@lt, @minLength/@maxLength,
-		// @minItems/@maxItems) is purely structural — it reads the
-		// decorators' own numeric args — so a contradictory scalar bound
+		// @minItems/@maxItems) is purely structural - it reads the
+		// decorators' own numeric args - so a contradictory scalar bound
 		// (`scalar Score int @gte(100) @lte(10)`) must be caught here too,
 		// not only on fields.
 		a.checkPairOrdering(scalarAsField)
@@ -77,7 +77,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 			for _, d := range dd.Decorators {
 				if d != nil && (d.Name == "pattern" || d.Name == "format") {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-						"@%s applies to text, not a `bytes` scalar — a binary value has no string pattern / format. Use a `string` scalar, or drop the decorator.",
+						"@%s applies to text, not a `bytes` scalar - a binary value has no string pattern / format. Use a `string` scalar, or drop the decorator.",
 						d.Name)
 				}
 			}
@@ -94,13 +94,13 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 			}
 			if isFloat {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@multipleOf does not support float scalars — Go's modulus operator is integer-only. Use an integer scalar, or add a tolerance check in your handler.")
+					"@multipleOf does not support float scalars - Go's modulus operator is integer-only. Use an integer scalar, or add a tolerance check in your handler.")
 				continue
 			}
 			if integerPrim(dd.Primitive) && len(d.Args) == 1 {
 				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-						"@multipleOf on an integer scalar needs a whole-number divisor — Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
+						"@multipleOf on an integer scalar needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
 				}
 			}
 		}
@@ -159,7 +159,7 @@ func (a *analyzer) checkDecoratorRanges(decs []*ast.Decorator) {
 }
 
 // checkPairArgs handles `@length(min, max)` / `@range(min, max)`. The
-// 1-arg form of `@length` is "exact length" — still non-negative, or the
+// 1-arg form of `@length` is "exact length" - still non-negative, or the
 // validator emits an always-true `l != N` reject (RuneCount is never < 0)
 // while OpenAPI advertises no length constraint at all.
 func (a *analyzer) checkPairArgs(d *ast.Decorator) {
@@ -192,7 +192,7 @@ func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 // checkMultipleOf rejects non-positive divisors. Zero panics at
 // runtime (division by zero). Negative divisors are mathematically
 // valid in Go (`%` follows the dividend sign) but every common
-// interpretation of "multiple of N" means N > 0 — accepting negatives
+// interpretation of "multiple of N" means N > 0 - accepting negatives
 // silently lets a typo (`@multipleOf(-2)`) compile to a validator
 // that exhibits surprising symmetry around the dividend's sign.
 func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
@@ -274,7 +274,7 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 }
 
 // checkPairOrdering enforces "lower decorator ≤ upper decorator" when
-// both appear on the same field. Missing one of the pair is fine — the
+// both appear on the same field. Missing one of the pair is fine - the
 // solo decorator is unconstrained. Four pair families:
 //
 //   - String length: `@minLength` vs `@maxLength`
@@ -283,7 +283,7 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 //   - Numeric (strict):    `@gt`  vs `@lt`
 //
 // Mixed strict/inclusive pairs (`@gte(5) @lt(5)` etc.) are inspected
-// for emptiness — when at least one bound is strict and the endpoints
+// for emptiness - when at least one bound is strict and the endpoints
 // touch, no value satisfies both checks. Without this, codegen happily
 // emits a validator that rejects every input.
 func (a *analyzer) checkPairOrdering(f *ast.Field) {
@@ -312,13 +312,13 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 			continue
 		}
 		// Equal endpoints define an empty value set whenever EITHER
-		// bound is strict — `@gt(5) @lte(5)` excludes 5 on the
+		// bound is strict - `@gt(5) @lte(5)` excludes 5 on the
 		// lower side, `@gte(5) @lt(5)` excludes 5 on the upper side,
 		// `@gt(5) @lt(5)` excludes 5 on both. Only fully-inclusive
 		// `@gte(N) @lte(N)` accepts the single value N.
 		if loV == hiV && (p.loStrict || p.hiStrict) {
 			diag := a.diag(hiPos, hiPos, lexer.SeverityWarning, CodeBoundEmptyRange,
-				"@%s(%g) combined with @%s(%g) defines an empty range — no value satisfies both",
+				"@%s(%g) combined with @%s(%g) defines an empty range - no value satisfies both",
 				p.hi, hiV, p.lo, loV)
 			diag.Related = related(loPos, "@"+p.lo+" declared here")
 		}

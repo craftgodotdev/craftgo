@@ -46,7 +46,7 @@ func TestMultipleOfNonZeroOK(t *testing.T) {
 
 func TestMultipleOfFractionalOnIntRejected(t *testing.T) {
 	// A fractional divisor can't be enforced by integer modulus, yet the
-	// OpenAPI would advertise it — reject so spec and validator agree.
+	// OpenAPI would advertise it - reject so spec and validator agree.
 	expectDiag(t, `type X { n int @multipleOf(2.5) }`, CodeDecoratorTypeMismatch)
 	expectDiag(t, "scalar Step int @multipleOf(2.5)", CodeDecoratorTypeMismatch)
 }
@@ -55,7 +55,7 @@ func TestMultipleOfFractionalOnIntRejected(t *testing.T) {
 
 func TestNegativeOnUnsignedRejected(t *testing.T) {
 	// A uint is always >= 0, so the emitted `value >= 0` rejection fires
-	// for every value — @negative could never pass. Reject at design time.
+	// for every value - @negative could never pass. Reject at design time.
 	expectDiag(t, `type X { count uint @negative }`, CodeDecoratorTypeMismatch)
 	expectDiag(t, `type X { n uint32 @negative }`, CodeDecoratorTypeMismatch)
 	// Caught through a named scalar over an unsigned primitive...
@@ -154,14 +154,14 @@ func TestMinItemsExceedsMaxItems(t *testing.T) {
 
 func TestEmptyRangeStrictPair(t *testing.T) {
 	// Strict + inclusive combos with equal endpoints define an empty
-	// value set — every input fails one of the two checks. Currently a
+	// value set - every input fails one of the two checks. Currently a
 	// warning so users can still hand-roll edge cases; codegen would
 	// otherwise emit a silently-broken validator.
 	expectDiag(t, `type X { v int @gt(5) @lt(5) }`, CodeBoundEmptyRange)
 	expectDiag(t, `type X { v int @gte(5) @lt(5) }`, CodeBoundEmptyRange)
 	expectDiag(t, `type X { v int @gt(5) @lte(5) }`, CodeBoundEmptyRange)
 	// Fully-inclusive `@gte(N) @lte(N)` accepts the single value N
-	// — that's a legitimate "exact match" pattern, not an empty set.
+	// - that's a legitimate "exact match" pattern, not an empty set.
 	mustClean(t, `type X { v int @gte(5) @lte(5) }`)
 }
 
@@ -173,7 +173,7 @@ func TestMultipleOfNegativeRejected(t *testing.T) {
 }
 
 func TestCrossFieldDuplicateRef(t *testing.T) {
-	// @requiresOneOf(a, a, b) — duplicate field names get rejected
+	// @requiresOneOf(a, a, b) - duplicate field names get rejected
 	// because the generated check would be `v.A == nil && v.A == nil`,
 	// which go vet flags as a redundant boolean expression and breaks
 	// `go test` for downstream projects.
@@ -182,7 +182,7 @@ type X { a string? b string? }`, CodeDuplicateGroupField)
 }
 
 func TestMutuallyExclusiveSingleField(t *testing.T) {
-	// @mutuallyExclusive(only) with a single field — the counter
+	// @mutuallyExclusive(only) with a single field - the counter
 	// check `n > 1` is unreachable, so the rule never fires. Flag
 	// it so the author either adds more fields or removes the
 	// decorator.
@@ -194,11 +194,11 @@ func TestBoundOverflowInt8(t *testing.T) {
 	// Bound literals that exceed the field primitive's capacity are
 	// rejected at semantic time so codegen never emits something
 	// like `if v.X > 300` against an int8 field (300 overflows the
-	// int8 range — max 127).
+	// int8 range - max 127).
 	expectDiag(t, `type X { score int8 @lte(300) }`, CodeBoundOverflow)
 	expectDiag(t, `type X { neg int8 @gte(-200) }`, CodeBoundOverflow)
 	expectDiag(t, `type X { u uint @lt(-1) }`, CodeBoundOverflow)
-	// Within range — OK.
+	// Within range - OK.
 	mustClean(t, `type X { score int8 @lte(127) @gte(-128) }`)
 	mustClean(t, `type X { u uint8 @range(0, 255) }`)
 }
@@ -256,7 +256,7 @@ func TestFloat32BoundOverflow(t *testing.T) {
 
 func TestIntegralFloatBoundOnIntOK(t *testing.T) {
 	// An integral float literal renders to a whole-number Go literal
-	// (`1.0` → `1`), so it compiles fine and is not flagged — the check
+	// (`1.0` → `1`), so it compiles fine and is not flagged - the check
 	// targets only genuinely fractional values.
 	mustClean(t, `type X { count int @gte(1.0) @lte(10.0) }`)
 	mustClean(t, `type X { count int @range(0.0, 100.0) }`)
@@ -383,7 +383,7 @@ func TestUniqueItemsComparableOK(t *testing.T) {
 // ---------- map key comparability ----------
 
 func TestMapKeyNotMarshalableRejected(t *testing.T) {
-	// A generic type-parameter key lowers to `map[K any]` — invalid Go.
+	// A generic type-parameter key lowers to `map[K any]` - invalid Go.
 	expectDiag(t, "type Item { id int }\ntype Index<K> { byKey map<K, Item> }", CodeMapKeyType)
 	// A struct with a slice field is not comparable, so `map[Item]...` fails.
 	expectDiag(t, "type Item { tags string[] }\ntype Bad { m map<Item, string> }", CodeMapKeyType)

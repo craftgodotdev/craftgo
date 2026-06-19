@@ -99,7 +99,7 @@ func renderScalars(pkg *semantic.Package) string {
 	// Defined type (NOT an alias `=`): a distinct Go type so the scalar
 	// can carry a Validate() method, defined ONCE and reused by every
 	// field of this type and picked up by the generic-instance validator
-	// via its `interface{ Validate() error }` assertion — so `Page<Email>`
+	// via its `interface{ Validate() error }` assertion - so `Page<Email>`
 	// enforces Email's @format instead of silently dropping it.
 	const tmpl = "// %s is a DSL scalar over %s; its declared validators live on its Validate() method and are inherited by every field of this type.\ntype %s %s\n\n"
 	parts := make([]string, len(names))
@@ -139,7 +139,7 @@ func renderImports(imps []string) string {
 // types. When crossPkg is non-empty, multi-part DSL refs add the
 // matching Go import paths so a `shared.User` field surfaces
 // `<module>/<typesDir>/shared` in the import block.
-// collectBodyImports adds every Go import a type / error body reaches into —
+// collectBodyImports adds every Go import a type / error body reaches into -
 // both directly-declared fields AND embedded mixins, whose generic args may
 // name a cross-package type (`Box<mod.Owner>` → embedded `Box[mod.Owner]`).
 // It is the single home for the body import walk so the type emitter and the
@@ -156,7 +156,7 @@ func collectBodyImports(body []ast.TypeMember, crossPkg CrossPkg, imports map[st
 				ref := &ast.TypeRef{Named: v.Ref}
 				// A mixin's generic arg can be a stdlib-backed builtin
 				// (`Box<file>` → embedded `Box[*multipart.FileHeader]`), so
-				// collect those imports too — mirroring the Field branch, which
+				// collect those imports too - mirroring the Field branch, which
 				// owns the `file → mime/multipart` mapping.
 				collectFieldImports(ref, imports)
 				walkCrossPkgImports(ref, crossPkg, imports)
@@ -306,13 +306,13 @@ func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectR
 // pointer-wrap decision for a field so every stage agrees:
 //
 //   - Already-nilable Go types (slice, map, pointer, interface, the
-//     `bytes`/`any`/`file` builtins) — no extra wrap; nil naturally
+//     `bytes`/`any`/`file` builtins) - no extra wrap; nil naturally
 //     encodes to JSON `null`.
 //   - A scalar whose underlying primitive is itself nilable (`scalar
-//     Blob bytes` → `[]byte`) — no extra wrap either: the named slice
+//     Blob bytes` → `[]byte`) - no extra wrap either: the named slice
 //     holds nil directly, exactly like a raw `bytes` field, so an
 //     optional / `@nullable` `Blob` stays `Blob`, not `*Blob`.
-//   - Value types (string, int, struct, scalar-over-value) — wrap in
+//   - Value types (string, int, struct, scalar-over-value) - wrap in
 //     `*T` so the field can hold nil. Combined with [jsonTag] dropping
 //     `omitempty`, the encoder emits `"f": null` for nil and `"f":
 //     value` otherwise.
@@ -342,7 +342,7 @@ func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) b
 // scalarRefNilable reports whether t is a bare named scalar whose
 // underlying primitive is itself nilable in Go (today only `bytes` →
 // `[]byte`, plus `any`). Such a scalar field holds nil directly, so an
-// optional / `@nullable` use of it needs no redundant pointer — matching
+// optional / `@nullable` use of it needs no redundant pointer - matching
 // how a raw `bytes` field is rendered. Arrays, maps, and generic
 // instances are excluded: their nilability is already syntactic. The
 // primitive-nilability verdict comes from [semantic.NilableScalarPrimitive],
@@ -367,7 +367,7 @@ func scalarRefNilable(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver)
 }
 
 // renderMixin returns one Go-level embedded-type line. Qualified
-// references survive verbatim — Go allows `pkg.Name` as an embedded
+// references survive verbatim - Go allows `pkg.Name` as an embedded
 // field, and the consuming file already carries the matching import
 // (added by the type-resolver). Stripping the qualifier produced
 // `undefined: Name` compile errors for every cross-package mixin.
@@ -484,7 +484,7 @@ func GoFieldName(name string) string {
 
 // structTag renders the full back-tick struct tag for a field: the `json`
 // key (see [jsonTag]) plus, for a non-body binding, a second key naming the
-// wire location the value rides — `path:"id"`, `query:"page"`,
+// wire location the value rides - `path:"id"`, `query:"page"`,
 // `header:"X-Trace-Id"`, `cookie:"session"`. The binding key carries the
 // same wire name the transport binder and the OpenAPI parameter use, so a
 // reader can see where a `json:"-"` field is read from / written to without
@@ -503,7 +503,7 @@ func structTag(f *ast.Field) string {
 // "DSL field name = JSON tag (1:1, no conversion)" the original name is
 // used verbatim.
 //
-// `omitempty` rules — `?` is the dominant flag:
+// `omitempty` rules - `?` is the dominant flag:
 //   - Optional `T?` (with or without @nullable) → yes (omit when nil).
 //     The `?` suffix means "field may be absent on the wire", so a nil
 //     value MUST round-trip as omitted, not as explicit JSON `null`.
@@ -527,7 +527,7 @@ func jsonTag(f *ast.Field) string {
 	if isNonBodyBound(f) || hasSensitiveDecorator(f.Decorators) {
 		return "-"
 	}
-	// `?` always implies omitempty — the wire contract is "may be
+	// `?` always implies omitempty - the wire contract is "may be
 	// absent" and Go's encoder must honour that even when @nullable
 	// is also present (semantic flags @nullable as redundant on a
 	// `T?` field, but the codegen path must not regress to emit
@@ -537,7 +537,7 @@ func jsonTag(f *ast.Field) string {
 	}
 	// `@nullable` on a non-optional field keeps the value always-
 	// emitted so a nil pointer surfaces as JSON `null` rather than
-	// being skipped — "must send the key, may be null".
+	// being skipped - "must send the key, may be null".
 	if hasNullableDecorator(f.Decorators) {
 		return f.Name
 	}
@@ -545,8 +545,8 @@ func jsonTag(f *ast.Field) string {
 }
 
 // nonBodyBindingKind returns the wire location an explicit binding decorator
-// places a field in — path / query / header / cookie, the bindings served
-// outside the JSON body — or "" for a body, form, sensitive, or undecorated
+// places a field in - path / query / header / cookie, the bindings served
+// outside the JSON body - or "" for a body, form, sensitive, or undecorated
 // field. It is the single authority for "this field rides off the JSON
 // body": [jsonTag] reads it to emit `json:"-"`, and [structTag] reads it to
 // name the wire location in the field's own tag key. Values bound here are
@@ -559,6 +559,6 @@ func nonBodyBindingKind(f *ast.Field) string {
 	return ""
 }
 
-// isNonBodyBound reports whether f is bound outside the JSON body — see
+// isNonBodyBound reports whether f is bound outside the JSON body - see
 // [nonBodyBindingKind].
 func isNonBodyBound(f *ast.Field) bool { return nonBodyBindingKind(f) != "" }

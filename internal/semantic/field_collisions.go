@@ -109,7 +109,7 @@ func (a *analyzer) warnFieldCollisions(parent string, members []ast.TypeMember) 
 	}
 }
 
-// isLetterStart reports whether s begins with a Unicode letter — the
+// isLetterStart reports whether s begins with a Unicode letter - the
 // requirement for a valid (exported) Go identifier start.
 func isLetterStart(s string) bool {
 	for _, r := range s {
@@ -128,12 +128,12 @@ func (a *analyzer) checkFieldUniqueness() {
 			}
 			// The field's Go identifier must be a non-empty, letter-leading
 			// exported name. `_` / `__` normalise to "" (an anonymous embed)
-			// and `_2` normalises to the digit-leading "2" — both make the
+			// and `_2` normalises to the digit-leading "2" - both make the
 			// struct emitter produce uncompilable or unexported Go with no
 			// diagnostic. Reject here so the author gets a clean message.
 			if gn := idents.GoFieldName(f.Name); gn == "" || !isLetterStart(gn) {
 				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeInvalidGoName,
-					"field %q in %q maps to an invalid Go field name %q — a field name must contain a letter and not normalise to a digit-leading or empty identifier. Rename it (e.g. add a leading letter).",
+					"field %q in %q maps to an invalid Go field name %q - a field name must contain a letter and not normalise to a digit-leading or empty identifier. Rename it (e.g. add a leading letter).",
 					f.Name, name, gn)
 			}
 			if prev, exists := seen[f.Name]; exists {
@@ -157,7 +157,7 @@ func (a *analyzer) checkFieldUniqueness() {
 // errorReservedGoNames are the methods the error template generates on the
 // error type. A body field whose Go name matches one is shadowed by the
 // method (Go selector resolution binds the shallower method over the embedded
-// field), so `e.<Name>` is a func value — the response-header writer then
+// field), so `e.<Name>` is a func value - the response-header writer then
 // emits non-compiling Go, and even a plain body field can't be reached by
 // that selector.
 var errorReservedGoNames = map[string]bool{
@@ -174,7 +174,7 @@ func (a *analyzer) checkErrorReservedFieldNames(ed *ast.ErrorDecl) {
 		}
 		if gn := idents.GoFieldName(f.Name); errorReservedGoNames[gn] {
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeInvalidGoName,
-				"error %s field %q maps to the Go name %q, which collides with the generated error method %s() — the value would be shadowed by the method and produce non-compiling Go. Rename the field.",
+				"error %s field %q maps to the Go name %q, which collides with the generated error method %s() - the value would be shadowed by the method and produce non-compiling Go. Rename the field.",
 				ed.Name, f.Name, gn, gn)
 		}
 	}

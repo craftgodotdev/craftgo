@@ -53,18 +53,18 @@ const (
 	CodeDefaultNeedsOptional = "decorator/default-needs-optional"
 	// CodeFlagEmptyParens fires (severity warning) when a Flag
 	// decorator (one that never takes arguments) is written with empty
-	// parens — `@positive()` instead of `@positive`. Warning only:
+	// parens - `@positive()` instead of `@positive`. Warning only:
 	// `craftgo fmt` strips the parens on save so canonical form is
 	// parens-free.
 	CodeFlagEmptyParens = "decorator/flag-empty-parens"
 	// CodeArgPreferIdent fires (severity warning) when a decorator
 	// argument names a registered identifier (format name, security
 	// scheme, ...) but the source spells it as a quoted string. The
-	// canonical form is bare ident — `@format(email)` not
+	// canonical form is bare ident - `@format(email)` not
 	// `@format("email")`. `craftgo fmt` rewrites on save.
 	CodeArgPreferIdent = "decorator/arg-prefer-ident"
 	// CodeBoundOverflow fires when a numeric bound literal exceeds
-	// the field type's capacity. `int8 @lte(300)` — 300 overflows
+	// the field type's capacity. `int8 @lte(300)` - 300 overflows
 	// int8 (max 127). Without this check codegen emits an untyped
 	// integer literal that fails to compile against the typed field.
 	CodeBoundOverflow = "decorator/bound-overflow"
@@ -158,7 +158,7 @@ const (
 	CodeDuplicateField = "field/duplicate"
 
 	// CodeInvalidGoName fires when a field name maps to an invalid Go
-	// identifier — empty (e.g. `_`, `__`) or digit-leading (e.g. `_2`,
+	// identifier - empty (e.g. `_`, `__`) or digit-leading (e.g. `_2`,
 	// which normalises to `2`). Codegen would emit uncompilable / unexported
 	// Go, so reject at design time with a clean message instead.
 	CodeInvalidGoName = "field/invalid-go-name"
@@ -210,7 +210,7 @@ const (
 	// CodeBindingVerb fires when `@body` or `@form` sits on a request
 	// field of a non-body verb (GET / HEAD / DELETE / OPTIONS). Those
 	// handlers decode no request body, so the field would be silently
-	// dropped at gen time — surfacing it at design time prevents the
+	// dropped at gen time - surfacing it at design time prevents the
 	// silent data loss.
 	CodeBindingVerb = "binding/verb"
 	// CodeFilePosition fires when a `file` field appears where the
@@ -286,7 +286,7 @@ const (
 	// resolve to the same VERB + final-path tuple.
 	CodePathCollision = "path/collision"
 	// CodeDuplicateOperation fires when two methods resolve to the same
-	// OpenAPI operationId — auto-prefixing removes same-method-name
+	// OpenAPI operationId - auto-prefixing removes same-method-name
 	// collisions, so a survivor comes from an explicit `@operationId(...)`
 	// that two methods share (or that equals another method's auto id),
 	// which would emit an invalid spec.

@@ -59,7 +59,7 @@ func IsWireParseable(name string) bool {
 // fully upper-cased when they appear as a word inside a Go identifier
 // (matches `golint`/`staticcheck` conventions). Adding entries here
 // changes the canonical Go name for any DSL field whose word list
-// includes the new initialism — projects must regenerate to pick up
+// includes the new initialism - projects must regenerate to pick up
 // the new spelling.
 var commonInitialisms = map[string]bool{
 	"id": true, "url": true, "uri": true, "api": true, "http": true,
@@ -147,7 +147,7 @@ func SplitFieldName(s string) []string {
 // generated file names) so the analyser's pathless-method route and the
 // route codegen registers cannot disagree: `ListV2Items` → `list-v2items`,
 // `GetUser` → `get-user`. A digit→letter boundary is NOT a word break, so
-// `V2Items` stays one word — unlike a hand-rolled camel walker that splits
+// `V2Items` stays one word - unlike a hand-rolled camel walker that splits
 // before any uppercase whose next rune is lowercase.
 func KebabCase(s string) string {
 	parts := SplitFieldName(s)
@@ -188,7 +188,7 @@ type Collision struct {
 //
 // The dedup keeps the first DSL spelling at its bare Go name so a
 // project that adds a colliding alias later doesn't retroactively
-// rename the original field — generated code stays stable for
+// rename the original field - generated code stays stable for
 // already-published struct shapes.
 func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Collision) {
 	resolved = make([]string, len(dslNames))
@@ -224,7 +224,7 @@ func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Colli
 }
 
 // LastSegment returns the trailing slash-delimited segment of a DSL import
-// path — the piece that becomes the package's referencing identifier
+// path - the piece that becomes the package's referencing identifier
 // (`import "auth/types"` → alias `types`). Returns p unchanged when it has
 // no slash, and "" for an empty or slash-terminated path.
 func LastSegment(p string) string {

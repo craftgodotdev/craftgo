@@ -1,6 +1,6 @@
 # upload example
 
-File uploads with craftgo — single files, **multiple files (`file[]`)**, and
+File uploads with craftgo - single files, **multiple files (`file[]`)**, and
 multipart requests that mix many field shapes in one body. Every handler is
 implemented against a small in-memory store and actually reads the uploaded
 parts.
@@ -25,7 +25,7 @@ go run .           # listens on :8080, docs at /docs
 
 ## The multipart wire format
 
-Arrays ride as **repeated parts with the same field name** — `photos` appears
+Arrays ride as **repeated parts with the same field name** - `photos` appears
 once per file, `tags` once per value:
 
 ```bash

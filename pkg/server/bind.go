@@ -26,7 +26,7 @@ type wireFloat interface {
 }
 
 // bitSize reports the bit width of T (8 / 16 / 32 / 64) so the parse
-// rejects a value that overflows the declared field type — an `int8`
+// rejects a value that overflows the declared field type - an `int8`
 // field still rejects 300. A named scalar reports its underlying width.
 func bitSize[T any]() int {
 	var z T
@@ -121,7 +121,7 @@ func BindValues[T any](w http.ResponseWriter, r *http.Request, field, kind strin
 		return true
 	}
 	// Key present: the wire array carries the full value, so REPLACE rather
-	// than append — appending onto a prefilled `@default` would concatenate
+	// than append - appending onto a prefilled `@default` would concatenate
 	// the default with the request ([7,8] + [4,5] = [7,8,4,5]).
 	*dst = (*dst)[:0]
 	for _, s := range raw {

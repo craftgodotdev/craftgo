@@ -1,5 +1,5 @@
 // Resolved field IR: the single, LAYER-AGNOSTIC view of a
-// field's resolved facts — what the field MEANS in the DSL (its category,
+// field's resolved facts - what the field MEANS in the DSL (its category,
 // underlying primitive, home package, nilability), independent of how Go
 // renders it. The LSP and the semantic checks read these directly; codegen
 // derives the Go-specific bits (the *T pointer wrap, the json tag, the Go
@@ -52,7 +52,7 @@ type ResolvedField struct {
 	// field. "" for enum / struct / array / map / file / unresolved.
 	ResolvedPrim string
 
-	// HomePkg is the package the field's named type lives in — the qualifier
+	// HomePkg is the package the field's named type lives in - the qualifier
 	// of a `lib.X` ref, or the package a bare ref was resolved against (which,
 	// for a field promoted across a package boundary, is the mixin's home, NOT
 	// the using package). "" for a builtin primitive or an unresolved ref.
@@ -67,7 +67,7 @@ type ResolvedField struct {
 }
 
 // ResolveField computes the layer-agnostic facts for a single field. pkg is
-// the field's HOME package — for a bare named ref it is resolved against pkg,
+// the field's HOME package - for a bare named ref it is resolved against pkg,
 // so a field promoted from a sibling-package mixin must be resolved with that
 // mixin's package as pkg (not the using package). proj resolves a qualified
 // `lib.X` ref against its named package.

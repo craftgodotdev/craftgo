@@ -41,7 +41,7 @@ type ListProductsReq struct {
 	Tag      *string `json:"-" query:"tag"`
 }
 
-// Deprecated: rename to Item in v2 — kept for backward compat
+// Deprecated: rename to Item in v2 - kept for backward compat
 type Product struct {
 	Timestamps
 	ID          shared.NonEmptyID    `json:"id"`

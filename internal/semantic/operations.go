@@ -2,7 +2,7 @@ package semantic
 
 // Operation-name resolution. The operationId and the component-schema base
 // name a method emits are LANGUAGE facts (derived from the method name, its
-// service, and an explicit @operationId override) — not OpenAPI rendering — so
+// service, and an explicit @operationId override) - not OpenAPI rendering - so
 // they are decided here, on the floor both the analyser and codegen read.
 // codegen's emit calls [OperationID] / [OperationBaseName]; the analyser's
 // [analyzer.checkOperationIDUniqueness] flags duplicates at design time so the
@@ -87,7 +87,7 @@ func (a *analyzer) checkOperationIDUniqueness() {
 		joined := strings.Join(refs, ", ")
 		for _, o := range who {
 			a.diag(o.pos, o.pos, lexer.SeverityError, CodeDuplicateOperation,
-				"operationId %q is shared by %s — give each method a distinct @operationId(...)",
+				"operationId %q is shared by %s - give each method a distinct @operationId(...)",
 				id, joined)
 		}
 	}
@@ -96,7 +96,7 @@ func (a *analyzer) checkOperationIDUniqueness() {
 // checkProjectOperationIDUniqueness is the cross-package twin of
 // [analyzer.checkOperationIDUniqueness]. The single emitted OpenAPI document
 // merges every package's services, so two methods anywhere in the project that
-// resolve to the same operationId clash — yet the per-package pass only ever
+// resolve to the same operationId clash - yet the per-package pass only ever
 // sees one package. Method-name counts are taken PROJECT-WIDE (matching the
 // merged document), so an auto id shared by services in different packages is
 // service-prefixed and does not clash; an explicit @operationId override is
@@ -154,7 +154,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 			pkgs[o.pkg] = true
 		}
 		if len(pkgs) < 2 {
-			continue // same-package collision — the per-package pass owns it
+			continue // same-package collision - the per-package pass owns it
 		}
 		refs := make([]string, len(who))
 		for i, o := range who {
@@ -163,7 +163,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 		joined := strings.Join(refs, ", ")
 		for _, o := range who {
 			r.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation,
-				"operationId %q is shared across packages by %s — give each method a distinct @operationId(...)",
+				"operationId %q is shared across packages by %s - give each method a distinct @operationId(...)",
 				id, joined)
 		}
 	}

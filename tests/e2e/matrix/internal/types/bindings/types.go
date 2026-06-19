@@ -39,7 +39,7 @@ type BodyExplicitReq struct {
 	Payload string `json:"payload"`
 }
 
-// CookieReq drives the cookie binder with an explicit wire name — the
+// CookieReq drives the cookie binder with an explicit wire name - the
 // runtime fetches the cookie named `session_id`.
 type CookieReq struct {
 	Session string `json:"-" cookie:"session_id"`
@@ -55,7 +55,7 @@ type FormFileReq struct {
 }
 
 // GetItemReq is the path-only DTO reused by GetItem and DeleteItem.
-// Two operations sharing one DTO is fine — they both want the same
+// Two operations sharing one DTO is fine - they both want the same
 // "lookup by id" handle.
 type GetItemReq struct {
 	ID UUID `json:"-" path:"id"`
@@ -85,7 +85,7 @@ type Item struct {
 }
 
 // ItemList is the SearchItems response envelope. Mirrors the
-// UserList / TaskList shape every other service uses — the parser
+// UserList / TaskList shape every other service uses - the parser
 // rejects bare-array response forms in the method body, so list
 // endpoints wrap the slice in a per-service envelope.
 type ItemList struct {
@@ -99,7 +99,7 @@ type ItemList struct {
 // decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
 // and the binder pointer-wraps the present value (nil when the form value
 // is absent). Contrast with `@nullable @query`/`@header`, which are
-// rejected — an explicit wire param is a string with no JSON-null form.
+// rejected - an explicit wire param is a string with no JSON-null form.
 type NullableFormReq struct {
 	Doc  *multipart.FileHeader `json:"doc"`
 	Meta *string               `json:"meta"`
@@ -138,7 +138,7 @@ type PathStringReq struct {
 // QueryArrayEnumDefaultReq drives the enum-array @query @default path.
 // The slice is pre-filled with the wire values of the default members
 // ([Red, Blue]); the binder must REPLACE that pre-fill when the param
-// is present, not append to it — so `?colors=green` yields ["green"],
+// is present, not append to it - so `?colors=green` yields ["green"],
 // never ["red", "green", "blue"]. The has-default oracle the binder
 // consults resolves the enum-member array literal so it agrees with the
 // pre-fill that emitted the default.
@@ -154,7 +154,7 @@ type QueryArrayIntReq struct {
 }
 
 // QueryArrayStringReq exercises the `[]string @query` shape. The
-// generator emits `req.Tags = r.URL.Query()["tags"]` — repeated
+// generator emits `req.Tags = r.URL.Query()["tags"]` - repeated
 // `?tags=a&tags=b` lands as `["a", "b"]`. CSV (`?tags=a,b`) is NOT
 // auto-split.
 type QueryArrayStringReq struct {
@@ -168,7 +168,7 @@ type QueryBoolReq struct {
 }
 
 // QueryEnumReq drives the enum cast path through @query. Enums are
-// string-shape on the wire, so optional is fine — the binder reads
+// string-shape on the wire, so optional is fine - the binder reads
 // the raw string and casts up to the Color alias.
 type QueryEnumReq struct {
 	C *Color `json:"-" query:"c"`
@@ -219,7 +219,7 @@ type SearchReq struct {
 // UploadReq pairs the path-bound id with the form-file upload. The
 // id is auto-bound to the `{id}` segment of /users/{id}/avatar; the
 // file rides the multipart body and runs @maxSize + @mimeTypes at
-// validate time. `caption` is an OPTIONAL form field — it proves the
+// validate time. `caption` is an OPTIONAL form field - it proves the
 // multipart schema's required[] lists only the mandatory file, not the
 // optional text field (and never the path-bound `id`).
 //

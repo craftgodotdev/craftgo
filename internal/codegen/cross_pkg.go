@@ -209,14 +209,14 @@ func resolveTypeRef(n *ast.NamedTypeRef, crossPkg CrossPkg) (alias, bare string,
 // genericArgsSuffix renders the Go generic-instantiation suffix for a
 // named-type ref, or "" when the ref has no type arguments. Used so
 // service / handler signatures emit `Page[types.Order]` instead of
-// bare `Page` — the latter trips a "cannot use generic type without
+// bare `Page` - the latter trips a "cannot use generic type without
 // instantiation" compile error wherever the signature lives.
 //
 // `localAlias` is the Go import alias the consuming file uses for
 // the canonical types package (almost always "types"). Single-segment
 // generic args (local types like `Order`) get prefixed with it so the
 // reference resolves through the consuming file's import block.
-// Cross-package args (`shared.User`) keep their DSL qualifier — the
+// Cross-package args (`shared.User`) keep their DSL qualifier - the
 // caller is responsible for ensuring that package is imported, same
 // as for the top-level type. Multi-arg (`Pair<A, B>`) and nested
 // instantiations flow through `GoTypeRef` recursively.

@@ -127,7 +127,7 @@ type ListUsersReq struct {
 
 // ListUsersResp wraps a page of Users with the canonical pagination
 // envelope. `meta` is a NESTED reference (not a mixin) so the
-// pagination summary lands in its own JSON sub-object — the
+// pagination summary lands in its own JSON sub-object - the
 // distinction between "embed at root" (mixin) and "embed as nested
 // object" (field) is captured cleanly across these two consumers.
 type ListUsersResp struct {
@@ -153,7 +153,7 @@ type PaginatedResp struct {
 
 // Project carries the cross-package `shared.ID` scalar (Go field
 // type: `string`, validators inherited from the scalar decl) and
-// the SAME-PACKAGE `UserRef` nested type — exercise of both the
+// the SAME-PACKAGE `UserRef` nested type - exercise of both the
 // qualified and the bare type-reference paths in one DTO.
 type Project struct {
 	ID    shared.ID `json:"id"`

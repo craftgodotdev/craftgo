@@ -9,14 +9,14 @@ type ServiceContext struct {
 
 	mu sync.Mutex
 
-	// account-user service — in-memory store.
+	// account-user service - in-memory store.
 	Users map[string]map[string]any
 
-	// profile service — in-memory store + id allocator.
+	// profile service - in-memory store + id allocator.
 	Profiles map[string]any
 	NextID   int
 
-	// runtime services (orders / catalog) — seeded demo values.
+	// runtime services (orders / catalog) - seeded demo values.
 	OrderID    string
 	OrderTotal int
 	ItemSKU    string

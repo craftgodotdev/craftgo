@@ -56,7 +56,7 @@ func (m *Mixin) MemberPos() Pos { return m.Pos }
 //   - Stand-alone blocks separated from surrounding members by a blank line.
 //
 // Text holds one entry per `//` source line, with the leading `// ` (slashes
-// plus optional single space) already stripped — the parser populates this
+// plus optional single space) already stripped - the parser populates this
 // from the lexer's Doc-attached buffer when the buffer is decided to be
 // "free-floating" rather than the next member's leading doc.
 //

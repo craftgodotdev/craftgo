@@ -12,10 +12,10 @@ Every `craftgo gen` produces `docs/openapi.yaml` with:
 - Doc comments flowing into descriptions
 - Security schemes from your config
 
-The spec renders directly in **Swagger UI** and **ReDoc**, and feeds `openapi-generator` for client libraries in any language — the day-to-day tools accept it as-is.
+The spec renders directly in **Swagger UI** and **ReDoc**, and feeds `openapi-generator` for client libraries in any language - the day-to-day tools accept it as-is.
 
-Nullability uses the canonical 3.1 idiom — `type: [T, "null"]` for inline types
-and `anyOf: [{$ref}, {type: "null"}]` for named/generic refs — not the removed
+Nullability uses the canonical 3.1 idiom - `type: [T, "null"]` for inline types
+and `anyOf: [{$ref}, {type: "null"}]` for named/generic refs - not the removed
 3.0 `nullable: true` boolean, so strict 3.1 validators (Spectral, Redocly) and
 client generators (hey-api, openapi-typescript) keep the `| null` union instead
 of silently dropping it.
@@ -37,11 +37,11 @@ Every `craftgo gen` writes `docs/openapi.yaml` covering:
 
 The output is consumed cleanly by:
 
-- The official OpenAPI parser behind **Swagger UI** and **ReDoc** — renders without errors.
+- The official OpenAPI parser behind **Swagger UI** and **ReDoc** - renders without errors.
 - [`openapi-generator`](https://openapi-generator.tech/) and similar client generators.
-- [oasdiff](https://github.com/oasdiff/oasdiff) — breaking-change detection between versions.
+- [oasdiff](https://github.com/oasdiff/oasdiff) - breaking-change detection between versions.
 
-Strict structural linters ([Spectral](https://stoplight.io/open-source/spectral), [Redocly CLI](https://redocly.com/redocly-cli/)) currently report `nullable`-related findings under their default 3.1 ruleset — see the warning above. Aside from the `nullable` idiom, the structure (paths, schemas, parameters, `oneOf`/`anyOf` for cross-field constraints, `propertyNames` for map keys) is valid 3.1.
+Strict structural linters ([Spectral](https://stoplight.io/open-source/spectral), [Redocly CLI](https://redocly.com/redocly-cli/)) currently report `nullable`-related findings under their default 3.1 ruleset - see the warning above. Aside from the `nullable` idiom, the structure (paths, schemas, parameters, `oneOf`/`anyOf` for cross-field constraints, `propertyNames` for map keys) is valid 3.1.
 
 ## Renders
 

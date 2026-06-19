@@ -19,7 +19,7 @@ type Category {
 	parent CategoryRef?
 }
 
-@deprecated("rename to Item in v2 — kept for backward compat")
+@deprecated("rename to Item in v2 - kept for backward compat")
 type Product {
 	Timestamps
 	id          shared.NonEmptyID

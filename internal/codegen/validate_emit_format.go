@@ -94,7 +94,7 @@ var formatValidators = map[string]formatValidator{
 
 	// RFC 4291 IPv6 - parse succeeds AND not a v4 address. Handles
 	// `::`, zone IDs, IPv4-mapped (`::ffff:1.2.3.4`), and shortened
-	// forms — every shape a regex would miss.
+	// forms - every shape a regex would miss.
 	"ipv6": stmtFormat("IPv6", []string{"net"},
 		`_ip := net.ParseIP(%s); _ip == nil || _ip.To4() != nil`),
 
@@ -104,7 +104,7 @@ var formatValidators = map[string]formatValidator{
 		`^\+?[0-9 ()-]{6,20}$`),
 
 	// RFC 3339 date-time. time.Parse handles fractional seconds,
-	// optional offset, and rejects malformed dates (Feb 30 etc.) —
+	// optional offset, and rejects malformed dates (Feb 30 etc.) -
 	// a regex couldn't catch the latter.
 	"datetime": stmtFormat("RFC 3339 datetime", []string{"time"},
 		`_, _err := time.Parse(time.RFC3339, %s); _err != nil`),

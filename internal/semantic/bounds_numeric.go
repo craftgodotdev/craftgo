@@ -15,7 +15,7 @@ import (
 // checkMultipleOfTarget rejects `@multipleOf` where the generated validator
 // can't enforce what the OpenAPI advertises. Go's `%` operator is
 // integer-only: a float field can't be checked at all, and an integer
-// field with a fractional divisor (`@multipleOf(2.5)`) can't either — the
+// field with a fractional divisor (`@multipleOf(2.5)`) can't either - the
 // validator silently drops it while the spec still advertises `multipleOf:
 // 2.5`. Both are rejected so the spec and the validator agree.
 func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
@@ -33,15 +33,15 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 		}
 		if isFloat {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@multipleOf does not support float fields — Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
+				"@multipleOf does not support float fields - Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
 			continue
 		}
 		// Integer field: a fractional divisor is unenforceable by integer
-		// modulus, yet the OpenAPI would advertise it — reject it.
+		// modulus, yet the OpenAPI would advertise it - reject it.
 		if len(d.Args) == 1 {
 			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@multipleOf on an integer field needs a whole-number divisor — Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
+					"@multipleOf on an integer field needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
 			}
 		}
 	}
@@ -59,7 +59,7 @@ func unsignedPrim(prim string) bool {
 }
 
 // integerPrim reports whether prim is a signed or unsigned integer
-// primitive — the set whose @multipleOf is enforced with Go's modulus.
+// primitive - the set whose @multipleOf is enforced with Go's modulus.
 func integerPrim(prim string) bool {
 	switch prim {
 	case "int", "int8", "int16", "int32", "int64",
@@ -71,7 +71,7 @@ func integerPrim(prim string) bool {
 
 // checkNegativeOnUnsigned rejects `@negative` on an unsigned-integer
 // field. The validator emits a `value >= 0` rejection, which fires for
-// EVERY value of a `uint*` (always >= 0) — the field could never
+// EVERY value of a `uint*` (always >= 0) - the field could never
 // validate. Resolves through a named scalar so `count Quantity
 // @negative` (scalar Quantity uint) is caught the same way a bare
 // `count uint @negative` is.
@@ -89,14 +89,14 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	a.diagNegativeUnsigned(f.Decorators, prim)
 	// `@lt(0)` is the desugared spelling of `@negative`: "value < 0", which
 	// no `uint*` can satisfy. The capacity check ([checkBoundCapacity])
-	// misses it because 0 is itself an in-range value — only the predicate
+	// misses it because 0 is itself an in-range value - only the predicate
 	// is empty. (`@lt(N)` / `@lte(N)` with N < 0 are already caught there
 	// as out-of-range literals.)
 	for _, d := range f.Decorators {
 		if d != nil && d.Name == "lt" && len(d.Args) == 1 {
 			if il, ok := d.Args[0].Value.(*ast.IntLit); ok && il.Value == 0 {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@lt(0) cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or a positive bound", prim)
+					"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
 			}
 		}
 	}
@@ -108,7 +108,7 @@ func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 	for _, d := range decs {
 		if d != nil && d.Name == "negative" {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@negative cannot apply to an unsigned type (%s is always >= 0) — every value would be rejected; use a signed integer or drop @negative", prim)
+				"@negative cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or drop @negative", prim)
 		}
 	}
 }
@@ -242,7 +242,7 @@ func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 // checkIntBoundFloatLiteral rejects a fractional float bound literal
 // (`@gte(0.5)`, `@range(0.5, 10.5)`, …) on an integer-typed target.
 // codegen renders a comparison/range bound verbatim, so the literal
-// `0.5` ends up compared against the integer field value — Go rejects
+// `0.5` ends up compared against the integer field value - Go rejects
 // that with "constant 0.5 truncated to integer" and the whole
 // generated package fails to build. Catching it here turns an opaque
 // downstream build error into a precise design-time diagnostic.
@@ -251,11 +251,11 @@ func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 // (`1.0`, `1e3`) renders to a whole-number Go literal and compiles
 // fine, and float-typed targets are skipped entirely because a
 // fractional bound is exactly what they are for. `@multipleOf` is not
-// included — its codegen takes the integer-only path and never emits a
+// included - its codegen takes the integer-only path and never emits a
 // float literal.
 func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.Decorator) {
 	if _, _, ok := intCapacity(prim); !ok {
-		return // not an integer primitive — float bounds are valid
+		return // not an integer primitive - float bounds are valid
 	}
 	for _, d := range decs {
 		if d == nil {
@@ -278,7 +278,7 @@ func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.De
 				continue
 			}
 			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@%s bound %g must be a whole number on integer %s — codegen compares the bound against an integer value, so a fractional literal would not compile",
+				"@%s bound %g must be a whole number on integer %s - codegen compares the bound against an integer value, so a fractional literal would not compile",
 				d.Name, fl.Value, target)
 		}
 	}
@@ -299,7 +299,7 @@ func fractionalArg(a *ast.DecoratorArg) (*ast.FloatLit, bool) {
 }
 
 // checkPatternFormatOnBytes rejects `@pattern` / `@format` on a `bytes`
-// field (or a bytes-backed scalar). Both decorators constrain TEXT — the
+// field (or a bytes-backed scalar). Both decorators constrain TEXT - the
 // validator emits a regexp / format check gated on a string shape, so a
 // bytes field silently drops the check while the OpenAPI schema still
 // advertises the pattern / format. A binary value has no string pattern;
@@ -318,7 +318,7 @@ func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 	for _, d := range f.Decorators {
 		if d != nil && (d.Name == "pattern" || d.Name == "format") {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@%s applies to text, not a `bytes` field — a binary value has no string pattern / format, so the runtime validator drops it while the OpenAPI schema would still advertise it. Use a `string` field, or drop the decorator.",
+				"@%s applies to text, not a `bytes` field - a binary value has no string pattern / format, so the runtime validator drops it while the OpenAPI schema would still advertise it. Use a `string` field, or drop the decorator.",
 				d.Name)
 		}
 	}
@@ -328,7 +328,7 @@ func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 // (numeric or string) on a bare type-parameter field (`val T @gte(10)` in
 // a generic decl). The validator is emitted once against the parametric
 // receiver, where the element is `any`-constrained and so can't be
-// compared / measured — yet the monomorphised OpenAPI advertises the
+// compared / measured - yet the monomorphised OpenAPI advertises the
 // bound, diverging from the (silently absent) runtime check. Array-shape
 // constraints (@minItems / @maxItems) are NOT rejected here: they bound
 // the slice length, which is knowable parametrically (@uniqueItems is

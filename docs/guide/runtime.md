@@ -32,7 +32,7 @@ srv.Start(":8080")
 
 `Server` wraps `*http.ServeMux`. Routes register through `Handle` and `HandleFunc` using Go 1.22+ pattern syntax (`GET /users/{id}`). Middleware is plain `func(http.Handler) http.Handler`.
 
-`Handle` is variadic — `Handle(pattern, h, mws...)` — so a route can carry per-route middleware that wraps the handler outermost-first (the first middleware argument is the outermost frame, hit first on the way in). For composing a reusable stack, `server.Chain` folds a middleware list in the same order:
+`Handle` is variadic - `Handle(pattern, h, mws...)` - so a route can carry per-route middleware that wraps the handler outermost-first (the first middleware argument is the outermost frame, hit first on the way in). For composing a reusable stack, `server.Chain` folds a middleware list in the same order:
 
 ```go
 chain := server.NewChain(server.RequestID(), server.AccessLog(logger))
@@ -108,8 +108,8 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 
 This is exactly what you would write by hand: one `http.HandlerFunc`, stdlib status codes, stdlib responses. Two details to note:
 
-- **`server.JSON()`** is the swappable codec accessor — it defaults to `encoding/json` but lets you drop in `sonic`/`jsoniter` process-wide (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
-- **The logic call is `l.CreateUser(&req)`** — the request context is captured when the per-method service is constructed (`service.NewCreateUserService(r.Context(), svcCtx)`), so it isn't threaded through the method call.
+- **`server.JSON()`** is the swappable codec accessor - it defaults to `encoding/json` but lets you drop in `sonic`/`jsoniter` process-wide (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
+- **The logic call is `l.CreateUser(&req)`** - the request context is captured when the per-method service is constructed (`service.NewCreateUserService(r.Context(), svcCtx)`), so it isn't threaded through the method call.
 
 No framework runtime in the hot path.
 
@@ -123,7 +123,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-The second argument is a per-check timeout — the check fails if it runs longer.
+The second argument is a per-check timeout - the check fails if it runs longer.
 
 Disable with `server.WithoutDefaultHealth()` if you do not want them.
 
@@ -192,7 +192,7 @@ log.SetLevel(log.LevelDebug)   // LevelDebug / LevelInfo / LevelWarn / LevelErro
 current := log.GetLevel()
 ```
 
-The default is `LevelInfo`. The swap is atomic and takes effect on the next log call — no logger replacement needed, so it is safe to wire to a `/debug/loglevel` endpoint or a config reload. Loggers you build yourself and pass to `log.NewZap` keep their own level and ignore `SetLevel`.
+The default is `LevelInfo`. The swap is atomic and takes effect on the next log call - no logger replacement needed, so it is safe to wire to a `/debug/loglevel` endpoint or a config reload. Loggers you build yourself and pass to `log.NewZap` keep their own level and ignore `SetLevel`.
 
 ## Tracing and metrics
 
@@ -224,7 +224,7 @@ Pass it once to `server.New(svc)`. Every handler and logic layer receives it.
 
 ### Concurrency
 
-`ServiceContext` is shared across every concurrent request — craftgo does NOT auto-lock its fields. Long-lived dependencies (DB pools, Redis clients, gRPC channels, …) handle their own locking internally and are safe to keep as bare fields. Mutable in-process state (maps, slices, counters) is your responsibility: either guard it with `sync.Mutex` / `sync.RWMutex` / `sync.Map`, use atomic types, or make the state per-request and pass it through `context.Context`. The example app embeds a `sync.Mutex` on `ServiceContext` and exposes `Lock()` / `Unlock()` helpers so handlers can wrap a multi-step map mutation in one critical section.
+`ServiceContext` is shared across every concurrent request - craftgo does NOT auto-lock its fields. Long-lived dependencies (DB pools, Redis clients, gRPC channels, …) handle their own locking internally and are safe to keep as bare fields. Mutable in-process state (maps, slices, counters) is your responsibility: either guard it with `sync.Mutex` / `sync.RWMutex` / `sync.Map`, use atomic types, or make the state per-request and pass it through `context.Context`. The example app embeds a `sync.Mutex` on `ServiceContext` and exposes `Lock()` / `Unlock()` helpers so handlers can wrap a multi-step map mutation in one critical section.
 
 ## What is not in craftgo
 

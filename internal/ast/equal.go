@@ -1,12 +1,12 @@
 package ast
 
-// Equal helpers — semantic equality across AST nodes for use in test
+// Equal helpers - semantic equality across AST nodes for use in test
 // assertions. Comparison ignores positions (lexer.Position fields) so a
 // hand-built expected value in a test doesn't have to mirror parser
 // pos info; only the SHAPE of the tree matters.
 //
-// Convention: every method handles `nil` on both sides — `a.Equal(nil)`
-// returns true iff `a` is also nil — so tests can compare fields that
+// Convention: every method handles `nil` on both sides - `a.Equal(nil)`
+// returns true iff `a` is also nil - so tests can compare fields that
 // may be absent without nil-guarding at every callsite.
 
 // Equal reports whether two QualifiedIdent reference the same dotted name.
@@ -72,7 +72,7 @@ func (n *NamedTypeRef) Equal(o *NamedTypeRef) bool {
 }
 
 // Equal reports whether two Fields have the same Name + Type. Decorators
-// and doc/comment are NOT compared — tests asserting decorator shape
+// and doc/comment are NOT compared - tests asserting decorator shape
 // build smaller comparisons; tree-level equality cares about wire shape.
 func (f *Field) Equal(o *Field) bool {
 	if f == nil || o == nil {
@@ -82,7 +82,7 @@ func (f *Field) Equal(o *Field) bool {
 }
 
 // Equal reports whether two Mixins reference the same type (qualified
-// or generic). Doc/decorators ignored — mixins carry no decorators
+// or generic). Doc/decorators ignored - mixins carry no decorators
 // anyway by parser contract.
 func (m *Mixin) Equal(o *Mixin) bool {
 	if m == nil || o == nil {

@@ -58,7 +58,7 @@ func intArg(a *ast.DecoratorArg) (int64, bool) {
 // Accepts IntLit (`@gte(0)`) and FloatLit (`@gte(0.5)`); int renders
 // as `0`, float renders via `strconv.FormatFloat` with 'g' so `0.5`
 // stays `0.5`, `1e3` stays `1000`, etc. Used by
-// `@gt/@gte/@lt/@lte/@range/@multipleOf` — accepting only IntLit
+// `@gt/@gte/@lt/@lte/@range/@multipleOf` - accepting only IntLit
 // would silently drop float bounds even though the Spec allows
 // ArgNumber.
 func numericArg(a *ast.DecoratorArg) (string, bool) {

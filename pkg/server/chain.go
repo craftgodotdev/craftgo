@@ -6,7 +6,7 @@ import "net/http"
 // `NewChain(A, B, C).Then(h)` yields `A(B(C(h)))`, so a request flows
 // A → B → C → h and the response leaves in reverse.
 //
-// Chains are value types — Append returns a new chain rather than
+// Chains are value types - Append returns a new chain rather than
 // mutating the receiver, so a base chain shared across routes is safe
 // to extend per call site. Nil entries are tolerated and skipped at
 // Then time so optional middlewares can drop into the slice without
@@ -14,7 +14,7 @@ import "net/http"
 type Chain []Middleware
 
 // NewChain seeds a chain with the supplied middlewares in
-// outermost-first order. The result is a fresh slice — mutating mws
+// outermost-first order. The result is a fresh slice - mutating mws
 // after the call does not affect the chain.
 func NewChain(mws ...Middleware) Chain {
 	if len(mws) == 0 {
@@ -50,7 +50,7 @@ func (c Chain) Then(h http.Handler) http.Handler {
 	return h
 }
 
-// ThenFunc is Then for http.HandlerFunc — saves a cast at the call
+// ThenFunc is Then for http.HandlerFunc - saves a cast at the call
 // site when the innermost handler is a bare function.
 func (c Chain) ThenFunc(h http.HandlerFunc) http.Handler {
 	return c.Then(h)

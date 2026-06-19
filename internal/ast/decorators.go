@@ -25,7 +25,7 @@ func HasDecorator(decs []*Decorator, name string) bool {
 // value expressions, expanding the `@x([a, b])` array-shortcut form into its
 // elements. A decorator marked AllowArrayShortcut accepts BOTH the variadic
 // `@x(a, b)` and the array `@x([a, b])` forms, and the analyzer treats them
-// as equivalent — so every consumer (semantic checks AND every codegen
+// as equivalent - so every consumer (semantic checks AND every codegen
 // emitter) must read them identically through this one helper, or the array
 // form silently contributes nothing (the bug class that dropped @errors /
 // @tags / @middlewares array shortcuts).

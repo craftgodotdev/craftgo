@@ -48,7 +48,7 @@ func scalarFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 // of a flat enum-typed field, or "" when the field is not an enum (or is
 // an array / map). A field-level numeric / string constraint on an enum is
 // advertised in OpenAPI (via the allOf wrapper), so it must be enforced
-// too — routing through [scalarFieldLevelChecks] with this primitive casts
+// too - routing through [scalarFieldLevelChecks] with this primitive casts
 // the enum value to int / string before the numeric / string emitters run,
 // the same trick scalars use. Without it the enum's name fails every
 // validator's primitive type-guard and the constraint is silently dropped.
@@ -74,7 +74,7 @@ func enumFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 }
 
 // scalarFieldLevelChecks emits the field-level decorators (`@lte`,
-// `@maxLength`, `@pattern`, ...) declared ON a scalar-typed FIELD — the
+// `@maxLength`, `@pattern`, ...) declared ON a scalar-typed FIELD - the
 // extra constraints a field stacks on top of the scalar's own ones
 // (`unitCents Cents @lte(1000000)` narrows below Cents's base bound).
 //
@@ -122,7 +122,7 @@ func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) s
 	case scalarRefNilable(f.Type, ctx.pkg, ctx.resolver) && (f.Type.Optional || hasNullableDecorator(f.Decorators)):
 		// Optional / @nullable scalar over a nilable primitive (bytes)
 		// carries no pointer, but a nil value is the valid absent / null
-		// state — guard, then cast the value directly (no deref).
+		// state - guard, then cast the value directly (no deref).
 		return fmt.Sprintf("if %s != nil {\n%s := %s(%s)\n%s\n}", access, local, primGo, access, body)
 	default:
 		return fmt.Sprintf("{\n%s := %s(%s)\n%s\n}", local, primGo, access, body)
@@ -134,7 +134,7 @@ func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) s
 // `@doc` / `@example` / `@default` are not validators and don't count.
 // This is the single source of truth shared by the method-emission
 // loop in [buildValidateData] and the dispatch decision in
-// [typeRefNamedHasValidator] — keeping them in lock-step guarantees we
+// [typeRefNamedHasValidator] - keeping them in lock-step guarantees we
 // never emit a `v.Field.Validate()` call against a scalar whose
 // Validate() method was skipped (which would not compile).
 func scalarDeclHasValidators(sd *ast.ScalarDecl) bool {

@@ -76,7 +76,7 @@ test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
 	done
 
 .PHONY: test-all
-test-all: test e2e test-submodules ## Run every test suite — root, e2e orchestrator, and each sub-module.
+test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestrator, and each sub-module.
 
 .PHONY: vet
 vet: ## go vet over all root packages.
@@ -194,7 +194,7 @@ sync-vscode: ## Copy syntax / package files into the locally-installed craftgo e
 	cp -R $(EXT_SRC)/syntaxes $$found/; \
 	cp $(EXT_SRC)/language-configuration.json $$found/ 2>/dev/null || true; \
 	cp $(EXT_SRC)/package.json $$found/; \
-	echo "done — VS Code: Cmd+Shift+P → Developer: Reload Window"
+	echo "done - VS Code: Cmd+Shift+P → Developer: Reload Window"
 
 $(EXT_SRC)/node_modules: $(EXT_SRC)/package.json
 	cd $(EXT_SRC) && npm install

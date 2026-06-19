@@ -105,7 +105,7 @@ type Req { a string? @default("x")  b string? }`, CodeCrossFieldNotOptional)
 
 func TestCrossFieldRejectsNilableNonPointerMember(t *testing.T) {
 	// A slice / map member's runtime presence is emptiness (`len() > 0`), and a
-	// raw `bytes` / `any` member is always treated as present — neither matches
+	// raw `bytes` / `any` member is always treated as present - neither matches
 	// the group's OpenAPI present-and-non-null, which counts an empty `[]` as
 	// present and a null as absent. All four are nilable-but-not-pointer in Go,
 	// so they are rejected.
@@ -128,7 +128,7 @@ type Req { payload any?  name string? }`, CodeCrossFieldNotOptional)
 
 func TestCrossFieldRejectsSensitiveMember(t *testing.T) {
 	// A @sensitive member is server-only (json:"-"), so it can't ride a
-	// body-level cross-field group — the OpenAPI would name a property the
+	// body-level cross-field group - the OpenAPI would name a property the
 	// public schema never carries.
 	d := expectDiag(t, `@mutuallyExclusive(secret, b)
 type Req { secret string? @sensitive  b string? }`, CodeCrossFieldNotOptional)

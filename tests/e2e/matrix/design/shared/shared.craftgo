@@ -6,7 +6,7 @@
 //
 // Every consumer in `services/` pulls these declarations through a
 // single import edge, so adding a new validator here propagates to
-// every service that touches the relevant type — the
+// every service that touches the relevant type - the
 // "shared validators drift between services" smell is structurally
 // impossible.
 package shared
@@ -54,7 +54,7 @@ type Money {
 // validator stack.
 scalar ID string @length(1, 64)
 
-// Email is the cross-package email shape — capped at the RFC-5321
+// Email is the cross-package email shape - capped at the RFC-5321
 // maximum and gated by the @format(email) validator. Referenced as
 // `shared.Email` from anywhere a user-facing email address appears.
 scalar Email string @format(email) @maxLength(254)
@@ -79,7 +79,7 @@ error NotFound NotFoundErr {
 }
 
 // ConflictErr is the canonical 409 envelope. `reason` is a free-
-// form explanation slot — kept as a plain string here because the
+// form explanation slot - kept as a plain string here because the
 // conflict taxonomy varies per resource and consolidating it into a
 // shared enum would force every new resource to extend the enum.
 error Conflict ConflictErr {

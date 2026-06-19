@@ -54,9 +54,9 @@ func goEmbedName(n *ast.QualifiedIdent) string {
 // two imports) that collapse to the same Go field name.
 func duplicateEmbedMsg(first, second, leaf string) string {
 	if first == second {
-		return fmt.Sprintf("mixin %q is embedded more than once — the generated Go struct would declare it twice and fail to compile (%q redeclared)", first, leaf)
+		return fmt.Sprintf("mixin %q is embedded more than once - the generated Go struct would declare it twice and fail to compile (%q redeclared)", first, leaf)
 	}
-	return fmt.Sprintf("mixins %q and %q both embed as the Go field %q — the generated struct would redeclare it and fail to compile", first, second, leaf)
+	return fmt.Sprintf("mixins %q and %q both embed as the Go field %q - the generated struct would redeclare it and fail to compile", first, second, leaf)
 }
 
 // fieldEmbedClash is a field whose Go field-name equals an embedded
@@ -171,8 +171,8 @@ type fieldOrigin struct {
 // reportGoNameCollisions flags fields whose DSL names differ but whose Go
 // identifiers collide ACROSS an embed boundary. Within one struct's own
 // fields a Go-name collision is dedup-renamed by codegen (`UserID` /
-// `UserID_2`), but a host field and a field promoted from a mixin — or two
-// fields promoted from different mixins — land in SEPARATE Go structs that
+// `UserID_2`), but a host field and a field promoted from a mixin - or two
+// fields promoted from different mixins - land in SEPARATE Go structs that
 // Go field-promotion merges by name: the binder, validator, and response
 // writers all read `v.UserID`, targeting one field for both (clobber) or, for
 // two equal-depth embeds, producing an ambiguous selector that won't compile.
@@ -214,10 +214,10 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 		first := ents[0]
 		for _, e := range ents[1:] {
 			if e.from == first.from {
-				continue // same declaring struct — codegen dedups it
+				continue // same declaring struct - codegen dedups it
 			}
 			emit(e.pos, fmt.Sprintf(
-				"field %q (from %s) and field %q (from %s) both lower to the Go field %q across mixin embedding — Go field promotion can't tell them apart, so the generated binder / validator / writers would target one field for both. Rename one.",
+				"field %q (from %s) and field %q (from %s) both lower to the Go field %q across mixin embedding - Go field promotion can't tell them apart, so the generated binder / validator / writers would target one field for both. Rename one.",
 				e.dsl, e.from, first.dsl, first.from, gn))
 		}
 	}

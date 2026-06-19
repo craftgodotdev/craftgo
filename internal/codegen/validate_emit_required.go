@@ -31,7 +31,7 @@ func requiredKind(f *ast.Field, access string) string {
 	}
 	if f.Type.Optional || goFieldIsPointer(f, nil, nil) {
 		// requiredKind runs only on required (non-optional, non-nullable)
-		// fields, where the pointer wrap never applies — so a scalar
+		// fields, where the pointer wrap never applies - so a scalar
 		// resolver would not change the answer here.
 		return access + " == nil"
 	}
@@ -79,7 +79,7 @@ func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, 
 		if ok {
 			if firstEnumKind(ed) == ast.EnumInt {
 				// An int-enum that defines 0 as a real member (`Inactive =
-				// 0`) can't use 0 as an "absent" sentinel — the required
+				// 0`) can't use 0 as an "absent" sentinel - the required
 				// check would reject the valid member. Drop the presence
 				// check rather than reject a legal value (after JSON decode
 				// an absent int field and a present 0 are indistinguishable).
@@ -90,7 +90,7 @@ func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, 
 				return ifReturnf(access+" == 0", fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 			}
 			// A string-enum that defines "" as a real member (`Unknown = ""`)
-			// can't use "" as the "absent" sentinel either — the presence
+			// can't use "" as the "absent" sentinel either - the presence
 			// check would reject that legal member before the value-set switch
 			// runs. Drop it, mirroring the int-0 case above.
 			if enumHasStringValue(ed, "") {

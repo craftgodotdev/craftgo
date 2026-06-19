@@ -9,8 +9,8 @@ type VerResp {
 
 // AdminApi splits its methods across three NESTED @group folders within ONE
 // package: admin/v1 (primary), admin/v2 and admin/v3 (extend blocks). @group
-// sets only the on-disk layout — handlers land in transport/admin/vN and stubs
-// in service/admin/vN — never the URL, which comes from @prefix + the method
+// sets only the on-disk layout - handlers land in transport/admin/vN and stubs
+// in service/admin/vN - never the URL, which comes from @prefix + the method
 // path. The single per-service routes hub lands in the PRIMARY block's segment
 // (routes/admin/v1) and imports all three transport packages, registering every
 // method under the one service.

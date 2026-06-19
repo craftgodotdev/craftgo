@@ -17,19 +17,19 @@ import (
 // Per-decorator rules (mirrors the wire-bind codegen in
 // `internal/codegen.renderWireBindLine`):
 //
-//   - `@path`              — the same wire-bindable shapes as @query
+//   - `@path`              - the same wire-bindable shapes as @query
 //     (string / bool / int* / uint* / float*, or a scalar / enum over
 //     one), but never optional or array. Path segments are mandatory by
 //     definition (the route matched or it didn't), so optional makes no
 //     semantic sense, and a path carries one value per segment. A
 //     numeric segment is parsed via the same server.Parse* helper a
 //     numeric @query field uses.
-//   - `@query` / `@header` / `@cookie` — string + numeric + bool +
+//   - `@query` / `@header` / `@cookie` - string + numeric + bool +
 //     scalars/enums + arrays of those. Optional string-shaped is
 //     accepted (binder emits `*T`); optional numerics use the
 //     zero-value sentinel because tri-state pointers off a string-
 //     wire are not unambiguous.
-//   - `@form`              — same as @query plus the `file` type
+//   - `@form`              - same as @query plus the `file` type
 //     (multipart upload path). Arrays of file are still rejected
 //     because the binder writes a single `*multipart.FileHeader`.
 //
@@ -43,7 +43,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	// `@nullable` marks a JSON-body field as accepting an explicit null.
 	// A wire parameter (path / query / header / cookie / form) is a string
 	// on the wire with no JSON-null form, and the Go field it lowers to
-	// would be a pointer the wire binder can't assign — so the pairing is
+	// would be a pointer the wire binder can't assign - so the pairing is
 	// rejected outright. `?` is the way to make a parameter optional.
 	if ast.HasDecorator(f.Decorators, "nullable") {
 		for _, d := range f.Decorators {
@@ -65,13 +65,13 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 		for _, d := range f.Decorators {
 			if d.Name == "path" {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
-					"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply — drop it.")
+					"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
 				return
 			}
 		}
 	}
 	// A wire-string source (@query / @header / @form) encodes an array
-	// as repeated scalar params (`?x=1&x=2`) — inherently one-dimensional.
+	// as repeated scalar params (`?x=1&x=2`) - inherently one-dimensional.
 	// A nested array (`int[][]`) has no wire form, so reject it
 	// structurally here, before the qualified-ref skip below: array depth
 	// is independent of the element type, so the check is the same whether
@@ -140,7 +140,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 
 // isQualifiedTypeRef reports whether t names a cross-package symbol
 // (`pkg.Name` with 2 segments). Array / optional wrappers don't
-// affect the named ref inside — strip those down to the head ref.
+// affect the named ref inside - strip those down to the head ref.
 func isQualifiedTypeRef(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return false
@@ -188,8 +188,8 @@ func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
 	}
 	// A wire-string source encodes an array as repeated single values
 	// (`?x=1&x=2`); a nested array has no wire form. Reject at the shared
-	// predicate so every consumer — the explicit `@query`/`@header` check,
-	// the auto-@query promotion on a body-less verb, and the @form set —
+	// predicate so every consumer - the explicit `@query`/`@header` check,
+	// the auto-@query promotion on a body-less verb, and the @form set -
 	// agrees, instead of leaving the depth guard on one path only.
 	if t.ArrayDepth > 1 {
 		return false
@@ -283,7 +283,7 @@ func describeTypeRef(t *ast.TypeRef) string {
 	return name
 }
 
-// namedTypeRefs returns the leaf names of every named type referenced by t —
+// namedTypeRefs returns the leaf names of every named type referenced by t -
 // the named type itself, its generic arguments, and map key / value types.
 func namedTypeRefs(t *ast.TypeRef) []string {
 	if t == nil {

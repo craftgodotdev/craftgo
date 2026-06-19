@@ -12,7 +12,7 @@ import (
 
 // checkRequestBodyType rejects a request type that is a bare scalar or enum
 // (a fieldless named type). The request binder/decoder drives off the
-// type's FIELDS, so a fieldless type yields no decode and no parameters —
+// type's FIELDS, so a fieldless type yields no decode and no parameters -
 // the client payload is silently dropped (and a constraint-free scalar
 // produces non-compiling Go, since the handler calls a Validate() that
 // isn't generated). Wrap the value in a `type { value <T> }`. Mirrors the
@@ -29,7 +29,7 @@ func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 		return
 	}
 	a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodeBindingType,
-		"request type %q is a %s, which has no fields to bind or decode as a request body — wrap it in a type (`type Req { value %s }`)",
+		"request type %q is a %s, which has no fields to bind or decode as a request body - wrap it in a type (`type Req { value %s }`)",
 		name, kind, name)
 }
 
@@ -73,7 +73,7 @@ func (r *refResolver) checkProjectRequestBodyType() {
 				}
 				name := m.Request.Name.String()
 				r.diag(m.Request.Pos, lexer.SeverityError, CodeBindingType,
-					"request type %q is a %s, which has no fields to bind or decode as a request body — wrap it in a type (`type Req { value %s }`)",
+					"request type %q is a %s, which has no fields to bind or decode as a request body - wrap it in a type (`type Req { value %s }`)",
 					name, kind, name)
 			}
 		}
@@ -84,7 +84,7 @@ func (r *refResolver) checkProjectRequestBodyType() {
 // or any 1xx) on a method that declares a response body. Per RFC 9110
 // those statuses carry no body, but both the OpenAPI emitter and the
 // transport template select their body-emitting branch on response-body
-// presence alone — never the status — so the pairing would advertise a
+// presence alone - never the status - so the pairing would advertise a
 // `application/json` body under a status that forbids one and write a body
 // the client never receives.
 func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
@@ -102,7 +102,7 @@ func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
 		code := il.Value
 		if code == 204 || code == 205 || code == 304 || (code >= 100 && code < 200) {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
-				"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one — drop the response, or use a status that allows a body.",
+				"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one - drop the response, or use a status that allows a body.",
 				code, m.Name)
 			return
 		}
@@ -151,7 +151,7 @@ func (a *analyzer) checkPassthroughBody(svcName string, m *ast.Method) {
 // checkBodyBindingVerb rejects `@body` / `@form` request fields on a
 // non-body verb (GET / HEAD / DELETE / OPTIONS). Those handlers never
 // decode a request body, so the binder's switch falls through and the
-// field is left zero with no error — silent data loss. The OpenAPI side
+// field is left zero with no error - silent data loss. The OpenAPI side
 // likewise omits the requestBody for non-body verbs, so the contract and
 // the runtime agree only by both dropping the field. Reject up front.
 //
@@ -195,7 +195,7 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 // so the field would be silently dropped); an un-decorated field auto-binds
 // to @query, where `@nullable` is meaningless (a query string has no
 // JSON-null form, and the pointer it lowers to can't take the binder's plain
-// string — non-compiling); and a non-bindable auto-@query type is rejected
+// string - non-compiling); and a non-bindable auto-@query type is rejected
 // when resolvable. The first two are STRUCTURAL (no type resolution) and fire
 // for cross-package fields too; the type check is delegated to typeUnbindable
 // (the per-package pass resolves against its local table and defers qualified
@@ -210,7 +210,7 @@ func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]boo
 			continue
 		}
 		emit(d.Pos, decoratorEnd(d), CodeBindingVerb,
-			"field %s.%s: @%s requires a body-bearing verb (POST/PUT/PATCH) — the %s %s handler decodes no request body, so the field would be silently dropped",
+			"field %s.%s: @%s requires a body-bearing verb (POST/PUT/PATCH) - the %s %s handler decodes no request body, so the field would be silently dropped",
 			reqName, f.Name, d.Name, verb, svcName)
 		break // one diagnostic per field
 	}
@@ -222,13 +222,13 @@ func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]boo
 	}
 	if ast.HasDecorator(f.Decorators, "nullable") {
 		emit(f.Pos, f.Pos, CodeDecoratorConflict,
-			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but @nullable has no meaning on a wire parameter — a query string has no JSON-null form. Use `?` to make it optional, or switch to a body verb (POST/PUT/PATCH).",
+			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but @nullable has no meaning on a wire parameter - a query string has no JSON-null form. Use `?` to make it optional, or switch to a body verb (POST/PUT/PATCH).",
 			reqName, f.Name, verb, svcName)
 		return
 	}
 	if typeUnbindable != nil && typeUnbindable(f) {
 		emit(f.Pos, f.Pos, CodeBindingType,
-			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string — switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
+			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string - switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
 			reqName, f.Name, verb, svcName, describeTypeRef(f.Type))
 	}
 }
@@ -278,7 +278,7 @@ func (r *refResolver) checkProjectBodyBindingVerb() {
 				}
 				// The IR resolves a cross-package field's element type, so a
 				// foreign struct / map / nested array auto-binding to @query is
-				// caught here with a position — the gap the per-package pass
+				// caught here with a position - the gap the per-package pass
 				// defers to a position-less codegen error.
 				unbindable := func(f *ast.Field) bool {
 					return !wireBindableIR(f, r.proj)

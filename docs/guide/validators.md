@@ -60,7 +60,7 @@ A non-optional field (no `?`) is required, but craftgo only emits an explicit pr
 
 ## Built-in validators
 
-> **Required-by-default**: every field gets an automatic presence check unless the type carries `?`. No `@required` decorator — use `?` to opt-out, `@nullable` to keep the field mandatory while allowing JSON `null`, `@default(...)` to pre-fill when absent (auto-marks optional on save).
+> **Required-by-default**: every field gets an automatic presence check unless the type carries `?`. No `@required` decorator - use `?` to opt-out, `@nullable` to keep the field mandatory while allowing JSON `null`, `@default(...)` to pre-fill when absent (auto-marks optional on save).
 
 The tables below cover validators with the examples that matter for *validation*. For the one-grid lookup of every decorator (including non-validator ones) and its legal levels, see the [Decorator Registry](/reference/decorator-registry).
 
@@ -74,7 +74,7 @@ The tables below cover validators with the examples that matter for *validation*
 | `@pattern("regex")`         | Must match `regexp`                                   |
 | `@format(name)`             | Built-in format check (see below)                     |
 
-Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Most delegate to the Go standard library — `email` (`net/mail`), `url`/`uri` (`net/url`), `ipv4`/`ipv6`/`cidr`/`mac` (`net`), `datetime`/`date`/`time` (`time`), `base64`/`base64url` (`encoding/base64`), `json` (`encoding/json`); the remainder (`uuid`, `phone`, `creditcard`, `hexcolor`) use a compiled regex.
+Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Most delegate to the Go standard library - `email` (`net/mail`), `url`/`uri` (`net/url`), `ipv4`/`ipv6`/`cidr`/`mac` (`net`), `datetime`/`date`/`time` (`time`), `base64`/`base64url` (`encoding/base64`), `json` (`encoding/json`); the remainder (`uuid`, `phone`, `creditcard`, `hexcolor`) use a compiled regex.
 
 ```craftgo
 type Profile {
@@ -138,7 +138,7 @@ type Contact {
 ```
 
 These attach to the type, not a field. The validator surfaces a single message.
-Every referenced field must be optional (`?`) or `@nullable` — a plain field, a
+Every referenced field must be optional (`?`) or `@nullable` - a plain field, a
 wire parameter (`@query` / `@header` / …), a `@default` or `@sensitive` field,
 and a collection are rejected, since their runtime presence can't match the
 spec's present-and-non-null check.
@@ -190,7 +190,7 @@ type ListUsersReq {
 }
 ```
 
-`@default` works on primitives, scalars, enums, and arrays of those. The field must be optional (`?`) for the default to fire — the formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you save.
+`@default` works on primitives, scalars, enums, and arrays of those. The field must be optional (`?`) for the default to fire - the formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you save.
 
 ## Error messages
 
@@ -200,7 +200,7 @@ Generated messages follow the shape:
 <field>: <reason>
 ```
 
-`Validate()` is **fail-fast** — it returns the **first** violation it hits and stops, so a request with several problems surfaces one message at a time:
+`Validate()` is **fail-fast** - it returns the **first** violation it hits and stops, so a request with several problems surfaces one message at a time:
 
 ```
 name: length out of range [1, 80]

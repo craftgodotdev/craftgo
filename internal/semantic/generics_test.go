@@ -131,7 +131,7 @@ type X { p Page<Item?> }`))
 
 func TestGenericOptionalArgRejectedOnPlainField(t *testing.T) {
 	// Rejected uniformly, even when the generic uses the param as a plain
-	// field (`value T`) where it would lower cleanly — nullability is always
+	// field (`value T`) where it would lower cleanly - nullability is always
 	// declared inside the generic, never on the argument.
 	_, diags := Analyze(parseFiles(t, `type Wrap<T> { value T }
 type Item { id string }
@@ -173,7 +173,7 @@ type X { p Page<map<string, Item?>> }`)
 }
 
 func TestGenericArrayArgClean(t *testing.T) {
-	// A non-optional array argument is fine — `Page<Item[]>` is an
+	// A non-optional array argument is fine - `Page<Item[]>` is an
 	// array-of-array, no optionality involved.
 	mustClean(t, `type Page<T> { items T[] }
 type Item { id string }
@@ -238,7 +238,7 @@ func TestUnknownTypeRefSkipsArity(t *testing.T) {
 
 // TestQualifiedGenericRefSinglePackageMode pins the per-package
 // behaviour: a qualified ref like `shared.Page<User>` is NOT
-// resolved when Analyze runs without a project context — the
+// resolved when Analyze runs without a project context - the
 // per-package pass can't reach into sibling packages. Arity check
 // for qualified refs lives in the project resolver (see
 // TestQualifiedGenericRefArityAcrossPackages).

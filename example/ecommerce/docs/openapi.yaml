@@ -1067,7 +1067,7 @@ components:
           tokenUrl: https://auth.example.com/oauth/token
       type: oauth2
 info:
-  description: Ecommerce showcase — generics, scalars, deep nesting, mixins, multi-package,
+  description: Ecommerce showcase - generics, scalars, deep nesting, mixins, multi-package,
     cross-package refs, errors with bodies, extend service.
   title: Ecommerce API
   version: 1.0.0
@@ -1525,7 +1525,7 @@ paths:
       - orders
   /orders/{id}/track:
     get:
-      description: Public order tracking by id — CORS only, no auth.
+      description: Public order tracking by id - CORS only, no auth.
       operationId: TrackPublic
       parameters:
       - in: path
@@ -1548,7 +1548,7 @@ paths:
       - orders
   /orders/by-status:
     get:
-      description: Filter orders by status — showcases @query/@header/@cookie on one
+      description: Filter orders by status - showcases @query/@header/@cookie on one
         DTO. Status is a @query filter (a literal sub-path keeps it from colliding
         with /{id}/... actions on the ServeMux).
       operationId: FilterOrders
@@ -1633,7 +1633,7 @@ paths:
       - orders
   /orders/export:
     post:
-      description: Bulk export — admin only, extra body-limit/timeout on top of parent
+      description: Bulk export - admin only, extra body-limit/timeout on top of parent
         chain.
       operationId: BulkExport
       parameters:
@@ -1663,7 +1663,7 @@ paths:
       - orders
   /orders/health:
     get:
-      description: Public readiness probe — bypasses every parent middleware AND security.
+      description: Public readiness probe - bypasses every parent middleware AND security.
       operationId: PublicHealth
       responses:
         "200":

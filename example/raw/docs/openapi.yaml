@@ -53,7 +53,7 @@ paths:
       - stream
   /stream/health:
     get:
-      description: Plain JSON health check — contrasts with the passthrough endpoints
+      description: Plain JSON health check - contrasts with the passthrough endpoints
         above.
       operationId: Health
       parameters:

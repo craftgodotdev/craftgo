@@ -12,7 +12,7 @@ import (
 // field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
 // `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
 // the field name). Validation messages use it so a failure reports what the
-// caller actually sent — `x-source-domain: ...`, not the DSL field name. The
+// caller actually sent - `x-source-domain: ...`, not the DSL field name. The
 // scalar synth field (no name, no decorators) maps to "", keeping the shared
 // scalar/enum Validate() message subject-less.
 func fieldWireName(f *ast.Field) string {
@@ -64,13 +64,13 @@ func shape(f *ast.Field, access string, body func(elem string) string) string {
 	case goFieldIsPointer(f, nil, nil):
 		// Reached only for generic type-param probes, never a direct nilable
 		// scalar, so the pointer test needs no scalar resolver.
-		// The Go field is *T — from `?` (optional) OR `@nullable`
+		// The Go field is *T - from `?` (optional) OR `@nullable`
 		// (required-but-nullable). Key on the actual pointer-ness, not
 		// just the `?` suffix: a `@nullable` enum/scalar field lowers to
 		// *T too. Nil-guard before the deref (a nil *T would panic), then
 		// deref. Parenthesise the
 		// deref so callers can prefix operators (`len(...)`, `&`, method
-		// calls) without Go precedence surprises — `(*v.Avatar).Validate()`
+		// calls) without Go precedence surprises - `(*v.Avatar).Validate()`
 		// works; `*v.Avatar.Validate()` parses as `*(v.Avatar.Validate())`.
 		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body("(*"+access+")"))
 	default:

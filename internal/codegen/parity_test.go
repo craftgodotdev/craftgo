@@ -56,7 +56,7 @@ service S {
 // Axis: the nilability fact, decided in two layers. The semantic resolved IR
 // ([semantic.ResolveField].IsNilable) drives the cross-field presence check;
 // codegen's [goFieldType] drives the `*T` pointer-wrap. Both must agree that a
-// field's Go type already holds nil — otherwise the design-time check and the
+// field's Go type already holds nil - otherwise the design-time check and the
 // emitted struct disagree (the cross-package-promoted scalar nilability class).
 // Both now read [semantic.NilableScalarPrimitive] for the scalar atom; this
 // test pins the WHOLE verdict across every field shape, local and cross-package,

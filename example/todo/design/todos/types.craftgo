@@ -67,7 +67,7 @@ type TodoList {
 	items  Todo[]
 	cursor string?
 	// total rides the X-Total-Count response header instead of the JSON
-	// body — a non-string @header value the generated handler formats
+	// body - a non-string @header value the generated handler formats
 	// with strconv.Itoa.
 	total  int     @header("X-Total-Count")
 	// tookMs is a scalar-typed (Millis = int) header: it resolves to its

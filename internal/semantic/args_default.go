@@ -1,4 +1,4 @@
-// Package semantic — @default literal validation: type/element support,
+// Package semantic - @default literal validation: type/element support,
 // primitive-kind map, helpers.
 package semantic
 
@@ -24,7 +24,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	// it fires for cross-package element types too.
 	if f.Type != nil && f.Type.ArrayDepth > 1 {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict,
-			"@default is not supported on a multi-dimensional array (field %q): a default may target a primitive, scalar, enum, or a single-level array of those — not a nested array",
+			"@default is not supported on a multi-dimensional array (field %q): a default may target a primitive, scalar, enum, or a single-level array of those - not a nested array",
 			f.Name)
 		return
 	}
@@ -41,7 +41,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	// present, so it is exempt.
 	if f.Type != nil && !f.Type.Optional && !ast.HasDecorator(f.Decorators, "path") {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityWarning, CodeDefaultNeedsOptional,
-			"@default on non-optional field %q: the default fires when the value is absent, so the field is optional — add `?` (or run `craftgo fmt`) so types.go, validate.go, and the OpenAPI agree it is optional",
+			"@default on non-optional field %q: the default fires when the value is absent, so the field is optional - add `?` (or run `craftgo fmt`) so types.go, validate.go, and the OpenAPI agree it is optional",
 			f.Name)
 	}
 	pos := positionalArgs(dec)
@@ -53,7 +53,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 
 // checkFieldExample type-checks an `@example` literal against the field's
 // type, reusing the SAME validator as `@default` (checkLiteralType) so the
-// two agree — a string example on an int field, or a non-member value on an
+// two agree - a string example on an int field, or a non-member value on an
 // enum field, is rejected just as the equivalent default is. Object-literal
 // args are left to [checkExampleArg]. Without this, @example silently
 // emitted spec examples that contradicted their own schema.
@@ -66,26 +66,26 @@ func (a *analyzer) checkFieldExample(f *ast.Field) {
 		return
 	}
 	// A multi-dimensional array has no single-value example shape and its
-	// nested-literal form is the same sharp edge @default rejects — reject up
+	// nested-literal form is the same sharp edge @default rejects - reject up
 	// front with the structural message, rather than letting the per-element
 	// walk misreport the inner array as "expects a single value". Mirrors
 	// [analyzer.checkFieldDefault].
 	if f.Type != nil && f.Type.ArrayDepth > 1 {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict,
-			"@example is not supported on a multi-dimensional array (field %q): an example may target a primitive, scalar, enum, or a single-level array of those — not a nested array",
+			"@example is not supported on a multi-dimensional array (field %q): an example may target a primitive, scalar, enum, or a single-level array of those - not a nested array",
 			f.Name)
 		return
 	}
 	for _, ag := range positionalArgs(dec) {
 		if ag.Value == nil {
-			continue // object literal — rejected by checkExampleArg
+			continue // object literal - rejected by checkExampleArg
 		}
 		a.checkLiteralType("example", f, f.Type, ag.Value, ag.Pos)
 	}
 }
 
 // checkDefaultLiteral validates a `@default` literal against the field's
-// resolved type. Thin wrapper over [checkLiteralType] — the value-vs-type
+// resolved type. Thin wrapper over [checkLiteralType] - the value-vs-type
 // logic is shared with `@example` so the two decorators agree on what a
 // valid literal is; the `@default`-specific rejects (bytes / file / int
 // capacity) ride inside, gated on the decorator name.
@@ -98,7 +98,7 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 // Recurses through arrays so `[Active, Pending]` on a `Status[]` field flags
 // any non-member element. Shared by `@default` and `@example` (decName) so a
 // string example on an int field is rejected exactly like a string default
-// is — the sibling-rule drift where @example was type-unchecked. The rejects
+// is - the sibling-rule drift where @example was type-unchecked. The rejects
 // that are meaningful ONLY for a prefilled default (bytes/file have no
 // literal default form; an out-of-capacity int would not compile) are gated
 // on decName == "default".
@@ -198,13 +198,13 @@ func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *
 	if decName == "default" {
 		if prim == "bytes" {
 			emit(pos, CodeDecoratorConflict,
-				"@default is not supported on a `bytes` field %q — a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
+				"@default is not supported on a `bytes` field %q - a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
 				fieldName)
 			return
 		}
 		if prim == "file" {
 			emit(pos, CodeDecoratorConflict,
-				"@default is not supported on a `file` field %q — a file upload has no literal default form",
+				"@default is not supported on a `file` field %q - a file upload has no literal default form",
 				fieldName)
 			return
 		}
@@ -236,7 +236,7 @@ func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *
 // optional of those, and arrays of those are allowed. Map / struct /
 // generic / array-of-struct return false so the caller can flag the
 // combination. Cross-package qualified refs (multi-segment names)
-// DEFER — they return true at per-package phase and are re-validated
+// DEFER - they return true at per-package phase and are re-validated
 // by [refResolver.checkProjectFieldDefaults] with the project-wide
 // scalar / enum tables in scope.
 func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {

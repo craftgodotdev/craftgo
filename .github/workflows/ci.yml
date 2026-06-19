@@ -70,12 +70,12 @@ jobs:
       - name: drift gate (gen output must match committed)
         run: |
           if ! git diff --exit-code; then
-            echo "::error::generated files drifted from committed output — run \`make gen-all\` and commit the diff"
+            echo "::error::generated files drifted from committed output - run \`make gen-all\` and commit the diff"
             exit 1
           fi
 
   # The project ships binaries for Linux, macOS, and Windows, so the suite runs
-  # on each — catching path / file / line-ending bugs a Linux-only run misses.
+  # on each - catching path / file / line-ending bugs a Linux-only run misses.
   # The race detector needs a C toolchain the Windows runner lacks, so it is
   # enabled on Linux/macOS only.
   test:

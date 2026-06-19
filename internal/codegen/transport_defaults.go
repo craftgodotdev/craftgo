@@ -14,7 +14,7 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		return nil
 	}
 	// Resolve via the shared helper so the qualified-request prefix (and the
-	// resolver fallback) match the binder exactly — otherwise a defaulted
+	// resolver fallback) match the binder exactly - otherwise a defaulted
 	// field promoted from a nested mixin of a qualified request is dropped
 	// from the pre-fill while the binder binds it and OpenAPI advertises the
 	// default, leaving the client with zero values.
@@ -116,7 +116,7 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 	// `__d := <lit>` infers the bare primitive and `&__d` (a `*int`)
 	// fails to assign to the field's `*PageSize`. Casting
 	// (`PageSize(20)`) makes `__d` the scalar type. Harmless for the
-	// non-pointer case — `req.X = PageSize(20)` is identical to the
+	// non-pointer case - `req.X = PageSize(20)` is identical to the
 	// untyped-constant form.
 	if name := scalarDefaultGoName(t, pkg, r, pkgAlias); name != "" {
 		return name + "(" + s + ")"
@@ -134,7 +134,7 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 
 // formatFloatLit renders a float `@default` literal as Go source that is
 // unambiguously a float. `strconv.FormatFloat` drops the fraction of a
-// whole-number value (`1.0` → "1"), which Go would then infer as `int` — so
+// whole-number value (`1.0` → "1"), which Go would then infer as `int` - so
 // the optional-field pointer pre-fill `__d := 1` becomes `*int`, not the
 // field's `*float64`. Appending `.0` when the rendering carries no decimal
 // point or exponent keeps it a float literal (`1.0`), so no cast is needed
@@ -186,7 +186,7 @@ func primitiveDefaultCast(t *ast.TypeRef, v ast.Expr) string {
 // (array / map / primitive / enum / struct). Array elements clear
 // Optional via [ast.TypeRef.ElemTypeRef] before reaching here; a top-level
 // optional scalar (`PageSize?`) keeps Optional set, so the clone drops
-// it — the cast targets the value type `PageSize`, not `*PageSize`.
+// it - the cast targets the value type `PageSize`, not `*PageSize`.
 func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
 	if t == nil || t.Array || t.Map != nil || t.Named == nil || t.Named.Name == nil {
 		return ""
@@ -202,7 +202,7 @@ func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 
 // qualifyNamed prefixes a Go type reference with `<pkgAlias>.` when
 // the underlying TypeRef points at a LOCAL project-defined named type
-// (enum or scalar) — those constants live in the request's types
+// (enum or scalar) - those constants live in the request's types
 // package and the handler file needs the alias to reach them.
 // Primitives stay bare. CROSS-PACKAGE refs already carry their own
 // qualifier (`xshared.XColor`) and pass through untouched; without
@@ -272,7 +272,7 @@ func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver,
 	valueName := v.Name.Parts[0]
 	// Read the shared enumMembers resolver so this const name uses the SAME
 	// dedup the enum declaration (buildEnumView) and the validate case-list
-	// emit — they must reference the identical Go const.
+	// emit - they must reference the identical Go const.
 	for _, m := range enumMembers(ed) {
 		if m.DSLName == valueName {
 			if qualifier != "" {

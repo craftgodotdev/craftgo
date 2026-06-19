@@ -3,7 +3,7 @@ package semantic
 import "testing"
 
 // A mixin embedded twice in one type body lowers to a Go struct that
-// declares the embedded type twice ("X redeclared") — rejected at design
+// declares the embedded type twice ("X redeclared") - rejected at design
 // time rather than shipped as non-compiling code.
 func TestDuplicateMixinEmbedRejected(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type Leaf { x string @minLength(1) }
@@ -15,7 +15,7 @@ type Req { Leaf  Leaf  r string }`))
 }
 
 // `@lt(0)` on an unsigned field demands "value < 0", which no uint* can
-// satisfy — the desugared spelling of `@negative`, which is already
+// satisfy - the desugared spelling of `@negative`, which is already
 // rejected. The capacity guard misses it (0 is itself in range).
 func TestUnsignedLtZeroRejected(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type T { c uint16 @lt(0) }`))
@@ -25,13 +25,13 @@ func TestUnsignedLtZeroRejected(t *testing.T) {
 }
 
 // `@lt(N)` with N>0 on unsigned is satisfiable (0..N-1) and must NOT be
-// rejected — the guard targets only the empty predicate.
+// rejected - the guard targets only the empty predicate.
 func TestUnsignedLtPositiveClean(t *testing.T) {
 	mustClean(t, `type T { c uint16 @lt(10) }`)
 }
 
 // A local mixin and an imported one whose unqualified names match both
-// embed as the same Go field — rejected (would "redeclare").
+// embed as the same Go field - rejected (would "redeclare").
 func TestLeafNameEmbedCollisionRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -75,7 +75,7 @@ type T2 { m shared.Count @lte(-1) }`,
 }
 
 // A cross-field group (@requiresOneOf) may reference a field promoted by a
-// CROSS-PACKAGE mixin — the per-package pass can't expand it, but codegen
+// CROSS-PACKAGE mixin - the per-package pass can't expand it, but codegen
 // resolves it via the project resolver, so it must not false-reject.
 func TestCrossFieldOverCrossPkgMixinClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -96,7 +96,7 @@ type Contact { shared.Contactable  note string? }`,
 // even when the type embeds a cross-package mixin. The per-package pass
 // can't expand the foreign mixin so it defers; the project pass resolves
 // the full field set and catches the typo. Without the project re-check
-// the typo reaches codegen, which substitutes a literal `false` — a
+// the typo reaches codegen, which substitutes a literal `false` - a
 // validator that silently never fires.
 func TestCrossFieldTypoOverCrossPkgMixinRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -133,7 +133,7 @@ type Contact { shared.Outer }`,
 }
 
 // A deeply-promoted member (two cross-package mixin levels) is a genuine
-// field and must NOT be false-rejected — the control for the typo test.
+// field and must NOT be false-rejected - the control for the typo test.
 func TestCrossFieldOverNestedCrossPkgMixinClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -151,7 +151,7 @@ type Contact { shared.Outer }`,
 }
 
 // The project re-check must re-apply the per-field quality rules to a
-// member promoted from a cross-package mixin — not only check the name
+// member promoted from a cross-package mixin - not only check the name
 // exists. A PLAIN (non-optional) promoted member has no clean present/
 // absent state, so a cross-field group referencing it is rejected exactly
 // as a local plain member is. (Per-package can't see the foreign field, so
@@ -173,7 +173,7 @@ type Host { base.BaseMix  alpha string? }`,
 
 // A @default member promoted from a cross-package mixin is rejected too
 // (a defaulted field is always present, making the group a no-op the
-// OpenAPI contradicts) — the same rule the local case enforces.
+// OpenAPI contradicts) - the same rule the local case enforces.
 func TestCrossFieldDefaultMemberOverCrossPkgMixinRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/b.craftgo": `package base
@@ -190,7 +190,7 @@ type Host { base.BaseMix  alpha string? }`,
 }
 
 // A clean optional member promoted from a cross-package mixin alongside a
-// clean local one must NOT double-report or false-reject — the control.
+// clean local one must NOT double-report or false-reject - the control.
 func TestCrossFieldCleanMembersOverCrossPkgMixinClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/b.craftgo": `package base
@@ -211,14 +211,14 @@ type Host { base.BaseMix  alpha string? }`,
 
 // An auto-promoted @query field (no binding decorator, body-less verb) of a
 // multi-dimensional array type must be rejected just like the explicit
-// `int[][] @query` form — the depth guard lives in the shared
+// `int[][] @query` form - the depth guard lives in the shared
 // isWireBindingType predicate so the auto-@query path catches it too.
 func TestAutoQueryMultiDimArrayRejected(t *testing.T) {
 	expectError(t, `type Req { grid int[][] }
 service S { get Op /x { request Req } }`, CodeBindingType)
 }
 
-// A 1-D auto-@query array is fine — only nested arrays are rejected.
+// A 1-D auto-@query array is fine - only nested arrays are rejected.
 func TestAutoQuerySingleDimArrayClean(t *testing.T) {
 	mustClean(t, `type Req { tags string[] }
 service S { get Op /x { request Req } }`)
@@ -278,7 +278,7 @@ func TestUniqueItemsOnMapRejected(t *testing.T) {
 }
 
 // `file` is a multipart-upload wire keyword, not a Go type, so a scalar may
-// not wrap it (`scalar X file` would emit non-compiling `type X file`) — reject
+// not wrap it (`scalar X file` would emit non-compiling `type X file`) - reject
 // it like `any`, which is already rejected.
 func TestScalarOverFileRejected(t *testing.T) {
 	expectError(t, `scalar FileScalar file
@@ -286,7 +286,7 @@ type R { f FileScalar }`, CodeScalarBadPrimitive)
 }
 
 // The file validators @maxSize / @mimeTypes are pointless on a @sensitive
-// field (it never crosses the wire), so they conflict — like every other
+// field (it never crosses the wire), so they conflict - like every other
 // validator already listed in sensitiveConflicts.
 func TestSensitiveConflictsFileValidators(t *testing.T) {
 	expectError(t, `type Req { secret file @sensitive @maxSize(1000) }`, CodeDecoratorConflict)
@@ -301,8 +301,8 @@ service S { get G /users/{foo} { request Req } }`)
 }
 
 // @uniqueItems over a cross-package struct element that is only TRANSITIVELY
-// non-comparable — through a bare member of the foreign struct that itself
-// holds a slice — must be rejected. The comparability walk has to follow the
+// non-comparable - through a bare member of the foreign struct that itself
+// holds a slice - must be rejected. The comparability walk has to follow the
 // foreign struct's bare member into ITS home package; without threading that
 // package the member resolved to "unknown" and was conservatively accepted,
 // shipping a non-compiling `map[dep.XOuter]struct{}` dedup.
@@ -322,7 +322,7 @@ type NReq { items dep.XOuter[] @uniqueItems }`,
 }
 
 // The same shape but with the foreign nested member comparable (a plain
-// string, not a slice) must NOT be rejected — the control.
+// string, not a slice) must NOT be rejected - the control.
 func TestUniqueItemsCrossPkgTransitiveComparableClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"dep/d.craftgo": `package dep
@@ -366,7 +366,7 @@ type NReq { items Holder[] @uniqueItems }`,
 // @uniqueItems over a cross-package GENERIC instance whose type-arg makes it
 // non-comparable (`shared.Box<shared.User>` where User holds a slice) must be
 // rejected. The comparability walk has to substitute the type-args into the
-// generic decl's fields — mirroring the same-package twin — or the bare `T`
+// generic decl's fields - mirroring the same-package twin - or the bare `T`
 // resolves to nothing, the instance is conservatively accepted, and codegen
 // emits a non-compiling `map[shared.Box[...]]struct{}`.
 func TestUniqueItemsCrossPkgGenericNonComparableRejected(t *testing.T) {
@@ -385,7 +385,7 @@ type UniqueHost { rows shared.Box<shared.User>[] @uniqueItems }`,
 }
 
 // A cross-package generic instance with a COMPARABLE type-arg
-// (`shared.Box<string>`) must NOT be rejected — the control.
+// (`shared.Box<string>`) must NOT be rejected - the control.
 func TestUniqueItemsCrossPkgGenericComparableClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -401,7 +401,7 @@ type UniqueHost { rows shared.Box<string>[] @uniqueItems }`,
 }
 
 // A non-marshalable map KEY nested inside a generic type-argument
-// (`Box<map<WithSlice, string>>`) must be rejected — a struct/slice key is a
+// (`Box<map<WithSlice, string>>`) must be rejected - a struct/slice key is a
 // non-compiling Go map key, a bool/float/bytes key panics at json.Marshal.
 // The comparability walk has to descend into the generic's type-args, not
 // only the field's top-level map/array. Covers single-package (struct key)
@@ -426,7 +426,7 @@ type UsesF { b lib.Box<map<lib.FloatKey, string>> }`,
 }
 
 // A VALID map key inside a generic type-arg (`Box<map<string, int>>`) must
-// NOT be rejected — the control.
+// NOT be rejected - the control.
 func TestMapKeyInGenericArgValidClean(t *testing.T) {
 	mustClean(t, `type Box<T> { val T }
 type Uses { b Box<map<string, int>> }`)
@@ -502,7 +502,7 @@ type Uses { rows shared.Box<shared.User>[] @uniqueItems }`,
 }
 
 // The same shape with a comparable type-arg (`Box<string>`) must NOT be
-// rejected — the control.
+// rejected - the control.
 func TestUniqueItemsGenericMixinComparableClean(t *testing.T) {
 	mustClean(t, `type Inner<T> { val T }
 type Box<T> { Inner<T> }
@@ -519,7 +519,7 @@ func TestUniqueItemsDistinctGenericInstancesRejected(t *testing.T) {
 	expectError(t, `type Wrap<T> { v T }
 type Holder { s Wrap<string>  b Wrap<bytes> }
 type R { items Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
-	// reversed order — the non-comparable instance comes first
+	// reversed order - the non-comparable instance comes first
 	expectError(t, `type Wrap<T> { v T }
 type Holder { b Wrap<bytes>  s Wrap<string> }
 type R { items Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
@@ -542,7 +542,7 @@ type R { items lib.Holder[] @uniqueItems }`,
 }
 
 // Two comparable instantiations (`Wrap<string>`, `Wrap<int>`) must NOT be
-// rejected — the control proving the per-instantiation key doesn't over-reject.
+// rejected - the control proving the per-instantiation key doesn't over-reject.
 func TestUniqueItemsDistinctGenericInstancesComparableClean(t *testing.T) {
 	mustClean(t, `type Wrap<T> { v T }
 type Holder { s Wrap<string>  b Wrap<int> }
@@ -550,7 +550,7 @@ type R { items Holder[] @uniqueItems }`)
 }
 
 // A cross-package scalar / enum field carrying `@nullable` that auto-binds to
-// @query on a body-less verb (GET/DELETE) must be rejected — `@nullable` lowers
+// @query on a body-less verb (GET/DELETE) must be rejected - `@nullable` lowers
 // it to a pointer but the wire binder writes a non-pointer value into it
 // (`req.Nul = lib.Email(...)` into a `*lib.Email`), non-compiling. The local
 // equivalent is already rejected; this mirrors it for the qualified form (the
@@ -597,7 +597,7 @@ service S { post Do /do { request SearchReq } }`,
 }
 
 // An auto-@path field (name matches a {segment}, no binding decorator) must
-// reject @nullable / optional `?` / @default on any verb — a matched route
+// reject @nullable / optional `?` / @default on any verb - a matched route
 // always supplies the segment and the path binder writes a plain string, so
 // these either non-compile (pointer mismatch) or are meaningless.
 func TestAutoPathFieldDecoratorsRejected(t *testing.T) {
@@ -609,14 +609,14 @@ service S { post P /it/{id} { request R } }`, CodeDecoratorConflict)
 service S { get G /it/{id} { request R } }`, CodeDecoratorConflict)
 }
 
-// A normal auto-path string field is fine — the control.
+// A normal auto-path string field is fine - the control.
 func TestAutoPathPlainStringClean(t *testing.T) {
 	mustClean(t, `type R { id string }
 service S { get G /it/{id} { request R } }`)
 }
 
 // A mixin embedding a bare type-parameter of the host generic
-// (`type Box<T> { T }`) is rejected — Go forbids embedding a type parameter,
+// (`type Box<T> { T }`) is rejected - Go forbids embedding a type parameter,
 // so the generated struct would never compile.
 func TestTypeParamMixinRejected(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type Box<T> { T  note string }
@@ -636,7 +636,7 @@ type R { b Box<string> }`,
 	}
 }
 
-// A `value T` named field (not an embed) must NOT be rejected — the control.
+// A `value T` named field (not an embed) must NOT be rejected - the control.
 func TestTypeParamNamedFieldClean(t *testing.T) {
 	mustClean(t, `type Box<T> { value T  note string }
 type R { b Box<string> }`)
@@ -644,7 +644,7 @@ type R { b Box<string> }`)
 
 // @uniqueItems over a LOCAL element whose field reaches a cross-package
 // non-comparable generic (`Holder{ b lib.Wrap<bytes> }`, `Holder[]`) must be
-// rejected — neither pass owned this combination before. It must fire exactly
+// rejected - neither pass owned this combination before. It must fire exactly
 // once (no double-report with the per-package pass), and a comparable variant
 // and a fully-local non-comparable element must each behave correctly.
 func TestUniqueItemsLocalElementCrossPkgFieldRejected(t *testing.T) {
@@ -738,7 +738,7 @@ type UploadReq { grid file[][]  name string @form }
 type Resp { ok bool }
 service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
 
-	// 1-D file[] is accepted — auto-form and explicit @form alike.
+	// 1-D file[] is accepted - auto-form and explicit @form alike.
 	for label, src := range map[string]string{
 		"auto": `package design
 type UploadReq { files file[]  name string @form }

@@ -62,7 +62,7 @@ type C { A  B }`, CodeMixinConflict)
 }
 
 // Control: two DIRECT fields of one struct that collide on Go name are
-// dedup-renamed by codegen (UserID / UserID_2) — the analyzer raises an
+// dedup-renamed by codegen (UserID / UserID_2) - the analyzer raises an
 // informational warning but must NOT raise a mixin-conflict ERROR, since only
 // the cross-embed case is unfixable.
 func TestMixinDirectGoNameCollisionNotRejected(t *testing.T) {

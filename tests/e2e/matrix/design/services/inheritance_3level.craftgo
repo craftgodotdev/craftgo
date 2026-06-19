@@ -24,12 +24,12 @@ package services
 @middlewares(RateLimit)
 @tags("account")
 service AccountService {
-	@doc("Sign up — public, only inherits rate limiting.")
+	@doc("Sign up - public, only inherits rate limiting.")
 	post Signup /signup {
 		response shared.ID
 	}
 
-	@doc("Log in — public, only inherits rate limiting.")
+	@doc("Log in - public, only inherits rate limiting.")
 	post Login /login {
 		response AccountLoginResp
 	}
@@ -41,12 +41,12 @@ service AccountService {
 @middlewares(AuthRequired)
 @tags("authenticated")
 extend service AccountService {
-	@doc("Get the current user — inherits RateLimit + AuthRequired.")
+	@doc("Get the current user - inherits RateLimit + AuthRequired.")
 	get Me /me {
 		response AccountProfile
 	}
 
-	@doc("Logout — inherits RateLimit + AuthRequired. Also appends Audit at method level.")
+	@doc("Logout - inherits RateLimit + AuthRequired. Also appends Audit at method level.")
 	@middlewares(Audit)
 	@tags("audited")
 	post Logout /logout {
@@ -56,13 +56,13 @@ extend service AccountService {
 
 // Second extend block: layers Audit + 'admin' tag on top of the
 // primary chain. The admin block does NOT see AuthRequired (that's
-// the first block's contribution) — each extend block is independent.
+// the first block's contribution) - each extend block is independent.
 // To require auth here too the block would need its own
 // `@middlewares(AuthRequired)` declaration.
 @middlewares(BasicAuth, Audit)
 @tags("admin")
 extend service AccountService {
-	@doc("Delete an account — admin-only. Chain: [RateLimit, BasicAuth, Audit].")
+	@doc("Delete an account - admin-only. Chain: [RateLimit, BasicAuth, Audit].")
 	delete DeleteAccount /admin/{id} {
 		request DeleteAccountReq
 		response shared.ID
@@ -72,8 +72,8 @@ extend service AccountService {
 	// extend block: drop the inherited chain entirely (RateLimit
 	// from primary + BasicAuth + Audit from this extend), then
 	// declare the method's own minimal chain. Final chain: [Audit]
-	// only — both inherited layers cleared.
-	@doc("Hard reset — bypasses BasicAuth, uses its own minimal chain.")
+	// only - both inherited layers cleared.
+	@doc("Hard reset - bypasses BasicAuth, uses its own minimal chain.")
 	@ignoreMiddleware
 	@middlewares(Audit)
 	post Reset /admin/reset {

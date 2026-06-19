@@ -52,15 +52,15 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 				if !rf.OnWireBody {
 					continue
 				}
-				// Carry the field's own metadata — field-level constraints
-				// (@gte/@maxLength/…), @default, @deprecated, and @nullable —
+				// Carry the field's own metadata - field-level constraints
+				// (@gte/@maxLength/…), @default, @deprecated, and @nullable -
 				// onto the property, exactly as the type-schema walk does.
 				// Without this a client consuming the error response sees
 				// every field as a bare, unconstrained, non-null value.
 				ref := schemaForTypeRef(v.Type, pkg, registry)
 				applyFieldMetadata(v, ref, pkg)
 				s.Properties[v.Name] = ref
-				// Non-optional error fields belong in required[] — same
+				// Non-optional error fields belong in required[] - same
 				// model as type schemas. Without this a generated client
 				// types every error field as optional even though the
 				// runtime always emits it.
@@ -83,7 +83,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		// A bodyless error (no declared fields) or a header/cookie-only
 		// error marshals its body to `{}`. The framework's server.WriteError
 		// detects that empty marshal and substitutes a `{code, message}`
-		// envelope, so advertise the same shape — otherwise the spec
+		// envelope, so advertise the same shape - otherwise the spec
 		// promises an empty object the server never actually sends.
 		if len(s.Properties) == 0 && len(mixinRefs) == 0 {
 			strProp := func() *openapi3.SchemaRef {
@@ -100,8 +100,8 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 
 // mixinRefName returns the component name an embedded mixin $refs. A
 // generic-instance mixin (`Page<Item>`) registers and refs its
-// monomorphised component (`PageOfItem`) — the same one a field of that
-// type would produce — instead of the bare, never-emitted generic decl
+// monomorphised component (`PageOfItem`) - the same one a field of that
+// type would produce - instead of the bare, never-emitted generic decl
 // name. A plain mixin refs its own name.
 func mixinRefName(ref *ast.NamedTypeRef, pkg *semantic.Package, registry *genericRegistry) string {
 	name := ref.Name.String()
@@ -197,7 +197,7 @@ func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericReg
 // (@gte/@default/@format/@example/@nullable/@deprecated…), type-level
 // description, @deprecated flag, @header/@cookie exclusion, mixin
 // allOf-flattening, and @requiresOneOf/@mutuallyExclusive fragments that
-// a non-generic type of the same shape carries — otherwise generic
+// a non-generic type of the same shape carries - otherwise generic
 // instances silently ship to clients as unconstrained objects.
 func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	s := &openapi3.Schema{
@@ -215,7 +215,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 			rf := resolveField(v, pkg, nil)
 			// Wire-bound (`@path`/`@query`/`@header`/`@cookie`) and
 			// `@sensitive` fields carry `json:"-"` and never appear in the
-			// JSON body — OnWireBody is the resolved decision (same one the
+			// JSON body - OnWireBody is the resolved decision (same one the
 			// struct/binder use), so this can't drift from them.
 			if !rf.OnWireBody {
 				continue
@@ -264,7 +264,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	// `anyOf` (`@requiresOneOf`) and `not.required` (`@mutuallyExclusive`)
 	// fragments. These complement the runtime validator (which fires
 	// inside Validate()) by making the same contract visible to spec-
-	// driven consumers — generated TS / Java SDKs, Swagger UI, schema
+	// driven consumers - generated TS / Java SDKs, Swagger UI, schema
 	// fuzzers. Without this emit, the API doc claims every listed
 	// field is independent but the server quietly rejects "all-absent"
 	// or "both-present" payloads.
@@ -300,7 +300,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 // crossFieldSchemaFragments returns one schema-level fragment per
 // `@requiresOneOf` / `@mutuallyExclusive` on the type, ready to drop
 // into an `allOf` chain. Empty result means no cross-field
-// constraints — the caller keeps the flat object shape.
+// constraints - the caller keeps the flat object shape.
 //
 // Encoding:
 //
@@ -347,7 +347,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 }
 
 // presentNonNull builds a schema that matches a body where every named
-// field is present AND not JSON null — the exact meaning the runtime
+// field is present AND not JSON null - the exact meaning the runtime
 // cross-field check uses (a pointer field is "present" only when `!= nil`,
 // so an explicit `null` does NOT count). Plain JSON-Schema `required` is
 // key-presence only and would treat `{"x": null}` as present, diverging

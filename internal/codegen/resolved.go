@@ -1,5 +1,5 @@
 // Resolved field/type IR: the single, fully-resolved view of a type's
-// fields that every codegen stage consumes — so no stage re-walks the AST
+// fields that every codegen stage consumes - so no stage re-walks the AST
 // and re-derives a field fact (is-on-wire, is-required, is-pointer, wire
 // name, default value) differently from another and drifts.
 //
@@ -85,13 +85,13 @@ type ResolvedField struct {
 
 	// SpecRequired: the field belongs in the OpenAPI required[] (not
 	// optional, no @default). RuntimeEnforced: the validator emits a
-	// presence check for it (not optional, not @nullable — pointer-backed
+	// presence check for it (not optional, not @nullable - pointer-backed
 	// fields are presence-checked via nil). Stored side-by-side so the
 	// schema/param/validate stages read ONE answer each, and a test can
 	// assert their relationship as a single visible invariant rather than
 	// an emergent property of separate predicates. They differ by design on
 	// @default (excluded from SpecRequired) and @nullable (excluded from
-	// RuntimeEnforced) — the test pins exactly where.
+	// RuntimeEnforced) - the test pins exactly where.
 	SpecRequired    bool
 	RuntimeEnforced bool
 }
@@ -147,8 +147,8 @@ func explicitBinding(f *ast.Field) Binding {
 // home package; a local ref resolves in pkg.Types with an empty prefix.
 //
 // This is the single resolution every per-request / per-response codegen pass
-// shares — the field resolver, default pre-fill, import collector, and
-// response-header/cookie writers — so a qualified type is never silently
+// shares - the field resolver, default pre-fill, import collector, and
+// response-header/cookie writers - so a qualified type is never silently
 // dropped by one stage (an `undefined: pkg` import, a missing pre-fill, an
 // unwritten response header) while a sibling stage emits it. Returns (nil, "")
 // when unresolvable; a nil resolver (the OpenAPI single-package callers) keeps
@@ -177,7 +177,7 @@ func lookupMethodType(ref *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectRe
 // context applied: an un-decorated field auto-binds to @path (its name
 // matches a `{param}` segment), to @query (a body-less verb has no body to
 // decode into), or stays @body (a body verb). This is the single place the
-// request auto-binding rule lives — the per-stage walks used to each
+// request auto-binding rule lives - the per-stage walks used to each
 // re-derive the path-segment + verb-default chain (the source of binding
 // drift like the @nullable-auto-query break); they now read rf.Binding.
 func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) []ResolvedField {
@@ -189,7 +189,7 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 		return nil
 	}
 	// Full-route path variables (the owning service's @prefix vars + the method
-	// path vars), so a field matching a @prefix variable auto-binds to @path —
+	// path vars), so a field matching a @prefix variable auto-binds to @path -
 	// the same shared rule the analyser's binding checks read, so codegen and
 	// semantics can't disagree on where the field rides.
 	pathNames := semantic.MethodRoutePathVars(m, pkg.Services)
@@ -214,7 +214,7 @@ func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolv
 	return fields
 }
 
-// resolveFields flattens td (mixins expanded, generic args substituted —
+// resolveFields flattens td (mixins expanded, generic args substituted -
 // one body walk) and resolves every field. This is the single place the
 // per-field facts are computed; stages read the result instead of
 // re-deriving from the AST.
@@ -244,7 +244,7 @@ func resolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *semantic.Pack
 // resolveField resolves a SINGLE field (no mixin flattening). Used by the
 // schema emitters, which keep mixins as an `allOf: [$ref]` rather than
 // inlining them, but still need the same per-field facts (is-on-wire,
-// is-required, default) the flattened consumers get — so the decision is
+// is-required, default) the flattened consumers get - so the decision is
 // computed once here instead of each emitter re-deriving it.
 func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) ResolvedField {
 	dv, hasDV := resolveDefaultValue(f, pkg)
@@ -264,7 +264,7 @@ func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) Resol
 		// The validator's presence gate (validate_registry.go): a
 		// non-optional, non-@nullable field gets a presence check. @nullable
 		// opts out (an explicit null is allowed); optional opts out (absence
-		// is allowed); @sensitive opts out too — it is `json:"-"` (off the
+		// is allowed); @sensitive opts out too - it is `json:"-"` (off the
 		// wire, like OnWireBody above), so a presence check on it can never be
 		// satisfied and would 400 every request.
 		RuntimeEnforced: f.Type != nil && !f.Type.Optional && !hasNullableDecorator(f.Decorators) && !hasSensitiveDecorator(f.Decorators),

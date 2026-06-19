@@ -52,7 +52,7 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 			// the built-in and fails to compile. (Middleware names live in a
 			// separate Go namespace, so they are exempt.)
 			a.diag(pos, pos, lexer.SeverityError, CodeDeclBuiltinName,
-				"declaration name %q collides with a built-in type — it would shadow the built-in in the generated Go; choose a different name", name)
+				"declaration name %q collides with a built-in type - it would shadow the built-in in the generated Go; choose a different name", name)
 			return false
 		}
 		if prev, ok := table[name]; ok {

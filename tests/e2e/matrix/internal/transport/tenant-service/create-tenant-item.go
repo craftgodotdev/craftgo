@@ -13,7 +13,7 @@ import (
 )
 
 // POST: the same un-decorated `tenantID` still binds from the path (not
-// the JSON body) — the body carries only `name`.
+// the JSON body) - the body carries only `name`.
 // CreateTenantItem returns the http.HandlerFunc for the
 // POST CreateTenantItem endpoint.
 func CreateTenantItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

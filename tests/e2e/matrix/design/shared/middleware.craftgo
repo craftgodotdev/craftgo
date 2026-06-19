@@ -1,7 +1,7 @@
 // Cross-cutting middlewares declared in the `shared` package so
 // every service in the project references the same set via
 // `@middlewares(shared.<Name>)`. Middleware names are GLOBALLY
-// unique across the project — the project-level resolver enforces
+// unique across the project - the project-level resolver enforces
 // uniqueness at semantic time so two packages cannot accidentally
 // claim the same name.
 //

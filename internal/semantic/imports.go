@@ -179,7 +179,7 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 	// Reject it with the bare-name fix rather than ship non-compiling Go.
 	if pkgName == currentPkg && currentPkg != "" {
 		r.diag(n.Pos, lexer.SeverityError, CodeQualifiedRef,
-			"redundant self-qualification %q — a type in its own package is referenced by its bare name; write %q",
+			"redundant self-qualification %q - a type in its own package is referenced by its bare name; write %q",
 			n.Name.String(), sym)
 		return
 	}
@@ -195,8 +195,8 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 		return
 	}
 	// Arity check for qualified generic refs. The per-package generics
-	// pass (checkGenerics) skips qualified names — it only sees the
-	// local symbol table — so this is the single site that catches
+	// pass (checkGenerics) skips qualified names - it only sees the
+	// local symbol table - so this is the single site that catches
 	// `shared.Page` (declared as `Page<T>`) being used without `<…>`.
 	if td := target.Types[sym]; td != nil {
 		want := len(td.TypeParams)

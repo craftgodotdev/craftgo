@@ -1,6 +1,6 @@
 // projects.craftgo lives in the SAME `services` package as
 // users.craftgo, so the `UserRef` reference in `Project.owner` is
-// resolved without an `import` — the package's type table is
+// resolved without an `import` - the package's type table is
 // shared across every file in the folder. Contrast with
 // users.craftgo, where `shared.ID` carries the package qualifier
 // because the source declaration lives in another folder.
@@ -8,13 +8,13 @@
 // ProjectService keeps the surface minimal: a single `list`
 // endpoint. The grammar wires `response` through `parseNamedTypeRef`
 // (NOT `parseTypeRef`), so a bare-array `response Project[]` cannot
-// appear — every list endpoint wraps the slice in an envelope DTO
+// appear - every list endpoint wraps the slice in an envelope DTO
 // (`ProjectsResp` below).
 package services
 
 // Project carries the cross-package `shared.ID` scalar (Go field
 // type: `string`, validators inherited from the scalar decl) and
-// the SAME-PACKAGE `UserRef` nested type — exercise of both the
+// the SAME-PACKAGE `UserRef` nested type - exercise of both the
 // qualified and the bare type-reference paths in one DTO.
 type Project {
 	id    shared.ID
@@ -30,7 +30,7 @@ type ProjectsResp {
 	items Project[]
 }
 
-// ProjectService is the minimal list-only surface — no auth, no
+// ProjectService is the minimal list-only surface - no auth, no
 // pagination, just an enveloped Project list so the generator can
 // wire a simple cross-package handler signature.
 service ProjectService {

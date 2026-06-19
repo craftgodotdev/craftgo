@@ -104,7 +104,7 @@ func TestArgsScopeNilEntry(t *testing.T) {
 }
 
 // TestExampleRejectsObject pins that @example only accepts a literal or
-// an array of literals — an object {k: v} arg is rejected. A struct
+// an array of literals - an object {k: v} arg is rejected. A struct
 // example is composed from each field's own @example; the object form
 // adds only JSON-in-DSL syntax with no emitter effect.
 func TestExampleRejectsObject(t *testing.T) {

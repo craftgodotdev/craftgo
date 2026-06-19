@@ -13,10 +13,10 @@ import (
 
 // Snapshot stacks an additional method-level middleware on top of
 // the service-level ProfileAuth chain. The combined order at gen
-// time is `[ProfileAuth, RequestStamp]` — ProfileAuth wraps
+// time is `[ProfileAuth, RequestStamp]` - ProfileAuth wraps
 // outermost, so unauthenticated callers never reach RequestStamp.
 // Method-level `@tags(snapshot)` adds to the service-level tags
-// list, NOT replacing it — clients see [admin, ops, snapshot].
+// list, NOT replacing it - clients see [admin, ops, snapshot].
 // Snapshot returns the http.HandlerFunc for the
 // GET Snapshot endpoint.
 func Snapshot(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

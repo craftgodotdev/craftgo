@@ -3,19 +3,19 @@
 //   - Bounds: @minItems(N) / @maxItems(N) with N = 0 (dead code),
 //     N = 1 (typical), exact-size pin (lo == hi), open-ended single
 //     bound.
-//   - Flag: @uniqueItems — emits a map-based dedupe loop scoped to a
+//   - Flag: @uniqueItems - emits a map-based dedupe loop scoped to a
 //     bare block.
 //   - Per-element validators: declare a scalar for the element type
 //     (`scalar Tag string @minLength(1) @maxLength(20)`). The
 //     scalar-leaves walker emits one nested loop per scalar decorator
 //     on every reachable element, including nested arrays and map
-//     values — no dedicated per-element decorator needed.
+//     values - no dedicated per-element decorator needed.
 //   - Optional array nil-guard: `T[]?` must SKIP @minItems when the
-//     slice is nil — without the guard, len(nil) == 0 would fail the
+//     slice is nil - without the guard, len(nil) == 0 would fail the
 //     bound even though the field is legitimately absent.
-//   - Multi-dim of scalar: Tag[][] and Tag[][][] — should produce
+//   - Multi-dim of scalar: Tag[][] and Tag[][][] - should produce
 //     correctly-nested for-loops per the scalar-leaves walk.
-//     Optional 2D: Tag[][]? — outer nil-guard, inner loop.
+//     Optional 2D: Tag[][]? - outer nil-guard, inner loop.
 package collections
 
 // Arr_BoundsBasic stacks the canonical @minItems + @maxItems +
@@ -39,45 +39,45 @@ type Arr_OptionalBound {
 
 // Arr_PlainInts is a bare int slice with no per-element validators.
 // To constrain elements, declare a scalar (`scalar NonNegInt int @gte(0)`)
-// and type the field as `NonNegInt[]` — the scalar-leaves walker emits
+// and type the field as `NonNegInt[]` - the scalar-leaves walker emits
 // the per-element check automatically.
 type Arr_PlainInts {
 	scores int[]
 }
 
 // Arr_PlainStrings is the string-array baseline. No per-element
-// constraints — the generated validator should be the bare presence
+// constraints - the generated validator should be the bare presence
 // check on `v.Codes` (slice == nil) only. `codes` also carries an
 // array-of-scalar @example, the one non-scalar example form that stays
-// legal (object examples are rejected — see semantic checkExampleArg).
+// legal (object examples are rejected - see semantic checkExampleArg).
 type Arr_PlainStrings {
 	codes string[] @example(["GET", "POST", "PUT"])
 }
 
 // Arr_TagSlice is the array-of-scalar case. `Tag[]` inherits Tag's
 // per-element @minLength + @maxLength + @pattern via the scalar-leaves
-// walk — the field carries NO per-element decorators because the
+// walk - the field carries NO per-element decorators because the
 // scalar already does. Field-level @minItems / @maxItems still apply
 // on top.
 type Arr_TagSlice {
 	tags Tag[] @minItems(1) @maxItems(10) @uniqueItems
 }
 
-// Arr_Tag2D — `Tag[][]` is the 2D scalar array. The generator emits
+// Arr_Tag2D - `Tag[][]` is the 2D scalar array. The generator emits
 // doubly-nested for-loops so each `v.Grid[i0][i1]` runs Tag's three
 // validators.
 type Arr_Tag2D {
 	grid Tag[][]
 }
 
-// Arr_Tag3D — `Tag[][][]` exercises THREE-deep iteration. Three
+// Arr_Tag3D - `Tag[][][]` exercises THREE-deep iteration. Three
 // nested `for iN := range ...` loops, with Tag's per-element
 // validators in the innermost body.
 type Arr_Tag3D {
 	cube Tag[][][]
 }
 
-// Arr_Tag2DOptional — `Tag[][]?` is the optional 2D scalar array.
+// Arr_Tag2DOptional - `Tag[][]?` is the optional 2D scalar array.
 // Outer nil-guard wraps the doubly-nested for-loops; the inner pair
 // runs only when the slice is non-nil.
 type Arr_Tag2DOptional {
@@ -91,7 +91,7 @@ type Arr_MinZero {
 	items string[] @minItems(0)
 }
 
-// Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair —
+// Arr_EmptyExact is the @minItems(0) + @maxItems(0) pair -
 // semantically "this slice must always be empty". The dead-code
 // lower-bound check from Arr_MinZero applies here too; the upper bound
 // (`> 0`) is the meaningful check that actually rejects values.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bench-report.sh — turn `go test -bench` raw output into a Markdown
+# bench-report.sh - turn `go test -bench` raw output into a Markdown
 # report. Reads the raw file at $1 (default: bench/results.txt) and
 # writes Markdown to $2 (default: bench/REPORT.md).
 #
@@ -9,7 +9,7 @@
 #      B/op, allocs/op)
 #   3. The raw output, fenced for verbatim record-keeping
 #   4. Codegen-vs-reflect deltas (ns ratio + alloc ratio) on the
-#      pairs the benchmark file exposes — full bind and no-body.
+#      pairs the benchmark file exposes - full bind and no-body.
 #
 # Pure bash + awk; no Go-side dependency so it works in any CI.
 

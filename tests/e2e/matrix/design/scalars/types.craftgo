@@ -41,7 +41,7 @@ type Bag {
 // Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
 // The keywords field is `Tag[]?` so the wire may omit it entirely; when
 // present every element runs Tag's @pattern check. The limit field
-// uses a numeric scalar with @default — the default literal is parsed
+// uses a numeric scalar with @default - the default literal is parsed
 // as the underlying primitive (int) and cast up to Cents.
 type Search {
 	keywords Tag[]?

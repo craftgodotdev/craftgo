@@ -6,7 +6,7 @@ import (
 )
 
 func TestOperationIDDuplicateExplicitRejected(t *testing.T) {
-	// Two methods pinned to the same explicit @operationId collide — the spec
+	// Two methods pinned to the same explicit @operationId collide - the spec
 	// would carry a duplicate operationId.
 	_, diags := Analyze(parseFiles(t, `service S {
 	@operationId("doThing")
@@ -83,7 +83,7 @@ service BetaService {
 }
 
 // Auto ids that share a method name across packages are service-prefixed in the
-// merged document, so they do NOT clash — no false positive.
+// merged document, so they do NOT clash - no false positive.
 func TestProjectOperationIDCrossPkgAutoNoFalsePositive(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha

@@ -135,7 +135,7 @@ func expectMsg(t *testing.T, substr string, sources ...string) *Diagnostic {
 	return nil
 }
 
-// expectNoMsg is the negative form — assert NO diagnostic mentions
+// expectNoMsg is the negative form - assert NO diagnostic mentions
 // substr. Useful for "this rule must NOT fire on a benign shape"
 // guards where the test author knows other diagnostics may still be
 // present.

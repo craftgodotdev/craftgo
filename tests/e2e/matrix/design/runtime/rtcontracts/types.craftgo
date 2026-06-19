@@ -1,4 +1,4 @@
-// Shared contracts pulled in via `import "runtime/rtcontracts"` — the import
+// Shared contracts pulled in via `import "runtime/rtcontracts"` - the import
 // spreads one logical `runtime` package across folders.
 package runtime
 

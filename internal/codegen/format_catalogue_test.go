@@ -12,7 +12,7 @@ import (
 // the analyser uses as the legal-value set. If they drift, a `@format` the
 // editor accepts could reach a validator that silently emits no check
 // (validate_emit_string.go skips unknown names) while OpenAPI still advertises
-// the format — a field with no runtime enforcement. The test also confirms the
+// the format - a field with no runtime enforcement. The test also confirms the
 // analyser's enum is wired to the same leaf, so all three agree by construction.
 func TestFormatCatalogueMatchesShared(t *testing.T) {
 	canonical := map[string]bool{}
@@ -29,7 +29,7 @@ func TestFormatCatalogueMatchesShared(t *testing.T) {
 	}
 	for name := range canonical {
 		if _, ok := formatValidators[name]; !ok {
-			t.Errorf("strfmt.Names lists @format(%q) but formatValidators emits no validator — the field would get NO runtime check", name)
+			t.Errorf("strfmt.Names lists @format(%q) but formatValidators emits no validator - the field would get NO runtime check", name)
 		}
 	}
 	// The analyser's @format enum must be the same leaf, or the editor could

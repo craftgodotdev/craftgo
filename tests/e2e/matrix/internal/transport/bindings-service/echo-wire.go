@@ -18,7 +18,7 @@ import (
 // name, so the emitted OpenAPI parameter name equals the wire name
 // the runtime binder reads (r.PathValue("user_id"),
 // r.Header.Get("X-API-Key"), r.Cookie("session_id"),
-// r.URL.Query().Get("search_q")) — never the DSL field name.
+// r.URL.Query().Get("search_q")) - never the DSL field name.
 // EchoWire returns the http.HandlerFunc for the
 // GET EchoWire endpoint.
 func EchoWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

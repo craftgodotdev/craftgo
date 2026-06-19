@@ -67,7 +67,7 @@ func (p *Parser) parseTypeParams() []string {
 // The body slice contains only [*Field] and [*Mixin] members today.
 // The [*FreeComment] member type is defined and the format printer
 // can render it, but the parser doesn't yet populate FreeComment
-// entries — doing so reliably requires per-comment-line position
+// entries - doing so reliably requires per-comment-line position
 // tracking in the lexer so the disambiguation between free-floating
 // comments and trailing comments mis-attached to the next non-trivia
 // token is sound.
@@ -122,7 +122,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	t := p.peek()
 	// A reserved word at the start of a type-body member is a FIELD NAME:
 	// a member is a field or a mixin, a mixin is a named type reference,
-	// and a keyword never spells one — so the keyword can only be the
+	// and a keyword never spells one - so the keyword can only be the
 	// field's name. Take its spelling as the identifier (contextual
 	// keyword), letting `type`, `error`, `map`, ... be field names.
 	if isKeywordKind(t.Kind) {

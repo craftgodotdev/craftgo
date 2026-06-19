@@ -15,7 +15,7 @@ import (
 // extend block: drop the inherited chain entirely (RateLimit
 // from primary + BasicAuth + Audit from this extend), then
 // declare the method's own minimal chain. Final chain: [Audit]
-// only — both inherited layers cleared.
+// only - both inherited layers cleared.
 // Reset returns the http.HandlerFunc for the
 // POST Reset endpoint.
 func Reset(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

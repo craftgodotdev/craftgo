@@ -13,13 +13,13 @@ package codegen
 // plumbing is one parameter instead of four.
 //
 // Local entries are keyed bare (`Order`), cross-package entries
-// qualified (`shared.Order`) — matching the keying contract of
+// qualified (`shared.Order`) - matching the keying contract of
 // [ScalarTable] / [TypeTable] / [EnumTable] which the resolver
 // composes from.
 //
 // nil-tolerant: every method returns the zero result when the
 // receiver is nil, so single-package fixtures and callers without
-// project context work unchanged — mirroring the `nil`
+// project context work unchanged - mirroring the `nil`
 // ScalarTable / TypeTable / EnumTable handling elsewhere.
 
 import (
@@ -93,7 +93,7 @@ func BuildMiddlewareTable(proj *semantic.Project, currentPkgName string) Middlew
 // [BuildProjectResolver] from a [semantic.Project] + [config.Config].
 //
 // Pass it as a single parameter instead of plumbing 4-5 separate
-// tables. Lookup methods are nil-tolerant — `(*ProjectResolver)(nil)`
+// tables. Lookup methods are nil-tolerant - `(*ProjectResolver)(nil)`
 // is a usable zero value that always misses, matching the legacy
 // behaviour every callsite already handles for `nil` maps.
 type ProjectResolver struct {
@@ -163,7 +163,7 @@ func (r *ProjectResolver) LookupMiddleware(name string) *ast.MiddlewareDecl {
 // crossPkgMap returns the underlying [CrossPkg] alias→import map for
 // emitters that still consume the bare map (transport's
 // resolveTypeRef, collectRequestFieldImports, …). nil receiver
-// yields nil — those emitters treat nil as "no cross-package
+// yields nil - those emitters treat nil as "no cross-package
 // imports needed".
 func (r *ProjectResolver) crossPkgMap() CrossPkg {
 	if r == nil {

@@ -133,7 +133,7 @@ func buildMiddlewareData(name string, _ *ast.MiddlewareDecl) middlewareData {
 }
 
 // writeMiddlewareFields emits svccontext/middlewares.go (overwrite).
-// Always emitted — even when the DSL declares no middlewares — so the
+// Always emitted - even when the DSL declares no middlewares - so the
 // `Middlewares` type embedded by svccontext.go stays defined.
 func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []string) error {
 	dir := filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext))

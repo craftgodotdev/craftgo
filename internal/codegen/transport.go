@@ -72,7 +72,7 @@ type transportData struct {
 	NeedsStrconv bool
 	// SuccessStatus is the resolved HTTP success code for this method
 	// (see [methodSuccessStatus]). SuccessStatusExpr is the Go source
-	// the template emits in `w.WriteHeader(...)` — an `http.StatusXxx`
+	// the template emits in `w.WriteHeader(...)` - an `http.StatusXxx`
 	// constant for the standard codes, falling back to the decimal
 	// literal. The response branch only writes the header when the code
 	// is not the implicit 200 the encoder already produces; the
@@ -179,7 +179,7 @@ func GenerateTransportWith(pkg *semantic.Package, cfg *config.Config, projectRoo
 
 // GenerateTransportResolved is the canonical entry point. The
 // [ProjectResolver] supplies every project-wide lookup the handler
-// emit chain may consult — scalar inheritance, cross-package
+// emit chain may consult - scalar inheritance, cross-package
 // enum/type resolution for binding casts, and the Go import paths
 // the generated handler file needs when it emits qualified
 // identifiers. nil resolver yields the legacy single-package
@@ -253,8 +253,8 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	// NeedsTypes triggers the `types` import in the template. The
-	// handler body only references `types.X` for request decoding —
-	// responses pass through to the encoder unchanged — so the gate is
+	// handler body only references `types.X` for request decoding -
+	// responses pass through to the encoder unchanged - so the gate is
 	// strictly "is there a request to bind". Response-only handlers
 	// would otherwise pull in an unused import (`go build` would
 	// reject) or render the response cast via a different alias when
@@ -293,7 +293,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		// alias. Edge case: a cross-pkg generic with a LOCAL type-arg
 		// (`shared.WrapBag<Item>` → `shared.WrapBag[types.Item]`) still
 		// references the canonical `types` alias for the inner arg, so keep
-		// the import when the rendered type carries a `types.` reference —
+		// the import when the rendered type carries a `types.` reference -
 		// mirroring the scaffold-service guard. But when the cross-pkg request
 		// package itself is named `types`, its alias IS `types`, so the
 		// `types.` references are the cross-pkg ones (covered by `extra`); keep
@@ -318,7 +318,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			addExtra(extraImport{Alias: pathAlias[path], Path: path})
 		}
 		// Wire binders cast cross-package scalar fields to their
-		// declared Go type — `req.ID = shared.ID(r.PathValue("id"))`.
+		// declared Go type - `req.ID = shared.ID(r.PathValue("id"))`.
 		// Without this import-walk the `shared` package never makes
 		// it into the file's import block, and the cast compiles to
 		// `undefined: shared`. Walk every field type of the request

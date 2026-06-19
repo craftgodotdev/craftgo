@@ -280,7 +280,7 @@ service S {
 			continue
 		}
 		m := s.Methods()[0]
-		// Path must be `/` (one empty segment) — NOT `/{request}`.
+		// Path must be `/` (one empty segment) - NOT `/{request}`.
 		if m.Path == nil || len(m.Path.Segments) != 1 {
 			t.Fatalf("expected path with 1 segment, got %v", m.Path)
 		}

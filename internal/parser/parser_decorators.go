@@ -125,7 +125,7 @@ func (p *Parser) parseArray() ast.Expr {
 	arr := &ast.ArrayLit{Pos: pos}
 	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
 		// parseValueOrArray (not parseValue) so a NESTED array literal
-		// like `[["a", "b"], ["c"]]` parses — parseValue has no `[` case
+		// like `[["a", "b"], ["c"]]` parses - parseValue has no `[` case
 		// and would record a diagnostic on the inner bracket.
 		arr.Elements = append(arr.Elements, p.parseValueOrArray())
 		if p.peek().Kind == lexer.Comma {
@@ -155,10 +155,10 @@ func (p *Parser) parseValue() ast.Expr {
 		if err != nil {
 			// strconv clamps an out-of-range literal to MaxInt64 with an
 			// ErrRange; emitting the clamped value would silently corrupt a
-			// bound (e.g. a uint64 @lte above MaxInt64). Reject instead — the
+			// bound (e.g. a uint64 @lte above MaxInt64). Reject instead - the
 			// IntLit's int64 storage can't represent values beyond the signed
 			// 64-bit range yet.
-			p.errorf(t.Pos, "integer literal %s is out of range — values beyond the signed 64-bit range (max %s) aren't supported yet", t.Text, "9223372036854775807")
+			p.errorf(t.Pos, "integer literal %s is out of range - values beyond the signed 64-bit range (max %s) aren't supported yet", t.Text, "9223372036854775807")
 		}
 		return &ast.IntLit{Pos: t.Pos, Value: n}
 	case lexer.Float:
@@ -188,7 +188,7 @@ func (p *Parser) parseValue() ast.Expr {
 			p.advance()
 			n, err := strconv.ParseInt("-"+next.Text, 10, 64)
 			if err != nil {
-				p.errorf(t.Pos, "integer literal -%s is out of range — values beyond the signed 64-bit range (min %s) aren't supported yet", next.Text, "-9223372036854775808")
+				p.errorf(t.Pos, "integer literal -%s is out of range - values beyond the signed 64-bit range (min %s) aren't supported yet", next.Text, "-9223372036854775808")
 			}
 			return &ast.IntLit{Pos: t.Pos, Value: n}
 		}

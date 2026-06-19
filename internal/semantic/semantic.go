@@ -137,7 +137,7 @@ type Options struct {
 	// skipBindingTypeCheckQualified suppresses the per-package
 	// binding-type check (`@path / @query / @header / @cookie /
 	// @form` shape rules in [analyzer.checkBindingFieldType]) for
-	// QUALIFIED refs only — bare names still resolve locally. The
+	// QUALIFIED refs only - bare names still resolve locally. The
 	// per-package pass can't see another package's scalars / enums
 	// so cross-pkg refs (`shared.Email @path`) would otherwise
 	// false-reject. Project mode flips this on; the post-pass
@@ -152,7 +152,7 @@ type Options struct {
 	// pass can't expand that mixin, so it would false-report the
 	// segment as having no matching field. Project mode flips this on
 	// and [refResolver.checkProjectPathParams] re-runs the check with
-	// cross-package mixin resolution — matching what the codegen binder
+	// cross-package mixin resolution - matching what the codegen binder
 	// already does via the project resolver.
 	skipPathParamCheck bool
 }
@@ -220,9 +220,9 @@ func (a *analyzer) runNamingPhase(files []*ast.File) {
 // middlewares / errors / fields. Project-level cross-package
 // references (middleware / security / errors) are gated by
 // `skipMiddlewareRefCheck` because they need the full project symbol
-// table — those run in [AnalyzeProject] after per-package analysis.
+// table - those run in [AnalyzeProject] after per-package analysis.
 // LOCAL refs (field-group: `@requiresOneOf` / `@mutuallyExclusive`)
-// always run — their targets are same-type fields, no cross-package
+// always run - their targets are same-type fields, no cross-package
 // resolution required, and skipping them silently allows typos like
 // `@requiresOneOf(emial, phone)` to slip through to codegen.
 func (a *analyzer) runDecoratorPhase(files []*ast.File) {

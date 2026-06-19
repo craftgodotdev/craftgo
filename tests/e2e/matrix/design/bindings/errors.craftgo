@@ -5,14 +5,14 @@
 //   - Bodies with mixed required / optional fields.
 //   - Bodies with validator-decorated fields (@minLength, @gte,
 //     @format).
-//   - DELIBERATE second-Conflict (`EmailTaken`) — the showcase pin
+//   - DELIBERATE second-Conflict (`EmailTaken`) - the showcase pin
 //     for "two errors with the same category are allowed (Conflict
 //     here is just the HTTP-409 bucket), but the names must be
 //     distinct".
 // ----------------------------------------------------------------
 package bindings
 
-// RecordNotFound is the canonical 404 marker. No body — the URL
+// RecordNotFound is the canonical 404 marker. No body - the URL
 // already carried the offending id, so echoing it would be
 // redundant.
 error NotFound RecordNotFound
@@ -27,7 +27,7 @@ error Conflict DuplicateKey {
 }
 
 // InvalidInput is the catch-all 400. The body shape mirrors the
-// JSON-Pointer style — each entry in `errors` is a path that failed
+// JSON-Pointer style - each entry in `errors` is a path that failed
 // the boundary check; `trace` is an optional correlation id for
 // support escalation.
 error BadRequest InvalidInput {
@@ -37,7 +37,7 @@ error BadRequest InvalidInput {
 
 // AccessDenied is a 403 with a typed body. `reason` carries a human
 // summary (@minLength prevents the empty-string degenerate case);
-// `retryAfter` hints when the client can retry — absent for hard
+// `retryAfter` hints when the client can retry - absent for hard
 // denials.
 error Forbidden AccessDenied {
 	reason     string @minLength(1)
@@ -45,7 +45,7 @@ error Forbidden AccessDenied {
 }
 
 // AuthRequired is the 401 envelope. `realm` lets the client render a
-// targeted "sign in to <realm>" prompt — every protected service
+// targeted "sign in to <realm>" prompt - every protected service
 // should pin its realm so multi-realm clients can pick the right
 // credential.
 error Unauthorized AuthRequired {
@@ -60,7 +60,7 @@ error TooManyRequests RateLimitExceeded {
 	retryAfter int @gte(1)
 }
 
-// EmailTaken is the SECOND Conflict declaration — verifies that the
+// EmailTaken is the SECOND Conflict declaration - verifies that the
 // generator allows multiple errors in the same category bucket so
 // long as the names are unique. The body carries the colliding email
 // back so the client can render "another account already uses

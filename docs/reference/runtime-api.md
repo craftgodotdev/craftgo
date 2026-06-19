@@ -1,8 +1,8 @@
 # Runtime API
 
-The generated code runs on `github.com/craftgodotdev/craftgo/pkg/server` — a thin wrapper over `net/http`. This page is the API reference for that package. You rarely call most of it directly: the generated `main.go` wires `server.New`, `RegisterRoutes`, and `Start`. You reach for this when adding middleware, swapping the JSON codec, customizing health checks, or shaping error responses.
+The generated code runs on `github.com/craftgodotdev/craftgo/pkg/server` - a thin wrapper over `net/http`. This page is the API reference for that package. You rarely call most of it directly: the generated `main.go` wires `server.New`, `RegisterRoutes`, and `Start`. You reach for this when adding middleware, swapping the JSON codec, customizing health checks, or shaping error responses.
 
-Everything here is plain standard-library shape — `http.Handler`, `http.HandlerFunc`, `func(http.Handler) http.Handler`. There is no custom router and no reflection.
+Everything here is plain standard-library shape - `http.Handler`, `http.HandlerFunc`, `func(http.Handler) http.Handler`. There is no custom router and no reflection.
 
 ## Server
 
@@ -40,7 +40,7 @@ Each returns `*Server` for chaining.
 | `SetLogger(l Logger)` / `Logger() Logger` | Swap or read the logger. Also mirrors to `log.Default()` so generated logic reaches the same instance. |
 | `SetJSONCodec(c JSONCodec)` / `Codec() JSONCodec` | Swap the codec used by handlers, the access log, and health endpoints. Delegates to `SetGlobalJSONCodec`. |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
-| `SetHandleNotFound(h http.Handler)` | Customize 404 responses — receives every request that matches no route. |
+| `SetHandleNotFound(h http.Handler)` | Customize 404 responses - receives every request that matches no route. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | Defaults applied to the underlying `*http.Server`. |
 | `SetDefaultMaxBodySize(bytes)` / `SetDefaultMaxHeaderSize(kb)` | Defaults for every method that doesn't declare its own `@maxBodySize`. |
 
@@ -52,7 +52,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-`RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory — each probe runs under `context.WithTimeout` and counts as a failure on deadline. `/healthz` (liveness) always returns 200 once the process is up.
+`RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory - each probe runs under `context.WithTimeout` and counts as a failure on deadline. `/healthz` (liveness) always returns 200 once the process is up.
 
 ## Middleware
 
@@ -72,7 +72,7 @@ type Middleware = func(http.Handler) http.Handler
 | `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
 | `Timeout(d)` | Caps handler execution; cancels the context and returns 503 on deadline. Panics still propagate to `Recovery`. |
 
-`WithLimits(h, Limits{...})` applies timeout + body limits to a single handler — this is what `@timeout` / `@maxBodySize` compile to.
+`WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to.
 
 ### Chain
 
@@ -88,7 +88,7 @@ srv.Handle("GET /me", authed.Then(meHandler))  // Then folds the chain over the 
 srv.Handle("GET /ping", base.ThenFunc(pingFn)) // ThenFunc for bare functions
 ```
 
-`NewChain(A, B, C).Then(h)` yields `A(B(C(h)))` — a request flows A → B → C → h, the response leaves in reverse. Nil entries are skipped, so an optional middleware can sit in the slice without an `if != nil` guard.
+`NewChain(A, B, C).Then(h)` yields `A(B(C(h)))` - a request flows A → B → C → h, the response leaves in reverse. Nil entries are skipped, so an optional middleware can sit in the slice without an `if != nil` guard.
 
 ### DSL-driven middleware
 
@@ -129,7 +129,7 @@ server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, e
 })
 ```
 
-The handler calls `server.WriteValidationError(w, r, err)` on a validation failure; it dispatches to your installed hook (or a sensible default). The hook is post-commit safe — if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body.
+The handler calls `server.WriteValidationError(w, r, err)` on a validation failure; it dispatches to your installed hook (or a sensible default). The hook is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body.
 
 ## CORS
 
@@ -142,6 +142,6 @@ Or build a `CORSOptions` value directly for fine control over methods, headers, 
 
 ## Related packages
 
-- `pkg/log` — the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
-- `pkg/metrics` — Prometheus-style counters/histograms the access log can feed.
-- `pkg/otel` — OpenTelemetry tracing helpers. Generated `main.go` wires these when enabled.
+- `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
+- `pkg/metrics` - Prometheus-style counters/histograms the access log can feed.
+- `pkg/otel` - OpenTelemetry tracing helpers. Generated `main.go` wires these when enabled.

@@ -6,7 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ResolveField resolves a field's layer-agnostic facts — including a
+// ResolveField resolves a field's layer-agnostic facts - including a
 // CROSS-PACKAGE scalar's nilability, the resolution the per-package checks
 // can't do (the gap behind the cross-pkg-promoted scalar nilability bug).
 func TestResolveField(t *testing.T) {

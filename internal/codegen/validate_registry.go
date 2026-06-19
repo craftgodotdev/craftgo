@@ -17,7 +17,7 @@ import (
 // (stdlib `fmt`, `regexp`, ...; also cross-package paths when a
 // qualified enum case-list lands in the emitted source); `pkg` is the
 // local symbol table; `resolver` is the project-wide lookup
-// (cross-pkg enums, types, scalars, errors + import paths) — emit
+// (cross-pkg enums, types, scalars, errors + import paths) - emit
 // sites that need qualified-name resolution route through it instead
 // of grabbing individual tables. `regexes` interns regex patterns
 // into package-level vars so `regexp.MustCompile` runs ONCE per
@@ -92,7 +92,7 @@ var validators = []validatorEntry{
 	{"pattern", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) }},
 	{"format", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) }},
 
-	// numeric — math-style comparison operators. Strict variants
+	// numeric - math-style comparison operators. Strict variants
 	// (@gt, @lt) sit next to inclusive variants (@gte, @lte); no
 	// legacy aliases. `@positive`/`@negative` remain as flag-form
 	// sugar for `@gt(0)` / `@lt(0)`.
@@ -190,7 +190,7 @@ func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, c
 	// faithfully (the field stays in `required[]` AND carries
 	// `nullable: true`). Encoding-side though, Go's JSON decoder
 	// produces a nil pointer for both "key missing" and "key set to
-	// null" — the two states are not distinguishable from the
+	// null" - the two states are not distinguishable from the
 	// post-decode struct. Enforcing "key must be present" requires a
 	// `json.RawMessage` receiver (or a custom presence tracker),
 	// which would change the field's Go-side type from `*T` to a

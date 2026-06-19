@@ -354,7 +354,7 @@ enum Status {
 				}
 			}
 			// The constraint must remain a real decorator, not become
-			// comment text — re-parse and re-format must be idempotent.
+			// comment text - re-parse and re-format must be idempotent.
 			out2, diags := Format("t.craftgo", out)
 			if len(diags) > 0 {
 				t.Fatalf("formatted output failed to re-parse: %v\n%s", diags, out)
@@ -391,7 +391,7 @@ func TestFormatCommentOnlyFilePreserved(t *testing.T) {
 // TestFormatAddsOptionalToDefault pins that `craftgo fmt` makes a
 // `@default` field's optionality explicit by adding `?` (the default fires
 // on an absent / null value, so the field is optional). A `@path` field is
-// exempt — a path segment is always present — and an already-optional
+// exempt - a path segment is always present - and an already-optional
 // field is left unchanged (idempotent).
 func TestFormatAddsOptionalToDefault(t *testing.T) {
 	src := `package p
@@ -447,7 +447,7 @@ type Foo {
 }
 
 // TestFormatStripsEmptyParens: empty `()` is canonicalised away
-// — `@positive()` → `@positive`, `@nullable()` → `@nullable`,
+// - `@positive()` → `@positive`, `@nullable()` → `@nullable`,
 // `@deprecated()` → `@deprecated`. Applies to Flag decorators
 // (which never take args) AND non-Flag decorators authored with
 // no args.
@@ -474,7 +474,7 @@ type X {
 }
 
 // TestFormatRewritesFormatStringToIdent: `@format("email")` is
-// rewritten to `@format(email)` on save. Rule — when a decorator
+// rewritten to `@format(email)` on save. Rule - when a decorator
 // argument names a registered identifier (format name, security
 // scheme, ...), bare ident is canonical. Strings with non-ident
 // characters (hyphens, dots) stay quoted so the rewrite doesn't

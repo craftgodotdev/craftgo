@@ -30,7 +30,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 	val := stringValueExpr(f, access)
 	guard := optionalGuard(f, access)
 	count := lengthCount(f, val, uses)
-	// Avoid the `if X != nil && l := count(*X); ...` form — Go forbids
+	// Avoid the `if X != nil && l := count(*X); ...` form - Go forbids
 	// `:=` inside an `&&` expression. Inline the count twice instead; the
 	// second call is constant-folded by the compiler when the argument is a
 	// simple deref.
@@ -74,7 +74,7 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 
 // lengthCount returns the Go expression for the length a string-family field's
 // `@length` / `@minLength` / `@maxLength` validates: utf8.RuneCountInString for
-// a `string` so the bound counts Unicode characters — matching the OpenAPI
+// a `string` so the bound counts Unicode characters - matching the OpenAPI
 // `minLength`/`maxLength` keyword and a Postgres `varchar(n)`, both of which
 // count characters, not bytes. A `bytes` field keeps `len()` (raw byte count,
 // the right measure for binary, and not advertised in the OpenAPI schema).
@@ -88,7 +88,7 @@ func lengthCount(f *ast.Field, val string, uses map[string]bool) string {
 
 // patternCheck handles `@pattern("regex")`. The regex is interned in
 // the file's [regexRegistry] so the `regexp.MustCompile` call happens
-// ONCE at package init — Validate() references the pre-compiled var
+// ONCE at package init - Validate() references the pre-compiled var
 // instead of recompiling per call.
 func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
@@ -148,7 +148,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		// inside a nil-guard so the deref in `val` and the init-stmt forms
 		// (mail.ParseAddress / time.Parse / ...) only run when a value is
 		// present. Keying on Optional alone would miss `@nullable`-without-
-		// `?`, which is still a `*string` — an unguarded deref panics on
+		// `?`, which is still a `*string` - an unguarded deref panics on
 		// `{"field": null}`.
 		inner := emit(val, msg)
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(inner))

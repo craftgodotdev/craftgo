@@ -130,7 +130,7 @@ func buildServiceData(svcName string, m *ast.Method, imps importPaths, crossPkg 
 	// resolveTypeRef returns only the OUTER ref's import; a generic instance's
 	// type-args reach further packages (`genpkg.Box<argpkg.Owner>` →
 	// `genpkg.Box[argpkg.Owner]`), so walk the whole ref and add every
-	// cross-package import — otherwise the scaffold references `argpkg.Owner`
+	// cross-package import - otherwise the scaffold references `argpkg.Owner`
 	// with no import (`undefined: argpkg`). The other emitters already do this
 	// via walkCrossPkgImports.
 	pathAlias := map[string]string{}
@@ -164,7 +164,7 @@ func buildServiceData(svcName string, m *ast.Method, imps importPaths, crossPkg 
 	// types import for the local one.
 	//
 	// Edge case: a cross-pkg generic (`shared.Page<LocalType>`) renders
-	// as `*shared.Page[types.LocalType]` — the outer alias is the cross
+	// as `*shared.Page[types.LocalType]` - the outer alias is the cross
 	// pkg but the inner local-arg still needs the canonical `types`
 	// import. Detect that via the `types.` substring in the bare type.
 	usesLocalTypes := strings.Contains(d.RequestType, "types.") || strings.Contains(d.ResponseType, "types.")

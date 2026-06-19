@@ -326,7 +326,7 @@ func TestResolveTypeRefGenericArgs(t *testing.T) {
 func TestRenderMixinQualifiedRef(t *testing.T) {
 	// Same-package mixin renders as bare ident (Go would refuse a
 	// qualified ref to itself). Cross-package mixin keeps the
-	// qualifier — Go requires `pkg.Type` for an embedded type
+	// qualifier - Go requires `pkg.Type` for an embedded type
 	// declared elsewhere, and the consuming file already carries
 	// the matching import.
 	cases := []struct {
@@ -668,7 +668,7 @@ error TooManyRequests RateLimited {
 		t.Errorf("sessionToken should be json:\"-\" cookie:\"sessionToken\":\n%s", src)
 	}
 	// Optional non-bound field keeps its real JSON tag, with omitempty (the
-	// canonical jsonTag rule — an optional error-body field is omittable).
+	// canonical jsonTag rule - an optional error-body field is omittable).
 	if !strings.Contains(norm, `Bucket *string `+"`json:\"bucket,omitempty\"`") {
 		t.Errorf("bucket should keep its DSL JSON tag:\n%s", src)
 	}
@@ -681,8 +681,8 @@ error TooManyRequests RateLimited {
 	)
 }
 
-// A @sensitive field on an error body must be tagged json:"-" — the same
-// canonical jsonTag rule regular types follow — so a server-only secret
+// A @sensitive field on an error body must be tagged json:"-" - the same
+// canonical jsonTag rule regular types follow - so a server-only secret
 // never rides the error response wire. (Regression: the error emitter once
 // re-derived the tag and leaked the value as json:"<name>".)
 func TestGenerateErrorsSensitiveFieldExcludedFromBody(t *testing.T) {
@@ -732,7 +732,7 @@ error TooManyRequests RateLimited {
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
 		// A numeric scalar resolves to its primitive (int) and formats
-		// the same as a plain int field — proving local scalar
+		// the same as a plain int field - proving local scalar
 		// resolution works on the error path too.
 		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
 		`http.SetCookie(w, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
@@ -742,7 +742,7 @@ error TooManyRequests RateLimited {
 // TestGenerateErrorsCrossPkgScalarHeader pins the cross-package scalar
 // resolution on the error path. A non-string scalar imported from
 // another package (shared.Cents → int) must resolve through the
-// ProjectResolver and format via strconv.FormatInt — NOT the broken
+// ProjectResolver and format via strconv.FormatInt - NOT the broken
 // string(int) conversion the local-only path would emit (wrong runtime
 // value + a go vet diagnostic). This exercises the resolver that
 // GenerateErrorsPackage threads through; the local-scalar test above

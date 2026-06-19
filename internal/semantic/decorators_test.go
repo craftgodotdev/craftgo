@@ -517,12 +517,12 @@ enum Kind { A B }
 type Y { id int @path  uid UserId @path  k Kind @path }`)
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
 	// Single-level arrays on @query / @header / @form ARE bindable (the
-	// repeated-param form) — only nested arrays are rejected.
+	// repeated-param form) - only nested arrays are rejected.
 	mustClean(t, `type Z { tags string[] @query  ids int[] @header  vals string[] @form }`)
 }
 
 // A multi-dimensional array whose element is a CROSS-PACKAGE scalar must
-// still be rejected on a wire-string source — the depth guard is purely
+// still be rejected on a wire-string source - the depth guard is purely
 // structural and runs before the qualified-ref resolution is deferred, so
 // the foreign element type doesn't let it slip through.
 func TestMultiDimArrayCrossPkgQueryRejected(t *testing.T) {
@@ -563,7 +563,7 @@ service S { put Replace /things { request Req } }`)
 // TestNullableAutoQueryRejected pins that a `@nullable` field with no
 // explicit binding is rejected on a body-less verb: it auto-binds to
 // @query (there is no body to decode into), where the pointer the
-// @nullable lowers to can't be assigned a wire string — the same reason
+// @nullable lowers to can't be assigned a wire string - the same reason
 // the explicit `@nullable @query` pairing is rejected.
 func TestNullableAutoQueryRejected(t *testing.T) {
 	expectError(t, `scalar Cents int @gte(0)
@@ -577,7 +577,7 @@ service S { post C /x { request Req } }`)
 }
 
 // TestDuplicatePathVarRejected pins that a route repeating a path
-// variable name is rejected — net/http's ServeMux panics on a duplicate
+// variable name is rejected - net/http's ServeMux panics on a duplicate
 // wildcard at registration.
 func TestDuplicatePathVarRejected(t *testing.T) {
 	expectDiag(t, `type Resp { ok bool }
@@ -588,7 +588,7 @@ type Req { id int @path  sub int @path }
 service S { get Get /items/{id}/x/{sub} { request Req  response Resp } }`)
 
 	// A method path segment reusing a variable already bound by the service
-	// @prefix produces a duplicate wildcard in the combined route — the
+	// @prefix produces a duplicate wildcard in the combined route - the
 	// registered pattern is prefix + method path, so ServeMux panics at boot.
 	expectDiag(t, `type Resp { items string[] }
 type Req { tenantID string @path }
@@ -615,7 +615,7 @@ service S { get Do /items { request Req  response Resp } }`)
 }
 
 // TestMixinPromotedBindingChecked pins that the method-level binding
-// checks see a field a request inherits through a mixin — a non-bindable
+// checks see a field a request inherits through a mixin - a non-bindable
 // field that auto-binds to @query on a body-less verb, and a @body / @form
 // field on a non-body verb, are both rejected at design time even when
 // promoted via a mixin (previously only the codegen stage caught these,

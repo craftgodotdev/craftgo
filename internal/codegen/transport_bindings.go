@@ -17,7 +17,7 @@ import (
 // (allOf $ref) and the validator (mixinValidateCall) already pull in. The
 // wire-binding, OpenAPI-parameter, default pre-fill, and body-decode
 // passes call this so a field a request inherits through a mixin is bound,
-// documented, defaulted, and decoded — not silently dropped while the
+// documented, defaulted, and decoded - not silently dropped while the
 // validator still enforces it. `r` may be nil (the OpenAPI pass runs on
 // the merged single package, where pkg.Types already holds every type);
 // `seen` breaks mixin cycles.
@@ -30,7 +30,7 @@ func flattenFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 // "" for the package being generated, or a sibling package name when td
 // was itself reached through a cross-package mixin. Without it a bare
 // mixin nested inside `shared.XMid` (e.g. `XDeep`, declared in `shared`)
-// is looked up against the current package and silently dropped — so its
+// is looked up against the current package and silently dropped - so its
 // fields never bind, default, or validate, while OpenAPI (built from a
 // flattened merged package) still advertises them. The prefix qualifies
 // the bare name (`shared.XDeep`) so the resolver finds it.
@@ -46,7 +46,7 @@ func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *
 // flatField is a flattened request/response field paired with the Go
 // identifier it lands on. GoName is deduped within the field's DECLARING
 // struct (the type whose body literally lists it), so it matches what the
-// struct renderer emits — colliding siblings (`userId` / `user_id`) get the
+// struct renderer emits - colliding siblings (`userId` / `user_id`) get the
 // `_2`/`_3` suffix in EVERY consumer (wire binder, default pre-fill, response
 // writer), not just the struct. A field promoted through a mixin keeps the
 // name from its own declaring struct, since the request embeds that mixin
@@ -59,7 +59,7 @@ type flatField struct {
 // flattenFieldsWithNames is [flattenFieldsIn] carrying each field's
 // dedup-resolved Go identifier. The dedup runs PER recursion level (over the
 // declaring type's direct fields), mirroring the struct renderer, so the
-// suffix a colliding field gets is identical to its struct field — the single
+// suffix a colliding field gets is identical to its struct field - the single
 // source of the Go field identity the whole pipeline reads.
 func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []flatField {
 	if td == nil {
@@ -111,8 +111,8 @@ func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Packa
 			sub := flattenFieldsWithNames(mt, childPrefix, pkg, r, seen)
 			// A generic mixin (`Page<Item>`) promotes fields typed in the
 			// type-parameter (`items T[]`). Substitute the concrete arguments
-			// so every consumer — wire binder, OpenAPI params/body, default
-			// pre-fill — sees `items Item[]`, not the bare `T`.
+			// so every consumer - wire binder, OpenAPI params/body, default
+			// pre-fill - sees `items Item[]`, not the bare `T`.
 			if mt != nil && len(v.Ref.Args) > 0 && len(mt.TypeParams) > 0 {
 				subst := substMap(mt.TypeParams, v.Ref.Args)
 				for i := range sub {
@@ -233,7 +233,7 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *ProjectRes
 }
 
 // responseBindingsFor builds the @header / @cookie write bindings for one
-// response-side body — a method response (accessVar "resp") or an error body
+// response-side body - a method response (accessVar "resp") or an error body
 // (accessVar "e"). td/prefix names the body to flatten; the flatten promotes a
 // binding inherited through a mixin so the OpenAPI doc side (which also
 // flattens) and the writer stay in agreement. Shared by collectResponseBindings
@@ -262,12 +262,12 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 
 // renderResponseWrite builds the Go statement that writes field f onto
 // the response as a `@header` or `@cookie`. accessVar names the struct
-// the value is read from — `resp` for a normal response, `e` for an
+// the value is read from - `resp` for a normal response, `e` for an
 // error. Non-string values are formatted via strconv (HTTP headers and
 // cookies are string-valued on the wire); optional fields are
 // nil-guarded; array headers emit one `Header().Add` per element
 // (cookies are guaranteed non-array by the semantic layer). The
-// returned statement may span several lines — gofmt, run over the whole
+// returned statement may span several lines - gofmt, run over the whole
 // generated file, normalises the indentation.
 func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver, kind, accessVar, goName string) (stmt string, needsStrconv bool) {
 	prim, declName := wirePrimName(f, pkg, r)
@@ -303,7 +303,7 @@ func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver
 // ...) used to format it onto a response header / cookie. It follows a
 // local or cross-package scalar to its primitive and maps an enum to
 // "int" (int-backed) or "string" (bare / string-backed). declName is
-// the field's own type name — it differs from prim for scalars and
+// the field's own type name - it differs from prim for scalars and
 // enums and drives the Go conversion in [formatToString]. An
 // unresolvable type (a cross-package symbol with no resolver) falls
 // back to "string": the field already passed the wire-binding check, so
@@ -425,7 +425,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 	}
 	var nonFile []candidate
 	// Read the resolved IR (mixins flattened, auto-@path resolved): a form
-	// field is one that rides the request body — body or @form — and is not
+	// field is one that rides the request body - body or @form - and is not
 	// a wire param or a server-only @sensitive field. Skipping @sensitive
 	// here also keeps such a value out of the multipart binding, matching
 	// the JSON binder.
@@ -527,9 +527,9 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 		wireName := rf.WireName()
 		switch rf.Binding {
 		case BindPath:
-			// A path segment binds like a @query value — a string passes
+			// A path segment binds like a @query value - a string passes
 			// straight through, a numeric / scalar / enum parses via the
-			// same server.Parse* helper — but it is always present and
+			// same server.Parse* helper - but it is always present and
 			// single-valued, so renderWireBindLine emits the required
 			// directSingle / singleParsed shape. An optional or array
 			// @path field is rejected (the semantic layer reports it for an
@@ -600,7 +600,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 	// bare-keyed local pkg.Types; resolve it through the project resolver so a
 	// field whose cast / @default reaches a THIRD package still contributes
 	// its import. resolveRequestFields below already resolves the qualified
-	// request — this guard just must not bail before it runs.
+	// request - this guard just must not bail before it runs.
 	if td, _ := lookupMethodType(m.Request, pkg, r); td == nil {
 		return out
 	}
@@ -609,7 +609,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 	// auto-@path/@query, mixins flattened) is computed once in
 	// resolveRequestFields rather than re-derived here. The resolver must
 	// be threaded or a field promoted through a cross-package mixin is
-	// missed and its foreign-package import is dropped — emitting a cast to
+	// missed and its foreign-package import is dropped - emitting a cast to
 	// a package the file never imports (non-compiling).
 	for _, rf := range resolveRequestFields(m, pkg, r) {
 		switch rf.Binding {
@@ -622,7 +622,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		// Body field with `@default(...)` on a cross-pkg enum OR scalar
 		// emits a pre-fill line that references the foreign package and
 		// so needs its import. Enum: `__d := xshared.XColorRed`. Scalar:
-		// `__d := shared.CurrencyCode("USD")` — the literal is CAST to
+		// `__d := shared.CurrencyCode("USD")` - the literal is CAST to
 		// the scalar's defined Go type (scalars are defined types, not
 		// aliases), so the cast references the foreign package and the
 		// import is required. The trigger is "field type is a cross-pkg
@@ -643,8 +643,8 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 // isQualifiedNamedWithDefault reports whether f's type is a qualified
 // `pkg.Name` ref AND the field carries a `@default(...)` decorator.
 // Sufficient signal that the transport pre-fill will emit a
-// foreign-package reference — either an enum const (`pkg.NameValue`)
-// or a scalar cast (`pkg.Name(literal)`) — so the cross-pkg import is
+// foreign-package reference - either an enum const (`pkg.NameValue`)
+// or a scalar cast (`pkg.Name(literal)`) - so the cross-pkg import is
 // registered. A false-positive registration is harmless: the
 // import-block emitter dedups against actual usage, and a genuinely
 // unused entry would surface as an `unused-import` build failure (the
@@ -685,7 +685,7 @@ func bindingWireName(f *ast.Field, kind string) string {
 }
 
 // describeFieldType renders a short human-readable form of f's type
-// for error messages — `[]Point`, `Page<Book>`, `map<string,int>`,
+// for error messages - `[]Point`, `Page<Book>`, `map<string,int>`,
 // etc. Used by the binding-rejection paths so the user sees the exact
 // shape that violated the binding contract.
 func describeFieldType(f *ast.Field) string {
@@ -727,7 +727,7 @@ func hasUnboundField(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) b
 	// @body on this verb). Wire params (@path/@query/@header/@cookie, incl.
 	// auto-@path) do not. The resolver must be threaded or a request whose
 	// only body fields come from a cross-package mixin reads as "no body
-	// fields" and the handler skips the body decode — fields stay zero.
+	// fields" and the handler skips the body decode - fields stay zero.
 	for _, rf := range resolveRequestFields(m, pkg, r) {
 		switch rf.Binding {
 		case BindBody, BindForm:

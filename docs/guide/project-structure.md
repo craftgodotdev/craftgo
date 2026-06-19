@@ -152,7 +152,7 @@ design/
     └── service.craftgo
 ```
 
-Cross-package types are referenced by qualifying with the package name — no import needed:
+Cross-package types are referenced by qualifying with the package name - no import needed:
 
 ```craftgo
 package design

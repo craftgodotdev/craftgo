@@ -58,7 +58,7 @@ func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string
 }
 
 // projectMergeCollisions returns the merged component names that 2+ DISTINCT
-// declarations resolve to — e.g. `shared.User` disambiguated to `SharedUser`
+// declarations resolve to - e.g. `shared.User` disambiguated to `SharedUser`
 // colliding with an `api.SharedUser` that already spells that name. The merge
 // keys both clones under the same map entry, so one silently overwrites the
 // other (its schema dropped, and a field of that type advertised with the

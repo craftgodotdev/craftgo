@@ -1,7 +1,7 @@
 // service.craftgo wires the array + map types up to a handler
 // surface so the generated routes / OpenAPI emit. Each endpoint
 // returns a representative shape from arrays.craftgo / maps.craftgo
-// — the interesting validation lives on the types, not the routes.
+// - the interesting validation lives on the types, not the routes.
 package collections
 
 @prefix("/collections")
@@ -14,7 +14,7 @@ service Collections {
 		response Arr_BoundsBasic
 	}
 
-	// TagSlice exercises the scalar-array case — per-element Tag
+	// TagSlice exercises the scalar-array case - per-element Tag
 	// validators (minLength + maxLength + pattern) fire on every
 	// element via the scalar-leaves walk.
 	post TagSlice /tag-slice {

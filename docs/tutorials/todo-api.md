@@ -1,6 +1,6 @@
 # Tutorial: Build a TODO API
 
-This tutorial builds a small but realistic CRUD service end to end: list, get, create, update, and delete todos — with enums, validation, pagination, and an OpenAPI spec. By the end you'll understand the full craftgo loop: **write DSL → generate → fill logic → run**.
+This tutorial builds a small but realistic CRUD service end to end: list, get, create, update, and delete todos - with enums, validation, pagination, and an OpenAPI spec. By the end you'll understand the full craftgo loop: **write DSL → generate → fill logic → run**.
 
 It assumes you've skimmed [Getting Started](/guide/getting-started). Budget ~15 minutes.
 
@@ -55,13 +55,13 @@ type Todo {
 Things to notice:
 
 - **Enums** are string-valued here (`= "open"`), so they marshal as those strings on the wire and craftgo generates a validity check.
-- `notes string?` — the `?` makes it optional (a Go pointer, omitted from JSON when nil).
+- `notes string?` - the `?` makes it optional (a Go pointer, omitted from JSON when nil).
 - `@default(Medium)` references an enum value by **bare name**, not a string.
 - `tags string[]` with `@maxItems` + `@uniqueItems` validates the array.
 
 ## 3. Request shapes
 
-Add the request/response types to the same file. Each endpoint gets its own request type — that keeps validation precise per operation.
+Add the request/response types to the same file. Each endpoint gets its own request type - that keeps validation precise per operation.
 
 ```craftgo
 type CreateTodoReq {
@@ -100,7 +100,7 @@ type OkResp {
 }
 ```
 
-`@path` binds a field to a URL path parameter; `@query` binds it to the query string. `UpdateTodoReq` is a PATCH shape — every field except `id` is optional, so callers send only what changes.
+`@path` binds a field to a URL path parameter; `@query` binds it to the query string. `UpdateTodoReq` is a PATCH shape - every field except `id` is optional, so callers send only what changes.
 
 ## 4. Define the service
 
@@ -144,7 +144,7 @@ service TodoService {
 }
 ```
 
-`@prefix("/todos")` prepends to every route; combined with `basePath: /api`, `GetTodo` lands at `GET /api/todos/{id}`. The `{id}` segment matches the `id @path` field in the request type — craftgo verifies that linkage at generate time.
+`@prefix("/todos")` prepends to every route; combined with `basePath: /api`, `GetTodo` lands at `GET /api/todos/{id}`. The `{id}` segment matches the `id @path` field in the request type - craftgo verifies that linkage at generate time.
 
 ## 5. Generate
 
@@ -164,11 +164,11 @@ docs/openapi.yaml
 main.go
 ```
 
-Open `internal/types/todos/validate.go` — every decorator you wrote is now a plain `if`. Open `docs/openapi.yaml` — every endpoint, schema, and enum is there.
+Open `internal/types/todos/validate.go` - every decorator you wrote is now a plain `if`. Open `docs/openapi.yaml` - every endpoint, schema, and enum is there.
 
 ## 6. Fill the logic
 
-Edit the stubs in `internal/service/todo-service/`. They are gen-once — `craftgo gen` will never overwrite them. A trivial in-memory store:
+Edit the stubs in `internal/service/todo-service/`. They are gen-once - `craftgo gen` will never overwrite them. A trivial in-memory store:
 
 ```go
 // internal/service/todo-service/create-todo.go
@@ -246,5 +246,5 @@ npx @redocly/cli preview-docs docs/openapi.yaml
 
 - Add auth with [Middleware](/guide/middleware) and `@middlewares` / `@security`.
 - Model failure with typed [Errors](/guide/errors) and `@errors(...)`.
-- Split shared types into a `package shared` and reference them cross-package — see [Types & Scalars](/guide/types-and-scalars).
+- Split shared types into a `package shared` and reference them cross-package - see [Types & Scalars](/guide/types-and-scalars).
 - Browse the full [Decorator Registry](/reference/decorator-registry).

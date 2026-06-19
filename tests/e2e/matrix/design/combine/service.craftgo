@@ -58,7 +58,7 @@ service CombineService {
 		response DefaultsBoundary
 	}
 
-	@doc("Echo the deliberate default-vs-validator clash. The empty-string default would fail @minLength(1) — if codegen accepts the design, the handler will reject the pre-filled value.")
+	@doc("Echo the deliberate default-vs-validator clash. The empty-string default would fail @minLength(1) - if codegen accepts the design, the handler will reject the pre-filled value.")
 	post EchoConflict /defaults/conflict {
 		request  DefaultsConflict
 		response DefaultsConflict

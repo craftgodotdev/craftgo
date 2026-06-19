@@ -8,9 +8,9 @@ package strings
 // Str_Lengths probes the boundary forms of @length / @minLength /
 // @maxLength. The interesting bits:
 //
-//   - zeroLower: @length(0, 100) — the lower bound is zero, so any
+//   - zeroLower: @length(0, 100) - the lower bound is zero, so any
 //     `len(x) < 0` check the generator emits would be dead code.
-//   - exact: @length(5, 5) — lo == hi, "exactly 5 chars".
+//   - exact: @length(5, 5) - lo == hi, "exactly 5 chars".
 //   - separate min/max: @minLength(1) and @maxLength(100) on
 //     distinct fields to confirm the single-bound path.
 type Str_Lengths {
@@ -24,7 +24,7 @@ type Str_Lengths {
 // Str_Patterns covers @pattern with Go regex syntax. Four flavours:
 //
 //   - Plain anchors + quantifier: ^[A-Z]{2,4}$.
-//   - Escaped plus: ^\+?[0-9]+$ — the leading `\+` is a literal `+`,
+//   - Escaped plus: ^\+?[0-9]+$ - the leading `\+` is a literal `+`,
 //     not a regex quantifier.
 //   - Numeric runs separated by literal `-`: \d{3}-\d{3}-\d{4}.
 //   - A regex containing a literal BACKTICK. The validator emits the
@@ -49,7 +49,7 @@ type Str_Combos {
 
 // Str_Optionals exercises the optional + validator combinations.
 // Each field is `string?` so the generator MUST nil-guard before
-// dereferencing. The interesting case is `pattOpt` — pattern against
+// dereferencing. The interesting case is `pattOpt` - pattern against
 // an optional should still emit the nil-guard prefix.
 type Str_Optionals {
 	lenOpt  string? @length(1, 100)
@@ -76,7 +76,7 @@ type Str_Default {
 
 // Str_UTF8 carries @example values containing multi-byte UTF-8
 // content so the OpenAPI emitter has to preserve them through YAML
-// quoting. No runtime validator difference — the test is purely on
+// quoting. No runtime validator difference - the test is purely on
 // the docs side.
 type Str_UTF8 {
 	vnName string @length(1, 80) @example("tên người dùng")
@@ -107,7 +107,7 @@ type AllFormats {
 	jsonField  string @format(json) @maxLength(65536)
 }
 
-// Str_EchoReq is the request body for the service's echo endpoint —
+// Str_EchoReq is the request body for the service's echo endpoint -
 // it bundles a sample of each interesting validator shape so logic
 // code receives a single struct with the full menu of constraints
 // already enforced at the handler boundary.
@@ -120,7 +120,7 @@ type Str_EchoReq {
 }
 
 // Str_EchoResp echoes the request shape back. Identical validators
-// — the response is just the request after a round-trip — so the
+// - the response is just the request after a round-trip - so the
 // generated wire contract is symmetric.
 type Str_EchoResp {
 	name     string  @length(1, 80)
