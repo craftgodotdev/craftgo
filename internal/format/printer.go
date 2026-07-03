@@ -4,13 +4,14 @@
 // printer's output produces an AST equal to its input, and a second
 // formatting pass is a no-op (idempotency).
 //
-// Comment recovery is driven entirely from `f.Comments` - the parser
-// snapshots every `//` comment (with position and leading/trailing kind)
-// from the lexer onto that slice. The printer derives its trailing /
-// loose lookup maps from the slice via [buildTrailingFromComments] and
-// [buildLooseFromComments]; no source-bytes scan is needed. As a result
-// [Format] (which has the source) and [Print] (AST only) produce the
-// same output - both rely on the same `f.Comments` data.
+// Comment placement is owned by the parser: free-floating blocks arrive as
+// position-accurate [ast.FreeComment] nodes (body members, method
+// BodyComments, File.FreeComments) and attached docs live on each node's
+// Doc field. The printer only derives two lookup maps from `f.Comments`
+// (trailing `// note` text and inter-decorator blocks) via
+// [buildTrailingFromComments] / [buildInterDecoratorComments]; no
+// source-bytes scan is needed. As a result [Format] (which has the source)
+// and [Print] (AST only) produce the same output.
 //
 // Two entry points are provided:
 //
@@ -64,25 +65,26 @@ func Print(w io.Writer, f *ast.File) error {
 	return pr.err
 }
 
-// newPrinter builds a Printer with trailing / loose comment lookup maps
-// derived from `f.Comments`. Centralising construction keeps both
-// [Format] and [Print] paths identical so the two entry points produce
-// the same output - the only difference is whether the caller already
-// has an AST in hand.
+// newPrinter builds a Printer with trailing / inter-decorator comment
+// lookup maps derived from `f.Comments`. Centralising construction keeps
+// both [Format] and [Print] paths identical so the two entry points
+// produce the same output - the only difference is whether the caller
+// already has an AST in hand.
 func newPrinter(w io.Writer, f *ast.File) *Printer {
-	interDec, chainClaimed := buildInterDecoratorComments(f)
 	return &Printer{
 		w:        w,
 		trailing: buildTrailingFromComments(f),
-		loose:    buildLooseFromComments(f, chainClaimed),
-		interDec: interDec,
+		interDec: buildInterDecoratorComments(f),
 	}
 }
 
 // Printer is the internal state for one render pass. The zero value is
-// useful as long as w is set; the trailing / loose maps are populated by
-// [newPrinter] from the file's `Comments` slice (callers constructing a
-// Printer directly via struct literal will simply lose comment recovery).
+// useful as long as w is set; the trailing / inter-decorator maps are
+// populated by [newPrinter] from the file's `Comments` slice (callers
+// constructing a Printer directly via struct literal will simply lose
+// comment recovery). Free-floating comment blocks need no lookup map -
+// the parser owns them as [ast.FreeComment] nodes (body members, method
+// BodyComments, and File.FreeComments) printed in source order.
 type Printer struct {
 	w     io.Writer
 	err   error
@@ -91,14 +93,6 @@ type Printer struct {
 	// `// note` comment found on that line after non-whitespace code.
 	// A line with no trailing comment is absent from the map.
 	trailing map[int]string
-	// loose holds free-floating `//` blocks that the lexer dropped
-	// because a blank line separated them from the next token. The
-	// key is the 1-indexed source line of the next code construct
-	// (top-level decl) the block precedes; values are the
-	// already-stripped comment text per line. Multiple consecutive
-	// loose blocks targeting the same anchor are merged with a
-	// blank entry between them.
-	loose map[int][]string
 	// interDec holds `//` blocks written inside a declaration's
 	// decorator chain - between two decorators, or between the last
 	// decorator and the keyword. No AST node owns them, so the key is
@@ -126,40 +120,70 @@ func (p *Printer) nl() { p.write("\n") }
 // File renders the entire source file: file-level decorators, the package
 // line, imports, and every top-level declaration in source order. A blank
 // line separates each major section so the output reads like the canonical
-// hand-written form.
+// hand-written form. File-scope free-floating comment blocks
+// (f.FreeComments, harvested by the parser) are interleaved by source line,
+// each separated from its neighbours by one blank line.
 func (p *Printer) File(f *ast.File) {
-	p.Doc(f.LeadingDoc)
+	fcs := f.FreeComments
+	// wroteAny gates the single-blank separator so the file never starts
+	// with a stray blank line (e.g. a comment-only file).
+	wroteAny := false
+	// flushBefore emits every pending free comment block that starts
+	// before the given source line; line 0 means "all remaining" (used
+	// for end-of-file blocks). Reports whether anything was flushed so
+	// call sites can keep the block detached from what follows.
+	flushBefore := func(line int) bool {
+		flushed := false
+		for len(fcs) > 0 && (line == 0 || fcs[0].Pos.Line < line) {
+			if wroteAny {
+				p.nl()
+			}
+			p.printFreeComment(fcs[0])
+			wroteAny = true
+			flushed = true
+			fcs = fcs[1:]
+		}
+		return flushed
+	}
+	if len(f.LeadingDoc) > 0 {
+		p.Doc(f.LeadingDoc)
+		wroteAny = true
+	}
 	for _, d := range f.Decorators {
 		p.Decorator(d)
 		p.nl()
+		wroteAny = true
 	}
 	if f.Package != nil {
+		if flushBefore(f.Package.Pos.Line - len(f.Package.Doc)) {
+			p.nl()
+		}
 		p.Doc(f.Package.Doc)
 		p.write("package ")
 		p.write(f.Package.Name)
 		p.nl()
+		wroteAny = true
 	}
 	if len(f.Imports) > 0 {
 		p.nl()
 		for _, imp := range f.Imports {
+			flushBefore(imp.Pos.Line - len(imp.Doc))
 			p.Import(imp)
 			p.nl()
+			wroteAny = true
 		}
 	}
 	for _, d := range f.Decls {
-		p.nl()
-		if loose, ok := p.loose[declFirstSourceLine(d)]; ok {
-			p.Doc(loose)
+		flushBefore(declFirstSourceLine(d))
+		if wroteAny {
 			p.nl()
 		}
 		p.Decl(d)
+		wroteAny = true
 	}
-	// End-of-file comment blocks (after the last decl) have no anchor, so
-	// re-emit them here rather than dropping them.
-	if eof, ok := p.loose[looseEOFKey]; ok {
-		p.nl()
-		p.Doc(eof)
-	}
+	// End-of-file blocks (after the last decl) - and, for a file with no
+	// declarations at all, every comment the source contained.
+	flushBefore(0)
 }
 
 // declFirstSourceLine returns the 1-indexed source line where this

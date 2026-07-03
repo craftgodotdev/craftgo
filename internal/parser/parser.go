@@ -31,6 +31,10 @@ type Parser struct {
 	// lexer, kept so the parser can populate `*ast.File.Comments` and
 	// (in body parsing) scan for free-floating section headers.
 	allComments []*lexer.Comment
+	// claimed marks the source lines of comments already owned by an AST
+	// Doc field or the formatter's inter-decorator recovery; body
+	// harvesting turns the unclaimed remainder into [ast.FreeComment]s.
+	claimed map[int]bool
 }
 
 // takeDoc returns the buffered doc-comment slice and clears it so the
@@ -42,11 +46,13 @@ func (p *Parser) takeDoc() []string {
 }
 
 // captureDoc snapshots the doc attached to the current peek token onto
-// the parser's pendingDoc buffer. Safe to call multiple times - it
-// overwrites any previous buffer because the freshest peek dominates.
+// the parser's pendingDoc buffer and claims its comment lines. Safe to
+// call multiple times - it overwrites any previous buffer because the
+// freshest peek dominates.
 func (p *Parser) captureDoc() {
 	if len(p.peek().Doc) > 0 {
 		p.pendingDoc = p.peek().Doc
+		p.claimDoc(p.peek())
 	}
 }
 
@@ -60,6 +66,7 @@ func New(filename, src string) *Parser {
 		tokens:      toks,
 		diags:       l.Diagnostics(),
 		allComments: l.Comments(),
+		claimed:     map[int]bool{},
 	}
 }
 
@@ -82,6 +89,7 @@ func (p *Parser) Parse() *ast.File {
 	// comment vanishes through the parser/format round trip.
 	if p.peek().Kind == lexer.At {
 		f.LeadingDoc = p.peek().Doc
+		p.claimDoc(p.peek())
 	}
 	leading := p.parseDecorators()
 	if p.peek().Kind == lexer.KwPackage {
@@ -106,6 +114,10 @@ func (p *Parser) Parse() *ast.File {
 		}
 	}
 	f.Comments = p.allComments
+	// Whatever leading comment no Doc field or body harvest claimed is a
+	// file-scope free-floating block (between declarations, above the
+	// package line, or trailing the last declaration).
+	f.FreeComments = p.harvestFreeComments(0, int(^uint(0)>>1))
 	return f
 }
 
