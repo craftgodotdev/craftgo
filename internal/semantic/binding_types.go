@@ -183,31 +183,53 @@ func isPathBindingType(t *ast.TypeRef, pkg *Package) bool {
 // it nil when the key is absent). Rejects: maps, structs, generic
 // instantiations, and the `file` type (which only `@form` accepts).
 func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
+	// Local refs may be a builtin / file / primitive by bare name; scalars and
+	// enums resolve through the package's own tables.
+	return wireBindableNamed(t, true,
+		func(nt *ast.NamedTypeRef) *ast.ScalarDecl {
+			if pkg == nil {
+				return nil
+			}
+			return pkg.Scalars[nt.Name.String()]
+		},
+		func(nt *ast.NamedTypeRef) *ast.EnumDecl {
+			if pkg == nil {
+				return nil
+			}
+			return pkg.Enums[nt.Name.String()]
+		})
+}
+
+// wireBindableNamed is the shared "may this named type ride a wire string"
+// predicate behind both the per-package [isWireBindingType] and the cross-package
+// [refResolver.qualifiedIsWireBindable] twins. The two differ only in how they
+// resolve a scalar / enum decl (local map vs project resolver) - injected as
+// scalar / enum - and whether bare builtin / `file` / primitive names are
+// considered (checkBuiltin: true for local bare refs, false for qualified
+// cross-package refs, which are never builtins). Keeping the rule here means a
+// change to what's wire-bindable can't drift between the two.
+func wireBindableNamed(t *ast.TypeRef, checkBuiltin bool, scalar func(*ast.NamedTypeRef) *ast.ScalarDecl, enum func(*ast.NamedTypeRef) *ast.EnumDecl) bool {
 	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
 		return false
 	}
 	// A wire-string source encodes an array as repeated single values
-	// (`?x=1&x=2`); a nested array has no wire form. Reject at the shared
-	// predicate so every consumer - the explicit `@query`/`@header` check,
-	// the auto-@query promotion on a body-less verb, and the @form set -
-	// agrees, instead of leaving the depth guard on one path only.
+	// (`?x=1&x=2`); a nested array has no wire form.
 	if t.ArrayDepth > 1 {
 		return false
 	}
-	name := t.Named.Name.String()
-	if name == "file" {
-		return false
+	if checkBuiltin {
+		name := t.Named.Name.String()
+		if name == "file" {
+			return false
+		}
+		if isPrimitiveWireName(name) {
+			return true
+		}
 	}
-	if isPrimitiveWireName(name) {
-		return true
-	}
-	if pkg == nil {
-		return false
-	}
-	if sc, ok := pkg.Scalars[name]; ok && sc != nil {
+	if sc := scalar(t.Named); sc != nil {
 		return isPrimitiveWireName(sc.Primitive)
 	}
-	if ed, ok := pkg.Enums[name]; ok && ed != nil {
+	if ed := enum(t.Named); ed != nil {
 		return enumWireKindOK(ed)
 	}
 	return false

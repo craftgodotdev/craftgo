@@ -98,22 +98,10 @@ func (r *refResolver) qualifiedIsPathBindable(t *ast.TypeRef) bool {
 }
 
 func (r *refResolver) qualifiedIsWireBindable(t *ast.TypeRef) bool {
-	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
-		return false
-	}
-	// Nested arrays have no wire-string encoding (see [isWireBindingType]);
-	// reject the cross-package twin identically so a qualified element type
-	// (`shared.Tag[][]`) auto-binding to @query is caught too.
-	if t.ArrayDepth > 1 {
-		return false
-	}
-	if sc := r.lookupScalar(t.Named); sc != nil {
-		return isPrimitiveWireName(sc.Primitive)
-	}
-	if ed := r.lookupEnum(t.Named); ed != nil {
-		return enumWireKindOK(ed)
-	}
-	return false
+	// The cross-package twin of isWireBindingType: qualified refs are never bare
+	// builtins, so skip the builtin check and resolve scalars / enums through the
+	// project resolver. Shares wireBindableNamed so the rule can't drift.
+	return wireBindableNamed(t, false, r.lookupScalar, r.lookupEnum)
 }
 
 func (r *refResolver) qualifiedIsFormBindable(t *ast.TypeRef) bool {
