@@ -63,7 +63,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	// both required:true and a default).
 	if ast.HasDecorator(f.Decorators, "default") {
 		for _, d := range f.Decorators {
-			if d.Name == "path" {
+			if d.Name == wire.BindingPath {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
 					"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
 				return
@@ -101,7 +101,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	}
 	for _, d := range f.Decorators {
 		switch d.Name {
-		case "path":
+		case wire.BindingPath:
 			if isPathBindingType(f.Type, a.pkg) {
 				continue
 			}
@@ -113,7 +113,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			// Cookie has no multi-value shape; reject arrays with
 			// the source-specific message BEFORE the general wire
 			// check (which accepts arrays for query / header).
-			if d.Name == "cookie" && f.Type.Array {
+			if d.Name == wire.BindingCookie && f.Type.Array {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
 					"field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name",
 					parent, f.Name)
@@ -126,7 +126,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				"field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s",
 				parent, f.Name, d.Name, describeTypeRef(f.Type))
 			return
-		case "form":
+		case wire.BindingForm:
 			if isFormBindingType(f.Type, a.pkg) {
 				continue
 			}

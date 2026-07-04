@@ -27,6 +27,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // defaultHealthPaths is the runtime's auto-registered set, mirrored here so
@@ -445,7 +446,7 @@ func walkBodyForPath(td *ast.TypeDecl, prefix, label string, paramSet map[string
 func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 	for _, d := range ds {
 		switch d.Name {
-		case "query", "header", "cookie", "body", "form":
+		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingBody, wire.BindingForm:
 			return true
 		}
 	}
@@ -454,7 +455,7 @@ func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
-		if d.Name != "path" {
+		if d.Name != wire.BindingPath {
 			continue
 		}
 		if len(d.Args) > 0 {
