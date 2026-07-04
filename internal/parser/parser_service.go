@@ -192,13 +192,9 @@ func (p *Parser) parsePath() *ast.Path {
 // inside a URL path they're literal segments, not language tokens.
 // This is what lets paths like `/echo-stream` or `/users/get` parse.
 func isPathWordToken(k lexer.Kind) bool {
-	if k == lexer.Ident {
-		return true
-	}
-	if k >= lexer.KwPackage && k <= lexer.VerbOptions {
-		return true
-	}
-	return false
+	// An identifier or any reserved keyword/verb spelling is a literal path
+	// segment; the keyword range lives in isKeywordKind.
+	return k == lexer.Ident || isKeywordKind(k)
 }
 
 // verbFromToken maps a verb-token [lexer.Kind] to its lowercase spelling.
