@@ -64,18 +64,15 @@ func (p *Parser) parseTypeParams() []string {
 // that trailing on the surrounding decl's TrailingDoc so it survives
 // parse → format round-trip.
 //
-// The body slice contains only [*Field] and [*Mixin] members today.
-// The [*FreeComment] member type is defined and the format printer
-// can render it, but the parser doesn't yet populate FreeComment
-// entries - doing so reliably requires per-comment-line position
-// tracking in the lexer so the disambiguation between free-floating
-// comments and trailing comments mis-attached to the next non-trivia
-// token is sound.
+// The body slice holds [*Field] and [*Mixin] members plus [*FreeComment]
+// blocks: every leading comment inside the braces that no member's Doc
+// claimed is harvested into a position-accurate FreeComment, so section
+// dividers and closing notes survive parse → format round-trip.
 func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 	if !p.peekIs(lexer.LBrace) {
 		return nil, lexer.Token{}
 	}
-	p.advance()
+	lbrace := p.advance()
 	var members []ast.TypeMember
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		startPos := p.pos
@@ -88,12 +85,8 @@ func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 		}
 	}
 	rbrace, _ := p.expect(lexer.RBrace)
-	if len(rbrace.Doc) > 0 {
-		members = append(members, &ast.FreeComment{
-			Pos:  rbrace.Pos,
-			Text: rbrace.Doc,
-		})
-	}
+	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	members = mergeFreeComments(members, fcs, func(fc *ast.FreeComment) ast.TypeMember { return fc })
 	return members, rbrace
 }
 
@@ -139,8 +132,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
 		ref := p.parseNamedTypeRef()
 		p.rejectMixinDecorators(t.Pos, decs)
-		p.takeDoc()
-		return &ast.Mixin{Pos: t.Pos, Ref: ref}
+		return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
 	}
 	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
 		name := p.advance()
@@ -150,8 +142,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	}
 	ref := p.parseNamedTypeRef()
 	p.rejectMixinDecorators(t.Pos, decs)
-	p.takeDoc()
-	return &ast.Mixin{Pos: t.Pos, Ref: ref}
+	return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
 }
 
 // isFieldFollower reports whether `next` (the token AFTER a leading

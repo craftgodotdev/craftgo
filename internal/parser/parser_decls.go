@@ -15,6 +15,7 @@ import (
 // comments survive a parse / format round-trip.
 func (p *Parser) parsePackage() *ast.PackageDecl {
 	pkgTok := p.advance()
+	p.claimDoc(pkgTok)
 	name, _ := p.expect(lexer.Ident)
 	return &ast.PackageDecl{Pos: name.Pos, Doc: pkgTok.Doc, Name: name.Text}
 }
@@ -28,6 +29,7 @@ func (p *Parser) parsePackage() *ast.PackageDecl {
 // (the lexer's [Token.Trailing] holds same-line `// note` comments).
 func (p *Parser) parseImport() *ast.Import {
 	importTok := p.advance()
+	p.claimDoc(importTok)
 	imp := &ast.Import{Pos: importTok.Pos, Doc: importTok.Doc}
 	if p.peek().Kind == lexer.Ident {
 		imp.Alias = p.advance().Text
@@ -48,6 +50,12 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	decs := append([]*ast.Decorator{}, extra...)
 	decs = append(decs, p.parseDecorators()...)
 	t := p.peek()
+	// Comments inside the decorator chain are re-emitted by the
+	// formatter's inter-decorator lookup; claim them so the file-scope
+	// harvest does not print them a second time.
+	if len(decs) > 0 {
+		p.claimCommentsBetween(decs[0].Pos.Line, t.Pos.Line)
+	}
 	switch t.Kind {
 	case lexer.KwType:
 		return p.parseTypeDecl(decs)
@@ -89,7 +97,7 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	ed := &ast.EnumDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
-	p.expect(lexer.LBrace)
+	lbrace, _ := p.expect(lexer.LBrace)
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		startPos := p.pos
 		v := p.parseEnumValue()
@@ -104,12 +112,8 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 	if rbrace.Trailing != "" {
 		ed.TrailingDoc = []string{rbrace.Trailing}
 	}
-	if len(rbrace.Doc) > 0 {
-		ed.Members = append(ed.Members, &ast.FreeComment{
-			Pos:  rbrace.Pos,
-			Text: rbrace.Doc,
-		})
-	}
+	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	ed.Members = mergeFreeComments(ed.Members, fcs, func(fc *ast.FreeComment) ast.EnumMember { return fc })
 	return ed
 }
 

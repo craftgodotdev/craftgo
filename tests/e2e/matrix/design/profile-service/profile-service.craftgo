@@ -6,9 +6,13 @@ package design
 // logical service.
 @prefix("/v1")
 service ProfileService {
+	// Section: read endpoints - free-floating comments like this one
+	// must survive gen and fmt (harvested as ast.FreeComment).
+
 	// GetProfile returns the profile with the given id.
 	@errors(ProfileNotFound)
 	get GetProfile /profiles/{id} {
+		// binds {id} from the route
 		request  GetProfileReq
 		response Profile
 	}

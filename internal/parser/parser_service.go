@@ -15,7 +15,7 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, extend bool) *ast.Servi
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	sd := &ast.ServiceDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text, Extend: extend}
-	p.expect(lexer.LBrace)
+	lbrace, _ := p.expect(lexer.LBrace)
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		startPos := p.pos
 		m := p.parseMethod()
@@ -30,12 +30,10 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, extend bool) *ast.Servi
 	if rbrace.Trailing != "" {
 		sd.TrailingDoc = []string{rbrace.Trailing}
 	}
-	if len(rbrace.Doc) > 0 {
-		sd.Members = append(sd.Members, &ast.FreeComment{
-			Pos:  rbrace.Pos,
-			Text: rbrace.Doc,
-		})
-	}
+	// Methods harvest their own body comments first (and claim them), so
+	// this pass only picks up the blocks between members.
+	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	sd.Members = mergeFreeComments(sd.Members, fcs, func(fc *ast.FreeComment) ast.ServiceMember { return fc })
 	return sd
 }
 
@@ -82,13 +80,20 @@ func (p *Parser) parseMethod() *ast.Method {
 		p.errorf(t.Pos, "expected HTTP verb, got %s", t.Kind)
 		return nil
 	}
+	// Comments inside the decorator chain (between two decorators, or
+	// between the last decorator and the verb) are re-emitted by the
+	// formatter's inter-decorator lookup; claim them so the service
+	// body's harvest pass does not print them a second time.
+	if len(decs) > 0 {
+		p.claimCommentsBetween(decs[0].Pos.Line, t.Pos.Line)
+	}
 	p.advance()
 	name, _ := p.expect(lexer.Ident)
 	m := &ast.Method{Pos: t.Pos, Decorators: decs, Doc: p.takeDoc(), Verb: verb, Name: name.Text}
 	if p.peek().Kind == lexer.Slash {
 		m.Path = p.parsePath()
 	}
-	p.expect(lexer.LBrace)
+	lbrace, _ := p.expect(lexer.LBrace)
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		switch p.peek().Kind {
 		case lexer.KwRequest:
@@ -118,6 +123,8 @@ func (p *Parser) parseMethod() *ast.Method {
 	if rbrace.Trailing != "" {
 		m.TrailingDoc = []string{rbrace.Trailing}
 	}
+	m.EndPos = rbrace.Pos
+	m.BodyComments = p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
 	return m
 }
 

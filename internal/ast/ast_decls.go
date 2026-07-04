@@ -39,8 +39,10 @@ func (f *Field) MemberPos() Pos { return f.Pos }
 
 // Mixin is a bare reference (qualified ident, optionally generic) inside a
 // type body. The semantic phase expands its fields into the host type.
+// Doc preserves the `//` block immediately above the reference.
 type Mixin struct {
 	Pos Pos
+	Doc []string
 	Ref *NamedTypeRef
 }
 
@@ -48,17 +50,18 @@ func (*Mixin) typeMember()      { astMarker() }
 func (m *Mixin) MemberPos() Pos { return m.Pos }
 
 // FreeComment is a free-floating `//` comment block that appears inside a
-// type / enum / service body and does not attach to any field, value, or
-// method. Common patterns:
+// type / enum / service / method body and does not attach to any field,
+// value, or method. Common patterns:
 //
 //   - Section dividers immediately after the opening `{`.
 //   - Closing notes (TODO / NOTE) immediately before the `}`.
 //   - Stand-alone blocks separated from surrounding members by a blank line.
 //
-// Text holds one entry per `//` source line, with the leading `// ` (slashes
-// plus optional single space) already stripped - the parser populates this
-// from the lexer's Doc-attached buffer when the buffer is decided to be
-// "free-floating" rather than the next member's leading doc.
+// Pos is the position of the block's FIRST `//` line; Text holds one entry
+// per source line, with the leading `// ` (slashes plus optional single
+// space) already stripped. The parser harvests these from the comment side
+// channel: every leading comment inside a body that no AST Doc field
+// claimed becomes a FreeComment, so `craftgo fmt` re-emits it in place.
 //
 // Implements [TypeMember], [EnumMember], and [ServiceMember] so the same
 // node can sit inside any body kind.
@@ -244,16 +247,24 @@ type ServiceMember interface {
 //
 // TrailingDoc captures a `// note` on the same line as the closing `}` of
 // the method body, e.g. `} // returns 404 if not found`.
+//
+// BodyComments holds free-floating comment blocks written inside the
+// method's `{ ... }` body (above the request/response lines or the closing
+// brace); the printer re-emits each at its source-ordered slot. EndPos is
+// the position of the body's closing `}` - the formatter uses it to
+// preserve blank-line grouping between this method and the next member.
 type Method struct {
-	Pos         Pos
-	Decorators  []*Decorator
-	Doc         []string
-	Verb        string
-	Name        string
-	Path        *Path
-	Request     *NamedTypeRef
-	Response    *MethodResponse
-	TrailingDoc []string
+	Pos          Pos
+	Decorators   []*Decorator
+	Doc          []string
+	Verb         string
+	Name         string
+	Path         *Path
+	Request      *NamedTypeRef
+	Response     *MethodResponse
+	TrailingDoc  []string
+	BodyComments []*FreeComment
+	EndPos       Pos
 }
 
 func (*Method) serviceMember()   { astMarker() }

@@ -72,6 +72,10 @@ func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
 // source line) are filtered out and re-emitted as trailing comments on
 // the correct field - this avoids losing them and avoids printing them
 // in the wrong place.
+//
+// Blank-line grouping is preserved from the source: a member (or free
+// comment) separated from the previous one by one or more blank lines
+// keeps exactly one blank line in the output.
 func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	maxName, maxType := 0, 0
 	typeStr := make(map[*ast.Field]string, len(body))
@@ -97,40 +101,47 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			}
 		}
 	}
+	prevEnd := 0
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			p.looseBeforeMember(v.Pos.Line)
+			p.blankBetween(prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
 			p.alignedField(v, maxName, maxType, typeStr[v])
+			prevEnd = v.Pos.Line
 		case *ast.Mixin:
-			p.looseBeforeMember(v.Pos.Line)
+			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
+			p.printLeadingDoc(v.Doc, v.Pos.Line)
 			p.indent()
 			p.NamedTypeRef(v.Ref)
 			p.nl()
+			prevEnd = v.Pos.Line
 		case *ast.FreeComment:
+			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
+			prevEnd = v.Pos.Line + len(v.Text) - 1
 		}
 	}
 }
 
-// looseBeforeMember emits any free-floating `//` block the lexer dropped
-// from a body member's leading Doc (a section-separator comment with a
-// blank line on each side). buildLooseFromComments anchors such a block to
-// the member's source line; without this lookup the comment is captured
-// but never printed, silently lost on `craftgo fmt`. A blank line precedes
-// it to preserve the section break.
-func (p *Printer) looseBeforeMember(line int) {
-	loose, ok := p.loose[line]
-	if !ok {
-		return
+// blankBetween emits a single blank line when the source had one or more
+// blank lines between a construct ending on line prevEnd and the next one
+// starting on line start. Collapses runs of blanks to one; never emits a
+// blank before the first member (prevEnd == 0) or when position info is
+// missing (hand-built ASTs carry zero positions).
+func (p *Printer) blankBetween(prevEnd, start int) {
+	if prevEnd > 0 && start > prevEnd+1 {
+		p.nl()
 	}
-	// Blank line on BOTH sides keeps the section-separator shape and makes
-	// the result re-parse as the same loose block (idempotent) - without the
-	// trailing blank, a second fmt would read the comment as the next
-	// member's leading doc and shift the layout.
-	p.nl()
-	p.Doc(loose)
-	p.nl()
+}
+
+// memberStartLine returns the first source line a member visually occupies:
+// its own line, adjusted upward for a leading decorator rendered above it
+// and for its doc block (always directly above the first token).
+func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
+	if len(decs) > 0 && decs[0].Pos.Line > 0 && decs[0].Pos.Line < pos {
+		pos = decs[0].Pos.Line
+	}
+	return pos - docLen
 }
 
 // fieldHasDefault reports whether f carries a `@default(...)` decorator.
@@ -252,13 +263,17 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 			}
 		}
 	}
+	prevEnd := 0
 	for _, m := range d.Members {
 		switch v := m.(type) {
 		case *ast.EnumValue:
-			p.looseBeforeMember(v.Pos.Line)
+			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.EnumValue(v, maxName)
+			prevEnd = v.Pos.Line
 		case *ast.FreeComment:
+			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
+			prevEnd = v.Pos.Line + len(v.Text) - 1
 		}
 	}
 	p.depth--
@@ -361,27 +376,48 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	p.write(" {")
 	p.nl()
 	p.depth++
-	first := true
+	// Blank-line policy: preserve the source grouping when positions are
+	// known; hand-built ASTs (zero positions) keep the legacy one-blank-
+	// between-members shape.
+	printedAny := false
+	prevEnd := 0
 	for _, member := range d.Members {
 		switch v := member.(type) {
 		case *ast.Method:
-			if !first {
-				p.nl()
-			}
+			start := memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc))
+			p.serviceMemberGap(printedAny, prevEnd, start)
 			p.Method(v)
-			first = false
-		case *ast.FreeComment:
-			if !first {
-				p.nl()
+			printedAny = true
+			prevEnd = v.EndPos.Line
+			if prevEnd == 0 {
+				prevEnd = v.Pos.Line
 			}
+		case *ast.FreeComment:
+			p.serviceMemberGap(printedAny, prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
-			first = false
+			printedAny = true
+			prevEnd = v.Pos.Line + len(v.Text) - 1
 		}
 	}
 	p.depth--
 	p.indent()
 	p.write("}")
 	p.writeTrailing(d.TrailingDoc)
+	p.nl()
+}
+
+// serviceMemberGap emits the blank line between two service-body members.
+// With position info the source grouping wins (one or more blank source
+// lines → exactly one blank); without it (hand-built ASTs) every pair of
+// members keeps the legacy single blank separator.
+func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
+	if !printedAny {
+		return
+	}
+	if prevEnd > 0 && start > 0 {
+		p.blankBetween(prevEnd, start)
+		return
+	}
 	p.nl()
 }
 
@@ -396,29 +432,53 @@ func (p *Printer) Method(m *ast.Method) {
 		p.write(" ")
 		p.Path(m.Path)
 	}
-	if m.Request == nil && m.Response == nil {
+	if m.Request == nil && m.Response == nil && len(m.BodyComments) == 0 {
 		// The grammar always wraps the method with `{ ... }` even
 		// when both sides are absent (e.g. a `@passthrough` method),
 		// so emit an empty body literal to keep round-trip parity.
 		p.write(" {}")
+		p.writeTrailing(m.TrailingDoc)
 		p.nl()
 		return
 	}
 	p.write(" {")
 	p.nl()
 	p.depth++
+	// Interleave free-floating body comments with the request/response
+	// lines by source position; the tail (comments above the closing
+	// brace) flushes after both lines.
+	comments := m.BodyComments
+	prevEnd := 0
+	flushBefore := func(line int) {
+		for len(comments) > 0 && (line == 0 || comments[0].Pos.Line < line) {
+			c := comments[0]
+			p.blankBetween(prevEnd, c.Pos.Line)
+			p.printFreeComment(c)
+			prevEnd = c.Pos.Line + len(c.Text) - 1
+			comments = comments[1:]
+		}
+	}
 	if m.Request != nil {
+		flushBefore(m.Request.Pos.Line)
+		p.blankBetween(prevEnd, m.Request.Pos.Line)
 		p.indent()
 		p.write("request  ")
 		p.NamedTypeRef(m.Request)
+		p.writeSourceTrailing(m.Request.Pos.Line, false)
 		p.nl()
+		prevEnd = m.Request.Pos.Line
 	}
 	if m.Response != nil {
+		flushBefore(m.Response.Pos.Line)
+		p.blankBetween(prevEnd, m.Response.Pos.Line)
 		p.indent()
 		p.write("response ")
 		p.NamedTypeRef(m.Response.Type)
+		p.writeSourceTrailing(m.Response.Pos.Line, false)
 		p.nl()
+		prevEnd = m.Response.Pos.Line
 	}
+	flushBefore(0)
 	p.depth--
 	p.indent()
 	p.write("}")

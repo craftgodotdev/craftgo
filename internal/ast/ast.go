@@ -49,6 +49,13 @@ type File struct {
 	Package    *PackageDecl
 	Imports    []*Import
 	Decls      []Decl
+	// FreeComments holds file-scope free-floating comment blocks - those
+	// between declarations, above the package line, or after the last
+	// declaration - that no Doc field claimed. The parser harvests them
+	// (position-accurate, one entry per contiguous `//` run) exactly like
+	// body-level [FreeComment] members; the printer interleaves them with
+	// declarations by source line.
+	FreeComments []*FreeComment
 	// Comments is the side channel containing every `//` comment in
 	// the source, in source order, with leading/trailing kind. The
 	// parser populates it from the lexer's accumulated set so tools
