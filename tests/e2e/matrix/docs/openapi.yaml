@@ -815,40 +815,6 @@ components:
       - tags
       - album
       type: object
-    BatchUploadReqBody:
-      description: |-
-        BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
-        `r.MultipartForm.File[name]` (each repeated part is one element), bounded
-        by `@minItems`/`@maxItems`; an optional single `cover` and a repeated
-        `string[] @form` value share the same multipart request. (A
-        multi-dimensional `file[][]` has no multipart encoding and is rejected at
-        gen time.)
-      properties:
-        album:
-          maxLength: 100
-          minLength: 1
-          type: string
-        cover:
-          format: binary
-          type:
-          - string
-          - "null"
-        files:
-          items:
-            format: binary
-            type: string
-          maxItems: 10
-          minItems: 1
-          type: array
-        tags:
-          items:
-            type: string
-          type: array
-      required:
-      - files
-      - tags
-      - album
-      type: object
     BatchUploadRespBody:
       $ref: '#/components/schemas/Item'
     BindingsColor:
@@ -3209,27 +3175,6 @@ components:
       - id
       type: object
     NullableFormReq:
-      description: |-
-        NullableFormReq is a multipart request (the `doc` file makes it
-        multipart) carrying a `@nullable` body field. `meta` has no binding
-        decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
-        and the binder pointer-wraps the present value (nil when the form value
-        is absent). Contrast with `@nullable @query`/`@header`, which are
-        rejected - an explicit wire param is a string with no JSON-null form.
-      properties:
-        doc:
-          format: binary
-          type: string
-        meta:
-          maxLength: 120
-          type:
-          - string
-          - "null"
-      required:
-      - doc
-      - meta
-      type: object
-    NullableFormReqBody:
       description: |-
         NullableFormReq is a multipart request (the `doc` file makes it
         multipart) carrying a `@nullable` body field. `meta` has no binding
@@ -6447,19 +6392,6 @@ components:
       type: object
     UpdateUserRespBody:
       $ref: '#/components/schemas/AcctUser'
-    UploadAvatarReqBody:
-      properties:
-        caption:
-          maxLength: 280
-          type:
-          - string
-          - "null"
-        file:
-          format: binary
-          type: string
-      required:
-      - file
-      type: object
     UploadAvatarRespBody:
       $ref: '#/components/schemas/UserAvatar'
     UploadReq:

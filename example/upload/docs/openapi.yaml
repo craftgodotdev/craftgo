@@ -55,49 +55,6 @@ components:
       - featured
       - priority
       type: object
-    CreateGalleryReqBody:
-      properties:
-        cover:
-          format: binary
-          type:
-          - string
-          - "null"
-        description:
-          maxLength: 2000
-          type:
-          - string
-          - "null"
-        featured:
-          type: boolean
-        photos:
-          items:
-            format: binary
-            type: string
-          maxItems: 20
-          minItems: 1
-          type: array
-        priority:
-          maximum: 100
-          minimum: 0
-          type: integer
-        tags:
-          items:
-            type: string
-          type: array
-        title:
-          maxLength: 200
-          minLength: 1
-          type: string
-        visibility:
-          $ref: '#/components/schemas/Visibility'
-      required:
-      - photos
-      - title
-      - tags
-      - visibility
-      - featured
-      - priority
-      type: object
     CreateGalleryRespBody:
       $ref: '#/components/schemas/Gallery'
     DeleteMediaRespBody:
@@ -214,14 +171,6 @@ components:
       required:
       - blob
       type: object
-    UploadAttachmentReqBody:
-      properties:
-        blob:
-          format: binary
-          type: string
-      required:
-      - blob
-      type: object
     UploadAttachmentRespBody:
       $ref: '#/components/schemas/UploadResult'
     UploadAvatarReq:
@@ -232,35 +181,9 @@ components:
       required:
       - image
       type: object
-    UploadAvatarReqBody:
-      properties:
-        image:
-          format: binary
-          type: string
-      required:
-      - image
-      type: object
     UploadAvatarRespBody:
       $ref: '#/components/schemas/UploadResult'
     UploadDocumentReq:
-      properties:
-        notes:
-          maxLength: 2000
-          type:
-          - string
-          - "null"
-        pdf:
-          format: binary
-          type: string
-        title:
-          maxLength: 200
-          minLength: 1
-          type: string
-      required:
-      - pdf
-      - title
-      type: object
-    UploadDocumentReqBody:
       properties:
         notes:
           maxLength: 2000
