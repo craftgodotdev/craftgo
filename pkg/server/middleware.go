@@ -52,6 +52,14 @@ func (w *committedResponseWriter) Write(p []byte) (int, error) {
 
 func (w *committedResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+// Flush forwards to the underlying writer's Flusher when available so streaming
+// handlers keep working through the Recovery wrapper (mirrors statusRecorder).
+func (w *committedResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // Committed reports whether the response status / body has already
 // been flushed. Generated handlers and the validation-error hook use
 // it (via a type assertion against `interface{ Committed() bool }`)
