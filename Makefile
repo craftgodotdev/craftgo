@@ -1,7 +1,6 @@
 .DEFAULT_GOAL := help
 
 # ---- vars ----------------------------------------------------------------
-MODULE       := github.com/craftgodotdev/craftgo
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
