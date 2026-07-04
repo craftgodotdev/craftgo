@@ -1,0 +1,39 @@
+package shared
+
+// Reason a validation failed, surfaced in the ValidationErr body so clients
+// can branch without string-matching messages.
+enum FieldProblem {
+	Missing
+	TooLong
+	TooShort
+	Format
+}
+
+error Unauthorized UnauthorizedErr {
+	code string? @default("AUTH_REQUIRED")
+}
+
+error Forbidden ForbiddenErr {
+	need string @doc("The role or scope the caller is missing.")
+}
+
+error NotFound ResourceNotFound {
+	resource string
+	id       ID
+}
+
+error Conflict AlreadyExists {
+	resource string
+	field    string
+}
+
+error UnprocessableEntity ValidationErr {
+	field   string
+	problem FieldProblem
+}
+
+error TooManyRequests RateLimitedErr {
+	retryAfter int @gte(1) @lte(3600)
+}
+
+error Internal InternalErr

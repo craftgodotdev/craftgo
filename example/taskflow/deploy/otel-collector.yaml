@@ -1,0 +1,27 @@
+# Minimal OpenTelemetry Collector config for local development: accept OTLP from
+# the API over gRPC and print traces + metrics to the collector's stdout so you
+# can watch them with `docker compose logs -f otel-collector`. In production,
+# replace the `debug` exporter with your backend (Tempo, Jaeger, Honeycomb, ...).
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch: {}
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

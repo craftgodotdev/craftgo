@@ -1,0 +1,69 @@
+package admin
+
+type ApiToken {
+	id    shared.ID
+	name  string @length(1, 80)
+	scope string
+	last4 string @length(4, 4)
+	shared.Timestamps
+}
+
+// Returned once, at creation - the caller must store `secret` immediately.
+type ApiTokenSecret {
+	id     shared.ID
+	name   string
+	secret string @doc("The full token; shown once and never retrievable again.")
+}
+
+type CreateTokenReq {
+	name  string @length(1, 80)
+	scope string @pattern("^(read|write|admin)$")
+}
+
+type RevokeTokenReq {
+	id shared.ID @path
+}
+
+type AdminStats {
+	projects    int @gte(0)
+	tasks       int @gte(0)
+	attachments int @gte(0)
+}
+
+// @group nests this service's generated code + routes under an `admin/`
+// folder (transport/service/routes), but the URL is still driven by @prefix.
+// Admin endpoints require the X-Admin-Token apiKey scheme and the AdminOnly
+// middleware.
+@group("admin")
+@prefix("/admin")
+@tags(admin)
+@middlewares(shared.RequestID, shared.AccessLog, shared.AdminOnly)
+@security(adminToken)
+service AdminService {
+	@doc("List issued API tokens (secrets are never returned here).")
+	get ListTokens /tokens {
+		request  shared.PageParams
+		response shared.Page<ApiToken>
+	}
+
+	@doc("Issue a new API token. The secret is returned once.")
+	@status(201)
+	@errors(shared.ValidationErr)
+	post CreateToken /tokens {
+		request  CreateTokenReq
+		response ApiTokenSecret
+	}
+
+	@doc("Revoke an API token.")
+	@errors(shared.ResourceNotFound)
+	delete RevokeToken /tokens/{id} {
+		request  RevokeTokenReq
+		response shared.OkResp
+	}
+
+	@doc("Server + storage counters for the admin dashboard. Public within the admin surface.")
+	@ignoreSecurity
+	get Stats /stats {
+		response AdminStats
+	}
+}

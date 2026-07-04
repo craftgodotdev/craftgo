@@ -1,0 +1,58 @@
+# Taskflow reference deployment: the API plus an OpenTelemetry collector so you
+# can see traces/metrics locally. Bring it up with:
+#
+#   docker compose -f example/taskflow/docker-compose.yml up --build
+#
+# (run from the repo root; the build context is the root because of the module
+# replace - see Dockerfile). Then:
+#   API   http://localhost:8080/api/v1/projects
+#   Docs  http://localhost:8080/docs
+#   Ready http://localhost:8080/readyz
+#   Prom  http://localhost:9090/metrics
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: example/taskflow/Dockerfile
+    ports:
+      - "8080:8080"   # public API
+      - "9090:9090"   # prometheus scrape
+    volumes:
+      # Container config that points OTLP at the collector below.
+      - ./deploy/config.docker.yaml:/app/config/config.yaml:ro
+    healthcheck:
+      # distroless has no shell/curl; the binary self-checks via a tiny probe.
+      test: ["CMD", "/app/taskflow", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+
+  # Swap the in-memory store for Postgres by (1) uncommenting this service,
+  # (2) implementing the Postgres Store (migrations/0001_init.sql is the schema),
+  # and (3) pointing config at it. See README "Swapping in Postgres".
+  # postgres:
+  #   image: postgres:17-alpine
+  #   environment:
+  #     POSTGRES_USER: taskflow
+  #     POSTGRES_PASSWORD: taskflow
+  #     POSTGRES_DB: taskflow
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - ./migrations:/docker-entrypoint-initdb.d:ro
+  #     - pgdata:/var/lib/postgresql/data
+
+# volumes:
+#   pgdata:

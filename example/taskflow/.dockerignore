@@ -1,0 +1,9 @@
+# The build context is the repo root; keep the image build lean.
+.git
+**/*_test.go
+**/testdata
+docs/.vitepress/cache
+docs/.vitepress/dist
+node_modules
+bin
+example/*/docs/openapi.yaml

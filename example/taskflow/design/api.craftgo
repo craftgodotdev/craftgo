@@ -1,0 +1,3 @@
+@version("1.2.0")
+@doc("Taskflow - the reference craftgo application. A team task-management API: projects, tasks, comments, file attachments, and an admin surface. Production-shaped (Postgres, Docker, OpenTelemetry, health probes) and exercising most of the DSL: multi-package + cross-package refs, scalars, enums, generics (Page<T>), mixins, typed errors with bodies, security schemes + middlewares, the full validator set, multipart upload, @group admin routes, @sensitive, and per-method @timeout / @maxBodySize guards.")
+package design

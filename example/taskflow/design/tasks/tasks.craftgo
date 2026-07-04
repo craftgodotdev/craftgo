@@ -1,0 +1,172 @@
+package tasks
+
+enum TaskStatus {
+	Todo       = "todo"
+	InProgress = "in_progress"
+	Done       = "done"
+	Blocked    = "blocked"
+}
+
+// Int-valued enum: the wire + Go const carry the numeric weight.
+enum Priority {
+	Low    = 1
+	Medium = 2
+	High   = 3
+	Urgent = 4
+}
+
+type Task {
+	id          shared.ID
+	projectId   shared.ID
+	title       string         @length(1, 200)
+	description string?        @maxLength(5000)
+	status      TaskStatus
+	priority    Priority
+	points      shared.Points? @nullable
+	progressPct int            @range(0, 100)
+	assigneeIds shared.ID[]    @maxItems(10) @uniqueItems
+	labels      string[]       @maxItems(20) @uniqueItems
+	dueAt       string?        @format(datetime)
+	// Server-only: the denormalised search text, populated by service code
+	// and never accepted from or sent to a client.
+	searchText  string         @sensitive
+	shared.Timestamps
+}
+
+type Comment {
+	id     shared.ID
+	taskId shared.ID
+	author shared.ID
+	body   string    @length(1, 2000)
+	shared.Timestamps
+}
+
+type CreateTaskReq {
+	projectId   shared.ID      @path
+	title       string         @length(1, 200)
+	description string?        @maxLength(5000)
+	priority    Priority?      @default(Medium)
+	points      shared.Points?
+	assigneeIds shared.ID[]?   @maxItems(10) @uniqueItems
+	labels      string[]?      @maxItems(20) @uniqueItems
+	dueAt       string?        @format(datetime)
+}
+
+// One row of a bulk create.
+type CreateTaskItem {
+	title    string    @length(1, 200)
+	priority Priority? @default(Medium)
+}
+
+type BulkCreateReq {
+	projectId shared.ID        @path
+	tasks     CreateTaskItem[] @minItems(1) @maxItems(100)
+}
+
+type ListTasksReq {
+	shared.PageParams
+	projectId shared.ID   @path
+	status    TaskStatus? @query
+	priority  Priority?   @query
+	assignee  shared.ID?  @query
+}
+
+type GetTaskReq {
+	projectId shared.ID @path
+	id        shared.ID @path
+}
+
+type SetTaskStatusReq {
+	projectId shared.ID  @path
+	id        shared.ID  @path
+	status    TaskStatus
+}
+
+type LogTimeReq {
+	projectId shared.ID @path
+	id        shared.ID @path
+	// Minutes worked, in 5-minute increments (max one working day).
+	minutes   int       @gt(0) @lte(1440) @multipleOf(5)
+}
+
+type AddCommentReq {
+	projectId shared.ID @path
+	id        shared.ID @path
+	body      string    @length(1, 2000)
+}
+
+type ReindexReq {
+	projectId shared.ID @path
+}
+
+@prefix("/projects/v1/{projectId}/tasks")
+@tags(tasks)
+@middlewares(shared.RequestID, shared.AccessLog, shared.RateLimit, shared.AuthRequired)
+@security(bearer)
+service TaskService {
+	@doc("List tasks in a project, filterable by status / priority / assignee.")
+	@errors(shared.UnauthorizedErr, shared.ResourceNotFound)
+	get ListTasks / {
+		request  ListTasksReq
+		response shared.Page<Task>
+	}
+
+	@doc("Fetch one task.")
+	@errors(shared.ResourceNotFound)
+	get GetTask /{id} {
+		request  GetTaskReq
+		response Task
+	}
+
+	@doc("Create a task.")
+	@status(201)
+	@errors(shared.ValidationErr)
+	post CreateTask / {
+		request  CreateTaskReq
+		response Task
+	}
+
+	@doc("Bulk-create up to 100 tasks in one request. Larger body budget than the default.")
+	@status(201)
+	@maxBodySize(2MB)
+	post BulkCreateTasks /bulk {
+		request  BulkCreateReq
+		response shared.Page<Task>
+	}
+
+	@doc("Move a task to a new status.")
+	@errors(shared.ResourceNotFound, shared.ValidationErr)
+	patch SetTaskStatus /{id}/status {
+		request  SetTaskStatusReq
+		response Task
+	}
+
+	@doc("Log time against a task, in 5-minute increments.")
+	@errors(shared.ResourceNotFound)
+	post LogTime /{id}/time {
+		request  LogTimeReq
+		response Task
+	}
+
+	@doc("Add a comment to a task.")
+	@status(201)
+	post AddComment /{id}/comments {
+		request  AddCommentReq
+		response Comment
+	}
+
+	@doc("Rebuild the project's task search index. Long-running; capped at 30s.")
+	@operationId("reindexProjectTasks")
+	@timeout(30s)
+	post Reindex /reindex {
+		request  ReindexReq
+		response shared.OkResp
+	}
+
+	@doc("Deprecated: use SetTaskStatus with status=done. Kept for older clients.")
+	@deprecated("use SetTaskStatus")
+	post CloseTask /{id}/close {
+		request  GetTaskReq
+		response Task
+	}
+}

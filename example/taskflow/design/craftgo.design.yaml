@@ -1,0 +1,24 @@
+output:
+  types:      ./internal/types
+  transport:  ./internal/transport
+  routes:     ./internal/routes
+  service:    ./internal/service
+  middleware: ./internal/middleware
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+  config:     ./config
+  main:       ./main.go
+
+openapi:
+  title:    Taskflow API
+  version:  1.2.0
+  basePath: /api
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    adminToken:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
