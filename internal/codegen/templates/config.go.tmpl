@@ -92,10 +92,11 @@ type ServerConfig struct {
 	// or "127.0.0.1:8080" to limit to localhost during development.
 	Addr string `yaml:"addr"`
 
-	// HandlerTimeout is the global default for handler execution.
-	// Applied as `srv.Use(server.Timeout(d))` so every route inherits
-	// the deadline; per-method `@timeout(d)` decorators override
-	// (innermost wrap wins). Zero = no global default.
+	// HandlerTimeout is the default per-handler execution deadline,
+	// applied to every route that does not declare its own `@timeout`
+	// (a per-method `@timeout(d)` overrides it, longer or shorter). It
+	// is a soft context deadline the handler must honour via ctx.Done().
+	// Zero = no default.
 	HandlerTimeout time.Duration `yaml:"handlerTimeout"`
 
 	// MaxBodySize is the default request-body cap in bytes, applied to

@@ -50,10 +50,11 @@ type Limits struct {
 // the handler reads it, then Timeout wraps the whole chain so the
 // timeout includes the body-read step.
 //
-// When l sets a MaxBodySize the result is tagged (see [bodyLimitedHandler]) so
-// [Server.Handle] / [Server.HandleFunc] know this route already has its own body
-// cap and skip the global default: a per-method @maxBodySize takes priority over
-// the server-wide default rather than being clamped by it.
+// When l sets a MaxBodySize or a Timeout the result is tagged (see
+// [limitedHandler]) so [Server.Handle] / [Server.HandleFunc] know this route
+// already has its own cap / deadline and skip the matching server-wide default:
+// a per-method @maxBodySize or @timeout takes priority over the default rather
+// than being layered on top of it.
 func WithLimits(h http.Handler, l Limits) http.Handler {
 	if l.MaxBodySize > 0 {
 		h = maxBodySizeHandler(h, l.MaxBodySize)
@@ -61,23 +62,35 @@ func WithLimits(h http.Handler, l Limits) http.Handler {
 	if l.Timeout > 0 {
 		h = timeoutHandler(h, l.Timeout)
 	}
-	if l.MaxBodySize > 0 {
-		h = bodyLimitedHandler{h}
+	if l.MaxBodySize > 0 || l.Timeout > 0 {
+		h = limitedHandler{Handler: h, bodyLimited: l.MaxBodySize > 0, timeoutSet: l.Timeout > 0}
 	}
 	return h
 }
 
-// bodyLimitedHandler tags a handler whose own body cap has already been applied
-// (via [WithLimits]). The embedded Handler promotes ServeHTTP so it behaves
-// exactly like the wrapped handler; the distinct type is only a marker that
-// [handlerHasBodyLimit] reads.
-type bodyLimitedHandler struct{ http.Handler }
+// limitedHandler tags a handler whose own per-route guards have already been
+// applied (via [WithLimits]), recording which ones so [Server.Handle] /
+// [Server.HandleFunc] know which server-wide defaults to skip. The embedded
+// Handler promotes ServeHTTP so the tag behaves exactly like the wrapped
+// handler.
+type limitedHandler struct {
+	http.Handler
+	bodyLimited bool
+	timeoutSet  bool
+}
 
 // handlerHasBodyLimit reports whether h already carries a per-route body cap, in
-// which case the global default must not be layered on top.
+// which case the default body cap must not be layered on top.
 func handlerHasBodyLimit(h http.Handler) bool {
-	_, ok := h.(bodyLimitedHandler)
-	return ok
+	lh, ok := h.(limitedHandler)
+	return ok && lh.bodyLimited
+}
+
+// handlerHasTimeout reports whether h already carries a per-route timeout, in
+// which case the default handler timeout must not be layered on top.
+func handlerHasTimeout(h http.Handler) bool {
+	lh, ok := h.(limitedHandler)
+	return ok && lh.timeoutSet
 }
 
 // timeoutHandler attaches a context.WithTimeout to the request before

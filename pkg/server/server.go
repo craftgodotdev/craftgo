@@ -28,10 +28,11 @@ type Server struct {
 	codec  JSONCodec
 	cors   *CORSOptions
 
-	defaultReadTimeout  time.Duration
-	defaultWriteTimeout time.Duration
-	defaultMaxBodySize  int64
-	defaultMaxHeaderKB  int
+	defaultReadTimeout    time.Duration
+	defaultWriteTimeout   time.Duration
+	defaultHandlerTimeout time.Duration
+	defaultMaxBodySize    int64
+	defaultMaxHeaderKB    int
 
 	healthChecks  map[string]healthCheck
 	healthPaths   HealthPaths
@@ -135,20 +136,34 @@ func (s *Server) RegisterMiddleware(name string, mw Middleware) *Server {
 
 // HandleFunc registers a custom route on the underlying mux using Go 1.22
 // pattern syntax (`"VERB /path"`). The server-wide default body cap
-// ([SetDefaultMaxBodySize]) applies unless the handler carries its own.
+// ([SetDefaultMaxBodySize]) and handler timeout ([SetDefaultHandlerTimeout])
+// apply unless the handler carries its own.
 func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
-	s.mux.Handle(pattern, s.applyDefaultBodyLimit(h))
+	s.mux.Handle(pattern, s.applyDefaults(h))
 	return s
 }
 
-// applyDefaultBodyLimit wraps h with the server-wide default body cap
-// ([SetDefaultMaxBodySize]) unless h already declares its own per-route cap via
-// a `@maxBodySize` decorator - a per-method cap takes priority over the default,
-// not the min of the two. A zero default is a no-op. The default is read at
-// registration time, so set it before registering routes.
+// applyDefaults wraps h with the server-wide default guards - the body cap
+// ([SetDefaultMaxBodySize]) and the handler timeout ([SetDefaultHandlerTimeout])
+// - each applied only when h does not already declare its own via `@maxBodySize`
+// / `@timeout`, so a per-method decorator takes priority over the matching
+// default rather than the min of the two. The body cap wraps innermost and the
+// timeout outermost, matching [WithLimits]. Defaults are read at registration
+// time, so set them before registering routes.
+func (s *Server) applyDefaults(h http.Handler) http.Handler {
+	return s.applyDefaultTimeout(s.applyDefaultBodyLimit(h))
+}
+
 func (s *Server) applyDefaultBodyLimit(h http.Handler) http.Handler {
 	if s.defaultMaxBodySize > 0 && !handlerHasBodyLimit(h) {
 		return maxBodySizeHandler(h, s.defaultMaxBodySize)
+	}
+	return h
+}
+
+func (s *Server) applyDefaultTimeout(h http.Handler) http.Handler {
+	if s.defaultHandlerTimeout > 0 && !handlerHasTimeout(h) {
+		return timeoutHandler(h, s.defaultHandlerTimeout)
 	}
 	return h
 }
@@ -168,7 +183,7 @@ func (s *Server) applyDefaultBodyLimit(h http.Handler) http.Handler {
 // depth, so it scans top-to-bottom in the same outermost-first order
 // the request actually flows through.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
-	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaultBodyLimit(h)))
+	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaults(h)))
 	return s
 }
 
@@ -195,6 +210,18 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 // SetDefaultReadTimeout configures the default per-method read timeout.
 func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 	s.defaultReadTimeout = d
+	return s
+}
+
+// SetDefaultHandlerTimeout sets the default per-handler execution deadline
+// applied to every route registered afterwards that does not declare its own
+// `@timeout`. A route WITH `@timeout` overrides this default (used as-is, longer
+// or shorter). It is a soft context deadline the handler must honour via
+// ctx.Done() - not the hard socket-level [Server.SetDefaultWriteTimeout]. The
+// default is 0 (no deadline). Resolved per route at registration time, so call
+// it before registering routes.
+func (s *Server) SetDefaultHandlerTimeout(d time.Duration) *Server {
+	s.defaultHandlerTimeout = d
 	return s
 }
 

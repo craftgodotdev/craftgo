@@ -97,14 +97,12 @@ func main() {
 	srv := server.New(svc)
 	srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
 	srv.Use(server.AccessLog(srv.Logger()))
-	// Global per-request guards. A per-method `@timeout` wraps inner so it can
-	// tighten (never loosen) the global handler timeout. A per-method
-	// `@maxBodySize` OVERRIDES the default body cap (used as-is, larger or
-	// smaller); routes without one inherit the default. Set the body default
-	// before RegisterAll so each route resolves its cap at registration.
-	if cfg.Server.HandlerTimeout > 0 {
-		srv.Use(server.Timeout(cfg.Server.HandlerTimeout))
-	}
+	// Global per-request guards, resolved per route at registration: a
+	// per-method `@timeout` / `@maxBodySize` OVERRIDES the matching default
+	// (used as-is, longer/larger or shorter/smaller); routes without one
+	// inherit the default. Set both before RegisterAll so each route resolves
+	// its guards.
+	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
 	if cfg.Server.Compression.Enabled {
 		srv.Use(server.Compress(server.CompressOptions{
