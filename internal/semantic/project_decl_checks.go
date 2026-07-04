@@ -227,20 +227,24 @@ func (r *refResolver) checkMiddlewareDecorators(decs []*ast.Decorator, declared 
 	}
 }
 
+// qualifiedRefResolves resolves a decorator ref value: a qualified `pkg.Name`
+// form must exist in the named package's declaration map (checked by has), a
+// bare name must be in the current package's declared set.
+func (r *refResolver) qualifiedRefResolves(value string, declared map[string]bool, has func(*Package, string) bool) bool {
+	if dot := strings.LastIndexByte(value, '.'); dot >= 0 {
+		pkg := r.proj.Packages[value[:dot]]
+		return pkg != nil && has(pkg, value[dot+1:])
+	}
+	return declared[value]
+}
+
 // middlewareRefResolves returns true when value is recognised as a
 // valid middleware reference under either the qualified or bare form.
 func (r *refResolver) middlewareRefResolves(value string, declared map[string]bool) bool {
-	if dot := strings.LastIndexByte(value, '.'); dot >= 0 {
-		pkgName := value[:dot]
-		bare := value[dot+1:]
-		pkg := r.proj.Packages[pkgName]
-		if pkg == nil {
-			return false
-		}
-		_, ok := pkg.Middlewares[bare]
+	return r.qualifiedRefResolves(value, declared, func(p *Package, n string) bool {
+		_, ok := p.Middlewares[n]
 		return ok
-	}
-	return declared[value]
+	})
 }
 
 // checkProjectErrorRefs validates every `@errors(...)` target against the
@@ -290,14 +294,8 @@ func (r *refResolver) checkErrorDecorators(decs []*ast.Decorator, declared map[s
 // qualified `pkg.Name` resolves against that package's error table, a
 // bare name against the project-wide declared set.
 func (r *refResolver) errorRefResolves(value string, declared map[string]bool) bool {
-	if dot := strings.LastIndexByte(value, '.'); dot >= 0 {
-		pkgName, bare := value[:dot], value[dot+1:]
-		pkg := r.proj.Packages[pkgName]
-		if pkg == nil {
-			return false
-		}
-		_, ok := pkg.Errors[bare]
+	return r.qualifiedRefResolves(value, declared, func(p *Package, n string) bool {
+		_, ok := p.Errors[n]
 		return ok
-	}
-	return declared[value]
+	})
 }
