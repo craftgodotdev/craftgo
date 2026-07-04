@@ -132,15 +132,16 @@ func AccessLog(logger log.Logger) Middleware {
 	}
 }
 
-// BodyLimit returns a middleware that caps `r.Body` at the supplied byte
-// size. Requests that exceed it surface as a read-side error in the
-// downstream handler (typical clients see 413).
+// BodyLimit returns a middleware that caps the request body at maxBytes for
+// every route it wraps. A request whose declared Content-Length already
+// exceeds the cap is rejected with 413 before the handler runs; a
+// chunked/unknown-length body is capped on read via http.MaxBytesReader
+// (surfaced by the downstream handler, typically as 400). It shares its
+// implementation with the per-method @maxBodySize guard ([maxBodySizeHandler])
+// so the global and per-method limits never drift.
 func BodyLimit(maxBytes int64) Middleware {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
-			next.ServeHTTP(w, r)
-		})
+		return maxBodySizeHandler(next, maxBytes)
 	}
 }
 
