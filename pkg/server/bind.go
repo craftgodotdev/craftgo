@@ -58,6 +58,12 @@ func ParseBool[T ~bool](s string) (T, error) {
 	return T(b), err
 }
 
+// writeInvalidValue writes the canonical "field: invalid kind value: …"
+// validation error shared by every Bind* parse failure.
+func writeInvalidValue(w http.ResponseWriter, r *http.Request, field, kind string, err error) {
+	WriteValidationError(w, r, fmt.Errorf("%s: invalid %s value: %v", field, kind, err))
+}
+
 // BindValue parses raw into *dst when raw is non-empty. An absent or
 // present-but-empty value (`?x=`) leaves *dst at its zero value. A parse
 // failure writes a validation error and returns false so the handler
@@ -68,7 +74,7 @@ func BindValue[T any](w http.ResponseWriter, r *http.Request, field, kind, raw s
 	}
 	v, err := parse(raw)
 	if err != nil {
-		WriteValidationError(w, r, fmt.Errorf("%s: invalid %s value: %v", field, kind, err))
+		writeInvalidValue(w, r, field, kind, err)
 		return false
 	}
 	*dst = v
@@ -83,7 +89,7 @@ func BindValuePtr[T any](w http.ResponseWriter, r *http.Request, field, kind, ra
 	}
 	v, err := parse(raw)
 	if err != nil {
-		WriteValidationError(w, r, fmt.Errorf("%s: invalid %s value: %v", field, kind, err))
+		writeInvalidValue(w, r, field, kind, err)
 		return false
 	}
 	*dst = &v
@@ -127,7 +133,7 @@ func BindValues[T any](w http.ResponseWriter, r *http.Request, field, kind strin
 	for _, s := range raw {
 		v, err := parse(s)
 		if err != nil {
-			WriteValidationError(w, r, fmt.Errorf("%s: invalid %s value: %v", field, kind, err))
+			writeInvalidValue(w, r, field, kind, err)
 			return false
 		}
 		*dst = append(*dst, v)
