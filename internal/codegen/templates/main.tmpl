@@ -6,7 +6,7 @@
 // [metrics.InitFromConfig] so the exporter selection
 // (none / stdout / otlp_grpc / otlp_http / prometheus) lives next to
 // the SDK, not inline here. The only knob exposed to the deployer is
-// `config.yaml` (or the matching `CRAFTGO_*` environment variables).
+// `config.yaml` (see config/example.config.yaml for the full field reference).
 
 package main
 
