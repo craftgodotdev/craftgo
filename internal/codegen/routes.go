@@ -329,10 +329,7 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
 	for _, e := range entries {
-		data.Imports = append(data.Imports, routesAllImport{
-			Alias: ServicePackage(e.name) + groupAliasSuffix(e.group) + "routes",
-			Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + e.seg,
-		})
+		data.Imports = append(data.Imports, makeRoutesAllImport(cfg, e.name, e.group, e.seg))
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
 	if err != nil {
@@ -348,6 +345,16 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 type routesAllImport struct {
 	Alias string
 	Path  string
+}
+
+// makeRoutesAllImport builds the aliased import for one (service, group) routes
+// hub. Both umbrella emitters (per-package and project-wide) use this so the
+// alias / path formula lives in one place.
+func makeRoutesAllImport(cfg *config.Config, name, group, seg string) routesAllImport {
+	return routesAllImport{
+		Alias: ServicePackage(name) + groupAliasSuffix(group) + "routes",
+		Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + seg,
+	}
 }
 
 // routesAllData is the template input for `routes-all.tmpl`.
@@ -376,10 +383,7 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 		// One import per (service, group): routes are per group folder, so the
 		// package umbrella registers every group's hub.
 		for _, g := range distinctGroups(pkg.Services[name]) {
-			data.Imports = append(data.Imports, routesAllImport{
-				Alias: ServicePackage(name) + groupAliasSuffix(g) + "routes",
-				Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + outputSegFor(name, g),
-			})
+			data.Imports = append(data.Imports, makeRoutesAllImport(cfg, name, g, outputSegFor(name, g)))
 		}
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
