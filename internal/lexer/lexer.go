@@ -195,7 +195,7 @@ func (l *Lexer) Next() Token {
 // advanced past the comment so [skipWhitespaceAndComments] on the
 // next [Lexer.Next] call does not re-process it as a leading-doc
 // candidate. The captured comment is also appended to [allComments]
-// with [CommentTrailing] kind so the [File.Comments] side channel
+// with [CommentTrailing] kind so the ast.File.Comments side channel
 // stays exhaustive.
 //
 // When no trailing is found the cursor is restored to its pre-scan
@@ -505,7 +505,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 				// not leak into the next AST node's Doc. They remain
 				// in [allComments] so the formatter can recover them
 				// as free-floating section / closing notes via the
-				// [File.Comments] side channel populated by the parser.
+				// ast.File.Comments side channel populated by the parser.
 				l.pendingDoc = nil
 			}
 			l.advance()

@@ -171,7 +171,7 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 //
 // `error` declarations are dropped: errors are NOT cross-package
 // referenceable (the `@errors(...)` resolver only looks at the
-// current package's table - see [checkErrorRefs]) and they cannot
+// current package's table - see [checkErrorsRef]) and they cannot
 // be used as field types either, so surfacing them under a
 // cross-package qualifier would offer dead-end suggestions.
 func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSrc, pkg string) []protocol.CompletionItem {

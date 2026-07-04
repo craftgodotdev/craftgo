@@ -497,7 +497,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 //
 // Path / header / cookie require string-typed fields (URLs and HTTP
 // headers carry strings on the wire). Query supports the full
-// numeric / float / bool / array matrix; the per-field [Bind] is
+// numeric / float / bool / array matrix; the per-field [paramBinding.Bind] is
 // pre-rendered Go that the handler template emits verbatim.
 //
 // Unsupported binding shapes (struct/[]struct/map on @query, non-string
