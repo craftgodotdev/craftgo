@@ -21,6 +21,20 @@ const (
 	mimeMultipartFormData = "multipart/form-data"
 )
 
+// isMultipartRequest reports whether m's request body is a multipart/form-data
+// upload (it declares at least one file field). A multipart body schema is
+// rendered INLINE on the operation (multipartRequestBody), so - unlike a JSON
+// body - it does NOT $ref a `<base>ReqBody` component. buildOperation (inline vs
+// $ref) and addRequestBodySchema (emit the component or not) both read this one
+// predicate so they can't disagree and leave an orphaned schema in the spec.
+func isMultipartRequest(m *ast.Method, pkg *semantic.Package) bool {
+	if m == nil || m.Request == nil || hasPassthroughDecorator(m.Decorators) {
+		return false
+	}
+	_, files, err := collectFormBindings(m, pkg, "", nil)
+	return err == nil && len(files) > 0
+}
+
 func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
 	op := &openapi3.Operation{
 		OperationID: operationID(m, base),
@@ -91,19 +105,14 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		}
 	}
 	isPassthrough := hasPassthroughDecorator(m.Decorators)
-	isMultipart := false
+	isMultipart := isMultipartRequest(m, pkg)
 	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
-	if m.Request != nil && !isPassthrough {
-		// pkgAlias is empty here - the OpenAPI emission path doesn't
-		// care about Go-side cast aliasing, only about which fields
-		// are file vs text. Errors from form binding (cookie array,
-		// numeric @form, ...) are surfaced by the transport gen pass;
-		// silently drop them here so a single source of truth owns
-		// the diagnostic.
-		if fs, ff, err := collectFormBindings(m, pkg, "", nil); err == nil && len(ff) > 0 {
-			isMultipart = true
-			formStrings, formFiles = fs, ff
-		}
+	if isMultipart {
+		// pkgAlias is empty here - the OpenAPI emission path doesn't care about
+		// Go-side cast aliasing, only about which fields are file vs text.
+		// Errors from form binding are surfaced by the transport gen pass; drop
+		// them here so a single source of truth owns the diagnostic.
+		formStrings, formFiles, _ = collectFormBindings(m, pkg, "", nil)
 	}
 	if m.Request != nil && !isPassthrough {
 		bins := binRequestFields(m, pkg)

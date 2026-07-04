@@ -1919,3 +1919,20 @@ type EmailList { p Page<Email> }
 service S { get Get /e { response EmailList } }`)
 	mustContainAll(t, body, "PageOfEmail:", "$ref: '#/components/schemas/Email'")
 }
+
+// TestGenerateOpenAPIMultipartNoOrphanReqBody pins that a multipart request does
+// NOT emit an orphaned <base>ReqBody component: the body is rendered inline on
+// the operation (multipart/form-data), so a component schema would never be
+// $ref'd and would only bloat the spec.
+func TestGenerateOpenAPIMultipartNoOrphanReqBody(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type UploadReq { doc file  title string @form }
+type Resp { ok bool }
+@prefix("/u")
+service S { post Upload /up { request UploadReq  response Resp } }`)
+	if strings.Contains(body, "UploadReqBody") {
+		t.Errorf("multipart request emitted an orphaned UploadReqBody component:\n%s", body)
+	}
+	// The operation still carries the inline multipart body.
+	mustContainAll(t, body, "multipart/form-data")
+}

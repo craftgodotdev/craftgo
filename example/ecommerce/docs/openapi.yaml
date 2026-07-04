@@ -1041,14 +1041,6 @@ components:
       required:
       - image
       type: object
-    UploadAvatarReqBody:
-      properties:
-        image:
-          format: binary
-          type: string
-      required:
-      - image
-      type: object
     UploadAvatarRespBody:
       $ref: '#/components/schemas/Customer'
   securitySchemes:

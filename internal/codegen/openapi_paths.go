@@ -135,6 +135,13 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	if !ok {
 		return
 	}
+	// A multipart request renders its body schema INLINE on the operation
+	// (buildOperation -> multipartRequestBody); it never $refs a `<base>ReqBody`
+	// component, so emitting one here would only orphan it - the same reasoning
+	// as the wire-param components above. Both sites read isMultipartRequest.
+	if isMultipartRequest(m, pkg) {
+		return
+	}
 	bins := binRequestFields(m, pkg)
 	wireBound := len(bins.path)+len(bins.query)+len(bins.header)+len(bins.cookie) > 0
 	if !wireBound {
