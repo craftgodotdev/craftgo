@@ -156,18 +156,13 @@ func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
 		return nil, ""
 	}
 	for _, d := range f.Decls {
-		switch v := d.(type) {
-		case *ast.TypeDecl:
-			for _, m := range v.Body {
-				if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
-					return fd, v.Name
-				}
-			}
-		case *ast.ErrorDecl:
-			for _, m := range v.Body {
-				if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
-					return fd, v.Name
-				}
+		body, ok := declBody(d)
+		if !ok {
+			continue
+		}
+		for _, m := range body {
+			if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
+				return fd, declName(d)
 			}
 		}
 	}
