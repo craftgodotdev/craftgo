@@ -27,7 +27,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 			}
 		}
 		for _, d := range ds {
-			if d.Name != "security" {
+			if d == nil || d.Name != "security" {
 				continue
 			}
 			for _, a := range d.Args {
@@ -147,7 +147,7 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 			dst[svcName+"/"+scope+"/"+name] = true
 		}
 		for _, d := range ds {
-			if d.Name != "security" {
+			if d == nil || d.Name != "security" {
 				continue
 			}
 			for _, a := range d.Args {

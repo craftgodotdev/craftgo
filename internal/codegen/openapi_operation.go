@@ -207,7 +207,7 @@ func successDescription(code string) string {
 // semantic layer, so codegen can trust it.
 func statusOverride(m *ast.Method) (int, bool) {
 	for _, d := range m.Decorators {
-		if d.Name != "status" || len(d.Args) == 0 {
+		if d == nil || d.Name != "status" || len(d.Args) == 0 {
 			continue
 		}
 		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
@@ -423,7 +423,7 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, d := range ds {
-		if d.Name != "errors" {
+		if d == nil || d.Name != "errors" {
 			continue
 		}
 		for _, a := range d.Args {
@@ -742,7 +742,7 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 func tagsFromDecorators(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
-		if d.Name != "tags" {
+		if d == nil || d.Name != "tags" {
 			continue
 		}
 		for _, a := range d.Args {
@@ -795,7 +795,7 @@ func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirem
 func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
 	var reqs openapi3.SecurityRequirements
 	for _, d := range ds {
-		if d.Name != "security" {
+		if d == nil || d.Name != "security" {
 			continue
 		}
 		req := openapi3.SecurityRequirement{}

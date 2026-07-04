@@ -320,6 +320,9 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 	var out openapi3.SchemaRefs
 	for _, d := range decs {
+		if d == nil {
+			continue
+		}
 		switch d.Name {
 		case "requiresOneOf":
 			names := dedupeStrings(stringArrayDecoratorArg(d))
