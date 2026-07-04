@@ -141,6 +141,20 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 			tok := p.advance()
 			v.StrValue = unquoteString(tok.Text)
 			v.Kind = ast.EnumString
+		case lexer.Dash:
+			// A negative integer value (`Down = -1`): consume the '-' with the
+			// following integer as one signed value. Without this the '-' falls
+			// through to the outer loop as a stray token, producing a misleading
+			// cascade of "expected enum value name" errors.
+			p.advance()
+			if p.peek().Kind != lexer.Int {
+				p.errorf(p.peek().Pos, "expected integer after '-' in enum value")
+				break
+			}
+			tok := p.advance()
+			n, _ := strconv.ParseInt("-"+tok.Text, 10, 64)
+			v.IntValue = n
+			v.Kind = ast.EnumInt
 		default:
 			p.errorf(p.peek().Pos, "expected int or string for enum value")
 		}
