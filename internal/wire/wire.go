@@ -81,15 +81,21 @@ func WireName(f *ast.Field, kind string) string {
 // the rest - so first-match is unambiguous.)
 func BindingKind(ds []*ast.Decorator) string {
 	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case BindingPath, BindingQuery, BindingHeader, BindingCookie, BindingBody, BindingForm:
+		if d != nil && IsBindingName(d.Name) {
 			return d.Name
 		}
 	}
 	return ""
+}
+
+// IsBindingName reports whether name is one of the six wire-binding decorator
+// names (@path / @query / @header / @cookie / @body / @form).
+func IsBindingName(name string) bool {
+	switch name {
+	case BindingPath, BindingQuery, BindingHeader, BindingCookie, BindingBody, BindingForm:
+		return true
+	}
+	return false
 }
 
 // RequestFieldBinding resolves where a request field rides once method
