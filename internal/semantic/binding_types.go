@@ -10,6 +10,16 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// Binding-type diagnostic messages, shared by the per-package
+// checkBindingFieldType and the cross-package checkBindingsOnQualifiedField so
+// the two binding-check twins can't drift on wording.
+const (
+	msgBindPath        = "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s"
+	msgBindWire        = "field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s"
+	msgBindCookieArray = "field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name"
+	msgBindForm        = "field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s"
+)
+
 // checkBindingFieldType vets the type compatibility of `@path`,
 // `@header`, `@cookie`, and `@form` bindings up front so the codegen
 // never has to produce uncompilable Go.
@@ -106,7 +116,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
+				msgBindPath,
 				parent, f.Name, describeTypeRef(f.Type))
 			return
 		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
@@ -115,7 +125,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			// check (which accepts arrays for query / header).
 			if d.Name == wire.BindingCookie && f.Type.Array {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-					"field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name",
+					msgBindCookieArray,
 					parent, f.Name)
 				return
 			}
@@ -123,7 +133,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s",
+				msgBindWire,
 				parent, f.Name, d.Name, describeTypeRef(f.Type))
 			return
 		case wire.BindingForm:
@@ -131,7 +141,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s",
+				msgBindForm,
 				parent, f.Name, describeTypeRef(f.Type))
 			return
 		}
