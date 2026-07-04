@@ -241,14 +241,7 @@ func importAliasesOf(f *ast.File) []string {
 		}
 		alias := imp.Alias
 		if alias == "" {
-			base := imp.Path
-			for j := len(base) - 1; j >= 0; j-- {
-				if base[j] == '/' {
-					base = base[j+1:]
-					break
-				}
-			}
-			alias = base
+			alias = idents.LastSegment(imp.Path)
 		}
 		if alias == "" || seen[alias] {
 			continue
