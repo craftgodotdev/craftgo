@@ -178,15 +178,8 @@ func typeRefName(t *ast.TypeRef) string {
 	case t.Map != nil:
 		name = "MapOf" + typeRefName(t.Map.Key) + "And" + typeRefName(t.Map.Value)
 	case t.Array:
-		inner := *t
-		inner.Array = false
-		if inner.ArrayDepth > 0 {
-			inner.ArrayDepth--
-			inner.Array = inner.ArrayDepth > 0
-		}
-		// Optional only applies to the outer wrapper, not the element.
-		inner.Optional = false
-		name = typeRefName(&inner) + "Array"
+		inner := t.ElemTypeRef()
+		name = typeRefName(inner) + "Array"
 	case t.Named != nil:
 		name = namedTypeName(t.Named)
 	default:
@@ -335,14 +328,8 @@ func walkTypeRefForGenerics(t *ast.TypeRef, pkg *semantic.Package, registry *gen
 		return
 	}
 	if t.Array {
-		inner := *t
-		inner.Array = false
-		if inner.ArrayDepth > 0 {
-			inner.ArrayDepth--
-			inner.Array = inner.ArrayDepth > 0
-		}
-		inner.Optional = false
-		walkTypeRefForGenerics(&inner, pkg, registry)
+		inner := t.ElemTypeRef()
+		walkTypeRefForGenerics(inner, pkg, registry)
 		return
 	}
 	if t.Named == nil || len(t.Named.Args) == 0 {

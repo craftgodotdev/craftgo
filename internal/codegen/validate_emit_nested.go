@@ -287,16 +287,9 @@ func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.P
 		// the element - checking Map before Array would range the slice as a
 		// map.
 		iv := fmt.Sprintf("i%d", depth)
-		elem := *t
-		elem.Optional = false
-		if elem.ArrayDepth > 0 {
-			elem.ArrayDepth--
-		}
-		if elem.ArrayDepth == 0 {
-			elem.Array = false
-		}
+		elem := t.ElemTypeRef()
 		return fmt.Sprintf("for %s := range %s {\n%s\n}", iv, access,
-			nestedValueChecks(&elem, fmt.Sprintf("%s[%s]", access, iv), depth+1, pkg, r, outerName))
+			nestedValueChecks(elem, fmt.Sprintf("%s[%s]", access, iv), depth+1, pkg, r, outerName))
 	case t.Map != nil:
 		kHas := typeRefHasValidator(t.Map.Key, pkg, r)
 		vHas := typeRefHasValidator(t.Map.Value, pkg, r)
