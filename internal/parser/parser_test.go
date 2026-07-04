@@ -432,6 +432,31 @@ func TestEnumString(t *testing.T) {
 	}
 }
 
+func TestEnumNegativeInt(t *testing.T) {
+	// `Left = -1` must parse as a single signed EnumInt, not leave the '-' as
+	// a stray token that cascades into "expected enum value name" errors.
+	f := mustParse(t, `enum Direction { Left = -1  Right = 1 }`)
+	vs := f.Decls[0].(*ast.EnumDecl).EnumValues()
+	if len(vs) != 2 {
+		t.Fatalf("want 2 enum values, got %d", len(vs))
+	}
+	if vs[0].Kind != ast.EnumInt || vs[0].IntValue != -1 {
+		t.Errorf("Left: want EnumInt -1, got kind=%v value=%d", vs[0].Kind, vs[0].IntValue)
+	}
+	if vs[1].Kind != ast.EnumInt || vs[1].IntValue != 1 {
+		t.Errorf("Right: want EnumInt 1, got kind=%v value=%d", vs[1].Kind, vs[1].IntValue)
+	}
+}
+
+func TestEnumDashWithoutInt(t *testing.T) {
+	// A lone '-' with no following integer is a clear single error, not the
+	// old three-error cascade.
+	_, errs := parseWithErrors(t, `enum X { A = - }`)
+	if len(errs) == 0 {
+		t.Error("expected an error for '-' with no integer")
+	}
+}
+
 func TestEnumWithDecorator(t *testing.T) {
 	f := mustParse(t, `enum X { A @doc("the A value") }`)
 	v := f.Decls[0].(*ast.EnumDecl).EnumValues()[0]
