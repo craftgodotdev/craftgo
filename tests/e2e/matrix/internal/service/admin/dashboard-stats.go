@@ -1,4 +1,4 @@
-package adminservice
+package design
 
 import (
 	"context"

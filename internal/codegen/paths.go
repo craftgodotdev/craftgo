@@ -12,11 +12,26 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// ServicePackage returns the Go-identifier package name for a service.
-// Service names use PascalCase in the DSL ("UserService"); the matching
-// Go package declaration is the lowercase concatenation
-// ("userservice") because Go identifiers cannot contain hyphens.
+// ServicePackage returns the fallback Go package name derived from a service
+// name ("UserService" -> "userservice"), used only when a service's DSL package
+// has no name (a single-file design with no `package` declaration). Kept for
+// the import-alias uniqueness suffix, which must stay per-service.
 func ServicePackage(svcName string) string { return strings.ToLower(svcName) }
+
+// ServicePkgName is the Go package declaration for a service's generated
+// handler / transport / routes files. It reuses the DSL package name, so the
+// handlers land in the same package identifier as their types (`project`
+// service code alongside the `project` types), matching what the author wrote.
+// Multiple services in one DSL package therefore share a package name across
+// their separate directories - legal in Go, and the route hub imports them
+// under distinct per-service aliases. Falls back to the service-derived name
+// for an unnamed (single-file) package.
+func ServicePkgName(pkgName, svcName string) string {
+	if pkgName == "" {
+		return ServicePackage(svcName)
+	}
+	return pkgName
+}
 
 // ServiceDir returns the kebab-case directory name for a service. Used
 // for filesystem paths and import segments - `UserService` becomes

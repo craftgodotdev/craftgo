@@ -1,6 +1,6 @@
 // User-owned helpers shared by the MediaService handlers: reading the actual
 // bytes of an uploaded part, persisting them, and minting ids.
-package mediaservice
+package media
 
 import (
 	"crypto/rand"

@@ -84,7 +84,7 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 		if _, err := os.Stat(fullPath); err == nil {
 			continue
 		}
-		data := buildServiceData(svcName, m, imps, crossPkg)
+		data := buildServiceData(pkg.Name, svcName, m, imps, crossPkg)
 		t := jsonTpl
 		if data.IsPassthrough {
 			t = passthroughTpl
@@ -101,11 +101,11 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 }
 
 // buildServiceData populates the serviceData struct for one DSL method.
-func buildServiceData(svcName string, m *ast.Method, imps importPaths, crossPkg CrossPkg) serviceData {
+func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, crossPkg CrossPkg) serviceData {
 	hasReq := m.Request != nil
 	hasResp := m.Response != nil && m.Response.Type != nil
 	d := serviceData{
-		Package:          ServicePackage(svcName),
+		Package:          ServicePkgName(pkgName, svcName),
 		Service:          svcName,
 		Method:           m.Name,
 		ServiceName:      m.Name + "Service",

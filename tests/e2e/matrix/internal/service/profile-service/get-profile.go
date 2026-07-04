@@ -1,4 +1,4 @@
-package profileservice
+package design
 
 import (
 	"context"
