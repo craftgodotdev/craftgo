@@ -101,18 +101,13 @@ func primOfTypeRef(t *ast.TypeRef, file *ast.File) semantic.Prims {
 		return 0
 	}
 	name := t.Named.Name.String()
-	switch name {
-	case "string", "bytes":
-		return semantic.PrimString
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
-		return semantic.PrimNumber
-	case "bool":
-		return semantic.PrimBool
-	case "file":
-		return semantic.PrimFile
-	case "any", "object":
+	// Built-in primitive names classify through the shared oracle; `any` /
+	// `object` are deliberately unclassified (0) and never fall to the
+	// scalar-decl lookup below.
+	if p := semantic.PrimFromName(name); p != 0 {
+		return p
+	}
+	if name == "any" || name == "object" {
 		return 0
 	}
 	if file != nil {
