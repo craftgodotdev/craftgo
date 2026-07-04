@@ -98,7 +98,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 				continue
 			}
 			if integerPrim(dd.Primitive) && len(d.Args) == 1 {
-				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
+				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 						"@multipleOf on an integer scalar needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
 				}

@@ -39,7 +39,7 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 		// Integer field: a fractional divisor is unenforceable by integer
 		// modulus, yet the OpenAPI would advertise it - reject it.
 		if len(d.Args) == 1 {
-			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
+			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 					"@multipleOf on an integer field needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
 			}
@@ -208,12 +208,21 @@ func integralBoundValue(arg *ast.DecoratorArg) (float64, string, bool) {
 	case *ast.IntLit:
 		return float64(lit.Value), strconv.FormatInt(lit.Value, 10), true
 	case *ast.FloatLit:
-		if lit.Value != float64(int64(lit.Value)) {
+		if !isIntegralFloat(lit.Value) {
 			return 0, "", false
 		}
-		return lit.Value, strconv.FormatInt(int64(lit.Value), 10), true
+		return lit.Value, strconv.FormatFloat(lit.Value, 'f', -1, 64), true
 	}
 	return 0, "", false
+}
+
+// isIntegralFloat reports whether v is a whole number. It uses math.Trunc
+// rather than a round-trip through int64: int64(v) saturates for a value
+// beyond the signed 64-bit range, so `@lte(2e19)` on uint64 would look
+// fractional, skip the capacity check, and reach codegen as a constant that
+// overflows the target integer type.
+func isIntegralFloat(v float64) bool {
+	return v == math.Trunc(v)
 }
 
 // forEachNumericBound invokes check for every numeric-bound decorator argument

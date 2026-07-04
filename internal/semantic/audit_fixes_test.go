@@ -1,6 +1,9 @@
 package semantic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // A mixin embedded twice in one type body lowers to a Go struct that
 // declares the embedded type twice ("X redeclared") - rejected at design
@@ -43,6 +46,27 @@ func TestUnsignedLtZeroFloatRejected(t *testing.T) {
 // argIsZero must not over-fire on non-zero floats.
 func TestUnsignedLtPositiveFloatClean(t *testing.T) {
 	mustClean(t, `type T { c uint16 @lt(10.0) }`)
+}
+
+// An integral float bound above the target's capacity must be rejected. The
+// old int64() round-trip saturated for values beyond MaxInt64, so the
+// integrality test failed, the capacity check was skipped, and codegen emitted
+// a constant that overflows uint64.
+func TestFloatBoundOverflowRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type T { c uint64 @lte(20000000000000000000.0) }`))
+	d := findCode(diags, CodeBoundOverflow)
+	if d == nil {
+		t.Fatalf("expected capacity-overflow rejection for out-of-range float bound; got %v", codes(diags))
+	}
+	if !strings.Contains(d.Msg, "20000000000000000000") {
+		t.Errorf("overflow message should show the whole-number bound, got: %s", d.Msg)
+	}
+}
+
+// An integral float bound within the target's range is valid and must stay
+// clean - isIntegralFloat must not trigger a false overflow.
+func TestFloatBoundInRangeClean(t *testing.T) {
+	mustClean(t, `type T { c uint64 @lte(18000000000000000000.0) }`)
 }
 
 // The float-zero rejection also fires on a CROSS-PACKAGE unsigned scalar,
