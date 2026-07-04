@@ -1619,3 +1619,41 @@ service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 		t.Errorf("id should bind @path; got %v, fields %v", got["id"], names)
 	}
 }
+
+// TestGenerateTransportMultipartFileArray pins that a `file[]` field binds from
+// the repeated multipart parts (r.MultipartForm.File[name]) while an optional
+// `file?` in the same request uses the conditional single-file r.FormFile path.
+func TestGenerateTransportMultipartFileArray(t *testing.T) {
+	pkg := analyze(t, `package design
+type BatchReq {
+	files file[]
+	cover file?
+	note  string
+}
+type Resp { ok bool }
+@prefix("/media")
+service MediaService {
+	post BatchUpload /batch {
+		request  BatchReq
+		response Resp
+	}
+}`)
+	root := t.TempDir()
+	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/transport/media-service/batch-upload.go"))
+	if err != nil {
+		t.Fatalf("missing handler: %v", err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	// file[] binds from the multipart file-header slice.
+	mustContainAll(t, src, `req.Files = r.MultipartForm.File["files"]`)
+	// file? uses the conditional single-file path.
+	mustContainAll(t, src, `r.FormFile("cover")`, `req.Cover = header`)
+	// file[] must NOT fall through to the single-file r.FormFile path.
+	if strings.Contains(src, `r.FormFile("files")`) {
+		t.Errorf("file[] must bind from MultipartForm.File, not r.FormFile:\n%s", src)
+	}
+}
