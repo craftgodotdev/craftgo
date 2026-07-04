@@ -15,6 +15,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// Response / request-body media types the operation builder emits. Kept as
+// named constants so the several store and lookup sites can't drift on a typo.
+const (
+	mimeApplicationJSON   = "application/json"
+	mimeMultipartFormData = "multipart/form-data"
+)
+
 func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
 	op := &openapi3.Operation{
 		OperationID: operationID(m, base),
@@ -121,7 +128,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 					Required: true,
 					Content: openapi3.Content{
-						"application/json": &openapi3.MediaType{
+						mimeApplicationJSON: &openapi3.MediaType{
 							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "ReqBody"},
 						},
 					},
@@ -158,7 +165,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
-				"application/json": &openapi3.MediaType{
+				mimeApplicationJSON: &openapi3.MediaType{
 					// Per the request-side convention, the response body
 					// is referenced via `<Method>RespBody` so consumers
 					// have a stable, per-operation $ref target.
@@ -312,7 +319,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
-				"application/json": &openapi3.MediaType{Schema: schema},
+				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
 			},
 		}
 		if h := buildResponseHeaders(entry.headers, entry.cookies, pkg, registry); len(h) > 0 {
@@ -348,7 +355,7 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 		}
 		oneOf = append(oneOf, s)
 	}
-	if mt := existing.Content.Get("application/json"); mt != nil {
+	if mt := existing.Content.Get(mimeApplicationJSON); mt != nil {
 		add(mt.Schema)
 	}
 	add(errSchema)
@@ -365,9 +372,9 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 	}
 	merged := &openapi3.Response{Description: &desc}
 	if len(oneOf) == 1 {
-		merged.Content = openapi3.Content{"application/json": &openapi3.MediaType{Schema: oneOf[0]}}
+		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: oneOf[0]}}
 	} else if len(oneOf) > 1 {
-		merged.Content = openapi3.Content{"application/json": &openapi3.MediaType{
+		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}},
 		}}
 	}
@@ -553,7 +560,7 @@ func multipartRequestBody(forms, files []paramBinding, crossDecs []*ast.Decorato
 	}
 	return &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 		Required: true,
-		Content:  openapi3.Content{"multipart/form-data": mt},
+		Content:  openapi3.Content{mimeMultipartFormData: mt},
 	}}
 }
 
