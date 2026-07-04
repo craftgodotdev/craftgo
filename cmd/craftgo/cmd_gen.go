@@ -41,11 +41,6 @@ func parseGenArgs(args []string) (manifest, ctxRoot, positional string, err erro
 	return manifest, ctxRoot, positional, nil
 }
 
-// parseFlagError translates a [flag.ContinueOnError] result into the
-// project's error contract: `-h` / `--help` is a clean exit with no
-// noisy "flag: help requested" wrapper, every other parse error is
-// prefixed with the subcommand name so the user sees `init: …`
-
 func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
 	if manifestFolder != "" {
 		root := contextRoot
@@ -308,25 +303,6 @@ func genProjectArtefacts(proj *semantic.Project, cfg *config.Config, projectRoot
 	}
 	return nil
 }
-
-// runInit scaffolds a fresh design folder at args[0]. The path argument
-// IS the design folder - `craftgo init contracts/v1` creates
-// `contracts/v1/craftgo.design.yaml` directly inside that directory;
-// no intermediate `design/` wrapper. When no path is supplied the
-// default is `design` (creates a `design/` subdir of cwd) so a fresh
-// `mkdir myapp && cd myapp && craftgo init` produces the conventional
-// layout.
-//
-// The command refuses to overwrite an existing manifest so re-running
-// on a populated folder is a silent no-op. There is no `-package`
-// flag - the Go module path is read from `go.mod` at gen time, so
-// the only manifest-side configuration is the optional output paths
-// and OpenAPI metadata.
-//
-// init only owns the manifest scaffolding - the runtime artefacts
-// (config/, svccontext/, main.go) are scaffolded by `craftgo gen`
-// using the same gen-once policy so they live in one place
-// (internal/codegen/templates/) and follow the same workflow as
 
 func securitySchemeNames(cfg *config.Config) []string {
 	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {

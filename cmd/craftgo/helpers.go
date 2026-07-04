@@ -7,6 +7,11 @@ import (
 	"fmt"
 )
 
+// parseFlagError translates a [flag.ContinueOnError] result into the
+// project's error contract: `-h` / `--help` is a clean exit with no noisy
+// "flag: help requested" wrapper (it returns the errHelpRequested sentinel),
+// every other parse error is prefixed with the subcommand name so the user
+// sees `gen: …` / `init: …`.
 func parseFlagError(subcommand string, err error) error {
 	if err == nil {
 		return nil
