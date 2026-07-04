@@ -344,13 +344,18 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package, registry *gene
 		Properties: openapi3.Schemas{},
 	}
 	for _, f := range fields {
-		if hasSensitiveDecorator(f.Decorators) {
+		// Read on-wire-body and spec-required from the resolved-field IR (the
+		// same source addErrorSchemas uses) so the body-schema walk can't drift
+		// from the error-schema walk on which fields ride the body and which are
+		// required. nil resolver: the OpenAPI path runs on the merged package.
+		rf := resolveField(f, pkg, nil)
+		if !rf.OnWireBody {
 			continue
 		}
 		ref := schemaForTypeRef(f.Type, pkg, registry)
 		applyFieldMetadata(f, ref, pkg)
 		s.Properties[f.Name] = ref
-		if fieldIsRequired(f) {
+		if rf.SpecRequired {
 			s.Required = append(s.Required, f.Name)
 		}
 	}

@@ -75,7 +75,7 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *Project
 			return ""
 		}
 		elemT := t.ElemTypeRef()
-		elemGo := qualifyNamed(GoTypeRef(elemT), elemT, pkg, r, pkgAlias)
+		elemGo := qualifyNamed(GoTypeRef(elemT), elemT, pkg, pkgAlias)
 		if elemGo == "" {
 			return ""
 		}
@@ -197,7 +197,7 @@ func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 	}
 	base := *t
 	base.Optional = false
-	return qualifyNamed(GoTypeRef(&base), &base, pkg, r, pkgAlias)
+	return qualifyNamed(GoTypeRef(&base), &base, pkg, pkgAlias)
 }
 
 // qualifyNamed prefixes a Go type reference with `<pkgAlias>.` when
@@ -208,7 +208,7 @@ func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 // qualifier (`xshared.XColor`) and pass through untouched; without
 // this case the qualified Go name double-prefixes to
 // `<reqAlias>.xshared.XColor` and the cast fails to compile.
-func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver, pkgAlias string) string {
+func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, pkgAlias string) string {
 	if goName == "" {
 		return goName
 	}
@@ -218,10 +218,6 @@ func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, r *Proje
 	parts := t.Named.Name.Parts
 	// Qualified ref `pkg.X`: goName is already `pkg.X`, leave as-is.
 	if len(parts) == 2 {
-		name := t.Named.Name.String()
-		if r.LookupEnum(name) != nil || r.LookupScalar(name) != nil {
-			return goName
-		}
 		return goName
 	}
 	if pkgAlias == "" || len(parts) != 1 {

@@ -20,17 +20,10 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		// may be absent", not "each element may be null"; leaving
 		// the flag set would propagate `nullable: true` into the
 		// items schema.
-		inner := *t
-		inner.Optional = false
-		if inner.ArrayDepth > 0 {
-			inner.ArrayDepth--
-		}
-		if inner.ArrayDepth == 0 {
-			inner.Array = false
-		}
+		inner := t.ElemTypeRef()
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:  &openapi3.Types{"array"},
-			Items: schemaForTypeRef(&inner, pkg, registry),
+			Items: schemaForTypeRef(inner, pkg, registry),
 		}}
 	}
 	if t.Map != nil {

@@ -1,7 +1,6 @@
 .DEFAULT_GOAL := help
 
 # ---- vars ----------------------------------------------------------------
-MODULE       := github.com/craftgodotdev/craftgo
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
@@ -179,60 +178,6 @@ tidy: ## go mod tidy in the root module and every sub-module.
 deps: ## Download/verify modules.
 	$(GO) mod download
 	$(GO) mod verify
-
-EXT_SRC      := extensions/vscode
-EXT_INSTALL  := $$HOME/.vscode/extensions
-
-.PHONY: sync-vscode
-sync-vscode: ## Copy syntax / package files into the locally-installed craftgo extension folder so grammar edits show up after a Reload Window.
-	@found=$$(ls -d $(EXT_INSTALL)/*craftgo* 2>/dev/null | head -1); \
-	if [ -z "$$found" ]; then \
-		echo "no installed craftgo extension found under $(EXT_INSTALL)"; \
-		exit 1; \
-	fi; \
-	echo "syncing $(EXT_SRC)/ → $$found"; \
-	cp -R $(EXT_SRC)/syntaxes $$found/; \
-	cp $(EXT_SRC)/language-configuration.json $$found/ 2>/dev/null || true; \
-	cp $(EXT_SRC)/package.json $$found/; \
-	echo "done - VS Code: Cmd+Shift+P → Developer: Reload Window"
-
-$(EXT_SRC)/node_modules: $(EXT_SRC)/package.json
-	cd $(EXT_SRC) && npm install
-	@touch $(EXT_SRC)/node_modules
-
-.PHONY: vscode-deps
-vscode-deps: $(EXT_SRC)/node_modules ## Install npm dependencies for the VS Code extension.
-
-.PHONY: vscode-build
-vscode-build: $(EXT_SRC)/node_modules ## Build the VS Code extension bundle (out/extension.js).
-	cd $(EXT_SRC) && npm run build
-
-.PHONY: vscode-package
-vscode-package: $(EXT_SRC)/node_modules ## Build a .vsix for the VS Code extension (vsce package).
-	cd $(EXT_SRC) && npm run package
-
-.PHONY: vscode-install
-vscode-install: vscode-package ## Build .vsix and install it locally via `code --install-extension`.
-	@vsix=$$(ls -t $(EXT_SRC)/*.vsix | head -1); \
-	if [ -z "$$vsix" ]; then echo "no .vsix produced"; exit 1; fi; \
-	echo "installing $$vsix"; \
-	code --install-extension "$$vsix" --force
-
-.PHONY: vscode-link
-vscode-link: vscode-deps vscode-build ## Symlink extensions/vscode into ~/.vscode/extensions for live dev (reload window after).
-	@target="$(EXT_INSTALL)/craftgo.craftgo-dev"; \
-	mkdir -p $(EXT_INSTALL); \
-	rm -rf "$$target"; \
-	ln -s "$(CURDIR)/$(EXT_SRC)" "$$target"; \
-	echo "linked $(CURDIR)/$(EXT_SRC) → $$target"; \
-	echo "VS Code: Cmd+Shift+P → Developer: Reload Window"
-
-.PHONY: vscode-uninstall
-vscode-uninstall: ## Remove any locally-installed craftgo VS Code extension (vsix or symlink).
-	@for d in $(EXT_INSTALL)/*craftgo*; do \
-		[ -e "$$d" ] || continue; \
-		echo "removing $$d"; rm -rf "$$d"; \
-	done
 
 .PHONY: clean
 clean: ## Remove build artefacts and coverage files.

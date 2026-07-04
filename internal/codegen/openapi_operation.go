@@ -3,7 +3,6 @@ package codegen
 
 import (
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -13,6 +12,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
+)
+
+// Response / request-body media types the operation builder emits. Kept as
+// named constants so the several store and lookup sites can't drift on a typo.
+const (
+	mimeApplicationJSON   = "application/json"
+	mimeMultipartFormData = "multipart/form-data"
 )
 
 func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
@@ -121,7 +127,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 					Required: true,
 					Content: openapi3.Content{
-						"application/json": &openapi3.MediaType{
+						mimeApplicationJSON: &openapi3.MediaType{
 							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "ReqBody"},
 						},
 					},
@@ -158,7 +164,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
-				"application/json": &openapi3.MediaType{
+				mimeApplicationJSON: &openapi3.MediaType{
 					// Per the request-side convention, the response body
 					// is referenced via `<Method>RespBody` so consumers
 					// have a stable, per-operation $ref target.
@@ -200,7 +206,7 @@ func successDescription(code string) string {
 // semantic layer, so codegen can trust it.
 func statusOverride(m *ast.Method) (int, bool) {
 	for _, d := range m.Decorators {
-		if d.Name != "status" || len(d.Args) == 0 {
+		if d == nil || d.Name != "status" || len(d.Args) == 0 {
 			continue
 		}
 		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
@@ -312,7 +318,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
-				"application/json": &openapi3.MediaType{Schema: schema},
+				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
 			},
 		}
 		if h := buildResponseHeaders(entry.headers, entry.cookies, pkg, registry); len(h) > 0 {
@@ -348,7 +354,7 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 		}
 		oneOf = append(oneOf, s)
 	}
-	if mt := existing.Content.Get("application/json"); mt != nil {
+	if mt := existing.Content.Get(mimeApplicationJSON); mt != nil {
 		add(mt.Schema)
 	}
 	add(errSchema)
@@ -365,9 +371,9 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 	}
 	merged := &openapi3.Response{Description: &desc}
 	if len(oneOf) == 1 {
-		merged.Content = openapi3.Content{"application/json": &openapi3.MediaType{Schema: oneOf[0]}}
+		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: oneOf[0]}}
 	} else if len(oneOf) > 1 {
-		merged.Content = openapi3.Content{"application/json": &openapi3.MediaType{
+		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}},
 		}}
 	}
@@ -416,7 +422,7 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, d := range ds {
-		if d.Name != "errors" {
+		if d == nil || d.Name != "errors" {
 			continue
 		}
 		for _, a := range d.Args {
@@ -553,7 +559,7 @@ func multipartRequestBody(forms, files []paramBinding, crossDecs []*ast.Decorato
 	}
 	return &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 		Required: true,
-		Content:  openapi3.Content{"multipart/form-data": mt},
+		Content:  openapi3.Content{mimeMultipartFormData: mt},
 	}}
 }
 
@@ -735,7 +741,7 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 func tagsFromDecorators(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
-		if d.Name != "tags" {
+		if d == nil || d.Name != "tags" {
 			continue
 		}
 		for _, a := range d.Args {
@@ -750,59 +756,4 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 		}
 	}
 	return out
-}
-
-// dedupSecurity removes duplicate security requirements (identical
-// scheme→scopes sets) that arise when a method repeats a requirement its
-// service already declares. Each requirement is an OR-alternative, so two
-// identical entries are redundant; mirrors the tag dedup so the spec
-// carries one entry per distinct alternative.
-func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirements {
-	seen := map[string]bool{}
-	out := make(openapi3.SecurityRequirements, 0, len(reqs))
-	for _, req := range reqs {
-		keys := make([]string, 0, len(req))
-		for k, scopes := range req {
-			keys = append(keys, k+"="+strings.Join(scopes, ","))
-		}
-		sort.Strings(keys)
-		key := strings.Join(keys, "&")
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out = append(out, req)
-	}
-	return out
-}
-
-// securityFromDecorators turns `@security(SchemeA, SchemeB)` declarations
-// on a method or service into the OpenAPI `security` slice. Each
-// decorator argument that is an identifier becomes one entry whose value
-// is an empty scopes list - multi-scheme arguments inside a single
-// decorator are AND-combined; multiple `@security(...)` decorators are
-// OR-combined per the OpenAPI spec semantics. The array-shortcut form
-// `@security([A, B])` is treated as equivalent to `@security(A, B)`. To
-// opt out of inherited service-level security, use `@ignoreSecurity` at
-// the method level instead of a sentinel scheme name.
-func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
-	var reqs openapi3.SecurityRequirements
-	for _, d := range ds {
-		if d.Name != "security" {
-			continue
-		}
-		req := openapi3.SecurityRequirement{}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				if id, ok := v.(*ast.IdentExpr); ok {
-					req[id.Name.String()] = []string{}
-				}
-			}
-		}
-		reqs = append(reqs, req)
-	}
-	if len(reqs) == 0 {
-		return nil
-	}
-	return &reqs
 }

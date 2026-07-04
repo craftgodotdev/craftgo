@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 func (a *analyzer) checkFieldDefault(f *ast.Field) {
@@ -39,7 +40,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	// value is absent, so the field is conceptually optional. Warn (the docs
 	// promise this, and `craftgo fmt` auto-adds `?`); a @path segment is always
 	// present, so it is exempt.
-	if f.Type != nil && !f.Type.Optional && !ast.HasDecorator(f.Decorators, "path") {
+	if f.Type != nil && !f.Type.Optional && !ast.HasDecorator(f.Decorators, wire.BindingPath) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityWarning, CodeDefaultNeedsOptional,
 			"@default on non-optional field %q: the default fires when the value is absent, so the field is optional - add `?` (or run `craftgo fmt`) so types.go, validate.go, and the OpenAPI agree it is optional",
 			f.Name)

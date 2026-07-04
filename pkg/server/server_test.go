@@ -20,21 +20,12 @@ func newTestServer(t *testing.T) *Server {
 	return New(nil)
 }
 
-// finalize emulates Start's middleware chain build without binding a
-// listener. Tests use it to exercise the chain in-process.
+// finalize returns the server's real request handler, exercising the exact
+// chain Start binds to a listener (Recovery -> user chain -> CORS -> mux with
+// notFound). It delegates to [Server.Handler] so tests can't drift from the
+// production chain.
 func finalize(s *Server) http.Handler {
-	if !s.noHealth {
-		s.mux.Handle(s.healthPaths.Liveness, s.livenessHandler())
-		s.mux.Handle(s.healthPaths.Readiness, s.readinessHandler())
-	}
-	var h http.Handler = s.mux
-	if s.cors != nil {
-		h = corsMiddleware(*s.cors)(h)
-	}
-	for i := len(s.chain) - 1; i >= 0; i-- {
-		h = s.chain[i](h)
-	}
-	return Recovery(s.logger)(h)
+	return s.Handler()
 }
 
 func TestServerHandleFuncAndDefaults(t *testing.T) {

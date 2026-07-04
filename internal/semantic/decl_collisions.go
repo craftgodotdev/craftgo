@@ -13,7 +13,7 @@ import (
 // package signal a hard error.
 type declProducer struct {
 	dslName string
-	kind    string // "type" | "error" | "enum" | "scalar" | "middleware"
+	kind    string // "type" | "error" | "enum" | "scalar"
 	pos     lexer.Position
 	emitted string // the specific Go name this declProducer emits
 }
@@ -86,7 +86,7 @@ func (a *analyzer) checkDeclGoNameCollisions(files []*ast.File) {
 type producedName struct {
 	goName  string
 	dslName string
-	kind    string // "type" | "error" | "enum" | "scalar" | "middleware"
+	kind    string // "type" | "error" | "enum" | "scalar"
 	pos     lexer.Position
 }
 
@@ -149,8 +149,6 @@ func describeProducedNames(p declProducer) string {
 	switch p.kind {
 	case "error":
 		return "error decls emit `<Name>Err` and `<Name>Body`"
-	case "middleware":
-		return "middleware decls emit `<Name>Middleware`"
 	}
 	return "decl emits its name verbatim"
 }

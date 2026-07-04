@@ -10,6 +10,16 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// Binding-type diagnostic messages, shared by the per-package
+// checkBindingFieldType and the cross-package checkBindingsOnQualifiedField so
+// the two binding-check twins can't drift on wording.
+const (
+	msgBindPath        = "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s"
+	msgBindWire        = "field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s"
+	msgBindCookieArray = "field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name"
+	msgBindForm        = "field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s"
+)
+
 // checkBindingFieldType vets the type compatibility of `@path`,
 // `@header`, `@cookie`, and `@form` bindings up front so the codegen
 // never has to produce uncompilable Go.
@@ -63,7 +73,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	// both required:true and a default).
 	if ast.HasDecorator(f.Decorators, "default") {
 		for _, d := range f.Decorators {
-			if d.Name == "path" {
+			if d.Name == wire.BindingPath {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
 					"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
 				return
@@ -101,21 +111,21 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	}
 	for _, d := range f.Decorators {
 		switch d.Name {
-		case "path":
+		case wire.BindingPath:
 			if isPathBindingType(f.Type, a.pkg) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
+				msgBindPath,
 				parent, f.Name, describeTypeRef(f.Type))
 			return
 		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
 			// Cookie has no multi-value shape; reject arrays with
 			// the source-specific message BEFORE the general wire
 			// check (which accepts arrays for query / header).
-			if d.Name == "cookie" && f.Type.Array {
+			if d.Name == wire.BindingCookie && f.Type.Array {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-					"field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name",
+					msgBindCookieArray,
 					parent, f.Name)
 				return
 			}
@@ -123,15 +133,15 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s",
+				msgBindWire,
 				parent, f.Name, d.Name, describeTypeRef(f.Type))
 			return
-		case "form":
+		case wire.BindingForm:
 			if isFormBindingType(f.Type, a.pkg) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				"field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s",
+				msgBindForm,
 				parent, f.Name, describeTypeRef(f.Type))
 			return
 		}
@@ -183,39 +193,54 @@ func isPathBindingType(t *ast.TypeRef, pkg *Package) bool {
 // it nil when the key is absent). Rejects: maps, structs, generic
 // instantiations, and the `file` type (which only `@form` accepts).
 func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
+	// Local refs may be a builtin / file / primitive by bare name; scalars and
+	// enums resolve through the package's own tables.
+	return wireBindableNamed(t, true,
+		func(nt *ast.NamedTypeRef) *ast.ScalarDecl {
+			if pkg == nil {
+				return nil
+			}
+			return pkg.Scalars[nt.Name.String()]
+		},
+		func(nt *ast.NamedTypeRef) *ast.EnumDecl {
+			if pkg == nil {
+				return nil
+			}
+			return pkg.Enums[nt.Name.String()]
+		})
+}
+
+// wireBindableNamed is the shared "may this named type ride a wire string"
+// predicate behind both the per-package [isWireBindingType] and the cross-package
+// [refResolver.qualifiedIsWireBindable] twins. The two differ only in how they
+// resolve a scalar / enum decl (local map vs project resolver) - injected as
+// scalar / enum - and whether bare builtin / `file` / primitive names are
+// considered (checkBuiltin: true for local bare refs, false for qualified
+// cross-package refs, which are never builtins). Keeping the rule here means a
+// change to what's wire-bindable can't drift between the two.
+func wireBindableNamed(t *ast.TypeRef, checkBuiltin bool, scalar func(*ast.NamedTypeRef) *ast.ScalarDecl, enum func(*ast.NamedTypeRef) *ast.EnumDecl) bool {
 	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
 		return false
 	}
 	// A wire-string source encodes an array as repeated single values
-	// (`?x=1&x=2`); a nested array has no wire form. Reject at the shared
-	// predicate so every consumer - the explicit `@query`/`@header` check,
-	// the auto-@query promotion on a body-less verb, and the @form set -
-	// agrees, instead of leaving the depth guard on one path only.
+	// (`?x=1&x=2`); a nested array has no wire form.
 	if t.ArrayDepth > 1 {
 		return false
 	}
-	name := t.Named.Name.String()
-	if name == "file" {
-		return false
+	if checkBuiltin {
+		name := t.Named.Name.String()
+		if name == "file" {
+			return false
+		}
+		if isPrimitiveWireName(name) {
+			return true
+		}
 	}
-	if isPrimitiveWireName(name) {
-		return true
-	}
-	if pkg == nil {
-		return false
-	}
-	if sc, ok := pkg.Scalars[name]; ok && sc != nil {
+	if sc := scalar(t.Named); sc != nil {
 		return isPrimitiveWireName(sc.Primitive)
 	}
-	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		for _, m := range ed.Members {
-			if v, ok := m.(*ast.EnumValue); ok {
-				switch v.Kind {
-				case ast.EnumBare, ast.EnumString, ast.EnumInt:
-					return true
-				}
-			}
-		}
+	if ed := enum(t.Named); ed != nil {
+		return enumWireKindOK(ed)
 	}
 	return false
 }

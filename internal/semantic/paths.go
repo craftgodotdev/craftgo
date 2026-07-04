@@ -27,6 +27,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // defaultHealthPaths is the runtime's auto-registered set, mirrored here so
@@ -61,7 +62,8 @@ func (a *analyzer) checkPathResolution() {
 	}
 	seen := map[routeKey]routeMeta{}
 
-	for svcName, si := range a.pkg.Services {
+	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
+		si := a.pkg.Services[svcName]
 		for _, m := range si.Methods {
 			rt := a.resolveMethodPath(si.Primary, m)
 			verb := strings.ToUpper(m.Verb)
@@ -444,8 +446,11 @@ func walkBodyForPath(td *ast.TypeDecl, prefix, label string, paramSet map[string
 // is handled by pathBindingName, so only the diverting bindings matter here.
 func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 	for _, d := range ds {
+		if d == nil {
+			continue
+		}
 		switch d.Name {
-		case "query", "header", "cookie", "body", "form":
+		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingBody, wire.BindingForm:
 			return true
 		}
 	}
@@ -454,7 +459,7 @@ func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
-		if d.Name != "path" {
+		if d == nil || d.Name != wire.BindingPath {
 			continue
 		}
 		if len(d.Args) > 0 {

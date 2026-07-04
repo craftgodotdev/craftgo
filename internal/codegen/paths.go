@@ -78,7 +78,7 @@ func serviceGroup(svc *ast.ServiceDecl) string {
 		return ""
 	}
 	for _, d := range svc.Decorators {
-		if d.Name != "group" || len(d.Args) == 0 {
+		if d == nil || d.Name != "group" || len(d.Args) == 0 {
 			continue
 		}
 		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {

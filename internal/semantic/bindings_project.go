@@ -62,24 +62,24 @@ func (r *refResolver) checkBindingsOnQualifiedField(parent string, f *ast.Field)
 			if r.qualifiedIsPathBindable(f.Type) {
 				continue
 			}
-			r.diagBinding(d, "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
+			r.diagBinding(d, msgBindPath,
 				parent, f.Name, describeTypeRef(f.Type))
 		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
 			if d.Name == wire.BindingCookie && f.Type.Array {
-				r.diagBinding(d, "field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name",
+				r.diagBinding(d, msgBindCookieArray,
 					parent, f.Name)
 				continue
 			}
 			if r.qualifiedIsWireBindable(f.Type) {
 				continue
 			}
-			r.diagBinding(d, "field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s",
+			r.diagBinding(d, msgBindWire,
 				parent, f.Name, d.Name, describeTypeRef(f.Type))
 		case wire.BindingForm:
 			if r.qualifiedIsFormBindable(f.Type) {
 				continue
 			}
-			r.diagBinding(d, "field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s",
+			r.diagBinding(d, msgBindForm,
 				parent, f.Name, describeTypeRef(f.Type))
 		}
 	}
@@ -98,22 +98,10 @@ func (r *refResolver) qualifiedIsPathBindable(t *ast.TypeRef) bool {
 }
 
 func (r *refResolver) qualifiedIsWireBindable(t *ast.TypeRef) bool {
-	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
-		return false
-	}
-	// Nested arrays have no wire-string encoding (see [isWireBindingType]);
-	// reject the cross-package twin identically so a qualified element type
-	// (`shared.Tag[][]`) auto-binding to @query is caught too.
-	if t.ArrayDepth > 1 {
-		return false
-	}
-	if sc := r.lookupScalar(t.Named); sc != nil {
-		return isPrimitiveWireName(sc.Primitive)
-	}
-	if ed := r.lookupEnum(t.Named); ed != nil {
-		return enumWireKindOK(ed)
-	}
-	return false
+	// The cross-package twin of isWireBindingType: qualified refs are never bare
+	// builtins, so skip the builtin check and resolve scalars / enums through the
+	// project resolver. Shares wireBindableNamed so the rule can't drift.
+	return wireBindableNamed(t, false, r.lookupScalar, r.lookupEnum)
 }
 
 func (r *refResolver) qualifiedIsFormBindable(t *ast.TypeRef) bool {

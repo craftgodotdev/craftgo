@@ -167,22 +167,7 @@ func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lex
 		mid = &view.tokens[idx]
 	}
 	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	scanFrom := idx - 1
-	if idx < 0 {
-		scanFrom = -1
-		for i := len(view.tokens) - 1; i >= 0; i-- {
-			t := view.tokens[i]
-			if t.Kind == lexer.EOF {
-				continue
-			}
-			end := t.Pos
-			end.Column += len(t.Text)
-			if posLessEq(end, target) {
-				scanFrom = i
-				break
-			}
-		}
-	}
+	scanFrom := scanFromIndex(view, idx, target)
 	for i := scanFrom; i >= 0; i-- {
 		t := view.tokens[i]
 		if t.Kind == lexer.EOF {
@@ -196,6 +181,27 @@ func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lex
 
 // posLessEq reports whether a comes at or before b in source order.
 // Lines win the comparison; columns tie-break within the same line.
+// scanFromIndex returns the token index to scan backward from for a completion
+// at target: idx-1 when the cursor sits inside/after a token, otherwise the
+// last non-EOF token that ends at or before target (-1 if none).
+func scanFromIndex(view snapshotView, idx int, target lexer.Position) int {
+	if idx >= 0 {
+		return idx - 1
+	}
+	for i := len(view.tokens) - 1; i >= 0; i-- {
+		t := view.tokens[i]
+		if t.Kind == lexer.EOF {
+			continue
+		}
+		end := t.Pos
+		end.Column += len(t.Text)
+		if posLessEq(end, target) {
+			return i
+		}
+	}
+	return -1
+}
+
 func posLessEq(a, b lexer.Position) bool {
 	if a.Line != b.Line {
 		return a.Line < b.Line
@@ -233,22 +239,7 @@ func isScalarPrimitivePosition(view snapshotView, pos protocol.Position) bool {
 	// Walk backward from the cursor through non-trivia tokens looking
 	// for the pattern `scalar <ident>` immediately preceding.
 	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	scanFrom := idx - 1
-	if idx < 0 {
-		scanFrom = -1
-		for i := len(view.tokens) - 1; i >= 0; i-- {
-			t := view.tokens[i]
-			if t.Kind == lexer.EOF {
-				continue
-			}
-			end := t.Pos
-			end.Column += len(t.Text)
-			if posLessEq(end, target) {
-				scanFrom = i
-				break
-			}
-		}
-	}
+	scanFrom := scanFromIndex(view, idx, target)
 	// Need at least the ident + KwScalar pair before the cursor.
 	if scanFrom < 1 {
 		return false

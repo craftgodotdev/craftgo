@@ -262,14 +262,7 @@ func rewriteMembers(members []ast.TypeMember, srcPkg string, rewrite func(string
 			// cross-pkg arg like `lib.Owner` in `lib.Page<lib.Owner>`)
 			// must be rewritten too, or the merged generic instance's
 			// element `$ref` dangles at `lib.Owner`.
-			if nr != nil && len(nr.Args) > 0 {
-				nrc := *nr
-				nrc.Args = make([]*ast.TypeRef, len(nr.Args))
-				for i, a := range nr.Args {
-					nrc.Args[i] = rewriteTypeRef(a, srcPkg, rewrite)
-				}
-				nr = &nrc
-			}
+			nr = rewriteNamedArgs(nr, srcPkg, rewrite)
 			cp.Ref = nr
 			out = append(out, &cp)
 		default:
@@ -297,15 +290,7 @@ func rewriteTypeRef(t *ast.TypeRef, srcPkg string, rewrite func(string, *ast.Nam
 		named := rewrite(srcPkg, t.Named)
 		// Recurse into generic args so a nested cross-pkg ref is
 		// also rewritten.
-		if named != nil && len(named.Args) > 0 {
-			args := make([]*ast.TypeRef, len(named.Args))
-			for i, a := range named.Args {
-				args[i] = rewriteTypeRef(a, srcPkg, rewrite)
-			}
-			ncp := *named
-			ncp.Args = args
-			named = &ncp
-		}
+		named = rewriteNamedArgs(named, srcPkg, rewrite)
 		cp.Named = named
 	}
 	return &cp
@@ -385,17 +370,24 @@ func rewriteNamedTypeRef(n *ast.NamedTypeRef, srcPkg string, rewrite func(string
 	if n == nil {
 		return nil
 	}
-	named := rewrite(srcPkg, n)
-	if named != nil && len(named.Args) > 0 {
-		args := make([]*ast.TypeRef, len(named.Args))
-		for i, a := range named.Args {
-			args[i] = rewriteTypeRef(a, srcPkg, rewrite)
-		}
-		ncp := *named
-		ncp.Args = args
-		named = &ncp
+	return rewriteNamedArgs(rewrite(srcPkg, n), srcPkg, rewrite)
+}
+
+// rewriteNamedArgs deep-copies n with its generic Args rewritten, so a nested
+// cross-package ref inside a generic instance is also rewritten. Returns n
+// unchanged when it is nil or carries no args. Shared by the mixin, type-ref
+// and named-ref rewrite paths.
+func rewriteNamedArgs(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.NamedTypeRef {
+	if n == nil || len(n.Args) == 0 {
+		return n
 	}
-	return named
+	args := make([]*ast.TypeRef, len(n.Args))
+	for i, a := range n.Args {
+		args[i] = rewriteTypeRef(a, srcPkg, rewrite)
+	}
+	cp := *n
+	cp.Args = args
+	return &cp
 }
 
 // pascalCase converts a DSL package name (commonly lowercase or

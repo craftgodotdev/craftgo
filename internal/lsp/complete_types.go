@@ -48,25 +48,10 @@ func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position
 // (typical in unit tests that parse a single in-memory snapshot
 // without a backing filesystem entry).
 func (s *Server) enumDeclByNameProjectWide(view snapshotView, currentURI, currentSrc, name string) *ast.EnumDecl {
-	files, _ := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
-		for _, d := range p.file.Decls {
-			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
-				return e
-			}
-		}
-	}
-	if view.file != nil {
-		for _, d := range view.file.Decls {
-			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
-				return e
-			}
-		}
-	}
-	return nil
+	// Same project-wide enum walk as enumDeclWithPath; this caller doesn't need
+	// the file path, so drop it.
+	e, _ := s.enumDeclWithPath(view, currentURI, currentSrc, name)
+	return e
 }
 
 // durationSuffixes / sizeSuffixes mirror the unit set the lexer

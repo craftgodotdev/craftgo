@@ -8,6 +8,19 @@ import (
 	"path/filepath"
 )
 
+// runInit scaffolds a fresh design folder at args[0]. The path argument IS the
+// design folder - `craftgo init contracts/v1` creates
+// `contracts/v1/craftgo.design.yaml` directly inside that directory, no
+// intermediate `design/` wrapper. With no path the default is `design` (a
+// `design/` subdir of cwd), so `mkdir myapp && cd myapp && craftgo init`
+// produces the conventional layout.
+//
+// The command refuses to overwrite an existing manifest, so re-running on a
+// populated folder is a silent no-op. There is no `-package` flag - the Go
+// module path is read from `go.mod` at gen time, so the only manifest-side
+// configuration is the optional output paths and OpenAPI metadata. init owns
+// only the manifest scaffolding; the runtime artefacts (config/, svccontext/,
+// main.go) are scaffolded by `craftgo gen` under the same gen-once policy.
 func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	if perr := fs.Parse(args); perr != nil {

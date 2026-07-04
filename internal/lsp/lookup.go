@@ -110,6 +110,19 @@ func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 	return nil, false
 }
 
+// declName returns the declared name for the body-bearing decl kinds
+// (TypeDecl / ErrorDecl), used as the parent label alongside [declBody]; ""
+// for decls without a body.
+func declName(d ast.Decl) string {
+	switch v := d.(type) {
+	case *ast.TypeDecl:
+		return v.Name
+	case *ast.ErrorDecl:
+		return v.Name
+	}
+	return ""
+}
+
 // noDeclBetween reports whether the file has zero declarations on
 // lines strictly between `from` (exclusive) and `to` (exclusive). Used
 // by scalarPrimAt to make sure the "above" attribution stays adjacent.

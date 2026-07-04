@@ -48,6 +48,19 @@ func rawIfBigInt(d *ast.Decorator, i int) (json.Number, bool) {
 	return "", false
 }
 
+// stampDeprecated marks s deprecated when the field carries @deprecated and
+// appends any reason to its description. Shared by applyFieldMetadata's three
+// schema-shape branches so the stamp is spelled once.
+func stampDeprecated(s *openapi3.Schema, decs []*ast.Decorator) {
+	if !hasDeprecatedDecorator(decs) {
+		return
+	}
+	s.Deprecated = true
+	if reason := deprecatedReason(decs); reason != "" {
+		s.Description = appendDescription(s.Description, "Deprecated: "+reason)
+	}
+}
+
 func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Package) {
 	if ref == nil {
 		return
@@ -98,12 +111,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		if hasDef {
 			w.Default = def
 		}
-		if deprecated {
-			w.Deprecated = true
-			if reason := deprecatedReason(f.Decorators); reason != "" {
-				w.Description = appendDescription(w.Description, "Deprecated: "+reason)
-			}
-		}
+		stampDeprecated(w, f.Decorators)
 		if hasEx {
 			w.Example = ex
 		}
@@ -129,12 +137,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		if def, ok := resolveDefaultValue(f, pkg); ok {
 			ref.Value.Default = def
 		}
-		if hasDeprecatedDecorator(f.Decorators) {
-			ref.Value.Deprecated = true
-			if reason := deprecatedReason(f.Decorators); reason != "" {
-				ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
-			}
-		}
+		stampDeprecated(ref.Value, f.Decorators)
 		applyFieldConstraints(f.Decorators, ref.Value)
 		return
 	}

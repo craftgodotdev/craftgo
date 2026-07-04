@@ -1907,3 +1907,15 @@ service S { post Make /m { request T } }`)
 		t.Errorf("map size must use min/maxProperties, not min/maxItems:\n%s", body)
 	}
 }
+
+// TestGenerateOpenAPIGenericScalarArg pins that a generic over a scalar
+// (Page<Email>) emits a PageOfEmail component whose items $ref the scalar
+// component instead of inlining the scalar's shape.
+func TestGenerateOpenAPIGenericScalarArg(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+scalar Email string @format(email)
+type Page<T> { items T[] }
+type EmailList { p Page<Email> }
+service S { get Get /e { response EmailList } }`)
+	mustContainAll(t, body, "PageOfEmail:", "$ref: '#/components/schemas/Email'")
+}

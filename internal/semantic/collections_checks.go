@@ -156,15 +156,7 @@ func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string)
 // arrayElemType peel so the comparability verdict matches what the
 // validator emits. Optional is cleared on the element.
 func peelOneArray(t *ast.TypeRef) *ast.TypeRef {
-	clone := *t
-	clone.Optional = false
-	if clone.ArrayDepth > 0 {
-		clone.ArrayDepth--
-	}
-	if clone.ArrayDepth == 0 {
-		clone.Array = false
-	}
-	return &clone
+	return t.ElemTypeRef()
 }
 
 // typeRefComparable reports whether values of t are usable as a Go map

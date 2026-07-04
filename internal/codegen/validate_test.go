@@ -985,3 +985,15 @@ type U { names shared.Name[] @uniqueItems }`,
 		t.Errorf("@uniqueItems over shared.Name must import shared; got:\n%s", src)
 	}
 }
+
+// TestValidateGenericScalarArg pins that a generic instantiated over a scalar
+// (Page<Email>) validates the scalar element: the outer type calls Validate()
+// on the instance, and the generic body probes each element via the runtime
+// interface assertion, which reaches Email.Validate().
+func TestValidateGenericScalarArg(t *testing.T) {
+	src := runValidateGen(t, `package design
+scalar Email string @format(email)
+type Page<T> { items T[] }
+type EmailList { p Page<Email> }`)
+	mustContainAll(t, src, "v.P.Validate()", "interface{ Validate() error }")
+}

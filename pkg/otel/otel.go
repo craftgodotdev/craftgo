@@ -224,7 +224,7 @@ type Config struct {
 	// span creation, no atomic load past the first.
 	Enabled bool `yaml:"enabled"`
 	// ServiceName surfaces in the OTel resource attribute
-	// `service.name`. Defaults to "craftgo-service" when blank.
+	// `service.name`. Defaults to "craftgo" when blank.
 	ServiceName string `yaml:"serviceName"`
 	// Exporter selects the destination for spans:
 	//   - "none" / "" - in-process spans only (ids in logs, no export)

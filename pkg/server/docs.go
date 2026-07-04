@@ -56,7 +56,7 @@ func (s *Server) ServeDocs(opts DocsOptions) *Server {
 
 	specCT := "application/yaml; charset=utf-8"
 	if t := strings.TrimSpace(string(opts.Spec)); strings.HasPrefix(t, "{") {
-		specCT = "application/json; charset=utf-8"
+		specCT = contentTypeJSON
 	}
 	spec := opts.Spec
 	s.HandleFunc("GET "+opts.SpecPath, func(w http.ResponseWriter, _ *http.Request) {

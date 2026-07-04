@@ -136,15 +136,7 @@ func arrayElemType(t *ast.TypeRef) string {
 	if t == nil || !t.Array {
 		return ""
 	}
-	clone := *t
-	if clone.ArrayDepth > 0 {
-		clone.ArrayDepth--
-	}
-	if clone.ArrayDepth == 0 {
-		clone.Array = false
-	}
-	clone.Optional = false
-	return GoTypeRef(&clone)
+	return GoTypeRef(t.ElemTypeRef())
 }
 
 // optionalGuard returns the leading nil-check expression for any field

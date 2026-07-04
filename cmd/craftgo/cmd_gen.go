@@ -41,11 +41,6 @@ func parseGenArgs(args []string) (manifest, ctxRoot, positional string, err erro
 	return manifest, ctxRoot, positional, nil
 }
 
-// parseFlagError translates a [flag.ContinueOnError] result into the
-// project's error contract: `-h` / `--help` is a clean exit with no
-// noisy "flag: help requested" wrapper, every other parse error is
-// prefixed with the subcommand name so the user sees `init: …`
-
 func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
 	if manifestFolder != "" {
 		root := contextRoot
@@ -225,6 +220,24 @@ func validateSecurityRefs(proj *semantic.Project, cfg *config.Config, pkgNames [
 	return nil
 }
 
+// genStep pairs a codegen call with the label used to wrap its error.
+type genStep struct {
+	label string
+	fn    func() error
+}
+
+// runGenSteps runs each step in order, wrapping the first failure with its
+// label. Shared by the per-package and project-wide gen phases so they don't
+// each re-spell the labelled-step loop.
+func runGenSteps(steps []genStep) error {
+	for _, s := range steps {
+		if err := s.fn(); err != nil {
+			return fmt.Errorf("%s: %w", s.label, err)
+		}
+	}
+	return nil
+}
+
 // genTypesPerPackage emits the four type-shape artefacts (types,
 // enums, errors, validators) into <typesDir>/<pkgName>/ for every
 // package. Cross-package field refs pick up Go imports + qualified
@@ -234,19 +247,13 @@ func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot 
 	for _, name := range pkgNames {
 		p := proj.Packages[name]
 		r := codegen.BuildProjectResolver(proj, cfg, name)
-		steps := []struct {
-			label string
-			fn    func() error
-		}{
+		if err := runGenSteps([]genStep{
 			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, r.CrossPkg, r) }},
 			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
 			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, r) }},
 			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsResolved(p, typesDir, r) }},
-		}
-		for _, s := range steps {
-			if err := s.fn(); err != nil {
-				return fmt.Errorf("%s: %w", s.label, err)
-			}
+		}); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -267,18 +274,12 @@ func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRo
 			continue
 		}
 		r := codegen.BuildProjectResolver(proj, cfg, name)
-		steps := []struct {
-			label string
-			fn    func() error
-		}{
+		if err := runGenSteps([]genStep{
 			{"transport(" + name + ")", func() error { return codegen.GenerateTransportResolved(p, cfg, projectRoot, r) }},
 			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, r.CrossPkg) }},
 			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
-		}
-		for _, s := range steps {
-			if err := s.fn(); err != nil {
-				return fmt.Errorf("%s: %w", s.label, err)
-			}
+		}); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -291,42 +292,14 @@ func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRo
 // final symbol table. Runtime scaffolds self-skip when
 // `output.main: "-"` opts the project out of the runtime layer.
 func genProjectArtefacts(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	steps := []struct {
-		label string
-		fn    func() error
-	}{
+	return runGenSteps([]genStep{
 		{"routes-umbrella", func() error { return codegen.GenerateProjectRoutesUmbrella(proj, cfg, projectRoot) }},
 		{"config", func() error { return codegen.GenerateRuntimeConfig(cfg, projectRoot) }},
 		{"svccontext", func() error { return codegen.GenerateSvccontext(cfg, projectRoot) }},
 		{"main", func() error { return codegen.GenerateProjectMain(proj, cfg, projectRoot) }},
 		{"openapi", func() error { return codegen.GenerateProjectOpenAPI(proj, cfg, projectRoot) }},
-	}
-	for _, s := range steps {
-		if err := s.fn(); err != nil {
-			return fmt.Errorf("%s: %w", s.label, err)
-		}
-	}
-	return nil
+	})
 }
-
-// runInit scaffolds a fresh design folder at args[0]. The path argument
-// IS the design folder - `craftgo init contracts/v1` creates
-// `contracts/v1/craftgo.design.yaml` directly inside that directory;
-// no intermediate `design/` wrapper. When no path is supplied the
-// default is `design` (creates a `design/` subdir of cwd) so a fresh
-// `mkdir myapp && cd myapp && craftgo init` produces the conventional
-// layout.
-//
-// The command refuses to overwrite an existing manifest so re-running
-// on a populated folder is a silent no-op. There is no `-package`
-// flag - the Go module path is read from `go.mod` at gen time, so
-// the only manifest-side configuration is the optional output paths
-// and OpenAPI metadata.
-//
-// init only owns the manifest scaffolding - the runtime artefacts
-// (config/, svccontext/, main.go) are scaffolded by `craftgo gen`
-// using the same gen-once policy so they live in one place
-// (internal/codegen/templates/) and follow the same workflow as
 
 func securitySchemeNames(cfg *config.Config) []string {
 	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {

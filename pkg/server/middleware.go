@@ -16,6 +16,10 @@ import (
 // RequestID middleware.
 const requestIDHeader = "X-Request-Id"
 
+// contentTypeJSON is the Content-Type the framework's JSON responses (health,
+// error envelopes, served OpenAPI spec) set.
+const contentTypeJSON = "application/json; charset=utf-8"
+
 // ctxKey is a private type so request-scoped values don't collide with
 // other packages' context keys.
 type ctxKey int
@@ -47,6 +51,14 @@ func (w *committedResponseWriter) Write(p []byte) (int, error) {
 }
 
 func (w *committedResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Flush forwards to the underlying writer's Flusher when available so streaming
+// handlers keep working through the Recovery wrapper (mirrors statusRecorder).
+func (w *committedResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
 
 // Committed reports whether the response status / body has already
 // been flushed. Generated handlers and the validation-error hook use

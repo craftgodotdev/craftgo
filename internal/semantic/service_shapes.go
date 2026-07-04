@@ -1,10 +1,7 @@
-// Service-method shape checks (uniqueness, route collisions) + PathString helper.
+// Service-method shape checks (uniqueness, route collisions).
 package semantic
 
 import (
-	"strings"
-
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
@@ -48,26 +45,3 @@ func (a *analyzer) checkServiceMethods() {
 // walk every scope that can carry decorators: the file header, top-level
 // declarations, fields inside type / error bodies, enum values, service
 // methods, and middleware-declaration sites.
-
-// PathShape is PathString with every {param} replaced by `{}`. Two
-// routes that route to the same HTTP destination have the same shape
-// even when their parameter names differ - e.g. `/u/{id}` and
-// `/u/{userId}` both reduce to `/u/{}`. Collision-detection keys
-// MUST use this rather than PathString, otherwise a parameter rename
-// silently bypasses the duplicate guard and net/http's mux panics at
-// boot when both routes try to register against the same pattern.
-func PathShape(p *ast.Path) string {
-	if p == nil {
-		return ""
-	}
-	var sb strings.Builder
-	for _, s := range p.Segments {
-		sb.WriteByte('/')
-		if s.Param {
-			sb.WriteString("{}")
-		} else {
-			sb.WriteString(s.Literal)
-		}
-	}
-	return sb.String()
-}

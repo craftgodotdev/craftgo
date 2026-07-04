@@ -259,14 +259,10 @@ func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
 // @form`) are mutually exclusive; the first wins, every subsequent one
 // gets a diagnostic with a back-reference to the first.
 func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
-	bindings := map[string]bool{
-		wire.BindingPath: true, wire.BindingQuery: true, wire.BindingHeader: true,
-		wire.BindingCookie: true, wire.BindingBody: true, wire.BindingForm: true,
-	}
 	first := ""
 	var firstPos lexer.Position
 	for _, d := range f.Decorators {
-		if !bindings[d.Name] {
+		if !wire.IsBindingName(d.Name) {
 			continue
 		}
 		if first == "" {

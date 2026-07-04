@@ -163,8 +163,7 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if m == nil || m.Request == nil {
 		return
 	}
-	switch strings.ToUpper(m.Verb) {
-	case "POST", "PUT", "PATCH":
+	if wire.IsBodyVerb(m.Verb) {
 		return // body-bearing verbs decode @body / @form normally
 	}
 	td, ok := a.pkg.Types[m.Request.Name.String()]
@@ -252,8 +251,7 @@ func (r *refResolver) checkProjectBodyBindingVerb() {
 				if m == nil || m.Request == nil || m.Request.Name == nil {
 					continue
 				}
-				switch strings.ToUpper(m.Verb) {
-				case "POST", "PUT", "PATCH":
+				if wire.IsBodyVerb(m.Verb) {
 					continue
 				}
 				parts := m.Request.Name.Parts

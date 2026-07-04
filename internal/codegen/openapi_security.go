@@ -13,6 +13,26 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
+// forEachSecurityScheme calls fn with every scheme name referenced by an
+// `@security(...)` decorator in ds (bare `@security(A)` and the array shortcut
+// `@security([A, B])` both flatten through DecoratorArgValues). Shared by the
+// scheme-emission and ref-validation walks so they agree on how a security
+// reference is spelled.
+func forEachSecurityScheme(ds []*ast.Decorator, fn func(name string)) {
+	for _, d := range ds {
+		if d == nil || d.Name != "security" {
+			continue
+		}
+		for _, a := range d.Args {
+			for _, v := range ast.DecoratorArgValues(a) {
+				if id, ok := v.(*ast.IdentExpr); ok {
+					fn(id.Name.String())
+				}
+			}
+		}
+	}
+}
+
 func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Config) {
 	if doc.Components == nil {
 		doc.Components = &openapi3.Components{}
@@ -21,23 +41,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 		doc.Components.SecuritySchemes = openapi3.SecuritySchemes{}
 	}
 	collect := func(ds []*ast.Decorator, into map[string]bool) {
-		add := func(e ast.Expr) {
-			if id, ok := e.(*ast.IdentExpr); ok {
-				into[id.Name.String()] = true
-			}
-		}
-		for _, d := range ds {
-			if d.Name != "security" {
-				continue
-			}
-			for _, a := range d.Args {
-				// An arg is either a bare scheme ident OR an array of them
-				// (`@security([A, B])`); DecoratorArgValues flattens both.
-				for _, v := range ast.DecoratorArgValues(a) {
-					add(v)
-				}
-			}
-		}
+		forEachSecurityScheme(ds, func(name string) { into[name] = true })
 	}
 	names := map[string]bool{}
 	for _, svc := range pkg.Services {
@@ -135,29 +139,12 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 		}
 	}
 	collect := func(svcName, scope string, ds []*ast.Decorator, dst map[string]bool) {
-		check := func(e ast.Expr) {
-			id, ok := e.(*ast.IdentExpr)
-			if !ok {
-				return
-			}
-			name := id.Name.String()
+		forEachSecurityScheme(ds, func(name string) {
 			if _, exists := declared[name]; exists {
 				return
 			}
 			dst[svcName+"/"+scope+"/"+name] = true
-		}
-		for _, d := range ds {
-			if d.Name != "security" {
-				continue
-			}
-			for _, a := range d.Args {
-				// Bare-ident and array (`@security([A,B])`) forms both flatten
-				// through DecoratorArgValues.
-				for _, v := range ast.DecoratorArgValues(a) {
-					check(v)
-				}
-			}
-		}
+		})
 	}
 	bad := map[string]bool{}
 	for svcName, svc := range pkg.Services {
@@ -180,4 +167,59 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// dedupSecurity removes duplicate security requirements (identical
+// scheme→scopes sets) that arise when a method repeats a requirement its
+// service already declares. Each requirement is an OR-alternative, so two
+// identical entries are redundant; mirrors the tag dedup so the spec
+// carries one entry per distinct alternative.
+func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirements {
+	seen := map[string]bool{}
+	out := make(openapi3.SecurityRequirements, 0, len(reqs))
+	for _, req := range reqs {
+		keys := make([]string, 0, len(req))
+		for k, scopes := range req {
+			keys = append(keys, k+"="+strings.Join(scopes, ","))
+		}
+		sort.Strings(keys)
+		key := strings.Join(keys, "&")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, req)
+	}
+	return out
+}
+
+// securityFromDecorators turns `@security(SchemeA, SchemeB)` declarations
+// on a method or service into the OpenAPI `security` slice. Each
+// decorator argument that is an identifier becomes one entry whose value
+// is an empty scopes list - multi-scheme arguments inside a single
+// decorator are AND-combined; multiple `@security(...)` decorators are
+// OR-combined per the OpenAPI spec semantics. The array-shortcut form
+// `@security([A, B])` is treated as equivalent to `@security(A, B)`. To
+// opt out of inherited service-level security, use `@ignoreSecurity` at
+// the method level instead of a sentinel scheme name.
+func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
+	var reqs openapi3.SecurityRequirements
+	for _, d := range ds {
+		if d == nil || d.Name != "security" {
+			continue
+		}
+		req := openapi3.SecurityRequirement{}
+		for _, a := range d.Args {
+			for _, v := range ast.DecoratorArgValues(a) {
+				if id, ok := v.(*ast.IdentExpr); ok {
+					req[id.Name.String()] = []string{}
+				}
+			}
+		}
+		reqs = append(reqs, req)
+	}
+	if len(reqs) == 0 {
+		return nil
+	}
+	return &reqs
 }

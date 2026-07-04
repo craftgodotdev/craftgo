@@ -193,7 +193,7 @@ func (a *analyzer) checkLocalTypeRef(t *ast.TypeRef, typeParams, imports map[str
 // Error declarations are deliberately NOT accepted as a type-position
 // match even though they live in the same package. Errors are only
 // valid inside `@errors(...)` decorator args (handled separately by
-// [checkErrorRefs]); allowing them here would let a user write
+// [checkErrorsRef]); allowing them here would let a user write
 // `field someUser UserNotFound` which compiles but produces a
 // generated struct embedding an HTTP error type - a confusing
 // category mistake. The diagnostic that fires when an error name
