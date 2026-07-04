@@ -181,3 +181,58 @@ func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
 	sort.Strings(out)
 	return out
 }
+
+// dedupSecurity removes duplicate security requirements (identical
+// scheme→scopes sets) that arise when a method repeats a requirement its
+// service already declares. Each requirement is an OR-alternative, so two
+// identical entries are redundant; mirrors the tag dedup so the spec
+// carries one entry per distinct alternative.
+func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirements {
+	seen := map[string]bool{}
+	out := make(openapi3.SecurityRequirements, 0, len(reqs))
+	for _, req := range reqs {
+		keys := make([]string, 0, len(req))
+		for k, scopes := range req {
+			keys = append(keys, k+"="+strings.Join(scopes, ","))
+		}
+		sort.Strings(keys)
+		key := strings.Join(keys, "&")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, req)
+	}
+	return out
+}
+
+// securityFromDecorators turns `@security(SchemeA, SchemeB)` declarations
+// on a method or service into the OpenAPI `security` slice. Each
+// decorator argument that is an identifier becomes one entry whose value
+// is an empty scopes list - multi-scheme arguments inside a single
+// decorator are AND-combined; multiple `@security(...)` decorators are
+// OR-combined per the OpenAPI spec semantics. The array-shortcut form
+// `@security([A, B])` is treated as equivalent to `@security(A, B)`. To
+// opt out of inherited service-level security, use `@ignoreSecurity` at
+// the method level instead of a sentinel scheme name.
+func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
+	var reqs openapi3.SecurityRequirements
+	for _, d := range ds {
+		if d == nil || d.Name != "security" {
+			continue
+		}
+		req := openapi3.SecurityRequirement{}
+		for _, a := range d.Args {
+			for _, v := range ast.DecoratorArgValues(a) {
+				if id, ok := v.(*ast.IdentExpr); ok {
+					req[id.Name.String()] = []string{}
+				}
+			}
+		}
+		reqs = append(reqs, req)
+	}
+	if len(reqs) == 0 {
+		return nil
+	}
+	return &reqs
+}
