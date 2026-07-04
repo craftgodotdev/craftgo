@@ -121,6 +121,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectFieldDefaults()
 	r.checkProjectMixins()
 	r.checkProjectBindings()
+	r.checkProjectDuplicateWireNames()
 	r.checkProjectPathParams()
 	r.checkProjectPathCollision()
 	r.checkProjectOperationIDUniqueness()
