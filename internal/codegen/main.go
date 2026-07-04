@@ -2,8 +2,10 @@ package codegen
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -95,7 +97,8 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 		OperationName:    operationNameFor(cfg.Package),
 	}
 	seen := map[string]bool{}
-	for _, p := range proj.Packages {
+	for _, k := range slices.Sorted(maps.Keys(proj.Packages)) {
+		p := proj.Packages[k]
 		if p == nil {
 			continue
 		}
