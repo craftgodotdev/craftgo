@@ -28,3 +28,27 @@ func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 		t.Errorf("main.go must not use a blanket BodyLimit middleware (not overridable):\n%s", got)
 	}
 }
+
+// The scaffolded main.go installs the handler-timeout default via
+// SetDefaultHandlerTimeout - which a per-method @timeout overrides - rather than
+// a blanket srv.Use(server.Timeout(...)) middleware, which clamps every route to
+// min(default, per-method).
+func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
+	data := mainData{
+		ConfigImport:     "example.com/app/config",
+		RoutesImport:     "example.com/app/internal/routes",
+		SvccontextImport: "example.com/app/svccontext",
+		OperationName:    "app",
+	}
+	out, err := renderGo(tmpl("main.tmpl"), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.Contains(got, "srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)") {
+		t.Errorf("main.go should install the timeout default via SetDefaultHandlerTimeout:\n%s", got)
+	}
+	if strings.Contains(got, "srv.Use(server.Timeout(") {
+		t.Errorf("main.go must not use a blanket Timeout middleware (not overridable):\n%s", got)
+	}
+}
