@@ -404,7 +404,7 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 			return err
 		}
 		data := routesData{
-			Package:          ServicePackage(svcName),
+			Package:          ServicePkgName(pkg.Name, svcName),
 			Service:          svcName,
 			SvccontextImport: importPathsForGroup(cfg, pkg, svcName, "").Svccontext,
 			TransportImports: []transportImport{{

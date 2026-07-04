@@ -260,7 +260,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 	// reject) or render the response cast via a different alias when
 	// the response type is cross-package (cf. resolveTypeRef below).
 	d := transportData{
-		Package:          ServicePackage(svcName),
+		Package:          ServicePkgName(pkg.Name, svcName),
 		Method:           m.Name,
 		Verb:             httpVerb(m.Verb),
 		Doc:              m.Doc,
