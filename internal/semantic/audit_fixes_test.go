@@ -30,6 +30,37 @@ func TestUnsignedLtPositiveClean(t *testing.T) {
 	mustClean(t, `type T { c uint16 @lt(10) }`)
 }
 
+// `@lt(0.0)` is the same always-false predicate as `@lt(0)`; the float
+// spelling must be rejected on unsigned too, not silently emit `value >= 0`.
+func TestUnsignedLtZeroFloatRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type T { c uint16 @lt(0.0) }`))
+	if findCode(diags, CodeDecoratorTypeMismatch) == nil {
+		t.Fatalf("expected @lt(0.0)-on-unsigned rejection; got %v", codes(diags))
+	}
+}
+
+// A positive float bound on unsigned is satisfiable and must stay clean -
+// argIsZero must not over-fire on non-zero floats.
+func TestUnsignedLtPositiveFloatClean(t *testing.T) {
+	mustClean(t, `type T { c uint16 @lt(10.0) }`)
+}
+
+// The float-zero rejection also fires on a CROSS-PACKAGE unsigned scalar,
+// through the project twin ([refResolver.checkScalarBoundContradictions]).
+func TestCrossPkgUnsignedLtZeroFloatRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+scalar Count uint32`,
+		"api.craftgo": `package design
+import "shared"
+type T1 { n shared.Count @lt(0.0) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorTypeMismatch) == nil {
+		t.Fatalf("expected cross-pkg @lt(0.0)-on-unsigned rejection; got %v", codes(diags))
+	}
+}
+
 // A local mixin and an imported one whose unqualified names match both
 // embed as the same Go field - rejected (would "redeclare").
 func TestLeafNameEmbedCollisionRejected(t *testing.T) {
