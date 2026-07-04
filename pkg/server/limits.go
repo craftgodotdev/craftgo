@@ -49,6 +49,11 @@ type Limits struct {
 // Wrapping order is innermost-first: MaxBodySize wraps r.Body before
 // the handler reads it, then Timeout wraps the whole chain so the
 // timeout includes the body-read step.
+//
+// When l sets a MaxBodySize the result is tagged (see [bodyLimitedHandler]) so
+// [Server.Handle] / [Server.HandleFunc] know this route already has its own body
+// cap and skip the global default: a per-method @maxBodySize takes priority over
+// the server-wide default rather than being clamped by it.
 func WithLimits(h http.Handler, l Limits) http.Handler {
 	if l.MaxBodySize > 0 {
 		h = maxBodySizeHandler(h, l.MaxBodySize)
@@ -56,7 +61,23 @@ func WithLimits(h http.Handler, l Limits) http.Handler {
 	if l.Timeout > 0 {
 		h = timeoutHandler(h, l.Timeout)
 	}
+	if l.MaxBodySize > 0 {
+		h = bodyLimitedHandler{h}
+	}
 	return h
+}
+
+// bodyLimitedHandler tags a handler whose own body cap has already been applied
+// (via [WithLimits]). The embedded Handler promotes ServeHTTP so it behaves
+// exactly like the wrapped handler; the distinct type is only a marker that
+// [handlerHasBodyLimit] reads.
+type bodyLimitedHandler struct{ http.Handler }
+
+// handlerHasBodyLimit reports whether h already carries a per-route body cap, in
+// which case the global default must not be layered on top.
+func handlerHasBodyLimit(h http.Handler) bool {
+	_, ok := h.(bodyLimitedHandler)
+	return ok
 }
 
 // timeoutHandler attaches a context.WithTimeout to the request before

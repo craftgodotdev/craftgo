@@ -9,10 +9,10 @@
 
 # Public HTTP listener.
 #
-# handlerTimeout / maxBodySize are GLOBAL DEFAULTS the framework
-# applies to every route via `srv.Use(...)`. Per-method DSL
-# decorators (`@timeout`, `@maxBodySize`) override these. Zero =
-# no global guard (per-method decorators still apply individually).
+# handlerTimeout / maxBodySize are GLOBAL DEFAULTS. A per-method
+# `@timeout` can only TIGHTEN the timeout default; a per-method
+# `@maxBodySize` OVERRIDES the body default (used as-is, larger or
+# smaller). Zero = no global default (per-method decorators still apply).
 #
 # Transport-level deadlines (http.Server.ReadTimeout / WriteTimeout
 # / IdleTimeout / ReadHeaderTimeout / MaxHeaderBytes) are NOT here

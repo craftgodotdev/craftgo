@@ -101,7 +101,7 @@ func New(_ any, opts ...Option) *Server {
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
 		defaultReadTimeout: 30 * time.Second,
-		defaultMaxBodySize: 10 << 20, // 10 MiB
+		defaultMaxBodySize: 0, // no global body cap by default; opt in via SetDefaultMaxBodySize
 		defaultMaxHeaderKB: 32,
 	}
 	for _, o := range opts {
@@ -134,10 +134,23 @@ func (s *Server) RegisterMiddleware(name string, mw Middleware) *Server {
 }
 
 // HandleFunc registers a custom route on the underlying mux using Go 1.22
-// pattern syntax (`"VERB /path"`).
+// pattern syntax (`"VERB /path"`). The server-wide default body cap
+// ([SetDefaultMaxBodySize]) applies unless the handler carries its own.
 func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
-	s.mux.HandleFunc(pattern, h)
+	s.mux.Handle(pattern, s.applyDefaultBodyLimit(h))
 	return s
+}
+
+// applyDefaultBodyLimit wraps h with the server-wide default body cap
+// ([SetDefaultMaxBodySize]) unless h already declares its own per-route cap via
+// a `@maxBodySize` decorator - a per-method cap takes priority over the default,
+// not the min of the two. A zero default is a no-op. The default is read at
+// registration time, so set it before registering routes.
+func (s *Server) applyDefaultBodyLimit(h http.Handler) http.Handler {
+	if s.defaultMaxBodySize > 0 && !handlerHasBodyLimit(h) {
+		return maxBodySizeHandler(h, s.defaultMaxBodySize)
+	}
+	return h
 }
 
 // Handle registers an http.Handler under the same Go 1.22 pattern
@@ -155,7 +168,7 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 // depth, so it scans top-to-bottom in the same outermost-first order
 // the request actually flows through.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
-	s.mux.Handle(pattern, NewChain(mws...).Then(h))
+	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaultBodyLimit(h)))
 	return s
 }
 
@@ -195,7 +208,12 @@ func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
 	return s
 }
 
-// SetDefaultMaxBodySize configures the default request body size cap.
+// SetDefaultMaxBodySize sets the default request-body size cap (in bytes)
+// applied to every route registered afterwards that does not declare its own
+// `@maxBodySize`. A route WITH `@maxBodySize` overrides this default (it is
+// used as-is, whether larger or smaller), so the default is a fallback, not a
+// ceiling. The default is 0 (no cap). Call it before registering routes; the
+// cap is resolved per route at registration time.
 func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
 	s.defaultMaxBodySize = bytes
 	return s
@@ -270,7 +288,9 @@ func (s *Server) Handler() http.Handler {
 	// Build the chain outermost-first: Recovery wraps the user chain
 	// wraps CORS wraps the mux. CORS sits closest to the mux so it
 	// observes the final response headers; Recovery sits outermost so
-	// it catches panics from every other middleware too.
+	// it catches panics from every other middleware too. The default body
+	// cap is applied per-route in [Server.Handle] (not here) so a
+	// per-method @maxBodySize can override it.
 	chain := NewChain(Recovery(s.logger)).Append(s.chain...)
 	if s.cors != nil {
 		chain = chain.Append(corsMiddleware(*s.cors))
