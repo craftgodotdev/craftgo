@@ -431,6 +431,9 @@ server:
     minSize: 0
     level: 0
 
+logging:
+  level: info # debug | info | warn | error
+
 otel:
   enabled: true
   serviceName: my-app
@@ -443,6 +446,12 @@ metrics:
   endpoint: ""
   adminAddr: ":9090"
   path: /metrics
+
+docs:
+  enabled: true
+  ui: redoc # redoc | swagger | scalar
+  path: /docs
+  specPath: /openapi.yaml
 ```
 
 craftgo does not read environment variables. The YAML file is the single source of runtime configuration. Edit `config/config.go` (gen-once) to add custom fields.
@@ -503,7 +512,7 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         }
         l := service.New<Method>Service(r.Context(), svcCtx)
         resp, err := l.<Method>(&req)   // ctx is captured in the service, not passed
-        if err != nil { writeError(w, err); return }
+        if err != nil { server.WriteError(w, r, err); return }
         w.Header().Set("Content-Type", "application/json; charset=utf-8")
         server.JSON().Encode(w, resp)
     }
@@ -563,7 +572,7 @@ srv.Start(":8080")
 | `server.AccessLog(logger)`   | One log line per request                                 |
 | `server.BodyLimit(maxBytes)` | Cap request body size                                    |
 | `server.Timeout(d)`          | Per-handler deadline                                     |
-| `server.CORS(opts)`          | Preflight + CORS headers                                 |
+| `srv.SetCORS(opts)`          | CORS headers + genuine-preflight short-circuit (opts via `server.CORSPermissive()` / `server.CORSStrict(origin)`; a Server method, not a `srv.Use` middleware) |
 | `server.Compress(opts)`      | gzip / deflate response compression                      |
 
 ## Error response format

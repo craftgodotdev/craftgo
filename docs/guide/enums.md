@@ -188,7 +188,6 @@ enum Status { Active  Inactive  Pending }
 The doc surfaces in:
 
 - Hover popups in the LSP
-- The generated Go file (above the `type Status` declaration)
 - The OpenAPI schema's `description` field
 
 Per-value docs work too:
