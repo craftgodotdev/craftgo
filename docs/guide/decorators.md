@@ -714,7 +714,7 @@ get StreamLogs /logs/stream { ... }
 
 ### `@timeout(duration)`
 
-Cap the handler's execution time. Returns 503 + cancels context when the deadline elapses. Tighter than the global `server.handlerTimeout` config.
+Cap the handler's execution time. **Overrides** the global `server.handlerTimeout` config — the per-method value is used as-is (it may be shorter **or** longer than the global default); routes without `@timeout` inherit the global default. When the deadline elapses the framework cancels the request context, so a handler that checks `ctx.Done()` can return early. No status is written automatically for the per-method timeout (unlike the blanket `server.Timeout()` middleware, which wraps `http.TimeoutHandler` and returns 503).
 
 | Sites | method |
 | -------- | -------- |

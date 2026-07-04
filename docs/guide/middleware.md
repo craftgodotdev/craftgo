@@ -23,7 +23,7 @@ For cross-cutting concerns that apply globally regardless of the API contract, u
 srv := server.New(svcCtx)
 srv.Use(server.RequestID())
 srv.Use(server.AccessLog(logger))
-srv.Use(server.BodyLimit(1 << 20))
+srv.SetDefaultMaxBodySize(1 << 20) // default body cap; a per-method @maxBodySize overrides it
 srv.Use(otelhttp.NewMiddleware("api"))
 ```
 
@@ -210,7 +210,7 @@ For a request to a method like `DeleteUser` above, the chain executes outermost-
 [handler] decode body, validate, call logic, encode response
 ```
 
-Recovery sits at the outermost position so a panic in any user middleware still surfaces as a 500 instead of crashing the server. The generated `routes.go` resolves the DSL `@middlewares(...)` names through `srv.With(names, handler)` and registers via the variadic `srv.Handle(pattern, h, mws...)` - both fold their lists outermost-first (first entry = first hit on the way in). See the [Runtime API](/reference/runtime-api#chain) for composing your own chains with `server.Chain`.
+Recovery sits at the outermost position so a panic in any user middleware still surfaces as a 500 instead of crashing the server. The generated `routes.go` reads the DSL `@middlewares(...)` values as typed fields on `svcCtx` (e.g. `svcCtx.AuthRequired`, `svcCtx.RateLimit`, pre-wired at startup by `main.go`) and passes them as variadic args to `srv.Handle(pattern, h, mws...)`. The service- and method-level chains are merged into one flat, outermost-first list before the call (first entry = first hit on the way in). See the [Runtime API](/reference/runtime-api#chain) for composing your own chains with `server.Chain`.
 
 ## Accessing middleware values from logic
 

@@ -67,7 +67,7 @@ type Settings {
 }
 ```
 
-Becomes `map[string]bool` and `map[string]int`. Keys must be primitives.
+Becomes `map[string]bool` and `map[string]int`. Keys must be a non-optional string or integer primitive, a scalar over one of those, or an enum.
 
 ### Nested types
 

@@ -164,6 +164,9 @@ server:
     minSize: 0
     level: 0
 
+logging:
+  level: info
+
 otel:
   enabled: true
   serviceName: my-app
@@ -196,6 +199,12 @@ docs:
 | `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |
 
 Compression is off by default. Turn it on only when not behind a compressing reverse proxy (Nginx, Envoy, CloudFront).
+
+### `logging`
+
+| Key     | Effect                                                                              |
+| ------- | ----------------------------------------------------------------------------------- |
+| `level` | Minimum log level: `debug` / `info` / `warn` / `error`. Default `info`; unrecognised values keep `info`. Feeds `log.SetLevel` in `main.go`, retuning the server and the generated logic layer together. |
 
 ### `otel`
 
@@ -241,8 +250,10 @@ Edit `config/config.go` (gen-once - your edits stick):
 ```go
 type Config struct {
     Server  ServerConfig  `yaml:"server"`
+    Logging LogConfig     `yaml:"logging"`
     OTel    OTelConfig    `yaml:"otel"`
     Metrics MetricsConfig `yaml:"metrics"`
+    Docs    DocsConfig    `yaml:"docs"`
 
     DB struct {
         DSN string `yaml:"dsn"`

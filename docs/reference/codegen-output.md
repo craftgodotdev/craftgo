@@ -20,11 +20,10 @@ internal/
 ├── types/<pkg>/                 REGEN - one folder per DSL package
 │   ├── types.go                 structs for every type
 │   ├── validate.go              Validate() method per type
-│   ├── enums.go                 enum constants + String()
+│   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
-│   ├── <method>.go              http.HandlerFunc per method
-│   └── errors.go                writeError helper for this service
+│   └── <method>.go              http.HandlerFunc per method
 ├── service/<svc>/               GEN-ONCE - your business logic
 │   └── <method>.go              the stub you fill in
 ├── routes/
@@ -60,14 +59,14 @@ A `Validate() error` method per type. Every validator decorator becomes a plain 
 
 ### `types/<pkg>/enums.go` + `errors.go` (regen)
 
-Enum constants (`StatusActive`, …) plus a `String()` method; typed error values with their HTTP category, code, and any custom body fields.
+Enum types and their constants (`TodoStatusOpen`, …) — membership validation lives in `validate.go`, not here; typed error values with their HTTP category, code, and any custom body fields.
 
 ### `transport/<svc>/<method>.go` (regen)
 
 One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 
-1. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts),
-2. Applies any `@default` pre-fill,
+1. Applies any `@default` pre-fill (before decode, so a client-provided value overrides the default rather than the reverse),
+2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts),
 3. Calls `req.Validate()`,
 4. Dispatches to your `service` logic,
 5. Encodes the response (and writes any `@status`, response headers, or cookies).
@@ -79,8 +78,14 @@ One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 The stub you implement:
 
 ```go
-type GetUserService struct{ ctx context.Context; svcCtx *svccontext.ServiceContext }
-func NewGetUserService(ctx, svcCtx) *GetUserService { ... }
+type GetUserService struct {
+    log.Logger // l.Info(...) / l.Error(...) available directly
+    ctx    context.Context
+    svcCtx *svccontext.ServiceContext
+}
+func NewGetUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetUserService {
+    return &GetUserService{Logger: log.Default().WithContext(ctx), ctx: ctx, svcCtx: svcCtx}
+}
 func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
     // TODO: your logic
 }

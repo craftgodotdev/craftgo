@@ -122,7 +122,7 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 | `@operationId("...")` | `(string)` | Override the OpenAPI `operationId`. |
 | `@errors(NotFound, Conflict)` | variadic error idents / array | Declared error responses (drives OpenAPI `responses`). |
 | `@status(201)` | `(int)` | Override the default success status code. |
-| `@timeout(3s)` | `(duration)` | Cap handler execution; returns 503 + cancels the context on deadline. |
+| `@timeout(3s)` | `(duration)` | Cap handler execution; overrides the global `server.handlerTimeout` (used as-is). Cancels the request context on the deadline — no status is written automatically; the response is whatever the handler produces after cancellation. |
 | `@maxBodySize(1MB)` | `(size)` | Cap request body - 413 on Content-Length pre-check, 400 on overflow read. |
 | `@passthrough` | - | Bypass framework parsing; logic gets the raw `http.ResponseWriter` + `*http.Request` (flag form). |
 | `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method. |

@@ -50,7 +50,7 @@ Out of the box:
 - `AccessLog(logger)` - one structured log line per request
 - `BodyLimit(maxBytes)` - caps request bodies
 - `Timeout(d)` - hard deadline on handler execution
-- `CORS(opts)` - preflight + headers
+- `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
 - `Compress(opts)` - gzip / deflate response compression
 
 You wire them in `main.go`:
@@ -87,7 +87,7 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         var req types.CreateUserReq
         if err := server.JSON().Decode(r.Body, &req); err != nil {
-            http.Error(w, err.Error(), http.StatusBadRequest)
+            server.WriteValidationError(w, r, err)
             return
         }
         if err := req.Validate(); err != nil {
@@ -97,7 +97,7 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         l := service.NewCreateUserService(r.Context(), svcCtx)
         resp, err := l.CreateUser(&req)
         if err != nil {
-            writeError(w, err)
+            server.WriteError(w, r, err)
             return
         }
         w.Header().Set("Content-Type", "application/json; charset=utf-8")
