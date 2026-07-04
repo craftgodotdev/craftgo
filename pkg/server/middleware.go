@@ -16,6 +16,10 @@ import (
 // RequestID middleware.
 const requestIDHeader = "X-Request-Id"
 
+// contentTypeJSON is the Content-Type the framework's JSON responses (health,
+// error envelopes, served OpenAPI spec) set.
+const contentTypeJSON = "application/json; charset=utf-8"
+
 // ctxKey is a private type so request-scoped values don't collide with
 // other packages' context keys.
 type ctxKey int

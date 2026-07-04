@@ -120,7 +120,7 @@ type UnknownErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 // [SetHandleUnknownError].
 func defaultUnknownError(w http.ResponseWriter, r *http.Request, err error) {
 	log.Default().WithContext(r.Context()).Error("unhandled service error", log.Err(err))
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(http.StatusInternalServerError)
 	_ = JSON().Encode(w, map[string]string{"message": "internal server error"})
 }
@@ -167,7 +167,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	if hw, ok := err.(ResponseHeaderWriter); ok {
 		hw.WriteResponseHeaders(w)
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(se.HTTPStatus())
 	codec := JSON()
 	var buf bytes.Buffer
