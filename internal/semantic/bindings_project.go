@@ -494,11 +494,9 @@ func (r *refResolver) checkScalarBoundContradictions(f *ast.Field, prim string) 
 				r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
 					"@negative cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or drop @negative", prim)
 			case "lt":
-				if len(d.Args) == 1 {
-					if il, ok := d.Args[0].Value.(*ast.IntLit); ok && il.Value == 0 {
-						r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
-							"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
-					}
+				if len(d.Args) == 1 && argIsZero(d.Args[0].Value) {
+					r.diag(d.Pos, lexer.SeverityError, CodeDecoratorTypeMismatch,
+						"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
 				}
 			}
 		}

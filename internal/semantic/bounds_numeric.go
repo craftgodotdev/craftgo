@@ -39,7 +39,7 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 		// Integer field: a fractional divisor is unenforceable by integer
 		// modulus, yet the OpenAPI would advertise it - reject it.
 		if len(d.Args) == 1 {
-			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && fl.Value != float64(int64(fl.Value)) {
+			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 					"@multipleOf on an integer field needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
 			}
@@ -93,13 +93,26 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	// is empty. (`@lt(N)` / `@lte(N)` with N < 0 are already caught there
 	// as out-of-range literals.)
 	for _, d := range f.Decorators {
-		if d != nil && d.Name == "lt" && len(d.Args) == 1 {
-			if il, ok := d.Args[0].Value.(*ast.IntLit); ok && il.Value == 0 {
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
-			}
+		if d != nil && d.Name == "lt" && len(d.Args) == 1 && argIsZero(d.Args[0].Value) {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+				"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
 		}
 	}
+}
+
+// argIsZero reports whether a decorator argument is the literal zero, written
+// as an integer (`0`) or a float (`0.0`). The `@lt(0)`-on-unsigned check
+// accepts both spellings so `@lt(0.0)` is rejected like `@lt(0)` instead of
+// slipping through to codegen, which emits an always-true `value >= 0` guard
+// that rejects every value.
+func argIsZero(v ast.Expr) bool {
+	switch lit := v.(type) {
+	case *ast.IntLit:
+		return lit.Value == 0
+	case *ast.FloatLit:
+		return lit.Value == 0
+	}
+	return false
 }
 
 // diagNegativeUnsigned emits the `@negative`-on-unsigned diagnostic for
@@ -195,12 +208,21 @@ func integralBoundValue(arg *ast.DecoratorArg) (float64, string, bool) {
 	case *ast.IntLit:
 		return float64(lit.Value), strconv.FormatInt(lit.Value, 10), true
 	case *ast.FloatLit:
-		if lit.Value != float64(int64(lit.Value)) {
+		if !isIntegralFloat(lit.Value) {
 			return 0, "", false
 		}
-		return lit.Value, strconv.FormatInt(int64(lit.Value), 10), true
+		return lit.Value, strconv.FormatFloat(lit.Value, 'f', -1, 64), true
 	}
 	return 0, "", false
+}
+
+// isIntegralFloat reports whether v is a whole number. It uses math.Trunc
+// rather than a round-trip through int64: int64(v) saturates for a value
+// beyond the signed 64-bit range, so `@lte(2e19)` on uint64 would look
+// fractional, skip the capacity check, and reach codegen as a constant that
+// overflows the target integer type.
+func isIntegralFloat(v float64) bool {
+	return v == math.Trunc(v)
 }
 
 // forEachNumericBound invokes check for every numeric-bound decorator argument
