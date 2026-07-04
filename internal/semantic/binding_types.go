@@ -208,14 +208,7 @@ func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
 		return isPrimitiveWireName(sc.Primitive)
 	}
 	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		for _, m := range ed.Members {
-			if v, ok := m.(*ast.EnumValue); ok {
-				switch v.Kind {
-				case ast.EnumBare, ast.EnumString, ast.EnumInt:
-					return true
-				}
-			}
-		}
+		return enumWireKindOK(ed)
 	}
 	return false
 }
