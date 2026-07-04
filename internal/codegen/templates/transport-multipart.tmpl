@@ -70,9 +70,9 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- end}}
 {{- range .FormFiles}}
 {{- if .IsArray}}
-		req.{{.GoName}} = r.MultipartForm.File["{{.DSLName}}"]
+		req.{{.GoName}} = r.MultipartForm.File[{{printf "%q" .DSLName}}]
 {{- else}}
-		if _, header, err := r.FormFile("{{.DSLName}}"); err == nil {
+		if _, header, err := r.FormFile({{printf "%q" .DSLName}}); err == nil {
 			req.{{.GoName}} = header
 		}
 {{- end}}

@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -15,14 +16,33 @@ import (
 // caller actually sent - `x-source-domain: ...`, not the DSL field name. The
 // scalar synth field (no name, no decorators) maps to "", keeping the shared
 // scalar/enum Validate() message subject-less.
+//
+// The returned name is escaped for direct embedding in a generated
+// fmt.Errorf(...) format literal (see [escapeErrorfName]): a wire alias is a
+// user-controlled string that may contain a double quote, backslash, or `%`.
+// Every caller embeds the result in an error-message literal, never compares it
+// as a raw string, so escaping once here keeps all message sites safe.
 func fieldWireName(f *ast.Field) string {
 	kind := wire.BindingKind(f.Decorators)
+	name := f.Name
 	switch kind {
 	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
-		return wire.WireName(f, kind)
-	default:
-		return f.Name
+		name = wire.WireName(f, kind)
 	}
+	return escapeErrorfName(name)
+}
+
+// escapeErrorfName makes a wire/field name safe to embed directly inside a
+// generated fmt.Errorf(...) format literal. strconv.Quote escapes a double
+// quote or backslash that would otherwise break the Go string literal (its
+// outer quotes are dropped because callers wrap the whole message in their
+// own), and doubling `%` stops fmt from reading the name as a verb. An
+// ordinary name (letters, digits, `-`, `_`) is returned unchanged, so
+// generated output is identical for every well-formed wire name.
+func escapeErrorfName(name string) string {
+	q := strconv.Quote(name)
+	q = q[1 : len(q)-1]
+	return strings.ReplaceAll(q, "%", "%%")
 }
 
 // errSubject renders the leading "<field>: " of a validation message, or "" when
