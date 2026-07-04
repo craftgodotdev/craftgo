@@ -352,9 +352,10 @@ func TestCORSMiddleware(t *testing.T) {
 		t.Errorf("wildcard origin header = %q", rec.Header().Get("Access-Control-Allow-Origin"))
 	}
 
-	// Preflight.
+	// Preflight: a genuine CORS preflight carries Access-Control-Request-Method.
 	req = httptest.NewRequest(http.MethodOptions, "/c", nil)
 	req.Header.Set("Origin", "https://app.example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {

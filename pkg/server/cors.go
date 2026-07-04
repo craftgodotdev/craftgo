@@ -47,7 +47,8 @@ func corsMiddleware(opts CORSOptions) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if allowed := matchOrigin(origin, opts.AllowedOrigins); allowed != "" {
+			allowed := matchOrigin(origin, opts.AllowedOrigins)
+			if allowed != "" {
 				w.Header().Set("Access-Control-Allow-Origin", allowed)
 				if allowed != "*" {
 					// The Allow-Origin value reflects the request Origin, so
@@ -64,7 +65,12 @@ func corsMiddleware(opts CORSOptions) Middleware {
 					w.Header().Set("Access-Control-Expose-Headers", strings.Join(opts.ExposedHeaders, ", "))
 				}
 			}
-			if r.Method == http.MethodOptions && origin != "" {
+			// Short-circuit only a genuine CORS preflight: an OPTIONS from an
+			// ALLOWED origin carrying Access-Control-Request-Method. A bare
+			// OPTIONS, an OPTIONS from a disallowed origin, or one without the
+			// preflight header falls through to the next handler so real
+			// OPTIONS routes are not shadowed and disallowed origins get no 204.
+			if allowed != "" && r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 				if len(opts.AllowedMethods) > 0 {
 					w.Header().Set("Access-Control-Allow-Methods", strings.Join(opts.AllowedMethods, ", "))
 				}
