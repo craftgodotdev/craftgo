@@ -1,0 +1,15 @@
+package shared
+
+// Timestamps is embedded into every persisted resource so the created /
+// updated fields are declared once.
+type Timestamps {
+	createdAt string @format(datetime)
+	updatedAt string @format(datetime)
+}
+
+// PageParams is the shared cursor-pagination query block. Embed it into a
+// list request so every list endpoint takes the same ?cursor / ?limit.
+type PageParams {
+	cursor string? @query @maxLength(256)
+	limit  int?    @query @gte(1) @lte(100) @default(20)
+}

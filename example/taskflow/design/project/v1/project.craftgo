@@ -1,0 +1,92 @@
+// The project resource, v1.
+//
+// This file and v2/project.craftgo both declare `package project` - craftgo
+// merges files by their `package` declaration, not by directory, so the two
+// version folders form ONE package. v2 evolves the shape via an `extend
+// service` block that inherits this service's @prefix / @middlewares /
+// @security / @tags. The URL version comes from the method paths (/v1, /v2);
+// @group lays the generated code out under project/v1 and project/v2.
+package project
+
+enum ProjectStatus {
+	Active   = "active"
+	Archived = "archived"
+}
+
+type Project {
+	id        shared.ID
+	key       shared.Slug
+	name      string           @length(1, 80)
+	color     shared.HexColor?
+	status    ProjectStatus
+	taskCount int              @gte(0)
+	shared.Timestamps
+}
+
+type CreateProjectReq {
+	key   shared.Slug
+	name  string           @length(1, 80)
+	color shared.HexColor? @default("#3b82f6") @example("#10b981")
+}
+
+type UpdateProjectReq {
+	id    shared.ID        @path
+	name  string?          @length(1, 80)
+	color shared.HexColor?
+}
+
+// Shared by v1 (GetProject) and v2 (GetProjectV2) - both take just {id}.
+type GetProjectReq {
+	id shared.ID @path
+}
+
+type ListProjectsReq {
+	shared.PageParams
+	status ProjectStatus? @query
+	q      string?        @query @maxLength(100) @doc("Case-insensitive name search.")
+}
+
+@prefix("/projects")
+@tags(projects)
+@middlewares(shared.RequestID, shared.AccessLog, shared.RateLimit, shared.AuthRequired)
+@security(bearer)
+@group("project/v1")
+service ProjectService {
+	@doc("List projects (v1).")
+	@errors(shared.UnauthorizedErr, shared.RateLimitedErr)
+	get ListProjects /v1 {
+		request  ListProjectsReq
+		response shared.Page<Project>
+	}
+
+	@doc("Fetch one project (v1).")
+	@errors(shared.ResourceNotFound)
+	get GetProject /v1/{id} {
+		request  GetProjectReq
+		response Project
+	}
+
+	@doc("Create a project (v1).")
+	@summary("Create project")
+	@status(201)
+	@errors(shared.ValidationErr, shared.AlreadyExists)
+	post CreateProject /v1 {
+		request  CreateProjectReq
+		response Project
+	}
+
+	@doc("Update a project (v1).")
+	@errors(shared.ResourceNotFound, shared.ValidationErr)
+	patch UpdateProject /v1/{id} {
+		request  UpdateProjectReq
+		response Project
+	}
+
+	@doc("Archive a project (v1). Idempotent.")
+	@operationId("archiveProject")
+	@errors(shared.ResourceNotFound)
+	delete ArchiveProject /v1/{id} {
+		request  GetProjectReq
+		response shared.OkResp
+	}
+}

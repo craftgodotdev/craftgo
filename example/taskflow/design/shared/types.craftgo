@@ -1,0 +1,21 @@
+package shared
+
+// Page is the generic cursor-paginated envelope returned by every list
+// endpoint: Page<Project>, Page<Task>, Page<Comment>.
+type Page<T> {
+	items      T[]
+	nextCursor string?
+	total      int    @gte(0)
+}
+
+// OkResp is the minimal body for actions that only report success
+// (delete, archive, ...).
+type OkResp {
+	ok bool
+}
+
+// Health is returned by the readiness probe with per-dependency status.
+type Health {
+	status string @pattern("^(ok|degraded)$")
+	db     string
+}

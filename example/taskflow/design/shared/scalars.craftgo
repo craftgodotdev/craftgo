@@ -1,0 +1,15 @@
+package shared
+
+// A URL-safe opaque identifier (used for every resource id).
+scalar ID string @minLength(1) @maxLength(64) @pattern("^[A-Za-z0-9_-]+$")
+
+scalar Email string @format(email) @maxLength(254)
+
+// A lowercase URL slug, e.g. a project key.
+scalar Slug string @minLength(1) @maxLength(48) @pattern("^[a-z][a-z0-9-]*$")
+
+// A hex colour for project/label theming.
+scalar HexColor string @pattern("^#[0-9a-fA-F]{6}$")
+
+// Story points estimate: a small whole number.
+scalar Points int @gte(0) @lte(100)

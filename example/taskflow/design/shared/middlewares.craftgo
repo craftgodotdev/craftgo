@@ -1,0 +1,9 @@
+package shared
+
+// Declared middlewares. Each becomes a typed field on ServiceContext that
+// main.go wires once at startup; services attach them via @middlewares.
+middleware RequestID
+middleware AccessLog
+middleware AuthRequired
+middleware AdminOnly
+middleware RateLimit

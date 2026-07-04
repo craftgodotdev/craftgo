@@ -1,0 +1,47 @@
+package attachments
+
+type Attachment {
+	id       shared.ID
+	taskId   shared.ID
+	filename string @length(1, 255)
+	size     int    @gte(0)
+	mimeType string
+	caption  string?
+	shared.Timestamps
+}
+
+// Multipart request: a required file plus optional text form fields.
+type UploadAttachmentReq {
+	projectId shared.ID @path
+	taskId    shared.ID @path
+	file      file      @form @maxSize(10MB) @mimeTypes("image/png", "image/jpeg", "application/pdf", "text/plain")
+	caption   string?   @form @maxLength(200)
+}
+
+type ListAttachmentsReq {
+	shared.PageParams
+	projectId shared.ID @path
+	taskId    shared.ID @path
+}
+
+@prefix("/projects/v1/{projectId}/tasks/{taskId}/attachments")
+@tags(attachments)
+@middlewares(shared.RequestID, shared.AccessLog, shared.AuthRequired)
+@security(bearer)
+service AttachmentService {
+	@doc("Upload a file attachment to a task (image, PDF or text; ≤10MB).")
+	@status(201)
+	@maxBodySize(12MB)
+	@errors(shared.ResourceNotFound, shared.ValidationErr)
+	post UploadAttachment / {
+		request  UploadAttachmentReq
+		response Attachment
+	}
+
+	@doc("List a task's attachments.")
+	@errors(shared.ResourceNotFound)
+	get ListAttachments / {
+		request  ListAttachmentsReq
+		response shared.Page<Attachment>
+	}
+}

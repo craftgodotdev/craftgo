@@ -1,0 +1,59 @@
+// The project resource, v2 (evolved shape: adds owner + description).
+//
+// Same `package project` as v1/project.craftgo. Its ProjectService is an
+// `extend service` block, so it inherits v1's @prefix, @middlewares, @security
+// and @tags (an extend block can't redeclare @prefix); @group lays its code out
+// under project/v2. ProjectStatus and GetProjectReq are reused from v1 - same
+// package.
+package project
+
+type ProjectV2 {
+	id          shared.ID
+	key         shared.Slug
+	name        string           @length(1, 80)
+	description string?          @maxLength(500)
+	ownerId     shared.ID
+	color       shared.HexColor?
+	status      ProjectStatus
+	taskCount   int              @gte(0)
+	shared.Timestamps
+}
+
+type CreateProjectV2Req {
+	key         shared.Slug
+	name        string           @length(1, 80)
+	description string?          @maxLength(500)
+	ownerId     shared.ID
+	color       shared.HexColor? @default("#3b82f6")
+}
+
+type ListProjectsV2Req {
+	shared.PageParams
+	ownerId shared.ID?     @query
+	status  ProjectStatus? @query
+}
+
+@group("project/v2")
+extend service ProjectService {
+	@doc("List projects (v2: owner + status filters, richer resource).")
+	@errors(shared.UnauthorizedErr)
+	get ListProjectsV2 /v2 {
+		request  ListProjectsV2Req
+		response shared.Page<ProjectV2>
+	}
+
+	@doc("Fetch one project (v2 shape: owner + description).")
+	@errors(shared.ResourceNotFound)
+	get GetProjectV2 /v2/{id} {
+		request  GetProjectReq
+		response ProjectV2
+	}
+
+	@doc("Create a project (v2 requires an ownerId).")
+	@status(201)
+	@errors(shared.ValidationErr, shared.AlreadyExists)
+	post CreateProjectV2 /v2 {
+		request  CreateProjectV2Req
+		response ProjectV2
+	}
+}

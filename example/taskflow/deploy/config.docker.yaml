@@ -1,0 +1,33 @@
+# Container config, mounted over /app/config/config.yaml by docker-compose.
+# Differs from the local config only in the observability wiring: traces +
+# metrics are pushed to the otel-collector service over OTLP gRPC.
+server:
+  addr: ":8080"
+  handlerTimeout: 15s        # default per-handler deadline (Reindex overrides to 30s)
+  maxBodySize: 1048576       # 1 MiB default body cap (upload/bulk override upward)
+  compression:
+    enabled: true
+    minSize: 1024
+    level: 0
+
+logging:
+  level: info
+
+otel:
+  enabled: true
+  serviceName: taskflow
+  exporter: otlp_grpc
+  endpoint: otel-collector:4317
+
+metrics:
+  enabled: true
+  exporter: otlp_grpc
+  endpoint: otel-collector:4317
+  adminAddr: ":9090"
+  path: /metrics
+
+docs:
+  enabled: true
+  ui: redoc
+  path: /docs
+  specPath: /openapi.yaml
