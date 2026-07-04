@@ -62,7 +62,8 @@ func (a *analyzer) checkPathResolution() {
 	}
 	seen := map[routeKey]routeMeta{}
 
-	for svcName, si := range a.pkg.Services {
+	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
+		si := a.pkg.Services[svcName]
 		for _, m := range si.Methods {
 			rt := a.resolveMethodPath(si.Primary, m)
 			verb := strings.ToUpper(m.Verb)
