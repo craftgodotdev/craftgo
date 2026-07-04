@@ -5,6 +5,64 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.5.0] - 2026-07-04 [UTC+7]
+
+### Added
+
+- **Negative integer enum values.** `enum Direction { Left = -1  Right = 1 }` now
+  parses, generates the Go const, and emits the OpenAPI enum `[-1, 1]`.
+- **`example/taskflow` reference app.** A deploy-ready team-task API that exercises
+  nearly the whole DSL surface (multi-package, generics, mixins, scalars, string /
+  int enums, typed errors, multipart upload, `@security` / `@middlewares`, the
+  OpenAPI controls, `@timeout` / `@maxBodySize`), with an in-memory store
+  (`go run .` works with zero dependencies) and a Docker + OpenTelemetry deploy
+  scaffold.
+
+### Changed
+
+- **Generated service / transport / routes packages now use the DSL package name.**
+  A design `package project` emits its handler, transport, and routes code as
+  `package project` (matching the types package), instead of the old
+  service-derived `projectservice`. Import aliases stay per-service, so multiple
+  services in one DSL package still don't collide. For an existing project,
+  `craftgo gen` updates the transport / routes files; the scaffold-once service
+  stubs keep their old package name until renamed.
+- **`@timeout` and `@maxBodySize` override the global config default** instead of
+  being clamped to it. The per-method value is used as-is (it may be larger *or*
+  smaller than `server.handlerTimeout` / `server.maxBodySize`); the global is a
+  per-route default applied only to routes that don't declare the decorator.
+  Per-method `@timeout` cancels the request context (no automatic 503 - the
+  blanket `server.Timeout()` middleware still returns one).
+
+### Fixed
+
+- **Wire names are escaped in generated code.** A wire name containing a quote or
+  `%` no longer aborts `craftgo gen` at `go/format` (generated validator and
+  multipart binder).
+- **Cross-package mixin duplicate wire-names are rejected** instead of silently
+  double-reading one value into two fields.
+- **Numeric-bound edge cases.** `@lt(0.0)` on an unsigned type is rejected like
+  `@lt(0)`; an integral float bound past the `int64` range (`@lte(2e19)`) reports a
+  capacity error instead of generating non-compiling Go.
+- **`BodyLimit` returns 413 up front** when `Content-Length` exceeds the cap, even
+  if the handler never reads the body.
+- **CORS only short-circuits genuine preflights** (`OPTIONS` + allowed origin +
+  `Access-Control-Request-Method`); other `OPTIONS` requests fall through to the
+  real route.
+- **Multipart requests no longer emit an orphaned `<Method>ReqBody` OpenAPI schema**
+  - the multipart body is rendered inline on the operation.
+- **Streaming through `Recovery` works** (the response wrapper now forwards
+  `Flush`), and generated output ordering (middleware wiring, service-collision
+  diagnostics) is deterministic across runs.
+
+### Docs
+
+- Guide and reference synced with the above: the `@timeout` / `@maxBodySize`
+  override semantics, the `srv.SetCORS(...)` API, the generated layout (no
+  `transport/<svc>/errors.go`, `@default` pre-fill before decode, service stubs
+  embed `log.Logger`), the `logging` config section, and enum / map / scalar
+  details.
+
 ## [1.4.2] - 2026-06-17 [UTC+7]
 
 ### Security
