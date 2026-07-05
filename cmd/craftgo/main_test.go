@@ -44,7 +44,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	for _, rel := range []string{
 		"main.go",
 		"internal/types/api/types.go",
-		"internal/transport/probe-service/ping.go",
+		"internal/transport/probe_service/ping.go",
 		"docs/openapi.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
@@ -312,8 +312,8 @@ service AuthService {
 
 	// Per-service handler dirs exist for both services.
 	for _, rel := range []string{
-		"internal/transport/probe-service/ping.go",
-		"internal/transport/auth-service/login.go",
+		"internal/transport/probe_service/ping.go",
+		"internal/transport/auth_service/login.go",
 		"internal/types/design/types.go",
 		"internal/types/auth/types.go",
 	} {
@@ -327,11 +327,11 @@ service AuthService {
 	if err != nil {
 		t.Fatalf("read umbrella: %v", err)
 	}
-	if !strings.Contains(string(umbrella), "probe-service") {
-		t.Errorf("umbrella missing probe-service import:\n%s", umbrella)
+	if !strings.Contains(string(umbrella), "probe_service") {
+		t.Errorf("umbrella missing probe_service import:\n%s", umbrella)
 	}
-	if !strings.Contains(string(umbrella), "auth-service") {
-		t.Errorf("umbrella missing auth-service import:\n%s", umbrella)
+	if !strings.Contains(string(umbrella), "auth_service") {
+		t.Errorf("umbrella missing auth_service import:\n%s", umbrella)
 	}
 
 	// OpenAPI carries paths from BOTH services.

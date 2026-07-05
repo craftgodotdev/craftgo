@@ -96,7 +96,7 @@ The generated middleware stubs register their impls so `@middlewares(Name)` in t
 
 | Method | Description |
 |---|---|
-| `RegisterMiddleware(name, mw) *Server` | Map a DSL identifier to a concrete middleware. Called from the gen-once `internal/middleware/<name>-middleware.go`. |
+| `RegisterMiddleware(name, mw) *Server` | Map a DSL identifier to a concrete middleware. Called from the gen-once `internal/middleware/<name>_middleware.go`. |
 | `With(names []string, h http.HandlerFunc) http.HandlerFunc` | Look each name up and fold them through a `Chain`, outermost-first (first name = outermost). Unknown names are skipped silently. The generated `routes.go` calls this. |
 
 ## JSON codec

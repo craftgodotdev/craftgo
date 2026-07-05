@@ -68,7 +68,24 @@ type Output struct {
 	// example.config.yaml). main.go reads from `<Config>/config.yaml`
 	// at boot. Defaults to `./config`.
 	Config string `yaml:"config"`
+	// FileCase selects the naming convention for GENERATED file and
+	// directory names derived from DSL identifiers - the per-method
+	// handler/service files and the per-service directory. `kebab`
+	// (default) yields `create-user.go` / `user-service/`, `snake`
+	// yields `create_user.go` / `user_service/`, `camel` yields
+	// `createUser.go` / `userService/`. It affects on-disk names only:
+	// URL routes stay kebab-case, and Go package names / identifiers
+	// are unchanged. Defaults to `kebab`.
+	FileCase string `yaml:"fileCase"`
 }
+
+// Supported values for [Output.FileCase]. They name the case used for
+// generated file and directory names (not URLs or Go identifiers).
+const (
+	FileCaseKebab = "kebab"
+	FileCaseSnake = "snake"
+	FileCaseCamel = "camel"
+)
 
 // OpenAPI carries metadata that surfaces in the generated specification's
 // info / servers blocks. BasePath is also used by the runtime to compute the
@@ -307,7 +324,15 @@ func Load(path string) (*Config, error) {
 // either a default or is populated post-Load (Package via go.mod), so
 // there is nothing to reject; it stays as a hook for future required
 // keys without re-wiring callers.
-func (c *Config) validate() error { return nil }
+func (c *Config) validate() error {
+	switch c.Output.FileCase {
+	case "", FileCaseKebab, FileCaseSnake, FileCaseCamel:
+	default:
+		return fmt.Errorf("output.fileCase %q is not supported - use %q, %q, or %q",
+			c.Output.FileCase, FileCaseKebab, FileCaseSnake, FileCaseCamel)
+	}
+	return nil
+}
 
 // applyDefaults fills in any blank optional path with the framework's
 // recommended location. Mirrors the README "Configuration" section so
@@ -339,6 +364,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Output.Config == "" {
 		c.Output.Config = "./config"
+	}
+	if c.Output.FileCase == "" {
+		c.Output.FileCase = FileCaseSnake
 	}
 }
 

@@ -3,7 +3,7 @@
 package routes
 
 import (
-	todoserviceroutes "github.com/craftgodotdev/craftgo/example/todo/internal/routes/todo-service"
+	todoserviceroutes "github.com/craftgodotdev/craftgo/example/todo/internal/routes/todo_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"

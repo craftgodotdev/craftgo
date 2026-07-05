@@ -48,7 +48,7 @@ Declarations are global to their package. They do not live inside a service body
 Codegen produces:
 
 - A typed slot on `ServiceContext.Middlewares` for each name (e.g. `svc.AuthRequired`, `svc.RateLimit`)
-- An empty stub at `internal/middleware/<name>-middleware.go` you fill in
+- An empty stub at `internal/middleware/<name>_middleware.go` you fill in
 - A registration step in main.go that wires your stubs into the slots
 
 The DSL only carries the contract (the name and where it applies). The implementation lives in the stub.
@@ -56,7 +56,7 @@ The DSL only carries the contract (the name and where it applies). The implement
 ### Implementing a stub
 
 ```go
-// internal/middleware/auth-required-middleware.go
+// internal/middleware/auth_required_middleware.go
 func NewAuthRequiredMiddleware() server.Middleware {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

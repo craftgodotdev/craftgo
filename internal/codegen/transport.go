@@ -211,7 +211,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	for _, m := range svc.Methods {
 		group := groups[m.Name]
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
-		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group)
+		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group, cfg.Output.FileCase)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
@@ -228,9 +228,9 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 		}
 		formatted, err := renderGo(t, data)
 		if err != nil {
-			return fmt.Errorf("render %s transport: %w", idents.KebabCase(m.Name), err)
+			return fmt.Errorf("render %s transport: %w", idents.FileName(m.Name, cfg.Output.FileCase), err)
 		}
-		filename := idents.KebabCase(m.Name) + ".go"
+		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
 		if err := os.WriteFile(filepath.Join(dir, filename), formatted, 0o644); err != nil {
 			return err
 		}

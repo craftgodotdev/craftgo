@@ -4,10 +4,10 @@ package routes
 
 import (
 	adminserviceAdminroutes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/admin"
-	attachmentserviceroutes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/attachment-service"
+	attachmentserviceroutes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/attachment_service"
 	projectserviceProjectV1routes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/project/v1"
 	projectserviceProjectV2routes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/project/v2"
-	taskserviceroutes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/task-service"
+	taskserviceroutes "github.com/craftgodotdev/craftgo/example/taskflow/internal/routes/task_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"

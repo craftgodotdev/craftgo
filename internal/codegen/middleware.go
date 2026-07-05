@@ -91,7 +91,7 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *s
 	tpl := tmpl("middleware.tmpl")
 	declByName := projectMiddlewareDecls(proj)
 	for _, name := range names {
-		filename := idents.KebabCase(name) + "-middleware.go"
+		filename := idents.FileNameWords(cfg.Output.FileCase, append(idents.SplitFieldName(name), "middleware")) + ".go"
 		dest := filepath.Join(dir, filename)
 		if _, err := os.Stat(dest); err == nil {
 			continue

@@ -194,7 +194,7 @@ middleware RateLimit
 middleware CORS
 ```
 
-Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and an empty stub at `internal/middleware/<name>-middleware.go` you fill in. Methods opt in via `@middlewares(Name, ...)`. Middleware names are global across the project - `@middlewares(AuthRequired)` resolves the same regardless of package - because middleware represents runtime behavior, not data; type / enum / error / scalar names stay package-scoped and must be qualified across packages.
+Declared at file (package) level. Codegen produces a typed slot on `ServiceContext` and an empty stub at `internal/middleware/<name>_middleware.go` you fill in. Methods opt in via `@middlewares(Name, ...)`. Middleware names are global across the project - `@middlewares(AuthRequired)` resolves the same regardless of package - because middleware represents runtime behavior, not data; type / enum / error / scalar names stay package-scoped and must be qualified across packages.
 
 See [Middleware](/guide/middleware).
 

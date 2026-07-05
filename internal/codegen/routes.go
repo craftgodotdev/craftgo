@@ -303,7 +303,7 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 			// One umbrella entry per (service, group) - routes are emitted per
 			// group folder, so the umbrella must register every group's hub.
 			for _, g := range distinctGroups(p.Services[svcName]) {
-				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g)})
+				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g, cfg.Output.FileCase)})
 			}
 		}
 	}
@@ -383,7 +383,7 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 		// One import per (service, group): routes are per group folder, so the
 		// package umbrella registers every group's hub.
 		for _, g := range distinctGroups(pkg.Services[name]) {
-			data.Imports = append(data.Imports, makeRoutesAllImport(cfg, name, g, outputSegFor(name, g)))
+			data.Imports = append(data.Imports, makeRoutesAllImport(cfg, name, g, outputSegFor(name, g, cfg.Output.FileCase)))
 		}
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
@@ -403,7 +403,7 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 	// to every group's RegisterRoutes. An ungrouped service has a single group
 	// ("") and so emits one file at the service directory, unchanged.
 	for _, g := range distinctGroups(svc) {
-		dir := filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(outputSegFor(svcName, g)))
+		dir := filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(outputSegFor(svcName, g, cfg.Output.FileCase)))
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}

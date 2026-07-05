@@ -92,14 +92,13 @@ hello/
 │   │   ├── types.go
 │   │   ├── validate.go
 │   │   └── errors.go
-│   ├── transport/user-service/                 generated HTTP handlers
-│   │   ├── create-user.go
-│   │   └── errors.go
-│   ├── service/user-service/                   gen-once business logic stubs
-│   │   └── create-user.go
+│   ├── transport/user_service/                 generated HTTP handlers
+│   │   └── create_user.go
+│   ├── service/user_service/                   gen-once business logic stubs
+│   │   └── create_user.go
 │   ├── routes/                                 generated routing
 │   │   ├── routes.go
-│   │   └── user-service/routes.go
+│   │   └── user_service/routes.go
 │   └── middleware/                             gen-once middleware stubs
 ├── svccontext/svccontext.go                    gen-once dependency container
 ├── config/                                     gen-once runtime config
@@ -113,7 +112,7 @@ hello/
 
 ## Implement business logic
 
-Open `internal/service/user-service/create-user.go`:
+Open `internal/service/user_service/create_user.go`:
 
 ```go
 func (l *CreateUserService) CreateUser(req *types.CreateUserReq) (*types.User, error) {

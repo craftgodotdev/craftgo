@@ -33,11 +33,13 @@ func ServicePkgName(pkgName, svcName string) string {
 	return pkgName
 }
 
-// ServiceDir returns the kebab-case directory name for a service. Used
-// for filesystem paths and import segments - `UserService` becomes
-// `user-service`. The Go package declaration inside the directory still
-// uses [ServicePackage] (no hyphens) so the source remains compilable.
-func ServiceDir(svcName string) string { return idents.KebabCase(svcName) }
+// ServiceDir returns the directory name for a service under the naming case
+// selected by `output.fileCase` (style). Used for filesystem paths and import
+// segments - with the default kebab case `UserService` becomes `user-service`
+// (snake `user_service`, camel `userService`). The Go package declaration
+// inside the directory is derived separately so the source remains compilable
+// regardless of the directory case.
+func ServiceDir(svcName, style string) string { return idents.FileName(svcName, style) }
 
 // goImportFromRel converts a project-relative directory like
 // "./internal/handler" into the Go import path "<modulePath>/internal/handler".
@@ -131,11 +133,11 @@ type importPaths struct {
 // namespace: two services that pick the same group land in the same directory
 // (and Go package). Keep groups unique per service - embed the service name in
 // the group when in doubt.
-func outputSegFor(svcName, group string) string {
+func outputSegFor(svcName, group, style string) string {
 	if group != "" {
 		return group
 	}
-	return ServiceDir(svcName)
+	return ServiceDir(svcName, style)
 }
 
 // serviceOutputDir returns projectRoot/output/<segment>, where the segment is
@@ -143,8 +145,8 @@ func outputSegFor(svcName, group string) string {
 // ungrouped. The single place per-method output directories are built so
 // transport handlers, the per-group errors helper, and service stubs all land
 // identically.
-func serviceOutputDir(projectRoot, output, svcName, group string) string {
-	return filepath.Join(projectRoot, output, filepath.FromSlash(outputSegFor(svcName, group)))
+func serviceOutputDir(projectRoot, output, svcName, group, style string) string {
+	return filepath.Join(projectRoot, output, filepath.FromSlash(outputSegFor(svcName, group, style)))
 }
 
 // importPathsForGroup computes the Go import paths for one service+group. A
@@ -153,7 +155,7 @@ func serviceOutputDir(projectRoot, output, svcName, group string) string {
 // (in the group's folder), so this group's routes path is the same segment as
 // its transport and service folders.
 func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, group string) importPaths {
-	seg := outputSegFor(svcName, group)
+	seg := outputSegFor(svcName, group, cfg.Output.FileCase)
 	return importPaths{
 		Types:      goImportFromRel(cfg.Package, cfg.Output.Types) + "/" + pkg.Name,
 		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + seg,

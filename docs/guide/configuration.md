@@ -67,6 +67,28 @@ All paths are relative to the **project root** (the parent of the design folder,
 
 The four "file path" entries point at exact files. The rest are directories where craftgo writes one subfolder per package or service.
 
+### File and directory naming (`output.fileCase`)
+
+The names craftgo derives from your DSL identifiers - the per-method `<method>.go`
+handler and service files, the per-service directory, and each middleware file -
+follow the case set by `output.fileCase`:
+
+| `fileCase`        | method file      | service directory | middleware file      |
+| ----------------- | ---------------- | ----------------- | -------------------- |
+| `snake` (default) | `create_user.go` | `user_service/`   | `auth_middleware.go` |
+| `kebab`           | `create-user.go` | `user-service/`   | `auth-middleware.go` |
+| `camel`           | `createUser.go`  | `userService/`    | `authMiddleware.go`  |
+
+```yaml
+output:
+  fileCase: snake   # snake (default) | kebab | camel
+```
+
+It affects **on-disk names only**. URL routes are unaffected (they come from
+`@prefix` and the method path), Go package names and identifiers are unchanged,
+and the `types/<package>/` layout - named after the DSL package - is untouched.
+A `@group` directory keeps the exact group string you wrote.
+
 ### Customizing paths
 
 A common use is to put generated artifacts at the project root instead of under `internal/`:

@@ -12,15 +12,15 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/middleware"
-	accountroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account-user-service"
+	accountroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account_user_service"
 	adminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin"
 	adminlegacyroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/legacy"
 	adminapiv1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v1"
 	adminapiv2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v2"
 	adminapiv3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v3"
-	catalogroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog-service"
-	ordersroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders-service"
-	profileroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/profile-service"
+	catalogroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog_service"
+	ordersroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
+	profileroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/profile_service"
 	designtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/design"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
@@ -29,7 +29,7 @@ import (
 const authToken = "Bearer secret-token"
 
 // boot stands up every server-roundtrip service on one httptest server, with
-// the profile-service middleware wired.
+// the profile_service middleware wired.
 func boot(t *testing.T) (*httptest.Server, *svccontext.ServiceContext) {
 	t.Helper()
 	svc := svccontext.NewServiceContext()

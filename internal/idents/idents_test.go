@@ -97,3 +97,43 @@ func TestDedupOrderStability(t *testing.T) {
 		t.Errorf("second occurrence must take the suffix; got %q", resolved[1])
 	}
 }
+
+func TestFileName(t *testing.T) {
+	cases := []struct{ name, kebab, snake, camel string }{
+		{"CreateUser", "create-user", "create_user", "createUser"},
+		{"UserService", "user-service", "user_service", "userService"},
+		{"ListV2Items", "list-v2items", "list_v2items", "listV2items"},
+		{"ping", "ping", "ping", "ping"},
+	}
+	for _, c := range cases {
+		if got := FileName(c.name, "kebab"); got != c.kebab {
+			t.Errorf("FileName(%q, kebab) = %q, want %q", c.name, got, c.kebab)
+		}
+		if got := FileName(c.name, "snake"); got != c.snake {
+			t.Errorf("FileName(%q, snake) = %q, want %q", c.name, got, c.snake)
+		}
+		if got := FileName(c.name, "camel"); got != c.camel {
+			t.Errorf("FileName(%q, camel) = %q, want %q", c.name, got, c.camel)
+		}
+		// An empty/unknown style falls back to kebab, byte-identical to KebabCase.
+		if got := FileName(c.name, ""); got != KebabCase(c.name) {
+			t.Errorf("FileName(%q, \"\") = %q, want KebabCase %q", c.name, got, KebabCase(c.name))
+		}
+	}
+}
+
+func TestFileNameWordsSuffix(t *testing.T) {
+	// The middleware file appends a literal "middleware" word so the separator
+	// between the name and the suffix follows the chosen case.
+	words := append(SplitFieldName("AuthRequired"), "middleware")
+	want := map[string]string{
+		"kebab": "auth-required-middleware",
+		"snake": "auth_required_middleware",
+		"camel": "authRequiredMiddleware",
+	}
+	for style, exp := range want {
+		if got := FileNameWords(style, words); got != exp {
+			t.Errorf("FileNameWords(%q) = %q, want %q", style, got, exp)
+		}
+	}
+}
