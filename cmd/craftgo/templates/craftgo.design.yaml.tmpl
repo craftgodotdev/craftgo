@@ -33,6 +33,12 @@ output:
                                     # skips config/ and svccontext/, useful
                                     # for test fixtures that ship their own
                                     # boot wiring)
+  # fileCase: snake                 # case of GENERATED file/dir names derived
+                                    # from identifiers: snake (default) ->
+                                    # create_user.go / user_service/, or `kebab`
+                                    # (create-user.go) / `camel` (createUser.go).
+                                    # On-disk names only; URL routes and Go
+                                    # package names are unchanged.
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.

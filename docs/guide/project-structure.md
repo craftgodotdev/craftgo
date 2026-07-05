@@ -9,7 +9,7 @@ A craftgo project keeps the contract under `design/` and the generated code unde
 | DSL files                  | `design/<package>/*.craftgo`                            |
 | Codegen config             | `design/craftgo.design.yaml`                            |
 | Business logic             | `internal/service/<service>/<method>.go`            |
-| Middleware implementations | `internal/middleware/<name>-middleware.go`              |
+| Middleware implementations | `internal/middleware/<name>_middleware.go`              |
 | Custom config fields       | `config/config.go`                                      |
 | Runtime values             | `config/config.yaml`                                    |
 
@@ -42,16 +42,16 @@ my-app/
 │   │       ├── enums.go                 generated enum types
 │   │       └── errors.go                generated typed errors
 │   ├── transport/
-│   │   └── user-service/                one subfolder per service
-│   │       └── create-user.go           generated HTTP handler factory (one per method)
+│   │   └── user_service/                one subfolder per service
+│   │       └── create_user.go           generated HTTP handler factory (one per method)
 │   ├── service/
-│   │   └── user-service/
-│   │       └── create-user.go           gen-once stub - YOU FILL
+│   │   └── user_service/
+│   │       └── create_user.go           gen-once stub - YOU FILL
 │   ├── routes/
 │   │   ├── routes.go                    umbrella RegisterAll
-│   │   └── user-service/routes.go       per-service registration
+│   │   └── user_service/routes.go       per-service registration
 │   └── middleware/
-│       └── auth-required-middleware.go  gen-once stub per declared middleware
+│       └── auth_required_middleware.go  gen-once stub per declared middleware
 │
 ├── svccontext/
 │   └── svccontext.go                    gen-once dependency container
@@ -68,6 +68,12 @@ my-app/
 ├── go.mod
 └── go.sum
 ```
+
+File and directory names derived from your identifiers (`user_service/`,
+`create_user.go`, `auth_required_middleware.go`) use **snake_case** by default.
+Set [`output.fileCase`](/guide/configuration#file-and-directory-naming-output-filecase)
+to `kebab` or `camel` to change them; URL routes and Go package names are
+unaffected.
 
 ## What is generated every run
 
@@ -90,7 +96,7 @@ If you edit these files, your changes vanish next regen.
 These files are written when missing and never touched again:
 
 - `internal/service/<svc>/<method>.go` - business logic stub
-- `internal/middleware/<name>-middleware.go` - middleware stub
+- `internal/middleware/<name>_middleware.go` - middleware stub
 - `svccontext/svccontext.go` - dependency container
 - `config/config.go` - config struct + loader
 - `config/config.yaml` - local config values

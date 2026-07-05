@@ -30,7 +30,7 @@ internal/
 │   ├── routes.go                REGEN - umbrella RegisterRoutes
 │   └── <svc>/routes.go          REGEN - per-service registration
 └── middleware/
-    └── <name>-middleware.go     GEN-ONCE - one per declared middleware
+    └── <name>_middleware.go     GEN-ONCE - one per declared middleware
 
 svccontext/
 ├── svccontext.go                GEN-ONCE - your dependency container
@@ -45,7 +45,10 @@ docs/openapi.yaml                REGEN - OpenAPI 3.1 spec
 main.go                          GEN-ONCE - wired entry point
 ```
 
-Output directories are configurable in `craftgo.design.yaml` - see [Configuration](/guide/configuration).
+Here `<method>` / `<svc>` / `<name>` render in the case set by `output.fileCase`
+(**snake_case** by default, so `create_user.go` and `user_service/`; `kebab` and
+`camel` are the alternatives). Output directories and this naming are configurable
+in `craftgo.design.yaml` - see [Configuration](/guide/configuration#file-and-directory-naming-output-filecase).
 
 ## What each file contains
 
