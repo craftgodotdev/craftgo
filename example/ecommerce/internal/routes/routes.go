@@ -3,9 +3,9 @@
 package routes
 
 import (
-	catalogserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/catalog-service"
-	customerserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/customer-service"
-	orderserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/order-service"
+	catalogserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/catalog_service"
+	customerserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/customer_service"
+	orderserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/order_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"

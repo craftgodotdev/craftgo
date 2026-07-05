@@ -891,19 +891,6 @@ components:
       required:
       - file
       type: object
-    UploadAttachmentReqBody:
-      properties:
-        caption:
-          maxLength: 200
-          type:
-          - string
-          - "null"
-        file:
-          format: binary
-          type: string
-      required:
-      - file
-      type: object
     UploadAttachmentRespBody:
       $ref: '#/components/schemas/Attachment'
     ValidationErr:
