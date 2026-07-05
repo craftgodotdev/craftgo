@@ -5,6 +5,29 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.5.1] - 2026-07-05 [UTC+7]
+
+### Added
+
+- **`output.fileCase` selects the case of generated file and directory names.**
+  The per-method handler and service files, the per-service directory, and each
+  middleware file follow `snake` (the new default - `create_user.go`,
+  `user_service/`), `kebab` (`create-user.go`, `user-service/`), or `camel`
+  (`createUser.go`, `userService/`), set in `craftgo.design.yaml`'s `output`
+  block. It affects on-disk names only: URL routes stay kebab-case, Go package
+  names and identifiers are unchanged, and a `@group` directory keeps its
+  verbatim segment. `craftgo init` now scaffolds the option as a documented
+  comment.
+
+### Changed
+
+- **Generated file and directory names now default to snake_case** instead of
+  kebab-case, matching Go's file-naming convention: `create_user.go` and
+  `internal/service/user_service/` rather than `create-user.go` /
+  `user-service/`. Projects that regenerate pick up the new names; set
+  `output.fileCase: kebab` to keep the previous layout. The change is on-disk
+  only - URL routes, Go package names, and the OpenAPI document are unaffected.
+
 ## [1.5.0] - 2026-07-04 [UTC+7]
 
 ### Added
