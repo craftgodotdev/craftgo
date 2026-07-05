@@ -75,11 +75,11 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 	for _, m := range svc.Methods {
 		group := groups[m.Name]
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
-		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group)
+		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group, cfg.Output.FileCase)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		filename := idents.KebabCase(m.Name) + ".go"
+		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
 		fullPath := filepath.Join(dir, filename)
 		if _, err := os.Stat(fullPath); err == nil {
 			continue

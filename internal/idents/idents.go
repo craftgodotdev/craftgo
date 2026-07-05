@@ -157,6 +157,42 @@ func KebabCase(s string) string {
 	return strings.Join(parts, "-")
 }
 
+// FileName renders a DSL identifier as a generated file/directory name in the
+// requested case: "snake" → `create_user`, "camel" → `createUser`, anything
+// else (including "kebab" and "") → `create-user`. It uses the same
+// [SplitFieldName] word-splitting as [KebabCase], so the default stays byte-for-
+// byte identical to KebabCase; only the join changes. Callers pass the value of
+// `output.fileCase`.
+func FileName(name, style string) string {
+	return FileNameWords(style, SplitFieldName(name))
+}
+
+// FileNameWords joins pre-split words into a file/directory name under the given
+// case. It backs [FileName] and lets callers append a literal suffix word (e.g.
+// "middleware") so the separator between it and the name follows the same case:
+// kebab `auth-middleware`, snake `auth_middleware`, camel `authMiddleware`.
+func FileNameWords(style string, words []string) string {
+	lowered := make([]string, len(words))
+	for i, w := range words {
+		lowered[i] = strings.ToLower(w)
+	}
+	switch style {
+	case "snake":
+		return strings.Join(lowered, "_")
+	case "camel":
+		var b strings.Builder
+		for i, w := range lowered {
+			if i > 0 && w != "" {
+				w = strings.ToUpper(w[:1]) + w[1:]
+			}
+			b.WriteString(w)
+		}
+		return b.String()
+	default: // "kebab" and the empty/unknown fallback
+		return strings.Join(lowered, "-")
+	}
+}
+
 // Collision records one DSL → Go-identifier mapping inside a group
 // of names that produced the same Go identifier under [GoFieldName].
 // The first occurrence keeps the bare Go name; subsequent ones are

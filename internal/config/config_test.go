@@ -273,3 +273,37 @@ func TestResolveModulePathQuotedModuleLine(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "github.com/foo/bar")
 	}
 }
+
+func TestLoadFileCaseDefaultsToSnake(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, Filename)
+	writeFile(t, path, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output.FileCase != FileCaseSnake {
+		t.Errorf("default fileCase = %q, want %q", cfg.Output.FileCase, FileCaseSnake)
+	}
+}
+
+func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
+	for _, v := range []string{FileCaseKebab, FileCaseSnake, FileCaseCamel} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, Filename)
+		writeFile(t, path, "output:\n  fileCase: "+v+"\n")
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load(fileCase=%s): %v", v, err)
+		}
+		if cfg.Output.FileCase != v {
+			t.Errorf("fileCase = %q, want %q", cfg.Output.FileCase, v)
+		}
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, Filename)
+	writeFile(t, path, "output:\n  fileCase: pascal\n")
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load(fileCase=pascal) = nil error, want rejection")
+	}
+}
