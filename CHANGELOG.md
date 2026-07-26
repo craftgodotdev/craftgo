@@ -15,6 +15,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   and GO-2026-6061 (gRPC xDS RBAC / HTTP-2, fixed in grpc 1.82.1). `govulncheck`
   now reports zero affected symbols.
 
+### Changed
+
+- **`server.AccessLog` skips the health probes by default** - `/healthz` and
+  `/readyz` are no longer access-logged (liveness / readiness pollers hit them
+  every few seconds and flooded the log). Opt back in with
+  `server.AccessLogAll()`, or choose a different skip set with
+  `server.AccessLogSkipPaths(...)`.
+
 ## [1.5.1] - 2026-07-05 [UTC+7]
 
 ### Added
