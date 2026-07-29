@@ -121,16 +121,58 @@ func RequestID() Middleware {
 	}
 }
 
-// AccessLog logs one structured line per request after the response has
-// been written, including method, path, status, and elapsed time.
+// AccessLogOption configures [AccessLog].
+type AccessLogOption func(*accessLogConfig)
+
+type accessLogConfig struct {
+	skip map[string]bool
+}
+
+// AccessLogSkipPaths replaces the set of request paths whose accesses are NOT
+// logged (by default, the health-probe paths). Pass no arguments to skip
+// nothing. Paths are matched against `r.URL.Path` exactly.
+func AccessLogSkipPaths(paths ...string) AccessLogOption {
+	return func(c *accessLogConfig) {
+		c.skip = make(map[string]bool, len(paths))
+		for _, p := range paths {
+			c.skip[p] = true
+		}
+	}
+}
+
+// AccessLogAll logs every request, including the health probes that [AccessLog]
+// omits by default.
+func AccessLogAll() AccessLogOption {
+	return func(c *accessLogConfig) { c.skip = nil }
+}
+
+// AccessLog logs one structured line per request after the response has been
+// written, including method, path, status, and elapsed time.
 //
-// Tracing identifiers (`trace_id`, `span_id`, `request_id`) are not
-// added explicitly - `WithContext(ctx)` extracts them from the request
-// context. Wire `otel.HTTPMiddleware(...)` and / or `RequestID()`
-// upstream of AccessLog to populate the context.
-func AccessLog(logger log.Logger) Middleware {
+// By default it SKIPS the health-probe paths ([DefaultLivenessPath] and
+// [DefaultReadinessPath]): liveness/readiness pollers hit those every few
+// seconds and would otherwise flood the log with noise. Pass [AccessLogAll] to
+// log them too, or [AccessLogSkipPaths] to choose a different skip set (custom
+// health routes set via [WithHealthPaths], `/metrics`, ...).
+//
+// Tracing identifiers (`trace_id`, `span_id`, `request_id`) are not added
+// explicitly - `WithContext(ctx)` extracts them from the request context. Wire
+// `otel.HTTPMiddleware(...)` and / or `RequestID()` upstream of AccessLog to
+// populate the context.
+func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
+	cfg := &accessLogConfig{skip: map[string]bool{
+		DefaultLivenessPath:  true,
+		DefaultReadinessPath: true,
+	}}
+	for _, o := range opts {
+		o(cfg)
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if cfg.skip[r.URL.Path] {
+				next.ServeHTTP(w, r)
+				return
+			}
 			start := time.Now()
 			rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rw, r)
