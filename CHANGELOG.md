@@ -5,6 +5,16 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Security
+
+- **Bumped Go to 1.26.5 and `google.golang.org/grpc` to 1.82.1** to clear the two
+  reachable vulnerabilities `govulncheck` flagged: GO-2026-5856 (Encrypted Client
+  Hello privacy leak in the `crypto/tls` standard library, fixed in Go 1.26.5)
+  and GO-2026-6061 (gRPC xDS RBAC / HTTP-2, fixed in grpc 1.82.1). `govulncheck`
+  now reports zero affected symbols.
+
 ## [1.5.1] - 2026-07-05 [UTC+7]
 
 ### Added
