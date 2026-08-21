@@ -263,9 +263,8 @@ func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.Ty
 				// Requalify the field's bare named type to the package it was
 				// collected from (currentPkg), so a promoted field carries
 				// `base.Blob` rather than a bare `Blob` the project resolver
-				// can't see - the cross-package-promoted scalar nilability gap.
-				// ResolveField then resolves it through proj. A copy keeps the
-				// original AST (and codegen) untouched.
+				// can't see. ResolveField then resolves it through proj. A copy
+				// keeps the original AST (and codegen) untouched.
 				out[v.Name] = requalifyFieldType(v, currentPkg)
 			}
 		case *ast.Mixin:

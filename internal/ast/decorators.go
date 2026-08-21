@@ -27,8 +27,7 @@ func HasDecorator(decs []*Decorator, name string) bool {
 // `@x(a, b)` and the array `@x([a, b])` forms, and the analyzer treats them
 // as equivalent - so every consumer (semantic checks AND every codegen
 // emitter) must read them identically through this one helper, or the array
-// form silently contributes nothing (the bug class that dropped @errors /
-// @tags / @middlewares array shortcuts).
+// form silently contributes nothing.
 func DecoratorArgValues(a *DecoratorArg) []Expr {
 	if a == nil {
 		return nil

@@ -99,10 +99,9 @@ func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr,
 // Recurses through arrays so `[Active, Pending]` on a `Status[]` field flags
 // any non-member element. Shared by `@default` and `@example` (decName) so a
 // string example on an int field is rejected exactly like a string default
-// is - the sibling-rule drift where @example was type-unchecked. The rejects
-// that are meaningful ONLY for a prefilled default (bytes/file have no
-// literal default form; an out-of-capacity int would not compile) are gated
-// on decName == "default".
+// is. The rejects that are meaningful ONLY for a prefilled default
+// (bytes/file have no literal default form; an out-of-capacity int would not
+// compile) are gated on decName == "default".
 func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef, v ast.Expr, pos lexer.Position) {
 	if t == nil {
 		return

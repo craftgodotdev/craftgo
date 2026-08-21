@@ -98,8 +98,8 @@ func isTypeParamRef(t *ast.TypeRef, params []string) bool {
 	// A map whose VALUE position references a type parameter
 	// (`map<K, T>`, `map<K, T[]>`) still needs its values validated: the
 	// type-param dispatch's validateValue fallback walks the map
-	// reflectively. Without recognising this, the field was dropped from
-	// the validator entirely while OpenAPI advertised the value-type
+	// reflectively. Without recognising this the field would drop out of
+	// the validator entirely while OpenAPI advertises the value-type
 	// constraints.
 	if t.Map != nil {
 		return isTypeParamRef(t.Map.Value, params)

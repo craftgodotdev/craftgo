@@ -4,8 +4,7 @@
 // renders it. The LSP and the semantic checks read these directly; codegen
 // derives the Go-specific bits (the *T pointer wrap, the json tag, the Go
 // type string) from them. Computing each fact ONCE here is what stops the
-// recurring "semantic resolves a scalar one way, codegen another" drift
-// (e.g. the cross-package-promoted scalar nilability gap).
+// "semantic resolves a scalar one way, codegen another" class of drift.
 package semantic
 
 import "github.com/craftgodotdev/craftgo/internal/ast"

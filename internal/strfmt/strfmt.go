@@ -2,10 +2,8 @@
 // `@format` decorator accepts. It is a leaf below both the analyser (which
 // rejects an unknown `@format` name) and codegen (which emits a per-format
 // runtime check and an OpenAPI `format` keyword), so the set of legal formats
-// is decided in exactly ONE place. Without this the legality list and the
-// validator catalogue lived in two packages: a name added to one but not the
-// other made the editor accept a `@format` whose field then got no runtime
-// check while OpenAPI still advertised it.
+// is decided in exactly ONE place - the legality list and the validator
+// catalogue cannot disagree about which names exist.
 //
 // (Named `strfmt`, not `formats`, to stay clearly distinct from the
 // `internal/format` printer package that renders DSL source.)
