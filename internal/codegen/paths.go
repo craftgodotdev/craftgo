@@ -9,6 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -68,46 +69,6 @@ func fileDirRel(filePath string) string {
 	return dir
 }
 
-// serviceGroup returns the cleaned slash-delimited path derived from the
-// service's @group("a/b/c") decorator. The group nests a service's generated
-// transport handlers and service stubs under <service>/<group>/ - it does not
-// appear in the HTTP route or the OpenAPI path. Returns "" when the decorator
-// is absent or its value cleans to nothing. The value is trimmed of leading /
-// trailing slashes and collapsed empty segments; the semantic phase rejects
-// traversal ("..") and absolute forms before codegen runs.
-func serviceGroup(svc *ast.ServiceDecl) string {
-	if svc == nil {
-		return ""
-	}
-	for _, d := range svc.Decorators {
-		if d == nil || d.Name != "group" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
-			return cleanGroupPath(s.Value)
-		}
-	}
-	return ""
-}
-
-// cleanGroupPath normalises a @group value into a relative slash path: it
-// trims surrounding slashes and drops empty segments so "/admin/" and
-// "admin//ops" become "admin" and "admin/ops". Traversal ("." / "..") segments
-// are dropped as a defence-in-depth backstop - the semantic phase rejects them
-// outright - so a malformed value reaching codegen can only ever nest inside
-// the service directory, never escape the output tree.
-func cleanGroupPath(raw string) string {
-	segs := strings.Split(raw, "/")
-	kept := segs[:0]
-	for _, s := range segs {
-		if s == "" || s == "." || s == ".." {
-			continue
-		}
-		kept = append(kept, s)
-	}
-	return strings.Join(kept, "/")
-}
-
 // httpVerb maps DSL verb keywords to canonical HTTP method strings used in
 // `http.ServeMux` patterns ("GET", "POST", ...).
 func httpVerb(verb string) string { return strings.ToUpper(verb) }
@@ -123,21 +84,13 @@ type importPaths struct {
 }
 
 // outputSegFor returns the path segment, under an output base, that holds a
-// service's methods for the given group. A non-empty @group REPLACES the
-// service-name segment entirely (so `@group("v2")` on any service emits to
-// `<base>/v2/`), giving the author full control of the layout; the ungrouped
-// case falls back to the kebab-case service directory. The result is a
-// forward-slash path - the group may itself be nested ("admin/ops").
-//
-// Because the group replaces the service name, it is effectively a global
-// namespace: two services that pick the same group land in the same directory
-// (and Go package). Keep groups unique per service - embed the service name in
-// the group when in doubt.
+// service's methods for the given group - [route.OutputSegment] under codegen's
+// own name. The rule (a non-empty @group REPLACES the service-name segment)
+// lives in the route package so the analyser's group-collision check compares
+// exactly the directory this function hands the emitters; two services claiming
+// one segment is rejected at analysis time as `service/group-collision`.
 func outputSegFor(svcName, group, style string) string {
-	if group != "" {
-		return group
-	}
-	return ServiceDir(svcName, style)
+	return route.OutputSegment(svcName, group, style)
 }
 
 // serviceOutputDir returns projectRoot/output/<segment>, where the segment is
@@ -165,16 +118,11 @@ func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, gro
 	}
 }
 
-// effectiveGroup returns the @group that applies to a service block. The block's
-// own @group wins; an extend block that declares none inherits the primary
-// block's @group, so `@group("admin")` on the service covers its extend blocks
-// too unless an extend explicitly overrides with its own @group. Pass the
-// primary block's group as primaryGroup (it is its own effective group).
+// effectiveGroup returns the @group that applies to a service block -
+// [route.EffectiveGroup] under codegen's own name. The block's own @group wins;
+// an extend block that declares none inherits the primary block's.
 func effectiveGroup(block *ast.ServiceDecl, primaryGroup string) string {
-	if g := serviceGroup(block); g != "" {
-		return g
-	}
-	return primaryGroup
+	return route.EffectiveGroup(block, primaryGroup)
 }
 
 // methodGroups maps each of a service's method names to the @group that applies
@@ -189,7 +137,7 @@ func methodGroups(svc *semantic.ServiceInfo) map[string]string {
 	if svc == nil {
 		return out
 	}
-	primaryGroup := serviceGroup(svc.Primary)
+	primaryGroup := route.ServiceGroup(svc.Primary)
 	if svc.Primary != nil {
 		for _, m := range svc.Primary.Methods() {
 			out[m.Name] = primaryGroup
@@ -211,7 +159,7 @@ func methodGroupOf(svc *semantic.ServiceInfo, m *ast.Method) string {
 	if svc == nil || m == nil {
 		return ""
 	}
-	primaryGroup := serviceGroup(svc.Primary)
+	primaryGroup := route.ServiceGroup(svc.Primary)
 	if svc.Primary != nil {
 		for _, pm := range svc.Primary.Methods() {
 			if pm.Name == m.Name {

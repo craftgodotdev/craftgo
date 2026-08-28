@@ -229,6 +229,25 @@ const (
 	// scaffolds with the other's. Surface every conflicting
 	// declaration so the author can rename one.
 	CodeServiceCollision = "service/collision"
+	// CodeGroupPackageStraddle fires when services from DIFFERENT DSL
+	// packages resolve to the same output directory via `@group`.
+	// Sharing a group is the decorator's purpose - it lays out folders,
+	// and several services landing in one folder merge into a single
+	// routes.go. But a directory is one Go package, and generated files
+	// take their `package` declaration from the DSL package that
+	// declared the service, so a shared folder fed by two DSL packages
+	// emits `package a` and `package b` side by side and the tree does
+	// not compile. Move the services into one DSL package or give them
+	// separate groups.
+	CodeGroupPackageStraddle = "group/package-straddle"
+	// CodeGroupMethodCollision fires when two services sharing an output
+	// directory declare the same method name. Handlers and stubs are one
+	// file per method named after it, and the handler func is named after
+	// it too, so both services would claim `<method>.go` and declare the
+	// same exported function in one package - the second write wins and
+	// the routes file points half its patterns at the wrong handler.
+	// Rename one method or split the group.
+	CodeGroupMethodCollision = "group/method-collision"
 	// CodeMiddlewareCollision fires when two packages in the same
 	// project both declare a `middleware` of the same name. Cross-
 	// package middleware references are global by design, so a

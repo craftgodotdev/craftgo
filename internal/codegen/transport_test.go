@@ -917,6 +917,184 @@ service S {
 	}
 }
 
+// TestGenerateRoutesMergesServicesSharingGroup pins the point of @group:
+// it lays out folders, so two services choosing one group share a
+// directory - and a directory holds exactly one routes.go. Both services'
+// methods must land in that single RegisterRoutes, through the one
+// transport package they also share. Emitting per service instead would
+// overwrite one set of routes with the other.
+func TestGenerateRoutesMergesServicesSharingGroup(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+@group("shared/v1")
+service Alpha {
+    get A /a { response Thing }
+}
+
+@group("shared/v1")
+service Beta {
+    get B /b { response Thing }
+}`)
+	root := t.TempDir()
+	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/routes/shared/v1/routes.go"))
+	if err != nil {
+		t.Fatalf("shared group must emit one routes.go: %v", err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	for _, want := range []string{
+		`srv.Handle("GET /v1/a", transportSharedV1.A(svcCtx))`,
+		`srv.Handle("GET /v1/b", transportSharedV1.B(svcCtx))`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("merged routes file missing %q in:\n%s", want, src)
+		}
+	}
+	if n := strings.Count(src, "srv.Handle("); n != 2 {
+		t.Errorf("want both services' routes in one file, got %d", n)
+	}
+	if !strings.Contains(src, "wires every Alpha and Beta endpoint") {
+		t.Errorf("doc comment should name every contributor:\n%s", src)
+	}
+	// The umbrella dispatches per DIRECTORY. One call per service would
+	// re-register every pattern in the shared file and panic http.ServeMux.
+	all, err := os.ReadFile(filepath.Join(root, "internal/routes/routes.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustParseGo(t, string(all))
+	if n := strings.Count(string(all), ".RegisterRoutes(srv, svcCtx)"); n != 1 {
+		t.Errorf("want 1 umbrella call for the shared directory, got %d:\n%s", n, all)
+	}
+}
+
+// TestGenerateRoutesMergedGroupKeepsPerServiceMiddleware is the
+// interaction test between the two things @group and inheritance each do:
+// several services merge into ONE routes.go, and each method's middleware
+// chain comes from its OWN service. Sharing a file must not share a chain -
+// Beta declares no middleware, so its routes carry none even though Alpha's
+// sit two lines above them in the same function. Both services also extend,
+// and Alpha's extend repeats the inherited Auth, so the dedup has to hold
+// inside a merged file too.
+func TestGenerateRoutesMergedGroupKeepsPerServiceMiddleware(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+middleware Auth
+middleware RateLimit
+
+@middlewares(Auth)
+@group("shared/v1")
+service Alpha {
+    get A /a { response Thing }
+}
+
+@middlewares(Auth, RateLimit)
+@group("shared/v1")
+extend service Alpha {
+    get AExt /a-ext { response Thing }
+}
+
+@group("shared/v1")
+service Beta {
+    get B /b { response Thing }
+}
+
+extend service Beta {
+    get BExt /b-ext { response Thing }
+}`)
+	root := t.TempDir()
+	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/routes/shared/v1/routes.go"))
+	if err != nil {
+		t.Fatalf("shared group must emit one routes.go: %v", err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	for _, want := range []string{
+		// Alpha: inherited chain, and the extend's repeat of Auth folded in.
+		`srv.Handle("GET /v1/a", transportSharedV1.A(svcCtx), svcCtx.Auth)`,
+		`srv.Handle("GET /v1/a-ext", transportSharedV1.AExt(svcCtx), svcCtx.Auth, svcCtx.RateLimit)`,
+		// Beta: no middleware of its own, and none borrowed from Alpha.
+		`srv.Handle("GET /v1/b", transportSharedV1.B(svcCtx))`,
+		`srv.Handle("GET /v1/b-ext", transportSharedV1.BExt(svcCtx))`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("merged routes file missing %q in:\n%s", want, src)
+		}
+	}
+	if n := strings.Count(src, "srv.Handle("); n != 4 {
+		t.Errorf("want 4 routes from both services and their extends, got %d", n)
+	}
+	if strings.Contains(src, "svcCtx.Auth, svcCtx.Auth") {
+		t.Errorf("extend repeating the inherited middleware must fold:\n%s", src)
+	}
+	all, err := os.ReadFile(filepath.Join(root, "internal/routes/routes.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustParseGo(t, string(all))
+	if n := strings.Count(string(all), ".RegisterRoutes(srv, svcCtx)"); n != 1 {
+		t.Errorf("want 1 umbrella call for the shared directory, got %d:\n%s", n, all)
+	}
+}
+
+// TestGenerateRoutesDedupsRepeatedMiddleware pins that a middleware named
+// at two inheritance layers is wrapped ONCE, at its outermost position. The
+// layers append rather than override, so `@middlewares(Auth)` on both the
+// primary service and an `extend` block of it - the natural way to write
+// "this block is authenticated too" - used to emit `svcCtx.Auth, svcCtx.Auth`
+// and run Auth twice per request. Dedup keeps the FIRST occurrence, so the
+// method-level RateLimit still lands inside the inherited Auth.
+func TestGenerateRoutesDedupsRepeatedMiddleware(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+middleware Auth
+middleware RateLimit
+
+@middlewares(Auth)
+service S {
+    get A /a { response Thing }
+}
+
+@middlewares(Auth, RateLimit)
+extend service S {
+    get B /b { response Thing }
+
+    @middlewares(Auth)
+    get C /c { response Thing }
+}`)
+	root := t.TempDir()
+	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	for _, want := range []string{
+		`srv.Handle("GET /v1/a", transport.A(svcCtx), svcCtx.Auth)`,
+		`srv.Handle("GET /v1/b", transport.B(svcCtx), svcCtx.Auth, svcCtx.RateLimit)`,
+		`srv.Handle("GET /v1/c", transport.C(svcCtx), svcCtx.Auth, svcCtx.RateLimit)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("expected deduped chain %q in:\n%s", want, src)
+		}
+	}
+	if strings.Contains(src, "svcCtx.Auth, svcCtx.Auth") {
+		t.Errorf("middleware repeated across layers must be wrapped once:\n%s", src)
+	}
+}
+
 // TestGenerateRoutesIgnoreMiddlewareClearsInherited pins the
 // `@ignoreMiddleware` opt-out: a method with this decorator must
 // NOT see the service-level chain. Combined with a method-level

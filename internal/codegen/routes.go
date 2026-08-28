@@ -28,6 +28,17 @@ import (
 // chain - so the method starts fresh from layer 3. This implements the
 // clear-then-append pattern documented in
 // docs/guide/decorators.md#service-level-decorators-and-inheritance.
+//
+// A name repeated across layers is kept ONCE, at its outermost position.
+// The layers append rather than override, so re-stating an inherited
+// middleware is easy to do by accident - `@middlewares(Auth)` on both the
+// primary service and an `extend` block of it, say - and the duplicate is
+// never what the author meant: the generated route would list
+// `svcCtx.Auth, svcCtx.Auth` and run the middleware twice per request.
+// Keeping the FIRST occurrence preserves the inherited layer's outer
+// position, which is the guarantee service-level decorators exist to give.
+// This mirrors the dedup the same inherited chains already get in the
+// OpenAPI emitters ([operationTags], [dedupSecurity]).
 func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 	ignore := false
 	for _, d := range m.Decorators {
@@ -37,8 +48,18 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 		}
 	}
 	var names []string
+	seen := map[string]bool{}
+	appendNames := func(ns []string) {
+		for _, n := range ns {
+			if seen[n] {
+				continue
+			}
+			seen[n] = true
+			names = append(names, n)
+		}
+	}
 	if svc != nil && !ignore {
-		names = append(names, extractMiddlewareNames(svc.Decorators)...)
+		appendNames(extractMiddlewareNames(svc.Decorators))
 	}
 	for _, d := range m.Decorators {
 		if d == nil || d.Name != "middlewares" {
@@ -47,7 +68,7 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 		if d.Propagated && ignore {
 			continue
 		}
-		names = append(names, extractMiddlewareNames([]*ast.Decorator{d})...)
+		appendNames(extractMiddlewareNames([]*ast.Decorator{d}))
 	}
 	return names
 }
@@ -265,21 +286,54 @@ func GenerateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot strin
 	return generateRoutesAll(pkg, cfg, projectRoot)
 }
 
-// GeneratePerServiceRoutes emits only the per-service `routes.go`
-// files; the umbrella is left to a project-level pass. Used by the
-// multi-package CLI flow so each package's services contribute to a
-// single shared umbrella rather than overwriting each other.
+// GeneratePerServiceRoutes emits the per-directory `routes.go` files;
+// the umbrella is left to a project-level pass. Used by the multi-
+// package CLI flow so each package's services contribute to a single
+// shared umbrella rather than overwriting each other.
+//
+// The unit of emission is the OUTPUT DIRECTORY, not the service: only
+// one `routes.go` can live in a folder, and `@group` deliberately lets
+// several services share one. Every service landing in a directory
+// contributes its methods to that directory's single RegisterRoutes.
 func GeneratePerServiceRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
-	for _, svcName := range sortedServices(pkg) {
-		svc := pkg.Services[svcName]
-		if err := generateRoutesFor(svcName, svc, pkg, cfg, projectRoot); err != nil {
+	dirs := routeSegments(pkg, cfg)
+	for _, seg := range sortedKeys(dirs) {
+		if err := generateRoutesForSegment(seg, dirs[seg], pkg, cfg, projectRoot); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// segContribution is one service's share of an output directory: the
+// service, and the @group that routed it there (""= its own directory).
+// A service reaching one directory from several blocks that resolve to
+// the same group appears once.
+type segContribution struct {
+	svcName string
+	svc     *semantic.ServiceInfo
+	group   string
+}
+
+// routeSegments maps each output segment the package occupies to the
+// services contributing to it, in sorted service order so the emitted
+// route table is stable run to run. Sharing a segment is legal and
+// merges; the analyser has already rejected the two shapes a merge
+// cannot express (contributors from different DSL packages, and two
+// contributors declaring the same method name).
+func routeSegments(pkg *semantic.Package, cfg *config.Config) map[string][]segContribution {
+	out := map[string][]segContribution{}
+	for _, svcName := range sortedServices(pkg) {
+		svc := pkg.Services[svcName]
+		for _, g := range distinctGroups(svc) {
+			seg := outputSegFor(svcName, g, cfg.Output.FileCase)
+			out[seg] = append(out[seg], segContribution{svcName: svcName, svc: svc, group: g})
+		}
+	}
+	return out
 }
 
 // GenerateProjectRoutesUmbrella emits the top-level
@@ -300,8 +354,9 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 			continue
 		}
 		for _, svcName := range sortedServices(p) {
-			// One umbrella entry per (service, group) - routes are emitted per
-			// group folder, so the umbrella must register every group's hub.
+			// One candidate entry per (service, group); the dedupe below
+			// collapses them to one per output directory, which is the unit
+			// routes.go is actually emitted for.
 			for _, g := range distinctGroups(p.Services[svcName]) {
 				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g, cfg.Output.FileCase)})
 			}
@@ -328,7 +383,17 @@ func GenerateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	data := routesAllData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
+	// Dedupe by output directory AFTER sorting, so the surviving entry is
+	// the deterministic first claimant. Several services may share a
+	// segment; their routes already merged into that folder's single
+	// RegisterRoutes, and calling it once per service would re-register
+	// every pattern it holds.
+	seen := map[string]bool{}
 	for _, e := range entries {
+		if seen[e.seg] {
+			continue
+		}
+		seen[e.seg] = true
 		data.Imports = append(data.Imports, makeRoutesAllImport(cfg, e.name, e.group, e.seg))
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
@@ -379,11 +444,21 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 	data := routesAllData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
+	// One import per output DIRECTORY, not per service: routes are emitted
+	// per folder and several services may share one, so a per-service loop
+	// would call the same RegisterRoutes twice and mount every pattern in
+	// it twice - which http.ServeMux rejects with a panic at startup. Names
+	// and groups are already sorted, so the first claimant of a segment is
+	// deterministic.
+	seen := map[string]bool{}
 	for _, name := range names {
-		// One import per (service, group): routes are per group folder, so the
-		// package umbrella registers every group's hub.
 		for _, g := range distinctGroups(pkg.Services[name]) {
-			data.Imports = append(data.Imports, makeRoutesAllImport(cfg, name, g, outputSegFor(name, g, cfg.Output.FileCase)))
+			seg := outputSegFor(name, g, cfg.Output.FileCase)
+			if seen[seg] {
+				continue
+			}
+			seen[seg] = true
+			data.Imports = append(data.Imports, makeRoutesAllImport(cfg, name, g, seg))
 		}
 	}
 	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
@@ -393,36 +468,44 @@ func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot st
 	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
 }
 
-// generateRoutesFor emits the routes.go file for a single service.
-func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	groups := methodGroups(svc)
-	// Emit one routes file per distinct @group, each in that group's folder,
-	// registering only the methods declared in that group and importing only
-	// that group's transport package. This mirrors the per-group split of the
-	// transport handlers and service stubs; the umbrella RegisterAll dispatches
-	// to every group's RegisterRoutes. An ungrouped service has a single group
-	// ("") and so emits one file at the service directory, unchanged.
-	for _, g := range distinctGroups(svc) {
-		dir := filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(outputSegFor(svcName, g, cfg.Output.FileCase)))
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-		data := routesData{
-			Package:          ServicePkgName(pkg.Name, svcName),
-			Service:          svcName,
-			SvccontextImport: importPathsForGroup(cfg, pkg, svcName, "").Svccontext,
-			TransportImports: []transportImport{{
-				Alias: transportAlias(g),
-				Path:  importPathsForGroup(cfg, pkg, svcName, g).Transport,
-			}},
-		}
-		for _, m := range svc.Methods {
-			if groups[m.Name] != g {
+// generateRoutesForSegment emits the single routes.go that serves one
+// output directory, registering the methods every contributing service
+// put there. An ungrouped service is the one-contributor case and emits
+// exactly what it always did, at its own service directory.
+//
+// All contributors share the directory's transport package, so the file
+// carries ONE transport import; its alias comes from the first
+// contributor so the common single-service file is unchanged. Routes are
+// laid out contributor by contributor, each service's methods in source
+// order.
+func generateRoutesForSegment(seg string, contribs []segContribution, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+	if len(contribs) == 0 {
+		return nil
+	}
+	dir := filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(seg))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	lead := contribs[0]
+	alias := transportAlias(lead.group)
+	data := routesData{
+		Package:          ServicePkgName(pkg.Name, lead.svcName),
+		Service:          contributorLabel(contribs),
+		SvccontextImport: importPathsForGroup(cfg, pkg, lead.svcName, "").Svccontext,
+		TransportImports: []transportImport{{
+			Alias: alias,
+			Path:  importPathsForGroup(cfg, pkg, lead.svcName, lead.group).Transport,
+		}},
+	}
+	for _, c := range contribs {
+		groups := methodGroups(c.svc)
+		for _, m := range c.svc.Methods {
+			if groups[m.Name] != c.group {
 				continue
 			}
-			full := route.Resolve(cfg.OpenAPI.BasePath, svc.Primary, m)
-			mws := middlewareNames(m, svc.Primary)
-			call := buildHandlerCall(m, transportAlias(g))
+			full := route.Resolve(cfg.OpenAPI.BasePath, c.svc.Primary, m)
+			mws := middlewareNames(m, c.svc.Primary)
+			call := buildHandlerCall(m, alias)
 			if strings.Contains(call, "time.") {
 				data.NeedsTime = true
 			}
@@ -433,13 +516,33 @@ func generateRoutesFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.
 				Middlewares: buildMiddlewareArgs(mws),
 			})
 		}
-		formatted, err := renderGo(tmpl("routes.tmpl"), data)
-		if err != nil {
-			return fmt.Errorf("render routes: %w", err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644); err != nil {
-			return err
-		}
 	}
-	return nil
+	formatted, err := renderGo(tmpl("routes.tmpl"), data)
+	if err != nil {
+		return fmt.Errorf("render routes: %w", err)
+	}
+	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
+}
+
+// contributorLabel names the services a routes.go covers, for its doc
+// comment. One service reads exactly as before ("wires every Foo
+// endpoint"); a shared directory lists every contributor.
+func contributorLabel(contribs []segContribution) string {
+	seen := map[string]bool{}
+	var names []string
+	for _, c := range contribs {
+		if seen[c.svcName] {
+			continue
+		}
+		seen[c.svcName] = true
+		names = append(names, c.svcName)
+	}
+	switch len(names) {
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
 }
