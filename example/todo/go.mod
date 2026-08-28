@@ -1,6 +1,6 @@
 module github.com/craftgodotdev/craftgo/example/todo
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/craftgodotdev/craftgo v0.0.0

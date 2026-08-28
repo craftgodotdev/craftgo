@@ -3,13 +3,8 @@
 // and re-derives a field fact (is-on-wire, is-required, is-pointer, wire
 // name, default value) differently from another and drifts.
 //
-// This is the anti-drift layer the cross-stage audits kept pointing at:
-// the same fact was computed in three-plus places (fieldIsRequired vs the
-// validator's presence gate vs the wire-presence gate; isNonBodyBound vs
-// the schema header/cookie skip; flattenFields vs a stage's own td.Body
-// walk). [resolveFields] computes each fact ONCE, from the same helpers
-// the stages used to call inline, so a consumer that reads a ResolvedField
-// gets a value that cannot disagree with another consumer's.
+// [resolveFields] computes each fact ONCE, so a consumer that reads a
+// ResolvedField gets a value that cannot disagree with another consumer's.
 package codegen
 
 import (
@@ -177,9 +172,8 @@ func lookupMethodType(ref *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectRe
 // context applied: an un-decorated field auto-binds to @path (its name
 // matches a `{param}` segment), to @query (a body-less verb has no body to
 // decode into), or stays @body (a body verb). This is the single place the
-// request auto-binding rule lives - the per-stage walks used to each
-// re-derive the path-segment + verb-default chain (the source of binding
-// drift like the @nullable-auto-query break); they now read rf.Binding.
+// request auto-binding rule lives: every stage reads rf.Binding instead of
+// re-deriving the path-segment + verb-default chain for itself.
 func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) []ResolvedField {
 	if m == nil || m.Request == nil {
 		return nil
