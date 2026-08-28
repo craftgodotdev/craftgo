@@ -28,6 +28,17 @@ import (
 // chain - so the method starts fresh from layer 3. This implements the
 // clear-then-append pattern documented in
 // docs/guide/decorators.md#service-level-decorators-and-inheritance.
+//
+// A name repeated across layers is kept ONCE, at its outermost position.
+// The layers append rather than override, so re-stating an inherited
+// middleware is easy to do by accident - `@middlewares(Auth)` on both the
+// primary service and an `extend` block of it, say - and the duplicate is
+// never what the author meant: the generated route would list
+// `svcCtx.Auth, svcCtx.Auth` and run the middleware twice per request.
+// Keeping the FIRST occurrence preserves the inherited layer's outer
+// position, which is the guarantee service-level decorators exist to give.
+// This mirrors the dedup the same inherited chains already get in the
+// OpenAPI emitters ([operationTags], [dedupSecurity]).
 func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 	ignore := false
 	for _, d := range m.Decorators {
@@ -37,8 +48,18 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 		}
 	}
 	var names []string
+	seen := map[string]bool{}
+	appendNames := func(ns []string) {
+		for _, n := range ns {
+			if seen[n] {
+				continue
+			}
+			seen[n] = true
+			names = append(names, n)
+		}
+	}
 	if svc != nil && !ignore {
-		names = append(names, extractMiddlewareNames(svc.Decorators)...)
+		appendNames(extractMiddlewareNames(svc.Decorators))
 	}
 	for _, d := range m.Decorators {
 		if d == nil || d.Name != "middlewares" {
@@ -47,7 +68,7 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 		if d.Propagated && ignore {
 			continue
 		}
-		names = append(names, extractMiddlewareNames([]*ast.Decorator{d})...)
+		appendNames(extractMiddlewareNames([]*ast.Decorator{d}))
 	}
 	return names
 }

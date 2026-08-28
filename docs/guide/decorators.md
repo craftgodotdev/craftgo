@@ -533,6 +533,8 @@ service UserService {
 
 `GetUser` runs `[AuthRequired]` with tags `["users"]`. `PurgeUser` runs `[AuthRequired, AdminOnly]` with tags `["users", "admin"]` - the method-level decorators append, not replace.
 
+Appending means a name stated at two levels would otherwise appear twice. Middlewares, tags, and security requirements are each **deduplicated**, keeping the first (outermost) occurrence: re-stating `@middlewares(AuthRequired)` on an `extend` block of an already-`AuthRequired` service leaves the chain `[AuthRequired]`, not `[AuthRequired, AuthRequired]`, so the middleware still runs exactly once per request.
+
 #### `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags`
 
 The append default fits the 90% case. For an exceptional method that must drop the inherited chain, use the matching `@ignore*` decorator at method level:
