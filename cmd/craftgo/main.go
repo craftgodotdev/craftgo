@@ -30,7 +30,7 @@ import (
 // `go install`; release builds inject the git tag via
 // `-ldflags="-X main.version=<tag>"` (see .goreleaser.yaml), so it must be a
 // var - `-X` cannot write a const.
-var version = "1.5.2"
+var version = "1.5.3"
 
 func main() {
 	if len(os.Args) < 2 {
