@@ -5,6 +5,38 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.5.3] - 2026-08-28 [UTC+7]
+
+### Fixed
+
+- **Services sharing a `@group` no longer lose routes.** `@group` replaces the
+  service-name segment, so several services can deliberately land in one folder -
+  but `routes.go` was emitted once per *service* into a directory that holds only
+  one, so the service sorting last silently overwrote the other's routes. The
+  umbrella then called the survivor once per service, mounting every pattern
+  twice, which `http.ServeMux` rejects with a panic at startup: a green
+  `craftgo gen` produced a server that could not boot. Routes are now emitted per
+  output *directory*, with every service in a folder feeding its single
+  `RegisterRoutes` and the umbrella dispatching once. Each method keeps its own
+  service's middleware chain. Two shapes a shared directory cannot express are
+  now rejected at analysis time instead: `group/package-straddle` (contributors
+  from different DSL packages, which would need two Go `package` declarations in
+  one directory) and `group/method-collision` (two contributors declaring the
+  same method name, which would claim the same `<method>.go`).
+- **A middleware named at two inheritance layers is wrapped once.** The layers
+  append, so `@middlewares(Auth)` on both a service and an `extend` block of it
+  emitted `svcCtx.Auth, svcCtx.Auth` and ran the middleware twice per request.
+  The first occurrence is kept, so the inherited layer holds its outermost
+  position - matching the dedup tags and security requirements already got.
+- **LSP: ctrl+click on `extend service X` jumps to X's primary declaration.** The
+  name in a service header was misread as a type position, so the lookup returned
+  the first declaration named `X` in the file - the extend itself in the
+  one-extend-per-file layout, leaving the cursor where it started.
+
+### Security
+
+- **Bumped Go to 1.26.6.**
+
 ## [1.5.2] - 2026-07-29 [UTC+7]
 
 ### Security
