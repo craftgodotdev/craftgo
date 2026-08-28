@@ -157,6 +157,8 @@ func (s *Server) enumDeclWithPath(view snapshotView, currentURI, currentSrc, nam
 // lookup-context string consumed by [findDeclKindAware]:
 //
 //   - "middlewares" / "errors": cursor sits inside that decorator's args
+//   - "service":                cursor is the NAME in a `service X` or
+//     `extend service X` header
 //   - "type":                   cursor sits in a type-shape position
 //     (mixin, field type, request, response, generic arg, error category)
 //   - "":                       could not classify - caller should fall
@@ -176,10 +178,27 @@ func refContextAt(view snapshotView, idx int, pos protocol.Position) string {
 		}
 		return ""
 	}
+	// A service header's name resolves through its own context: it is
+	// never a type-shape position, and `extend service X` must land on
+	// X's PRIMARY block rather than on the extend the cursor sits in.
+	if isServiceHeaderPosition(view, idx) {
+		return "service"
+	}
 	if isTypeShapePosition(view, idx) {
 		return "type"
 	}
 	return ""
+}
+
+// isServiceHeaderPosition reports whether view.tokens[idx] is the name in
+// a `service X` / `extend service X` header - i.e. the token right after
+// the `service` keyword. Comments are captured off-stream by the lexer,
+// so the preceding token is the previous meaningful one.
+func isServiceHeaderPosition(view snapshotView, idx int) bool {
+	if idx <= 0 || idx >= len(view.tokens) {
+		return false
+	}
+	return view.tokens[idx-1].Kind == lexer.KwService
 }
 
 // isTypeShapePosition reports whether view.tokens[idx] is being used as
@@ -208,6 +227,11 @@ func isTypeShapePosition(view snapshotView, idx int) bool {
 			return true
 		case lexer.KwRequest, lexer.KwResponse, lexer.KwError, lexer.KwType, lexer.KwScalar, lexer.KwEnum:
 			return true
+		case lexer.KwService, lexer.KwExtend:
+			// A service name, not a type reference. Without this the walk
+			// runs past the header into the previous declaration and the
+			// first Ident it meets there classifies the cursor as "type".
+			return false
 		case lexer.Ident:
 			// `<fieldName> <Type>` is the field syntax (no colon needed
 			// in craftgo). An ident immediately before our cursor's
