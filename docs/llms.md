@@ -221,7 +221,7 @@ extend service Users {
 }
 ```
 
-`@prefix` belongs on the **primary** `service` block - putting it on extend raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block, where it nests that block's own methods on disk (per-block grouping) and adds the group value as an OpenAPI tag on those methods. Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
+`@prefix` belongs on the **primary** `service` block - putting it on extend raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block, where it nests that block's own methods on disk (per-block grouping) and adds the group value as an OpenAPI tag on those methods. `@group` REPLACES the service-name segment rather than nesting under it, so several services may deliberately share one output directory; their methods merge into that directory's single `routes.go` and the umbrella calls it once. A shared directory must not straddle DSL packages (`group/package-straddle`, since generated files take their Go package from the DSL package) and its contributors must not repeat a method name (`group/method-collision`, since handlers are one file per method). Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
 
 ### Inheritance and opt-outs
 

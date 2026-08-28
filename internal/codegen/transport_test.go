@@ -917,6 +917,62 @@ service S {
 	}
 }
 
+// TestGenerateRoutesMergesServicesSharingGroup pins the point of @group:
+// it lays out folders, so two services choosing one group share a
+// directory - and a directory holds exactly one routes.go. Both services'
+// methods must land in that single RegisterRoutes, through the one
+// transport package they also share. Emitting per service instead would
+// overwrite one set of routes with the other.
+func TestGenerateRoutesMergesServicesSharingGroup(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+@group("shared/v1")
+service Alpha {
+    get A /a { response Thing }
+}
+
+@group("shared/v1")
+service Beta {
+    get B /b { response Thing }
+}`)
+	root := t.TempDir()
+	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/routes/shared/v1/routes.go"))
+	if err != nil {
+		t.Fatalf("shared group must emit one routes.go: %v", err)
+	}
+	src := string(out)
+	mustParseGo(t, src)
+	for _, want := range []string{
+		`srv.Handle("GET /v1/a", transportSharedV1.A(svcCtx))`,
+		`srv.Handle("GET /v1/b", transportSharedV1.B(svcCtx))`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("merged routes file missing %q in:\n%s", want, src)
+		}
+	}
+	if n := strings.Count(src, "srv.Handle("); n != 2 {
+		t.Errorf("want both services' routes in one file, got %d", n)
+	}
+	if !strings.Contains(src, "wires every Alpha and Beta endpoint") {
+		t.Errorf("doc comment should name every contributor:\n%s", src)
+	}
+	// The umbrella dispatches per DIRECTORY. One call per service would
+	// re-register every pattern in the shared file and panic http.ServeMux.
+	all, err := os.ReadFile(filepath.Join(root, "internal/routes/routes.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustParseGo(t, string(all))
+	if n := strings.Count(string(all), ".RegisterRoutes(srv, svcCtx)"); n != 1 {
+		t.Errorf("want 1 umbrella call for the shared directory, got %d:\n%s", n, all)
+	}
+}
+
 // TestGenerateRoutesIgnoreMiddlewareClearsInherited pins the
 // `@ignoreMiddleware` opt-out: a method with this decorator must
 // NOT see the service-level chain. Combined with a method-level

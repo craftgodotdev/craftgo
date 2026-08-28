@@ -101,6 +101,15 @@ type Options struct {
 	// behaves as a single-package merge.
 	DesignRoot string
 
+	// FileCase is the project's `output.fileCase` from the manifest -
+	// "kebab", "snake" or "camel". It decides the directory name an
+	// UNGROUPED service occupies, which the group-collision check
+	// compares against every declared `@group`. Empty means the config
+	// default (snake), matching the value craftgo.design.yaml resolves to
+	// before codegen runs, so the analyser and the emitters agree on the
+	// layout.
+	FileCase string
+
 	// skipQualifiedRefCheck disables the in-package
 	// [analyzer.checkQualifiedRefs] pass. Set internally by
 	// [AnalyzeProject] when running per-package analysis - qualified

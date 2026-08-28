@@ -88,7 +88,12 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		} else {
 			proj.Packages[""] = pkg
 		}
-		return proj, diags
+		// Output directories collide within one package exactly as hard as
+		// across two, so the group check runs on the single-package result
+		// too - this branch is what a caller with no design root gets.
+		r := &refResolver{proj: proj, diags: diags, fileCase: resolvedFileCase(opts.FileCase)}
+		r.checkProjectGroupChecks()
+		return proj, r.diags
 	}
 	groups := groupFilesByPackage(files)
 	// Per-package analysis. The skip flags prevent the per-package
@@ -109,11 +114,12 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		diags = append(diags, pkgDiags...)
 	}
 	// Per-file import resolution + qualified-ref check.
-	r := &refResolver{proj: proj, diags: diags, basePath: opts.BasePath}
+	r := &refResolver{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: resolvedFileCase(opts.FileCase)}
 	for _, f := range files {
 		r.processFile(f, opts.DesignRoot)
 	}
 	r.checkProjectServiceUniqueness()
+	r.checkProjectGroupChecks()
 	r.checkProjectExtendOrphans()
 	r.checkProjectMiddlewareUniqueness()
 	r.checkProjectMiddlewareRefs(files)

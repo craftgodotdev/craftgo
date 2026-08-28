@@ -107,7 +107,7 @@ See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with f
 | Decorator | Args | Effect |
 |---|---|---|
 | `@prefix("/v1")` | `(string)` | Path prefix prepended to every method route. |
-| `@group("admin/ops")` | `(string)` | Nests the service's generated handlers + stubs under `<service>/<group>/` on disk and adds its value as an OpenAPI tag. Does not affect the route or OpenAPI path. |
+| `@group("admin/ops")` | `(string)` | **Replaces** the service-name segment on disk, so handlers, service stubs and `routes.go` land under `<output>/<group>/` instead of `<output>/<service>/`, and adds its value as an OpenAPI tag. Does not affect the route or OpenAPI path. Services may share a group: they merge into one folder with a single `routes.go`. Contributors from different DSL packages raise `group/package-straddle`; two contributors declaring the same method name raise `group/method-collision`. |
 | `@middlewares(A, B)` | variadic idents / array | Apply named middlewares (also valid at method level - see below). |
 | `@tags(a, b)` | variadic idents/strings / array | OpenAPI tags (also method level). |
 | `@security(scheme)` | variadic idents / array | Security-scheme requirements (also method level). Within one decorator schemes AND-combine; multiple `@security(...)` OR-combine. |

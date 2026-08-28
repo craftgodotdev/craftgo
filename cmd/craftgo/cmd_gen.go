@@ -156,6 +156,7 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 		SecuritySchemes: securitySchemeNames(cfg),
 		BasePath:        cfg.OpenAPI.BasePath,
 		DesignRoot:      designDir,
+		FileCase:        cfg.Output.FileCase,
 	})
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)

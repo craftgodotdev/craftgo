@@ -32,6 +32,11 @@ type refResolver struct {
 	// basePath is the project's openapi.basePath, needed to resolve a
 	// method's final route in [refResolver.checkProjectPathParams].
 	basePath string
+	// fileCase is the project's output.fileCase, already defaulted by
+	// [resolvedFileCase]. It names the directory an ungrouped service
+	// occupies, which [refResolver.checkProjectGroupCollision] compares
+	// against every declared @group.
+	fileCase string
 }
 
 // processFile validates one file's imports + every qualified ref it
