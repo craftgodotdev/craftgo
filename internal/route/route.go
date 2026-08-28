@@ -1,10 +1,12 @@
-// Package route is the leaf authority for craftgo's HTTP routes: how a
-// method's final route is assembled (base path + @prefix + method path),
-// the string form of a DSL path, the shape key two colliding routes share,
-// and net/http's pattern-overlap rule. The analyzer, the routes/OpenAPI
-// emitters, and the route-conflict detector all read these - one
-// implementation, so the route the editor diagnoses is byte-for-byte the
-// route the generated server mounts.
+// Package route is the leaf authority for craftgo's two path namespaces and
+// the wall between them. The URL side: how a method's final route is assembled
+// (base path + @prefix + method path), the string form of a DSL path, the shape
+// key two colliding routes share, and net/http's pattern-overlap rule. The disk
+// side: `@group`, which decides the output segment a block's generated files
+// land under and never contributes to the URL. The analyzer, the routes/OpenAPI
+// emitters, and the route-conflict detector all read these - one implementation,
+// so the route and the directory the editor diagnoses are byte-for-byte the ones
+// the generated server mounts and codegen writes.
 package route
 
 import (
@@ -109,6 +111,76 @@ func ServicePrefix(svc *ast.ServiceDecl) string {
 		}
 	}
 	return ""
+}
+
+// ServiceGroup returns the cleaned `@group("a/b")` path declared on a service
+// or `extend service` block, or "" when the decorator is absent. @group is the
+// URL's mirror image: it decides where a block's GENERATED FILES land on disk
+// and never contributes a path segment to the route (see [Resolve]). Values are
+// normalised through [CleanGroupPath]; the analyser rejects traversal and
+// non-plain segments outright before codegen or the collision check read them.
+func ServiceGroup(svc *ast.ServiceDecl) string {
+	if svc == nil {
+		return ""
+	}
+	for _, d := range svc.Decorators {
+		if d == nil || d.Name != "group" || len(d.Args) == 0 {
+			continue
+		}
+		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
+			return CleanGroupPath(s.Value)
+		}
+	}
+	return ""
+}
+
+// EffectiveGroup returns the @group that applies to one service block. The
+// block's own @group wins; an extend block declaring none inherits the primary
+// block's, so `@group("admin")` on the service covers its extend blocks unless
+// an extend overrides it. Pass the primary block's own group as primaryGroup
+// (it is its own effective group).
+func EffectiveGroup(block *ast.ServiceDecl, primaryGroup string) string {
+	if g := ServiceGroup(block); g != "" {
+		return g
+	}
+	return primaryGroup
+}
+
+// CleanGroupPath normalises a @group value into a relative slash path: it trims
+// surrounding slashes and drops empty segments so "/admin/" and "admin//ops"
+// become "admin" and "admin/ops". Traversal (".", "..") segments are dropped as
+// a defence-in-depth backstop - the semantic phase rejects them outright - so a
+// malformed value reaching codegen can only ever nest deeper inside the output
+// tree, never escape it.
+func CleanGroupPath(raw string) string {
+	segs := strings.Split(raw, "/")
+	kept := segs[:0]
+	for _, s := range segs {
+		if s == "" || s == "." || s == ".." {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	return strings.Join(kept, "/")
+}
+
+// OutputSegment returns the path segment, under any output base, that holds a
+// service block's generated files. A non-empty @group REPLACES the service-name
+// segment entirely (so `@group("v2")` on any service emits to `<base>/v2/`),
+// giving the author full control of the layout; the ungrouped case falls back
+// to the service directory under the configured file case. The result is a
+// forward-slash path - the group may itself be nested ("admin/ops").
+//
+// Because the group replaces the service name it is effectively a GLOBAL
+// namespace: two services picking the same group would land in one directory
+// and overwrite each other's routes file. This is the segment the analyser's
+// group-collision check compares, so the directory the editor diagnoses is the
+// directory codegen writes.
+func OutputSegment(svcName, group, fileCase string) string {
+	if group != "" {
+		return group
+	}
+	return idents.FileName(svcName, fileCase)
 }
 
 // patternsConflict reports whether two same-verb mux patterns overlap with
