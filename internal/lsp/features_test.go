@@ -1,11 +1,13 @@
 package lsp
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -839,6 +841,191 @@ service S {
 	}
 	if pf.path != "shared/err.craftgo" {
 		t.Errorf("expected hit in shared/err.craftgo, got %s", pf.path)
+	}
+}
+
+// TestDefinitionExtendServiceJumpsToPrimary pins ctrl+click on the name
+// in `extend service X`: an extend is a CONTINUATION, not a declaration
+// site, so the jump must land on X's primary block. The name sits in a
+// header, which is not a type-shape position - misreading it as one used
+// to send the lookup down the "anything but a middleware" path, where the
+// first decl named X in the file wins. In the file layout the docs call
+// typical (one extend per file) that first decl is the extend itself, so
+// the editor jumped the cursor onto the token it started from.
+func TestDefinitionExtendServiceJumpsToPrimary(t *testing.T) {
+	src := `package x
+service Alpha {
+	get A /a {}
+}
+
+extend service Alpha {
+	get B /b {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	// Second `Alpha` token - the name in the extend header.
+	count := 0
+	var pos protocol.Position
+	for _, tok := range view.tokens {
+		if tok.Text != "Alpha" {
+			continue
+		}
+		count++
+		if count == 2 {
+			pos = protocol.Position{Line: uint32(tok.Pos.Line - 1), Character: uint32(tok.Pos.Column - 1)}
+			break
+		}
+	}
+	if count < 2 {
+		t.Fatalf("expected 2 Alpha tokens, got %d", count)
+	}
+	idx, _ := view.tokenAt(pos.Line, pos.Character)
+	if ctx := refContextAt(view, idx, pos); ctx != "service" {
+		t.Fatalf("expected service context for an extend header, got %q", ctx)
+	}
+	d := findDeclKindAware(view.file, "Alpha", "service")
+	sd, ok := d.(*ast.ServiceDecl)
+	if !ok {
+		t.Fatalf("expected ServiceDecl, got %T", d)
+	}
+	if sd.Extend {
+		t.Error("resolved to the extend block; the primary is the definition site")
+	}
+	if sd.Pos.Line != 2 {
+		t.Errorf("expected the primary at line 2, got %d", sd.Pos.Line)
+	}
+}
+
+// TestDefinitionExtendServiceResolvesAcrossFiles is the layout the fix is
+// really for: the extend lives in its own file, so nothing in that file
+// can answer the click. The primary has to be found in a sibling file
+// rather than the extend the cursor sits in.
+func TestDefinitionExtendServiceResolvesAcrossFiles(t *testing.T) {
+	primary := `package x
+service Alpha {
+	get A /a {}
+}
+`
+	ext := `package x
+
+extend service Alpha {
+	get B /b {}
+}
+`
+	view := parseSnapshot("alpha-extra.craftgo", ext)
+	pos := protocol.Position{Line: 2, Character: 15} // the Alpha in the extend header
+	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	if tok.Text != "Alpha" {
+		t.Fatalf("probe landed on %q, not the service name", tok.Text)
+	}
+	if ctx := refContextAt(view, idx, pos); ctx != "service" {
+		t.Fatalf("expected service context, got %q", ctx)
+	}
+	// In-file lookup must decline: this file holds only the extend.
+	if d := findDeclKindAware(view.file, "Alpha", "service"); d != nil {
+		t.Errorf("extend-only file has no definition site, got %T", d)
+	}
+	files := []projectAST{
+		{path: "x/alpha-extra.craftgo", file: mustParseFile(t, "x/alpha-extra.craftgo", ext)},
+		{path: "x/alpha.craftgo", file: mustParseFile(t, "x/alpha.craftgo", primary)},
+	}
+	d, pf, ok := findDeclAcrossKindAware(files, "Alpha", nil, "", "service")
+	if !ok {
+		t.Fatal("project-wide lookup did not find the primary service")
+	}
+	sd, isSvc := d.(*ast.ServiceDecl)
+	if !isSvc || sd.Extend {
+		t.Fatalf("expected the primary ServiceDecl, got %T (extend=%v)", d, isSvc && sd.Extend)
+	}
+	if pf.path != "x/alpha.craftgo" {
+		t.Errorf("expected the hit in x/alpha.craftgo, got %s", pf.path)
+	}
+}
+
+// TestDefinitionServiceHeaderIsNotATypeShape guards the classification
+// that caused the bug: the walk back from a service name must stop at the
+// header instead of running into the previous declaration, where the
+// first Ident it meets would read as a field-type pair.
+func TestDefinitionServiceHeaderIsNotATypeShape(t *testing.T) {
+	src := `package x
+type Thing { id string }
+
+extend service Alpha {
+	get B /b {}
+}
+`
+	view := parseSnapshot("t.craftgo", src)
+	pos := protocol.Position{Line: 3, Character: 15}
+	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	if tok.Text != "Alpha" {
+		t.Fatalf("probe landed on %q, not the service name", tok.Text)
+	}
+	if isTypeShapePosition(view, idx) {
+		t.Error("a service header name must not classify as a type-shape position")
+	}
+}
+
+// TestDefinitionExtendServiceEndToEnd drives the real
+// `textDocument/definition` handler over a project on disk, in the layout
+// that actually ships: the primary in one file, the extend in another.
+// Ctrl+click on the extend's name must reply with a Location in the
+// PRIMARY's file - not with the extend's own position, and not with an
+// empty list.
+func TestDefinitionExtendServiceEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	design := filepath.Join(root, "design")
+	if err := os.MkdirAll(design, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "craftgo.design.yaml"), []byte("package: example.com/p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	primary := "package x\nservice Alpha {\n\tget A /a {}\n}\n"
+	if err := os.WriteFile(filepath.Join(design, "alpha.craftgo"), []byte(primary), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ext := "package x\n\nextend service Alpha {\n\tget B /b {}\n}\n"
+	extPath := filepath.Join(design, "alpha-extra.craftgo")
+	if err := os.WriteFile(extPath, []byte(ext), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	extURI := uri.File(extPath)
+	srv := &Server{docs: map[uri.URI]*document{extURI: {text: ext}}}
+	params := protocol.DefinitionParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(extURI)},
+			// `extend service Alpha` - the name starts at column 15.
+			Position: protocol.Position{Line: 2, Character: 15},
+		},
+	}
+	req, err := jsonrpc2.NewCall(jsonrpc2.NewNumberID(1), protocol.MethodTextDocumentDefinition, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []protocol.Location
+	replier := func(_ context.Context, result interface{}, err error) error {
+		if err != nil {
+			t.Fatalf("handler error: %v", err)
+		}
+		locs, ok := result.([]protocol.Location)
+		if !ok {
+			t.Fatalf("unexpected reply type %T", result)
+		}
+		got = locs
+		return nil
+	}
+	if err := srv.onDefinition(context.Background(), replier, req); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 location, got %d (%v)", len(got), got)
+	}
+	if filepath.Base(uriToPath(string(got[0].URI))) != "alpha.craftgo" {
+		t.Errorf("jumped into %s, want the primary's file alpha.craftgo", uriToPath(string(got[0].URI)))
+	}
+	if got[0].Range.Start.Line != 1 {
+		t.Errorf("want the primary declaration on line 2 (0-indexed 1), got %d", got[0].Range.Start.Line)
 	}
 }
 

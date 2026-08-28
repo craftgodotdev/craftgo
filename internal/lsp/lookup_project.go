@@ -93,6 +93,10 @@ func findDecl(f *ast.File, name string) ast.Decl {
 // ctx values:
 //   - "middlewares": cursor inside `@middlewares(...)` - return MiddlewareDecl
 //   - "errors":      cursor inside `@errors(...)`      - return ErrorDecl
+//   - "service":     cursor on a service header's name - return that
+//     service's PRIMARY block. `extend service X` blocks are skipped, so
+//     a click on an extend's name jumps to the declaration it continues
+//     instead of back onto itself.
 //   - "type":        cursor in a type / mixin / field-type / request /
 //     response / generic-arg position - return anything EXCEPT
 //     MiddlewareDecl (the only decl kind that does not appear in
@@ -229,6 +233,14 @@ func makeKindMatcher(ctx string) func(ast.Decl) bool {
 		return func(d ast.Decl) bool {
 			_, ok := d.(*ast.ErrorDecl)
 			return ok
+		}
+	case "service":
+		// Only the primary block. An `extend service X` is a continuation,
+		// not a declaration site - resolving to one would leave a click on
+		// an extend's name sitting exactly where it started.
+		return func(d ast.Decl) bool {
+			sd, ok := d.(*ast.ServiceDecl)
+			return ok && !sd.Extend
 		}
 	case "type":
 		return func(d ast.Decl) bool {
