@@ -23,7 +23,7 @@ jobs:
           # changelog since the previous tag.
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
