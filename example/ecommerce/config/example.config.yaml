@@ -51,6 +51,7 @@ metrics:
   endpoint: ""                # OTLP collector address; ignored for prometheus/none
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
+  serviceName: ""             # service.name on every metric; empty inherits otel.serviceName
   adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
   path: /metrics              # route the scrape is exposed on (prometheus only)
 

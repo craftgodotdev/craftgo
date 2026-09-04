@@ -199,6 +199,7 @@ metrics:
   enabled: true
   exporter: prometheus
   endpoint: ""
+  serviceName: ""
   adminAddr: ":9090"
   path: /metrics
 
@@ -246,6 +247,7 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 | `enabled`    | Toggle the meter provider and admin scrape listener.                   |
 | `exporter`   | `prometheus` / `otlp_grpc` / `otlp_http` / `none`.                      |
 | `endpoint`   | OTLP collector address (ignored for prometheus / none).                |
+| `serviceName`| `service.name` on every metric. Empty inherits `otel.serviceName`.      |
 | `adminAddr`  | Listen address for `/metrics` scrape (prometheus only).                |
 | `path`       | URL path for the scrape (default `/metrics`).                          |
 
@@ -253,6 +255,19 @@ For `otlp_grpc` / `otlp_http`, `endpoint` may be a bare `host:port` (plaintext)
 or a full URL whose scheme selects transport security - `http://…` (plaintext)
 or `https://…` (TLS). `exporter: none` installs a silent meter (no scrape, no
 push).
+
+`serviceName` is what a backend keys on to tell one service's metrics from
+another's. Leave it empty and it inherits `otel.serviceName`, so both signals
+report one identity; set it only to diverge on purpose. With neither set, the
+SDK falls back to `unknown_service:<binary>` - survivable for a Prometheus
+scrape, where the target labels already identify the process, but under OTLP
+push every service in the fleet arrives at the collector under that one name.
+
+`metrics.enabled` installs the meter, but the HTTP instruments are emitted by
+the OTel middleware, so `otel.enabled: false` leaves the meter running with no
+`http.server.*` series in it. Keep `otel.enabled: true` and set
+`otel.exporter: none` when you want metrics without exported traces - the
+middleware then instruments both signals and only the spans go nowhere.
 
 ### `docs`
 

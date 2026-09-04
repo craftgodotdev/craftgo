@@ -197,6 +197,13 @@ func (c *Config) applyDefaults() {
 	if c.Metrics.Exporter == "" {
 		c.Metrics.Exporter = "prometheus"
 	}
+	if c.Metrics.ServiceName == "" {
+		// One service identity per process: metrics inherit the name
+		// traces already carry, so `service.name` matches across both
+		// signals without the operator configuring it twice. Set
+		// `metrics.serviceName` explicitly only to diverge on purpose.
+		c.Metrics.ServiceName = c.OTel.ServiceName
+	}
 	if c.Metrics.AdminAddr == "" {
 		c.Metrics.AdminAddr = ":9090"
 	}

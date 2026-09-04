@@ -10,6 +10,8 @@ import (
 
 	prom "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // TestInitInstallsMeterProvider pins the contract: Init replaces the
@@ -304,5 +306,107 @@ func TestNoneExporterDoesNotServePrometheus(t *testing.T) {
 	}
 	if mfs, _ := registry.Gather(); len(mfs) != 0 {
 		t.Errorf("'none' must not register Prometheus collectors; got %d metric families", len(mfs))
+	}
+}
+
+// TestInitStampsServiceName pins the resource attribute every backend keys
+// on to tell one service's metrics from another's. Without it the SDK falls
+// back to `unknown_service:<binary>`, which is survivable for a Prometheus
+// scrape (the target labels already identify the process) but silently
+// merges the whole fleet into one series under OTLP push.
+func TestInitStampsServiceName(t *testing.T) {
+	resetForTest(t)
+	reader := sdkmetric.NewManualReader()
+	if _, err := Init(WithReader(reader), WithServiceName("todo")); err != nil {
+		t.Fatal(err)
+	}
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := "", false
+	for _, kv := range rm.Resource.Attributes() {
+		if string(kv.Key) == "service.name" {
+			got, ok = kv.Value.AsString(), true
+		}
+	}
+	if !ok {
+		t.Fatalf("no service.name on the resource: %v", rm.Resource.Attributes())
+	}
+	if got != "todo" {
+		t.Errorf("service.name = %q, want %q", got, "todo")
+	}
+}
+
+// TestInitWithoutServiceNameKeepsSDKDefault pins the empty case: pinning an
+// EMPTY service.name would read worse downstream than the SDK's own
+// `unknown_service:<binary>`, so no resource is attached at all.
+func TestInitWithoutServiceNameKeepsSDKDefault(t *testing.T) {
+	resetForTest(t)
+	reader := sdkmetric.NewManualReader()
+	if _, err := Init(WithReader(reader)); err != nil {
+		t.Fatal(err)
+	}
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range rm.Resource.Attributes() {
+		if string(kv.Key) == "service.name" && kv.Value.AsString() == "" {
+			t.Error("empty service.name pinned; the SDK default is the better fallback")
+		}
+	}
+}
+
+// TestInitFromConfigServiceNameReachesResource pins the config path, which
+// is how every generated project sets the name (inherited from
+// otel.serviceName by the scaffolded applyDefaults).
+func TestInitFromConfigServiceNameReachesResource(t *testing.T) {
+	resetForTest(t)
+	_, admin, err := InitFromConfig(context.Background(), Config{
+		Enabled: true, Exporter: ExporterPrometheus, ServiceName: "todo", AdminAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ShutdownAdmin(context.Background(), admin.HTTPServer()) })
+	rec := httptest.NewRecorder()
+	SnapshotHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if !strings.Contains(rec.Body.String(), `target_info{service_name="todo"}`) {
+		t.Errorf("scrape carries no service_name=todo target_info:\n%s", truncate(rec.Body.String(), 600))
+	}
+}
+
+// TestInitFromConfigNoAdminServerWhenAddrEmpty pins the contract the doc
+// states - nil when no listener was needed. Wrapping StartAdmin's opt-out
+// in a non-nil adminServer handed callers a nil ErrCh, and the documented
+// `go func() { <-adminSrv.ErrCh() }()` pattern then blocks on a nil channel
+// for the life of the process while logging a listener that never bound.
+func TestInitFromConfigNoAdminServerWhenAddrEmpty(t *testing.T) {
+	resetForTest(t)
+	_, admin, err := InitFromConfig(context.Background(), Config{
+		Enabled: true, Exporter: ExporterPrometheus, AdminAddr: "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admin != nil {
+		t.Fatalf("want nil adminServer for an empty AdminAddr, got %+v", admin)
+	}
+}
+
+// TestInitFromConfigAdminAddrReportsResolvedPort pins that Addr() surfaces
+// the port the OS actually picked, so a `:0` bind can be logged and dialled.
+func TestInitFromConfigAdminAddrReportsResolvedPort(t *testing.T) {
+	resetForTest(t)
+	_, admin, err := InitFromConfig(context.Background(), Config{
+		Enabled: true, Exporter: ExporterPrometheus, AdminAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ShutdownAdmin(context.Background(), admin.HTTPServer()) })
+	if admin.Addr() == "" || strings.HasSuffix(admin.Addr(), ":0") {
+		t.Errorf("Addr() = %q, want the resolved listener address", admin.Addr())
 	}
 }

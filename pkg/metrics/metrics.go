@@ -23,6 +23,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdkresource "go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
 	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -41,8 +43,17 @@ var enabled atomic.Bool
 var registry = prom.NewRegistry()
 
 // IsEnabled reports whether the package has installed a MeterProvider.
-// Returns false until [Init] / [InitDefault] succeeds.
+// Returns false until [Init] / [InitDefault] succeeds. [pkg/otel]'s HTTP
+// middleware consults it: one `otelhttp` wrapper emits both spans and the
+// HTTP instruments, so it must keep instrumenting for a project running
+// metrics without traces.
 func IsEnabled() bool { return enabled.Load() }
+
+// Disable clears the flag [IsEnabled] reports without dismantling the
+// installed MeterProvider, so the HTTP middleware falls back to a
+// pass-through. Mirrors [pkg/otel.Disable]; tests use the pair to isolate
+// runs from telemetry another test left installed on the global slots.
+func Disable() { enabled.Store(false) }
 
 // Registerer exposes the underlying Prometheus registry so application
 // code can attach process / runtime collectors (`prometheus.NewGoCollector`,
@@ -63,8 +74,44 @@ type Option func(*config)
 // closures and [Init]. Held off the package surface - callers only
 // ever see the typed [Option] constructors.
 type config struct {
-	readers []sdkmetric.Reader
-	err     error
+	readers     []sdkmetric.Reader
+	serviceName string
+	err         error
+}
+
+// WithServiceName stamps `service.name` onto the MeterProvider's resource,
+// the attribute every backend keys on to tell one service's metrics from
+// another's. Without it the SDK falls back to `unknown_service:<binary>`,
+// which is survivable for a Prometheus scrape (the target labels already
+// identify the process) but not for OTLP push - every service in the fleet
+// would arrive at the collector under the same name.
+//
+// Mirrors [pkg/otel.WithServiceName] so traces and metrics from one process
+// carry the same identity. An empty name leaves the SDK default in place.
+func WithServiceName(name string) Option {
+	return func(c *config) {
+		if c.err != nil {
+			return
+		}
+		c.serviceName = name
+	}
+}
+
+// resourceFor builds the resource for a named service: the SDK defaults
+// (`telemetry.sdk.*`) with `service.name` layered on top. Merge reports an
+// error when the two sides carry different schema URLs - a semconv bump on
+// either side would trip it - so the service-only resource is the fallback:
+// losing the SDK attributes beats losing the service name.
+func resourceFor(serviceName string) *sdkresource.Resource {
+	svc := sdkresource.NewWithAttributes(
+		semconv.SchemaURL,
+		semconv.ServiceName(serviceName),
+	)
+	merged, err := sdkresource.Merge(sdkresource.Default(), svc)
+	if err != nil {
+		return svc
+	}
+	return merged
 }
 
 // WithPrometheusReader adds a Prometheus pull exporter scoped to the
@@ -182,6 +229,15 @@ func WithReader(r sdkmetric.Reader) Option {
 // Returns the configured provider so callers can shut it down via
 // `provider.Shutdown(ctx)` during graceful termination - important
 // for OTLP push so the final batch flushes before the process exits.
+//
+// Call it ONCE per process. A second call installs a second provider on
+// the global slot without shutting the first down, and the Prometheus
+// reader registers another collector on the package registry - the
+// scrape then carries both providers' series (two `target_info` rows,
+// and duplicate HTTP families that promhttp reports as a scrape error).
+// A test suite that boots the runtime repeatedly should use
+// [WithReader] with its own `sdkmetric.NewManualReader` instead, which
+// keeps each run's data on a reader it owns.
 func Init(opts ...Option) (*sdkmetric.MeterProvider, error) {
 	cfg := &config{}
 	for _, o := range opts {
@@ -196,7 +252,13 @@ func Init(opts ...Option) (*sdkmetric.MeterProvider, error) {
 			return nil, cfg.err
 		}
 	}
-	sdkOpts := make([]sdkmetric.Option, 0, len(cfg.readers))
+	sdkOpts := make([]sdkmetric.Option, 0, len(cfg.readers)+1)
+	if cfg.serviceName != "" {
+		// Only when named: `semconv.ServiceName("")` would pin an EMPTY
+		// service.name, which reads worse downstream than the SDK's
+		// `unknown_service:<binary>` fallback.
+		sdkOpts = append(sdkOpts, sdkmetric.WithResource(resourceFor(cfg.serviceName)))
+	}
 	for _, r := range cfg.readers {
 		sdkOpts = append(sdkOpts, sdkmetric.WithReader(r))
 	}
@@ -257,6 +319,13 @@ type Config struct {
 	// Endpoint is the collector address for OTLP exporters. Ignored
 	// for "prometheus" / "none".
 	Endpoint string `yaml:"endpoint"`
+	// ServiceName is the `service.name` resource attribute stamped on
+	// every metric. Leave it empty to inherit the project's
+	// `otel.serviceName` - the generated config does that for you - and
+	// set it only when metrics must report under a different identity
+	// from traces. Empty on both leaves the SDK's
+	// `unknown_service:<binary>` fallback.
+	ServiceName string `yaml:"serviceName"`
 	// AdminAddr is the bind address for the Prometheus scrape
 	// listener. Ignored unless Exporter == "prometheus".
 	AdminAddr string `yaml:"adminAddr"`
@@ -277,7 +346,7 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 		return nil, nil, nil
 	}
 	var (
-		opts         []Option
+		opts         = []Option{WithServiceName(c.ServiceName)}
 		startScrape  bool
 		runtimeStats bool
 	)
@@ -312,7 +381,15 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 		return provider, nil, nil
 	}
 	srv, errCh := StartAdmin(c.AdminAddr, WithPath(c.Path))
-	return provider, &adminServer{srv: srv, errCh: errCh, addr: c.AdminAddr, path: c.Path}, nil
+	if srv == nil {
+		// AdminAddr was empty - StartAdmin opted out and handed back no
+		// server and, crucially, no error channel. Wrapping that in a
+		// non-nil adminServer would hand the caller a nil ErrCh: the
+		// documented `go func() { <-adminSrv.ErrCh() }()` pattern blocks
+		// on a nil channel for the life of the process.
+		return provider, nil, nil
+	}
+	return provider, &adminServer{srv: srv, errCh: errCh, addr: srv.Addr, path: c.Path}, nil
 }
 
 // adminServer bundles the admin http.Server with the post-Serve error
