@@ -14,9 +14,10 @@ server:
 logging:
   level: info
 
+serviceName: {{.OperationName}}
+
 otel:
   enabled: true
-  serviceName: {{.OperationName}}
   exporter: none
   endpoint: ""
 

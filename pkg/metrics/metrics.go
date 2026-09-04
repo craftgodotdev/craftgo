@@ -15,7 +15,6 @@ package metrics
 import (
 	"context"
 	"net/http"
-	"strings"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
@@ -23,7 +22,10 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdkresource "go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
+	"github.com/craftgodotdev/craftgo/internal/otlpaddr"
 	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
@@ -41,8 +43,14 @@ var enabled atomic.Bool
 var registry = prom.NewRegistry()
 
 // IsEnabled reports whether the package has installed a MeterProvider.
-// Returns false until [Init] / [InitDefault] succeeds.
+// [pkg/otel]'s HTTP middleware consults it, since one otelhttp wrapper
+// emits both signals.
 func IsEnabled() bool { return enabled.Load() }
+
+// Disable clears the flag [IsEnabled] reports without dismantling the
+// installed MeterProvider. Mirrors [pkg/otel.Disable]; tests use the pair
+// to isolate runs.
+func Disable() { enabled.Store(false) }
 
 // Registerer exposes the underlying Prometheus registry so application
 // code can attach process / runtime collectors (`prometheus.NewGoCollector`,
@@ -51,6 +59,28 @@ func IsEnabled() bool { return enabled.Load() }
 // any client_golang-compatible metric surfaces alongside the OTel ones
 // on the same /metrics scrape.
 func Registerer() prom.Registerer { return registry }
+
+// NewRegistry returns a registry independent of the package's shared one.
+// Pair it with [WithPrometheusReaderFor], [SnapshotHandlerFor] and
+// [RegisterRuntimeCollectorsOn] to keep a meter's series to itself.
+func NewRegistry() *prom.Registry { return prom.NewRegistry() }
+
+// RegisterRuntimeCollectorsOn is [RegisterRuntimeCollectors] against a
+// registry the caller owns.
+func RegisterRuntimeCollectorsOn(reg prom.Registerer) error {
+	for _, c := range []prom.Collector{
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	} {
+		if err := reg.Register(c); err != nil {
+			// Idempotent: a repeated boot in tests must not fail here.
+			if _, dup := err.(prom.AlreadyRegisteredError); !dup {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // Option configures the MeterProvider built by [Init]. Each option
 // either appends a Reader to the provider (Prometheus pull, OTLP
@@ -63,8 +93,39 @@ type Option func(*config)
 // closures and [Init]. Held off the package surface - callers only
 // ever see the typed [Option] constructors.
 type config struct {
-	readers []sdkmetric.Reader
-	err     error
+	readers     []sdkmetric.Reader
+	serviceName string
+	err         error
+}
+
+// WithServiceName stamps `service.name` onto the MeterProvider's resource.
+// Without it the SDK falls back to `unknown_service:<binary>` - survivable
+// for a Prometheus scrape, but under OTLP push every service arrives at the
+// collector under that one name. Empty leaves the SDK default.
+func WithServiceName(name string) Option {
+	return func(c *config) {
+		if c.err != nil {
+			return
+		}
+		c.serviceName = name
+	}
+}
+
+// resourceFor layers `service.name` over the SDK defaults. Merge errors on
+// a schema-URL mismatch, so the service-only resource is the fallback:
+// losing telemetry.sdk.* beats losing the service name.
+func ResourceFor(serviceName string) *sdkresource.Resource { return resourceFor(serviceName) }
+
+func resourceFor(serviceName string) *sdkresource.Resource {
+	svc := sdkresource.NewWithAttributes(
+		semconv.SchemaURL,
+		semconv.ServiceName(serviceName),
+	)
+	merged, err := sdkresource.Merge(sdkresource.Default(), svc)
+	if err != nil {
+		return svc
+	}
+	return merged
 }
 
 // WithPrometheusReader adds a Prometheus pull exporter scoped to the
@@ -72,12 +133,17 @@ type config struct {
 // [SnapshotHandler] manually) to expose `/metrics` for scrapers.
 //
 // The default when [Init] is called with no options.
-func WithPrometheusReader() Option {
+func WithPrometheusReader() Option { return WithPrometheusReaderFor(registry) }
+
+// WithPrometheusReaderFor is [WithPrometheusReader] scoped to a registry
+// the caller owns, so the exposed series are exactly the ones that
+// registry gathers.
+func WithPrometheusReaderFor(reg prom.Registerer) Option {
 	return func(c *config) {
 		if c.err != nil {
 			return
 		}
-		exporter, err := otelprom.New(otelprom.WithRegisterer(registry))
+		exporter, err := otelprom.New(otelprom.WithRegisterer(reg))
 		if err != nil {
 			c.err = err
 			return
@@ -104,18 +170,8 @@ func WithOTLPgRPCReader(ctx context.Context, addr string, opts ...otlpmetricgrpc
 		if c.err != nil {
 			return
 		}
-		var base []otlpmetricgrpc.Option
-		if strings.Contains(addr, "://") {
-			// URL form - WithEndpointURL parses host/port and derives
-			// insecure-vs-TLS from the scheme.
-			base = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpointURL(addr)}
-		} else {
-			// Bare host:port form - plaintext (insecure).
-			base = []otlpmetricgrpc.Option{
-				otlpmetricgrpc.WithEndpoint(addr),
-				otlpmetricgrpc.WithInsecure(),
-			}
-		}
+		base := otlpaddr.Base(addr,
+			otlpmetricgrpc.WithEndpointURL, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure)
 		exporter, err := otlpmetricgrpc.New(ctx, append(base, opts...)...)
 		if err != nil {
 			c.err = err
@@ -182,6 +238,11 @@ func WithReader(r sdkmetric.Reader) Option {
 // Returns the configured provider so callers can shut it down via
 // `provider.Shutdown(ctx)` during graceful termination - important
 // for OTLP push so the final batch flushes before the process exits.
+//
+// Call it once per process. A second call leaks the first provider and
+// stacks another collector on the package registry, so the scrape carries
+// both. Repeated boots should use [WithReader] with their own reader, or
+// [pkg/telemetry], which owns its registry.
 func Init(opts ...Option) (*sdkmetric.MeterProvider, error) {
 	cfg := &config{}
 	for _, o := range opts {
@@ -196,7 +257,12 @@ func Init(opts ...Option) (*sdkmetric.MeterProvider, error) {
 			return nil, cfg.err
 		}
 	}
-	sdkOpts := make([]sdkmetric.Option, 0, len(cfg.readers))
+	sdkOpts := make([]sdkmetric.Option, 0, len(cfg.readers)+1)
+	if cfg.serviceName != "" {
+		// Only when named - an empty service.name reads worse downstream
+		// than the SDK's unknown_service fallback.
+		sdkOpts = append(sdkOpts, sdkmetric.WithResource(resourceFor(cfg.serviceName)))
+	}
 	for _, r := range cfg.readers {
 		sdkOpts = append(sdkOpts, sdkmetric.WithReader(r))
 	}
@@ -257,6 +323,10 @@ type Config struct {
 	// Endpoint is the collector address for OTLP exporters. Ignored
 	// for "prometheus" / "none".
 	Endpoint string `yaml:"endpoint"`
+	// ServiceName is the `service.name` stamped on every metric. Empty
+	// inherits the top-level `serviceName`; set it only to report metrics
+	// under a different identity from traces.
+	ServiceName string `yaml:"serviceName"`
 	// AdminAddr is the bind address for the Prometheus scrape
 	// listener. Ignored unless Exporter == "prometheus".
 	AdminAddr string `yaml:"adminAddr"`
@@ -277,7 +347,7 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 		return nil, nil, nil
 	}
 	var (
-		opts         []Option
+		opts         = []Option{WithServiceName(c.ServiceName)}
 		startScrape  bool
 		runtimeStats bool
 	)
@@ -312,7 +382,13 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 		return provider, nil, nil
 	}
 	srv, errCh := StartAdmin(c.AdminAddr, WithPath(c.Path))
-	return provider, &adminServer{srv: srv, errCh: errCh, addr: c.AdminAddr, path: c.Path}, nil
+	if srv == nil {
+		// Empty AdminAddr: StartAdmin opted out and returned no error
+		// channel either. A non-nil adminServer here would hand back a nil
+		// ErrCh, which the documented `<-adminSrv.ErrCh()` blocks on forever.
+		return provider, nil, nil
+	}
+	return provider, &adminServer{srv: srv, errCh: errCh, addr: srv.Addr, path: c.Path}, nil
 }
 
 // adminServer bundles the admin http.Server with the post-Serve error
@@ -368,16 +444,4 @@ func (a *adminServer) Path() string {
 // uses it for the prometheus exporter path. Idempotent: a duplicate
 // registration is silently swallowed so repeated boots in tests
 // don't break.
-func RegisterRuntimeCollectors() error {
-	if regErr := registry.Register(collectors.NewGoCollector()); regErr != nil {
-		if _, dup := regErr.(prom.AlreadyRegisteredError); !dup {
-			return regErr
-		}
-	}
-	if regErr := registry.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{})); regErr != nil {
-		if _, dup := regErr.(prom.AlreadyRegisteredError); !dup {
-			return regErr
-		}
-	}
-	return nil
-}
+func RegisterRuntimeCollectors() error { return RegisterRuntimeCollectorsOn(registry) }

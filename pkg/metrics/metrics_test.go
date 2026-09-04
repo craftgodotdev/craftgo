@@ -10,6 +10,8 @@ import (
 
 	prom "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // TestInitInstallsMeterProvider pins the contract: Init replaces the
@@ -304,5 +306,100 @@ func TestNoneExporterDoesNotServePrometheus(t *testing.T) {
 	}
 	if mfs, _ := registry.Gather(); len(mfs) != 0 {
 		t.Errorf("'none' must not register Prometheus collectors; got %d metric families", len(mfs))
+	}
+}
+
+// TestInitStampsServiceName pins service.name on the resource. Without it
+// OTLP push merges every service into `unknown_service:<binary>`.
+func TestInitStampsServiceName(t *testing.T) {
+	resetForTest(t)
+	reader := sdkmetric.NewManualReader()
+	if _, err := Init(WithReader(reader), WithServiceName("todo")); err != nil {
+		t.Fatal(err)
+	}
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := "", false
+	for _, kv := range rm.Resource.Attributes() {
+		if string(kv.Key) == "service.name" {
+			got, ok = kv.Value.AsString(), true
+		}
+	}
+	if !ok {
+		t.Fatalf("no service.name on the resource: %v", rm.Resource.Attributes())
+	}
+	if got != "todo" {
+		t.Errorf("service.name = %q, want %q", got, "todo")
+	}
+}
+
+// TestInitWithoutServiceNameKeepsSDKDefault: an empty service.name reads
+// worse than the SDK default, so no resource is attached at all.
+func TestInitWithoutServiceNameKeepsSDKDefault(t *testing.T) {
+	resetForTest(t)
+	reader := sdkmetric.NewManualReader()
+	if _, err := Init(WithReader(reader)); err != nil {
+		t.Fatal(err)
+	}
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range rm.Resource.Attributes() {
+		if string(kv.Key) == "service.name" && kv.Value.AsString() == "" {
+			t.Error("empty service.name pinned; the SDK default is the better fallback")
+		}
+	}
+}
+
+// TestInitFromConfigServiceNameReachesResource pins the config path, which
+// is how a generated project sets the name.
+func TestInitFromConfigServiceNameReachesResource(t *testing.T) {
+	resetForTest(t)
+	_, admin, err := InitFromConfig(context.Background(), Config{
+		Enabled: true, Exporter: ExporterPrometheus, ServiceName: "todo", AdminAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ShutdownAdmin(context.Background(), admin.HTTPServer()) })
+	rec := httptest.NewRecorder()
+	SnapshotHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if !strings.Contains(rec.Body.String(), `target_info{service_name="todo"}`) {
+		t.Errorf("scrape carries no service_name=todo target_info:\n%s", truncate(rec.Body.String(), 600))
+	}
+}
+
+// TestInitFromConfigNoAdminServerWhenAddrEmpty pins the documented nil.
+// A non-nil wrapper here hands back a nil ErrCh, and the documented
+// `<-adminSrv.ErrCh()` then blocks forever.
+func TestInitFromConfigNoAdminServerWhenAddrEmpty(t *testing.T) {
+	resetForTest(t)
+	_, admin, err := InitFromConfig(context.Background(), Config{
+		Enabled: true, Exporter: ExporterPrometheus, AdminAddr: "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admin != nil {
+		t.Fatalf("want nil adminServer for an empty AdminAddr, got %+v", admin)
+	}
+}
+
+// TestInitFromConfigAdminAddrReportsResolvedPort: Addr() must surface the
+// port the OS picked, so a `:0` bind is loggable.
+func TestInitFromConfigAdminAddrReportsResolvedPort(t *testing.T) {
+	resetForTest(t)
+	_, admin, err := InitFromConfig(context.Background(), Config{
+		Enabled: true, Exporter: ExporterPrometheus, AdminAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ShutdownAdmin(context.Background(), admin.HTTPServer()) })
+	if admin.Addr() == "" || strings.HasSuffix(admin.Addr(), ":0") {
+		t.Errorf("Addr() = %q, want the resolved listener address", admin.Addr())
 	}
 }

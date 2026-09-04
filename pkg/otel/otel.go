@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync/atomic"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -33,6 +32,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
+	"github.com/craftgodotdev/craftgo/internal/otlpaddr"
+	"github.com/craftgodotdev/craftgo/pkg/metrics"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
@@ -101,18 +102,8 @@ func WithOTLPgRPCExporter(ctx context.Context, addr string, opts ...otlptracegrp
 		if c.err != nil {
 			return
 		}
-		var base []otlptracegrpc.Option
-		if strings.Contains(addr, "://") {
-			// URL form - WithEndpointURL parses host/port and derives
-			// insecure-vs-TLS from the scheme.
-			base = []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(addr)}
-		} else {
-			// Bare host:port form - plaintext (insecure).
-			base = []otlptracegrpc.Option{
-				otlptracegrpc.WithEndpoint(addr),
-				otlptracegrpc.WithInsecure(),
-			}
-		}
+		base := otlpaddr.Base(addr,
+			otlptracegrpc.WithEndpointURL, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure)
 		exp, err := otlptracegrpc.New(ctx, append(base, opts...)...)
 		if err != nil {
 			c.err = fmt.Errorf("otlp grpc trace exporter: %w", err)
@@ -263,9 +254,17 @@ func InitFromConfig(ctx context.Context, c Config) (*sdktrace.TracerProvider, er
 	return Init(opts...)
 }
 
-// Disable returns the middleware to no-op mode without dismantling
-// any SDK configuration. Tests use this to isolate runs.
+// Disable clears the tracing side of the middleware gate without
+// dismantling any SDK configuration. It does not silence metrics -
+// [HTTPMiddleware] keeps instrumenting while a MeterProvider is
+// installed, so a fully inert middleware needs [pkg/metrics.Disable] too.
 func Disable() { enabled.Store(false) }
+
+// instrumentationActive reports whether the middleware has any signal to
+// produce. One otelhttp wrapper emits both, so gating on the tracing flag
+// alone dropped every http.server.* metric when a project ran metrics
+// without traces.
+func instrumentationActive() bool { return enabled.Load() || metrics.IsEnabled() }
 
 // IsEnabled reports the current toggle state.
 func IsEnabled() bool { return enabled.Load() }
@@ -291,21 +290,40 @@ func IsEnabled() bool { return enabled.Load() }
 // fine to leave permanently in main.go.
 func HTTPMiddleware(operation string) server.Middleware {
 	return func(next http.Handler) http.Handler {
+		instrumented := instrument(next, operation)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !enabled.Load() {
+			if !instrumentationActive() {
 				next.ServeHTTP(w, r)
 				return
 			}
-			// otelhttp creates the span on a NEW request context, then
-			// calls its `next` with that updated request. Inserting an
-			// inner handler here gives us a hook AFTER the span exists
-			// but BEFORE the user's handler writes anything - the only
-			// safe window to inject response headers.
-			withTraceHeaders := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				otelapi.GetTextMapPropagator().Inject(r.Context(), propagation.HeaderCarrier(w.Header()))
-				next.ServeHTTP(w, r)
-			})
-			otelhttp.NewHandler(withTraceHeaders, operation).ServeHTTP(w, r)
+			instrumented.ServeHTTP(w, r)
 		})
 	}
+}
+
+// HTTPMiddlewareWith is [HTTPMiddleware] against providers the caller
+// names rather than the global slots. It carries no runtime gate - naming
+// providers is the opt-in - so there is nothing to check per request.
+func HTTPMiddlewareWith(operation string, opts ...otelhttp.Option) server.Middleware {
+	return func(next http.Handler) http.Handler {
+		return instrument(next, operation, opts...)
+	}
+}
+
+// instrument wraps next in otelhttp, which emits both the span and the
+// http.server.* instruments.
+//
+// Built once per wrap, never per request: NewHandler resolves providers
+// and creates instruments eagerly, so building it in the request path
+// cost ~1.6x the time and ~1.8x the allocations. Providers are captured
+// here, so wrap after Init - the order main.go uses.
+func instrument(next http.Handler, operation string, opts ...otelhttp.Option) http.Handler {
+	// otelhttp calls next with a new, span-carrying request context. This
+	// inner handler is the only window where the span exists but nothing
+	// has been written yet - where response headers can still be injected.
+	withTraceHeaders := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otelapi.GetTextMapPropagator().Inject(r.Context(), propagation.HeaderCarrier(w.Header()))
+		next.ServeHTTP(w, r)
+	})
+	return otelhttp.NewHandler(withTraceHeaders, operation, opts...)
 }

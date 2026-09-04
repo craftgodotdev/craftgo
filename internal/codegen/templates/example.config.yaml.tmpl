@@ -35,14 +35,22 @@ server:
 logging:
   level: info                 # debug | info | warn | error; unknown → info
 
-# Distributed tracing via OpenTelemetry.
+# Identity of this process, shared by both telemetry signals as the
+# `service.name` resource attribute. Backends key on it to tell one
+# service's traces and metrics from another's. Each signal can override it
+# below, but only do that to report under a different name on purpose.
+serviceName: {{.OperationName}}
+
+# Distributed tracing via OpenTelemetry. Note that the HTTP middleware
+# emits BOTH signals from one wrapper, so `enabled: false` here stops the
+# SPANS, not the http.server.* metrics - those follow metrics.enabled.
 otel:
-  enabled: true               # false → middleware no-op, no spans, no traceparent header
-  serviceName: {{.OperationName}}      # surfaces in span resource attributes (service.name)
+  enabled: true               # false → no spans, no traceparent header
   exporter: none              # none | stdout | otlp_grpc | otlp_http
   endpoint: ""                # OTLP collector address; ignored for none/stdout
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
+  serviceName: ""             # overrides the top-level serviceName for spans
 
 # Metrics: OpenTelemetry meter + admin scrape listener.
 metrics:
@@ -51,6 +59,7 @@ metrics:
   endpoint: ""                # OTLP collector address; ignored for prometheus/none
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
+  serviceName: ""             # overrides the top-level serviceName for metrics
   adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
   path: /metrics              # route the scrape is exposed on (prometheus only)
 

@@ -189,9 +189,10 @@ server:
 logging:
   level: info
 
+serviceName: my-app
+
 otel:
   enabled: true
-  serviceName: my-app
   exporter: none
   endpoint: ""
 
@@ -232,8 +233,8 @@ Compression is off by default. Turn it on only when not behind a compressing rev
 
 | Key           | Effect                                                                 |
 | ------------- | ---------------------------------------------------------------------- |
-| `enabled`     | Toggle the OTel HTTP middleware.                                       |
-| `serviceName` | `service.name` resource attribute on every span.                       |
+| `enabled`     | Toggle span emission. The HTTP wrapper emits both signals, so this does not stop metrics. |
+| `serviceName` | Overrides the top-level `serviceName` for spans.                       |
 | `exporter`    | `none` / `stdout` / `otlp_grpc` / `otlp_http`.                          |
 | `endpoint`    | OTLP collector address. Ignored for `none` / `stdout`.                 |
 
@@ -246,6 +247,7 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 | `enabled`    | Toggle the meter provider and admin scrape listener.                   |
 | `exporter`   | `prometheus` / `otlp_grpc` / `otlp_http` / `none`.                      |
 | `endpoint`   | OTLP collector address (ignored for prometheus / none).                |
+| `serviceName`| Overrides the top-level `serviceName` for metrics.                      |
 | `adminAddr`  | Listen address for `/metrics` scrape (prometheus only).                |
 | `path`       | URL path for the scrape (default `/metrics`).                          |
 
@@ -253,6 +255,20 @@ For `otlp_grpc` / `otlp_http`, `endpoint` may be a bare `host:port` (plaintext)
 or a full URL whose scheme selects transport security - `http://…` (plaintext)
 or `https://…` (TLS). `exporter: none` installs a silent meter (no scrape, no
 push).
+
+### Telemetry identity
+
+The top-level `serviceName` is the `service.name` both signals report under -
+what a backend keys on to tell one service's telemetry from another's. Each
+block can override it, but only do that to report under a different name on
+purpose. With none of the three set, the SDK falls back to
+`unknown_service:<binary>`: survivable for a Prometheus scrape, where the
+target labels already identify the process, but under OTLP push every service
+in the fleet arrives at the collector under that one name.
+
+The two `enabled` switches are independent. One `otelhttp` wrapper emits both
+signals, so `otel.enabled: false` stops the spans while `http.server.*` keeps
+flowing as long as `metrics.enabled` is true.
 
 ### `docs`
 

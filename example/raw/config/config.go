@@ -27,8 +27,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/craftgodotdev/craftgo/pkg/metrics"
-	craftotel "github.com/craftgodotdev/craftgo/pkg/otel"
+	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
@@ -36,15 +35,14 @@ import (
 // metrics - so feature owners can extend their own block without
 // stepping on each other.
 //
-// OTel + Metrics reuse the canonical library types so the call sites
-// in main.go can pass `cfg.OTel` / `cfg.Metrics` straight into the
-// dispatch helpers without re-mapping fields.
+// The telemetry block is inlined so `serviceName`, `otel:` and `metrics:`
+// sit at the top level of config.yaml. Reusing the library type lets
+// main.go pass `cfg.Config` straight to telemetry.Init.
 type Config struct {
-	Server  ServerConfig     `yaml:"server"`
-	Logging LogConfig        `yaml:"logging"`
-	OTel    craftotel.Config `yaml:"otel"`
-	Metrics metrics.Config   `yaml:"metrics"`
-	Docs    DocsConfig       `yaml:"docs"`
+	Server           ServerConfig `yaml:"server"`
+	Logging          LogConfig    `yaml:"logging"`
+	telemetry.Config `yaml:",inline"`
+	Docs             DocsConfig `yaml:"docs"`
 }
 
 // LogConfig controls the process-wide logger. Only the minimum level is
@@ -92,16 +90,17 @@ type ServerConfig struct {
 	// or "127.0.0.1:8080" to limit to localhost during development.
 	Addr string `yaml:"addr"`
 
-	// HandlerTimeout is the global default for handler execution.
-	// Applied as `srv.Use(server.Timeout(d))` so every route inherits
-	// the deadline; per-method `@timeout(d)` decorators override
-	// (innermost wrap wins). Zero = no global default.
+	// HandlerTimeout is the default per-handler execution deadline,
+	// applied to every route that does not declare its own `@timeout`
+	// (a per-method `@timeout(d)` overrides it, longer or shorter). It
+	// is a soft context deadline the handler must honour via ctx.Done().
+	// Zero = no default.
 	HandlerTimeout time.Duration `yaml:"handlerTimeout"`
 
-	// MaxBodySize is the global default request-body cap in bytes.
-	// Applied as `srv.Use(server.BodyLimit(n))` so every route
-	// inherits the limit; per-method `@maxBodySize(n)` decorators
-	// override. Zero = no global cap.
+	// MaxBodySize is the default request-body cap in bytes, applied to
+	// every route that does not declare its own `@maxBodySize`. A
+	// per-method `@maxBodySize(n)` overrides it (used as-is, larger or
+	// smaller). Zero = no default cap.
 	MaxBodySize int64 `yaml:"maxBodySize"`
 
 	// Compression toggles gzip / deflate response compression. Disabled
@@ -133,18 +132,18 @@ type CompressionConfig struct {
 // Aliases are kept exported so an IDE goto-definition lands on the
 // library doc strings instead of an opaque indirection.
 type (
-	// OTelConfig drives the OpenTelemetry tracer setup. Disabled =
-	// silent no-op (no spans, no propagation); enabled with exporter
-	// "none" still produces in-process spans whose IDs flow into log
-	// lines but go nowhere. See [craftotel.Config] for field detail.
-	OTelConfig = craftotel.Config
+	// TelemetryConfig is the shared `serviceName` plus the two per-signal
+	// sections. See [telemetry.Config] for field detail.
+	TelemetryConfig = telemetry.Config
 
-	// MetricsConfig drives the OpenTelemetry meter + admin scrape
-	// listener. otelhttp's HTTPMiddleware records the standard
-	// `http.server.*` instruments against whatever meter provider
-	// gets installed; this block only chooses where the metrics
-	// flow OUT. See [metrics.Config] for field detail.
-	MetricsConfig = metrics.Config
+	// OTelConfig drives the tracer. The HTTP wrapper emits BOTH signals,
+	// so this block gates only where spans go - metrics keep flowing
+	// while `metrics.enabled` is true.
+	OTelConfig = telemetry.OTelConfig
+
+	// MetricsConfig drives the meter + admin scrape listener. It chooses
+	// only where the metrics flow OUT.
+	MetricsConfig = telemetry.MetricsConfig
 )
 
 // Path returns the conventional config-file location. Override by
@@ -186,11 +185,11 @@ func (c *Config) applyDefaults() {
 		c.Logging.Level = "info"
 	}
 
+	if c.ServiceName == "" {
+		c.ServiceName = "raw"
+	}
 	if c.OTel.Exporter == "" {
 		c.OTel.Exporter = "none"
-	}
-	if c.OTel.ServiceName == "" {
-		c.OTel.ServiceName = "raw"
 	}
 
 	if c.Metrics.Exporter == "" {

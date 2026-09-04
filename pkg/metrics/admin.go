@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -23,8 +24,13 @@ import (
 // emitted otherwise. When [Init] / [InitDefault] has not been
 // called the registry is empty - the response stays valid (an empty
 // scrape) so health probes and monitor smoke checks still see 200.
-func SnapshotHandler() http.Handler {
-	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+func SnapshotHandler() http.Handler { return SnapshotHandlerFor(registry) }
+
+// SnapshotHandlerFor is [SnapshotHandler] against a registry the caller
+// owns rather than the package's shared one. [pkg/telemetry] serves its
+// own registry through this.
+func SnapshotHandlerFor(g prom.Gatherer) http.Handler {
+	return promhttp.HandlerFor(g, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	})
 }
@@ -47,7 +53,8 @@ const DefaultMetricsPath = "/metrics"
 type AdminOption func(*adminConfig)
 
 type adminConfig struct {
-	path string
+	path    string
+	handler http.Handler
 }
 
 // WithPath overrides the route the metrics snapshot is served on.
@@ -59,6 +66,18 @@ func WithPath(p string) AdminOption {
 	return func(c *adminConfig) {
 		if p != "" {
 			c.path = p
+		}
+	}
+}
+
+// WithSnapshotHandler overrides the handler the scrape route serves.
+// Defaults to [SnapshotHandler], the package registry's exposition; pass
+// [SnapshotHandlerFor] when the meter writes into a registry the caller
+// owns rather than the shared one.
+func WithSnapshotHandler(h http.Handler) AdminOption {
+	return func(c *adminConfig) {
+		if h != nil {
+			c.handler = h
 		}
 	}
 }
@@ -88,12 +107,12 @@ func StartAdmin(addr string, opts ...AdminOption) (*http.Server, <-chan error) {
 	if addr == "" {
 		return nil, nil
 	}
-	cfg := adminConfig{path: DefaultMetricsPath}
+	cfg := adminConfig{path: DefaultMetricsPath, handler: SnapshotHandler()}
 	for _, o := range opts {
 		o(&cfg)
 	}
 	mux := http.NewServeMux()
-	mux.Handle(cfg.path, SnapshotHandler())
+	mux.Handle(cfg.path, cfg.handler)
 	s := &http.Server{
 		Addr:              addr,
 		Handler:           mux,

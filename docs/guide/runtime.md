@@ -196,13 +196,42 @@ The default is `LevelInfo`. The swap is atomic and takes effect on the next log 
 
 ## Tracing and metrics
 
-OTel HTTP middleware is a one-liner:
+Both signals are set up by one call, and the middleware that emits them is a method on what it returns:
 
 ```go
-srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
+tel, err := telemetry.Init(ctx, cfg.Config)
+defer tel.Shutdown(ctx)
+srv.Use(tel.HTTPMiddleware())
 ```
 
-The middleware records spans for every request and stamps trace IDs onto the context. Metrics ride the same path: `http.server.duration`, `http.server.request.size`, `http.server.response.size` get populated by `otelhttp` against whatever MeterProvider you install.
+`tel` owns everything: both providers, the Prometheus registry, and the scrape listener. `Shutdown` closes the listener and flushes any pending OTLP push batch, so `main.go` has one teardown line rather than three that must stay in step.
+
+The middleware records spans for every request and stamps trace IDs onto the context. Metrics ride the same wrapper, which is why `otel.enabled: false` stops the spans but not the `http.server.*` series - those follow `metrics.enabled`.
+
+### What gets emitted
+
+craftgo follows OTel semantic conventions, so the instruments are the semconv ones - not the names other Go frameworks use. Three instruments, plus whatever your own code records:
+
+| OTel instrument | Prometheus family | Unit |
+| --- | --- | --- |
+| `http.server.request.duration` | `http_server_request_duration_seconds` | seconds |
+| `http.server.request.body.size` | `http_server_request_body_size_bytes` | bytes |
+| `http.server.response.body.size` | `http_server_response_body_size_bytes` | bytes |
+
+Each carries `http_request_method`, `http_response_status_code`, `http_route`, `network_protocol_name`, `network_protocol_version`, `server_address`, `url_scheme`, plus the `otel_scope_*` identity labels. `service.name` rides on `target_info`, not on the series.
+
+`http_route` is the **route pattern**, not the request path - `/api/todos/{id}`, never `/api/todos/42` - so grouping by it cannot blow up cardinality. It comes from the pattern Go's `ServeMux` records on the matched request, which is exactly what generated routes register.
+
+A p95-by-route panel therefore reads:
+
+```promql
+histogram_quantile(0.95,
+  sum by (http_route, le) (rate(http_server_request_duration_seconds_bucket[5m])))
+```
+
+Migrating a dashboard from a framework that used the older `http.server.duration` convention (milliseconds, a `path` label) means three edits per panel: the metric name, `path` → `http_route`, and the panel unit from ms to seconds.
+
+`service.name` comes from the top-level `serviceName` in `config.yaml` and rides on `target_info`, so both signals report one identity without configuring it twice.
 
 See [Configuration](/guide/configuration) for the YAML knobs.
 

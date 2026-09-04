@@ -14,9 +14,10 @@ server:
 logging:
   level: info
 
+serviceName: ecommerce
+
 otel:
   enabled: true
-  serviceName: ecommerce
   exporter: none
   endpoint: ""
 
