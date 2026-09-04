@@ -309,11 +309,8 @@ func TestNoneExporterDoesNotServePrometheus(t *testing.T) {
 	}
 }
 
-// TestInitStampsServiceName pins the resource attribute every backend keys
-// on to tell one service's metrics from another's. Without it the SDK falls
-// back to `unknown_service:<binary>`, which is survivable for a Prometheus
-// scrape (the target labels already identify the process) but silently
-// merges the whole fleet into one series under OTLP push.
+// TestInitStampsServiceName pins service.name on the resource. Without it
+// OTLP push merges every service into `unknown_service:<binary>`.
 func TestInitStampsServiceName(t *testing.T) {
 	resetForTest(t)
 	reader := sdkmetric.NewManualReader()
@@ -338,9 +335,8 @@ func TestInitStampsServiceName(t *testing.T) {
 	}
 }
 
-// TestInitWithoutServiceNameKeepsSDKDefault pins the empty case: pinning an
-// EMPTY service.name would read worse downstream than the SDK's own
-// `unknown_service:<binary>`, so no resource is attached at all.
+// TestInitWithoutServiceNameKeepsSDKDefault: an empty service.name reads
+// worse than the SDK default, so no resource is attached at all.
 func TestInitWithoutServiceNameKeepsSDKDefault(t *testing.T) {
 	resetForTest(t)
 	reader := sdkmetric.NewManualReader()
@@ -359,8 +355,7 @@ func TestInitWithoutServiceNameKeepsSDKDefault(t *testing.T) {
 }
 
 // TestInitFromConfigServiceNameReachesResource pins the config path, which
-// is how every generated project sets the name (inherited from
-// otel.serviceName by the scaffolded applyDefaults).
+// is how a generated project sets the name.
 func TestInitFromConfigServiceNameReachesResource(t *testing.T) {
 	resetForTest(t)
 	_, admin, err := InitFromConfig(context.Background(), Config{
@@ -377,11 +372,9 @@ func TestInitFromConfigServiceNameReachesResource(t *testing.T) {
 	}
 }
 
-// TestInitFromConfigNoAdminServerWhenAddrEmpty pins the contract the doc
-// states - nil when no listener was needed. Wrapping StartAdmin's opt-out
-// in a non-nil adminServer handed callers a nil ErrCh, and the documented
-// `go func() { <-adminSrv.ErrCh() }()` pattern then blocks on a nil channel
-// for the life of the process while logging a listener that never bound.
+// TestInitFromConfigNoAdminServerWhenAddrEmpty pins the documented nil.
+// A non-nil wrapper here hands back a nil ErrCh, and the documented
+// `<-adminSrv.ErrCh()` then blocks forever.
 func TestInitFromConfigNoAdminServerWhenAddrEmpty(t *testing.T) {
 	resetForTest(t)
 	_, admin, err := InitFromConfig(context.Background(), Config{
@@ -395,8 +388,8 @@ func TestInitFromConfigNoAdminServerWhenAddrEmpty(t *testing.T) {
 	}
 }
 
-// TestInitFromConfigAdminAddrReportsResolvedPort pins that Addr() surfaces
-// the port the OS actually picked, so a `:0` bind can be logged and dialled.
+// TestInitFromConfigAdminAddrReportsResolvedPort: Addr() must surface the
+// port the OS picked, so a `:0` bind is loggable.
 func TestInitFromConfigAdminAddrReportsResolvedPort(t *testing.T) {
 	resetForTest(t)
 	_, admin, err := InitFromConfig(context.Background(), Config{

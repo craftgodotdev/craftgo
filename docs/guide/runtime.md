@@ -196,13 +196,17 @@ The default is `LevelInfo`. The swap is atomic and takes effect on the next log 
 
 ## Tracing and metrics
 
-OTel HTTP middleware is a one-liner:
+Both signals are set up by one call, and the middleware that emits them is a method on what it returns:
 
 ```go
-srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
+tel, err := telemetry.Init(ctx, cfg.Config)
+defer tel.Shutdown(ctx)
+srv.Use(tel.HTTPMiddleware())
 ```
 
-The middleware records spans for every request and stamps trace IDs onto the context. Metrics ride the same path: one `otelhttp` wrapper emits both signals against whatever TracerProvider and MeterProvider you install. That is why `otel.enabled: false` leaves you with a meter but no `http.server.*` series - use `otel.enabled: true` with `otel.exporter: none` for metrics without exported traces.
+`tel` owns everything: both providers, the Prometheus registry, and the scrape listener. `Shutdown` closes the listener and flushes any pending OTLP push batch, so `main.go` has one teardown line rather than three that must stay in step.
+
+The middleware records spans for every request and stamps trace IDs onto the context. Metrics ride the same wrapper, which is why `otel.enabled: false` stops the spans but not the `http.server.*` series - those follow `metrics.enabled`.
 
 ### What gets emitted
 
@@ -226,6 +230,8 @@ histogram_quantile(0.95,
 ```
 
 Migrating a dashboard from a framework that used the older `http.server.duration` convention (milliseconds, a `path` label) means three edits per panel: the metric name, `path` → `http_route`, and the panel unit from ms to seconds.
+
+`service.name` comes from the top-level `serviceName` in `config.yaml` and rides on `target_info`, so both signals report one identity without configuring it twice.
 
 See [Configuration](/guide/configuration) for the YAML knobs.
 

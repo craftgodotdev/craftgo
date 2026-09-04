@@ -1,10 +1,7 @@
 package otel_test
 
-// Cross-signal tests for the HTTP middleware. They live in an external
-// test package because the assertions need `pkg/metrics`, which the
-// middleware now consults - importing it from the internal test package
-// would be fine, but keeping these black-box mirrors how a project wires
-// the two InitFromConfig helpers in main.go.
+// Cross-signal tests for the HTTP middleware, kept black-box so they wire
+// the two packages the way a project's main.go does.
 
 import (
 	"context"
@@ -20,8 +17,7 @@ import (
 )
 
 // installMeter puts a MeterProvider on the global slot backed by a reader
-// the test owns, so runs stay independent of the package's shared
-// Prometheus registry.
+// the test owns, keeping runs off the shared Prometheus registry.
 func installMeter(t *testing.T, serviceName string) *sdkmetric.ManualReader {
 	t.Helper()
 	reader := sdkmetric.NewManualReader()
@@ -47,9 +43,8 @@ func httpMetricNames(t *testing.T, r *sdkmetric.ManualReader) []string {
 	return out
 }
 
-// serveOnce drives one request through a mux so the route pattern reaches
-// otelhttp - `http.route` only exists because Go's ServeMux records the
-// matched pattern on the request.
+// serveOnce drives a request through a mux so `http.route` gets populated -
+// it comes from the pattern ServeMux records on the request.
 func serveOnce(t *testing.T, mw func(http.Handler) http.Handler) {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -60,11 +55,9 @@ func serveOnce(t *testing.T, mw func(http.Handler) http.Handler) {
 }
 
 // TestHTTPMiddlewareRecordsMetricsWithTracingDisabled pins the decoupling.
-// One `otelhttp` wrapper produces BOTH spans and the HTTP instruments, so
-// gating it on the tracing flag alone threw away every `http.server.*`
-// metric whenever a project ran metrics without traces - which the config
-// actively invites, `otel.enabled` and `metrics.enabled` being separate
-// switches. The symptom was an empty dashboard with a healthy scrape.
+// One otelhttp wrapper emits both signals, so gating on the tracing flag
+// dropped every http.server.* metric when a project ran metrics without
+// traces - an empty dashboard behind a healthy scrape.
 func TestHTTPMiddlewareRecordsMetricsWithTracingDisabled(t *testing.T) {
 	craftotel.Disable()
 	t.Cleanup(craftotel.Disable)
@@ -87,11 +80,9 @@ func TestHTTPMiddlewareRecordsMetricsWithTracingDisabled(t *testing.T) {
 	t.Errorf("tracing off swallowed the HTTP metrics: want %q among %v", want, names)
 }
 
-// TestHTTPMiddlewareInertWhenBothSignalsOff pins the other half of the
-// gate: with neither signal active the middleware stays a pass-through,
-// which is the cheapness the gate exists for. Both flags have to be
-// cleared now - clearing only the tracing one is exactly the case that
-// used to lose every HTTP metric.
+// TestHTTPMiddlewareInertWhenBothSignalsOff: with neither signal active the
+// middleware stays a pass-through. Both flags must be cleared - clearing
+// only the tracing one is the case that used to lose every HTTP metric.
 func TestHTTPMiddlewareInertWhenBothSignalsOff(t *testing.T) {
 	reader := installMeter(t, "todo")
 	craftotel.Disable()
@@ -110,10 +101,8 @@ func TestHTTPMiddlewareInertWhenBothSignalsOff(t *testing.T) {
 	}
 }
 
-// BenchmarkHTTPMiddleware guards the hoist. `otelhttp.NewHandler` resolves
-// the global providers and creates its instruments eagerly, so building it
-// inside the request path re-made three histograms per call. Keep an eye on
-// allocs/op here: the per-request form cost roughly 1.8x this one.
+// BenchmarkHTTPMiddleware guards the hoist: building NewHandler per request
+// cost roughly 1.8x the allocations measured here.
 func BenchmarkHTTPMiddleware(b *testing.B) {
 	reader := sdkmetric.NewManualReader()
 	if _, err := metrics.Init(metrics.WithReader(reader), metrics.WithServiceName("bench")); err != nil {
