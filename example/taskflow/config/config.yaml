@@ -15,9 +15,10 @@ server:
 logging:
   level: info
 
+serviceName: taskflow
+
 otel:
   enabled: true
-  serviceName: taskflow
   exporter: none
   endpoint: ""
 

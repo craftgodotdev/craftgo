@@ -14,9 +14,10 @@ server:
 logging:
   level: info
 
+serviceName: todo
+
 otel:
   enabled: true
-  serviceName: todo
   exporter: none
   endpoint: ""
 

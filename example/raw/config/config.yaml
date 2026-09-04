@@ -14,9 +14,10 @@ server:
 logging:
   level: info
 
+serviceName: raw
+
 otel:
   enabled: true
-  serviceName: raw
   exporter: none
   endpoint: ""
 

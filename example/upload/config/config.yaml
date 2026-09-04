@@ -14,9 +14,10 @@ server:
 logging:
   level: info
 
+serviceName: upload
+
 otel:
   enabled: true
-  serviceName: upload
   exporter: none
   endpoint: ""
 
