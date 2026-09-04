@@ -5,6 +5,34 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.5.4] - 2026-09-04 [UTC+7]
+
+### Added
+
+- **`pkg/telemetry` sets up traces and metrics together.** One `Init`, one
+  `HTTPMiddleware()`, one `Shutdown`, and a top-level `serviceName` in
+  `config.yaml` covering both signals. `pkg/otel` and `pkg/metrics` are
+  unchanged.
+
+### Fixed
+
+- **Metrics carried no `service.name`** - every metric reported
+  `unknown_service:<binary>`. Harmless for a Prometheus scrape; under OTLP push
+  it merged the whole fleet into one series.
+- **`otel.enabled: false` silently dropped every `http.server.*` metric.** One
+  `otelhttp` wrapper emits both signals, and the middleware gated on the tracing
+  flag alone.
+- **`otelhttp.NewHandler` was rebuilt on every request** - hoisted now, ~1.6x
+  faster with ~1.8x fewer allocations.
+- **An empty `metrics.adminAddr` leaked a goroutine** blocked on a nil error
+  channel.
+
+### Changed
+
+- The observability guide lists the instruments craftgo actually emits, with
+  their Prometheus names, labels and units; it previously named the pre-1.21
+  semconv metrics.
+
 ## [1.5.3] - 2026-08-28 [UTC+7]
 
 ### Fixed
