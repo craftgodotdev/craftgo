@@ -5,6 +5,47 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [1.6.0] - 2026-09-05 [UTC+7]
+
+### Added
+
+- **Raw transport sides: `@rawRequest` and `@rawResponse`.** `@rawResponse`
+  keeps request bind + validate and hands the `http.ResponseWriter` to logic
+  (stub `(w, r, req *T) error`); `@rawRequest` hands the `*http.Request` over
+  unread and JSON-encodes the returned response (stub `(r) (*T, error)`).
+  `@passthrough` is exactly both flags. Spelling a raw side twice warns
+  `decorator/redundant` and generates identical code.
+- **`request` / `response` blocks on `@passthrough` (and on any raw side) are
+  a docs-only contract.** They shape the OpenAPI document and the generated Go
+  types exactly like a typed method; the transport never touches them.
+  Previously `@passthrough` rejected blocks (`passthrough/has-body`), so a raw
+  endpoint could only be documented as `*/*`.
+- **`server.WritePrecompressed`, `server.WriteBytes`, `server.AcceptsEncoding`.**
+  Serve a body stored already compressed (gzip / zstd / br) verbatim when the
+  client accepts the coding and decoded otherwise, with `Vary: Accept-Encoding`;
+  the framework pulls in no compression library, the caller supplies `decode`.
+  `example/raw` shows every mode, including a cache-backed `Snapshot` endpoint.
+
+### Changed
+
+- **`@timeout` now applies to `@passthrough` routes** (and raw sides). It only
+  cancels the request context, so a streaming handler that selects on
+  `ctx.Done()` stops cleanly; previously the decorator was silently dropped on
+  passthrough methods while the server-wide default still applied.
+- **One transport template and one service template.** The passthrough and
+  multipart variants folded into `transport.tmpl` / `service.tmpl` with mode
+  switches, and the stub signature and the handler call come from a single
+  `buildSignature`. Generated output for existing designs is byte-identical.
+- The `passthrough/has-body` diagnostic is gone.
+
+### Fixed
+
+- **`server.WriteError` no longer writes into a committed response.** A raw
+  handler that streamed part of a body and then returned an error had the JSON
+  envelope spliced into the body; the error is now logged with the request's
+  trace context and the wire is left alone. The guard sees through the
+  access-log and compression writers, and `WriteValidationError` shares it.
+
 ## [1.5.4] - 2026-09-04 [UTC+7]
 
 ### Added
