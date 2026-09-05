@@ -4,16 +4,18 @@ package stream
 
 import (
 	"context"
+	"io"
 	"net/http"
+
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
 
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// IngestService carries the per-request state for the
-// Ingest passthrough endpoint of StreamService. The embedded
-// log.Logger is pre-bound to the request context so logging
-// surfaces trace_id / span_id / request_id.
+// IngestService carries the per-request state for the Ingest endpoint of
+// StreamService. The embedded log.Logger is pre-bound to the request
+// context so logging surfaces trace_id / span_id / request_id.
 type IngestService struct {
 	log.Logger
 	ctx    context.Context
@@ -29,13 +31,14 @@ func NewIngestService(ctx context.Context, svcCtx *svccontext.ServiceContext) *I
 	}
 }
 
-// Ingest is the passthrough service entry point. The
-// framework hands you the raw http.ResponseWriter and *http.Request
-// - read path parameters via r.PathValue, write headers/body to w
-// directly, and return any error to surface it through the
-// framework's error writer.
-func (l *IngestService) Ingest(w http.ResponseWriter, r *http.Request) error {
-	// TODO: implement
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-	return nil
+// Ingest is a raw-request entry point: the body arrives unread (any
+// content-type, any shape, capped only by the server body limit) and the
+// returned IngestResult is JSON-encoded by the framework with a 201.
+func (l *IngestService) Ingest(r *http.Request) (*types.IngestResult, error) {
+	n, err := io.Copy(io.Discard, r.Body)
+	if err != nil {
+		return nil, err
+	}
+	l.Info("ingested", log.String("content_type", r.Header.Get("Content-Type")))
+	return &types.IngestResult{Bytes: int(n)}, nil
 }

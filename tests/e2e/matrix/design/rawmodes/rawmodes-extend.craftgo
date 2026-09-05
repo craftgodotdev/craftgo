@@ -1,0 +1,17 @@
+// The extend block carries `@rawResponse` on its header, so both methods
+// inherit the raw response side (the flag is cloned onto each method with
+// Propagated=true), and `@group` nests their output one folder deeper.
+package rawmodes
+
+@rawResponse
+@group("raw/v1")
+extend service RawModesService {
+	@doc("Inherits @rawResponse from the extend header; no contract.")
+	get ExtRaw /ext/raw {}
+
+	@doc("Inherits @rawResponse from the extend header over a bound request.")
+	get ExtTyped /ext/typed/{id} {
+		request  PtReq
+		response PtResp
+	}
+}

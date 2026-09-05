@@ -24,10 +24,39 @@ import (
 // {{.}}
 {{- end}}
 // {{.Method}} returns the http.HandlerFunc for the
+{{- if and .RawRequest .RawResponse}}
+// {{.Verb}} {{.Method}} passthrough endpoint. The framework stays
+// out of the way: logic receives the raw http.ResponseWriter and
+// *http.Request and writes the response directly.
+{{- else if .RawResponse}}
+// {{.Verb}} {{.Method}} raw-response endpoint. The handler binds and
+// validates the request, then hands the http.ResponseWriter and
+// *http.Request to logic, which writes the response directly.
+{{- else if .RawRequest}}
+// {{.Verb}} {{.Method}} raw-request endpoint. The handler hands the
+// *http.Request to logic unread and encodes the returned response.
+{{- else if .IsMultipart}}
+// {{.Verb}} {{.Method}} multipart endpoint. The handler parses
+// `multipart/form-data` bodies, binds every form field declared on
+// the request type, and populates `*multipart.FileHeader` fields
+// for any DSL-typed `file` declarations.
+{{- else}}
 // {{.Verb}} {{.Method}} endpoint.
+{{- end}}
 func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-{{- if .HasRequest}}
+{{- if .IsMultipart}}
+		if err := r.ParseMultipartForm({{.MultipartMaxMemory}}); err != nil {
+			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+			return
+		}
+		// Remove the temp files the parser spilled to disk as soon as the
+		// handler returns. net/http sweeps them again at end-of-response, but
+		// the explicit cleanup releases disk before the response flush and
+		// still runs on panic paths that bypass that sweep.
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
+{{- end}}
+{{- if .BindRequest}}
 		var req {{.RequestPkgAlias}}.{{.RequestType}}
 {{- range .Defaults}}
 {{- if .Ptr}}
@@ -60,26 +89,30 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- range .CookieParams}}
 		{{.Bind}}
 {{- end}}
+{{- range .FormStrings}}
+		{{.Bind}}
+{{- end}}
+{{- range .FormFiles}}
+{{- if .IsArray}}
+		req.{{.GoName}} = r.MultipartForm.File[{{printf "%q" .DSLName}}]
+{{- else}}
+		if _, header, err := r.FormFile({{printf "%q" .DSLName}}); err == nil {
+			req.{{.GoName}} = header
+		}
+{{- end}}
+{{- end}}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
 {{- end}}
 		l := service.New{{.Method}}Service(r.Context(), svcCtx)
-{{- if and .HasRequest .HasResponse}}
-		resp, err := l.{{.Method}}(&req)
-{{- else if .HasRequest}}
-		err := l.{{.Method}}(&req)
-{{- else if .HasResponse}}
-		resp, err := l.{{.Method}}()
-{{- else}}
-		err := l.{{.Method}}()
-{{- end}}
+{{- if .Sig.HasResult}}
+		resp, err := l.{{.Method}}({{.Sig.CallArgs}})
 		if err != nil {
 			server.WriteError(w, r, err)
 			return
 		}
-{{- if .HasResponse}}
 {{- range .RespHeaders}}
 		{{.Bind}}
 {{- end}}
@@ -91,8 +124,18 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		w.WriteHeader({{.SuccessStatusExpr}})
 {{- end}}
 		_ = server.JSON().Encode(w, resp)
-{{- else}}
+{{- else if .WriteResponse}}
+		err := l.{{.Method}}({{.Sig.CallArgs}})
+		if err != nil {
+			server.WriteError(w, r, err)
+			return
+		}
 		w.WriteHeader({{.SuccessStatusExpr}})
+{{- else}}
+		if err := l.{{.Method}}({{.Sig.CallArgs}}); err != nil {
+			server.WriteError(w, r, err)
+			return
+		}
 {{- end}}
 	}
 }

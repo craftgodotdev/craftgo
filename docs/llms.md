@@ -339,17 +339,20 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@operationId("name")`      | method          | `(string)`                             |
 | `@status(code)`             | method          | `(int)`                                |
 | `@errors(E1, E2, ...)`      | method          | error idents (or array literal)        |
-| `@passthrough`              | method          | none (flag, no parens)                 |
+| `@passthrough`              | method          | none (flag) - both sides raw           |
+| `@rawRequest`               | method          | none (flag) - logic reads `*http.Request` |
+| `@rawResponse`              | method          | none (flag) - logic writes `http.ResponseWriter` |
 | `@timeout(d)`               | method          | `(duration)`                           |
 | `@maxBodySize(n)`           | method          | `(size)`                               |
 
-`@passthrough` bypasses framework parsing - logic receives raw `http.ResponseWriter` and `*http.Request`.
+Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (stub `(w, r, req) error`); `@rawRequest` hands `r` over unread and JSON-encodes the returned response (stub `(r) (*Resp, error)`); `@passthrough` is both (stub `(w, r) error`). A `request` / `response` block on a raw side is a docs-only contract: OpenAPI and the generated types describe it, the transport never touches it. `@status` and response `@header` / `@cookie` fields on a raw response side are docs-only too. `@timeout` applies to raw routes (context cancel only). Runtime helpers: `server.WriteBytes`, `server.WritePrecompressed` (negotiates `Accept-Encoding` for a body stored compressed), `server.AcceptsEncoding`.
 
 `@timeout(d)` and `@maxBodySize(n)` **override** (not stack on) the server-wide `handlerTimeout` / `maxBodySize` from `config.yaml` for that route - the decorator value is used as-is (it may be larger or smaller than the global default). The global applies only to routes without the decorator.
 
 ### Conflicts
 
 - `@sensitive` + any of: validators, bindings (`@body`/`@path`/`@query`/`@header`/`@cookie`/`@form`), `@nullable`, `@default`
+- `@passthrough` + `@rawRequest` / `@rawResponse`, or both flags together: `decorator/redundant` (warning, identical output)
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`. `@default` on a non-optional field fires `decorator/default-needs-optional` (warning; formatter auto-fixes on save).
 

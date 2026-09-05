@@ -2420,6 +2420,8 @@ components:
       required:
       - body
       type: object
+    ExtTypedRespBody:
+      $ref: '#/components/schemas/PtResp'
     FeaturedRespBody:
       $ref: '#/components/schemas/RtItem'
     FilterTagsRespBody:
@@ -3822,6 +3824,26 @@ components:
       - items
       - total
       type: object
+    PageOfRqItem:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/RqItem'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
     PageOfScalarsEmail:
       description: |-
         Page<T> is the canonical cursor-pagination envelope. T-typed
@@ -4557,6 +4579,17 @@ components:
       $ref: '#/components/schemas/EntitlementsAuditTrail'
     PromoteWireRespBody:
       $ref: '#/components/schemas/XOwner'
+    PtBlocksRespBody:
+      $ref: '#/components/schemas/PtResp'
+    PtReq:
+      type: object
+    PtResp:
+      properties:
+        echo:
+          type: string
+      required:
+      - echo
+      type: object
     QuarantineRespBody:
       $ref: '#/components/schemas/HealthResp'
     QueryArrayEnumDefaultReq:
@@ -5760,6 +5793,85 @@ components:
           type: array
       required:
       - furniture
+      type: object
+    RqDocsReqRespBody:
+      $ref: '#/components/schemas/RqResp'
+    RqFileReq:
+      description: |-
+        RqFileReq documents a multipart contract on a raw-request method: the
+        spec advertises multipart/form-data, the transport parses nothing.
+      properties:
+        doc:
+          format: binary
+          type: string
+        note:
+          type: string
+      required:
+      - note
+      - doc
+      type: object
+    RqItem:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    RqPageRespBody:
+      $ref: '#/components/schemas/PageOfRqItem'
+    RqResp:
+      properties:
+        accepted:
+          type: integer
+      required:
+      - accepted
+      type: object
+    RqRespRespBody:
+      $ref: '#/components/schemas/RqResp'
+    RrReq:
+      properties:
+        name:
+          minLength: 2
+          type: string
+      required:
+      - name
+      type: object
+    RrReqReqBody:
+      properties:
+        name:
+          minLength: 2
+          type: string
+      required:
+      - name
+      type: object
+    RrReqRespBody:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    RrResp:
+      description: |-
+        RrResp is the docs-only contract of RrReq's response: the @header field
+        is advertised in OpenAPI but nothing writes it - the raw handler does.
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    RrUploadReq:
+      properties:
+        doc:
+          format: binary
+          type: string
+        note:
+          minLength: 1
+          type: string
+      required:
+      - note
+      - doc
       type: object
     RtItem:
       properties:
@@ -8876,6 +8988,298 @@ paths:
           description: OK
       tags:
       - OrdersService
+  /raw/ext/raw:
+    get:
+      description: Inherits @rawResponse from the extend header; no contract.
+      operationId: ExtRaw
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - raw/v1
+  /raw/ext/typed/{id}:
+    get:
+      description: Inherits @rawResponse from the extend header over a bound request.
+      operationId: ExtTyped
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 32
+          minLength: 1
+          type: string
+      - in: query
+        name: verbose
+        schema:
+          type:
+          - boolean
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtTypedRespBody'
+          description: OK
+      tags:
+      - raw/v1
+  /raw/pt:
+    get:
+      description: 'Bare passthrough: no contract, `*/*` in OpenAPI, `(w, r) error`
+        stub.'
+      operationId: PtPlain
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
+  /raw/pt/items/{id}:
+    get:
+      description: 'Passthrough with a docs-only contract: typed OpenAPI, still `(w,
+        r) error`.'
+      operationId: PtBlocks
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 32
+          minLength: 1
+          type: string
+      - in: query
+        name: verbose
+        schema:
+          type:
+          - boolean
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PtBlocksRespBody'
+          description: OK
+      tags:
+      - RawModesService
+  /raw/pt/timeout:
+    get:
+      description: '@timeout applies to a passthrough route: the stub sees a context
+        deadline.'
+      operationId: PtTimeout
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
+  /raw/rq:
+    post:
+      description: 'Raw request with a typed response: the body is handed over unread,
+        the response is JSON-encoded with the verb default 201.'
+      operationId: RqResp
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RqRespRespBody'
+          description: Created
+      tags:
+      - RawModesService
+  /raw/rq/docs:
+    post:
+      description: 'Raw request whose docs-only contract has a file field: OpenAPI
+        says multipart, the transport parses nothing.'
+      operationId: RqDocsReq
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                doc:
+                  format: binary
+                  type: string
+                note:
+                  type: string
+              required:
+              - note
+              - doc
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RqDocsReqRespBody'
+          description: Created
+      tags:
+      - RawModesService
+  /raw/rq/items/{id}:
+    get:
+      description: 'Raw request, no response: `(r) error`, 204 on success.'
+      operationId: RqNoResp
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - RawModesService
+  /raw/rq/limits:
+    post:
+      description: 'Raw request under @timeout + @maxBodySize: the 413 pre-check and
+        the context deadline both apply.'
+      operationId: RqLimits
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - RawModesService
+  /raw/rq/page:
+    get:
+      description: Raw request returning a cross-package generic instantiated with
+        a local type.
+      operationId: RqPage
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RqPageRespBody'
+          description: OK
+      tags:
+      - RawModesService
+  /raw/rr:
+    get:
+      description: 'Raw response, no request: `(w, r) error`, serves a pre-gzipped
+        body.'
+      operationId: RrNoReq
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
+  /raw/rr/items/{id}:
+    post:
+      description: Raw response over a bound + validated request; @status(201) and
+        the Location header are docs-only.
+      operationId: RrReq
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 32
+          minLength: 1
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RrReqReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RrReqRespBody'
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+      tags:
+      - RawModesService
+  /raw/rr/late:
+    get:
+      description: 'Raw response whose stub writes part of a body and then returns
+        an error: the committed body must stay intact.'
+      operationId: RrLate
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
+  /raw/rr/nomw:
+    get:
+      description: Raw response on a method that drops the inherited middleware chain.
+      operationId: RrNoMw
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
+  /raw/rr/upload:
+    post:
+      description: 'Raw response over a multipart request: the form is parsed and
+        validated before logic runs.'
+      operationId: RrMultipart
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                doc:
+                  format: binary
+                  type: string
+                note:
+                  minLength: 1
+                  type: string
+              required:
+              - note
+              - doc
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
+  /raw/rr/xpkg/{id}:
+    get:
+      description: Raw response over a cross-package request whose field reaches a
+        third package (shared.Severity cast).
+      operationId: RrXpkg
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      - in: query
+        name: sev
+        required: true
+        schema:
+          $ref: '#/components/schemas/Severity'
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - RawModesService
   /regression/contact:
     post:
       operationId: RegressionServiceEchoContact

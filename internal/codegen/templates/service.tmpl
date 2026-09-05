@@ -4,6 +4,9 @@ package {{.Package}}
 
 import (
 	"context"
+{{- if .Sig.NeedsHTTP}}
+	"net/http"
+{{- end}}
 {{- if .NeedsTypes}}
 
 	types "{{.TypesImport}}"
@@ -16,19 +19,34 @@ import (
 	"{{.SvccontextImport}}"
 )
 
+{{- if .IsPassthrough}}
+
+// {{.ServiceName}} carries the per-request state for the
+// {{.Method}} passthrough endpoint of {{.Service}}. The embedded
+// log.Logger is pre-bound to the request context so logging
+// surfaces trace_id / span_id / request_id.
+{{- else}}
+
 // {{.ServiceName}} carries the per-request state for the
 // {{.Method}} endpoint of {{.Service}}. The embedded log.Logger is
 // pre-bound to the request context (trace_id / span_id / request_id),
 // so handlers can call l.Info(...) / l.Error(...) directly.
+{{- end}}
 type {{.ServiceName}} struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
+{{- if .IsPassthrough}}
+
+// New{{.ServiceName}} constructs a fresh service instance bound to ctx.
+{{- else}}
+
 // New{{.ServiceName}} constructs a fresh service instance bound to ctx.
 // The Logger is pulled from log.Default() (set by Server.SetLogger)
 // and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+{{- end}}
 func New{{.ServiceName}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *{{.ServiceName}} {
 	return &{{.ServiceName}}{
 		Logger: log.Default().WithContext(ctx),
@@ -40,11 +58,45 @@ func New{{.ServiceName}}(ctx context.Context, svcCtx *svccontext.ServiceContext)
 {{- range .Doc}}
 // {{.}}
 {{- end}}
+{{- if .IsPassthrough}}
+// {{.Method}} is the passthrough service entry point. The
+// framework hands you the raw http.ResponseWriter and *http.Request
+// - read path parameters via r.PathValue, write headers/body to w
+// directly, and return any error to surface it through the
+// framework's error writer.
+{{- if or .HasRequest .HasResponse}}
+//
+// The request/response blocks are a docs-only contract (OpenAPI and
+// the generated types):
+{{- if .HasRequest}}
+//   - decode the request into {{.RequestContract}} yourself
+{{- end}}
+{{- if .HasResponse}}
+//   - write a body matching {{.ResponseContract}}
+{{- end}}
+{{- end}}
+{{- else if .RawResponse}}
+// {{.Method}} is the raw-response service entry point. The framework
+// has already bound and validated the request; write status, headers
+// and body to w directly{{if .HasResponse}} (the response is documented as
+// {{.ResponseContract}} - keep the body to that shape){{end}}, and return any
+// error to surface it through the framework's error writer.
+{{- else if .RawRequest}}
+// {{.Method}} is the raw-request service entry point. The framework
+// hands you the *http.Request unread - decode the body and read path /
+// query values yourself{{if .HasRequest}} (the request is documented as
+// {{.RequestContract}}; its generated Validate() is there to use){{end}}.{{if .Sig.HasResult}} Return the
+// response value and the framework encodes it as JSON.{{end}}
+{{- else}}
 // {{.Method}} is the service entry point. Replace the
 // TODO with the real implementation.
-func (l *{{.ServiceName}}) {{.Method}}({{if .HasRequest}}req *{{.RequestPkgAlias}}.{{.RequestType}}{{end}}) ({{if .HasResponse}}*{{.ResponsePkgAlias}}.{{.ResponseType}}, {{end}}error) {
+{{- end}}
+func (l *{{.ServiceName}}) {{.Method}}({{.Sig.Params}}) {{.Sig.Results}} {
 	// TODO: implement
-{{- if .HasResponse}}
+{{- if .RawResponse}}
+	http.Error(w, "not implemented", http.StatusNotImplemented)
+	return nil
+{{- else if .Sig.HasResult}}
 	return nil, nil
 {{- else}}
 	return nil

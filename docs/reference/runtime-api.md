@@ -131,6 +131,35 @@ server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, e
 
 The handler calls `server.WriteValidationError(w, r, err)` on a validation failure; it dispatches to your installed hook (or a sensible default). The hook is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body.
 
+## Raw responses
+
+Helpers for `@rawResponse` / `@passthrough` handlers that already hold the bytes they want on the wire:
+
+| Function | Description |
+|---|---|
+| `WriteBytes(w, status, contentType, body) error` | Sets `Content-Type` (when non-empty) and `Content-Length`, writes the status, writes `body`. |
+| `WritePrecompressed(w, r, status, contentType, coding, body, decode) error` | Serves a body stored already compressed (`"gzip"`, `"zstd"`, `"br"`, ...). When the client accepts `coding` the bytes go out verbatim with `Content-Encoding`; otherwise `decode` produces the identity form first. Always adds `Vary: Accept-Encoding`. A nil `decode` with a client that does not accept the coding returns `ErrNoDecoder` before anything is written. |
+| `AcceptsEncoding(r, coding) bool` | Whether the request's `Accept-Encoding` lists `coding` with a non-zero quality (`gzip;q=0` is a refusal). Shares its parser with the `Compress` middleware. |
+
+```go
+func (l *SnapshotService) Snapshot(w http.ResponseWriter, r *http.Request, req *types.SnapshotReq) error {
+	region := "global"
+	if req.Region != nil {
+		region = *req.Region
+	}
+	blob, ok := snapshotCache[region] // gzip bytes, exactly as stored
+	if !ok {
+		http.NotFound(w, r)
+		return nil
+	}
+	return server.WritePrecompressed(w, r, http.StatusOK, "application/json; charset=utf-8", "gzip", blob, gunzip)
+}
+```
+
+The framework pulls in no compression library: you supply `decode`, using the library that filled the cache. `Compress` leaves a response that already carries `Content-Encoding` untouched, so a verbatim body is never re-encoded.
+
+`server.WriteError` and `server.WriteValidationError` are post-commit safe: when a raw handler has already written a status or body and then returns an error, the error is logged with the request's trace context and the wire is left alone rather than splicing an envelope into the body.
+
 ## CORS
 
 ```go

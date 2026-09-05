@@ -919,11 +919,15 @@ func operationBlock(t *testing.T, body, opID string) string {
 	if idx < 0 {
 		t.Fatalf("operation %q not found in:\n%s", opID, body)
 	}
-	// Walk backward to the nearest verb line above the operationId.
+	// Walk backward to the nearest verb line above the operationId. The
+	// verb line's trailing newline is the newline the operationId match
+	// starts at, so the search window must include body[idx] or the
+	// operation's own verb is missed and the block starts one operation
+	// too early.
 	verbs := []string{"\n    get:\n", "\n    post:\n", "\n    put:\n", "\n    patch:\n", "\n    delete:\n"}
 	start := -1
 	for _, v := range verbs {
-		if s := strings.LastIndex(body[:idx], v); s > start {
+		if s := strings.LastIndex(body[:idx+1], v); s > start {
 			start = s
 		}
 	}

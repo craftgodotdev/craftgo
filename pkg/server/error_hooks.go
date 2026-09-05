@@ -40,7 +40,7 @@ func init() {
 // having it vanish, then returns without touching the wire to avoid
 // corrupting the in-flight body.
 func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) {
-	if c, ok := w.(interface{ Committed() bool }); ok && c.Committed() {
+	if responseCommitted(w) {
 		log.Default().WithContext(r.Context()).Error(
 			"validation error after response committed; not rewriting",
 			log.Err(err),
@@ -48,6 +48,27 @@ func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) 
 		return
 	}
 	http.Error(w, err.Error(), http.StatusBadRequest)
+}
+
+// responseCommitted reports whether the response status has already been
+// fixed, so a late error envelope could no longer replace it. The
+// Recovery wrapper (the outermost writer) records the commit and the
+// compression writer records its own buffered commit; handlers usually
+// receive either one wrapped further (access log, tracing), so the check
+// walks the same Unwrap chain net/http's ResponseController follows until
+// a writer answers.
+func responseCommitted(w http.ResponseWriter) bool {
+	for w != nil {
+		if c, ok := w.(interface{ Committed() bool }); ok {
+			return c.Committed()
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return false
+		}
+		w = u.Unwrap()
+	}
+	return false
 }
 
 // SetDefaultValidationFailed installs a process-wide handler invoked
@@ -156,9 +177,22 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 // Header precedence: WriteResponseHeaders writes user-declared fields FIRST,
 // then the framework stamps `Content-Type: application/json; charset=utf-8`
 // LAST, so a `@header("Content-Type")` field is overridden - intentional, since
-// the body that follows is always JSON. Use a passthrough handler for a
+// the body that follows is always JSON. Use a raw-response handler for a
 // different content type.
+//
+// When the response is already committed - a raw-response handler streamed
+// part of a body and then returned an error - the envelope cannot be written:
+// net/http drops the second WriteHeader and the JSON would be spliced into the
+// in-flight body. The error is logged with the request's trace context instead
+// and the wire is left alone.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
+	if responseCommitted(w) {
+		log.Default().WithContext(r.Context()).Error(
+			"service error after response committed; not rewriting",
+			log.Err(err),
+		)
+		return
+	}
 	se, ok := err.(StatusError)
 	if !ok {
 		unknownError.Load().(UnknownErrorHandler)(w, r, err)

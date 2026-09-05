@@ -3,9 +3,11 @@ package stream
 @prefix("/stream")
 @tags(stream)
 service StreamService {
-	@doc("Server-Sent Events firehose.")
+	@doc("Server-Sent Events firehose. The response block is a docs-only contract: every `data:` frame carries one Event.")
 	@passthrough
-	get Events /events {}
+	get Events /events {
+		response Event
+	}
 
 	@doc("Tail logs for a named service.")
 	@passthrough
@@ -15,19 +17,53 @@ service StreamService {
 	@passthrough
 	get Metrics /metrics {}
 
-	@doc("Accept raw bytes (any content-type).")
-	@passthrough
-	post Ingest /ingest {}
+	@doc("Accept raw bytes (any content-type); the framework encodes the typed result.")
+	@rawRequest
+	post Ingest /ingest {
+		response IngestResult
+	}
 
-	@doc("Stream a file download.")
-	@passthrough
-	get Download /download/{file} {}
+	@doc("Stream a file download: the request is bound and validated, logic serves the body with http.ServeContent.")
+	@rawResponse
+	get Download /download/{file} {
+		request  DownloadReq
+	}
 
-	@doc("Plain JSON health check - contrasts with the passthrough endpoints above.")
+	@doc("Serve a snapshot that is cached already gzip-compressed, negotiating Content-Encoding per request.")
+	@rawResponse
+	get Snapshot /snapshot {
+		request  SnapshotReq
+		response Snapshot
+	}
+
+	@doc("Plain JSON health check - contrasts with the raw endpoints above.")
 	get Health /health {
 		request  HealthReq
 		response HealthResp
 	}
+}
+
+type Event {
+	kind    string
+	payload string
+}
+
+type IngestResult {
+	bytes int @gte(0)
+}
+
+type DownloadReq {
+	file string @path @pattern("^[a-z0-9._-]+$") @maxLength(64)
+}
+
+type SnapshotReq {
+	region string? @query @length(2, 8)
+}
+
+type Snapshot {
+	region      string
+	generatedAt string
+	items       string[]
 }
 
 type HealthReq {

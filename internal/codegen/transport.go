@@ -38,8 +38,18 @@ type transportData struct {
 	BodyVerb        bool
 	BodyDecode      bool
 	NeedsTypes      bool
-	IsPassthrough   bool
-	IsMultipart     bool
+	// RawRequest / RawResponse report which transport sides logic owns
+	// (see wire.RawSides). BindRequest is HasRequest && !RawRequest: the
+	// handler binds + validates a request struct. WriteResponse is
+	// !RawResponse: the handler encodes the response. Sig carries the
+	// service call's argument list, computed once by buildSignature so
+	// the call site and the stub declaration cannot drift.
+	RawRequest    bool
+	RawResponse   bool
+	BindRequest   bool
+	WriteResponse bool
+	Sig           methodSignature
+	IsMultipart   bool
 	// MultipartMaxMemory is the byte budget passed to
 	// r.ParseMultipartForm in multipart handlers. Defaults to 32 MiB
 	// (the stdlib historical pick) unless the method's `@maxBodySize`
@@ -205,9 +215,7 @@ func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Serv
 // are produced when only one endpoint changes.
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
 	groups := methodGroups(svc)
-	jsonTpl := tmpl("transport.tmpl")
-	passthroughTpl := tmpl("transport-passthrough.tmpl")
-	multipartTpl := tmpl("transport-multipart.tmpl")
+	t := tmpl("transport.tmpl")
 	for _, m := range svc.Methods {
 		group := groups[m.Name]
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
@@ -218,13 +226,6 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 		data, err := buildTransportData(svcName, m, imps, pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
-		}
-		t := jsonTpl
-		switch {
-		case data.IsPassthrough:
-			t = passthroughTpl
-		case data.IsMultipart:
-			t = multipartTpl
 		}
 		formatted, err := renderGo(t, data)
 		if err != nil {
@@ -250,8 +251,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // (`shared.ID @path`) also flows through the resolver.
 func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *ProjectResolver) (transportData, error) {
 	crossPkg := r.crossPkgMap()
-	hasReq := m.Request != nil
-	hasResp := m.Response != nil && m.Response.Type != nil
+	mode := modeOf(m)
 	// NeedsTypes triggers the `types` import in the template. The
 	// handler body only references `types.X` for request decoding -
 	// responses pass through to the encoder unchanged - so the gate is
@@ -264,15 +264,20 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		Method:           m.Name,
 		Verb:             httpVerb(m.Verb),
 		Doc:              m.Doc,
-		HasRequest:       hasReq,
-		HasResponse:      hasResp,
+		HasRequest:       mode.HasRequest,
+		HasResponse:      mode.HasResponse,
 		BodyVerb:         wire.IsBodyVerb(m.Verb),
-		NeedsTypes:       hasReq,
+		RawRequest:       mode.RawRequest,
+		RawResponse:      mode.RawResponse,
+		BindRequest:      mode.BindRequest(),
+		WriteResponse:    mode.WriteResponse(),
+		NeedsTypes:       mode.BindRequest(),
 		ServiceImport:    imps.Service,
 		TypesImport:      imps.Types,
 		SvccontextImport: imps.Svccontext,
 	}
-	if hasReq {
+	var reqRef, respRef string
+	if d.BindRequest {
 		// Resolve the Go-side reference to the request type. Local
 		// types render as `types.<X>` (the canonical alias the
 		// template imports); cross-package types render as
@@ -280,6 +285,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		alias, bare, extra := resolveTypeRef(m.Request, crossPkg)
 		d.RequestPkgAlias = alias
 		d.RequestType = bare
+		reqRef = alias + "." + bare
 		extraSeen := map[string]bool{}
 		addExtra := func(e extraImport) {
 			if e.Path == "" || extraSeen[e.Path] {
@@ -335,21 +341,6 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		// JSON body decode is only needed when at least one field is
 		// body-bound (default for body verbs unless explicitly tagged).
 		d.BodyDecode = wire.IsBodyVerb(m.Verb) && hasUnboundField(m, pkg, r)
-	}
-	if hasPassthroughDecorator(m.Decorators) {
-		d.IsPassthrough = true
-		// Passthrough endpoints reach into r/w directly, so the
-		// handler skips request decoding entirely.
-		d.NeedsTypes = false
-		d.HasRequest = false
-		d.HasResponse = false
-		d.BodyDecode = false
-		d.PathParams = nil
-		d.QueryParams = nil
-		d.HeaderParams = nil
-		d.CookieParams = nil
-	}
-	if hasReq && !d.IsPassthrough {
 		forms, files, ferr := collectFormBindings(m, pkg, d.RequestPkgAlias, r)
 		if ferr != nil {
 			return d, ferr
@@ -358,6 +349,9 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.IsMultipart = true
 			d.FormStrings = forms
 			d.FormFiles = files
+			// The multipart parser owns the body; the JSON decoder must
+			// never run on it.
+			d.BodyDecode = false
 			// Match the stdlib historical 32 MiB floor unless the
 			// method's `@maxBodySize` declares a higher cap. The
 			// MaxBytesReader at the route layer still enforces the
@@ -369,20 +363,29 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 				d.MultipartMaxMemory = n
 			}
 		}
+		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias, r)
 	}
-	if hasResp {
+	// Response-side bindings only matter when the handler writes the
+	// response; on a raw response side the response block is docs-only
+	// and logic writes its own headers.
+	if d.WriteResponse && mode.HasResponse {
 		var respStrconv bool
 		d.RespHeaders, d.RespCookies, respStrconv = collectResponseBindings(m, pkg, r)
 		if respStrconv {
 			d.NeedsStrconv = true
 		}
 	}
-	if hasReq {
-		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias, r)
+	if mode.StubReturnsResp() {
+		// The handler never names the response type (`resp` is inferred),
+		// so no import is added for it - the reference only feeds the
+		// signature shared with the stub.
+		alias, bare, _ := resolveTypeRef(m.Response.Type, crossPkg)
+		respRef = alias + "." + bare
 	}
+	d.Sig = buildSignature(mode, reqRef, respRef)
 	// Resolve the success status once so the handler's WriteHeader and
-	// the OpenAPI response key stay in lockstep. Passthrough handlers
-	// write their own status, so the field is ignored by that template.
+	// the OpenAPI response key stay in lockstep. A raw-response handler
+	// writes its own status, so the field is unused in that mode.
 	d.SuccessStatus = methodSuccessStatus(m)
 	d.SuccessStatusExpr = statusConstExpr(d.SuccessStatus)
 	return d, nil

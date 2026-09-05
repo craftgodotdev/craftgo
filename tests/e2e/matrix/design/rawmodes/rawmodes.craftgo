@@ -1,0 +1,133 @@
+// Package rawmodes pins the raw transport modes: `@rawResponse` (the
+// framework binds + validates the request, logic writes the response),
+// `@rawRequest` (logic reads the *http.Request, the framework encodes the
+// response) and `@passthrough` (both sides raw). A `request` / `response`
+// block on a raw side is a docs-only contract: it shapes OpenAPI and the
+// generated types but the transport never touches it. Every cell of the
+// request × response × raw-side matrix has a method here, and the stubs
+// under internal/service/raw_modes_service are hand-implemented so the
+// runtime tests can prove which side the framework actually owns.
+package rawmodes
+
+type PtReq {
+	id      string @path @length(1, 32)
+	verbose bool?  @query
+}
+
+type PtResp {
+	echo string
+}
+
+type RrReq {
+	id   string @path @length(1, 32)
+	name string @minLength(2)
+}
+
+// RrResp is the docs-only contract of RrReq's response: the @header field
+// is advertised in OpenAPI but nothing writes it - the raw handler does.
+type RrResp {
+	id  string
+	loc string @header("Location")
+}
+
+type RrUploadReq {
+	note string @minLength(1)
+	doc  file
+}
+
+type RqResp {
+	accepted int
+}
+
+type RqItem {
+	id string
+}
+
+// RqFileReq documents a multipart contract on a raw-request method: the
+// spec advertises multipart/form-data, the transport parses nothing.
+type RqFileReq {
+	note string
+	doc  file
+}
+
+@prefix("/raw")
+@middlewares(shared.Timing)
+service RawModesService {
+	@doc("Bare passthrough: no contract, `*/*` in OpenAPI, `(w, r) error` stub.")
+	@passthrough
+	get PtPlain /pt {}
+
+	@doc("Passthrough with a docs-only contract: typed OpenAPI, still `(w, r) error`.")
+	@passthrough
+	get PtBlocks /pt/items/{id} {
+		request  PtReq
+		response PtResp
+	}
+
+	@doc("@timeout applies to a passthrough route: the stub sees a context deadline.")
+	@passthrough
+	@timeout(1s)
+	get PtTimeout /pt/timeout {}
+
+	@doc("Raw response, no request: `(w, r) error`, serves a pre-gzipped body.")
+	@rawResponse
+	get RrNoReq /rr {}
+
+	@doc("Raw response over a bound + validated request; @status(201) and the Location header are docs-only.")
+	@rawResponse
+	@status(201)
+	post RrReq /rr/items/{id} {
+		request  RrReq
+		response RrResp
+	}
+
+	@doc("Raw response over a multipart request: the form is parsed and validated before logic runs.")
+	@rawResponse
+	post RrMultipart /rr/upload {
+		request  RrUploadReq
+	}
+
+	@doc("Raw response over a cross-package request whose field reaches a third package (shared.Severity cast).")
+	@rawResponse
+	get RrXpkg /rr/xpkg/{id} {
+		request  xshared.XThirdReq
+	}
+
+	@doc("Raw response whose stub writes part of a body and then returns an error: the committed body must stay intact.")
+	@rawResponse
+	get RrLate /rr/late {}
+
+	@doc("Raw response on a method that drops the inherited middleware chain.")
+	@ignoreMiddleware
+	@rawResponse
+	get RrNoMw /rr/nomw {}
+
+	@doc("Raw request, no response: `(r) error`, 204 on success.")
+	@rawRequest
+	get RqNoResp /rq/items/{id} {}
+
+	@doc("Raw request with a typed response: the body is handed over unread, the response is JSON-encoded with the verb default 201.")
+	@rawRequest
+	post RqResp /rq {
+		response RqResp
+	}
+
+	@doc("Raw request returning a cross-package generic instantiated with a local type.")
+	@rawRequest
+	get RqPage /rq/page {
+		response scalars.Page<RqItem>
+	}
+
+	@doc("Raw request whose docs-only contract has a file field: OpenAPI says multipart, the transport parses nothing.")
+	@rawRequest
+	post RqDocsReq /rq/docs {
+		request  RqFileReq
+		response RqResp
+	}
+
+	@doc("Raw request under @timeout + @maxBodySize: the 413 pre-check and the context deadline both apply.")
+	@rawRequest
+	@timeout(2s)
+	@maxBodySize(1KB)
+	post RqLimits /rq/limits {}
+}

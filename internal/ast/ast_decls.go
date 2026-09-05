@@ -271,9 +271,9 @@ func (*Method) serviceMember()   { astMarker() }
 func (m *Method) MemberPos() Pos { return m.Pos }
 
 // MethodResponse describes the response side of a method. The framework
-// always JSON-encodes the named type; endpoints that want to bypass the
-// framework entirely use the `@passthrough` decorator (which forbids a
-// response block) instead.
+// JSON-encodes the named type unless the method hands the response side
+// to logic (`@rawResponse` / `@passthrough`); on a raw side the block is
+// a docs-only contract carried into OpenAPI and the generated types.
 type MethodResponse struct {
 	Pos  Pos
 	Type *NamedTypeRef

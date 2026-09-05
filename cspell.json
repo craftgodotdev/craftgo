@@ -67,6 +67,9 @@
     "GORM",
     "SQLX",
     "redis",
-    "datetime"
+    "datetime",
+    "zstd",
+    "Precompressed",
+    "precompressed"
   ]
 }

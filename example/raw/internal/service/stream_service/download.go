@@ -3,17 +3,20 @@
 package stream
 
 import (
+	"bytes"
 	"context"
 	"net/http"
+	"time"
+
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
 
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// DownloadService carries the per-request state for the
-// Download passthrough endpoint of StreamService. The embedded
-// log.Logger is pre-bound to the request context so logging
-// surfaces trace_id / span_id / request_id.
+// DownloadService carries the per-request state for the Download endpoint of
+// StreamService. The embedded log.Logger is pre-bound to the request
+// context so logging surfaces trace_id / span_id / request_id.
 type DownloadService struct {
 	log.Logger
 	ctx    context.Context
@@ -29,13 +32,28 @@ func NewDownloadService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// Download is the passthrough service entry point. The
-// framework hands you the raw http.ResponseWriter and *http.Request
-// - read path parameters via r.PathValue, write headers/body to w
-// directly, and return any error to surface it through the
-// framework's error writer.
-func (l *DownloadService) Download(w http.ResponseWriter, r *http.Request) error {
-	// TODO: implement
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+// demoFiles stands in for object storage. Keys are file names that satisfy
+// DownloadReq's @pattern, so a lookup miss is a plain 404, never a path
+// traversal - the framework validated req before this method ran.
+var demoFiles = map[string][]byte{
+	"hello.txt":   []byte("hello, raw world\n"),
+	"notes.md":    []byte("# notes\n\n- raw response\n- typed request\n"),
+	"payload.bin": bytes.Repeat([]byte{0xAB}, 4096),
+}
+
+var demoModTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// Download is a raw-response entry point: the framework bound and
+// validated req, logic owns the wire. http.ServeContent handles Range,
+// If-Modified-Since and HEAD, which is why the *http.Request is passed in.
+func (l *DownloadService) Download(w http.ResponseWriter, r *http.Request, req *types.DownloadReq) error {
+	body, ok := demoFiles[req.File]
+	if !ok {
+		http.NotFound(w, r)
+		return nil
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+req.File+`"`)
+	http.ServeContent(w, r, req.File, demoModTime, bytes.NewReader(body))
 	return nil
 }

@@ -74,7 +74,13 @@ One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 4. Dispatches to your `service` logic,
 5. Encodes the response (and writes any `@status`, response headers, or cookies).
 
-`@passthrough` methods skip 1–5 and hand you the raw `http.ResponseWriter` + `*http.Request`.
+Raw sides change who runs which steps. A `request` / `response` block on a raw side still drives the OpenAPI document and the generated types; the handler just never touches it:
+
+| Mode | Steps the handler runs | Stub signature |
+|---|---|---|
+| `@rawResponse` | 1–4, then hands `w` to logic | `(w http.ResponseWriter, r *http.Request, req *types.Req) error` |
+| `@rawRequest` | 4–5 only, hands `r` to logic unread | `(r *http.Request) (*types.Resp, error)` |
+| `@passthrough` | 4 only | `(w http.ResponseWriter, r *http.Request) error` |
 
 ### `service/<svc>/<method>.go` (gen-once)
 

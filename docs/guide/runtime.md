@@ -113,6 +113,46 @@ This is exactly what you would write by hand: one `http.HandlerFunc`, stdlib sta
 
 No framework runtime in the hot path.
 
+### Raw sides
+
+`@rawResponse` keeps the bind + validate steps and hands the writer to logic; `@rawRequest` skips them and hands the request over unread. The generated handlers are just as plain:
+
+```go
+// @rawResponse get Download /download/{file} { request DownloadReq }
+func Download(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        var req types.DownloadReq
+        req.File = r.PathValue("file")
+        if err := req.Validate(); err != nil {
+            server.WriteValidationError(w, r, err)
+            return
+        }
+        l := service.NewDownloadService(r.Context(), svcCtx)
+        if err := l.Download(w, r, &req); err != nil {
+            server.WriteError(w, r, err)
+            return
+        }
+    }
+}
+
+// @rawRequest post Ingest /ingest { response IngestResult }
+func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        l := service.NewIngestService(r.Context(), svcCtx)
+        resp, err := l.Ingest(r)
+        if err != nil {
+            server.WriteError(w, r, err)
+            return
+        }
+        w.Header().Set("Content-Type", "application/json; charset=utf-8")
+        w.WriteHeader(http.StatusCreated)
+        _ = server.JSON().Encode(w, resp)
+    }
+}
+```
+
+`server.WriteBytes`, `server.WritePrecompressed` and `server.AcceptsEncoding` are the helpers a raw-response handler reaches for (see [Runtime API](/reference/runtime-api#raw-responses)); `server.WriteError` never splices an error envelope into a response the handler has already committed.
+
 ## Health endpoints
 
 `Server` mounts `/healthz` (liveness) and `/readyz` (readiness) by default. Add custom checks:

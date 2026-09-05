@@ -1,5 +1,5 @@
 // Method-level combination checks: request body type, body-verb rules,
-// @status(204) bodies, and @passthrough constraints.
+// @status(204) bodies, and raw-mode redundancy.
 package semantic
 
 import (
@@ -109,42 +109,65 @@ func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
 	}
 }
 
-// checkPassthroughBody rejects `request` or `response` blocks on any
-// method tagged `@passthrough`. The decorator hands the raw
-// http.ResponseWriter and *http.Request to logic; declaring a typed
-// shape next to it would mislead readers into expecting framework
-// validation that never runs.
-func (a *analyzer) checkPassthroughBody(svcName string, m *ast.Method) {
-	var passPos lexer.Position
-	hasPassthrough := false
+// checkRawModeRedundancy warns when a method spells a raw side twice.
+// `@passthrough` already hands both sides to logic, so `@rawRequest` /
+// `@rawResponse` next to it add nothing; and `@rawRequest @rawResponse`
+// together is exactly `@passthrough`. Codegen reads the modes through
+// wire.RawSides, so the output is identical either way - the diagnostic
+// is a warning, anchored on the later decorator with the earlier one as
+// related context (the same "second occurrence is the offender" rule
+// the other combination checks follow). Decorators propagated from an
+// `extend service` header sit before the method's own, so a method-level
+// flag that repeats a header-level `@passthrough` is anchored on the
+// method's line.
+func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
+	if m == nil {
+		return
+	}
+	var passthrough, rawReq, rawResp *ast.Decorator
 	for _, d := range m.Decorators {
 		if d == nil {
 			continue
 		}
-		if d.Name == "passthrough" {
-			hasPassthrough = true
-			passPos = d.Pos
-			break
+		switch d.Name {
+		case wire.DecoratorPassthrough:
+			for _, flag := range []*ast.Decorator{rawReq, rawResp} {
+				if flag == nil {
+					continue
+				}
+				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
+					"@passthrough on method %s.%s already covers @%s - drop the flag",
+					svcName, m.Name, flag.Name)
+				diag.Related = related(flag.Pos, "@"+flag.Name+" declared here")
+			}
+			if passthrough == nil {
+				passthrough = d
+			}
+		case wire.DecoratorRawRequest, wire.DecoratorRawResponse:
+			side, other := "request", rawResp
+			if d.Name == wire.DecoratorRawResponse {
+				side, other = "response", rawReq
+			}
+			switch {
+			case passthrough != nil:
+				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
+					"@%s is redundant on method %s.%s: @passthrough already makes the %s side raw",
+					d.Name, svcName, m.Name, side)
+				diag.Related = related(passthrough.Pos, "@passthrough declared here")
+			case other != nil:
+				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
+					"@rawRequest together with @rawResponse is exactly @passthrough on method %s.%s - write @passthrough instead",
+					svcName, m.Name)
+				diag.Related = related(other.Pos, "@"+other.Name+" declared here")
+			}
+			if d.Name == wire.DecoratorRawRequest {
+				if rawReq == nil {
+					rawReq = d
+				}
+			} else if rawResp == nil {
+				rawResp = d
+			}
 		}
-	}
-	if !hasPassthrough {
-		return
-	}
-	if m.Request != nil {
-		diag := a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodePassthroughBody,
-			"method %s.%s: @passthrough method must not declare request or response - logic handles wire format directly",
-			svcName, m.Name)
-		diag.Related = related(passPos, "@passthrough declared here")
-	}
-	if m.Response != nil {
-		pos := m.Response.Pos
-		if m.Response.Type != nil {
-			pos = m.Response.Type.Pos
-		}
-		diag := a.diag(pos, pos, lexer.SeverityError, CodePassthroughBody,
-			"method %s.%s: @passthrough method must not declare request or response - logic handles wire format directly",
-			svcName, m.Name)
-		diag.Related = related(passPos, "@passthrough declared here")
 	}
 }
 

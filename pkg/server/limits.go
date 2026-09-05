@@ -22,9 +22,10 @@ type Limits struct {
 	// logic → encode response) by deriving a context.WithTimeout
 	// from the request and handing it to the handler. Handlers that
 	// honour ctx.Done() return early on deadline; handlers that do
-	// not run to completion but the response writer is detached so
-	// late writes are silently dropped. Passthrough endpoints opt
-	// out so streaming bodies stay intact.
+	// not honour it run to completion. Applies to every route,
+	// raw / passthrough handlers included: only the context is
+	// cancelled, so a streaming body is never cut off by the
+	// framework.
 	//
 	// The middleware does NOT goroutine-isolate the handler the way
 	// [http.TimeoutHandler] does. That stdlib helper buffers the

@@ -279,42 +279,22 @@ type T { id string }`))
 	}
 }
 
-// ---------- @passthrough body checks ----------
+// ---------- @passthrough blocks ----------
 
-func TestPassthroughRejectsRequest(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-type Req { name string }
-service S {
-    @passthrough
-    post Tail /t {
-        request Req
-    }
-}`))
-	d := findCode(diags, CodePassthroughBody)
-	if d == nil {
-		t.Fatalf("expected %s for @passthrough + request, got %v", CodePassthroughBody, diags)
-	}
-	if !strings.Contains(d.Msg, "@passthrough method must not declare request or response") {
-		t.Errorf("expected canonical message, got %q", d.Msg)
-	}
-}
-
-func TestPassthroughRejectsResponse(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
+// A request / response block on a @passthrough method is a docs-only
+// contract (OpenAPI + generated types); the analyser accepts it and the
+// usual block rules (path-param coverage, body-verb bindings) still run.
+func TestPassthroughAcceptsBlocks(t *testing.T) {
+	mustClean(t, `package x
+type Req { id string @path  name string }
 type Resp { ok bool }
 service S {
     @passthrough
-    get Tail /t {
+    post Tail /t/{id} {
+        request  Req
         response Resp
     }
-}`))
-	d := findCode(diags, CodePassthroughBody)
-	if d == nil {
-		t.Fatalf("expected %s for @passthrough + response, got %v", CodePassthroughBody, diags)
-	}
-	if len(d.Related) != 1 {
-		t.Errorf("expected related to point at @passthrough decorator, got %+v", d.Related)
-	}
+}`)
 }
 
 func TestPassthroughCleanShape(t *testing.T) {
