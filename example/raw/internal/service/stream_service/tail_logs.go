@@ -4,16 +4,16 @@ package stream
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// TailLogsService carries the per-request state for the
-// TailLogs passthrough endpoint of StreamService. The embedded
-// log.Logger is pre-bound to the request context so logging
-// surfaces trace_id / span_id / request_id.
+// TailLogsService carries the per-request state for the TailLogs endpoint of
+// StreamService. The embedded log.Logger is pre-bound to the request
+// context so logging surfaces trace_id / span_id / request_id.
 type TailLogsService struct {
 	log.Logger
 	ctx    context.Context
@@ -29,13 +29,16 @@ func NewTailLogsService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// TailLogs is the passthrough service entry point. The
-// framework hands you the raw http.ResponseWriter and *http.Request
-// - read path parameters via r.PathValue, write headers/body to w
-// directly, and return any error to surface it through the
-// framework's error writer.
+// TailLogs is a bare passthrough: with no request block the path value is
+// read straight off the request.
 func (l *TailLogsService) TailLogs(w http.ResponseWriter, r *http.Request) error {
-	// TODO: implement
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	service := r.PathValue("service")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	for i := 1; i <= 3; i++ {
+		if _, err := fmt.Fprintf(w, "%s: log line %d\n", service, i); err != nil {
+			return nil
+		}
+	}
 	return nil
 }

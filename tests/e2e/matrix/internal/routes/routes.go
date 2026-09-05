@@ -22,6 +22,8 @@ import (
 	ordersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
 	profileserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/profile_service"
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/project_service"
+	rawmodesserviceRawV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw/v1"
+	rawmodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw_modes_service"
 	regressionbatch2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch2"
 	regressionbatch3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch3"
 	regressionbatch4routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch4"
@@ -61,6 +63,8 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	ordersserviceroutes.RegisterRoutes(srv, svcCtx)
 	profileserviceroutes.RegisterRoutes(srv, svcCtx)
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
+	rawmodesserviceroutes.RegisterRoutes(srv, svcCtx)
+	rawmodesserviceRawV1routes.RegisterRoutes(srv, svcCtx)
 	regressionbatch2routes.RegisterRoutes(srv, svcCtx)
 	regressionbatch3routes.RegisterRoutes(srv, svcCtx)
 	regressionbatch4routes.RegisterRoutes(srv, svcCtx)

@@ -548,15 +548,25 @@ var Registry = map[string]Spec{
 	// only decorators with a real effect.
 
 	// ---- Method behavior ----
-	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Bypass framework parsing - logic receives the raw http.ResponseWriter and *http.Request and writes the response directly.", Flag: true},
+	// Raw modes hand one or both transport sides to logic. A `request` /
+	// `response` block on a raw side is a docs-only contract: it shapes
+	// the OpenAPI document and the generated Go types, but the transport
+	// neither binds / validates (raw request) nor encodes (raw response)
+	// it. `@passthrough` is exactly `@rawRequest @rawResponse`; every
+	// layer reads the modes through wire.RawSides.
+	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Hand both transport sides to logic: the entry point receives the raw http.ResponseWriter and *http.Request and writes the response directly. Equivalent to @rawRequest @rawResponse. Optional request/response blocks are a docs-only contract (OpenAPI + generated types).", Flag: true},
+	"rawRequest":  {Name: "rawRequest", Levels: LvlMethod, Doc: "Hand the request side to logic: the entry point receives the raw *http.Request and the framework skips request bind + validate. A request block is a docs-only contract (OpenAPI + generated type). The response stays framework-encoded unless @rawResponse is also set.", Flag: true},
+	"rawResponse": {Name: "rawResponse", Levels: LvlMethod, Doc: "Hand the response side to logic: the entry point receives the http.ResponseWriter and writes status, headers and body itself; the framework skips the response encode. A response block is a docs-only contract (OpenAPI + generated type). The request stays bound + validated unless @rawRequest is also set.", Flag: true},
 
 	// ---- Method limits ----
-	// `@timeout` caps the full handler lifecycle (decode body → user
-	// logic → encode response) via `http.TimeoutHandler`. Independent
+	// `@timeout` derives a context deadline covering the full handler
+	// lifecycle (decode body → user logic → encode response). Handlers
+	// that honour ctx.Done() return early; nothing is cut off on the
+	// wire, so it applies to every mode, raw sides included. Independent
 	// from transport-level deadlines (`http.Server.ReadTimeout` /
 	// `WriteTimeout`) which the user configures on the server itself
 	// when the stdlib defaults are not enough.
-	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time. Returns 503 + cancels context when the deadline elapses.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
+	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time: the request context is cancelled when the deadline elapses (no status is written automatically). Overrides the global handlerTimeout for this route.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
 	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Two enforcement points fire: Content-Length pre-check returns 413 immediately when the declared size exceeds the cap, and MaxBytesReader wraps r.Body so reads past the cap surface as a 400 Read error. Multipart parsers also lift their in-memory budget to this value.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
 }
 

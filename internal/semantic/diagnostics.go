@@ -256,12 +256,6 @@ const (
 	// surfaces every conflicting declaration so the author can
 	// rename or consolidate.
 	CodeMiddlewareCollision = "middleware/collision"
-	// CodePassthroughBody fires when a method tagged `@passthrough`
-	// declares a `request` or `response` block. Passthrough endpoints
-	// hand the raw `http.ResponseWriter` and `*http.Request` to logic;
-	// any framework-side request/response shape would be ignored, so
-	// the analyser rejects the mistake up front.
-	CodePassthroughBody = "passthrough/has-body"
 
 	// CodeQualifiedRef fires for a `pkg.Type` reference. The current
 	// resolver uses folder-merge imports and rejects qualified names.

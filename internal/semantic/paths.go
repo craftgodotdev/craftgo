@@ -222,18 +222,12 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 	// pattern for routes that pass the param straight to a downstream
 	// passthrough; tightening to error would regress those builds.
 	if m.Request == nil {
-		// Passthrough methods receive the raw http.ResponseWriter
-		// and *http.Request, so path params land via `r.PathValue`
-		// at the framework boundary - no struct binding is needed
-		// and the diagnostic would be spurious for them.
-		passthrough := false
-		for _, d := range m.Decorators {
-			if d != nil && d.Name == "passthrough" {
-				passthrough = true
-				break
-			}
-		}
-		if len(pathParams) > 0 && !passthrough {
+		// A raw-request method (`@rawRequest` / `@passthrough`) reads
+		// path values straight off the *http.Request via `r.PathValue`,
+		// so no struct binding is needed and the diagnostic would be
+		// spurious for it.
+		rawReq, _ := wire.RawSides(m.Decorators)
+		if len(pathParams) > 0 && !rawReq {
 			env.emit(m.Pos, CodePathParamMissing,
 				"method %s.%s: path declares %v but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
 				svcName, m.Name, pathParams)

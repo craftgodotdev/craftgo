@@ -12,15 +12,18 @@ import (
 )
 
 // Ingest returns the http.HandlerFunc for the
-// POST Ingest passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// POST Ingest raw-request endpoint. The handler hands the
+// *http.Request to logic unread and encodes the returned response.
 func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewIngestService(r.Context(), svcCtx)
-		if err := l.Ingest(w, r); err != nil {
+		resp, err := l.Ingest(r)
+		if err != nil {
 			server.WriteError(w, r, err)
 			return
 		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusCreated)
+		_ = server.JSON().Encode(w, resp)
 	}
 }

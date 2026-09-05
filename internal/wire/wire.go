@@ -122,3 +122,27 @@ func RequestFieldBinding(f *ast.Field, pathNames map[string]bool, bodyVerb bool)
 		return BindingBody, false
 	}
 }
+
+// Raw-mode decorator names. `@passthrough` hands both transport sides to
+// logic; the two flags hand over one side each. Every layer that needs
+// to know who owns a side reads [RawSides] rather than matching these
+// names itself.
+const (
+	DecoratorPassthrough = "passthrough"
+	DecoratorRawRequest  = "rawRequest"
+	DecoratorRawResponse = "rawResponse"
+)
+
+// RawSides reports which transport sides logic owns for a method with
+// decorators ds. A raw request side skips bind + validate and hands
+// logic the *http.Request; a raw response side skips the response
+// encode and hands logic the http.ResponseWriter. `@passthrough` is
+// exactly `@rawRequest @rawResponse`. A `request` / `response` block on
+// a raw side is a docs-only contract: the OpenAPI document and the
+// generated Go types describe it, the transport never touches it.
+func RawSides(ds []*ast.Decorator) (rawRequest, rawResponse bool) {
+	if ast.HasDecorator(ds, DecoratorPassthrough) {
+		return true, true
+	}
+	return ast.HasDecorator(ds, DecoratorRawRequest), ast.HasDecorator(ds, DecoratorRawResponse)
+}

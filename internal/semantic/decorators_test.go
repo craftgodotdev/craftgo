@@ -158,6 +158,8 @@ func TestRegistrySpecLevels(t *testing.T) {
 		{"summary", LvlMethod},
 		{"requiresOneOf", LvlType},
 		{"passthrough", LvlMethod},
+		{"rawRequest", LvlMethod},
+		{"rawResponse", LvlMethod},
 		{"path", LvlField},
 		{"length", LvlField | LvlScalar},
 		{"format", LvlField | LvlScalar},
@@ -685,21 +687,6 @@ func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
     retryAfter int @gte(1)
     bucket     string?
 }`)
-}
-
-func TestCodeOnPassthroughBody(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-type Req { name string }
-service S {
-	@passthrough
-	post Echo /e {
-		request Req
-	}
-}`))
-	d := findCode(diags, CodePassthroughBody)
-	if d == nil || len(d.Related) != 1 {
-		t.Fatalf("want passthrough/has-body with related; got %v", diags)
-	}
 }
 
 func TestCodeOnPackageMismatch(t *testing.T) {

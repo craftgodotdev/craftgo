@@ -1,4 +1,4 @@
-// Cross-decorator combination rules (defaults, bindings, single-binding, passthrough body) + ref walking helpers.
+// Cross-decorator combination rules (defaults, bindings, single-binding, raw-mode redundancy) + ref walking helpers.
 package semantic
 
 import (
@@ -76,9 +76,9 @@ func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
 //   - At most one of `@path / @query / @header / @cookie / @body / @form`
 //     may appear on a single field; multiple non-body bindings would
 //     compete for the same value at runtime.
-//   - `@passthrough` methods may not declare `request` or `response` -
-//     logic handles the wire format directly, so any framework-managed
-//     shape would be silently ignored.
+//   - `@passthrough` / `@rawRequest` / `@rawResponse` combine freely with
+//     `request` / `response` blocks (a block on a raw side is a docs-only
+//     contract); spelling a raw side twice is redundant and warns.
 //   - `@default` on a non-optional field surfaces a warning - the
 //     formatter auto-adds `?` on save so the OpenAPI required[] no
 //     longer contradicts the default's "fires when absent" intent.
@@ -128,12 +128,11 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 
 // checkMethodCombinations enforces method-level rules:
 //
-//   - `@passthrough` methods must not declare a `request` or `response`
-//     block - logic handles the wire format directly, so any framework-
-//     managed shape would be silently ignored.
+//   - `@passthrough` next to `@rawRequest` / `@rawResponse`, or both
+//     flags together, is redundant - warning on the later decorator.
 func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) {
 	svcName := svc.Name
-	a.checkPassthroughBody(svcName, m)
+	a.checkRawModeRedundancy(svcName, m)
 	a.checkBodyBindingVerb(svcName, m)
 	a.checkDuplicatePathVars(svc, m)
 	a.checkAutoPathField(m)

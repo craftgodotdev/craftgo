@@ -6,14 +6,15 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// MetricsService carries the per-request state for the
-// Metrics passthrough endpoint of StreamService. The embedded
-// log.Logger is pre-bound to the request context so logging
-// surfaces trace_id / span_id / request_id.
+// MetricsService carries the per-request state for the Metrics endpoint of
+// StreamService. The embedded log.Logger is pre-bound to the request
+// context so logging surfaces trace_id / span_id / request_id.
 type MetricsService struct {
 	log.Logger
 	ctx    context.Context
@@ -29,13 +30,8 @@ func NewMetricsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// Metrics is the passthrough service entry point. The
-// framework hands you the raw http.ResponseWriter and *http.Request
-// - read path parameters via r.PathValue, write headers/body to w
-// directly, and return any error to surface it through the
-// framework's error writer.
+// Metrics is a bare passthrough serving the Prometheus text format.
 func (l *MetricsService) Metrics(w http.ResponseWriter, r *http.Request) error {
-	// TODO: implement
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-	return nil
+	const body = "# HELP demo_up 1 while the demo is serving.\n# TYPE demo_up gauge\ndemo_up 1\n"
+	return server.WriteBytes(w, http.StatusOK, "text/plain; version=0.0.4; charset=utf-8", []byte(body))
 }

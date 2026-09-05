@@ -4,6 +4,7 @@ package stream
 
 import (
 	"context"
+	"time"
 
 	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
 
@@ -11,10 +12,11 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// HealthService carries the per-request state for the
-// Health endpoint of StreamService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id / request_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+var started = time.Now()
+
+// HealthService carries the per-request state for the Health endpoint of
+// StreamService. The embedded log.Logger is pre-bound to the request
+// context so logging surfaces trace_id / span_id / request_id.
 type HealthService struct {
 	log.Logger
 	ctx    context.Context
@@ -22,8 +24,6 @@ type HealthService struct {
 }
 
 // NewHealthService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
 func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *HealthService {
 	return &HealthService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,9 +32,8 @@ func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *H
 	}
 }
 
-// Health is the service entry point. Replace the
-// TODO with the real implementation.
+// Health is the plain typed entry point: the framework binds, validates,
+// and JSON-encodes both sides.
 func (l *HealthService) Health(req *types.HealthReq) (*types.HealthResp, error) {
-	// TODO: implement
-	return nil, nil
+	return &types.HealthResp{Status: "ok", UptimeMs: int(time.Since(started).Milliseconds())}, nil
 }

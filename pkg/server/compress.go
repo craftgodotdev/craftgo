@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"io"
+	"iter"
 	"net/http"
 	"strconv"
 	"strings"
@@ -89,33 +90,71 @@ func Compress(opts ...CompressOptions) Middleware {
 	}
 }
 
-// negotiateEncoding returns "gzip", "deflate", or "" based on what the
-// client advertises. The first supported token with a non-zero quality wins; a
-// token carrying `;q=0` is an explicit refusal of that coding (RFC 7231
-// §5.3.1) and is skipped, so a client sending `gzip;q=0` receives an
-// uncompressed response.
-func negotiateEncoding(accept string) string {
-	if accept == "" {
-		return ""
+// acceptedCodings yields the content-codings an Accept-Encoding value
+// accepts: lower-cased, in header order, with every token whose quality
+// is pinned to zero skipped - `gzip;q=0` is an explicit refusal of that
+// coding (RFC 7231 §5.3.1). A bare `*` is yielded verbatim and carries
+// no wildcard meaning here; Compress never treated it as one, and
+// AcceptsEncoding keeps that parity. One parser feeds both so the
+// middleware and a raw handler cannot disagree about what a client
+// accepts.
+func acceptedCodings(accept string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if accept == "" {
+			return
+		}
+		for part := range strings.SplitSeq(accept, ",") {
+			token := strings.TrimSpace(part)
+			params := ""
+			if i := strings.IndexByte(token, ';'); i >= 0 {
+				params = token[i+1:]
+				token = token[:i]
+			}
+			if qualityIsZero(params) {
+				continue
+			}
+			if !yield(strings.ToLower(strings.TrimSpace(token))) {
+				return
+			}
+		}
 	}
-	for part := range strings.SplitSeq(accept, ",") {
-		token := strings.TrimSpace(part)
-		params := ""
-		if i := strings.IndexByte(token, ';'); i >= 0 {
-			params = token[i+1:]
-			token = token[:i]
-		}
-		if qualityIsZero(params) {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(token)) {
-		case "gzip":
-			return "gzip"
-		case "deflate":
-			return "deflate"
+}
+
+// negotiateEncoding returns "gzip", "deflate", or "" based on what the
+// client advertises. The first supported token with a non-zero quality
+// wins, so a client sending `gzip;q=0` receives an uncompressed response.
+func negotiateEncoding(accept string) string {
+	for coding := range acceptedCodings(accept) {
+		switch coding {
+		case "gzip", "deflate":
+			return coding
 		}
 	}
 	return ""
+}
+
+// AcceptsEncoding reports whether the client accepts the content-coding
+// (`"zstd"`, `"gzip"`, `"br"`, ...): the token appears in the request's
+// Accept-Encoding with a non-zero quality. Case-insensitive. Raw-response
+// handlers that hold a body stored already compressed use it to decide
+// whether the bytes can go out verbatim; see WritePrecompressed for the
+// packaged form.
+func AcceptsEncoding(r *http.Request, coding string) bool {
+	return acceptsCoding(r.Header.Get("Accept-Encoding"), coding)
+}
+
+// acceptsCoding is the header-value form of AcceptsEncoding.
+func acceptsCoding(accept, coding string) bool {
+	coding = strings.ToLower(strings.TrimSpace(coding))
+	if coding == "" {
+		return false
+	}
+	for c := range acceptedCodings(accept) {
+		if c == coding {
+			return true
+		}
+	}
+	return false
 }
 
 // qualityIsZero reports whether an Accept-Encoding parameter list pins the
@@ -180,6 +219,15 @@ func (cw *compressWriter) WriteHeader(code int) {
 // the correct behaviour. Without Unwrap the upgrade fails with "feature not
 // supported" when Compress is in the chain.
 func (cw *compressWriter) Unwrap() http.ResponseWriter { return cw.ResponseWriter }
+
+// Committed reports whether the handler has already fixed the status:
+// WriteHeader was called, or Write implied it. The writer may still be
+// holding the head of the body below the size threshold - nothing has
+// reached the outer writer yet - but a second WriteHeader is ignored and
+// further writes append to that body, so an error envelope can no
+// longer replace the response. WriteError / WriteValidationError read
+// this through responseCommitted before deciding to write.
+func (cw *compressWriter) Committed() bool { return cw.headerSet }
 
 // Write accumulates bytes until the threshold is crossed, then commits
 // to compressed encoding. Once committed, every subsequent Write goes

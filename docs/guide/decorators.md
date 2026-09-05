@@ -703,25 +703,107 @@ hides the JSON-only constraint from authors. The decorator surface
 stays small and honest: the transport pipeline is JSON in, JSON out,
 and the codec is swappable wholesale via `server.SetGlobalJSONCodec`
 when a project wants sonic / jsoniter in place of `encoding/json`.
+When one side needs another wire format, hand that side to logic with
+`@rawRequest` / `@rawResponse` below - logic then owns the bytes, and
+the block on that side stays the documented contract.
 
-### `@passthrough`
+### Raw sides - `@rawRequest` / `@rawResponse` / `@passthrough`
 
-Bypass framework parsing. The logic function receives raw `http.ResponseWriter` and `*http.Request` and writes the response directly. No JSON decode, no validate, no encode.
+Every method has two transport sides. By default the framework owns both: it binds and validates the request, and JSON-encodes the response. The raw-mode flags hand one side (or both) to your logic while the `request` / `response` blocks stay the **documented contract** - they still shape the OpenAPI document and the generated Go types, but the transport never touches a block on a raw side.
+
+| Decorator | Request side | Response side | Service stub signature |
+|---|---|---|---|
+| *(none)* | bound + validated | JSON-encoded | `(req *types.Req) (*types.Resp, error)` |
+| `@rawResponse` | bound + validated | **logic writes `w`** | `(w http.ResponseWriter, r *http.Request, req *types.Req) error` |
+| `@rawRequest` | **logic reads `r`** | JSON-encoded | `(r *http.Request) (*types.Resp, error)` |
+| `@passthrough` | **logic reads `r`** | **logic writes `w`** | `(w http.ResponseWriter, r *http.Request) error` |
+
+Drop the `req` parameter or the `*types.Resp` result when the method declares no block on that side. `@passthrough` is exactly `@rawRequest @rawResponse`; spelling a raw side twice (`@passthrough` next to a flag, or both flags together) is accepted with a `decorator/redundant` warning and generates identical code.
 
 | Sites | method |
 | -------- | -------- |
-| Args  | `()` |
+| Args  | none (flag form) |
 
-Useful for streaming, server-sent events, or endpoints that need full control over the wire format.
+#### `@rawResponse` - typed request, raw response
+
+The headline use: a body that already exists as bytes (a cache entry stored gzip / zstd compressed, a file, a stream) goes to the client without an encode step, while the client-facing contract stays typed.
+
+```craftgo
+@rawResponse
+get Snapshot /snapshot {
+	request  SnapshotReq
+	response Snapshot
+}
+```
+
+The generated handler binds and validates `SnapshotReq` exactly as for a typed method, then hands the writer over. The stub you implement:
+
+```go
+func (l *SnapshotService) Snapshot(w http.ResponseWriter, r *http.Request, req *types.SnapshotReq) error {
+	region := "global"
+	if req.Region != nil {
+		region = *req.Region
+	}
+	blob, ok := snapshotCache[region] // stored already gzip-compressed
+	if !ok {
+		http.NotFound(w, r)
+		return nil
+	}
+	return server.WritePrecompressed(w, r, http.StatusOK, "application/json; charset=utf-8", "gzip", blob, gunzip)
+}
+```
+
+`server.WritePrecompressed` negotiates against `Accept-Encoding`: a client that accepts the stored coding receives the bytes verbatim with `Content-Encoding` set, any other client receives the decoded form (see [Runtime API](/reference/runtime-api#raw-responses)). The OpenAPI operation still documents a typed body:
+
+```yaml
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotRespBody'
+          description: OK
+```
+
+On a raw response side `@status(N)` and the response type's `@header` / `@cookie` fields are documentation only - logic writes the real status and headers. Returning an error still goes through `server.WriteError`, unless the response was already committed (then the error is logged and the wire is left alone).
+
+#### `@rawRequest` - raw request, typed response
+
+Logic receives the `*http.Request` unread - no body decode, no wire binding, no `Validate()` - and returns the typed response the framework encodes:
+
+```craftgo
+@rawRequest
+post Ingest /ingest {
+	response IngestResult
+}
+```
+
+```go
+func (l *IngestService) Ingest(r *http.Request) (*types.IngestResult, error) {
+	n, err := io.Copy(io.Discard, r.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &types.IngestResult{Bytes: int(n)}, nil
+}
+```
+
+A `request` block on a raw request side documents the contract (JSON body, `multipart/form-data` when it has a `file` field, path / query parameters) and generates the type - decode into it and call its `Validate()` yourself when that helps. The verb-aware status default (201 for a POST with a body) still applies, because the framework writes the response. A route with `{param}` segments and no request block skips the `path/param-missing` warning: read the value with `r.PathValue`.
+
+#### `@passthrough` - both sides raw
 
 ```craftgo
 @passthrough
-get StreamLogs /logs/stream { ... }
+get Events /events {
+	response Event
+}
 ```
+
+Logic gets `(w, r)` and owns the whole wire; the optional blocks are the documented contract (here: each SSE `data:` frame carries one `Event`). Without blocks the operation is documented as `*/*` with bare `string` path parameters. `@timeout` applies to raw and passthrough routes like any other route: it only cancels the request context, so a streaming loop that selects on `ctx.Done()` stops cleanly and nothing is cut off on the wire.
 
 ### `@timeout(duration)`
 
-Cap the handler's execution time. **Overrides** the global `server.handlerTimeout` config — the per-method value is used as-is (it may be shorter **or** longer than the global default); routes without `@timeout` inherit the global default. When the deadline elapses the framework cancels the request context, so a handler that checks `ctx.Done()` can return early. No status is written automatically for the per-method timeout (unlike the blanket `server.Timeout()` middleware, which wraps `http.TimeoutHandler` and returns 503).
+Cap the handler's execution time. **Overrides** the global `server.handlerTimeout` config — the per-method value is used as-is (it may be shorter **or** longer than the global default); routes without `@timeout` inherit the global default. When the deadline elapses the framework cancels the request context, so a handler that checks `ctx.Done()` can return early. No status is written automatically for the per-method timeout (unlike the blanket `server.Timeout()` middleware, which wraps `http.TimeoutHandler` and returns 503). The deadline applies to `@rawResponse` / `@passthrough` routes as well - a streaming handler should select on `ctx.Done()`.
 
 | Sites | method |
 | -------- | -------- |
@@ -752,11 +834,12 @@ post UploadAvatar /users/{id}/avatar { ... }
 
 ## Conflict matrix
 
-Some decorator combinations are rejected by the semantic analyzer:
+Some decorator combinations are rejected (or flagged) by the semantic analyzer:
 
 | Decorator      | Conflicts with                                                                              | Why                                                       |
 | -------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `@sensitive`   | All validators, all bindings, `@nullable`, `@default`                                       | Field never crosses the wire - constraints meaningless    |
+| `@passthrough` | `@rawRequest`, `@rawResponse` (and the two flags together)                                  | Redundant, not rejected: `decorator/redundant` warning, identical output - write one spelling |
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.
 

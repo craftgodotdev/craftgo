@@ -4,8 +4,36 @@ package stream
 
 import (
 	"fmt"
+	"regexp"
 	"unicode/utf8"
 )
+
+// Pattern regexes compile ONCE at package init so Validate() calls
+// reference the precompiled var instead of recompiling per request.
+// The pattern is rendered via %q (Go-quoted) rather than a raw-string
+// literal so regexes containing a backtick, backslash, or quote still
+// produce compilable Go - a raw `...` literal would break on a backtick.
+var (
+	_pattern0 = regexp.MustCompile("^[a-z0-9._-]+$")
+)
+
+// Validate checks every field-level constraint declared on DownloadReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *DownloadReq) Validate() error {
+	if !_pattern0.MatchString(v.File) {
+		return fmt.Errorf("file: does not match pattern")
+	}
+	if utf8.RuneCountInString(v.File) > 64 {
+		return fmt.Errorf("file: length greater than 64")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Event.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Event) Validate() error {
+	return nil
+}
 
 // Validate checks every field-level constraint declared on HealthReq.
 // Returns the first violation; nil when the value satisfies the contract.
@@ -21,6 +49,30 @@ func (v *HealthResp) Validate() error {
 	}
 	if v.UptimeMs < 0 {
 		return fmt.Errorf("uptimeMs: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on IngestResult.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *IngestResult) Validate() error {
+	if v.Bytes < 0 {
+		return fmt.Errorf("bytes: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Snapshot.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Snapshot) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on SnapshotReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *SnapshotReq) Validate() error {
+	if v.Region != nil && (utf8.RuneCountInString(*v.Region) < 2 || utf8.RuneCountInString(*v.Region) > 8) {
+		return fmt.Errorf("region: length out of range [2, 8]")
 	}
 	return nil
 }

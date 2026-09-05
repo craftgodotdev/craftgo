@@ -4,16 +4,22 @@ package stream
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
+	"time"
+
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
+
+	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// EventsService carries the per-request state for the
-// Events passthrough endpoint of StreamService. The embedded
-// log.Logger is pre-bound to the request context so logging
-// surfaces trace_id / span_id / request_id.
+// EventsService carries the per-request state for the Events endpoint of
+// StreamService. The embedded log.Logger is pre-bound to the request
+// context so logging surfaces trace_id / span_id / request_id.
 type EventsService struct {
 	log.Logger
 	ctx    context.Context
@@ -29,13 +35,37 @@ func NewEventsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *E
 	}
 }
 
-// Events is the passthrough service entry point. The
-// framework hands you the raw http.ResponseWriter and *http.Request
-// - read path parameters via r.PathValue, write headers/body to w
-// directly, and return any error to surface it through the
-// framework's error writer.
+// Events is a passthrough entry point: logic owns the whole wire. The
+// response block is a docs-only contract - every `data:` frame carries one
+// JSON-encoded types.Event, which is what the OpenAPI document advertises.
+// The loop stops when the client goes away or a @timeout / handlerTimeout
+// deadline cancels the context.
 func (l *EventsService) Events(w http.ResponseWriter, r *http.Request) error {
-	// TODO: implement
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-	return nil
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return errors.New("streaming unsupported by the response writer")
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-l.ctx.Done():
+			return nil
+		case t := <-ticker.C:
+			ev := types.Event{Kind: "tick", Payload: t.UTC().Format(time.RFC3339)}
+			if _, err := fmt.Fprint(w, "data: "); err != nil {
+				return nil
+			}
+			if err := server.JSON().Encode(w, ev); err != nil { // Encode ends the line
+				return nil
+			}
+			if _, err := fmt.Fprint(w, "\n"); err != nil {
+				return nil
+			}
+			flusher.Flush()
+		}
+	}
 }

@@ -31,7 +31,19 @@ type serviceData struct {
 	HasRequest       bool
 	HasResponse      bool
 	NeedsTypes       bool
+	// RawRequest / RawResponse report which transport sides logic owns
+	// (see wire.RawSides); IsPassthrough is both at once and only selects
+	// the stub's doc text. Sig is the declaration's parameter and result
+	// lists, computed by buildSignature together with the transport call
+	// site. RequestContract / ResponseContract are the rendered Go types a
+	// raw side documents (OpenAPI + generated types); the stub comment
+	// points logic at the shape it must honour, without importing it.
+	RawRequest       bool
+	RawResponse      bool
 	IsPassthrough    bool
+	Sig              methodSignature
+	RequestContract  string
+	ResponseContract string
 	TypesImport      string
 	SvccontextImport string
 	// ExtraTypesImports lists Go imports for cross-package request
@@ -70,8 +82,7 @@ func GenerateServicePackage(pkg *semantic.Package, cfg *config.Config, projectRo
 // service, skipping any that already exist on disk.
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
 	groups := methodGroups(svc)
-	jsonTpl := tmpl("service.tmpl")
-	passthroughTpl := tmpl("service-passthrough.tmpl")
+	t := tmpl("service.tmpl")
 	for _, m := range svc.Methods {
 		group := groups[m.Name]
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
@@ -85,10 +96,6 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 			continue
 		}
 		data := buildServiceData(pkg.Name, svcName, m, imps, crossPkg)
-		t := jsonTpl
-		if data.IsPassthrough {
-			t = passthroughTpl
-		}
 		formatted, err := renderGo(t, data)
 		if err != nil {
 			return fmt.Errorf("render %s: %w", filename, err)
@@ -102,17 +109,19 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 
 // buildServiceData populates the serviceData struct for one DSL method.
 func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, crossPkg CrossPkg) serviceData {
-	hasReq := m.Request != nil
-	hasResp := m.Response != nil && m.Response.Type != nil
+	mode := modeOf(m)
+	takesReq, returnsResp := mode.StubTakesReq(), mode.StubReturnsResp()
 	d := serviceData{
 		Package:          ServicePkgName(pkgName, svcName),
 		Service:          svcName,
 		Method:           m.Name,
 		ServiceName:      m.Name + "Service",
 		Doc:              m.Doc,
-		HasRequest:       hasReq,
-		HasResponse:      hasResp,
-		NeedsTypes:       hasReq || hasResp,
+		HasRequest:       mode.HasRequest,
+		HasResponse:      mode.HasResponse,
+		RawRequest:       mode.RawRequest,
+		RawResponse:      mode.RawResponse,
+		IsPassthrough:    mode.RawRequest && mode.RawResponse,
 		TypesImport:      imps.Types,
 		SvccontextImport: imps.Svccontext,
 	}
@@ -144,51 +153,41 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, 
 			addExtra(extraImport{Alias: pathAlias[path], Path: path})
 		}
 	}
-	if hasReq {
+	// A docs-only contract (the block on a raw side) is rendered for the
+	// stub comment but never imported: the stub does not reference it,
+	// and an unused import would fail `go build`.
+	if mode.HasRequest {
+		alias, bare, _ := resolveTypeRef(m.Request, crossPkg)
+		d.RequestContract = alias + "." + bare
+	}
+	if mode.HasResponse {
+		alias, bare, _ := resolveTypeRef(m.Response.Type, crossPkg)
+		d.ResponseContract = alias + "." + bare
+	}
+	if takesReq {
 		alias, bare, extra := resolveTypeRef(m.Request, crossPkg)
 		d.RequestPkgAlias = alias
 		d.RequestType = bare
 		addExtra(extra)
 		addRefExtras(m.Request)
 	}
-	if hasResp {
+	if returnsResp {
 		alias, bare, extra := resolveTypeRef(m.Response.Type, crossPkg)
 		d.ResponsePkgAlias = alias
 		d.ResponseType = bare
 		addExtra(extra)
 		addRefExtras(m.Response.Type)
 	}
-	// When BOTH request and response live in cross-pkg packages, the
-	// canonical `types` import becomes unused. Drop it so the scaffold
-	// compiles. Single-cross-pkg + local-other still keeps the canonical
-	// types import for the local one.
-	//
-	// Edge case: a cross-pkg generic (`shared.Page<LocalType>`) renders
-	// as `*shared.Page[types.LocalType]` - the outer alias is the cross
-	// pkg but the inner local-arg still needs the canonical `types`
-	// import. Detect that via the `types.` substring in the bare type.
-	usesLocalTypes := strings.Contains(d.RequestType, "types.") || strings.Contains(d.ResponseType, "types.")
-	if hasReq && hasResp && d.RequestPkgAlias != "types" && d.ResponsePkgAlias != "types" && !usesLocalTypes {
-		d.NeedsTypes = false
-	} else if hasReq && !hasResp && d.RequestPkgAlias != "types" && !usesLocalTypes {
-		d.NeedsTypes = false
-	} else if !hasReq && hasResp && d.ResponsePkgAlias != "types" && !usesLocalTypes {
-		d.NeedsTypes = false
+	// The canonical `types` import is needed only when a side the stub
+	// names lives in the local package - directly (alias `types`) or as
+	// the local type-arg of a cross-package generic (`shared.Page<Order>`
+	// renders as `*shared.Page[types.Order]`). Both sides cross-package →
+	// drop it so the scaffold compiles.
+	usesLocal := func(alias, bare string) bool {
+		return alias == "types" || strings.Contains(bare, "types.")
 	}
-	if hasPassthroughDecorator(m.Decorators) {
-		d.IsPassthrough = true
-		// Passthrough scaffolds don't reference `types.<X>` at all
-		// - the entry point takes (w, r) directly - so drop every
-		// type-related import to keep the generated file compiling
-		// cleanly without manual edits.
-		d.NeedsTypes = false
-		d.HasRequest = false
-		d.HasResponse = false
-		d.RequestPkgAlias = ""
-		d.RequestType = ""
-		d.ResponsePkgAlias = ""
-		d.ResponseType = ""
-		d.ExtraTypesImports = nil
-	}
+	d.NeedsTypes = (takesReq && usesLocal(d.RequestPkgAlias, d.RequestType)) ||
+		(returnsResp && usesLocal(d.ResponsePkgAlias, d.ResponseType))
+	d.Sig = buildSignature(mode, d.RequestPkgAlias+"."+d.RequestType, d.ResponsePkgAlias+"."+d.ResponseType)
 	return d
 }

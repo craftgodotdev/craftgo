@@ -110,6 +110,10 @@ service S {
     @maxBodySize(1MB)
     get GetX /x {
     }
+    @rawRequest
+    @rawResponse
+    get GetY /y {
+    }
 }
 
 middleware Auth
@@ -136,7 +140,7 @@ middleware RateLimit
 		"prefix", "middlewares", "group", "tags", "security",
 		"ignoreSecurity",
 		"summary", "operationId", "errors", "status",
-		"passthrough",
+		"passthrough", "rawRequest", "rawResponse",
 		"timeout", "maxBodySize",
 	}
 	seen := collectAllDecoratorNames(f)

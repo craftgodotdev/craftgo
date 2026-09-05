@@ -113,18 +113,14 @@ func buildMiddlewareArgs(mws []string) string {
 
 // methodLimitsLiteral renders a `server.Limits{...}` Go-source struct
 // literal from the method's decorators, or returns ("", false) when
-// neither `@timeout` nor `@maxBodySize` is present. Passthrough
-// methods opt out of `@timeout` because the framework hands the
-// writer/request to logic verbatim and `http.TimeoutHandler` would
-// cut whatever stream logic decides to produce; `@maxBodySize`
-// still applies (the body cap fires at read time, not response time).
+// neither `@timeout` nor `@maxBodySize` is present. Both apply to every
+// mode, raw sides included: the timeout only derives a context deadline
+// (see server.Limits), so a streaming handler that honours ctx.Done()
+// stops cleanly and nothing is cut off on the wire.
 func methodLimitsLiteral(m *ast.Method) (string, bool) {
-	passthrough := hasPassthroughDecorator(m.Decorators)
 	var fields []string
-	if !passthrough {
-		if d := durationDecoratorArg(m.Decorators, "timeout"); d != "" {
-			fields = append(fields, "Timeout: "+d)
-		}
+	if d := durationDecoratorArg(m.Decorators, "timeout"); d != "" {
+		fields = append(fields, "Timeout: "+d)
 	}
 	if n := sizeDecoratorArg(m.Decorators, "maxBodySize"); n > 0 {
 		fields = append(fields, fmt.Sprintf("MaxBodySize: %d", n))

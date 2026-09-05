@@ -2,6 +2,15 @@
 
 package stream
 
+type DownloadReq struct {
+	File string `json:"-" path:"file"`
+}
+
+type Event struct {
+	Kind    string `json:"kind"`
+	Payload string `json:"payload"`
+}
+
 type HealthReq struct {
 	Verbose bool `json:"-" query:"verbose"`
 }
@@ -9,4 +18,18 @@ type HealthReq struct {
 type HealthResp struct {
 	Status   string `json:"status"`
 	UptimeMs int    `json:"uptimeMs"`
+}
+
+type IngestResult struct {
+	Bytes int `json:"bytes"`
+}
+
+type Snapshot struct {
+	Region      string   `json:"region"`
+	GeneratedAt string   `json:"generatedAt"`
+	Items       []string `json:"items"`
+}
+
+type SnapshotReq struct {
+	Region *string `json:"-" query:"region"`
 }

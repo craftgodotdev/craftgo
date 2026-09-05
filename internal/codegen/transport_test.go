@@ -1361,13 +1361,12 @@ service S {
 	)
 }
 
-// TestGenerateRoutesPassthroughSkipsTimeout pins the passthrough
-// carve-out: `@timeout` is silently dropped when the method also
-// carries `@passthrough` because the framework hands the writer to
-// logic verbatim and `http.TimeoutHandler` would cut whatever stream
-// logic decides to produce. `@maxBodySize` still applies (the body
-// cap fires at read time, not response time).
-func TestGenerateRoutesPassthroughSkipsTimeout(t *testing.T) {
+// TestGenerateRoutesPassthroughAppliesTimeout pins that `@timeout`
+// applies to a `@passthrough` route like any other: the limit only
+// derives a context deadline (server.Limits), so a streaming handler
+// that honours ctx.Done() stops cleanly and nothing is cut off on the
+// wire. `@maxBodySize` applies as before.
+func TestGenerateRoutesPassthroughAppliesTimeout(t *testing.T) {
 	src := `package design
 service S {
     @passthrough
@@ -1381,13 +1380,12 @@ service S {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
-	src2 := string(body)
-	if strings.Contains(src2, "Timeout:") {
-		t.Errorf("passthrough method should not get Timeout:\n%s", src2)
-	}
-	if !strings.Contains(src2, "MaxBodySize:") {
-		t.Errorf("MaxBodySize should still apply to passthrough:\n%s", src2)
-	}
+	mustParseGo(t, string(body))
+	mustContainAll(t, string(body),
+		`"time"`,
+		"Timeout: 5 * time.Second",
+		"MaxBodySize: 2048",
+	)
 }
 
 func TestGenerateRoutesNoBasePathNoPrefix(t *testing.T) {

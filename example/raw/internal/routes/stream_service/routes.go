@@ -20,5 +20,6 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /stream/metrics", transport.Metrics(svcCtx))
 	srv.Handle("POST /stream/ingest", transport.Ingest(svcCtx))
 	srv.Handle("GET /stream/download/{file}", transport.Download(svcCtx))
+	srv.Handle("GET /stream/snapshot", transport.Snapshot(svcCtx))
 	srv.Handle("GET /stream/health", transport.Health(svcCtx))
 }

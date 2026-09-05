@@ -150,7 +150,7 @@ type GetUserReq {
 }
 ```
 
-A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is `@passthrough` handlers, which receive the raw `*http.Request` and pull params themselves. Trailing slashes are kept verbatim (`/users/` is distinct from `/users`); avoid them unless the API explicitly distinguishes the two.
+A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is a raw-request method (`@rawRequest` / `@passthrough`) with no request block: logic receives the raw `*http.Request` and reads the value with `r.PathValue`. Trailing slashes are kept verbatim (`/users/` is distinct from `/users`); avoid them unless the API explicitly distinguishes the two.
 
 ### Extending a service across files
 

@@ -8,8 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-func hasPassthroughDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "passthrough") }
-
 // hasDeprecatedDecorator reports whether `@deprecated` is declared in
 // the chain. Used by OpenAPI codegen to flag operations and schemas,
 // and by the types emitter to prepend a Go-style `// Deprecated:` line

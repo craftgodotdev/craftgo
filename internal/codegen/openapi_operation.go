@@ -28,7 +28,7 @@ const (
 // $ref) and addRequestBodySchema (emit the component or not) both read this one
 // predicate so they can't disagree and leave an orphaned schema in the spec.
 func isMultipartRequest(m *ast.Method, pkg *semantic.Package) bool {
-	if m == nil || m.Request == nil || hasPassthroughDecorator(m.Decorators) {
+	if m == nil || m.Request == nil {
 		return false
 	}
 	_, files, err := collectFormBindings(m, pkg, "", nil)
@@ -104,7 +104,14 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 			op.Description = appendDescription(op.Description, "Deprecated: "+reason)
 		}
 	}
-	isPassthrough := hasPassthroughDecorator(m.Decorators)
+	// A request / response block is the documented contract whichever
+	// side owns the wire: a block on a raw side (`@rawRequest` /
+	// `@rawResponse` / `@passthrough`) is emitted exactly like a typed
+	// one. The raw flags only matter where there is NO block - the
+	// request side falls back to bare path params, the response side to
+	// `*/*` - and for the success status of a raw response, which logic
+	// writes itself.
+	rawReq, rawResp := wire.RawSides(m.Decorators)
 	isMultipart := isMultipartRequest(m, pkg)
 	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
 	if isMultipart {
@@ -114,7 +121,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		// them here so a single source of truth owns the diagnostic.
 		formStrings, formFiles, _ = collectFormBindings(m, pkg, "", nil)
 	}
-	if m.Request != nil && !isPassthrough {
+	if m.Request != nil {
 		bins := binRequestFields(m, pkg)
 		// Body-bearing verbs $ref the per-method body schema. The
 		// per-kind schemas live in components.schemas so consumers have
@@ -154,21 +161,15 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg, registry)
 		}
 	}
-	if isPassthrough {
-		op.Parameters = passthroughPathParams(m)
+	if m.Request == nil && rawReq {
+		op.Parameters = rawPathParams(m)
 	}
 	switch {
-	case isPassthrough:
-		successCode := passthroughStatus(m)
-		desc := successDescription(successCode)
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
-			Description: &desc,
-			Content: openapi3.Content{
-				"*/*": &openapi3.MediaType{},
-			},
-		}})
 	case m.Response != nil && m.Response.Type != nil:
 		successCode := strconv.Itoa(methodSuccessStatus(m))
+		if rawResp {
+			successCode = rawResponseStatus(m)
+		}
 		desc := successDescription(successCode)
 		resp := &openapi3.Response{
 			Description: &desc,
@@ -185,6 +186,17 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
 		}
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
+	case rawResp:
+		// No response block on a raw response side: logic writes whatever
+		// wire format it likes, so there is no schema to publish.
+		successCode := rawResponseStatus(m)
+		desc := successDescription(successCode)
+		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
+			Description: &desc,
+			Content: openapi3.Content{
+				"*/*": &openapi3.MediaType{},
+			},
+		}})
 	default:
 		successCode := strconv.Itoa(methodSuccessStatus(m))
 		desc := successDescription(successCode)
@@ -225,10 +237,10 @@ func statusOverride(m *ast.Method) (int, bool) {
 	return 0, false
 }
 
-// methodSuccessStatus resolves the success status code for a
-// non-passthrough method. The transport handler and the OpenAPI spec
-// both call this so they always agree on the same code. `@status(N)`
-// wins; otherwise the default is verb-aware:
+// methodSuccessStatus resolves the success status code for a method
+// whose response the framework writes. The transport handler and the
+// OpenAPI spec both call this so they always agree on the same code.
+// `@status(N)` wins; otherwise the default is verb-aware:
 //
 //   - no response body           → 204 No Content
 //   - POST returning a body       → 201 Created
@@ -249,13 +261,13 @@ func methodSuccessStatus(m *ast.Method) int {
 	return http.StatusOK
 }
 
-// passthroughStatus is the success code documented for a `@passthrough`
-// operation. The handler writes the response itself, so codegen cannot
-// know the real status: `@status(N)` documents it explicitly, otherwise
-// we fall back to 200. The verb-aware default is intentionally NOT
-// applied here - a passthrough POST may write any status, and 201 would
-// frequently be wrong.
-func passthroughStatus(m *ast.Method) string {
+// rawResponseStatus is the success code documented for an operation
+// whose response side is raw (`@rawResponse` / `@passthrough`). Logic
+// writes the response itself, so codegen cannot know the real status:
+// `@status(N)` documents it explicitly, otherwise we fall back to 200.
+// The verb-aware default is intentionally NOT applied here - a raw POST
+// may write any status, and 201 would frequently be wrong.
+func rawResponseStatus(m *ast.Method) string {
 	if code, ok := statusOverride(m); ok {
 		return strconv.Itoa(code)
 	}
@@ -452,12 +464,13 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	return out
 }
 
-// passthroughPathParams emits one OpenAPI path-parameter entry per
-// `{name}` segment in the route. Passthrough endpoints have no
-// request type to mine for typed parameters, so the schema is the
-// minimal `string` placeholder - enough to render Swagger UI's
-// "try it" form without lying about the wire shape.
-func passthroughPathParams(m *ast.Method) openapi3.Parameters {
+// rawPathParams emits one OpenAPI path-parameter entry per `{name}`
+// segment in the route for a raw-request operation that declares no
+// request block. There is no request type to mine for typed
+// parameters, so the schema is the minimal `string` placeholder -
+// enough to render Swagger UI's "try it" form without lying about the
+// wire shape.
+func rawPathParams(m *ast.Method) openapi3.Parameters {
 	if m.Path == nil {
 		return nil
 	}

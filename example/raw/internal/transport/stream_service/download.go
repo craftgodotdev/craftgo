@@ -8,17 +8,24 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/raw/internal/service/stream_service"
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
 // Download returns the http.HandlerFunc for the
-// GET Download passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// GET Download raw-response endpoint. The handler binds and
+// validates the request, then hands the http.ResponseWriter and
+// *http.Request to logic, which writes the response directly.
 func Download(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var req types.DownloadReq
+		req.File = r.PathValue("file")
+		if err := req.Validate(); err != nil {
+			server.WriteValidationError(w, r, err)
+			return
+		}
 		l := service.NewDownloadService(r.Context(), svcCtx)
-		if err := l.Download(w, r); err != nil {
+		if err := l.Download(w, r, &req); err != nil {
 			server.WriteError(w, r, err)
 			return
 		}
