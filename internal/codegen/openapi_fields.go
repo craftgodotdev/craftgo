@@ -11,19 +11,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// openapiFormatName maps a craftgo @format name to the format keyword
-// OpenAPI / JSON Schema registers for it. craftgo spells the date-time
-// format `datetime`; the standard keyword is `date-time`, so emitting the
-// DSL spelling verbatim makes generators and validators treat it as an
-// unknown custom format. Names without a differing standard keyword pass
-// through unchanged.
-func openapiFormatName(name string) string {
-	if name == "datetime" {
-		return "date-time"
-	}
-	return name
-}
-
 // rawIfBigInt returns the exact decimal text of an integer-literal bound
 // whose magnitude exceeds float64's exact range, as a json.Number to be
 // emitted verbatim through Extensions. For in-range or non-integer args it

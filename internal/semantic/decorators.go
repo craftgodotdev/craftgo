@@ -295,10 +295,9 @@ type Spec struct {
 }
 
 // formatValues lists the named string formats accepted by `@format` on a
-// field or scalar. The catalogue lives in [strfmt.Names] (a leaf both this
-// analyser and codegen read) so the legal-name set and the validator set
-// cannot drift.
-var formatValues = strfmt.Names
+// field or scalar: the [strfmt] catalogue codegen emits the checks from,
+// so the legal-name set and the validator set cannot drift.
+var formatValues = strfmt.Names()
 
 // Registry is the closed set of decorators the framework recognises. A
 // `@name` not present here is reported as `decorator/unknown` - there is

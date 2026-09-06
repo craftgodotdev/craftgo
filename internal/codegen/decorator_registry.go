@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -155,10 +156,10 @@ var validators = []validatorEntry{
 			}
 			switch v := d.Args[0].Value.(type) {
 			case *ast.StringLit:
-				s.Format = openapiFormatName(v.Value)
+				s.Format = strfmt.OpenAPIFormat(v.Value)
 			case *ast.IdentExpr:
 				if v.Name != nil {
-					s.Format = openapiFormatName(v.Name.String())
+					s.Format = strfmt.OpenAPIFormat(v.Name.String())
 				}
 			}
 		}},

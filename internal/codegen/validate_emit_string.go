@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
 func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
@@ -108,13 +109,13 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	return ifReturnf(cond, msg)
 }
 
-// formatCheck handles `@format(name)` for the catalogue of standard
-// formats. Each entry in [formatValidators] declares the Go imports
-// needed and the emit shape (regex, single-expression Go check, or
-// init-statement check). The argument may be either a quoted string
-// (`@format("email")`) or a bare identifier (`@format(email)`) - both
-// accepted. Unknown names skip silently; projects can extend with
-// `@pattern("...")` for niche cases.
+// formatCheck handles `@format(name)` for the [strfmt] catalogue: each
+// spec declares the Go imports its check needs and the check itself - a
+// regular expression interned once per file so `MustCompile` runs once,
+// or a stdlib-backed condition (mail / url / time / ...) emitted verbatim.
+// The argument may be either a quoted string (`@format("email")`) or a
+// bare identifier (`@format(email)`) - both accepted. Unknown names skip
+// silently; projects can extend with `@pattern("...")` for niche cases.
 func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
@@ -123,25 +124,22 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	if name == "" {
 		return ""
 	}
-	v, ok := formatValidators[name]
+	sp, ok := strfmt.Lookup(name)
 	if !ok {
 		return ""
 	}
-	for _, imp := range v.imports {
+	for _, imp := range sp.Imports {
 		ctx.uses[imp] = true
 	}
 	ctx.uses["fmt"] = true
 	val := stringValueExpr(f, access, ctx)
-	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), v.label)
-	// Regex-backed formats intern their pattern in the package-level
-	// registry so `MustCompile` runs once; stdlib-backed formats
-	// (mail/url/time/...) emit their init-stmt verbatim.
-	emit := v.emit
-	if v.pattern != "" {
-		patVar := ctx.regexes.intern(v.pattern)
-		emit = func(val, msg string) string {
-			return ifReturnf("!"+patVar+".MatchString("+val+")", msg)
-		}
+	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), sp.Label)
+	var check string
+	if sp.Pattern != "" {
+		ctx.uses["regexp"] = true
+		check = ifReturnf("!"+ctx.regexes.intern(sp.Pattern)+".MatchString("+val+")", msg)
+	} else {
+		check = ifReturnf(fmt.Sprintf(sp.Cond, val), msg)
 	}
 	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		// Pointer field (`?` optional OR `@nullable`): nest the check
@@ -150,8 +148,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		// present. Keying on Optional alone would miss `@nullable`-without-
 		// `?`, which is still a `*string` - an unguarded deref panics on
 		// `{"field": null}`.
-		inner := emit(val, msg)
-		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(inner))
+		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
-	return emit(val, msg)
+	return check
 }
