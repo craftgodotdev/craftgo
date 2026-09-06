@@ -29,7 +29,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -344,13 +343,11 @@ func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Rep
 		if src == "" {
 			continue
 		}
-		if path := uriToPath(string(u)); path != "" {
-			if _, _, root, err := config.Find(filepath.Dir(path)); err == nil && root != "" {
-				if seenRoots[root] {
-					continue
-				}
-				seenRoots[root] = true
+		if root := designRootOf(uriToPath(string(u))); root != "" {
+			if seenRoots[root] {
+				continue
 			}
+			seenRoots[root] = true
 		}
 		s.publishDiagnostics(ctx, u, src)
 	}

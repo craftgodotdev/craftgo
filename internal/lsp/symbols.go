@@ -45,21 +45,16 @@ func (s *Server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, 
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
 	}
-	// projectFilesWithRoot needs SOMETHING to anchor the design-root
-	// search. Use the first open document's path; if no document is
-	// open the workspace search is impossible (no design folder to
-	// walk) - return empty rather than scanning the whole disk.
-	anchorPath := s.anyOpenDocumentPath()
+	// The project is anchored at any open document; with none open there
+	// is no design folder to walk, so the result is empty rather than a
+	// scan of the whole disk.
+	anchorPath, anchorSrc := s.anyOpenDocument()
 	if anchorPath == "" {
 		return reply(ctx, []protocol.SymbolInformation{}, nil)
 	}
-	files, _ := s.projectFilesWithRoot(anchorPath, "")
 	queryLower := lowerASCII(params.Query)
 	var out []protocol.SymbolInformation
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
+	for _, p := range s.loadProject(anchorPath, anchorSrc).files {
 		fileURI := uri.New(pathToFileURIString(p.path))
 		for _, d := range p.file.Decls {
 			name := d.DeclName()
@@ -113,17 +108,16 @@ func containerNameFromFile(f *ast.File) string {
 	return f.Package.Name
 }
 
-// anyOpenDocumentPath returns the filesystem path of any currently
-// open document. The lookup is order-independent; we just need
-// somewhere to start the design-root walk. Returns empty string when
-// no documents are open.
-func (s *Server) anyOpenDocumentPath() string {
+// anyOpenDocument returns the filesystem path and text of any currently
+// open document, to anchor the design-root walk. Empty when no document
+// is open.
+func (s *Server) anyOpenDocument() (string, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for u := range s.docs {
-		return uriToPath(string(u))
+	for u, d := range s.docs {
+		return uriToPath(string(u)), d.text
 	}
-	return ""
+	return "", ""
 }
 
 // lowerASCII / containsLower are tiny case-insensitive helpers so the

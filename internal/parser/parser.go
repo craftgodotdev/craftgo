@@ -73,6 +73,9 @@ func New(filename, src string) *Parser {
 // Diagnostics returns all errors collected during lexing and parsing.
 func (p *Parser) Diagnostics() []lexer.Diagnostic { return p.diags }
 
+// Tokens returns the token stream the parser consumes.
+func (p *Parser) Tokens() []lexer.Token { return p.tokens }
+
 // Parse consumes the entire token stream and returns an [*ast.File]. The
 // returned file is non-nil even when diagnostics were recorded, so callers
 // can offer best-effort downstream behaviour.

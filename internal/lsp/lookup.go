@@ -20,9 +20,9 @@ type snapshotView struct {
 }
 
 func parseSnapshot(filename, src string) snapshotView {
-	toks := lexer.New(filename, src).Tokenize()
-	f := parser.New(filename, src).Parse()
-	return snapshotView{src: src, tokens: toks, file: f}
+	p := parser.New(filename, src)
+	f := p.Parse()
+	return snapshotView{src: src, tokens: p.Tokens(), file: f}
 }
 
 // tokenAt returns the token whose source span covers the supplied

@@ -235,8 +235,8 @@ func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, c
 		return nil
 	}
 	qualified := qualifiedNameAt(view, idx)
-	files, root := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
-	if d, _, ok := findDeclAcross(files, qualified, currentImports(view.file), root); ok {
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	if d, _, ok := findDeclAcross(v.files, qualified, currentImports(view.file), v.root); ok {
 		return userTypeHover(d, rangeOf(tok))
 	}
 	return nil

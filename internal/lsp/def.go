@@ -62,9 +62,8 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 				Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
 			}}, nil)
 		}
-		files, root := s.projectFilesWithRoot(uriToPath(string(params.TextDocument.URI)), src)
-		imports := currentImports(view.file)
-		if d, pf, ok := findDeclAcrossKindAware(files, qualified, imports, root, lookupCtx); ok {
+		v := s.loadProject(uriToPath(string(params.TextDocument.URI)), src)
+		if d, pf, ok := findDeclAcrossKindAware(v.files, qualified, currentImports(view.file), v.root, lookupCtx); ok {
 			return reply(ctx, []protocol.Location{{
 				URI:   uri.New(pathToFileURIString(pf.path)),
 				Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
@@ -84,9 +83,8 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 	// a sibling package. We rebuild the name from the surrounding
 	// tokens so `users.UserRef` resolves whether the cursor was on the
 	// `users` half or the `UserRef` half.
-	files, root := s.projectFilesWithRoot(uriToPath(string(params.TextDocument.URI)), src)
-	imports := currentImports(view.file)
-	if d, pf, ok := findDeclAcross(files, qualified, imports, root); ok {
+	v := s.loadProject(uriToPath(string(params.TextDocument.URI)), src)
+	if d, pf, ok := findDeclAcross(v.files, qualified, currentImports(view.file), v.root); ok {
 		return reply(ctx, []protocol.Location{{
 			URI:   uri.New(pathToFileURIString(pf.path)),
 			Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
@@ -113,7 +111,7 @@ func (s *Server) enumValueDefinition(view snapshotView, pos protocol.Position, n
 	if len(parts) != 1 {
 		return protocol.Location{}, false
 	}
-	e, path := s.enumDeclWithPath(view, currentURI, currentSrc, parts[0])
+	e, path := s.enumDeclWithPath(currentURI, currentSrc, parts[0])
 	if e == nil {
 		return protocol.Location{}, false
 	}
@@ -128,25 +126,13 @@ func (s *Server) enumValueDefinition(view snapshotView, pos protocol.Position, n
 	return protocol.Location{}, false
 }
 
-// enumDeclWithPath is [Server.enumDeclByNameProjectWide] with the owning file
-// path returned alongside the decl, so go-to-definition can build a Location
-// that points at the enum's file even when it lives in a sibling `.craftgo`.
-func (s *Server) enumDeclWithPath(view snapshotView, currentURI, currentSrc, name string) (*ast.EnumDecl, string) {
-	files, _ := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
+// enumDeclWithPath returns the first enum declared under name anywhere in
+// the buffer's project, with the path of the file declaring it.
+func (s *Server) enumDeclWithPath(currentURI, currentSrc, name string) (*ast.EnumDecl, string) {
+	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
 		for _, d := range p.file.Decls {
 			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
 				return e, p.path
-			}
-		}
-	}
-	if view.file != nil {
-		for _, d := range view.file.Decls {
-			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
-				return e, uriToPath(currentURI)
 			}
 		}
 	}
@@ -304,15 +290,12 @@ func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req j
 	return reply(ctx, out, nil)
 }
 
-// projectNameMatches walks every `.craftgo` file in the design root
-// and collects token positions whose text equals name. Falls back to
-// the current buffer alone when no design root is reachable (single
-// file edit, mid-init project).
+// projectNameMatches collects the position of every Ident token whose
+// text equals name across the buffer's project. Outside a project root
+// the current buffer alone is scanned.
 func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.DocumentURI, currentSrc, name string, includeDecl bool) []protocol.Location {
-	files, _ := s.projectFilesWithRoot(uriToPath(string(currentURI)), currentSrc)
-	if len(files) == 0 {
-		// Outside a project root - keep the in-buffer scan so single-
-		// file edits still surface their own usages.
+	v := s.loadProject(uriToPath(string(currentURI)), currentSrc)
+	if v.root == "" {
 		return nameMatches(view, currentURI, name, includeDecl)
 	}
 	// declPos pins the symbol's defining token across whichever file
@@ -320,7 +303,7 @@ func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.Docum
 	// the cursor lives in a different file from the declaration.
 	var declPos *lexer.Position
 	var declURI protocol.DocumentURI
-	for _, p := range files {
+	for _, p := range v.files {
 		if d := findDecl(p.file, name); d != nil {
 			pos := d.DeclPos()
 			declPos = &pos
@@ -329,28 +312,9 @@ func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.Docum
 		}
 	}
 	var out []protocol.Location
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
+	for _, p := range v.files {
 		fileURI := protocol.DocumentURI(pathToFileURIString(p.path))
-		// Reuse the in-buffer view's tokens for the current file so
-		// unsaved edits show up; for every other file lex from its
-		// (possibly-on-disk) source.
-		var tokenSet []lexer.Token
-		if fileURI == currentURI {
-			tokenSet = view.tokens
-		} else {
-			lx := lexer.New(p.path, s.readFile(p.path, "", ""))
-			for {
-				t := lx.Next()
-				if t.Kind == lexer.EOF {
-					break
-				}
-				tokenSet = append(tokenSet, t)
-			}
-		}
-		for _, t := range tokenSet {
+		for _, t := range p.tokens {
 			if t.Kind != lexer.Ident || t.Text != name {
 				continue
 			}

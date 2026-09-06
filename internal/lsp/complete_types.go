@@ -11,7 +11,6 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
@@ -24,7 +23,7 @@ func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position
 	if len(parts) != 1 {
 		return nil
 	}
-	e := s.enumDeclByNameProjectWide(view, currentURI, currentSrc, parts[0])
+	e, _ := s.enumDeclWithPath(currentURI, currentSrc, parts[0])
 	if e == nil {
 		return nil
 	}
@@ -41,20 +40,6 @@ func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position
 	return out
 }
 
-// enumDeclByNameProjectWide walks every sibling `*.craftgo` file in
-// the current project and returns the first matching enum decl.
-// Multi-file packages declare enums anywhere - this lookup mirrors
-// the way semantic resolves cross-file refs. Falls back to the
-// current view's parsed file when the project walker yields nothing
-// (typical in unit tests that parse a single in-memory snapshot
-// without a backing filesystem entry).
-func (s *Server) enumDeclByNameProjectWide(view snapshotView, currentURI, currentSrc, name string) *ast.EnumDecl {
-	// Same project-wide enum walk as enumDeclWithPath; this caller doesn't need
-	// the file path, so drop it.
-	e, _ := s.enumDeclWithPath(view, currentURI, currentSrc, name)
-	return e
-}
-
 // durationSuffixes / sizeSuffixes mirror the unit set the lexer
 // recognises in [lexer.lexNumber]; keep these in sync if the lexer
 // gains new units.
@@ -66,11 +51,11 @@ func (s *Server) enumDeclByNameProjectWide(view snapshotView, currentURI, curren
 // them in the completion list would mislead the user. The function
 // therefore filters by the current file's package name.
 func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	files := s.projectASTs(uriToPath(currentURI), currentSrc)
+	files := s.loadProject(uriToPath(currentURI), currentSrc).files
 	currentPkg := ""
 	currentPath := uriToPath(currentURI)
 	for _, p := range files {
-		if p.path == currentPath && p.file != nil && p.file.Package != nil {
+		if p.path == currentPath && p.file.Package != nil {
 			currentPkg = p.file.Package.Name
 			break
 		}
@@ -78,7 +63,7 @@ func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protoco
 	seen := map[string]struct{}{}
 	var out []protocol.CompletionItem
 	for _, p := range files {
-		if p.file == nil || p.file.Package == nil {
+		if p.file.Package == nil {
 			continue
 		}
 		if currentPkg != "" && p.file.Package.Name != currentPkg {
@@ -161,13 +146,9 @@ func (s *Server) securitySchemeCompletions(currentURI string) []protocol.Complet
 // the runtime calls" - the closest analogue available in LSP's
 // CompletionItemKind set.
 func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	files := s.projectASTs(uriToPath(currentURI), currentSrc)
 	seen := map[string]struct{}{}
 	var out []protocol.CompletionItem
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
+	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
 		for _, d := range p.file.Decls {
 			md, ok := d.(*ast.MiddlewareDecl)
 			if !ok {
@@ -207,23 +188,9 @@ func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []prot
 // any declared type, which keeps the visual grammar consistent
 // across decorator args.
 func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	files := s.projectASTs(uriToPath(currentURI), currentSrc)
-	if len(files) == 0 {
-		// No `craftgo.design.yaml` upward from the buffer (running
-		// outside a project root, common for first-touch editing).
-		// Fall back to the current buffer so an unsaved file still
-		// surfaces its own error decls.
-		f := parser.New(uriToPath(currentURI), currentSrc).Parse()
-		if f != nil {
-			files = []projectAST{{path: uriToPath(currentURI), file: f}}
-		}
-	}
 	seen := map[string]struct{}{}
 	var out []protocol.CompletionItem
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
+	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
 		for _, d := range p.file.Decls {
 			ed, ok := d.(*ast.ErrorDecl)
 			if !ok {
@@ -323,19 +290,12 @@ func (s *Server) declCompletionsProjectWide(view snapshotView, currentURI, curre
 // aliases are emitted unconditionally - they are not declarations
 // and the user might want them in any completion context.
 func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentSrc string, keep declCompletionFilter) []protocol.CompletionItem {
-	files := s.projectASTs(uriToPath(currentURI), currentSrc)
-	if len(files) == 0 {
-		return localDeclItems(view)
-	}
 	currentPkg := ""
 	if view.file != nil && view.file.Package != nil {
 		currentPkg = view.file.Package.Name
 	}
 	var items []protocol.CompletionItem
-	for _, p := range files {
-		if p.file == nil {
-			continue
-		}
+	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
 		pkgName := ""
 		if p.file.Package != nil {
 			pkgName = p.file.Package.Name
@@ -370,25 +330,6 @@ func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentS
 		})
 	}
 	return items
-}
-
-func localDeclItems(view snapshotView) []protocol.CompletionItem {
-	if view.file == nil {
-		return nil
-	}
-	out := make([]protocol.CompletionItem, 0, len(view.file.Decls))
-	for _, d := range view.file.Decls {
-		if _, isError := d.(*ast.ErrorDecl); isError {
-			continue
-		}
-		out = append(out, protocol.CompletionItem{
-			Label:         d.DeclName(),
-			Kind:          declSymbolKindToCompletion(d),
-			Detail:        declSummary(d),
-			Documentation: strings.Join(declDoc(d), "\n"),
-		})
-	}
-	return out
 }
 
 func declSymbolKindToCompletion(d ast.Decl) protocol.CompletionItemKind {

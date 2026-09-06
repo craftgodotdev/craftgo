@@ -2,7 +2,6 @@ package lsp
 
 import (
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -10,11 +9,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/parser"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // buildDiagnostics runs the parser and the semantic analyser over src
@@ -49,33 +44,26 @@ func (s *Server) buildDiagnostics(u uri.URI, src string) []protocol.Diagnostic {
 	return perFile[target]
 }
 
-// buildProjectDiagnostics runs the full project analysis once and
+// buildProjectDiagnostics loads and analyses the buffer's project once and
 // partitions the resulting diagnostics by source filename so the caller
 // can publish per-file lists. Returns (perFile, designRoot); designRoot
-// is empty when the file is outside any discoverable project (the
-// single-file fallback ran instead).
+// is empty when the file is outside any discoverable project.
 //
 // Used by [Server.publishDiagnostics] to refresh sibling files whose
 // diagnostics may have changed because of an edit elsewhere in the
 // project (e.g. adding a field to a request type clears the
 // "path segment has no matching field" error in the service file).
-// Also feeds [Server.buildDiagnostics] - the single-file accessor -
-// so both paths share one parse + analyse pass.
+// Also feeds [Server.buildDiagnostics] - the single-file accessor.
 func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]protocol.Diagnostic, string) {
 	fsPath := uriToPath(string(u))
-	files, designRoot := s.collectProjectFiles(fsPath, src)
-	diags := s.analyseForLSP(u, src, fsPath, files, designRoot)
+	v := s.loadProject(fsPath, src)
 
 	// Source text per file, so toLSP can place diagnostics on UTF-16
-	// columns. The editor buffer (src) overrides the on-disk copy for the
-	// current file, and also backs untagged diagnostics (empty Filename,
-	// bucketed under fsPath).
-	srcByFile := make(map[string]string, len(files)+1)
-	for _, pf := range files {
-		srcByFile[pf.path] = pf.src
-	}
-	if fsPath != "" {
-		srcByFile[fsPath] = src
+	// columns. Untagged diagnostics (empty Filename) are bucketed under
+	// fsPath and read the editor buffer.
+	srcByFile := make(map[string]string, len(v.files)+1)
+	for _, lf := range v.files {
+		srcByFile[lf.path] = lf.src
 	}
 	srcByFile[""] = src
 
@@ -84,7 +72,7 @@ func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]pr
 	// didn't tag a span (e.g. single-file fallback emits some without).
 	perFile := map[string][]protocol.Diagnostic{}
 	seen := map[string]map[string]bool{}
-	for _, d := range diags {
+	for _, d := range v.diags {
 		key := d.Pos.Filename
 		if key == "" {
 			key = fsPath
@@ -105,127 +93,7 @@ func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]pr
 	if _, ok := perFile[fsPath]; !ok && fsPath != "" {
 		perFile[fsPath] = []protocol.Diagnostic{}
 	}
-	return perFile, designRoot
-}
-
-// analyseForLSP runs the parse + semantic pipeline that both LSP
-// diagnostic entry points need. When the buffer lives inside a design
-// root (`files` non-empty), every sibling .craftgo is parsed and the
-// project analyser runs so cross-package qualified refs resolve. The
-// single-file fallback parses just `src` so the LSP keeps emitting
-// useful diagnostics on untitled buffers and out-of-project files.
-func (s *Server) analyseForLSP(u uri.URI, src, fsPath string, files []projectFile, designRoot string) []lexer.Diagnostic {
-	if len(files) == 0 {
-		// Single-file fallback. Tag with the resolved fs path when
-		// available so the per-file partition above sees a matching
-		// Pos.Filename; otherwise tag with the URI itself so the
-		// bucket lookup still hits.
-		fname := fsPath
-		if fname == "" {
-			fname = string(u)
-		}
-		p := parser.New(fname, src)
-		f := p.Parse()
-		diags := p.Diagnostics()
-		if f != nil {
-			_, sd := semantic.Analyze([]*ast.File{f})
-			diags = append(diags, sd...)
-		}
-		return diags
-	}
-	// Project-wide: parse every file, then AnalyzeProject so qualified
-	// refs resolve. Files with no `package X` decl land in the fallback
-	// bucket the analyser uses for unrooted sources - we synthesize a
-	// folder-derived name here so the project-level resolver can still
-	// associate them with their on-disk location.
-	var diags []lexer.Diagnostic
-	astFiles := make([]*ast.File, 0, len(files))
-	for _, e := range files {
-		p := parser.New(e.path, e.src)
-		f := p.Parse()
-		diags = append(diags, p.Diagnostics()...)
-		if f == nil {
-			continue
-		}
-		if f.Package == nil {
-			f.Package = &ast.PackageDecl{Name: filepath.Base(filepath.Dir(e.path))}
-		}
-		f.Package.Pos.Filename = e.path
-		astFiles = append(astFiles, f)
-	}
-	_, semDiags := semantic.AnalyzeProject(astFiles, semantic.Options{DesignRoot: designRoot})
-	return append(diags, semDiags...)
-}
-
-type projectFile struct {
-	path string
-	src  string
-}
-
-// collectProjectFiles returns every `.craftgo` file in the same design
-// root as fsPath plus the editor-cached current buffer override. When no
-// design root exists (or fsPath is empty), it returns nil and the caller
-// falls back to single-file analysis.
-func (s *Server) collectProjectFiles(fsPath, currentSrc string) ([]projectFile, string) {
-	if fsPath == "" {
-		return nil, ""
-	}
-	_, _, designDir, err := config.Find(filepath.Dir(fsPath))
-	if err != nil {
-		return nil, ""
-	}
-	var out []projectFile
-	seen := map[string]bool{}
-	_ = filepath.WalkDir(designDir, func(p string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() {
-			return nil
-		}
-		if !config.IsDesignFile(p) {
-			return nil
-		}
-		seen[p] = true
-		out = append(out, projectFile{path: p, src: s.readFile(p, fsPath, currentSrc)})
-		return nil
-	})
-	// A file open in the editor but absent from disk - deleted while still
-	// open, or an unsaved buffer - is skipped by the disk walk, so its live
-	// content would vanish from the project: dependent files would report
-	// spurious "unknown type" errors and the file itself would lose its own
-	// diagnostics. Re-add the trigger buffer plus any open `.craftgo` buffer
-	// under designDir the walk missed, honouring the editor cache over disk.
-	if !seen[fsPath] {
-		seen[fsPath] = true
-		out = append(out, projectFile{path: fsPath, src: currentSrc})
-	}
-	for u := range s.openDocURIs() {
-		p := uriToPath(string(u))
-		if p == "" || seen[p] || !config.IsDesignFile(p) || !isUnderDesignRoot(p, designDir) {
-			continue
-		}
-		seen[p] = true
-		out = append(out, projectFile{path: p, src: s.snapshot(u)})
-	}
-	return out, designDir
-}
-
-// readFile prefers the editor-cached buffer (so unsaved edits are
-// reflected in cross-file analysis) and otherwise reads from disk. The
-// path argument is the project-relative file we are about to read; the
-// fsPath/currentSrc pair lets the caller pass the buffer it was
-// validating in case it has not yet been pushed back into the cache.
-func (s *Server) readFile(path, currentPath, currentSrc string) string {
-	if path == currentPath {
-		return currentSrc
-	}
-	// Fast path: maybe another buffer is open for this same path.
-	candidate := uri.New(pathToURI(path))
-	if cached := s.snapshot(candidate); cached != "" {
-		return cached
-	}
-	if data, err := os.ReadFile(path); err == nil {
-		return string(data)
-	}
-	return ""
+	return perFile, v.root
 }
 
 // uriToPath converts an `lsp` document URI string to a filesystem path.

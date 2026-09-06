@@ -1,70 +1,13 @@
-// Project-wide lookup: walking the design root for sibling files, and
-// finding a declaration across files (kind-aware, import-scoped).
+// Project-wide lookup: finding a declaration across the loaded files
+// (kind-aware, import-scoped).
 package lsp
 
 import (
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 )
-
-// projectAST is one parsed `.craftgo` file collected from a design root.
-// path is the absolute filesystem path; file is the parser output (may
-// be a partial AST if the parse hit recoverable errors).
-type projectAST struct {
-	path string
-	file *ast.File
-}
-
-// projectASTs walks upward from currentPath to find a craftgo project
-// root, then parses every `.craftgo` file beneath it. The current
-// buffer's text is preferred over its on-disk content so unsaved edits
-// are reflected in cross-file lookups (hover, go-to-def, references).
-//
-// Returns nil when no project root can be found - callers should
-// fall back to single-file behaviour in that case.
-func (s *Server) projectASTs(currentPath, currentSrc string) []projectAST {
-	files, _ := s.projectFilesWithRoot(currentPath, currentSrc)
-	return files
-}
-
-// projectFilesWithRoot is the alias-aware variant of [projectASTs] that
-// also returns the design-root directory. Callers that need to resolve
-// `import alias "from/x/y"` paths back to filesystem locations require
-// the root, so this is the canonical entry point for hover / def /
-// references; [projectASTs] is kept as a thin wrapper for callers that
-// only need the file list.
-func (s *Server) projectFilesWithRoot(currentPath, currentSrc string) ([]projectAST, string) {
-	if currentPath == "" {
-		return nil, ""
-	}
-	_, _, designDir, err := config.Find(filepath.Dir(currentPath))
-	if err != nil {
-		return nil, ""
-	}
-	var out []projectAST
-	_ = filepath.WalkDir(designDir, func(p string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() {
-			return nil
-		}
-		if !config.IsDesignFile(p) {
-			return nil
-		}
-		src := s.readFile(p, currentPath, currentSrc)
-		if src == "" {
-			return nil
-		}
-		f := parser.New(p, src).Parse()
-		out = append(out, projectAST{path: p, file: f})
-		return nil
-	})
-	return out, designDir
-}
 
 // findDecl returns the first top-level declaration whose declared name
 // matches. Cross-package lookups are not handled here - the caller can
@@ -133,7 +76,7 @@ func findDeclKindAware(f *ast.File, name, ctx string) ast.Decl {
 // (relative to the design folder) back to the on-disk directory whose
 // files we should search. Pass empty string when the lookup is
 // in-package only and bare names are sufficient.
-func findDeclAcross(files []projectAST, name string, currentImports []*ast.Import, designRoot string) (ast.Decl, projectAST, bool) {
+func findDeclAcross(files []loadedFile, name string, currentImports []*ast.Import, designRoot string) (ast.Decl, loadedFile, bool) {
 	return findDeclAcrossKindAware(files, name, currentImports, designRoot, "")
 }
 
@@ -145,7 +88,7 @@ func findDeclAcross(files []projectAST, name string, currentImports []*ast.Impor
 // (e.g. `middleware AuthRequired` in one file, `error AuthRequired` in
 // another) - without it the linear scan returns whichever appeared
 // first, which is wrong for a click in `@middlewares(...)`.
-func findDeclAcrossKindAware(files []projectAST, name string, currentImports []*ast.Import, designRoot, ctx string) (ast.Decl, projectAST, bool) {
+func findDeclAcrossKindAware(files []loadedFile, name string, currentImports []*ast.Import, designRoot, ctx string) (ast.Decl, loadedFile, bool) {
 	pkgQualifier := ""
 	bare := name
 	for i := 0; i < len(name); i++ {
@@ -167,7 +110,7 @@ func findDeclAcrossKindAware(files []projectAST, name string, currentImports []*
 				}
 			}
 		}
-		return nil, projectAST{}, false
+		return nil, loadedFile{}, false
 	}
 	// Alias-based resolution: walk the current file's imports and
 	// pick whichever alias (explicit or implicit) matches the
@@ -216,7 +159,7 @@ func findDeclAcrossKindAware(files []projectAST, name string, currentImports []*
 			}
 		}
 	}
-	return nil, projectAST{}, false
+	return nil, loadedFile{}, false
 }
 
 // makeKindMatcher returns a predicate that tests whether a decl matches
@@ -269,15 +212,4 @@ func inDir(path, dir string) bool {
 	clean := filepath.Clean(path)
 	dirClean := filepath.Clean(dir)
 	return filepath.Dir(clean) == dirClean
-}
-
-// isUnderDesignRoot reports whether file path p lives inside dir,
-// requiring a path-separator boundary after the prefix so a sibling like
-// `/proj/design2` or `/proj/design_backup` does NOT match the design root
-// `/proj/design` (which a bare strings.HasPrefix would).
-func isUnderDesignRoot(p, dir string) bool {
-	if dir == "" {
-		return false
-	}
-	return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
 }

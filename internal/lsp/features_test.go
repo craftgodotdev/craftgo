@@ -812,7 +812,7 @@ service S {
 	get GetX /x {}
 }
 `
-	files := []projectAST{
+	files := []loadedFile{
 		{path: "shared/mw.craftgo", file: mustParseFile(t, "shared/mw.craftgo", mwFile)},
 		{path: "shared/err.craftgo", file: mustParseFile(t, "shared/err.craftgo", errFile)},
 		{path: "services/use.craftgo", file: mustParseFile(t, "services/use.craftgo", useFile)},
@@ -925,7 +925,7 @@ extend service Alpha {
 	if d := findDeclKindAware(view.file, "Alpha", "service"); d != nil {
 		t.Errorf("extend-only file has no definition site, got %T", d)
 	}
-	files := []projectAST{
+	files := []loadedFile{
 		{path: "x/alpha-extra.craftgo", file: mustParseFile(t, "x/alpha-extra.craftgo", ext)},
 		{path: "x/alpha.craftgo", file: mustParseFile(t, "x/alpha.craftgo", primary)},
 	}
