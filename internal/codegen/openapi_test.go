@@ -20,7 +20,7 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 	t.Helper()
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
@@ -172,7 +172,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -221,7 +221,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -252,7 +252,7 @@ service CService { @operationId("customList") get List /c { response A } }
 service DService { get GetThing /d { response A } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -293,7 +293,7 @@ type R { x string }
 service AService { @operationId("Lookup") get Find /a { response R } }
 service BService { get Lookup /b { response R } }`
 	pkg := analyzeIgnoringErrors(t, src)
-	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	err := genOpenAPI(t, pkg, sampleConfig(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected a duplicate-operationId error, got nil")
 	}
@@ -316,7 +316,7 @@ type Page<T> { items T[] }
 type Resp { real Page<Order>  fake PageOfOrder }
 service S { get Get /g { response Resp } }`
 	pkg := analyze(t, src)
-	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	err := genOpenAPI(t, pkg, sampleConfig(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected a duplicate-component-schema error, got nil")
 	}
@@ -343,7 +343,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -376,7 +376,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -409,7 +409,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -471,7 +471,7 @@ type T {
 service S { post Create /c { request T  response T } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1054,7 +1054,7 @@ type T {
 service S { post Create /c { request T  response T } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1096,7 +1096,7 @@ type T {
 service S { post Create /c { request T  response T } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1139,7 +1139,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1207,7 +1207,7 @@ service S {
 		OpenAPI: config.OpenAPI{BasePath: "/api"},
 	}
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+	if err := genOpenAPI(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1360,7 +1360,7 @@ func TestGenerateOpenAPI(t *testing.T) {
 	cfg := sampleConfig()
 	cfg.OpenAPI.Title = "API"
 	cfg.OpenAPI.Version = "1.2.3"
-	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+	if err := genOpenAPI(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1399,7 +1399,7 @@ func TestGenerateOpenAPIDefaultsAndEmpty(t *testing.T) {
 	cfg.OpenAPI.Title = ""
 	cfg.OpenAPI.Version = ""
 	cfg.OpenAPI.BasePath = ""
-	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+	if err := genOpenAPI(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1421,7 +1421,7 @@ type Bag {
     name    string 
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1459,7 +1459,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1515,7 +1515,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1570,7 +1570,7 @@ service Bare {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1616,7 +1616,7 @@ service T {
     get Dedup /c/{id} { request R  response Resp }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1655,7 +1655,7 @@ service S {
     get Get /a { response R }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1760,7 +1760,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1789,7 +1789,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1799,13 +1799,6 @@ service S {
 		`- user management`,
 		`- v1`,
 	)
-}
-
-func TestGenerateOpenAPIMissingPackage(t *testing.T) {
-	pkg := &semantic.Package{}
-	if err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir()); err == nil {
-		t.Fatal("expected error")
-	}
 }
 
 // TestGenerateOpenAPIPerModeMediaTypes pins the content-type a method
@@ -1829,7 +1822,7 @@ service S {
 }`
 	pkg := analyze(t, dsl)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1939,4 +1932,11 @@ service S { post Upload /up { request UploadReq  response Resp } }`)
 	}
 	// The operation still carries the inline multipart body.
 	mustContainAll(t, body, "multipart/form-data")
+}
+
+// genOpenAPI writes pkg's OpenAPI document as a single-package project.
+func genOpenAPI(t *testing.T, pkg *semantic.Package, cfg *config.Config, root string) error {
+	t.Helper()
+	proj := &semantic.Project{Packages: map[string]*semantic.Package{pkg.Name: pkg}}
+	return GenerateProjectOpenAPI(proj, cfg, root)
 }

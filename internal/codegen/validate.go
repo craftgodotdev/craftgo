@@ -82,59 +82,11 @@ type validatorType struct {
 // without any constraints get an empty stub so handlers can call
 // `req.Validate()` uniformly.
 //
-// Equivalent to [GenerateValidatorsPackage] with a nil [CrossPkg]
-// context, for single-package callers and tests.
-func GenerateValidators(pkg *semantic.Package, outDir string) error {
-	return GenerateValidatorsPackage(pkg, outDir, nil)
-}
-
-// GenerateValidatorsPackage is the multi-package variant of
-// [GenerateValidators]. crossPkg adds Go imports for every cross-
-// package alias used in pkg's field types so `req.User.Validate()`
-// can dispatch to the sibling package's validator.
-//
-// Equivalent to [GenerateValidatorsWith] with a nil scalar table:
-// scalar inheritance is disabled in this entry point.
-func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
-	return GenerateValidatorsWith(pkg, outDir, crossPkg, nil, nil)
-}
-
-// GenerateValidatorsWith is the project-aware entry point: it
-// accepts the [ScalarTable] built by [BuildScalarTable] so a field
-// typed `Email` (local scalar) or `shared.NonEmptyID` (cross-pkg
-// scalar) inherits the scalar's own decorator chain into its
-// generated Validate() body. The [TypeTable] resolves qualified
-// type refs (`shared.Page<T>`), which the local-only `pkg.Types`
-// lookup cannot reach, so they emit recursive `.Validate()` calls.
-//
-// Used by the multi-package CLI flow; single-package fixtures and
-// tests continue calling [GenerateValidators] / [GenerateValidatorsPackage]
-// which pass nil for the tables.
-func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable) error {
-	return GenerateValidatorsAll(pkg, outDir, crossPkg, scalars, types, nil)
-}
-
-// GenerateValidatorsAll is the explicit-tables entry point for tests
-// that build tables directly; [GenerateValidatorsResolved] accepts a
-// single [ProjectResolver] instead of four ad-hoc tables. This wrapper
-// assembles a resolver from the parameters and delegates.
-func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable, enums EnumTable) error {
-	r := &ProjectResolver{
-		Types:    types,
-		Enums:    enums,
-		Scalars:  scalars,
-		CrossPkg: crossPkg,
-	}
-	return GenerateValidatorsResolved(pkg, outDir, r)
-}
-
-// GenerateValidatorsResolved is the canonical entry point. It takes a
-// single [ProjectResolver] carrying every cross-package lookup the
-// validator emit chain needs - scalar inheritance, generic Validate
-// dispatch, cross-pkg enum value-set checks, and the matching Go
-// import registrations. nil resolver is tolerated and degrades to
-// local-only behaviour, matching the legacy single-package shape.
-func GenerateValidatorsResolved(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
+// r carries every cross-package lookup the validator emit chain needs -
+// scalar inheritance, generic Validate dispatch, cross-pkg enum value-set
+// checks, and the matching Go import registrations. A nil resolver
+// resolves local names only.
+func GenerateValidators(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}

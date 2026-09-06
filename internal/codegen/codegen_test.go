@@ -105,7 +105,7 @@ func TestGenerateTypesSensitiveJSONDash(t *testing.T) {
 	pkg := analyze(t, `package design
 type User { id string  internal string @sensitive }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -142,7 +142,7 @@ service Lookups {
     }
 }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -169,7 +169,7 @@ func TestGenerateTypesBasic(t *testing.T) {
 	pkg := analyze(t, `package design
 type User { id string  name string  age int? }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -195,7 +195,7 @@ func TestGenerateTypesArrayMap(t *testing.T) {
 	pkg := analyze(t, `package design
 type X { tags string[]  meta map<string, string> }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -214,7 +214,7 @@ func TestGenerateTypesBuiltins(t *testing.T) {
 	pkg := analyze(t, `package design
 type X { blob bytes  raw any  upload file }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -236,7 +236,7 @@ type Org {}
 type Pair<A, B> { left A  right B }
 type UserOrgPair { p Pair<User, Org> }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -352,7 +352,7 @@ func TestGenerateTypesMixin(t *testing.T) {
 type Profile { id string }
 type User { Profile  name string }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -377,7 +377,7 @@ type LegacyBook {
     priceUsd int    @deprecated("use priceCents instead")
 }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -418,7 +418,7 @@ type T {
     optNull  string? @nullable
 }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -440,7 +440,7 @@ type T {
 
 func TestGenerateTypesNoPackageName(t *testing.T) {
 	pkg := &semantic.Package{Types: map[string]*ast.TypeDecl{}}
-	if err := GenerateTypes(pkg, t.TempDir()); err == nil {
+	if err := GenerateTypes(pkg, t.TempDir(), nil); err == nil {
 		t.Error("expected error for missing pkg name")
 	}
 }
@@ -518,7 +518,7 @@ func TestGenerateErrorsShort(t *testing.T) {
 	pkg := analyze(t, `package design
 error NotFound UserNotFound`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -566,7 +566,7 @@ error BadRequest Validation {
     fields  string[]
 }`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -598,7 +598,7 @@ error Internal Boom {
     message string? @default("kaboom")
 }`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -629,7 +629,7 @@ func TestGenerateErrorsSmartSuffix(t *testing.T) {
 error NotFound UserNotFoundError
 error BadRequest ValidationErr`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -650,7 +650,7 @@ error TooManyRequests RateLimited {
     bucket       string?
 }`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -692,7 +692,7 @@ error Forbidden Boom {
     note   string
 }`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -720,7 +720,7 @@ error TooManyRequests RateLimited {
     throttled  bool  @cookie("throttled")
 }`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -745,7 +745,7 @@ error TooManyRequests RateLimited {
 // ProjectResolver and format via strconv.FormatInt - NOT the broken
 // string(int) conversion the local-only path would emit (wrong runtime
 // value + a go vet diagnostic). This exercises the resolver that
-// GenerateErrorsPackage threads through; the local-scalar test above
+// GenerateErrors threads through; the local-scalar test above
 // would pass even without it.
 func TestGenerateErrorsCrossPkgScalarHeader(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
@@ -767,7 +767,7 @@ error TooManyRequests RateLimited {
 	}
 	dir := t.TempDir()
 	r := BuildProjectResolver(proj, newFixtureConfig(), "app")
-	if err := GenerateErrorsPackage(appPkg, dir, r); err != nil {
+	if err := GenerateErrors(appPkg, dir, r); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "app", "errors.go"))
@@ -790,7 +790,7 @@ func TestGenerateErrorsNoBindingsNoHTTPImport(t *testing.T) {
 	pkg := analyze(t, `package design
 error NotFound UserNotFound`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
@@ -808,7 +808,7 @@ func TestGenerateErrorsEmpty(t *testing.T) {
 	pkg := analyze(t, `package design
 type X {}`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "design", "errors.go")); !os.IsNotExist(err) {
@@ -818,7 +818,7 @@ type X {}`)
 
 func TestGenerateErrorsNoPackageName(t *testing.T) {
 	pkg := &semantic.Package{Errors: map[string]*ast.ErrorDecl{"X": {Name: "X", Category: "NotFound"}}}
-	if err := GenerateErrors(pkg, t.TempDir()); err == nil {
+	if err := GenerateErrors(pkg, t.TempDir(), nil); err == nil {
 		t.Error("expected error")
 	}
 }
@@ -859,7 +859,7 @@ type T {
     structOpt   User?
 }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -949,7 +949,7 @@ error Forbidden Denied {
     reason string
 }`)
 	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir); err != nil {
+	if err := GenerateErrors(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))

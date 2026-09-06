@@ -264,34 +264,15 @@ type transportImport struct {
 	Path  string
 }
 
-// GenerateRoutes emits one `routes.go` per service under
-// `<output.routes>/<servicePackage>/` PLUS a top-level
-// `<output.routes>/routes.go` that exposes `RegisterAll(srv, svcCtx)` -
-// the one-call wire-up consumed by main.go. Both layers are
-// regenerated on every gen because they're derived purely from the
-// DSL service set.
-//
-// Single-package callers should keep using this entry point. Multi-
-// package projects call [GeneratePerServiceRoutes] per package and
-// [GenerateProjectRoutesUmbrella] once for the project so the
-// umbrella aggregates services from every package.
-func GenerateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if err := GeneratePerServiceRoutes(pkg, cfg, projectRoot); err != nil {
-		return err
-	}
-	return generateRoutesAll(pkg, cfg, projectRoot)
-}
-
-// GeneratePerServiceRoutes emits the per-directory `routes.go` files;
-// the umbrella is left to a project-level pass. Used by the multi-
-// package CLI flow so each package's services contribute to a single
-// shared umbrella rather than overwriting each other.
+// GenerateRoutes emits the per-directory `routes.go` files for pkg's
+// services under `<output.routes>/`. The project-wide umbrella that wires
+// every directory into one `RegisterAll` is [GenerateProjectRoutesUmbrella].
 //
 // The unit of emission is the OUTPUT DIRECTORY, not the service: only
 // one `routes.go` can live in a folder, and `@group` deliberately lets
 // several services share one. Every service landing in a directory
 // contributes its methods to that directory's single RegisterRoutes.
-func GeneratePerServiceRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+func GenerateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -409,8 +390,7 @@ type routesAllImport struct {
 }
 
 // makeRoutesAllImport builds the aliased import for one (service, group) routes
-// hub. Both umbrella emitters (per-package and project-wide) use this so the
-// alias / path formula lives in one place.
+// hub.
 func makeRoutesAllImport(cfg *config.Config, name, group, seg string) routesAllImport {
 	return routesAllImport{
 		Alias: ServicePackage(name) + groupAliasSuffix(group) + "routes",
@@ -422,46 +402,6 @@ func makeRoutesAllImport(cfg *config.Config, name, group, seg string) routesAllI
 type routesAllData struct {
 	Imports          []routesAllImport
 	SvccontextImport string
-}
-
-// generateRoutesAll emits the top-level umbrella routes file. Skipped
-// when the package declares no services - the umbrella has nothing to
-// wire and an empty `routes` package would shadow `pkg/server.routes`-
-// style identifiers in user code.
-func generateRoutesAll(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	names := sortedServices(pkg)
-	if len(names) == 0 {
-		return nil
-	}
-	dir := filepath.Join(projectRoot, cfg.Output.Routes)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	data := routesAllData{
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
-	}
-	// One import per output DIRECTORY, not per service: routes are emitted
-	// per folder and several services may share one, so a per-service loop
-	// would call the same RegisterRoutes twice and mount every pattern in
-	// it twice - which http.ServeMux rejects with a panic at startup. Names
-	// and groups are already sorted, so the first claimant of a segment is
-	// deterministic.
-	seen := map[string]bool{}
-	for _, name := range names {
-		for _, g := range distinctGroups(pkg.Services[name]) {
-			seg := outputSegFor(name, g, cfg.Output.FileCase)
-			if seen[seg] {
-				continue
-			}
-			seen[seg] = true
-			data.Imports = append(data.Imports, makeRoutesAllImport(cfg, name, g, seg))
-		}
-	}
-	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render routes-all: %w", err)
-	}
-	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
 }
 
 // generateRoutesForSegment emits the single routes.go that serves one

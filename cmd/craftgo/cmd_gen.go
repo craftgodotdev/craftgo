@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -67,12 +66,8 @@ func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config
 	return cfg, projectRoot, designDir, nil
 }
 
-// runGen wires the full design → codegen pipeline. The body reads as
-// the high-level outline (resolve → analyze → validate → emit per
-// concern → log) so a future reader can navigate phases without
-// chasing nested loops. Each phase function is independently
-// testable and contains the actual codegen calls; runGen itself
-// only sequences them.
+// runGen resolves the manifest, analyses the design, and hands the
+// validated project to [codegen.Generate].
 func runGen(args []string) error {
 	manifestFolder, contextRoot, target, err := parseGenArgs(args)
 	if err != nil {
@@ -99,30 +94,7 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
-	pkgNames := sortedPackageNames(proj)
-
-	if err := validateSecurityRefs(proj, cfg, pkgNames); err != nil {
-		return err
-	}
-	// Pre-flight: reject route patterns that net/http's ServeMux would refuse
-	// to register together, so an ambiguous-route design fails at gen time
-	// instead of panicking at server boot.
-	if msgs := codegen.ValidateRouteConflicts(proj, cfg); len(msgs) > 0 {
-		return fmt.Errorf("conflicting routes:\n  %s", strings.Join(msgs, "\n  "))
-	}
-	// Pre-flight: catch operationId / component-schema name collisions
-	// before any file is written, so a clash fails the whole run up front
-	// rather than after types/transport are already on disk.
-	if err := codegen.ValidateProjectOpenAPI(proj, cfg); err != nil {
-		return err
-	}
-	if err := genTypesPerPackage(proj, cfg, projectRoot, pkgNames); err != nil {
-		return err
-	}
-	if err := genServicesPerPackage(proj, cfg, projectRoot, pkgNames); err != nil {
-		return err
-	}
-	if err := genProjectArtefacts(proj, cfg, projectRoot); err != nil {
+	if err := codegen.Generate(proj, cfg, projectRoot); err != nil {
 		return err
 	}
 	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
@@ -187,119 +159,6 @@ func fileDecoratorString(files []*ast.File, name string) string {
 		}
 	}
 	return ""
-}
-
-// sortedPackageNames returns the project's non-blank package names in
-// alphabetical order. Used by every per-package gen phase so output
-// files diff cleanly across runs regardless of the underlying map
-// iteration order.
-func sortedPackageNames(proj *semantic.Project) []string {
-	out := make([]string, 0, len(proj.Packages))
-	for k := range proj.Packages {
-		if k != "" {
-			out = append(out, k)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// validateSecurityRefs walks every package's `@security` references
-// and surfaces any unresolved scheme as a single composite error.
-// Multi-package projects can spread services across packages, so the
-// validator runs over each one independently.
-func validateSecurityRefs(proj *semantic.Project, cfg *config.Config, pkgNames []string) error {
-	for _, name := range pkgNames {
-		p := proj.Packages[name]
-		if p == nil {
-			continue
-		}
-		if errs := codegen.ValidateSecurityRefs(p, cfg); len(errs) > 0 {
-			return fmt.Errorf("security scheme errors in package %s:\n  %s", name, strings.Join(errs, "\n  "))
-		}
-	}
-	return nil
-}
-
-// genStep pairs a codegen call with the label used to wrap its error.
-type genStep struct {
-	label string
-	fn    func() error
-}
-
-// runGenSteps runs each step in order, wrapping the first failure with its
-// label. Shared by the per-package and project-wide gen phases so they don't
-// each re-spell the labelled-step loop.
-func runGenSteps(steps []genStep) error {
-	for _, s := range steps {
-		if err := s.fn(); err != nil {
-			return fmt.Errorf("%s: %w", s.label, err)
-		}
-	}
-	return nil
-}
-
-// genTypesPerPackage emits the four type-shape artefacts (types,
-// enums, errors, validators) into <typesDir>/<pkgName>/ for every
-// package. Cross-package field refs pick up Go imports + qualified
-// lookups through the per-package [codegen.ProjectResolver].
-func genTypesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot string, pkgNames []string) error {
-	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
-	for _, name := range pkgNames {
-		p := proj.Packages[name]
-		r := codegen.BuildProjectResolver(proj, cfg, name)
-		if err := runGenSteps([]genStep{
-			{"types(" + name + ")", func() error { return codegen.GenerateTypesPackage(p, typesDir, r.CrossPkg, r) }},
-			{"enums(" + name + ")", func() error { return codegen.GenerateEnums(p, typesDir) }},
-			{"errors(" + name + ")", func() error { return codegen.GenerateErrorsPackage(p, typesDir, r) }},
-			{"validators(" + name + ")", func() error { return codegen.GenerateValidatorsResolved(p, typesDir, r) }},
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// genServicesPerPackage emits service-shaped artefacts (handlers,
-// helpers, logic, per-service routes) for every package that
-// declares at least one service. Project-global middleware
-// scaffolds run ONCE up-front so packages without services - like
-// `shared` - still contribute their declarations to svccontext.
-func genServicesPerPackage(proj *semantic.Project, cfg *config.Config, projectRoot string, pkgNames []string) error {
-	if err := codegen.GenerateProjectMiddlewares(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("middlewares: %w", err)
-	}
-	for _, name := range pkgNames {
-		p := proj.Packages[name]
-		if len(p.Services) == 0 {
-			continue
-		}
-		r := codegen.BuildProjectResolver(proj, cfg, name)
-		if err := runGenSteps([]genStep{
-			{"transport(" + name + ")", func() error { return codegen.GenerateTransportResolved(p, cfg, projectRoot, r) }},
-			{"service(" + name + ")", func() error { return codegen.GenerateServicePackage(p, cfg, projectRoot, r.CrossPkg) }},
-			{"routes-svc(" + name + ")", func() error { return codegen.GeneratePerServiceRoutes(p, cfg, projectRoot) }},
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// genProjectArtefacts emits the project-wide artefacts in dependency
-// order: routes-umbrella aggregates per-service routes, runtime
-// scaffolds (config/, svccontext/) write the boot package, main.go
-// stitches them together, and openapi.yaml is last so it sees the
-// final symbol table. Runtime scaffolds self-skip when
-// `output.main: "-"` opts the project out of the runtime layer.
-func genProjectArtefacts(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	return runGenSteps([]genStep{
-		{"routes-umbrella", func() error { return codegen.GenerateProjectRoutesUmbrella(proj, cfg, projectRoot) }},
-		{"config", func() error { return codegen.GenerateRuntimeConfig(cfg, projectRoot) }},
-		{"svccontext", func() error { return codegen.GenerateSvccontext(cfg, projectRoot) }},
-		{"main", func() error { return codegen.GenerateProjectMain(proj, cfg, projectRoot) }},
-		{"openapi", func() error { return codegen.GenerateProjectOpenAPI(proj, cfg, projectRoot) }},
-	})
 }
 
 func securitySchemeNames(cfg *config.Config) []string {

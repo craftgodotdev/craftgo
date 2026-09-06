@@ -34,11 +34,11 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 	doc.Components.Schemas[name] = ref
 }
 
-// GenerateOpenAPI builds an OpenAPI 3.1 document for pkg and writes it as
+// writeOpenAPI builds an OpenAPI 3.1 document for pkg and writes it as
 // YAML to the path configured by `output.openapi`. Each service contributes
 // one set of operations under its `@prefix`; every concrete TypeDecl
 // becomes a schema in `components.schemas`.
-func GenerateOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -84,9 +84,9 @@ func ValidateProjectOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	return err
 }
 
-// GenerateProjectOpenAPI is the multi-package counterpart of
-// [GenerateOpenAPI]: it merges every package's types/enums/errors/
-// scalars/services into a single OpenAPI 3.1 document. When two
+// GenerateProjectOpenAPI merges every package's types/enums/errors/
+// scalars/services into a single OpenAPI 3.1 document written to
+// `output.openapi`. When two
 // packages declare a same-named entity, the second-and-subsequent
 // occurrences get renamed to `<PascalPkg><Name>` (e.g. two packages
 // each declaring `User` produce `User` for the first-seen and
@@ -105,7 +105,7 @@ func GenerateProjectOpenAPI(proj *semantic.Project, cfg *config.Config, projectR
 		// somewhere so use the manifest or a sensible default.
 		merged.Name = "design"
 	}
-	return GenerateOpenAPI(merged, cfg, projectRoot)
+	return writeOpenAPI(merged, cfg, projectRoot)
 }
 
 // mergeCollisionError formats the cross-package merge-collision diagnostic

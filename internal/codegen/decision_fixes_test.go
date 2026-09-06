@@ -33,10 +33,10 @@ type Doc {
 	}
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
-	if err := GenerateTypesPackage(mPkg, dir, CrossPkg{}, nil); err != nil {
+	if err := GenerateTypes(mPkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateValidatorsAll(mPkg, dir, CrossPkg{}, BuildScalarTable(proj, "m"), BuildTypeTable(proj, "m"), BuildEnumTable(proj, "m")); err != nil {
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
 		t.Fatal(err)
 	}
 	types, _ := os.ReadFile(filepath.Join(dir, "m", "types.go"))
@@ -91,10 +91,10 @@ service S {
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
 	r := BuildProjectResolver(proj, newFixtureConfig(), "m")
-	if err := GenerateTypesPackage(mPkg, dir, CrossPkg{}, r); err != nil {
+	if err := GenerateTypes(mPkg, dir, r); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateValidatorsAll(mPkg, dir, CrossPkg{}, BuildScalarTable(proj, "m"), BuildTypeTable(proj, "m"), BuildEnumTable(proj, "m")); err != nil {
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -423,7 +423,7 @@ service S { post Op /x { request Body  response Resp } }`,
 	}
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
-	if err := GenerateValidatorsAll(mPkg, dir, CrossPkg{}, BuildScalarTable(proj, "m"), BuildTypeTable(proj, "m"), BuildEnumTable(proj, "m")); err != nil {
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))

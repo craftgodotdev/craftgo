@@ -30,20 +30,9 @@ import (
 //
 // outDir is the configured `output.types` directory; the package name
 // segment is appended so that types live alongside the rest of the
-// service-scoped artefacts.
-//
-// Equivalent to [GenerateTypesPackage] with a nil [CrossPkg] context;
-// the legacy single-package signature stays so existing callers /
-// tests keep working unchanged.
-func GenerateTypes(pkg *semantic.Package, outDir string) error {
-	return GenerateTypesPackage(pkg, outDir, nil, nil)
-}
-
-// GenerateTypesPackage is the multi-package variant of [GenerateTypes].
-// crossPkg adds Go imports for every cross-package DSL alias used in
-// pkg's field types or mixin refs - when nil/empty the output is
-// identical to single-package codegen.
-func GenerateTypesPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg, r *ProjectResolver) error {
+// service-scoped artefacts. r supplies the Go imports for cross-package
+// field types and mixin refs; a nil resolver resolves local names only.
+func GenerateTypes(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -51,7 +40,7 @@ func GenerateTypesPackage(pkg *semantic.Package, outDir string, crossPkg CrossPk
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
 	}
-	src := buildTypesGo(pkg, crossPkg, r)
+	src := buildTypesGo(pkg, r.crossPkgMap(), r)
 	formatted, err := format.Source([]byte(src))
 	if err != nil {
 		return fmt.Errorf("format types.go: %w\n--- source ---\n%s", err, src)

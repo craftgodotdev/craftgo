@@ -55,20 +55,14 @@ type serviceData struct {
 // GenerateService scaffolds one `<method>.go` per method per service
 // under `<output.service>/<servicePackage>/`. Unlike the other generators
 // this one runs in **scaffold** mode: existing files are left untouched so
-// user-written business logic is never overwritten.
-//
-// Equivalent to [GenerateServicePackage] with a nil [CrossPkg] context.
-func GenerateService(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	return GenerateServicePackage(pkg, cfg, projectRoot, nil)
-}
-
-// GenerateServicePackage is the multi-package variant of [GenerateService].
-// crossPkg lets the scaffold render `*foo.Cred` for a cross-package
-// request/response type rather than the legacy `*types.Cred`.
-func GenerateServicePackage(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg) error {
+// user-written business logic is never overwritten. r lets the scaffold
+// render `*foo.Cred` for a cross-package request/response type; a nil
+// resolver resolves local names only.
+func GenerateService(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
+	crossPkg := r.crossPkgMap()
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {

@@ -21,19 +21,11 @@ import (
 // SCREAMING_SNAKE error-code constant for every [ast.ErrorDecl] in pkg.
 // When pkg has no errors the function is a no-op.
 //
-// Equivalent to [GenerateErrorsPackage] with a nil resolver; kept for
-// single-package callers that don't reach across packages.
-func GenerateErrors(pkg *semantic.Package, outDir string) error {
-	return GenerateErrorsPackage(pkg, outDir, nil)
-}
-
-// GenerateErrorsPackage is the multi-package variant of [GenerateErrors].
-// The [ProjectResolver] supplies the cross-package import paths for body
-// fields (e.g. an error in `tasks` whose body carries a `users.UserRef`)
-// AND the cross-package scalar / enum resolution needed to format a
-// non-string `@header` / `@cookie` error field (`cost shared.Cents`).
-// A nil resolver falls back to local-only resolution.
-func GenerateErrorsPackage(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
+// r supplies the cross-package import paths for body fields (an error in
+// `tasks` whose body carries a `users.UserRef`) and the scalar / enum
+// resolution needed to format a non-string `@header` / `@cookie` error
+// field (`cost shared.Cents`). A nil resolver resolves local names only.
+func GenerateErrors(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
