@@ -326,9 +326,11 @@ func TestServerSetters(t *testing.T) {
 		SetDefaultWriteTimeout(2*time.Second).
 		SetDefaultMaxBodySize(1024).
 		SetDefaultMaxHeaderSize(8).
-		SetJSONCodec(defaultCodec{}).
 		SetLogger(s.Logger()).
 		RegisterMiddleware("auth", func(h http.Handler) http.Handler { return h })
+	if err := s.SetJSONCodec(defaultCodec{}); err != nil {
+		t.Fatal(err)
+	}
 	if s.Codec() == nil || s.Logger() == nil {
 		t.Error("codec/logger should be non-nil")
 	}
@@ -440,8 +442,10 @@ func (markerCodec) Encode(w io.Writer, v any) error {
 }
 
 func TestGlobalJSONCodecSwapTakesEffect(t *testing.T) {
-	t.Cleanup(func() { SetGlobalJSONCodec(defaultCodec{}) })
-	SetGlobalJSONCodec(markerCodec{})
+	t.Cleanup(func() { _ = SetGlobalJSONCodec(defaultCodec{}) })
+	if err := SetGlobalJSONCodec(markerCodec{}); err != nil {
+		t.Fatal(err)
+	}
 	var buf strings.Builder
 	if err := JSON().Encode(&buf, map[string]int{"a": 1}); err != nil {
 		t.Fatal(err)

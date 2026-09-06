@@ -181,6 +181,7 @@ server:
   addr: ":8080"
   handlerTimeout: 0s
   maxBodySize: 0
+  strictJSON: true
   compression:
     enabled: false
     minSize: 0
@@ -217,6 +218,7 @@ docs:
 | `addr`                       | string    | Listen address. `":8080"`, `"127.0.0.1:8080"`, etc.                     |
 | `handlerTimeout`             | duration  | Global per-handler deadline. `0s` = no global cap; per-method `@timeout` overrides. |
 | `maxBodySize`                | int       | Global request body cap in bytes. `0` = no cap.                         |
+| `strictJSON`                 | bool      | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value. `false` ignores both, as `encoding/json` does. |
 | `compression.enabled`        | bool      | Toggle gzip / deflate response compression.                             |
 | `compression.minSize`        | int       | Skip compression when body is smaller. `0` falls back to 1024.          |
 | `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |

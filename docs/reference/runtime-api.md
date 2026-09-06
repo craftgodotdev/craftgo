@@ -38,7 +38,8 @@ Each returns `*Server` for chaining.
 | Method | Description |
 |---|---|
 | `SetLogger(l Logger)` / `Logger() Logger` | Swap or read the logger. Also mirrors to `log.Default()` so generated logic reaches the same instance. |
-| `SetJSONCodec(c JSONCodec)` / `Codec() JSONCodec` | Swap the codec used by handlers, the access log, and health endpoints. Delegates to `SetGlobalJSONCodec`. |
+| `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Swap the codec used by handlers, the access log, and health endpoints. Delegates to `SetGlobalJSONCodec`; fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`. |
+| `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value; `server.strictJSON` in `config.yaml` drives it. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
 | `SetHandleNotFound(h http.Handler)` | Customize 404 responses - receives every request that matches no route. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | Defaults applied to the underlying `*http.Server`. |
@@ -110,11 +111,37 @@ type JSONCodec interface {
     Decode(r io.Reader, v any) error
 }
 
-server.SetGlobalJSONCodec(myCodec{})  // swap once at init
-server.JSON().Encode(w, payload)      // every generated handler reads through this accessor
+// Optional: needed only while server.strictJSON is on.
+type StrictDecoder interface {
+    DecodeStrict(r io.Reader, v any) error // rejects unknown fields and data after the value
+}
+
+if err := server.SetGlobalJSONCodec(myCodec{}); err != nil { /* strict JSON is on and myCodec has no DecodeStrict */ }
+server.JSON().Encode(w, payload) // every generated handler reads through this accessor
 ```
 
-`Server.SetJSONCodec(c)` is a convenience that delegates to `SetGlobalJSONCodec`. Reads during dispatch are safe via an `atomic.Value` swap.
+`Server.SetJSONCodec(c)` delegates to `SetGlobalJSONCodec`. Both fail, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. Reads during dispatch are safe via an `atomic.Value` swap.
+
+A wrapper for another JSON library adds `DecodeStrict` with that library's own unknown-field switch and finishes with `server.TrailingData`, the shared check every codec uses to report leftover data the same way. With sonic:
+
+```go
+type Sonic struct{}
+
+func (Sonic) Encode(w io.Writer, v any) error { return sonic.ConfigDefault.NewEncoder(w).Encode(v) }
+func (Sonic) Decode(r io.Reader, v any) error { return sonic.ConfigDefault.NewDecoder(r).Decode(v) }
+
+var strictAPI = sonic.Config{DisallowUnknownStructFields: true}.Froze()
+
+func (Sonic) DecodeStrict(r io.Reader, v any) error {
+    dec := strictAPI.NewDecoder(r)
+    if err := dec.Decode(v); err != nil {
+        return err
+    }
+    return server.TrailingData(dec.Buffered(), r)
+}
+```
+
+jsoniter (`Config{DisallowUnknownFields: true}.Froze()`) and goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wrap the same way.
 
 ## Validation error hook
 

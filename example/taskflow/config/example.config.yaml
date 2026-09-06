@@ -22,6 +22,7 @@ server:
   addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
   handlerTimeout: 0s          # global default handler deadline; 0 = no cap
   maxBodySize: 0              # global default body cap (bytes); 0 = no cap
+  strictJSON: true            # reject unknown fields and trailing data in JSON bodies; false ignores both
   compression:
     enabled: false            # gzip/deflate negotiated via Accept-Encoding;
                               # leave false when running behind a compressing

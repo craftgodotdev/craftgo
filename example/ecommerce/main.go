@@ -87,6 +87,10 @@ func main() {
 	// `response.size` against the configured MeterProvider so no
 	// separate metrics middleware is needed.
 	srv := server.New(svc)
+	if err := srv.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
+		log.Default().Error("strict json", log.Err(err))
+		os.Exit(1)
+	}
 	srv.Use(tel.HTTPMiddleware())
 	srv.Use(server.AccessLog(srv.Logger()))
 	// Global per-request guards. Per-method `@timeout` / `@maxBodySize`

@@ -106,6 +106,10 @@ func main() {
 	// its guards.
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
+	if err := srv.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
+		log.Default().Error("strict json", log.Err(err))
+		os.Exit(1)
+	}
 
 	// Readiness probe: /readyz flips to 503 if the store is unreachable. A
 	// Postgres-backed store pings the pool here; the in-memory store is always
