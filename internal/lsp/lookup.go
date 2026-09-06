@@ -94,6 +94,21 @@ func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
 	return nil
 }
 
+// findDecl returns the first top-level declaration whose declared name
+// matches. Cross-package lookups are not handled here - the caller can
+// inspect the import list separately if needed.
+func findDecl(f *ast.File, name string) ast.Decl {
+	if f == nil {
+		return nil
+	}
+	for _, d := range f.Decls {
+		if d.DeclName() == name {
+			return d
+		}
+	}
+	return nil
+}
+
 // declBody returns a type-body slice for declarations that have one
 // (TypeDecl always; ErrorDecl when HasBody is set). The bool says
 // whether a body exists; nil-body decls return false so callers can

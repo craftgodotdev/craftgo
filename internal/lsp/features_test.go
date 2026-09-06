@@ -740,9 +740,9 @@ service S {
 	if !ok || decName != "middlewares" {
 		t.Fatalf("decoratorArgContext should detect @middlewares, got name=%q ok=%v", decName, ok)
 	}
-	d := findDeclKindAware(view.file, "AuthRequired", "middlewares")
+	d := lookupIn(t, "x", "AuthRequired", semantic.MiddlewareDecls, view.file)
 	if d == nil {
-		t.Fatal("findDeclKindAware returned nil for middleware context")
+		t.Fatal("middleware lookup returned nil")
 	}
 	if _, isMW := d.(*ast.MiddlewareDecl); !isMW {
 		t.Errorf("expected MiddlewareDecl, got %T", d)
@@ -776,11 +776,10 @@ type Holder { g Greeter }
 		}
 	}
 	idx, _ := view.tokenAt(fieldTypePos.Line, fieldTypePos.Character)
-	ctx := refContextAt(view, idx, fieldTypePos)
-	if ctx != "type" {
-		t.Errorf("expected type context for field-type position, got %q", ctx)
+	if kind := lookupKindAt(view, idx, fieldTypePos); kind != semantic.TypeShapeDecls {
+		t.Errorf("expected type-shape kinds for field-type position, got %v", kind)
 	}
-	d := findDeclKindAware(view.file, "Greeter", "type")
+	d := lookupIn(t, "x", "Greeter", semantic.TypeShapeDecls, view.file)
 	if d == nil {
 		t.Fatal("type-context lookup returned nil")
 	}
@@ -812,35 +811,34 @@ service S {
 	get GetX /x {}
 }
 `
-	files := []loadedFile{
-		{path: "shared/mw.craftgo", file: mustParseFile(t, "shared/mw.craftgo", mwFile)},
-		{path: "shared/err.craftgo", file: mustParseFile(t, "shared/err.craftgo", errFile)},
-		{path: "services/use.craftgo", file: mustParseFile(t, "services/use.craftgo", useFile)},
+	files := []*ast.File{
+		mustParseFile(t, "shared/mw.craftgo", mwFile),
+		mustParseFile(t, "shared/err.craftgo", errFile),
+		mustParseFile(t, "services/use.craftgo", useFile),
 	}
-	// The bare-name path (no qualifier) - matches what
-	// `findDeclAcrossKindAware` receives when the cursor's
-	// `qualifiedNameAt` returns just `AuthRequired`.
-	d, pf, ok := findDeclAcrossKindAware(files, "AuthRequired", nil, "", "middlewares")
-	if !ok {
-		t.Fatal("findDeclAcrossKindAware did not find middleware decl across files")
+	// The bare name (no qualifier) - what `qualifiedNameAt` returns for
+	// the cursor on `AuthRequired`.
+	d := lookupIn(t, "services", "AuthRequired", semantic.MiddlewareDecls, files...)
+	if d == nil {
+		t.Fatal("middleware lookup did not find the decl across files")
 	}
 	if _, isMW := d.(*ast.MiddlewareDecl); !isMW {
-		t.Errorf("expected MiddlewareDecl across files, got %T from %s", d, pf.path)
+		t.Errorf("expected MiddlewareDecl across files, got %T from %s", d, d.DeclPos().Filename)
 	}
-	if pf.path != "shared/mw.craftgo" {
-		t.Errorf("expected hit in shared/mw.craftgo, got %s", pf.path)
+	if got := d.DeclPos().Filename; got != "shared/mw.craftgo" {
+		t.Errorf("expected hit in shared/mw.craftgo, got %s", got)
 	}
 	// The reverse direction also works: `@errors(AuthRequired)` finds
 	// the error decl, not the middleware.
-	d, pf, ok = findDeclAcrossKindAware(files, "AuthRequired", nil, "", "errors")
-	if !ok {
-		t.Fatal("findDeclAcrossKindAware did not find error decl across files")
+	d = lookupIn(t, "services", "AuthRequired", semantic.ErrorDecls, files...)
+	if d == nil {
+		t.Fatal("error lookup did not find the decl across files")
 	}
 	if _, isErr := d.(*ast.ErrorDecl); !isErr {
 		t.Errorf("expected ErrorDecl, got %T", d)
 	}
-	if pf.path != "shared/err.craftgo" {
-		t.Errorf("expected hit in shared/err.craftgo, got %s", pf.path)
+	if got := d.DeclPos().Filename; got != "shared/err.craftgo" {
+		t.Errorf("expected hit in shared/err.craftgo, got %s", got)
 	}
 }
 
@@ -880,10 +878,10 @@ extend service Alpha {
 		t.Fatalf("expected 2 Alpha tokens, got %d", count)
 	}
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	if ctx := refContextAt(view, idx, pos); ctx != "service" {
-		t.Fatalf("expected service context for an extend header, got %q", ctx)
+	if kind := lookupKindAt(view, idx, pos); kind != semantic.ServiceDecls {
+		t.Fatalf("expected service kinds for an extend header, got %v", kind)
 	}
-	d := findDeclKindAware(view.file, "Alpha", "service")
+	d := lookupIn(t, "x", "Alpha", semantic.ServiceDecls, view.file)
 	sd, ok := d.(*ast.ServiceDecl)
 	if !ok {
 		t.Fatalf("expected ServiceDecl, got %T", d)
@@ -918,27 +916,25 @@ extend service Alpha {
 	if tok.Text != "Alpha" {
 		t.Fatalf("probe landed on %q, not the service name", tok.Text)
 	}
-	if ctx := refContextAt(view, idx, pos); ctx != "service" {
-		t.Fatalf("expected service context, got %q", ctx)
+	if kind := lookupKindAt(view, idx, pos); kind != semantic.ServiceDecls {
+		t.Fatalf("expected service kinds, got %v", kind)
 	}
-	// In-file lookup must decline: this file holds only the extend.
-	if d := findDeclKindAware(view.file, "Alpha", "service"); d != nil {
+	// The extend-only file holds no definition site.
+	if d := lookupIn(t, "x", "Alpha", semantic.ServiceDecls, view.file); d != nil {
 		t.Errorf("extend-only file has no definition site, got %T", d)
 	}
-	files := []loadedFile{
-		{path: "x/alpha-extra.craftgo", file: mustParseFile(t, "x/alpha-extra.craftgo", ext)},
-		{path: "x/alpha.craftgo", file: mustParseFile(t, "x/alpha.craftgo", primary)},
-	}
-	d, pf, ok := findDeclAcrossKindAware(files, "Alpha", nil, "", "service")
-	if !ok {
+	d := lookupIn(t, "x", "Alpha", semantic.ServiceDecls,
+		mustParseFile(t, "x/alpha-extra.craftgo", ext),
+		mustParseFile(t, "x/alpha.craftgo", primary))
+	if d == nil {
 		t.Fatal("project-wide lookup did not find the primary service")
 	}
 	sd, isSvc := d.(*ast.ServiceDecl)
 	if !isSvc || sd.Extend {
 		t.Fatalf("expected the primary ServiceDecl, got %T (extend=%v)", d, isSvc && sd.Extend)
 	}
-	if pf.path != "x/alpha.craftgo" {
-		t.Errorf("expected the hit in x/alpha.craftgo, got %s", pf.path)
+	if got := d.DeclPos().Filename; got != "x/alpha.craftgo" {
+		t.Errorf("expected the hit in x/alpha.craftgo, got %s", got)
 	}
 }
 
@@ -1042,13 +1038,21 @@ service S {
 }
 `
 	view := parseSnapshot("t.craftgo", src)
-	d := findDeclKindAware(view.file, "Conflict", "errors")
+	d := lookupIn(t, "x", "Conflict", semantic.ErrorDecls, view.file)
 	if d == nil {
-		t.Fatal("findDeclKindAware returned nil for errors context")
+		t.Fatal("error lookup returned nil")
 	}
 	if _, isErr := d.(*ast.ErrorDecl); !isErr {
 		t.Errorf("expected ErrorDecl, got %T", d)
 	}
+}
+
+// lookupIn analyses files as one project and resolves name from package
+// homePkg among the selected declaration kinds.
+func lookupIn(t *testing.T, homePkg, name string, kinds semantic.DeclKind, files ...*ast.File) ast.Decl {
+	t.Helper()
+	proj, _ := semantic.AnalyzeProject(files, semantic.Options{})
+	return proj.Lookup(homePkg, name, kinds)
 }
 
 func findToken(t *testing.T, view snapshotView, needle string) protocol.Position {

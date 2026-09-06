@@ -10,6 +10,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // isInsideImportString reports whether pos lies inside an `import "…"`
@@ -137,63 +138,35 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 	return ""
 }
 
-// packageDeclCompletions returns every top-level declaration in the
-// named sibling package, suitable for offering completion on the right
-// side of a qualified reference (`shared.<cursor>` or `x.<cursor>`
-// where `x` is an import alias).
+// packageDeclCompletions returns every declaration of the package named
+// pkg, for the right side of a qualified reference (`shared.<cursor>`).
 //
 // `error` declarations are dropped: errors are NOT cross-package
-// referenceable (the `@errors(...)` resolver only looks at the
-// current package's table) and they cannot
-// be used as field types either, so surfacing them under a
-// cross-package qualifier would offer dead-end suggestions.
-func (s *Server) packageDeclCompletions(view snapshotView, currentURI, currentSrc, pkg string) []protocol.CompletionItem {
-	v := s.loadProject(uriToPath(currentURI), currentSrc)
-	imports := currentImports(view.file)
-
-	// Resolve `pkg` via imports first - it might be an alias rather
-	// than a literal package name. Falls back to a Package.Name match.
-	targetDir := ""
-	for _, imp := range imports {
-		if imp == nil {
-			continue
-		}
-		if imp.Alias == pkg {
-			targetDir = importTargetDir(v.root, imp.Path)
-			break
-		}
-		if imp.Alias == "" && idents.LastSegment(imp.Path) == pkg {
-			targetDir = importTargetDir(v.root, imp.Path)
-			break
-		}
+// referenceable (the `@errors(...)` resolver only looks at the current
+// package's table) and they cannot be used as field types either, so
+// surfacing them under a cross-package qualifier would offer dead-end
+// suggestions.
+func (s *Server) packageDeclCompletions(currentURI, currentSrc, pkg string) []protocol.CompletionItem {
+	p := s.loadProject(uriToPath(currentURI), currentSrc).proj.Packages[pkg]
+	if p == nil {
+		return nil
 	}
-
 	var out []protocol.CompletionItem
-	for _, p := range v.files {
-		matchByDir := targetDir != "" && inDir(p.path, targetDir)
-		matchByName := p.file.Package != nil && p.file.Package.Name == pkg
-		if !matchByDir && !matchByName {
-			continue
-		}
-		for _, d := range p.file.Decls {
-			if _, isError := d.(*ast.ErrorDecl); isError {
-				continue
-			}
-			out = append(out, protocol.CompletionItem{
-				Label:         d.DeclName(),
-				Kind:          declSymbolKindToCompletion(d),
-				Detail:        declSummary(d),
-				Documentation: strings.Join(declDoc(d), "\n"),
-			})
-		}
+	for _, d := range p.Decls(semantic.AnyDecl &^ semantic.ErrorDecls) {
+		out = append(out, protocol.CompletionItem{
+			Label:         d.DeclName(),
+			Kind:          declSymbolKindToCompletion(d),
+			Detail:        declSummary(d),
+			Documentation: strings.Join(declDoc(d), "\n"),
+		})
 	}
 	return out
 }
 
 // importAliasesOf returns every alias the file's imports expose at
 // the type-position level. Explicit aliases win; otherwise the
-// trailing path segment becomes the implicit alias - matching the
-// resolution in [findDeclAcross]. Duplicate aliases are de-duped.
+// trailing path segment becomes the implicit alias. Duplicate aliases
+// are de-duped.
 func importAliasesOf(f *ast.File) []string {
 	if f == nil {
 		return nil

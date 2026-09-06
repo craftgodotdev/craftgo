@@ -217,10 +217,10 @@ extend service S {
 
 func TestRefsNilDecoratorTolerated(t *testing.T) {
 	// Defensive guard - parser doesn't emit nil entries today.
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Errors:      map[string]*ast.ErrorDecl{},
 		Middlewares: map[string]*ast.MiddlewareDecl{},
-	}}
+	})
 	// Empty body decorators slice with a nil entry.
 	a.checkFieldGroupRefs("X", []*ast.Decorator{nil}, nil)
 	a.checkServiceLevelRefs([]*ast.Decorator{nil})

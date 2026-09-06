@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -33,10 +34,11 @@ type loadedFile struct {
 // manifest above the buffer) root is empty and files holds the buffer
 // alone, so single-file editing keeps every feature working.
 type projectView struct {
-	root  string
-	files []loadedFile
-	proj  *semantic.Project
-	diags []lexer.Diagnostic
+	root    string
+	current string // path of the buffer the view was built for
+	files   []loadedFile
+	proj    *semantic.Project
+	diags   []lexer.Diagnostic
 }
 
 // loadProject builds the view for the buffer at fsPath holding src. In a
@@ -44,7 +46,7 @@ type projectView struct {
 // a `package` declaration is assigned its folder's name so the analysis
 // can place it. fsPath is empty for an untitled buffer.
 func (s *Server) loadProject(fsPath, src string) projectView {
-	v := projectView{root: designRootOf(fsPath)}
+	v := projectView{root: designRootOf(fsPath), current: fsPath}
 	if v.root == "" {
 		v.files = []loadedFile{{path: fsPath, src: src}}
 	} else {
@@ -69,6 +71,44 @@ func (s *Server) loadProject(fsPath, src string) projectView {
 	v.proj, diags = semantic.AnalyzeProject(asts, semantic.Options{DesignRoot: v.root})
 	v.diags = append(v.diags, diags...)
 	return v
+}
+
+// currentPackage returns the package name of the buffer the view was
+// built for ("" when, outside a project, it declares none).
+func (v projectView) currentPackage() string {
+	for _, lf := range v.files {
+		if lf.path == v.current && lf.file.Package != nil {
+			return lf.file.Package.Name
+		}
+	}
+	return ""
+}
+
+// lookup resolves name (bare or `pkg.Name`) to a declaration of the
+// selected kinds as seen from the buffer's package.
+func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {
+	return v.proj.Lookup(v.currentPackage(), name, kinds)
+}
+
+// locationOf returns the LSP location of the n-column span at pos. A span
+// inside the buffer itself reports the editor's own URI, so an untitled
+// or non-file buffer still gets a usable location.
+func (v projectView) locationOf(pos lexer.Position, n int, current protocol.DocumentURI) protocol.Location {
+	u := current
+	if pos.Filename != v.current {
+		u = uri.New(pathToFileURIString(pos.Filename))
+	}
+	return protocol.Location{URI: u, Range: rangeOfPosLen(pos, n)}
+}
+
+// sortedKeys returns the keys of m in alphabetical order.
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // designRootOf returns the design root of the project containing fsPath,

@@ -351,7 +351,7 @@ func TestExtractPathParams(t *testing.T) {
 
 func TestResolveMethodPathFallbackName(t *testing.T) {
 	// Method with no inline path: fallback is /<kebab(name)>.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	if got != "/ping" {
 		t.Errorf("got %q, want %q", got, "/ping")
@@ -366,7 +366,7 @@ service S { get GetUser /users {} }`), Options{})
 	if len(diags) > 0 {
 		t.Fatalf("unexpected diags: %v", diags)
 	}
-	a := &analyzer{pkg: pkg, opts: Options{}}
+	a := newTestAnalyzer(pkg)
 	si := pkg.Services["S"]
 	got := a.resolveMethodPath(si.Primary, si.Methods[0])
 	if got != "/v1/users" {
@@ -376,7 +376,7 @@ service S { get GetUser /users {} }`), Options{})
 
 func TestResolveMethodPathEmptyParts(t *testing.T) {
 	// No basePath, no prefix, no inline path → defaults to /<kebab>.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	if got != "/ping" {
 		t.Errorf("got %q, want %q", got, "/ping")
@@ -410,7 +410,7 @@ func TestPathBindingNameVariants(t *testing.T) {
 }
 
 func TestRequestPathFieldsNilGuards(t *testing.T) {
-	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
+	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
 	// nil request
 	if got := a.requestPathFields(&ast.Method{}, nil); got != nil {
 		t.Error("nil request should return nil")
@@ -445,7 +445,8 @@ service S {
 // repairs a path which doesn't start with `/`. Pairs naturally with
 // the basePath format warning.
 func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
-	a := &analyzer{pkg: &Package{}, opts: Options{BasePath: "v1"}}
+	a := newTestAnalyzer(&Package{})
+	a.opts.BasePath = "v1"
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	// "v1" + "/ping" → "v1//ping" → "v1/ping" → "/v1/ping".
 	if got != "/v1/ping" {
@@ -456,7 +457,7 @@ func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
 // Real cyclic mixins are flagged by the mixin pass, but the request
 // field walk still encounters the cycle and must not loop.
 func TestRequestPathFieldsCyclicMixin(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
 			"A": {
 				Name: "A",
@@ -472,7 +473,7 @@ func TestRequestPathFieldsCyclicMixin(t *testing.T) {
 				},
 			},
 		},
-	}}
+	})
 	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("cyclic mixin should still surface reachable fields once")
@@ -482,7 +483,7 @@ func TestRequestPathFieldsCyclicMixin(t *testing.T) {
 // A mixin whose package is unknown is skipped (the reference pass reports
 // it); the host's own fields still surface.
 func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
 			"A": {
 				Name: "A",
@@ -492,7 +493,7 @@ func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
 				},
 			},
 		},
-	}}
+	})
 	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("qualified mixin unresolvable in-package should be skipped, own fields still surface")
@@ -516,7 +517,7 @@ func TestPathBindingNameSkipsNonPathDecorator(t *testing.T) {
 func TestCheckMethodPathParamsNilName(t *testing.T) {
 	// Defensive: m.Request set but m.Request.Name nil - early-return
 	// branch in checkMethodPathParams.
-	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
+	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
 	a.checkMethodPathParams("S", &ast.Method{
 		Name:    "M",
 		Pos:     lexer.Position{Line: 1},

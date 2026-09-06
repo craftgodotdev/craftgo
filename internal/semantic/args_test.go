@@ -95,7 +95,7 @@ func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
 
 func TestArgsScopeNilEntry(t *testing.T) {
 	// Defensive: nil decorator entries silently skip.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkArgsScope([]*ast.Decorator{nil})
 	a.checkArgsScope([]*ast.Decorator{{Name: "doesNotExist"}})
 	if len(a.diags) != 0 {
@@ -192,7 +192,7 @@ func TestArrayShortcutTooMany(t *testing.T) {
 	// checkArrayShortcut directly. The real registry has no Max-bounded
 	// variadic decorator, so we exercise the branch with a hand-built
 	// rule.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkArrayShortcut(
 		&ast.Decorator{Name: "x"},
 		ArgsRule{Min: 1, Max: 2, Variadic: ArgString},
@@ -207,7 +207,7 @@ func TestArrayShortcutTooMany(t *testing.T) {
 
 func TestArrayShortcutAnyVariadicSkipsKindCheck(t *testing.T) {
 	// ArgAny variadic short-circuits the per-element kind check.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkArrayShortcut(
 		&ast.Decorator{Name: "x"},
 		ArgsRule{Min: 1, Max: -1, Variadic: ArgAny},

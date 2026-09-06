@@ -319,7 +319,7 @@ func TestPlacementNilEntry(t *testing.T) {
 	// checkPlacement tolerates them so a future regression doesn't
 	// crash the analyser. We feed the slice both shapes (nil + valid)
 	// so the loop body exercises the nil branch and continues.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkPlacement(LvlField, "field X.y", nil)
 	a.checkPlacement(LvlField, "field X.y", []*ast.Decorator{nil, {Name: "doc"}})
 	if len(a.diags) != 0 {

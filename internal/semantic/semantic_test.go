@@ -249,7 +249,7 @@ func TestEnumDuplicateString(t *testing.T) {
 // hand-built decorator slice - kept defensive so a future parser
 // regression doesn't crash the analyser.
 func TestCheckDecoratorScopeNilEntry(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkDecoratorScope("test", []*ast.Decorator{nil, {Name: "doc"}, nil})
 	if len(a.diags) != 0 {
 		t.Errorf("expected no diags from nil-only chain, got %v", a.diags)
@@ -385,4 +385,10 @@ func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
 		t.Error("middleware named after a builtin should not be a builtin-collision error")
 	}
 	mustClean(t, `scalar Email string  scalar UserID string`)
+}
+
+// newTestAnalyzer returns an analyser over pkg whose project holds pkg
+// alone, for tests that drive a single check directly.
+func newTestAnalyzer(pkg *Package) *analyzer {
+	return &analyzer{pkg: pkg, proj: &Project{Packages: map[string]*Package{pkg.Name: pkg}}}
 }

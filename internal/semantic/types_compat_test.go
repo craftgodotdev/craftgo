@@ -191,7 +191,7 @@ func TestQualifiedFieldTypeSkipsCompat(t *testing.T) {
 // ---------- nil-shape defensive ----------
 
 func TestFieldPrimNil(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	if got := a.fieldPrim(nil); got != 0 {
 		t.Errorf("nil TypeRef should resolve to 0, got %v", got)
 	}
@@ -201,9 +201,9 @@ func TestFieldPrimNil(t *testing.T) {
 // guards in checkBodyTypeCompat / checkScalarTypeCompat. Parser doesn't
 // emit nil entries today, so we hand-build the scopes.
 func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Scalars: map[string]*ast.ScalarDecl{},
-	}}
+	})
 	field := &ast.Field{
 		Name: "name",
 		Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},

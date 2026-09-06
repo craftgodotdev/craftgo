@@ -79,12 +79,12 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// `pkg.` shape is not mistaken for a decorator context.
 	if mid != nil && mid.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, mid); ok {
-			return s.packageDeclCompletions(view, currentURI, currentSrc, pkg)
+			return s.packageDeclCompletions(currentURI, currentSrc, pkg)
 		}
 	}
 	if prev != nil && prev.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, prev); ok {
-			return s.packageDeclCompletions(view, currentURI, currentSrc, pkg)
+			return s.packageDeclCompletions(currentURI, currentSrc, pkg)
 		}
 	}
 	// Decorator name completion - cursor on (or right after) `@`, or
@@ -141,7 +141,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// General context - keywords + project-wide declared types so
 	// users typing identifiers see what they have already defined.
 	items := keywordCompletions()
-	items = append(items, s.declCompletionsProjectWide(view, currentURI, currentSrc)...)
+	items = append(items, s.declCompletions(view, currentURI, currentSrc, typePositionDecls)...)
 	return items
 }
 

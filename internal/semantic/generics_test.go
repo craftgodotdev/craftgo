@@ -266,7 +266,7 @@ type X { byPage map<Page<User, X>, string> }`))
 // Parser doesn't produce nil refs but we keep the early return so a
 // future regression doesn't crash the walker.
 func TestGenericWalkNilTypeRef(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.walkTypeRefGenerics(nil, nil)
 	if len(a.diags) != 0 {
 		t.Errorf("nil ref should not diag, got %v", a.diags)

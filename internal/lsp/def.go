@@ -6,17 +6,19 @@ import (
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // onDefinition answers `textDocument/definition`. The cursor must sit on
-// an identifier that names a top-level declaration. The lookup checks the
-// current file first, then every `.craftgo` file under the design root so
-// a qualified `pkg.Name` or a bare name declared in a sibling package
-// resolves. A cursor that names nothing returns an empty list.
+// an identifier naming a declaration; the name resolves through the
+// semantic project (a qualified `pkg.Name` in that package, a bare name
+// in the buffer's package first and then in any sibling package), and
+// the surrounding syntax narrows the kinds considered so a click inside
+// `@middlewares(X)` never lands on a same-named type. A cursor that
+// names nothing returns an empty list.
 func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DefinitionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -31,66 +33,16 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 	if idx < 0 || tok.Kind != lexer.Ident {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
-	// A cursor on an enum-value name inside `@default(...)` / `@example(...)`
-	// resolves to that value's declaration. Enum values are members of an
-	// EnumDecl, not top-level decls, so the findDecl paths below would miss
-	// them - handle this case first.
-	if loc, ok := s.enumValueDefinition(view, params.Position, tok.Text, string(params.TextDocument.URI), src); ok {
+	current := params.TextDocument.URI
+	v := s.loadProject(uriToPath(string(current)), src)
+	if loc, ok := enumValueDefinition(v, view, params.Position, tok.Text, current); ok {
 		return reply(ctx, []protocol.Location{loc}, nil)
 	}
-	// Context-aware lookup: a name like `AuthRequired` can legally be
-	// both a middleware AND a same-named error / type / scalar decl
-	// (middleware lives in its own decl namespace; types/enums/errors/
-	// scalars share another). Without context the linear `findDecl`
-	// returns whichever appeared first in source order - which is wrong
-	// for any of those overlap cases. We resolve by surrounding syntax:
-	//   - inside `@middlewares(...)`   → prefer MiddlewareDecl
-	//   - inside `@errors(...)`        → prefer ErrorDecl
-	//   - in a type-shape position     → exclude MiddlewareDecl
-	//
-	// When a context is known we ONLY return decls of the matching kind
-	// across all project files (in-file first, then cross-file). The
-	// generic fallback runs only when the cursor has no resolvable
-	// context - returning a wrong-kind decl is worse than returning
-	// nothing.
-	lookupCtx := refContextAt(view, idx, params.Position)
-	qualified := qualifiedNameAt(view, idx)
-	if lookupCtx != "" {
-		if d := findDeclKindAware(view.file, tok.Text, lookupCtx); d != nil {
-			return reply(ctx, []protocol.Location{{
-				URI:   params.TextDocument.URI,
-				Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
-			}}, nil)
-		}
-		v := s.loadProject(uriToPath(string(params.TextDocument.URI)), src)
-		if d, pf, ok := findDeclAcrossKindAware(v.files, qualified, currentImports(view.file), v.root, lookupCtx); ok {
-			return reply(ctx, []protocol.Location{{
-				URI:   uri.New(pathToFileURIString(pf.path)),
-				Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
-			}}, nil)
-		}
+	d := v.lookup(qualifiedNameAt(view, idx), lookupKindAt(view, idx, params.Position))
+	if d == nil {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
-	// In-file lookup first - fast path, avoids walking the project tree
-	// when the user clicks on a same-file reference.
-	if d := findDecl(view.file, tok.Text); d != nil {
-		return reply(ctx, []protocol.Location{{
-			URI:   params.TextDocument.URI,
-			Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
-		}}, nil)
-	}
-	// Cross-file lookup - qualified `pkg.Name` or bare name declared in
-	// a sibling package. We rebuild the name from the surrounding
-	// tokens so `users.UserRef` resolves whether the cursor was on the
-	// `users` half or the `UserRef` half.
-	v := s.loadProject(uriToPath(string(params.TextDocument.URI)), src)
-	if d, pf, ok := findDeclAcross(v.files, qualified, currentImports(view.file), v.root); ok {
-		return reply(ctx, []protocol.Location{{
-			URI:   uri.New(pathToFileURIString(pf.path)),
-			Range: rangeOfPosLen(d.DeclPos(), len(d.DeclName())),
-		}}, nil)
-	}
-	return reply(ctx, []protocol.Location{}, nil)
+	return reply(ctx, []protocol.Location{v.locationOf(d.DeclPos(), len(d.DeclName()), current)}, nil)
 }
 
 // enumValueDefinition resolves a cursor sitting on an enum-value name inside
@@ -98,7 +50,7 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 // declared type names the enum; the matching value's position inside that
 // enum's body is the target. Returns false when the cursor is not in such a
 // position or the name is not a value of the field's enum type.
-func (s *Server) enumValueDefinition(view snapshotView, pos protocol.Position, name, currentURI, currentSrc string) (protocol.Location, bool) {
+func enumValueDefinition(v projectView, view snapshotView, pos protocol.Position, name string, current protocol.DocumentURI) (protocol.Location, bool) {
 	decName, ok := decoratorArgContext(view, pos)
 	if !ok || (decName != "default" && decName != "example") {
 		return protocol.Location{}, false
@@ -107,73 +59,50 @@ func (s *Server) enumValueDefinition(view snapshotView, pos protocol.Position, n
 	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return protocol.Location{}, false
 	}
-	parts := f.Type.Named.Name.Parts
-	if len(parts) != 1 {
+	e, ok := v.lookup(f.Type.Named.Name.String(), semantic.EnumDecls).(*ast.EnumDecl)
+	if !ok {
 		return protocol.Location{}, false
 	}
-	e, path := s.enumDeclWithPath(currentURI, currentSrc, parts[0])
-	if e == nil {
-		return protocol.Location{}, false
-	}
-	for _, v := range e.EnumValues() {
-		if v.Name == name {
-			return protocol.Location{
-				URI:   uri.New(pathToFileURIString(path)),
-				Range: rangeOfPosLen(v.Pos, len(v.Name)),
-			}, true
+	for _, val := range e.EnumValues() {
+		if val.Name == name {
+			return v.locationOf(val.Pos, len(val.Name), current), true
 		}
 	}
 	return protocol.Location{}, false
 }
 
-// enumDeclWithPath returns the first enum declared under name anywhere in
-// the buffer's project, with the path of the file declaring it.
-func (s *Server) enumDeclWithPath(currentURI, currentSrc, name string) (*ast.EnumDecl, string) {
-	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
-		for _, d := range p.file.Decls {
-			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
-				return e, p.path
-			}
-		}
-	}
-	return nil, ""
-}
-
-// refContextAt classifies the cursor's surrounding syntax into a
-// lookup-context string consumed by [findDeclKindAware]:
+// lookupKindAt classifies the cursor's surrounding syntax into the
+// declaration kinds a definition lookup may return:
 //
-//   - "middlewares" / "errors": cursor sits inside that decorator's args
-//   - "service":                cursor is the NAME in a `service X` or
-//     `extend service X` header
-//   - "type":                   cursor sits in a type-shape position
-//     (mixin, field type, request, response, generic arg, error category)
-//   - "":                       could not classify - caller should fall
-//     back to the generic [findDecl]
+//   - inside `@middlewares(...)` / `@errors(...)`: that decorator's kind
+//   - the name in a `service X` / `extend service X` header: the primary
+//     service, so a click on an extend's name lands on the block it
+//     continues
+//   - a type-shape position (mixin, field type, request, response,
+//     generic arg, error category): every kind but middleware
+//   - otherwise: every kind
 //
-// The detection is purely token-based: we walk a small window of tokens
-// around the cursor looking for shape markers (`@<ident>(`, `:` after
-// the cursor, `<` opening generic args, `request`/`response`/`error`/
-// `extends`/`type` keywords just before, ...). Token-level is enough
-// here because we only need to disambiguate between kinds the parser
-// already separated.
-func refContextAt(view snapshotView, idx int, pos protocol.Position) string {
+// The detection is purely token-based: a small window of tokens around
+// the cursor is inspected for shape markers (`@<ident>(`, `:`, `<`,
+// `request` / `response` / `error` / `type` keywords, ...), which is
+// enough to tell apart the kinds the parser already separated.
+func lookupKindAt(view snapshotView, idx int, pos protocol.Position) semantic.DeclKind {
 	if decName, ok := decoratorArgContext(view, pos); ok {
 		switch decName {
-		case "middlewares", "errors":
-			return decName
+		case "middlewares":
+			return semantic.MiddlewareDecls
+		case "errors":
+			return semantic.ErrorDecls
 		}
-		return ""
+		return semantic.AnyDecl
 	}
-	// A service header's name resolves through its own context: it is
-	// never a type-shape position, and `extend service X` must land on
-	// X's PRIMARY block rather than on the extend the cursor sits in.
 	if isServiceHeaderPosition(view, idx) {
-		return "service"
+		return semantic.ServiceDecls
 	}
 	if isTypeShapePosition(view, idx) {
-		return "type"
+		return semantic.TypeShapeDecls
 	}
-	return ""
+	return semantic.AnyDecl
 }
 
 // isServiceHeaderPosition reports whether view.tokens[idx] is the name in
@@ -231,15 +160,6 @@ func isTypeShapePosition(view snapshotView, idx int) bool {
 		}
 	}
 	return false
-}
-
-// currentImports returns the imports slice of f, or nil when f has no
-// imports section. Pulled out so the closing test cases stay readable.
-func currentImports(f *ast.File) []*ast.Import {
-	if f == nil {
-		return nil
-	}
-	return f.Imports
 }
 
 // qualifiedNameAt returns either the bare identifier at idx or the

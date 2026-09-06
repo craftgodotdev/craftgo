@@ -224,9 +224,9 @@ func typeRefString(t *ast.TypeRef) string {
 	return sb.String()
 }
 
-// hoverWithProject extends [hoverForToken] with cross-package lookups.
-// It is invoked from the LSP handler so the (slow) project walk only
-// happens for hovers that did not resolve in the current file.
+// hoverWithProject extends [hoverForToken] with a project-wide lookup, so
+// the project is only loaded for hovers that did not resolve in the
+// current file.
 func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
@@ -234,9 +234,8 @@ func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, c
 	if tok.Kind != lexer.Ident {
 		return nil
 	}
-	qualified := qualifiedNameAt(view, idx)
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
-	if d, _, ok := findDeclAcross(v.files, qualified, currentImports(view.file), v.root); ok {
+	if d := v.lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
 		return userTypeHover(d, rangeOf(tok))
 	}
 	return nil

@@ -60,7 +60,7 @@ type User {
 // nothing") must not be treated as colliding with another empty-named
 // field. Pure noise reporting otherwise.
 func TestFieldCollisionEmptyNameSkipped(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.warnFieldCollisions("type Foo", nil)
 	for _, d := range a.diags {
 		if d.Code == CodeFieldNameCollision {

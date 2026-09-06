@@ -12,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
@@ -19,76 +20,98 @@ func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position
 	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return nil
 	}
-	parts := f.Type.Named.Name.Parts
-	if len(parts) != 1 {
-		return nil
-	}
-	e, _ := s.enumDeclWithPath(currentURI, currentSrc, parts[0])
-	if e == nil {
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	e, ok := v.lookup(f.Type.Named.Name.String(), semantic.EnumDecls).(*ast.EnumDecl)
+	if !ok {
 		return nil
 	}
 	enumVals := e.EnumValues()
 	out := make([]protocol.CompletionItem, 0, len(enumVals))
-	for _, v := range enumVals {
+	for _, val := range enumVals {
 		out = append(out, protocol.CompletionItem{
-			Label:      v.Name,
+			Label:      val.Name,
 			Kind:       protocol.CompletionItemKindEnumMember,
 			Detail:     "value of enum " + e.Name,
-			InsertText: v.Name,
+			InsertText: val.Name,
 		})
 	}
 	return out
 }
 
-// durationSuffixes / sizeSuffixes mirror the unit set the lexer
-// recognises in [lexer.lexNumber]; keep these in sync if the lexer
-// gains new units.
-
-// serviceNameCompletions enumerates primary `service Name`
-// declarations that are valid extension targets from the cursor's
-// current file. Extends resolve per-package, so cross-package
-// services would always trip `service/extend-orphan` - including
-// them in the completion list would mislead the user. The function
-// therefore filters by the current file's package name.
+// serviceNameCompletions lists the primary `service Name` declarations
+// of the buffer's package - the only valid `extend service` targets,
+// since extends resolve per package.
 func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	files := s.loadProject(uriToPath(currentURI), currentSrc).files
-	currentPkg := ""
-	currentPath := uriToPath(currentURI)
-	for _, p := range files {
-		if p.path == currentPath && p.file.Package != nil {
-			currentPkg = p.file.Package.Name
-			break
-		}
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	pkg := v.proj.Packages[v.currentPackage()]
+	if pkg == nil {
+		return nil
 	}
-	seen := map[string]struct{}{}
+	return declItems(pkg, semantic.ServiceDecls, protocol.CompletionItemKindInterface, map[string]bool{})
+}
+
+// declItems returns one completion item per declaration of the selected
+// kinds in pkg, skipping names already in seen and recording the rest.
+func declItems(pkg *semantic.Package, kinds semantic.DeclKind, kind protocol.CompletionItemKind, seen map[string]bool) []protocol.CompletionItem {
 	var out []protocol.CompletionItem
-	for _, p := range files {
-		if p.file.Package == nil {
+	for _, d := range pkg.Decls(kinds) {
+		name := d.DeclName()
+		if seen[name] {
 			continue
 		}
-		if currentPkg != "" && p.file.Package.Name != currentPkg {
-			continue
-		}
-		for _, d := range p.file.Decls {
-			sd, ok := d.(*ast.ServiceDecl)
-			if !ok || sd.Extend {
-				continue
-			}
-			if _, dup := seen[sd.Name]; dup {
-				continue
-			}
-			seen[sd.Name] = struct{}{}
-			out = append(out, protocol.CompletionItem{
-				Label:         sd.Name,
-				Kind:          protocol.CompletionItemKindInterface,
-				Detail:        "service (" + p.file.Package.Name + ")",
-				Documentation: strings.Join(sd.Doc, "\n"),
-				InsertText:    sd.Name,
-			})
-		}
+		seen[name] = true
+		out = append(out, protocol.CompletionItem{
+			Label:         name,
+			Kind:          kind,
+			Detail:        kindDetail(declKind(d), pkg.Name),
+			Documentation: strings.Join(declDoc(d), "\n"),
+			InsertText:    name,
+		})
+	}
+	return out
+}
+
+// projectDeclItems lists every declaration of the selected kinds across
+// the project, one item per name (the first package by name wins a
+// duplicate), sorted by label.
+func (s *Server) projectDeclItems(currentURI, currentSrc string, kinds semantic.DeclKind, kind protocol.CompletionItemKind) []protocol.CompletionItem {
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	seen := map[string]bool{}
+	var out []protocol.CompletionItem
+	for _, pkgName := range sortedKeys(v.proj.Packages) {
+		out = append(out, declItems(v.proj.Packages[pkgName], kinds, kind, seen)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
+}
+
+// declKind names d's kind the way the source spells it (`middleware`,
+// `error <Category>`, `service`, ...).
+func declKind(d ast.Decl) string {
+	switch v := d.(type) {
+	case *ast.TypeDecl:
+		return "type"
+	case *ast.EnumDecl:
+		return "enum"
+	case *ast.ScalarDecl:
+		return "scalar"
+	case *ast.ErrorDecl:
+		return "error " + v.Category
+	case *ast.MiddlewareDecl:
+		return "middleware"
+	case *ast.ServiceDecl:
+		return "service"
+	}
+	return ""
+}
+
+// kindDetail renders a completion detail as `kind (pkg)`, or just kind
+// for an unnamed package.
+func kindDetail(kind, pkg string) string {
+	if pkg == "" {
+		return kind
+	}
+	return kind + " (" + pkg + ")"
 }
 
 // securitySchemeCompletions returns one item per scheme declared
@@ -138,95 +161,24 @@ func (s *Server) securitySchemeCompletions(currentURI string) []protocol.Complet
 	return out
 }
 
-// middlewareNameCompletions enumerates every `middleware Name`
-// declaration across the project so an `@middlewares(...)` argument
-// list shows the same closed set the semantic resolver accepts.
-// Names are emitted as Function-kind items because that is how
-// editors render them with the closest icon to "function pointer
-// the runtime calls" - the closest analogue available in LSP's
-// CompletionItemKind set.
+// middlewareNameCompletions lists every `middleware Name` declaration in
+// the project, so an `@middlewares(...)` argument list shows the closed
+// set the semantic resolver accepts. Function-kind items are the closest
+// icon editors have for "a function the runtime calls".
 func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	seen := map[string]struct{}{}
-	var out []protocol.CompletionItem
-	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
-		for _, d := range p.file.Decls {
-			md, ok := d.(*ast.MiddlewareDecl)
-			if !ok {
-				continue
-			}
-			if _, dup := seen[md.Name]; dup {
-				continue
-			}
-			seen[md.Name] = struct{}{}
-			pkgName := ""
-			if p.file.Package != nil {
-				pkgName = p.file.Package.Name
-			}
-			detail := "middleware"
-			if pkgName != "" {
-				detail = "middleware (" + pkgName + ")"
-			}
-			out = append(out, protocol.CompletionItem{
-				Label:         md.Name,
-				Kind:          protocol.CompletionItemKindFunction,
-				Detail:        detail,
-				Documentation: strings.Join(md.Doc, "\n"),
-				InsertText:    md.Name,
-			})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
-	return out
+	return s.projectDeclItems(currentURI, currentSrc, semantic.MiddlewareDecls, protocol.CompletionItemKindFunction)
 }
 
-// errorNameCompletions enumerates every `error <Category> Name`
-// declaration in the project so an `@errors(...)` decorator argument
-// list shows the closed set of declared error types. Each item is
-// emitted as Class-kind because the user-facing wire shape is a
-// struct/class (matching how the generated Go code surfaces it as
-// `<Name>Err`); editors render it with the same icon they use for
-// any declared type, which keeps the visual grammar consistent
-// across decorator args.
+// errorNameCompletions lists every `error <Category> Name` declaration in
+// the project, so an `@errors(...)` argument list shows the closed set of
+// declared error types. Class-kind items match how the generated Go code
+// surfaces an error (a `<Name>Err` struct).
 func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	seen := map[string]struct{}{}
-	var out []protocol.CompletionItem
-	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
-		for _, d := range p.file.Decls {
-			ed, ok := d.(*ast.ErrorDecl)
-			if !ok {
-				continue
-			}
-			if _, dup := seen[ed.Name]; dup {
-				continue
-			}
-			seen[ed.Name] = struct{}{}
-			pkgName := ""
-			if p.file.Package != nil {
-				pkgName = p.file.Package.Name
-			}
-			detail := "error " + ed.Category
-			if pkgName != "" {
-				detail = "error " + ed.Category + " (" + pkgName + ")"
-			}
-			out = append(out, protocol.CompletionItem{
-				Label:         ed.Name,
-				Kind:          protocol.CompletionItemKindClass,
-				Detail:        detail,
-				Documentation: strings.Join(ed.Doc, "\n"),
-				InsertText:    ed.Name,
-			})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
-	return out
+	return s.projectDeclItems(currentURI, currentSrc, semantic.ErrorDecls, protocol.CompletionItemKindClass)
 }
 
-// typeCompletionsProjectWide lists type-position completions scoped to
-// the entire project rather than just the current file. Built-in primitives are listed alongside, and
-// every project-wide top-level declaration is surfaced EXCEPT
-// `error` declarations: errors are domain-restricted to
-// `@errors(...)` decorator args and do not resolve when used as
-// field types, request bodies, etc. Surfacing them here would invite the same
+// typeCompletionsProjectWide lists type-position completions: the
+// built-in primitives and every project-wide declaration except errors.
 func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	for _, sp := range prims.All() {
@@ -239,85 +191,40 @@ func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, curre
 			Detail: "built-in",
 		})
 	}
-	items = append(items, s.declCompletionsFiltered(view, currentURI, currentSrc, declCompletionTypePosition)...)
+	items = append(items, s.declCompletions(view, currentURI, currentSrc, typePositionDecls)...)
 	return items
 }
 
-// declCompletionFilter selects which top-level decl kinds appear in a
-// completion list. Today only [declCompletionTypePosition] exists -
-// the indirection stays for future contexts (e.g. error-position
-// inside `@errors(...)`) that need a different filter without
-// duplicating the project-walk loop.
-type declCompletionFilter func(ast.Decl) bool
+// typePositionDecls is every declaration kind a type-position completion
+// offers. Errors are left out: they are not referenceable as types, and
+// `@errors(...)` has its own resolution path.
+const typePositionDecls = semantic.AnyDecl &^ semantic.ErrorDecls
 
-// declCompletionTypePosition drops error declarations so type-position
-// completions only suggest decls that actually resolve as types.
-// Used as the default for [declCompletionsProjectWide] because errors
-// are never referenceable as a standalone symbol - `@errors(...)`
-// has its own resolution path.
-func declCompletionTypePosition(d ast.Decl) bool {
-	_, isError := d.(*ast.ErrorDecl)
-	return !isError
-}
-
-// declCompletionsProjectWide gathers every top-level declaration across
-// the project and exposes them as completion items. Cross-package decls
-// are surfaced with the qualified `pkg.Name` form as both the label
-// AND insertText so picking the item lands a full reference at the
-// cursor (otherwise the user would land just `Name` and would still
-// have to type `pkg.` themselves). Same-package decls keep their bare
-// label because qualifying is illegal in self-references.
-//
-// In addition to declarations, every imported package alias is
-// emitted as a Module-kind item so that typing the first letter of an
-// alias (e.g. `s` for `shared`) surfaces the package itself - picking
-// it lets the user continue with `.SomeType` and reach the qualified
-// completion path.
-// declCompletionsProjectWide is the default project-wide decl
-// suggester. Errors are filtered out unconditionally - they are not
-// usable as standalone references in any user-facing position
-// (`@errors(...)` has its own resolver, and field-type / request /
-// response usage is rejected by the semantic phase). Surfacing them
-// would mislead the user into a guaranteed-to-fail picker.
-func (s *Server) declCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
-	return s.declCompletionsFiltered(view, currentURI, currentSrc, declCompletionTypePosition)
-}
-
-// declCompletionsFiltered is the workhorse behind the project-wide
-// declaration completions. The filter callback decides which decls
-// reach the result list - type-position contexts pass
-// [declCompletionTypePosition] to drop errors. Import
-// aliases are emitted unconditionally - they are not declarations
-// and the user might want them in any completion context.
-func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentSrc string, keep declCompletionFilter) []protocol.CompletionItem {
-	currentPkg := ""
-	if view.file != nil && view.file.Package != nil {
-		currentPkg = view.file.Package.Name
-	}
+// declCompletions offers every declaration of the selected kinds across
+// the project. A declaration in another package is offered as `pkg.Name`
+// (label and inserted text) so picking it lands a complete reference;
+// a same-package declaration keeps its bare name, since qualifying a
+// self-reference is illegal. Every imported package alias is added as a
+// Module item so typing its first letter reaches the qualified path.
+func (s *Server) declCompletions(view snapshotView, currentURI, currentSrc string, kinds semantic.DeclKind) []protocol.CompletionItem {
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	currentPkg := v.currentPackage()
 	var items []protocol.CompletionItem
-	for _, p := range s.loadProject(uriToPath(currentURI), currentSrc).files {
-		pkgName := ""
-		if p.file.Package != nil {
-			pkgName = p.file.Package.Name
-		}
-		for _, d := range p.file.Decls {
-			if !keep(d) {
-				continue
-			}
+	for _, pkgName := range sortedKeys(v.proj.Packages) {
+		pkg := v.proj.Packages[pkgName]
+		for _, d := range pkg.Decls(kinds) {
 			label := d.DeclName()
-			insert := label
 			detail := declSummary(d)
-			if pkgName != "" && pkgName != currentPkg {
-				label = pkgName + "." + d.DeclName()
-				insert = label
-				detail = pkgName + " - " + detail
+			if pkg.Name != "" && pkg.Name != currentPkg {
+				label = pkg.Name + "." + d.DeclName()
+				detail = pkg.Name + " - " + detail
 			}
 			items = append(items, protocol.CompletionItem{
 				Label:         label,
 				Kind:          declSymbolKindToCompletion(d),
 				Detail:        detail,
 				Documentation: strings.Join(declDoc(d), "\n"),
-				InsertText:    insert,
+				InsertText:    label,
 			})
 		}
 	}

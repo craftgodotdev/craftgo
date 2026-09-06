@@ -172,7 +172,7 @@ type User { Profile<X>  name string }`, CodeMixinArity)
 // hand-built AST that simulates expansion AT the outer host: a
 // single sourceLabel walking two paths to the same field name.
 func TestMixinDiamondSameTopLevel(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
 			"Base": {
 				Name: "Base",
@@ -188,7 +188,7 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 				},
 			},
 		},
-	}}
+	})
 	// Walk Combined as if it were the top-level mixin of an outer host
 	// - sourceLabel stays "Combined" for both nested Base visits.
 	seen := map[string]fieldOrigin{}
@@ -217,9 +217,9 @@ func TestMixinQualifiedUnknownPackage(t *testing.T) {
 // guards in [analyzer.processMixin]. Parser doesn't emit these
 // shapes today; the guard is for future regressions.
 func TestMixinNilRefTolerated(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{},
-	}}
+	})
 	a.processMixin("X", &ast.Mixin{Pos: lexer.Position{Line: 1}, Ref: nil}, map[string]fieldOrigin{})
 	a.processMixin("X", &ast.Mixin{Pos: lexer.Position{Line: 1}, Ref: &ast.NamedTypeRef{}}, map[string]fieldOrigin{})
 	if len(a.diags) != 0 {
@@ -232,9 +232,9 @@ func TestMixinNilRefTolerated(t *testing.T) {
 // unknown type, walker silently bails out (top-level resolveMixinTarget
 // already produced a diag).
 func TestMixinCollectMissingTarget(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{},
-	}}
+	})
 	a.collectMixinFields("", "Missing", "Missing", lexer.Position{Line: 1},
 		map[string]fieldOrigin{}, map[string]bool{})
 	if len(a.diags) != 0 {

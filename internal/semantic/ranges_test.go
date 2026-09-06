@@ -320,7 +320,7 @@ func TestSingleNumericArgMissing(t *testing.T) {
 }
 
 func TestRangesNilDecoratorTolerated(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkDecoratorRanges([]*ast.Decorator{nil})
 	a.checkBodyRanges([]ast.TypeMember{
 		// Mixin members are skipped.
@@ -336,7 +336,7 @@ func TestRangesNilDecoratorTolerated(t *testing.T) {
 // these helpers are called with invalid shapes; we hit them directly
 // so the coverage gate stays at 100%.
 func TestRangeHelpersTolerateBadShape(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 
 	// Wrong arity: each helper returns early.
 	a.checkPairArgs(&ast.Decorator{Name: "length"}) // 0 args
