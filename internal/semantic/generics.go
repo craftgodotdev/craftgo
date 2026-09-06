@@ -23,7 +23,7 @@ import (
 )
 
 // checkGenerics walks every declared type / error body and every
-// service method's request/response, validating each [NamedTypeRef]'s
+// service method's request/response, validating each [ast.NamedTypeRef]'s
 // arg count against the referenced decl. Map keys/values and nested
 // generic args are visited recursively so `map<string, Page<User>>`
 // gets the same scrutiny as a top-level field type.

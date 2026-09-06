@@ -8,6 +8,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// printFreeComment renders a free-floating comment block at the current
+// indentation depth. Each line gets the canonical `// ` prefix.
 func (p *Printer) printFreeComment(c *ast.FreeComment) {
 	for _, line := range c.Text {
 		p.indent()

@@ -51,10 +51,9 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		// must run on the scalar declaration as well as on plain fields.
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
 		// The capacity-overflow and unsigned-contradiction checks are
-		// otherwise field-only, so a scalar carrying an out-of-range bound
+		// field-shaped, so a scalar carrying an out-of-range bound
 		// (`scalar X uint8 @lte(300)`) or an always-false bound (`scalar X
-		// uint @lt(0)`) slipped through and generated non-compiling /
-		// reject-everything Go. Run them via a synthetic field typed as the
+		// uint @lt(0)`) runs them through a synthetic field typed as the
 		// scalar's primitive - exactly the decorators a using field inherits.
 		scalarAsField := &ast.Field{
 			Name:       dd.Name,

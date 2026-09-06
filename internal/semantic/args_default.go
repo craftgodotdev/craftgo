@@ -140,7 +140,7 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 		})
 }
 
-// defaultPrimitiveKind maps a resolved primitive (or scalar) name to
+// primitiveArgKind maps a resolved primitive (or scalar) name to
 // the [ArgKind] its `@default` literal must match. Scalars resolve
 // through to their underlying primitive in one hop. Returns ArgAny
 // for names this layer can't classify so the caller skips the kind
@@ -239,7 +239,7 @@ func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *
 // DEFER - they return true at per-package phase and are re-validated
 // by [refResolver.checkProjectFieldDefaults] with the project-wide
 // scalar / enum tables in scope.
-func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
+func defaultTypeSupported(t *ast.TypeRef, pkg *Package) bool {
 	if t == nil || t.Map != nil {
 		return false
 	}
@@ -251,7 +251,7 @@ func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 
 // defaultElemSupported is the per-element check used both for
 // stand-alone fields and array elements.
-func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
+func defaultElemSupported(t *ast.TypeRef, pkg *Package) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return false
 	}
@@ -278,12 +278,6 @@ func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
 	}
 	return false
 }
-
-// semanticPkgRef is the alias [defaultTypeSupported] takes for its
-// package-table argument. Kept as a named alias (not the bare
-// `*Package`) so the call sites read as "this helper needs only a
-// scalar / enum table" rather than the full analyzer state.
-type semanticPkgRef = Package
 
 // enumValueList renders an enum's value names as a comma-separated
 // list for diagnostic messages.

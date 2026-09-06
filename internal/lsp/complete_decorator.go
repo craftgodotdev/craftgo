@@ -13,6 +13,20 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
+// decoratorArgItems dispatches a decorator-argument completion to
+// the right resolver based on which decorator the cursor sits in.
+// Special-cased decorators:
+//
+//   - `@middlewares(...)` → declared middleware names.
+//   - `@security(A, B, ...)` → keys declared in the project's
+//     `openapi.securitySchemes` (any slot, since the decorator is a
+//     variadic ident list).
+//   - `@default(...)` → enum values when the field's type is an enum.
+//   - everything else → the registered enum values from the
+//     decorator's [semantic.Spec].
+//
+// Returns nil when none of the slots match - the caller falls back
+// to its general-context branch.
 func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
@@ -90,18 +104,20 @@ func httpStatusCompletions() []protocol.CompletionItem {
 	return out
 }
 
-// surroundingTokens returns the tokens immediately before and at the
-// cursor. The "mid" token is the one whose span the cursor sits in
-// (typically the identifier being typed); "prev" is the most recent
-// non-trivia token whose span ends at or before the cursor.
+// decoratorArgContext detects whether pos sits inside a `@name(…)`
+// argument list and returns the decorator's bare name when it does.
+// The walk is purely token-based: we step backwards from the cursor,
+// tracking parenthesis depth, until we land on an opening `(` whose
+// preceding tokens spell `@Ident`. A `)` along the way pops the depth
+// counter - once it goes negative we have left every enclosing
+// decorator and the cursor is not in an arg list.
 //
-// The position-aware backward scan is important: when the cursor sits
-// on whitespace the lexer has no token there, but the LAST token in
-// the file may be AFTER the cursor (e.g. cursor on the blank line
-// between `{` and `}` of a multi-line block). Falling back to
-// "last token in the slice" would mis-name `prev` as the trailing
-// `}` and break every completion branch that keys off `prev.Kind`.
-
+// Walks include the cursor's own token (`idx`, not `idx-1`) so a
+// cursor sitting exactly on the opening `(` - common right after the
+// user types `@middlewares(` - still resolves cleanly. RParens are
+// only counted when they're STRICTLY before the cursor; that keeps
+// the closing paren of the decorator we're inside from prematurely
+// flipping `depth` negative.
 func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx < 0 {
@@ -163,18 +179,10 @@ func decoratorArgCompletions(name string) []protocol.CompletionItem {
 	return out
 }
 
-// isExtendServiceContext reports whether the cursor sits at the
-// identifier slot of an `extend service <cursor>` clause. The check
-// walks tokens backwards: if the two most recent non-cursor tokens
-// (skipping any partial ident the user is typing) are `service` then
-// `extend`, we are at the slot.
-//
-// Boundary handling: when the cursor sits past the last real token
-// (tokenAt returned -1 because EOF is the only thing left),
-// `idx == len(view.tokens)` and we must NOT index into the slice.
-// Likewise the partial-ident skip needs to verify `idx` is in range
-// before reading `view.tokens[idx]`.
-
+// decoratorCompletions enumerates the registry, optionally filtered by
+// a declaration-level guess inferred from the cursor's surroundings.
+// `prefix` lets the editor narrow as the user types - in practice the
+// LSP client also filters, so an empty prefix is fine.
 func decoratorCompletions(view snapshotView, pos protocol.Position, prefix string) []protocol.CompletionItem {
 	level := guessLevel(view, pos)
 	// Narrow the AppliesTo filter by the surrounding type's primitive
@@ -260,7 +268,7 @@ func needsArgs(r semantic.ArgsRule) bool {
 // HTTP error category. Fired when the cursor sits in the
 // `error <cursor>` position. Each item carries the HTTP status as
 // Detail and a short doc snippet that the LSP client can render in
-// the autocomplete popup. The catalogue is the shared [errcat] table.
+// the autocomplete popup. The catalogue is the shared [errcat.Categories] table.
 func errorCategoryCompletions() []protocol.CompletionItem {
 	out := make([]protocol.CompletionItem, 0, len(errcat.Categories))
 	for _, c := range errcat.Categories {

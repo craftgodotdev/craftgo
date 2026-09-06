@@ -9,7 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// snapshot is the shared parse view that every feature handler operates
+// snapshotView is the shared parse view that every feature handler operates
 // on. Re-tokenising and re-parsing on every request keeps the wire model
 // simple and matches what `craftgo lint` would see - no risk of stale
 // AST drift between editor and CLI.

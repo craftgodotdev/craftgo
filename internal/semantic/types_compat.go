@@ -9,7 +9,7 @@ package semantic
 //
 // The check resolves a field's primitive category by:
 //
-//   1. Inspecting the AST [TypeRef] modifiers: `T[]` and `map<K,V>`
+//   1. Inspecting the AST [ast.TypeRef] modifiers: `T[]` and `map<K,V>`
 //      collapse to PrimArray.
 //   2. Looking up the named type - built-in primitives map directly;
 //      custom scalars are followed via [Package.Scalars] to their
@@ -109,7 +109,7 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	}
 }
 
-// fieldPrim resolves a field's [TypeRef] to a single primitive
+// fieldPrim resolves a field's [ast.TypeRef] to a single primitive
 // category. Returns 0 (PrimAny) for unresolved / cross-package types
 // so callers can skip the check rather than emit a misleading mismatch.
 //

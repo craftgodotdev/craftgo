@@ -162,7 +162,7 @@ func GenerateValidatorsResolved(pkg *semantic.Package, outDir string, r *Project
 // scalars, when non-nil, enables scalar-decorator inheritance: a
 // field whose declared type is a scalar gains the scalar's own
 // `@format` / `@length` / `@min` / etc. validators on top of the
-// field-level chain. See [scalarInheritedDecorators].
+// field-level chain.
 func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	names := sortedKeys(pkg.Types)
 

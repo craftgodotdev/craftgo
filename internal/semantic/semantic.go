@@ -281,12 +281,6 @@ func (a *analyzer) runRefPhase(files []*ast.File) {
 	}
 }
 
-// Diagnostic codes emitted by the semantic analyser. Stable identifiers
-// so the LSP, docs site, and "disable next line" comments can reference
-// individual rules. Group prefix (`decorator/`, `decl/`, `enum/`,
-// `service/`, `field/`, `ref/`, `binding/`) lets the IDE collapse rules
-// by topic; never reuse a string across groups.
-
 type analyzer struct {
 	pkg   *Package
 	opts  Options

@@ -167,8 +167,7 @@ func (k ArgKind) String() string {
 
 // ArgsRule captures the positional argument shape of a decorator. Named
 // arguments (`name: value`), nested decorators, and object literals are
-// validated by per-decorator hooks in [analyzer.checkArgsCustom] and do
-// not appear here.
+// outside its scope.
 type ArgsRule struct {
 	// Min is the minimum number of positional arguments. 0 allows the
 	// no-args form (`@deprecated`).
@@ -291,7 +290,7 @@ type Spec struct {
 }
 
 // formatValues lists the named string formats accepted by `@format` on a
-// field or scalar. The catalogue lives in [strfmt] (a leaf both this
+// field or scalar. The catalogue lives in [strfmt.Names] (a leaf both this
 // analyser and codegen read) so the legal-name set and the validator set
 // cannot drift.
 var formatValues = strfmt.Names
@@ -585,9 +584,7 @@ func Lookup(name string) (Spec, bool) {
 // contradict the "server-internal only" intent. `@nullable` and
 // `@default` shape wire behaviour that can't apply.
 //
-// Lives next to [Registry] because it's per-decorator metadata; the
-// check that consumes it lives in semantic.go alongside the other
-// small horizontal decorator checks.
+// [analyzer.checkSensitiveConflictsIn] consumes it.
 var sensitiveConflicts = map[string]bool{
 	"length":            true,
 	"minLength":         true,

@@ -90,13 +90,6 @@ type producedName struct {
 	pos     lexer.Position
 }
 
-// goNamesProducedBy returns the top-level Go identifiers a decl
-// causes the codegen pass to emit. Empty when the decl produces
-// nothing at the types-package scope (services live in their own
-// package). Mirrors the actual codegen behaviour in
-// [internal/codegen/{types,enums,errors,middleware}.go]; whenever
-// one of those changes the declProducer set, update this function in
-// lock-step.
 // errStructName mirrors codegen's errSuffix: the error struct keeps its
 // name when it already ends in `Err`/`Error`, otherwise `Err` is appended.
 // Replicated here (semantic can't import codegen) so the collision check
@@ -108,6 +101,11 @@ func errStructName(name string) string {
 	return name + "Err"
 }
 
+// goNamesProducedBy returns the top-level Go identifiers a decl
+// causes the codegen pass to emit. Empty when the decl produces
+// nothing at the types-package scope (services live in their own
+// package). Mirrors codegen's types / enums / errors / middleware
+// emitters; a change to the declProducer set there must be mirrored here.
 func goNamesProducedBy(d ast.Decl) []producedName {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:

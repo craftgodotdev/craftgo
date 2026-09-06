@@ -21,7 +21,6 @@ import (
 // argument shape against its registry [Spec]. Unknown decorators were
 // already flagged by the placement pass; this pass skips them so the
 // IDE doesn't double-report.
-
 func (a *analyzer) checkDecoratorArgs(files []*ast.File) {
 	for _, f := range files {
 		a.checkArgsScope(f.Decorators)

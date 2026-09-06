@@ -46,7 +46,6 @@ import (
 // canonical-formatted text alongside any parser diagnostics. The returned
 // text is always non-empty because the parser is error-tolerant - callers
 // that want to reject formatting on errors should check len(diags) == 0.
-
 func Format(filename, src string) (string, []lexer.Diagnostic) {
 	p := parser.New(filename, src)
 	f := p.Parse()
@@ -192,7 +191,6 @@ func (p *Printer) File(f *ast.File) {
 // for loose comment lookup so a `// section header` block above a
 // decorated type lands above the decorator chain, not between decorators
 // and the keyword.
-
 func declFirstSourceLine(d ast.Decl) int {
 	var decs []*ast.Decorator
 	switch v := d.(type) {

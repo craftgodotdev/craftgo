@@ -132,7 +132,7 @@ func renderImports(imps []string) string {
 	return fmt.Sprintf("import (\n%s\n)\n", strings.Join(lines, "\n"))
 }
 
-// collectImports walks every field type in pkg and returns the sorted set
+// collectBodyImports walks every field type in pkg and returns the sorted set
 // of imports the generated structs require. Standard-library imports
 // (`io`, `mime/multipart`, `encoding/json`) come from built-in field
 // types. When crossPkg is non-empty, multi-part DSL refs add the

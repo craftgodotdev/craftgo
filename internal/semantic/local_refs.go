@@ -52,8 +52,7 @@ func (a *analyzer) checkImports(files []*ast.File) {
 
 // importImplicitAlias returns the trailing path segment of an import
 // path - the alias the DSL exposes when the user did not write one
-// explicitly. Mirrors the resolution in [findDeclAcross] (LSP) and
-// [importAliasSet] above.
+// explicitly. Mirrors [importAliasSet].
 func importImplicitAlias(path string) string {
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {
@@ -94,7 +93,7 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 				}
 			case *ast.ScalarDecl:
 				// Scalar primitives are intentionally NOT validated
-				// here - see [TestScalarUnknownPrimitiveSkipped]. The
+				// here. The
 				// type-compat pass tolerates unknown spellings on
 				// purpose so future primitive additions don't break
 				// projects that pulled them in via dependencies.
@@ -115,8 +114,7 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 // importAliasSet collects every name that can legally appear as a
 // qualifier in `pkg.Type`. Each import contributes either its explicit
 // alias (`import x "..."` → `x`) or the trailing segment of its path
-// (`import "from/x/y/z"` → `z`), matching how [findDeclAcross]
-// resolves them in the LSP. Returns nil for empty input so callers
+// (`import "from/x/y/z"` → `z`). Returns nil for empty input so callers
 // can pass the result through cheaply.
 func importAliasSet(imps []*ast.Import) map[string]bool {
 	if len(imps) == 0 {
@@ -157,7 +155,7 @@ func paramSet(params []string) map[string]bool {
 }
 
 // checkRefsInMember dispatches on the type-body member shape - a
-// [Field] carries a TypeRef; a [Mixin] is a NamedTypeRef on its own.
+// [ast.Field] carries a TypeRef; an [ast.Mixin] is a NamedTypeRef on its own.
 func (a *analyzer) checkRefsInMember(m ast.TypeMember, typeParams, imports map[string]bool) {
 	switch v := m.(type) {
 	case *ast.Field:

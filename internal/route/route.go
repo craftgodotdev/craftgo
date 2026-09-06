@@ -16,7 +16,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
-// ResolveRoute joins the OpenAPI base path, the service's @prefix, and the
+// Resolve joins the OpenAPI base path, the service's @prefix, and the
 // method's own path into the single absolute route the server registers and
 // the OpenAPI document advertises. Empty segments are dropped, consecutive
 // slashes collapse, the result always begins with '/', and a pathless method
@@ -70,10 +70,9 @@ func PathString(p *ast.Path) string {
 	return sb.String()
 }
 
-// Shape strips parameter names from a resolved route string,
-// replacing every `{name}` segment with `{}`. Mirrors PathShape but
-// operates on the already-joined route (post-prefix, post-basePath)
-// that resolveMethodPath produces.
+// Shape strips parameter names from a resolved route string, replacing
+// every `{name}` segment with `{}`, so routes that differ only in
+// parameter names compare equal.
 func Shape(route string) string {
 	var sb strings.Builder
 	sb.Grow(len(route))
@@ -95,9 +94,8 @@ func Shape(route string) string {
 	return sb.String()
 }
 
-// decoratorString returns the first string-literal positional arg of
-// `@name(...)` on the service decl, or "" when absent. Used to read
-// `@prefix` and `@group` without depending on codegen helpers.
+// ServicePrefix returns the `@prefix("...")` string declared on the
+// service decl, or "" when absent.
 func ServicePrefix(svc *ast.ServiceDecl) string {
 	if svc == nil {
 		return ""
@@ -183,7 +181,7 @@ func OutputSegment(svcName, group, fileCase string) string {
 	return idents.FileName(svcName, fileCase)
 }
 
-// patternsConflict reports whether two same-verb mux patterns overlap with
+// PatternsConflict reports whether two same-verb mux patterns overlap with
 // neither strictly more specific - the exact condition net/http rejects. It
 // models craftgo's single-segment wildcards (`{name}`): patterns of different
 // segment counts can never overlap, and at each shared position a literal beats

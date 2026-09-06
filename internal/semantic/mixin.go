@@ -16,7 +16,7 @@ package semantic
 //   - [CodeMixinCycle]         - A mixes B mixes A.
 //   - [CodeMixinConflict]      - two paths bring in the same field.
 //   - [CodeMixinArity]         - generic mixin args disagree with the
-//     target type's [TypeParams].
+//     target type's `TypeParams`.
 //
 // Generic mixin substitution (`Page<User>` → fields with T replaced by
 // User) is not modelled in detail here - for conflict detection we

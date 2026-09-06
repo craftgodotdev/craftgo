@@ -111,11 +111,13 @@ func WithServiceName(name string) Option {
 	}
 }
 
+// ResourceFor returns the OTel resource stamped on every signal for
+// serviceName.
+func ResourceFor(serviceName string) *sdkresource.Resource { return resourceFor(serviceName) }
+
 // resourceFor layers `service.name` over the SDK defaults. Merge errors on
 // a schema-URL mismatch, so the service-only resource is the fallback:
 // losing telemetry.sdk.* beats losing the service name.
-func ResourceFor(serviceName string) *sdkresource.Resource { return resourceFor(serviceName) }
-
 func resourceFor(serviceName string) *sdkresource.Resource {
 	svc := sdkresource.NewWithAttributes(
 		semconv.SchemaURL,
@@ -393,7 +395,7 @@ func InitFromConfig(ctx context.Context, c Config) (*sdkmetric.MeterProvider, *a
 
 // adminServer bundles the admin http.Server with the post-Serve error
 // channel StartAdmin returns. Callers receive it from [InitFromConfig]
-// and pass it to [ShutdownAdminFromConfig] for graceful teardown. Kept
+// and pass it to [ShutdownAdmin] for graceful teardown. Kept
 // unexported so the field set can grow without breaking the call site.
 type adminServer struct {
 	srv   *http.Server

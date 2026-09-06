@@ -38,7 +38,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		// field that the error struct marshals and the validator enforces
 		// (errorCustomFields keeps them), so it belongs in the schema like
 		// any other property. Fields tagged `@header` / `@cookie` ride on
-		// the response writer (see [renderErrorResponseHeadersMethod]) and
+		// the response writer (see [errorResponseBindings]) and
 		// `@sensitive` fields are server-only, so both are excluded.
 		var mixinRefs openapi3.SchemaRefs
 		for _, m := range ed.Body {

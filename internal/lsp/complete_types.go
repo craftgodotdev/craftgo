@@ -58,6 +58,12 @@ func (s *Server) enumDeclByNameProjectWide(view snapshotView, currentURI, curren
 // recognises in [lexer.lexNumber]; keep these in sync if the lexer
 // gains new units.
 
+// serviceNameCompletions enumerates primary `service Name`
+// declarations that are valid extension targets from the cursor's
+// current file. Extends resolve per-package, so cross-package
+// services would always trip `service/extend-orphan` - including
+// them in the completion list would mislead the user. The function
+// therefore filters by the current file's package name.
 func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	files := s.projectASTs(uriToPath(currentURI), currentSrc)
 	currentPkg := ""
@@ -247,11 +253,12 @@ func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.
 	return out
 }
 
-// importStringPrefix returns the substring of the `import "…"` literal
-// that lies between the opening quote and the cursor - used as the
-// prefix filter for [importPathCompletions]. Returns an empty string
-// when the cursor is at the very start of the literal.
-
+// typeCompletionsProjectWide lists type-position completions scoped to
+// the entire project rather than just the current file. Built-in primitives are listed alongside, and
+// every project-wide top-level declaration is surfaced EXCEPT
+// `error` declarations: errors are domain-restricted to
+// `@errors(...)` decorator args and do not resolve when used as
+// field types, request bodies, etc. Surfacing them here would invite the same
 func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	for name := range builtinDocs {
@@ -308,8 +315,7 @@ func (s *Server) declCompletionsProjectWide(view snapshotView, currentURI, curre
 // declCompletionsFiltered is the workhorse behind the project-wide
 // declaration completions. The filter callback decides which decls
 // reach the result list - type-position contexts pass
-// [declCompletionTypePosition] to drop errors; everywhere else
-// passes [declCompletionAll] to keep the legacy behaviour. Import
+// [declCompletionTypePosition] to drop errors. Import
 // aliases are emitted unconditionally - they are not declarations
 // and the user might want them in any completion context.
 func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentSrc string, keep declCompletionFilter) []protocol.CompletionItem {
@@ -362,11 +368,6 @@ func (s *Server) declCompletionsFiltered(view snapshotView, currentURI, currentS
 	return items
 }
 
-// importAliasesOf returns every alias the file's imports expose at
-// the type-position level. Explicit aliases win; otherwise the
-// trailing path segment becomes the implicit alias - matching the
-// resolution in [findDeclAcross]. Duplicate aliases are de-duped.
-
 func localDeclItems(view snapshotView) []protocol.CompletionItem {
 	if view.file == nil {
 		return nil
@@ -385,11 +386,6 @@ func localDeclItems(view snapshotView) []protocol.CompletionItem {
 	}
 	return out
 }
-
-// decoratorCompletions enumerates the registry, optionally filtered by
-// a declaration-level guess inferred from the cursor's surroundings.
-// `prefix` lets the editor narrow as the user types - in practice the
-// LSP client also filters, so an empty prefix is fine.
 
 func declSymbolKindToCompletion(d ast.Decl) protocol.CompletionItemKind {
 	switch d.(type) {

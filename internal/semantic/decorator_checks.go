@@ -6,6 +6,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// checkDecoratorDuplicates rejects two `@same` decorators in the same
+// declaration scope. Decorators are identified by their bare name; arguments
+// don't disambiguate (`@tags("a")` + `@tags("b")` is still a duplicate). The
+// second occurrence is reported, pointing back at the first for context. We
+// walk every scope that can carry decorators: the file header, top-level
+// declarations, fields inside type / error bodies, enum values, service
+// methods, and middleware-declaration sites.
 func (a *analyzer) checkDecoratorDuplicates(files []*ast.File) {
 	for _, f := range files {
 		a.checkDecoratorScope("file", f.Decorators)

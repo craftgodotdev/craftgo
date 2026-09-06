@@ -64,7 +64,7 @@ func (r *regexRegistry) intern(pattern string) string {
 }
 
 // validatorEntry binds a decorator name to its emit function. The emit
-// signature is uniform so the dispatcher in [fieldChecksWithPkg] can
+// signature is uniform so the dispatcher in [fieldChecksWithScalar] can
 // stay table-driven: every validator returns the Go source for one
 // check, or "" to opt out (type mismatch, missing args, etc.).
 type validatorEntry struct {

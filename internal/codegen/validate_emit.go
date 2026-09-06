@@ -76,7 +76,6 @@ func errSubject(name string) string {
 //
 // The body is responsible for any `return ...` it needs; the wrapper
 // merely delivers control to it for each element.
-
 func shape(f *ast.Field, access string, body func(elem string) string) string {
 	switch {
 	case f.Type != nil && f.Type.Array:

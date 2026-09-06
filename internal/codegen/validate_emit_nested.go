@@ -100,18 +100,6 @@ return err
 	})
 }
 
-// nestedValidateCall emits a recursive `field.Validate()` call when a
-// field's declared type is another user-defined struct (or a generic
-// instance, since those carry Validate too). Maps are skipped: map
-// values would need range traversal that the codegen does not emit -
-// the user must call Validate on map values explicitly when deep
-// validation is required.
-//
-// We bypass the generic [shape] helper for optional fields so the
-// emitted call reads `v.Avatar.Validate()` rather than the noisier
-// `(*v.Avatar).Validate()` - Go's method-set rules dispatch through
-// the pointer-receiver Validate either way, and the cleaner form is
-// what a human would write by hand.
 // namedIsScalarOrEnum reports whether n names a scalar or enum type - whose
 // generated Validate() emits a subject-less message - as opposed to a struct,
 // whose Validate() already names its own fields. A field of a scalar/enum type
@@ -150,6 +138,17 @@ func validateDispatch(elem, wrapName string) string {
 	return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", elem)
 }
 
+// nestedValidateCall emits a recursive `field.Validate()` call when a
+// field's declared type is another user-defined struct (or a generic
+// instance, since those carry Validate too). Maps are skipped: map
+// values would need range traversal that the codegen does not emit -
+// the user must call Validate on map values explicitly when deep
+// validation is required.
+//
+// Optional fields bypass the generic [shape] helper so the emitted call
+// reads `v.Avatar.Validate()` rather than `(*v.Avatar).Validate()` -
+// Go's method-set rules dispatch through the pointer-receiver Validate
+// either way.
 func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
 	if pkg == nil || f.Type == nil {
 		return ""

@@ -261,9 +261,8 @@ func InitFromConfig(ctx context.Context, c Config) (*sdktrace.TracerProvider, er
 func Disable() { enabled.Store(false) }
 
 // instrumentationActive reports whether the middleware has any signal to
-// produce. One otelhttp wrapper emits both, so gating on the tracing flag
-// alone dropped every http.server.* metric when a project ran metrics
-// without traces.
+// produce. One otelhttp wrapper emits both traces and metrics, so either
+// flag keeps it active.
 func instrumentationActive() bool { return enabled.Load() || metrics.IsEnabled() }
 
 // IsEnabled reports the current toggle state.
@@ -314,9 +313,8 @@ func HTTPMiddlewareWith(operation string, opts ...otelhttp.Option) server.Middle
 // http.server.* instruments.
 //
 // Built once per wrap, never per request: NewHandler resolves providers
-// and creates instruments eagerly, so building it in the request path
-// cost ~1.6x the time and ~1.8x the allocations. Providers are captured
-// here, so wrap after Init - the order main.go uses.
+// and creates instruments eagerly. Providers are captured here, so wrap
+// after Init - the order main.go uses.
 func instrument(next http.Handler, operation string, opts ...otelhttp.Option) http.Handler {
 	// otelhttp calls next with a new, span-carrying request context. This
 	// inner handler is the only window where the span exists but nothing

@@ -8,7 +8,7 @@ import (
 )
 
 // checkFilePosition rejects a `file` field nested below the top level of a
-// request body. The form-binding codegen ([collectFormBindings]) scans only
+// request body. The form-binding codegen scans only
 // the resolved top-level fields of a method's request type, so a `file`
 // reached through a named struct field is never bound: the request is decoded
 // as JSON, the `*multipart.FileHeader` field stays nil, and the upload is

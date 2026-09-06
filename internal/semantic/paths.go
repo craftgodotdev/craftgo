@@ -15,7 +15,7 @@ package semantic
 //   - [CodePathHealthConflict] - declared route equals a reserved
 //     health path.
 //
-// [ResolveRoute] below is the single route-computation authority for the
+// [route.Resolve] is the single route-computation authority for the
 // whole pipeline: codegen's routes / OpenAPI / route-conflict emitters call
 // it too, so the analyzer and the generated server cannot disagree on a route.
 
@@ -181,7 +181,7 @@ func (a *analyzer) checkBasePathFormat() {
 		bp, bad)
 }
 
-// resolveMethodPath is the analyzer-bound shorthand for [ResolveRoute] with
+// resolveMethodPath is the analyzer-bound shorthand for [route.Resolve] with
 // the configured basePath applied.
 func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
 	return route.Resolve(a.opts.BasePath, svc, m)
@@ -292,7 +292,7 @@ func (a *analyzer) pathParamEnv() pathParamEnv {
 // [Options.skipPathParamCheck] in project mode (it can't expand a mixin
 // pulled from a sibling package), so this is the single emit site there.
 // A request type and its mixins resolve across packages exactly as the
-// codegen binder's [flattenFields] does, so the diagnostic agrees with
+// codegen binder does, so the diagnostic agrees with
 // what codegen will generate.
 func (r *refResolver) checkProjectPathParams() {
 	for pkgName, pkg := range r.proj.Packages {
@@ -430,10 +430,6 @@ func walkBodyForPath(td *ast.TypeDecl, prefix, label string, paramSet map[string
 	}
 }
 
-// pathBindingName returns the path-segment name a field claims via
-// `@path` and whether the field has the decorator at all. The custom
-// override `@path("custom-name")` wins over the field's own identifier
-// - that's the README contract.
 // hasDivertingWireBinding reports whether a field carries a wire binding
 // that routes it away from the path segment its name would otherwise
 // auto-bind to (mirrors RequestFieldBinding returning auto=false). @path
@@ -451,6 +447,9 @@ func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 	return false
 }
 
+// pathBindingName returns the path-segment name a field claims via
+// `@path` and whether the field has the decorator at all. The custom
+// override `@path("custom-name")` wins over the field's own identifier.
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
 		if d == nil || d.Name != wire.BindingPath {

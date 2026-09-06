@@ -149,15 +149,7 @@ func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 // the author hasn't marked the field optional, since `@default` makes the
 // field optional (the default fires on an absent or null value).
 func fieldHasDefault(f *ast.Field) bool {
-	if f == nil {
-		return false
-	}
-	for _, d := range f.Decorators {
-		if d != nil && d.Name == "default" {
-			return true
-		}
-	}
-	return false
+	return f != nil && ast.HasDecorator(f.Decorators, "default")
 }
 
 // typeRefString renders a TypeRef to a string by reusing the printer.
@@ -212,7 +204,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 // the wrong field.
 //
 // The preceding field's printer pulls its trailing text from
-// p.trailing (built in [scanTrailingComments]), so dropping the
+// p.trailing (built in [buildTrailingFromComments]), so dropping the
 // misattributed entry here does not lose information - it lands on
 // the correct field by way of the trailing map.
 func (p *Printer) printFieldDoc(f *ast.Field) {
@@ -282,9 +274,6 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 	p.writeTrailing(d.TrailingDoc)
 	p.nl()
 }
-
-// printFreeComment renders a free-floating comment block at the current
-// indentation depth. Each line gets the canonical `// ` prefix.
 
 func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 	p.printLeadingDoc(v.Doc, v.Pos.Line)

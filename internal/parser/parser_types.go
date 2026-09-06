@@ -90,8 +90,8 @@ func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 	return members, rbrace
 }
 
-// parseTypeMember reads one member of a type body - either a [Field] or a
-// [Mixin]. Disambiguation rules (in priority order):
+// parseTypeMember reads one member of a type body - either a [ast.Field] or a
+// [ast.Mixin]. Disambiguation rules (in priority order):
 //
 //  1. Next token is `.` or `<` → mixin (qualified or generic name,
 //     e.g. `shared.Profile`, `Page<User>`).

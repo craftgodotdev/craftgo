@@ -150,7 +150,7 @@ func wireBindableIR(f *ast.Field, proj *Project) bool {
 // silently slips through. Only qualified requests are processed here (local
 // ones are already covered, and re-checking would double-report). The
 // type-bindability arm is deferred (localPkg=nil) - the structural decorator
-// checks (the #16 non-compile) need no type resolution.
+// checks need no type resolution.
 func (r *refResolver) checkProjectAutoPathField() {
 	for _, pkg := range r.proj.Packages {
 		if pkg == nil {
@@ -263,7 +263,7 @@ func prefixPathVars(svc *ast.ServiceDecl) []string {
 
 // MethodRoutePathVars returns the path-variable names in method m's full
 // registered route - its owning service's @prefix variables PLUS the method
-// path variables. The auto-binding rule ([RequestFieldBinding]) and the
+// path variables. The auto-binding rule ([wire.RequestFieldBinding]) and the
 // auto-@path / body-verb checks read this rather than the method path alone,
 // so they agree with the route that actually registers: a field whose name
 // matches a @prefix variable auto-binds to @path exactly like one matching a

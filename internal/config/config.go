@@ -190,8 +190,7 @@ func IsDesignFile(path string) bool {
 // explicit folder via [FindAt].
 //
 // On success it returns the loaded [*Config], the absolute path of the
-// project root (the parent of the design folder, kept for backwards
-// compatibility with the existing positional-arg flow), and the
+// project root (the parent of the design folder), and the
 // absolute path of the design folder itself. Every `.craftgo` source
 // file lives in the design folder or its descendants.
 func Find(start string) (*Config, string, string, error) {
@@ -237,7 +236,7 @@ func Find(start string) (*Config, string, string, error) {
 
 // FindAt loads the manifest at `<designFolder>/craftgo.design.yaml` and
 // returns it alongside the resolved project root. When `projectRoot`
-// is empty the parent of `designFolder` is used (legacy convention);
+// is empty the parent of `designFolder` is used;
 // pass an explicit value (typically the current working directory)
 // when the design folder lives outside the project tree - the
 // monorepo case where contracts/ and services/ are siblings.

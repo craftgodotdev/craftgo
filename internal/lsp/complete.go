@@ -24,7 +24,6 @@ import (
 //     → declared types (project-wide) + built-in primitives.
 //  5. Anywhere else → keywords + project-wide types as a single
 //     blended list. VSCode handles client-side filtering by prefix.
-
 func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.CompletionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -146,21 +145,17 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	return items
 }
 
-// decoratorArgItems dispatches a decorator-argument completion to
-// the right resolver based on which decorator the cursor sits in.
-// Special-cased decorators:
+// surroundingTokens returns the tokens immediately before and at the
+// cursor. The "mid" token is the one whose span the cursor sits in
+// (typically the identifier being typed); "prev" is the most recent
+// non-trivia token whose span ends at or before the cursor.
 //
-//   - `@middlewares(...)` → declared middleware names.
-//   - `@security(A, B, ...)` → keys declared in the project's
-//     `openapi.securitySchemes` (any slot, since the decorator is a
-//     variadic ident list).
-//   - `@default(...)` → enum values when the field's type is an enum.
-//   - everything else → the registered enum values from the
-//     decorator's [semantic.Spec].
-//
-// Returns nil when none of the slots match - the caller falls back
-// to its general-context branch.
-
+// The position-aware backward scan is important: when the cursor sits
+// on whitespace the lexer has no token there, but the LAST token in
+// the file may be AFTER the cursor (e.g. cursor on the blank line
+// between `{` and `}` of a multi-line block). Falling back to
+// "last token in the slice" would mis-name `prev` as the trailing
+// `}` and break every completion branch that keys off `prev.Kind`.
 func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lexer.Token) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx >= 0 {
@@ -179,8 +174,6 @@ func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lex
 	return prev, mid
 }
 
-// posLessEq reports whether a comes at or before b in source order.
-// Lines win the comparison; columns tie-break within the same line.
 // scanFromIndex returns the token index to scan backward from for a completion
 // at target: idx-1 when the cursor sits inside/after a token, otherwise the
 // last non-EOF token that ends at or before target (-1 if none).
@@ -202,6 +195,8 @@ func scanFromIndex(view snapshotView, idx int, target lexer.Position) int {
 	return -1
 }
 
+// posLessEq reports whether a comes at or before b in source order.
+// Lines win the comparison; columns tie-break within the same line.
 func posLessEq(a, b lexer.Position) bool {
 	if a.Line != b.Line {
 		return a.Line < b.Line
@@ -248,12 +243,6 @@ func isScalarPrimitivePosition(view snapshotView, pos protocol.Position) bool {
 	prevPrev := view.tokens[scanFrom-1]
 	return prev.Kind == lexer.Ident && prevPrev.Kind == lexer.KwScalar
 }
-
-// isInsideImportString reports whether pos lies inside an `import "…"`
-// string literal - the cursor sits between the two double-quotes that
-// follow an `import` keyword. We rely on token-level inspection rather
-// than re-lexing the partial line because the editor may send a cursor
-// position that splits a token mid-string.
 
 func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	if view.file == nil {

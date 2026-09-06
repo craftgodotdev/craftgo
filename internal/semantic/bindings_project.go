@@ -578,6 +578,3 @@ func splitQualified(n *ast.NamedTypeRef) (string, string) {
 func (r *refResolver) diagBinding(d *ast.Decorator, format string, args ...any) {
 	r.diag(d.Pos, lexer.SeverityError, CodeBindingType, format, args...)
 }
-
-// Keep `strings` import used by file in case future helpers need it.
-var _ = strings.Contains
