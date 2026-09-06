@@ -59,7 +59,7 @@ Add craftgo as a dependency in your project:
 go get github.com/craftgodotdev/craftgo
 ```
 
-Generated code imports from `pkg/server`, `pkg/log`, `pkg/metrics`, `pkg/otel`. You do not import these directly in most cases.
+Generated code imports from `pkg/server`, `pkg/log` and `pkg/telemetry`. You do not import these directly in most cases.
 
 ## Other editors
 

@@ -5,6 +5,35 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Changed
+
+- **`pkg/telemetry` is the one observability package.** The tracer and
+  meter bootstrap that lived in `pkg/otel` and `pkg/metrics` moved into it:
+  one exporter switch per signal, one resource rule (`service.name` over
+  the SDK defaults - an empty name now keeps the SDK's
+  `unknown_service:<binary>` for spans too, instead of `craftgo`), and no
+  package-level gates or shared registry. `telemetry.Init` still installs
+  the stack it builds as the process-wide default, so `otel.Tracer` /
+  `otel.Meter` in application code keep reporting through it. New:
+  `Telemetry.ScrapeHandler()` serves the Prometheus scrape on a route of
+  your own when `metrics.adminAddr` is empty.
+
+### Removed
+
+- **The global-slot bootstrap API of `pkg/otel` and `pkg/metrics`**
+  (`otel.Init` / `InitDefault` / `InitFromConfig` / `HTTPMiddleware` /
+  `IsEnabled` / `Disable`, `metrics.Init` / `InitDefault` /
+  `InitFromConfig` / `StartAdmin` / `ShutdownAdmin` / `SnapshotHandler` /
+  `Registerer` and the `With*` options). Hand-wired projects switch to
+  `telemetry.Init(ctx, telemetry.Config{...})` and `tel.HTTPMiddleware()`.
+
+### Deprecated
+
+- **`pkg/otel` and `pkg/metrics`** now only alias the config types,
+  exporter names and defaults of `pkg/telemetry`, for one release.
+
 ## [1.6.0] - 2026-09-05 [UTC+7]
 
 ### Added

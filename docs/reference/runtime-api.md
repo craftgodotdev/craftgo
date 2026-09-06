@@ -172,5 +172,4 @@ Or build a `CORSOptions` value directly for fine control over methods, headers, 
 ## Related packages
 
 - `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
-- `pkg/metrics` - Prometheus-style counters/histograms the access log can feed.
-- `pkg/otel` - OpenTelemetry tracing helpers. Generated `main.go` wires these when enabled.
+- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every request, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.

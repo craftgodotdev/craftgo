@@ -2,10 +2,14 @@ package telemetry_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"go.opentelemetry.io/otel"
 
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 )
@@ -148,4 +152,289 @@ func seriesCount(body, family string) int {
 		}
 	}
 	return n
+}
+
+func shortShutdown(t *testing.T, tel *telemetry.Telemetry) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_ = tel.Shutdown(ctx)
+}
+
+func scrape(t *testing.T, url string) (string, http.Header) {
+	t.Helper()
+	resp, err := http.Get("http://" + url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status %d", url, resp.StatusCode)
+	}
+	return string(body), resp.Header
+}
+
+// With traces on, the response carries the W3C `traceparent` header:
+// `00-<32 hex>-<16 hex>-<2 hex>`, 55 characters with three dashes.
+func TestTraceparentInjectedWhenTracing(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		ServiceName: "todo",
+		OTel:        telemetry.OTelConfig{Enabled: true, Exporter: "none"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	rec := httptest.NewRecorder()
+	tel.HTTPMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if rec.Code != http.StatusTeapot {
+		t.Errorf("status = %d, want the leaf's own", rec.Code)
+	}
+	tp := rec.Header().Get("traceparent")
+	if len(tp) != 55 || strings.Count(tp, "-") != 3 {
+		t.Errorf("traceparent = %q, want W3C `00-<32hex>-<16hex>-<2hex>`", tp)
+	}
+}
+
+// A metrics-only stack instruments against the no-op tracer, so no trace
+// header leaks even when another stack owns the process-wide tracer.
+func TestNoTraceparentWithoutTracing(t *testing.T) {
+	traced, err := telemetry.Init(context.Background(), telemetry.Config{
+		OTel: telemetry.OTelConfig{Enabled: true, Exporter: "none"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = traced.Shutdown(context.Background()) })
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "none"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	rec := httptest.NewRecorder()
+	tel.HTTPMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if got := rec.Header().Get("traceparent"); got != "" {
+		t.Errorf("metrics-only stack injected traceparent %q", got)
+	}
+}
+
+// The stack initialised last is the process-wide default.
+func TestLastStackIsProcessDefault(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		OTel:    telemetry.OTelConfig{Enabled: true, Exporter: "none"},
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "none"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	if otel.GetTracerProvider() != tel.TracerProvider() {
+		t.Error("global TracerProvider is not the stack's")
+	}
+	if otel.GetMeterProvider() != tel.MeterProvider() {
+		t.Error("global MeterProvider is not the stack's")
+	}
+}
+
+// The OTLP/HTTP trace exporter parses the full endpoint URL (scheme, host,
+// port) and posts spans to /v1/traces there.
+func TestOTLPHTTPTraceExporterHitsEndpoint(t *testing.T) {
+	hit := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case hit <- r.URL.Path:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx := context.Background()
+	tel, err := telemetry.Init(ctx, telemetry.Config{
+		OTel: telemetry.OTelConfig{Enabled: true, Exporter: "otlp_http", Endpoint: srv.URL},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, span := tel.TracerProvider().Tracer("test").Start(ctx, "probe")
+	span.End()
+	if err := tel.Shutdown(ctx); err != nil { // flushes the batch
+		t.Fatal(err)
+	}
+	select {
+	case path := <-hit:
+		if path != "/v1/traces" {
+			t.Errorf("collector hit on %q, want /v1/traces", path)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("OTLP collector was never hit")
+	}
+}
+
+// Every OTLP endpoint accepts a bare host:port (plaintext) and a full URL
+// whose scheme selects TLS, for both signals.
+func TestOTLPEndpointsAcceptHostPortAndURL(t *testing.T) {
+	for _, addr := range []string{"collector:4317", "http://collector:4317", "https://collector:4317"} {
+		for _, exporter := range []string{"otlp_grpc", "otlp_http"} {
+			tel, err := telemetry.Init(context.Background(), telemetry.Config{
+				OTel:    telemetry.OTelConfig{Enabled: exporter == "otlp_grpc", Exporter: exporter, Endpoint: addr},
+				Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: exporter, Endpoint: addr},
+			})
+			if err != nil {
+				t.Errorf("%s at %q: %v", exporter, addr, err)
+				continue
+			}
+			shortShutdown(t, tel)
+		}
+	}
+}
+
+// Exporter "none" installs a silent meter: no scrape listener and no
+// registry, so the metrics "none" promises to suppress are never served.
+func TestNoneExporterDoesNotScrape(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "none", AdminAddr: "127.0.0.1:0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	if tel.ScrapeURL() != "" || tel.Registerer() != nil {
+		t.Errorf("'none' started a scrape: url %q, registerer %v", tel.ScrapeURL(), tel.Registerer())
+	}
+}
+
+// The scrape is Prometheus text exposition with the runtime collectors:
+// `go_*` and `process_*` series, each with its HELP / TYPE preamble. The
+// same exposition is available through ScrapeHandler.
+func TestScrapeExposition(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "prometheus", AdminAddr: "127.0.0.1:0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	if strings.HasSuffix(strings.TrimSuffix(tel.ScrapeURL(), "/metrics"), ":0") {
+		t.Errorf("ScrapeURL = %q, want the resolved port", tel.ScrapeURL())
+	}
+	body, hdr := scrape(t, tel.ScrapeURL())
+	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") && !strings.Contains(ct, "openmetrics-text") {
+		t.Errorf("Content-Type = %q, want a Prometheus / OpenMetrics text variant", ct)
+	}
+	for _, want := range []string{"go_goroutines", "process_", "# HELP go_goroutines", "# TYPE go_goroutines"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape body missing %q", want)
+		}
+	}
+	rec := httptest.NewRecorder()
+	tel.ScrapeHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "go_goroutines") {
+		t.Errorf("ScrapeHandler: status %d, body has go_goroutines: %v", rec.Code, strings.Contains(rec.Body.String(), "go_goroutines"))
+	}
+}
+
+// An empty adminAddr starts no listener; the scrape is still served
+// through ScrapeHandler, and an unconfigured stack serves an empty one.
+func TestEmptyAdminAddrServesThroughHandler(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "prometheus"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	if tel.ScrapeURL() != "" || tel.AdminErr() != nil {
+		t.Errorf("empty adminAddr started a listener: %q", tel.ScrapeURL())
+	}
+	rec := httptest.NewRecorder()
+	tel.ScrapeHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if !strings.Contains(rec.Body.String(), "go_goroutines") {
+		t.Error("ScrapeHandler serves no runtime collectors")
+	}
+	var none *telemetry.Telemetry
+	rec = httptest.NewRecorder()
+	none.ScrapeHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("nil stack scrape: status %d, want 200", rec.Code)
+	}
+}
+
+// A custom path replaces the default route rather than adding one.
+func TestCustomScrapePath(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "prometheus", AdminAddr: "127.0.0.1:0", Path: "/internal/metrics"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	if !strings.HasSuffix(tel.ScrapeURL(), "/internal/metrics") {
+		t.Fatalf("ScrapeURL = %q, want the custom path", tel.ScrapeURL())
+	}
+	scrape(t, tel.ScrapeURL())
+	resp, err := http.Get("http://" + strings.TrimSuffix(tel.ScrapeURL(), "/internal/metrics") + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("default path status = %d, want 404", resp.StatusCode)
+	}
+}
+
+// A bind failure surfaces on AdminErr instead of failing Init, so the
+// caller decides whether an unavailable scrape port is fatal.
+func TestAdminBindFailureSurfacesOnAdminErr(t *testing.T) {
+	first, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "prometheus", AdminAddr: "127.0.0.1:0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Shutdown(context.Background()) })
+	taken := strings.TrimSuffix(first.ScrapeURL(), "/metrics")
+	second, err := telemetry.Init(context.Background(), telemetry.Config{
+		Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "prometheus", AdminAddr: taken},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Shutdown(context.Background()) })
+	select {
+	case err := <-second.AdminErr():
+		if err == nil {
+			t.Error("expected a bind error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for the bind error")
+	}
+}
+
+// BenchmarkHTTPMiddleware guards the hoist: building the otelhttp handler
+// per request cost roughly 1.8x the allocations measured here.
+func BenchmarkHTTPMiddleware(b *testing.B) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		ServiceName: "bench",
+		OTel:        telemetry.OTelConfig{Enabled: true, Exporter: "none"},
+		Metrics:     telemetry.MetricsConfig{Enabled: true, Exporter: "none"},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	h := tel.HTTPMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	req := httptest.NewRequest(http.MethodGet, "/api/a", nil)
+	b.ReportAllocs()
+	for b.Loop() {
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
 }

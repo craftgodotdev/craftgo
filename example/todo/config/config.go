@@ -124,10 +124,10 @@ type CompressionConfig struct {
 	Level int `yaml:"level"`
 }
 
-// OTel + Metrics block shapes live in `pkg/otel` and `pkg/metrics`
-// respectively (look there for field-by-field docs). The aliases
-// below let `config.yaml` and call sites read like local types
-// without the project re-defining the schema.
+// The OTel + Metrics block shapes live in `pkg/telemetry` (look there
+// for field-by-field docs). The aliases below let `config.yaml` and
+// call sites read like local types without the project re-defining
+// the schema.
 //
 // Aliases are kept exported so an IDE goto-definition lands on the
 // library doc strings instead of an opaque indirection.

@@ -574,12 +574,16 @@ The struct embeds `log.Logger` so logic can call `l.Info(...)` directly. Trace I
 ## Runtime entry points
 
 ```go
-import "github.com/craftgodotdev/craftgo/pkg/server"
+import (
+    "github.com/craftgodotdev/craftgo/pkg/server"
+    "github.com/craftgodotdev/craftgo/pkg/telemetry"
+)
 
+tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in config.yaml
 srv := server.New(svcCtx)
+srv.Use(tel.HTTPMiddleware()) // opens the span first, so AccessLog sees the trace ids
 srv.Use(server.RequestID())
 srv.Use(server.AccessLog(logger))
-srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
 routes.RegisterAll(srv, svcCtx)
 srv.Start(":8080")
 ```
