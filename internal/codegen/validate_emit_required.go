@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // requiredKind picks the right Go conditional for an absent value.
@@ -25,14 +24,11 @@ import (
 // `T @nullable`) and `any` we DO need the check - the decoder
 // happily accepts `null` and leaves it as a nil pointer or the
 // literal 4-byte `null` `json.RawMessage`.
-func requiredKind(f *ast.Field, access string) string {
+func requiredKind(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil {
 		return ""
 	}
-	if f.Type.Optional || goFieldIsPointer(f, nil, nil) {
-		// requiredKind runs only on required (non-optional, non-nullable)
-		// fields, where the pointer wrap never applies - so a scalar
-		// resolver would not change the answer here.
+	if f.Type.Optional || goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return access + " == nil"
 	}
 	if !f.Type.Array && f.Type.Map == nil && f.Type.Named != nil && f.Type.Named.Name.String() == "any" {
@@ -48,12 +44,12 @@ func requiredKind(f *ast.Field, access string) string {
 
 // requiredCheck assembles the presence-check block, or returns ""
 // when the field type doesn't have a defined empty value.
-func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
-	cond := requiredKind(f, access)
+func requiredCheck(f *ast.Field, access string, ctx emitCtx) string {
+	cond := requiredKind(f, access, ctx)
 	if cond == "" {
 		return ""
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	return ifReturnf(cond, fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 }
 
@@ -63,20 +59,12 @@ func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 // strings) compare against `""`; int-valued enums compare against `0`.
 // The check is skipped for arrays / maps / pointers - those reuse the
 // generic `requiredCheck` path with len/nil semantics.
-func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
+func requiredCheckEnumAware(f *ast.Field, access string, ctx emitCtx) string {
 	if f != nil && f.Type != nil && !f.Type.Array && !f.Type.Optional && f.Type.Map == nil && f.Type.Named != nil {
-		name := f.Type.Named.Name.String()
-		ed, ok := pkg.Enums[name]
-		if !ok && r != nil {
-			// A qualified enum (`shared.Priority`) misses the bare-keyed local
-			// table; resolve it project-wide so a cross-package enum field gets
-			// the same field-named "required" presence check a local one does,
-			// instead of only the enum's own value-set rejection.
-			if ed = r.LookupEnum(name); ed != nil {
-				ok = true
-			}
-		}
-		if ok {
+		// A cross-package enum field gets the same field-named "required"
+		// presence check a local one does, instead of only the enum's own
+		// value-set rejection.
+		if ed := ctx.resolver.LookupEnum(f.Type.Named.Name.String()); ed != nil {
 			if firstEnumKind(ed) == ast.EnumInt {
 				// An int-enum that defines 0 as a real member (`Inactive =
 				// 0`) can't use 0 as an "absent" sentinel - the required
@@ -86,7 +74,7 @@ func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, 
 				if enumHasIntValue(ed, 0) {
 					return ""
 				}
-				uses["fmt"] = true
+				ctx.uses["fmt"] = true
 				return ifReturnf(access+" == 0", fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 			}
 			// A string-enum that defines "" as a real member (`Unknown = ""`)
@@ -96,11 +84,11 @@ func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, 
 			if enumHasStringValue(ed, "") {
 				return ""
 			}
-			uses["fmt"] = true
+			ctx.uses["fmt"] = true
 			return ifReturnf(access+` == ""`, fmt.Sprintf(`"%s: required"`, fieldWireName(f)))
 		}
 	}
-	return requiredCheck(f, access, uses)
+	return requiredCheck(f, access, ctx)
 }
 
 // enumHasIntValue reports whether ed defines a member whose int value is v.

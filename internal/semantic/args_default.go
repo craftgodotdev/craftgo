@@ -1,5 +1,5 @@
-// Package semantic - @default literal validation: type/element support,
-// primitive-kind map, helpers.
+// @default / @example literal validation: target type support, literal
+// kind and value fit.
 package semantic
 
 import (
@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
@@ -29,7 +30,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 			f.Name)
 		return
 	}
-	if !defaultTypeSupported(f.Type, a.pkg) {
+	if !a.defaultTypeSupported(f.Type) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError,
 			CodeDecoratorConflict,
 			"@default is not supported on field %q: only primitives, enums, scalars (wrapping primitives), and arrays of those are allowed",
@@ -124,40 +125,28 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 			"@%s on field %q expects a single value, not an array literal", decName, f.Name)
 		return
 	}
-	if t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
-		return // qualified (cross-package) types resolve in the project twin
+	if t.Named == nil || t.Named.Name == nil {
+		return
 	}
-	name := t.Named.Name.Parts[0]
-	ed := a.pkg.Enums[name] // nil if not an enum
-	// Resolve a scalar to its underlying primitive for the type-fit checks.
-	prim := name
-	if sd, ok := a.pkg.Scalars[name]; ok {
-		prim = sd.Primitive
-	}
-	checkScalarEnumLiteralValue(decName, f.Name, name, prim, ed, v, pos,
-		func(p lexer.Position, code, format string, args ...any) {
-			a.diag(p, p, lexer.SeverityError, code, format, args...)
-		})
+	a.checkScalarEnumLiteralValue(decName, f.Name, t.Named.Name.String(), a.primOf(t), a.lookupEnum(t.Named), v, pos)
 }
 
-// defaultPrimitiveKind maps a resolved primitive (or scalar) name to
-// the [ArgKind] its `@default` literal must match. Scalars resolve
-// through to their underlying primitive in one hop. Returns ArgAny
-// for names this layer can't classify so the caller skips the kind
-// check rather than emit a misleading mismatch.
 // primitiveArgKind maps a resolved primitive name to the literal kind a
 // value-bearing decorator must carry. Unknown names (structs, unresolved
 // refs) return ArgAny so no kind check fires.
 func primitiveArgKind(prim string) ArgKind {
-	switch prim {
-	case "string", "bytes":
+	sp, ok := prims.Lookup(prim)
+	if !ok {
+		return ArgAny
+	}
+	switch sp.Kind {
+	case prims.String, prims.Bytes:
 		return ArgString
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
+	case prims.Int, prims.Uint:
 		return ArgInt
-	case "float32", "float64":
+	case prims.Float:
 		return ArgNumber
-	case "bool":
+	case prims.Bool:
 		return ArgBool
 	}
 	return ArgAny
@@ -167,20 +156,19 @@ func primitiveArgKind(prim string) ArgKind {
 // already-resolved enum (ed != nil) OR a resolved scalar/primitive (prim).
 // dispName is the type name used in messages. decName gates the default-only
 // rejects (bytes/file have no literal form; an out-of-capacity int would not
-// compile). emit reports a diagnostic. Shared by the per-package literal check
-// and the cross-package project twin so a `shared.Tiny @default(200)` gets the
-// SAME kind / capacity / membership verdict as a local `Tiny @default(200)`.
-func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *ast.EnumDecl, v ast.Expr, pos lexer.Position, emit func(pos lexer.Position, code, format string, args ...any)) {
+// compile). A `shared.Tiny @default(200)` gets the same kind / capacity /
+// membership verdict as a local `Tiny @default(200)`.
+func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *ast.EnumDecl, v ast.Expr, pos lexer.Position) {
 	if ed != nil {
 		ident, ok := v.(*ast.IdentExpr)
 		if !ok {
-			emit(pos, CodeDecoratorArgValue,
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
 				"@%s on enum field %q must reference an enum value by name (one of %s)",
 				decName, fieldName, enumValueList(ed))
 			return
 		}
 		if ident.Name == nil || len(ident.Name.Parts) != 1 {
-			emit(pos, CodeDecoratorArgValue,
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
 				"@%s on enum field %q must be one of %s", decName, fieldName, enumValueList(ed))
 			return
 		}
@@ -190,20 +178,20 @@ func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *
 				return
 			}
 		}
-		emit(pos, CodeDecoratorArgValue,
+		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
 			"@%s %q is not a value of enum %s; expected one of %s",
 			decName, want, ed.Name, enumValueList(ed))
 		return
 	}
 	if decName == "default" {
 		if prim == "bytes" {
-			emit(pos, CodeDecoratorConflict,
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
 				"@default is not supported on a `bytes` field %q - a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
 				fieldName)
 			return
 		}
 		if prim == "file" {
-			emit(pos, CodeDecoratorConflict,
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
 				"@default is not supported on a `file` field %q - a file upload has no literal default form",
 				fieldName)
 			return
@@ -214,16 +202,16 @@ func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *
 		return
 	}
 	if !exprMatchesKind(v, want) {
-		emit(pos, CodeDecoratorArgType,
+		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgType,
 			"@%s on field %q (%s) requires a %s literal", decName, fieldName, dispName, want)
 		return
 	}
 	if decName == "default" {
 		if il, ok := v.(*ast.IntLit); ok {
-			if lo, hi, capOK := intCapacity(prim); capOK {
+			if lo, hi, capOK := prims.Capacity(prim); capOK {
 				fv := float64(il.Value)
 				if fv < lo || fv > hi {
-					emit(pos, CodeBoundOverflow,
+					a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
 						"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
 				}
 			}
@@ -232,58 +220,41 @@ func checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *
 }
 
 // defaultTypeSupported reports whether @default may target a field of
-// type t. Path C: primitives, enums, scalars wrapping primitives,
-// optional of those, and arrays of those are allowed. Map / struct /
-// generic / array-of-struct return false so the caller can flag the
-// combination. Cross-package qualified refs (multi-segment names)
-// DEFER - they return true at per-package phase and are re-validated
-// by [refResolver.checkProjectFieldDefaults] with the project-wide
-// scalar / enum tables in scope.
-func defaultTypeSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
+// type t: primitives, enums, scalars wrapping primitives, optional of
+// those, and arrays of those. Map / struct / generic / array-of-struct
+// return false so the caller can flag the combination.
+func (a *analyzer) defaultTypeSupported(t *ast.TypeRef) bool {
 	if t == nil || t.Map != nil {
 		return false
 	}
 	if t.Array {
-		return defaultElemSupported(t.ElemTypeRef(), pkg)
+		return a.defaultElemSupported(t.ElemTypeRef())
 	}
-	return defaultElemSupported(t, pkg)
+	return a.defaultElemSupported(t)
 }
 
 // defaultElemSupported is the per-element check used both for
-// stand-alone fields and array elements.
-func defaultElemSupported(t *ast.TypeRef, pkg *semanticPkgRef) bool {
-	if t == nil || t.Named == nil || t.Named.Name == nil {
+// stand-alone fields and array elements. A qualified name that resolves
+// to nothing is left to the reference pass.
+func (a *analyzer) defaultElemSupported(t *ast.TypeRef) bool {
+	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) > 2 {
 		return false
 	}
-	if len(t.Named.Name.Parts) == 2 {
-		// Qualified ref (`shared.CurrencyCode`). The per-package
-		// analyser has no cross-package view, so we defer to
-		// [refResolver.checkProjectFieldDefaults] which runs after
-		// every package is built and has access to the full scalar
-		// / enum tables.
+	if len(t.Named.Name.Parts) == 1 && PrimFromName(t.Named.Name.Parts[0]) != 0 {
 		return true
 	}
-	if len(t.Named.Name.Parts) != 1 {
-		return false
-	}
-	name := t.Named.Name.Parts[0]
-	if PrimFromName(name) != 0 {
+	if a.lookupEnum(t.Named) != nil {
 		return true
 	}
-	if _, ok := pkg.Enums[name]; ok {
-		return true
-	}
-	if sd, ok := pkg.Scalars[name]; ok {
+	if sd := a.lookupScalar(t.Named); sd != nil {
 		return PrimFromName(sd.Primitive) != 0
+	}
+	if isQualifiedTypeRef(t) {
+		pkg, sym := a.resolveNamed(a.pkg.Name, t.Named)
+		return pkg == nil || !packageHasSymbol(pkg, sym)
 	}
 	return false
 }
-
-// semanticPkgRef is the alias [defaultTypeSupported] takes for its
-// package-table argument. Kept as a named alias (not the bare
-// `*Package`) so the call sites read as "this helper needs only a
-// scalar / enum table" rather than the full analyzer state.
-type semanticPkgRef = Package
 
 // enumValueList renders an enum's value names as a comma-separated
 // list for diagnostic messages.

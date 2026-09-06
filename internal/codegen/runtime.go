@@ -38,7 +38,7 @@ type runtimeData struct {
 // per-project overrides are out of scope here (the runtime config
 // is meant to be edited freely after the first gen).
 func GenerateRuntimeConfig(cfg *config.Config, projectRoot string) error {
-	if cfg.Output.Main == "-" {
+	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
 	dir := filepath.Join(projectRoot, cfg.Output.Config)
@@ -88,7 +88,7 @@ func GenerateRuntimeConfig(cfg *config.Config, projectRoot string) error {
 // [GenerateRuntimeConfig]: opting out of main.go means the project
 // doesn't want the framework's runtime scaffolding in its module.
 func GenerateSvccontext(cfg *config.Config, projectRoot string) error {
-	if cfg.Output.Main == "-" {
+	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
 	dest := filepath.Join(projectRoot, cfg.Output.Svccontext)

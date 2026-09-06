@@ -2,15 +2,15 @@
 // by layer rather than by decorator:
 //
 //   - validate.go          driver - orchestrates Generate / collect / template
-//   - validate_registry.go decorator → emit-function dispatch table
+//   - decorator_registry.go per-decorator emit table (runtime check + OpenAPI keyword)
 //   - validate_emit.go     per-validator emitters + cross-cutting helpers
-//   - validate_args.go     decorator-argument extractors (intArg, sizeArg, ...)
+//   - decorator_args.go    decorator-argument extractors (intArg, sizeArg, ...)
 //   - validate_types.go    field-shape predicates (isStringOrOptString, ...)
 //
 // To add a new validator: write its emit function in validate_emit.go,
-// register it as one row in `validators` (validate_registry.go). Type
+// register it as one row in `validators` (decorator_registry.go). Type
 // guards and arg helpers are reusable from validate_types.go /
-// validate_args.go - most new validators won't need new ones.
+// decorator_args.go - most new validators won't need new ones.
 
 package codegen
 
@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -82,62 +81,15 @@ type validatorType struct {
 // without any constraints get an empty stub so handlers can call
 // `req.Validate()` uniformly.
 //
-// Equivalent to [GenerateValidatorsPackage] with a nil [CrossPkg]
-// context, for single-package callers and tests.
-func GenerateValidators(pkg *semantic.Package, outDir string) error {
-	return GenerateValidatorsPackage(pkg, outDir, nil)
-}
-
-// GenerateValidatorsPackage is the multi-package variant of
-// [GenerateValidators]. crossPkg adds Go imports for every cross-
-// package alias used in pkg's field types so `req.User.Validate()`
-// can dispatch to the sibling package's validator.
-//
-// Equivalent to [GenerateValidatorsWith] with a nil scalar table:
-// scalar inheritance is disabled in this entry point.
-func GenerateValidatorsPackage(pkg *semantic.Package, outDir string, crossPkg CrossPkg) error {
-	return GenerateValidatorsWith(pkg, outDir, crossPkg, nil, nil)
-}
-
-// GenerateValidatorsWith is the project-aware entry point: it
-// accepts the [ScalarTable] built by [BuildScalarTable] so a field
-// typed `Email` (local scalar) or `shared.NonEmptyID` (cross-pkg
-// scalar) inherits the scalar's own decorator chain into its
-// generated Validate() body. The [TypeTable] resolves qualified
-// type refs (`shared.Page<T>`), which the local-only `pkg.Types`
-// lookup cannot reach, so they emit recursive `.Validate()` calls.
-//
-// Used by the multi-package CLI flow; single-package fixtures and
-// tests continue calling [GenerateValidators] / [GenerateValidatorsPackage]
-// which pass nil for the tables.
-func GenerateValidatorsWith(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable) error {
-	return GenerateValidatorsAll(pkg, outDir, crossPkg, scalars, types, nil)
-}
-
-// GenerateValidatorsAll is the explicit-tables entry point for tests
-// that build tables directly; [GenerateValidatorsResolved] accepts a
-// single [ProjectResolver] instead of four ad-hoc tables. This wrapper
-// assembles a resolver from the parameters and delegates.
-func GenerateValidatorsAll(pkg *semantic.Package, outDir string, crossPkg CrossPkg, scalars ScalarTable, types TypeTable, enums EnumTable) error {
-	r := &ProjectResolver{
-		Types:    types,
-		Enums:    enums,
-		Scalars:  scalars,
-		CrossPkg: crossPkg,
-	}
-	return GenerateValidatorsResolved(pkg, outDir, r)
-}
-
-// GenerateValidatorsResolved is the canonical entry point. It takes a
-// single [ProjectResolver] carrying every cross-package lookup the
-// validator emit chain needs - scalar inheritance, generic Validate
-// dispatch, cross-pkg enum value-set checks, and the matching Go
-// import registrations. nil resolver is tolerated and degrades to
-// local-only behaviour, matching the legacy single-package shape.
-func GenerateValidatorsResolved(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
+// r carries every cross-package lookup the validator emit chain needs -
+// scalar inheritance, generic Validate dispatch, cross-pkg enum value-set
+// checks, and the matching Go import registrations. A nil resolver
+// resolves local names only.
+func GenerateValidators(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
+	r = resolverFor(pkg, r)
 	pkgDir := filepath.Join(outDir, pkg.Name)
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
@@ -162,7 +114,7 @@ func GenerateValidatorsResolved(pkg *semantic.Package, outDir string, r *Project
 // scalars, when non-nil, enables scalar-decorator inheritance: a
 // field whose declared type is a scalar gains the scalar's own
 // `@format` / `@length` / `@min` / etc. validators on top of the
-// field-level chain. See [scalarInheritedDecorators].
+// field-level chain.
 func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 	names := sortedKeys(pkg.Types)
 
@@ -242,11 +194,7 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 		})
 	}
 
-	imps := make([]string, 0, len(uses))
-	for k := range uses {
-		imps = append(imps, k)
-	}
-	sort.Strings(imps)
+	imps := sortedKeys(uses)
 
 	return validateData{
 		Package:            pkg.Name,
@@ -263,7 +211,7 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 //
 // Per-field, the order of checks is:
 //
-//  1. Decorator-driven validators (registry dispatch in validate_registry.go).
+//  1. Decorator-driven validators (registry dispatch in decorator_registry.go).
 //  2. Generic type-parameter fields → runtime type-assertion path.
 //  3. Fields whose type carries a Validate() - user structs, generic
 //     instances, enums, and constrained scalars → recursive
@@ -286,7 +234,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 			fieldIdx++
 			out = append(out, fieldChecksWithScalar(v, goName, pkg, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
-				if call := typeParamValidateCall(v, goName, ctx.uses); call != "" {
+				if call := typeParamValidateCall(v, goName, ctx); call != "" {
 					out = append(out, call)
 				}
 				continue
@@ -297,7 +245,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 			// method, and the field calls it (`v.Status.Validate()`).
 			// This keeps the check declared once and lets generic
 			// instances over a scalar / enum validate their elements.
-			if nested := nestedValidateCall(v, goName, pkg, r); nested != "" {
+			if nested := nestedValidateCall(v, goName, ctx); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:
@@ -318,7 +266,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 	// @mutuallyExclusive) run AFTER per-field checks so a clearly-bad
 	// individual field surfaces its own error first. The cross-field
 	// rules then assume each visible value is structurally sound.
-	out = append(out, crossFieldChecks(td, pkg, r, ctx.uses)...)
+	out = append(out, crossFieldChecks(td, ctx)...)
 	return out
 }
 

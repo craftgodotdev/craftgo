@@ -5,6 +5,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -169,8 +170,7 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		// string-pattern equivalent - so its key constraint is left to the
 		// runtime rather than advertised in a shape clients can't validate.
 		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		applyPatternFormat(sc.Decorators, base)
-		applyStringLengthConstraints(sc.Decorators, base)
+		applyConstraintFamilies(sc.Decorators, base, oasLength|oasText)
 		return base
 	}
 	return nil
@@ -210,108 +210,23 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 	return schemaFromTypeDecl(decl, subst, pkg, registry)
 }
 
-// substituteTypeRef walks t and swaps every NamedTypeRef whose Name is
-// a known type-param key with the matching concrete TypeRef. Array and
-// Optional suffixes from the original survive; the substituted ref's
-// own suffixes are merged in too (so `T?` substituted with `Book[]`
-// correctly produces `Book[]?`).
-func substituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeRef {
-	if t == nil {
+// primitiveSchema returns the OpenAPI schema for a built-in type, or nil
+// for a name that is not one. Only int32 / int64 have a registered
+// integer format, so the other widths emit a bare integer; an unsigned
+// width is conveyed via `minimum: 0` (a user @gte tightens it via setMin,
+// which keeps the largest, never loosens).
+func primitiveSchema(name string) *openapi3.Schema {
+	sp, ok := prims.Lookup(name)
+	if !ok || sp.Kind == prims.Object {
 		return nil
 	}
-	if t.Map != nil {
-		return &ast.TypeRef{
-			Pos: t.Pos,
-			Map: &ast.MapType{
-				Pos:   t.Map.Pos,
-				Key:   substituteTypeRef(t.Map.Key, subst),
-				Value: substituteTypeRef(t.Map.Value, subst),
-			},
-			Array:      t.Array,
-			ArrayDepth: t.ArrayDepth,
-			Optional:   t.Optional,
-		}
-	}
-	if t.Named != nil {
-		if rep, ok := subst[t.Named.Name.String()]; ok {
-			out := *rep
-			if t.Array {
-				out.Array = true
-				// Add the outer's array dim count on top of any
-				// the substituted ref carried (e.g. `T?` →
-				// `Book[]` becomes `Book[]?` with depth=1).
-				if t.ArrayDepth > 0 {
-					out.ArrayDepth += t.ArrayDepth
-				} else if out.ArrayDepth == 0 {
-					out.ArrayDepth = 1
-				}
-			}
-			if t.Optional {
-				out.Optional = true
-			}
-			return &out
-		}
-		// The Named ref itself is not a type-param, but its generic
-		// args might be: `kids: Tree<T>[]` inside `type Tree<T>` has
-		// `Tree` (not a param) plus arg `T` (a param). Substitute
-		// inside the args so the synthesized instance carries the
-		// concrete arg, not the still-bound param. Without this the
-		// post-substitution body would register the parametric
-		// `Tree<T>` again at every recursive site, polluting the
-		// component map with phantom `TreeOfT` entries.
-		if len(t.Named.Args) > 0 {
-			args := make([]*ast.TypeRef, len(t.Named.Args))
-			subbed := false
-			for i, a := range t.Named.Args {
-				args[i] = substituteTypeRef(a, subst)
-				if args[i] != a {
-					subbed = true
-				}
-			}
-			if subbed {
-				cp := *t
-				named := *t.Named
-				named.Args = args
-				cp.Named = &named
-				return &cp
-			}
-		}
-	}
-	return t
-}
-
-// primitiveSchema returns an inline Schema for DSL primitive type names,
-// or nil to signal "this is a user-defined type, emit a $ref".
-func primitiveSchema(name string) *openapi3.Schema {
-	switch name {
-	case "string":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
-	case "bool":
-		return &openapi3.Schema{Type: &openapi3.Types{"boolean"}}
-	case "int32":
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int32"}
-	case "int64":
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int64"}
-	case "int", "int8", "int16":
-		// No distinct standard OpenAPI integer format for these widths
-		// (only int32 / int64 are registered), so emit a bare integer.
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}}
-	case "uint", "uint8", "uint16", "uint32", "uint64":
-		// Unsigned: advertise the implicit lower bound. There is no standard
-		// "uint" format keyword, so width is conveyed via minimum, not format.
-		// A user @gte tightens this (setMin keeps the largest), never loosens.
-		zero := 0.0
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Min: &zero}
-	case "float32":
-		return &openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "float"}
-	case "float64":
-		return &openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "double"}
-	case "bytes":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "byte"}
-	case "file":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}
-	case "any":
+	if sp.OASType == "" {
 		return &openapi3.Schema{}
 	}
-	return nil
+	s := &openapi3.Schema{Type: &openapi3.Types{sp.OASType}, Format: sp.OASFormat}
+	if sp.Kind == prims.Uint {
+		zero := 0.0
+		s.Min = &zero
+	}
+	return s
 }

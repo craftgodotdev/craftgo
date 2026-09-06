@@ -1,31 +1,21 @@
-// Symbol-table population + cross-file package-name check + extend-service merge.
+// Symbol-table population + package name + extend-service merge.
 package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-func (a *analyzer) checkPackageName(files []*ast.File) {
-	var name string
-	var firstPos lexer.Position
+// setPackageName records the `package X` name the group's files declare;
+// a group without a declaration keeps the empty name.
+func (a *analyzer) setPackageName(files []*ast.File) {
 	for _, f := range files {
-		if f.Package == nil {
-			continue
-		}
-		if name == "" {
-			name = f.Package.Name
-			firstPos = f.Package.Pos
-			continue
-		}
-		if name != f.Package.Name {
-			d := a.diag(f.Package.Pos, f.Package.Pos, lexer.SeverityError,
-				CodePackageMismatch,
-				"package name %q conflicts with %q", f.Package.Name, name)
-			d.Related = related(firstPos, "first declared here")
+		if f.Package != nil {
+			a.pkg.Name = f.Package.Name
+			return
 		}
 	}
-	a.pkg.Name = name
 }
 
 // collectDecls walks every declaration once, populates the Package symbol
@@ -46,7 +36,7 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	seen := map[string]lexer.Position{}   // type / enum / scalar / error namespace
 	seenMW := map[string]lexer.Position{} // middleware namespace
 	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position, rejectBuiltin bool) bool {
-		if rejectBuiltin && builtinTypes[name] {
+		if rejectBuiltin && prims.Is(name) {
 			// A type / enum / scalar / error named after a built-in spelling
 			// (`int`, `string`, `any`, ...) lowers to a Go type that shadows
 			// the built-in and fails to compile. (Middleware names live in a
@@ -142,12 +132,6 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 func (a *analyzer) mergeServices() {
 	for name, si := range a.pkg.Services {
 		if si.Primary == nil {
-			if !a.opts.skipExtendOrphanCheck {
-				for _, e := range si.Extends {
-					a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
-						"extend service %q has no primary declaration", name)
-				}
-			}
 			continue
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
@@ -198,6 +182,31 @@ func (a *analyzer) mergeServices() {
 				}
 				si.Methods = append(si.Methods, m)
 			}
+		}
+	}
+}
+
+// checkExtendOrphans reports every `extend service` block whose service
+// has no primary declaration in this package. When the primary lives in
+// a sibling package the message names it: extend declarations are
+// per-package.
+func (a *analyzer) checkExtendOrphans() {
+	for _, name := range sortedNames(a.pkg.Services) {
+		si := a.pkg.Services[name]
+		if si == nil || si.Primary != nil {
+			continue
+		}
+		otherPkg, primary := a.primaryServiceElsewhere(name)
+		for _, e := range si.Extends {
+			if primary == nil {
+				a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
+					"extend service %q has no primary declaration", name)
+				continue
+			}
+			d := a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
+				"extend service %q: primary lives in package %q - extend declarations are per-package, move this block into that package or rename the service",
+				name, otherPkg)
+			d.Related = related(primary.Pos, "primary service declared here")
 		}
 	}
 }

@@ -94,10 +94,8 @@ func Compress(opts ...CompressOptions) Middleware {
 // accepts: lower-cased, in header order, with every token whose quality
 // is pinned to zero skipped - `gzip;q=0` is an explicit refusal of that
 // coding (RFC 7231 §5.3.1). A bare `*` is yielded verbatim and carries
-// no wildcard meaning here; Compress never treated it as one, and
-// AcceptsEncoding keeps that parity. One parser feeds both so the
-// middleware and a raw handler cannot disagree about what a client
-// accepts.
+// no wildcard meaning. One parser feeds both so the middleware and a
+// raw handler cannot disagree about what a client accepts.
 func acceptedCodings(accept string) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		if accept == "" {

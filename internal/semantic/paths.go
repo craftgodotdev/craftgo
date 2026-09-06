@@ -7,7 +7,8 @@ package semantic
 //
 //   - [CodePathBaseFormat]     - basePath malformed (warning).
 //   - [CodePathCollision]      - two methods resolve to the same
-//     VERB + path across services.
+//     VERB + path across services or packages
+//     ([refResolver.checkProjectPathCollision]).
 //   - [CodePathParamMissing]   - `{name}` in path but no matching
 //     field binding in the request type.
 //   - [CodePathParamOrphan]    - `@path` field with no corresponding
@@ -15,7 +16,7 @@ package semantic
 //   - [CodePathHealthConflict] - declared route equals a reserved
 //     health path.
 //
-// [ResolveRoute] below is the single route-computation authority for the
+// [route.Resolve] is the single route-computation authority for the
 // whole pipeline: codegen's routes / OpenAPI / route-conflict emitters call
 // it too, so the analyzer and the generated server cannot disagree on a route.
 
@@ -36,9 +37,9 @@ import (
 // DefaultLivenessPath / DefaultReadinessPath, so the mirror cannot drift.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
-// checkPathResolution runs the four route-level validations described
-// in the package doc comment plus the basePath format warning. The
-// pass is idempotent and stateless beyond [analyzer.diags].
+// checkPathResolution runs the basePath format warning, the reserved
+// health-path check, and the `{param}` ↔ field check for every method.
+// The pass is idempotent and stateless beyond [analyzer.diags].
 func (a *analyzer) checkPathResolution() {
 	a.checkBasePathFormat()
 
@@ -50,105 +51,96 @@ func (a *analyzer) checkPathResolution() {
 	for _, h := range healths {
 		healthSet[h] = true
 	}
-
-	type routeKey struct {
-		verb string
-		path string
-	}
-	type routeMeta struct {
-		pos     lexer.Position
-		service string
-		method  string
-	}
-	seen := map[routeKey]routeMeta{}
-
 	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
 		si := a.pkg.Services[svcName]
 		for _, m := range si.Methods {
 			rt := a.resolveMethodPath(si.Primary, m)
-			verb := strings.ToUpper(m.Verb)
-
 			if healthSet[rt] {
 				a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathHealthConflict,
 					"method %s.%s resolves to %s, which is a reserved health path",
 					svcName, m.Name, rt)
 			}
-
-			if !a.opts.skipPathParamCheck {
-				checkMethodPathParams(svcName, m, rt, a.pathParamEnv())
-			}
-
-			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide - they
-			// register against the same net/http pattern at boot. The
-			// displayed route keeps the literal form for the diagnostic.
-			key := routeKey{verb: verb, path: route.Shape(rt)}
-			if prev, dup := seen[key]; dup && prev.service != svcName {
-				diag := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathCollision,
-					"method %s.%s resolves to %s %s, which already binds %s.%s",
-					svcName, m.Name, verb, rt, prev.service, prev.method)
-				diag.Related = related(prev.pos, "first declared here")
-				continue
-			}
-			// Same-service duplicates are reported by checkServiceMethods -
-			// don't double-fire.
-			if _, dup := seen[key]; !dup {
-				seen[key] = routeMeta{pos: m.Pos, service: svcName, method: m.Name}
-			}
+			a.checkMethodPathParams(svcName, m, rt)
 		}
 	}
 }
 
-// checkProjectPathCollision is the cross-package twin of the route-collision
-// scan in [analyzer.checkPathResolution]: two methods in DIFFERENT packages
-// that resolve to the same VERB + route shape register the same net/http
-// pattern, so the second registration panics at boot. The per-package pass
-// only sees its own package's services (same-package pairs stay its job, and
-// [checkServiceMethods] owns same-service duplicates); this pass reports just
-// the cross-package pairs, so nothing double-fires. Packages and services
-// iterate in sorted order so "first declared here" is deterministic.
+// checkProjectPathCollision reports every pair of methods, across all
+// services and packages, that net/http's ServeMux would refuse to register
+// together: two routes of one verb with the same shape (`/u/{id}` and
+// `/u/{uid}` are one pattern), or two that overlap with neither more
+// specific (`/orders/{id}/track` and `/orders/by-status/{status}` both
+// match `/orders/by-status/track`). Either panics at server boot; both are
+// diagnosed here at design time. A same-service duplicate shape is left to
+// [analyzer.checkServiceMethods]. Packages and services iterate in sorted
+// order so "first declared here" is deterministic.
 func (r *refResolver) checkProjectPathCollision() {
-	type routeKey struct {
-		verb string
-		path string
+	type routeEntry struct {
+		verb, route, shape   string
+		pos                  lexer.Position
+		pkg, service, method string
 	}
-	type routeMeta struct {
-		pos     lexer.Position
-		pkg     string
-		service string
-		method  string
-	}
-	pkgNames := slices.Sorted(maps.Keys(r.proj.Packages))
-	seen := map[routeKey]routeMeta{}
-	for _, pkgName := range pkgNames {
+	var entries []routeEntry
+	for _, pkgName := range slices.Sorted(maps.Keys(r.proj.Packages)) {
 		pkg := r.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
-		svcNames := slices.Sorted(maps.Keys(pkg.Services))
-		for _, svcName := range svcNames {
+		for _, svcName := range slices.Sorted(maps.Keys(pkg.Services)) {
 			si := pkg.Services[svcName]
 			if si == nil {
 				continue
 			}
 			for _, m := range si.Methods {
 				rt := route.Resolve(r.basePath, si.Primary, m)
-				key := routeKey{verb: strings.ToUpper(m.Verb), path: route.Shape(rt)}
-				prev, dup := seen[key]
-				if !dup {
-					seen[key] = routeMeta{pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name}
-					continue
-				}
-				if prev.pkg == pkgName {
-					// Same package - the per-package pass owns the pair.
-					continue
-				}
-				d := r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
-					"method %s.%s resolves to %s %s, which already binds %s.%s (package %s)",
-					svcName, m.Name, key.verb, rt, prev.service, prev.method, prev.pkg)
-				d.Related = related(prev.pos, "first declared here")
+				entries = append(entries, routeEntry{
+					verb: strings.ToUpper(m.Verb), route: rt, shape: route.Shape(rt),
+					pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name,
+				})
 			}
 		}
 	}
+	// Same shape: the later declaration collides with the first one seen.
+	type routeKey struct{ verb, shape string }
+	first := map[routeKey]routeEntry{}
+	for _, e := range entries {
+		key := routeKey{e.verb, e.shape}
+		prev, dup := first[key]
+		if !dup {
+			first[key] = e
+			continue
+		}
+		if prev.pkg == e.pkg && prev.service == e.service {
+			continue
+		}
+		d := r.diag(e.pos, lexer.SeverityError, CodePathCollision,
+			"method %s.%s resolves to %s %s, which already binds %s.%s%s",
+			e.service, e.method, e.verb, e.route, prev.service, prev.method, packageNote(prev.pkg, e.pkg))
+		d.Related = related(prev.pos, "first declared here")
+	}
+	// Different shapes that overlap: one diagnostic per pair, at the later
+	// declaration.
+	for i := 1; i < len(entries); i++ {
+		for j := 0; j < i; j++ {
+			a, b := entries[i], entries[j]
+			if a.verb != b.verb || a.shape == b.shape || !route.PatternsConflict(a.route, b.route) {
+				continue
+			}
+			d := r.diag(a.pos, lexer.SeverityError, CodePathCollision,
+				"method %s.%s resolves to %s %s, which overlaps %s %s of %s.%s%s: both match the same paths and neither is more specific, so net/http rejects the pair at startup; give one route a distinct literal segment or move the variable to @query",
+				a.service, a.method, a.verb, a.route, b.verb, b.route, b.service, b.method, packageNote(b.pkg, a.pkg))
+			d.Related = related(b.pos, "overlaps this route")
+		}
+	}
+}
+
+// packageNote renders " (package X)" when the other declaration lives in a
+// package other than own.
+func packageNote(other, own string) string {
+	if other == own {
+		return ""
+	}
+	return " (package " + other + ")"
 }
 
 // checkBasePathFormat emits a warning when the configured basePath
@@ -181,7 +173,7 @@ func (a *analyzer) checkBasePathFormat() {
 		bp, bad)
 }
 
-// resolveMethodPath is the analyzer-bound shorthand for [ResolveRoute] with
+// resolveMethodPath is the analyzer-bound shorthand for [route.Resolve] with
 // the configured basePath applied.
 func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
 	return route.Resolve(a.opts.BasePath, svc, m)
@@ -206,13 +198,11 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 // explicitly-decorated ones, since a bare-named field that happens
 // to not match the path is just a regular query/body field.
 //
-// The two run modes differ only in their [pathParamEnv]: the per-package
-// analyzer resolves names against its own package, while the project-
-// level pass ([refResolver.checkProjectPathParams]) resolves qualified
-// mixin / request names across packages - so `type Req { shared.IdHolder }`
-// binds its `@path` field the same way the codegen binder does.
-func checkMethodPathParams(svcName string, m *ast.Method, route string, env pathParamEnv) {
-	pathParams := extractPathParams(route)
+// The request type and its mixins resolve across packages exactly as the
+// codegen binder does, so `type Req { shared.IdHolder }` binds its `@path`
+// field the same way.
+func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt string) {
+	pathParams := route.Vars(rt)
 	// When the route declares `{param}` segments but the method has no
 	// request struct, the generated logic signature drops to bare
 	// `func() error` - path values land nowhere. Surface a warning so
@@ -228,7 +218,7 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 		// spurious for it.
 		rawReq, _ := wire.RawSides(m.Decorators)
 		if len(pathParams) > 0 && !rawReq {
-			env.emit(m.Pos, CodePathParamMissing,
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
 				"method %s.%s: path declares %v but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
 				svcName, m.Name, pathParams)
 		}
@@ -237,7 +227,7 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 	if len(pathParams) == 0 && m.Request.Name == nil {
 		return
 	}
-	reqFields := requestPathFields(m, pathParams, env)
+	reqFields := a.requestPathFields(m, pathParams)
 	if reqFields == nil {
 		// Unknown / cross-package request type - placement / qualified-ref
 		// pass owns the diagnostic; we silently skip rather than emit a
@@ -247,7 +237,7 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 	// Missing: route param has no field.
 	for _, p := range pathParams {
 		if !reqFields.has(p) {
-			env.emit(m.Pos, CodePathParamMissing,
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
 				"method %s.%s: path segment {%s} has no matching field in request type",
 				svcName, m.Name, p)
 		}
@@ -257,73 +247,9 @@ func checkMethodPathParams(svcName string, m *ast.Method, route string, env path
 	// that happens not to coincide with any path segment.
 	for _, name := range reqFields.explicit {
 		if !inSet(name, pathParams) {
-			env.emit(m.Pos, CodePathParamOrphan,
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
 				"method %s.%s: field %q has @path binding but route %s has no {%s} segment",
-				svcName, m.Name, name, route, name)
-		}
-	}
-}
-
-// pathParamEnv abstracts the two run modes of [checkMethodPathParams]:
-// how a (possibly qualified) type name resolves to its declaration, and
-// where diagnostics are sent. The per-package analyzer resolves against
-// its own package; the project resolver resolves across every package.
-type pathParamEnv struct {
-	// lookup resolves a type name - bare (`IdHolder`) or qualified
-	// (`shared.IdHolder`) - to its declaration, or nil when unresolved.
-	lookup func(name string) *ast.TypeDecl
-	// emit records a path-param diagnostic (always SeverityError).
-	emit func(pos lexer.Position, code, format string, args ...any)
-}
-
-// pathParamEnv builds the per-package environment: names resolve in the
-// analyzer's own package, diagnostics land on a.diags.
-func (a *analyzer) pathParamEnv() pathParamEnv {
-	return pathParamEnv{
-		lookup: func(name string) *ast.TypeDecl { return a.pkg.Types[name] },
-		emit: func(pos lexer.Position, code, format string, args ...any) {
-			a.diag(pos, pos, lexer.SeverityError, code, format, args...)
-		},
-	}
-}
-
-// checkProjectPathParams re-runs the `@path` segment ↔ field check with
-// cross-package visibility. The per-package pass is muted under
-// [Options.skipPathParamCheck] in project mode (it can't expand a mixin
-// pulled from a sibling package), so this is the single emit site there.
-// A request type and its mixins resolve across packages exactly as the
-// codegen binder's [flattenFields] does, so the diagnostic agrees with
-// what codegen will generate.
-func (r *refResolver) checkProjectPathParams() {
-	for pkgName, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		current := pkgName
-		env := pathParamEnv{
-			lookup: func(name string) *ast.TypeDecl {
-				if i := strings.LastIndexByte(name, '.'); i >= 0 {
-					if p := r.proj.Packages[name[:i]]; p != nil {
-						return p.Types[name[i+1:]]
-					}
-					return nil
-				}
-				if p := r.proj.Packages[current]; p != nil {
-					return p.Types[name]
-				}
-				return nil
-			},
-			emit: func(pos lexer.Position, code, format string, args ...any) {
-				r.diag(pos, lexer.SeverityError, code, format, args...)
-			},
-		}
-		for svcName, si := range pkg.Services {
-			if si == nil {
-				continue
-			}
-			for _, m := range si.Methods {
-				checkMethodPathParams(svcName, m, route.Resolve(r.basePath, si.Primary, m), env)
-			}
+				svcName, m.Name, name, rt, name)
 		}
 	}
 }
@@ -346,21 +272,16 @@ func (s *pathParamSet) has(name string) bool {
 	return s.all[name]
 }
 
-// requestPathFields walks the method's request type and classifies
-// fields against pathParams. Mixin members are expanded recursively
-// through env.lookup so `type Req { Base  name string }` exposes Base's
-// fields for path binding - the same view the codegen handler binder
-// gets, including mixins pulled from a sibling package.
+// requestPathFields classifies the fields of m's request type against
+// pathParams. Mixin members are expanded so `type Req { Base  name string }`
+// exposes Base's fields for path binding - the same view the codegen
+// handler binder gets, including mixins pulled from a sibling package.
 //
 // Returns nil when the request type can't be resolved (unknown name) so
 // the caller can skip path-param checks rather than emit a confusing
 // missing-field error.
-func requestPathFields(m *ast.Method, pathParams []string, env pathParamEnv) *pathParamSet {
-	if m.Request == nil || m.Request.Name == nil {
-		return nil
-	}
-	name := m.Request.Name.String()
-	td := env.lookup(name)
+func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathParamSet {
+	td, fields := a.requestFields(m)
 	if td == nil {
 		return nil
 	}
@@ -369,71 +290,27 @@ func requestPathFields(m *ast.Method, pathParams []string, env pathParamEnv) *pa
 		paramSet[p] = true
 	}
 	out := &pathParamSet{all: map[string]bool{}}
-	// A qualified request type carries its package prefix so bare mixins
-	// in its body resolve there, not against the current package.
-	prefix := ""
-	if i := strings.LastIndexByte(name, '.'); i >= 0 {
-		prefix = name[:i]
+	for _, pf := range fields {
+		f := pf.Field
+		name, hasExplicit := pathBindingName(f)
+		if hasExplicit {
+			out.all[name] = true
+			out.explicit = append(out.explicit, name)
+			continue
+		}
+		// A field auto-binds to a same-named segment ONLY when no other
+		// wire decorator diverts it. `id string @query` on `/u/{id}`
+		// rides the query string, so it does NOT cover the {id} segment
+		// - mirror RequestFieldBinding (auto=false here) or the
+		// path-coverage check passes while {id} stays unbound and the
+		// emitted OpenAPI has no `in: path` parameter for it.
+		if paramSet[f.Name] && !hasDivertingWireBinding(f.Decorators) {
+			out.all[f.Name] = true
+		}
 	}
-	walkBodyForPath(td, prefix, name, paramSet, out, map[string]bool{}, env)
 	return out
 }
 
-// walkBodyForPath descends into td.Body, classifying fields and
-// recursing into mixin targets resolved through env.lookup. `label` is
-// the name td was reached by (the request type name, or a mixin ref);
-// visited keys on it to prevent infinite recursion on cyclic mixin
-// graphs (the mixin pass already reports the cycle) while keeping
-// same-named types in different packages distinct.
-func walkBodyForPath(td *ast.TypeDecl, prefix, label string, paramSet map[string]bool, out *pathParamSet, visited map[string]bool, env pathParamEnv) {
-	if td == nil || visited[label] {
-		return
-	}
-	visited[label] = true
-	for _, mem := range td.Body {
-		switch v := mem.(type) {
-		case *ast.Field:
-			name, hasExplicit := pathBindingName(v)
-			if hasExplicit {
-				out.all[name] = true
-				out.explicit = append(out.explicit, name)
-				continue
-			}
-			// A field auto-binds to a same-named segment ONLY when no other
-			// wire decorator diverts it. `id string @query` on `/u/{id}`
-			// rides the query string, so it does NOT cover the {id} segment
-			// - mirror RequestFieldBinding (auto=false here) or the
-			// path-coverage check passes while {id} stays unbound and the
-			// emitted OpenAPI has no `in: path` parameter for it.
-			if paramSet[v.Name] && !hasDivertingWireBinding(v.Decorators) {
-				out.all[v.Name] = true
-			}
-		case *ast.Mixin:
-			if v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			// Resolve the mixin in the package it lives in: a qualified
-			// ref names that package; a bare ref nested inside a foreign
-			// mixin inherits that mixin's package (the prefix), so
-			// `shared.XMid { XDeep }` resolves XDeep as `shared.XDeep`.
-			key := v.Ref.Name.String()
-			childPrefix := prefix
-			if len(v.Ref.Name.Parts) == 2 {
-				childPrefix = v.Ref.Name.Parts[0]
-			} else if prefix != "" {
-				key = prefix + "." + key
-			}
-			if next := env.lookup(key); next != nil {
-				walkBodyForPath(next, childPrefix, key, paramSet, out, visited, env)
-			}
-		}
-	}
-}
-
-// pathBindingName returns the path-segment name a field claims via
-// `@path` and whether the field has the decorator at all. The custom
-// override `@path("custom-name")` wins over the field's own identifier
-// - that's the README contract.
 // hasDivertingWireBinding reports whether a field carries a wire binding
 // that routes it away from the path segment its name would otherwise
 // auto-bind to (mirrors RequestFieldBinding returning auto=false). @path
@@ -451,6 +328,9 @@ func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 	return false
 }
 
+// pathBindingName returns the path-segment name a field claims via
+// `@path` and whether the field has the decorator at all. The custom
+// override `@path("custom-name")` wins over the field's own identifier.
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
 		if d == nil || d.Name != wire.BindingPath {
@@ -467,23 +347,4 @@ func pathBindingName(f *ast.Field) (string, bool) {
 		return f.Name, true
 	}
 	return "", false
-}
-
-// extractPathParams returns every `{name}` segment in route in source
-// order. A malformed `{...` without closing `}` is silently ignored -
-// the parser would already have rejected it.
-func extractPathParams(route string) []string {
-	var out []string
-	for {
-		i := strings.IndexByte(route, '{')
-		if i < 0 {
-			return out
-		}
-		j := strings.IndexByte(route[i:], '}')
-		if j < 0 {
-			return out
-		}
-		out = append(out, route[i+1:i+j])
-		route = route[i+j+1:]
-	}
 }

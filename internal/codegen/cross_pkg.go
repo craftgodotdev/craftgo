@@ -16,7 +16,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -269,7 +269,7 @@ func qualifyNamedRef(n *ast.NamedTypeRef, localAlias string, crossPkg CrossPkg) 
 		return ""
 	}
 	name := n.Name.String()
-	if idents.IsBuiltin(name) {
+	if prims.Is(name) {
 		return goNamedType(n)
 	}
 	parts := n.Name.Parts

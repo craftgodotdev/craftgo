@@ -138,8 +138,8 @@ func (p *Parser) parseArray() ast.Expr {
 
 // parseValue reads a single literal expression: string, number (signed),
 // boolean, null, duration, size, or qualified identifier. On unrecognised
-// input it records a diagnostic, advances one token, and returns a [NullLit]
-// so downstream code does not see a nil [Expr].
+// input it records a diagnostic, advances one token, and returns a [ast.NullLit]
+// so downstream code does not see a nil [ast.Expr].
 func (p *Parser) parseValue() ast.Expr {
 	t := p.peek()
 	switch t.Kind {

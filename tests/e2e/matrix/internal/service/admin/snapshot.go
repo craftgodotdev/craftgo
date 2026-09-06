@@ -11,7 +11,7 @@ import (
 
 // SnapshotService carries the per-request state for the Snapshot
 // endpoint. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id / request_id.
+// context so logging surfaces trace_id / span_id.
 type SnapshotService struct {
 	log.Logger
 	ctx    context.Context

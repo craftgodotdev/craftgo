@@ -24,7 +24,6 @@ import (
 //     → declared types (project-wide) + built-in primitives.
 //  5. Anywhere else → keywords + project-wide types as a single
 //     blended list. VSCode handles client-side filtering by prefix.
-
 func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.CompletionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -46,7 +45,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// available package paths.
 	if isInsideImportString(view, pos) {
 		prefix := importStringPrefix(view, pos)
-		return s.importPathCompletions(currentURI, prefix)
+		return importPathCompletions(currentURI, prefix)
 	}
 	// After `extend service ` - list every primary service name in
 	// the project so the user can pick which one this block extends.
@@ -80,12 +79,12 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// `pkg.` shape is not mistaken for a decorator context.
 	if mid != nil && mid.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, mid); ok {
-			return s.packageDeclCompletions(view, currentURI, currentSrc, pkg)
+			return s.packageDeclCompletions(currentURI, currentSrc, pkg)
 		}
 	}
 	if prev != nil && prev.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, prev); ok {
-			return s.packageDeclCompletions(view, currentURI, currentSrc, pkg)
+			return s.packageDeclCompletions(currentURI, currentSrc, pkg)
 		}
 	}
 	// Decorator name completion - cursor on (or right after) `@`, or
@@ -129,7 +128,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// Type position: include builtins + every declared type
 	// (project-wide).
 	if prev != nil && isTypePositionTrigger(*prev) {
-		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
+		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
 	// `scalar Name <cursor>` - the primitive-type slot. The previous
 	// token is the scalar name (Ident) so isTypePositionTrigger
@@ -137,30 +136,26 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// tokens back to surface primitives in the position where they
 	// are the ONLY legal next token.
 	if isScalarPrimitivePosition(view, pos) {
-		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
+		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
 	// General context - keywords + project-wide declared types so
 	// users typing identifiers see what they have already defined.
 	items := keywordCompletions()
-	items = append(items, s.declCompletionsProjectWide(view, currentURI, currentSrc)...)
+	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
 	return items
 }
 
-// decoratorArgItems dispatches a decorator-argument completion to
-// the right resolver based on which decorator the cursor sits in.
-// Special-cased decorators:
+// surroundingTokens returns the tokens immediately before and at the
+// cursor. The "mid" token is the one whose span the cursor sits in
+// (typically the identifier being typed); "prev" is the most recent
+// non-trivia token whose span ends at or before the cursor.
 //
-//   - `@middlewares(...)` → declared middleware names.
-//   - `@security(A, B, ...)` → keys declared in the project's
-//     `openapi.securitySchemes` (any slot, since the decorator is a
-//     variadic ident list).
-//   - `@default(...)` → enum values when the field's type is an enum.
-//   - everything else → the registered enum values from the
-//     decorator's [semantic.Spec].
-//
-// Returns nil when none of the slots match - the caller falls back
-// to its general-context branch.
-
+// The position-aware backward scan is important: when the cursor sits
+// on whitespace the lexer has no token there, but the LAST token in
+// the file may be AFTER the cursor (e.g. cursor on the blank line
+// between `{` and `}` of a multi-line block). Falling back to
+// "last token in the slice" would mis-name `prev` as the trailing
+// `}` and break every completion branch that keys off `prev.Kind`.
 func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lexer.Token) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx >= 0 {
@@ -179,8 +174,6 @@ func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lex
 	return prev, mid
 }
 
-// posLessEq reports whether a comes at or before b in source order.
-// Lines win the comparison; columns tie-break within the same line.
 // scanFromIndex returns the token index to scan backward from for a completion
 // at target: idx-1 when the cursor sits inside/after a token, otherwise the
 // last non-EOF token that ends at or before target (-1 if none).
@@ -202,6 +195,8 @@ func scanFromIndex(view snapshotView, idx int, target lexer.Position) int {
 	return -1
 }
 
+// posLessEq reports whether a comes at or before b in source order.
+// Lines win the comparison; columns tie-break within the same line.
 func posLessEq(a, b lexer.Position) bool {
 	if a.Line != b.Line {
 		return a.Line < b.Line
@@ -248,12 +243,6 @@ func isScalarPrimitivePosition(view snapshotView, pos protocol.Position) bool {
 	prevPrev := view.tokens[scanFrom-1]
 	return prev.Kind == lexer.Ident && prevPrev.Kind == lexer.KwScalar
 }
-
-// isInsideImportString reports whether pos lies inside an `import "…"`
-// string literal - the cursor sits between the two double-quotes that
-// follow an `import` keyword. We rely on token-level inspection rather
-// than re-lexing the partial line because the editor may send a cursor
-// position that splits a token mid-string.
 
 func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	if view.file == nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -28,30 +29,6 @@ func isVerbToken(t lexer.Token) bool {
 		return true
 	}
 	return false
-}
-
-// builtinDocs is the doc table for the DSL's built-in primitives. It is
-// kept here (rather than in semantic) because the body is hover-text:
-// imperative, formatted markdown, opinionated, and likely to change as
-// docs improve. Keep entries sorted alphabetically.
-var builtinDocs = map[string]string{
-	"any":     "**`any`** - opaque JSON value.\n\nGenerates `any` in Go.",
-	"bool":    "**`bool`** - boolean primitive (`true` / `false`).",
-	"bytes":   "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go.",
-	"file":    "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`.",
-	"float32": "**`float32`** - 32-bit IEEE-754 float.",
-	"float64": "**`float64`** - 64-bit IEEE-754 float.",
-	"int":     "**`int`** - platform-sized signed integer.",
-	"int8":    "**`int8`** - 8-bit signed integer.",
-	"int16":   "**`int16`** - 16-bit signed integer.",
-	"int32":   "**`int32`** - 32-bit signed integer.",
-	"int64":   "**`int64`** - 64-bit signed integer.",
-	"string":  "**`string`** - UTF-8 text primitive.",
-	"uint":    "**`uint`** - platform-sized unsigned integer.",
-	"uint8":   "**`uint8`** - 8-bit unsigned integer.",
-	"uint16":  "**`uint16`** - 16-bit unsigned integer.",
-	"uint32":  "**`uint32`** - 32-bit unsigned integer.",
-	"uint64":  "**`uint64`** - 64-bit unsigned integer.",
 }
 
 // verbDocs documents the HTTP verb keywords so a hover on `get` /
@@ -122,9 +99,9 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	// `response`, `:`, a field name, etc.). The cheap heuristic: if it
 	// is a bare Ident and the spelling is a known builtin, render it.
 	if tok.Kind == lexer.Ident {
-		if doc, ok := builtinDocs[tok.Text]; ok {
+		if sp, ok := prims.Lookup(tok.Text); ok && sp.Doc != "" {
 			return &protocol.Hover{
-				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
+				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sp.Doc},
 				Range:    rangePtr(rangeOf(tok)),
 			}
 		}
@@ -247,9 +224,9 @@ func typeRefString(t *ast.TypeRef) string {
 	return sb.String()
 }
 
-// hoverWithProject extends [hoverForToken] with cross-package lookups.
-// It is invoked from the LSP handler so the (slow) project walk only
-// happens for hovers that did not resolve in the current file.
+// hoverWithProject extends [hoverForToken] with a project-wide lookup, so
+// the project is only loaded for hovers that did not resolve in the
+// current file.
 func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
@@ -257,9 +234,8 @@ func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, c
 	if tok.Kind != lexer.Ident {
 		return nil
 	}
-	qualified := qualifiedNameAt(view, idx)
-	files, root := s.projectFilesWithRoot(uriToPath(currentURI), currentSrc)
-	if d, _, ok := findDeclAcross(files, qualified, currentImports(view.file), root); ok {
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	if d := v.lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
 		return userTypeHover(d, rangeOf(tok))
 	}
 	return nil

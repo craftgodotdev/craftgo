@@ -319,7 +319,7 @@ func TestPlacementNilEntry(t *testing.T) {
 	// checkPlacement tolerates them so a future regression doesn't
 	// crash the analyser. We feed the slice both shapes (nil + valid)
 	// so the loop body exercises the nil branch and continues.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkPlacement(LvlField, "field X.y", nil)
 	a.checkPlacement(LvlField, "field X.y", []*ast.Decorator{nil, {Name: "doc"}})
 	if len(a.diags) != 0 {
@@ -456,7 +456,7 @@ func TestCodeOnDuplicateDecorator(t *testing.T) {
 }
 
 func TestCodeOnQualifiedRef(t *testing.T) {
-	expectDiag(t, `type X { user shared.User }`, CodeQualifiedRef)
+	expectDiag(t, `type X { user shared.User }`, CodeRefUnknownPackage)
 }
 
 func TestCodeOnBindingConflict(t *testing.T) {
@@ -688,19 +688,6 @@ func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
     bucket     string?
 }`)
 }
-
-func TestCodeOnPackageMismatch(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package a
-type X {}`, `package b
-type Y {}`))
-	if findCode(diags, CodePackageMismatch) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-// Note: TestCodeOnPackageMismatch keeps the inline pattern because it
-// requires TWO source files (multi-package fixture); [expectDiag]
-// takes a single string and would lose the file split.
 
 // ---------- @sensitive: standalone is fine ----------
 
@@ -1020,4 +1007,30 @@ func findCode(diags []Diagnostic, code string) *Diagnostic {
 		}
 	}
 	return nil
+}
+
+// The file validators @maxSize / @mimeTypes are pointless on a @sensitive
+// field (it never crosses the wire), so they conflict - like every other
+// validator already listed in sensitiveConflicts.
+func TestSensitiveConflictsFileValidators(t *testing.T) {
+	expectError(t, `type Req { secret file @sensitive @maxSize(1000) }`, CodeDecoratorConflict)
+	expectError(t, `type Req { secret file @sensitive @mimeTypes(["image/png"]) }`, CodeDecoratorConflict)
+}
+
+// Repeated @errors (extend-service idiom) must NOT be false-rejected as a
+// duplicate decorator.
+func TestRepeatedErrorsNotDuplicate(t *testing.T) {
+	src := `package p
+type Resp { ok bool }
+error NotFound Gone {}
+error Conflict Taken {}
+service S {
+  @errors(Gone)
+  @errors(Taken)
+  get X /x { response Resp }
+}`
+	diags := analyzeOneFile(t, src)
+	if hasDiagContaining(diags, "duplicate decorator") {
+		t.Errorf("repeated @errors wrongly rejected as duplicate: %v", diags)
+	}
 }

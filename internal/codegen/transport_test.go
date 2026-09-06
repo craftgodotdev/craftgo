@@ -62,7 +62,7 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(root, "internal/transport/user-service")
@@ -129,7 +129,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	read := func(fn string) string {
@@ -193,7 +193,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
@@ -278,7 +278,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/list.go"))
@@ -322,7 +322,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/get.go"))
@@ -358,7 +358,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/do.go"))
@@ -394,7 +394,9 @@ func TestCollectRequestFieldImports(t *testing.T) {
 		},
 	}
 	cross := CrossPkg{"shared": "github.com/example/svc/internal/types/shared"}
-	got := collectRequestFieldImports(method, pkg, cross, nil)
+	r := resolverFor(pkg, nil)
+	r.CrossPkg = cross
+	got := collectRequestFieldImports(method, pkg, r)
 	if got["shared"] != "github.com/example/svc/internal/types/shared" {
 		t.Errorf("expected `shared` import in collected map, got %v", got)
 	}
@@ -422,7 +424,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/get.go"))
@@ -480,7 +482,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/run.go"))
@@ -539,7 +541,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/lookup.go"))
@@ -592,7 +594,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/search.go"))
@@ -629,7 +631,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
@@ -660,7 +662,7 @@ service FilesService {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/transport/files-service/download.go"))
@@ -722,7 +724,7 @@ service Catalog {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/transport/catalog/list.go"))
@@ -773,7 +775,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/stats.go"))
@@ -811,7 +813,7 @@ type Req {
     payload string
 }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir); err != nil {
+	if err := GenerateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
@@ -842,7 +844,7 @@ func lineHas(src, ident, tag string) bool {
 
 func TestGenerateTransportMissingPackageName(t *testing.T) {
 	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := GenerateTransport(pkg, sampleConfig(), t.TempDir()); err == nil {
+	if err := GenerateTransport(pkg, sampleConfig(), t.TempDir(), nil); err == nil {
 		t.Fatal("expected error for empty package name")
 	}
 }
@@ -858,7 +860,7 @@ func TestGenerateRoutesPatterns(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/routes/user-service/routes.go"))
@@ -871,7 +873,7 @@ func TestGenerateRoutesPatterns(t *testing.T) {
 
 func TestGenerateRoutesMissingPackageName(t *testing.T) {
 	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := GenerateRoutes(pkg, sampleConfig(), t.TempDir()); err == nil {
+	if err := genRoutes(t, pkg, sampleConfig(), t.TempDir()); err == nil {
 		t.Fatal("expected error for empty package name")
 	}
 }
@@ -905,7 +907,7 @@ service S {
 }`)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
@@ -938,7 +940,7 @@ service Beta {
     get B /b { response Thing }
 }`)
 	root := t.TempDir()
-	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+	if err := genRoutes(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/routes/shared/v1/routes.go"))
@@ -1010,7 +1012,7 @@ extend service Beta {
     get BExt /b-ext { response Thing }
 }`)
 	root := t.TempDir()
-	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+	if err := genRoutes(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/routes/shared/v1/routes.go"))
@@ -1075,7 +1077,7 @@ extend service S {
     get C /c { response Thing }
 }`)
 	root := t.TempDir()
-	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+	if err := genRoutes(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
@@ -1121,7 +1123,7 @@ service S {
 }`)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
@@ -1158,10 +1160,10 @@ service AdminService {
 	root := t.TempDir()
 	cfg := sampleConfig()
 	cfg.OpenAPI.BasePath = "/api"
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1223,10 +1225,10 @@ extend service Catalog {
 }`)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1301,10 +1303,10 @@ extend service Catalog {
 }`)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1347,7 +1349,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+	if err := genRoutes(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
@@ -1376,7 +1378,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateRoutes(pkg, sampleConfig(), root); err != nil {
+	if err := genRoutes(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
@@ -1406,7 +1408,7 @@ service Bare {
 	root := t.TempDir()
 	cfg := sampleConfig()
 	cfg.OpenAPI.BasePath = ""
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/bare/routes.go"))
@@ -1426,7 +1428,7 @@ func TestGenerateServiceScaffold(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateService(pkg, cfg, root); err != nil {
+	if err := GenerateService(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(root, "internal/service/user-service")
@@ -1474,7 +1476,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateService(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateService(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -1518,7 +1520,7 @@ func TestGenerateServiceSkipsExisting(t *testing.T) {
 	if err := os.WriteFile(existing, custom, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateService(pkg, cfg, root); err != nil {
+	if err := GenerateService(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(existing)
@@ -1529,7 +1531,7 @@ func TestGenerateServiceSkipsExisting(t *testing.T) {
 
 func TestGenerateServiceMissingPackageName(t *testing.T) {
 	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := GenerateService(pkg, sampleConfig(), t.TempDir()); err == nil {
+	if err := GenerateService(pkg, sampleConfig(), t.TempDir(), nil); err == nil {
 		t.Fatal("expected error for empty package name")
 	}
 }
@@ -1586,9 +1588,9 @@ func TestGeneratePipelineEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	cfg := sampleConfig()
 	for _, step := range []func() error{
-		func() error { return GenerateTransport(pkg, cfg, root) },
-		func() error { return GenerateRoutes(pkg, cfg, root) },
-		func() error { return GenerateService(pkg, cfg, root) },
+		func() error { return GenerateTransport(pkg, cfg, root, nil) },
+		func() error { return genRoutes(t, pkg, cfg, root) },
+		func() error { return GenerateService(pkg, cfg, root, nil) },
 	} {
 		if err := step(); err != nil {
 			t.Fatal(err)
@@ -1613,10 +1615,10 @@ func TestGenerateHandlerPassthrough(t *testing.T) {
 	pkg := analyze(t, passthroughSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateService(pkg, cfg, root); err != nil {
+	if err := GenerateService(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	hDir := filepath.Join(root, "internal/transport/feed-service")
@@ -1661,7 +1663,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	pkg := analyze(t, multipartSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
@@ -1696,7 +1698,7 @@ service UploadService {
     post Upload /upload { request UploadReq  response UploadResp }
 }`)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
@@ -1815,7 +1817,7 @@ service MediaService {
 	}
 }`)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "internal/transport/media-service/batch-upload.go"))
@@ -1832,4 +1834,15 @@ service MediaService {
 	if strings.Contains(src, `r.FormFile("files")`) {
 		t.Errorf("file[] must bind from MultipartForm.File, not r.FormFile:\n%s", src)
 	}
+}
+
+// genRoutes writes pkg's per-directory routes files and the umbrella as a
+// single-package project.
+func genRoutes(t *testing.T, pkg *semantic.Package, cfg *config.Config, root string) error {
+	t.Helper()
+	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+		return err
+	}
+	proj := &semantic.Project{Packages: map[string]*semantic.Package{pkg.Name: pkg}}
+	return GenerateProjectRoutesUmbrella(proj, cfg, root)
 }

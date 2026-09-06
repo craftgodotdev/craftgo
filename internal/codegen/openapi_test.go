@@ -8,6 +8,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 // ---------- enum / scalar schema emission ----------
@@ -20,7 +21,7 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 	t.Helper()
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "docs", "openapi.yaml"))
@@ -172,7 +173,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -221,7 +222,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -252,7 +253,7 @@ service CService { @operationId("customList") get List /c { response A } }
 service DService { get GetThing /d { response A } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -293,7 +294,7 @@ type R { x string }
 service AService { @operationId("Lookup") get Find /a { response R } }
 service BService { get Lookup /b { response R } }`
 	pkg := analyzeIgnoringErrors(t, src)
-	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	err := genOpenAPI(t, pkg, sampleConfig(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected a duplicate-operationId error, got nil")
 	}
@@ -316,7 +317,7 @@ type Page<T> { items T[] }
 type Resp { real Page<Order>  fake PageOfOrder }
 service S { get Get /g { response Resp } }`
 	pkg := analyze(t, src)
-	err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir())
+	err := genOpenAPI(t, pkg, sampleConfig(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected a duplicate-component-schema error, got nil")
 	}
@@ -343,7 +344,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -376,7 +377,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -409,7 +410,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -471,7 +472,7 @@ type T {
 service S { post Create /c { request T  response T } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1054,7 +1055,7 @@ type T {
 service S { post Create /c { request T  response T } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1096,7 +1097,7 @@ type T {
 service S { post Create /c { request T  response T } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1139,7 +1140,7 @@ service S {
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1207,7 +1208,7 @@ service S {
 		OpenAPI: config.OpenAPI{BasePath: "/api"},
 	}
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+	if err := genOpenAPI(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1225,11 +1226,7 @@ service S {
 
 // ---------- @security cross-check ----------
 
-func TestValidateSecurityRefsHappyPath(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @security(bearerAuth)
-    get GetUser /u {}
-}`)
+func TestValidateSecuritySchemesHappyPath(t *testing.T) {
 	cfg := &config.Config{
 		Package: "x/y",
 		OpenAPI: config.OpenAPI{
@@ -1238,16 +1235,12 @@ func TestValidateSecurityRefsHappyPath(t *testing.T) {
 			},
 		},
 	}
-	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
+	if errs := ValidateSecuritySchemes(cfg); len(errs) != 0 {
 		t.Errorf("expected no errors, got: %v", errs)
 	}
 }
 
-func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @security(OAuth2)
-    get GetUser /u {}
-}`)
+func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 	base := func(flows *config.OAuthFlows) *config.Config {
 		return &config.Config{Package: "x/y", OpenAPI: config.OpenAPI{
 			SecuritySchemes: map[string]config.SecurityScheme{
@@ -1256,7 +1249,7 @@ func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
 		}}
 	}
 	// No flows → rejected (would emit invalid OpenAPI).
-	if errs := ValidateSecurityRefs(pkg, base(nil)); len(errs) == 0 {
+	if errs := ValidateSecuritySchemes(base(nil)); len(errs) == 0 {
 		t.Error("expected an error for an oauth2 scheme with no flows")
 	}
 	// With a flow → accepted.
@@ -1264,7 +1257,7 @@ func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
 		TokenURL: "https://example.com/token",
 		Scopes:   map[string]string{"read": "Read"},
 	}}
-	if errs := ValidateSecurityRefs(pkg, base(withFlow)); len(errs) != 0 {
+	if errs := ValidateSecuritySchemes(base(withFlow)); len(errs) != 0 {
 		t.Errorf("oauth2 with a flow should validate, got: %v", errs)
 	}
 	// The emitted scheme carries the flows object.
@@ -1274,93 +1267,13 @@ func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
 	}
 }
 
-func TestValidateSecurityRefsUnknownScheme(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @security(BearAuth)
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{
-		Package: "x/y",
-		OpenAPI: config.OpenAPI{
-			SecuritySchemes: map[string]config.SecurityScheme{
-				"bearerAuth": {Type: "http", Scheme: "bearer"},
-			},
-		},
-	}
-	errs := ValidateSecurityRefs(pkg, cfg)
-	if len(errs) == 0 {
-		t.Fatal("expected error for unknown scheme")
-	}
-	joined := strings.Join(errs, "\n")
-	if !strings.Contains(joined, `"BearAuth"`) {
-		t.Errorf("expected scheme name in error, got: %s", joined)
-	}
-	if !strings.Contains(joined, "is not declared") {
-		t.Errorf("expected declaration error, got: %s", joined)
-	}
-}
-
-func TestValidateSecurityRefsServiceLevel(t *testing.T) {
-	pkg := analyze(t, `@security(typo)
-service S {
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{
-		Package: "x/y",
-		OpenAPI: config.OpenAPI{
-			SecuritySchemes: map[string]config.SecurityScheme{
-				"bearerAuth": {Type: "http", Scheme: "bearer"},
-			},
-		},
-	}
-	errs := ValidateSecurityRefs(pkg, cfg)
-	if len(errs) == 0 {
-		t.Fatal("expected error for service-level unknown scheme")
-	}
-}
-
-func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
-	// When the manifest declares no schemes the cross-check is a no-op
-	// - projects that haven't migrated continue to work.
-	pkg := analyze(t, `service S {
-    @security(anything)
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{Package: "x/y"}
-	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
-		t.Errorf("expected permissive pass-through, got: %v", errs)
-	}
-}
-
-// TestValidateSecurityRefsIgnoreSecurityNotChecked ensures
-// `@ignoreSecurity` is not mistaken for a scheme reference. It is a
-// method-level opt-out decorator, not a security requirement, so
-// ValidateSecurityRefs should never flag it as "unknown scheme".
-func TestValidateSecurityRefsIgnoreSecurityNotChecked(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @ignoreSecurity
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{
-		Package: "x/y",
-		OpenAPI: config.OpenAPI{
-			SecuritySchemes: map[string]config.SecurityScheme{
-				"bearerAuth": {Type: "http", Scheme: "bearer"},
-			},
-		},
-	}
-	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
-		t.Errorf("@ignoreSecurity must not be treated as a scheme ref: %v", errs)
-	}
-}
-
 func TestGenerateOpenAPI(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
 	cfg.OpenAPI.Title = "API"
 	cfg.OpenAPI.Version = "1.2.3"
-	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+	if err := genOpenAPI(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1399,7 +1312,7 @@ func TestGenerateOpenAPIDefaultsAndEmpty(t *testing.T) {
 	cfg.OpenAPI.Title = ""
 	cfg.OpenAPI.Version = ""
 	cfg.OpenAPI.BasePath = ""
-	if err := GenerateOpenAPI(pkg, cfg, root); err != nil {
+	if err := genOpenAPI(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1421,7 +1334,7 @@ type Bag {
     name    string 
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1459,7 +1372,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1515,7 +1428,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1570,7 +1483,7 @@ service Bare {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1616,7 +1529,7 @@ service T {
     get Dedup /c/{id} { request R  response Resp }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1655,7 +1568,7 @@ service S {
     get Get /a { response R }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1760,7 +1673,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1789,7 +1702,7 @@ service S {
     }
 }`)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1799,13 +1712,6 @@ service S {
 		`- user management`,
 		`- v1`,
 	)
-}
-
-func TestGenerateOpenAPIMissingPackage(t *testing.T) {
-	pkg := &semantic.Package{}
-	if err := GenerateOpenAPI(pkg, sampleConfig(), t.TempDir()); err == nil {
-		t.Fatal("expected error")
-	}
 }
 
 // TestGenerateOpenAPIPerModeMediaTypes pins the content-type a method
@@ -1829,7 +1735,7 @@ service S {
 }`
 	pkg := analyze(t, dsl)
 	root := t.TempDir()
-	if err := GenerateOpenAPI(pkg, sampleConfig(), root); err != nil {
+	if err := genOpenAPI(t, pkg, sampleConfig(), root); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
@@ -1939,4 +1845,221 @@ service S { post Upload /up { request UploadReq  response Resp } }`)
 	}
 	// The operation still carries the inline multipart body.
 	mustContainAll(t, body, "multipart/form-data")
+}
+
+// genOpenAPI writes pkg's OpenAPI document as a single-package project.
+func genOpenAPI(t *testing.T, pkg *semantic.Package, cfg *config.Config, root string) error {
+	t.Helper()
+	proj := &semantic.Project{Packages: map[string]*semantic.Package{pkg.Name: pkg}}
+	return GenerateProjectOpenAPI(proj, cfg, root)
+}
+
+// @doc / @example on a field whose type is a named ref ($ref) is carried
+// onto an allOf wrapper instead of being dropped - a bare $ref can't hold
+// sibling keywords portably.
+func TestNamedRefDocExampleWrappedInAllOf(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+type Inner { x int }
+type Outer {
+  child Inner @doc("the inner child") @example("ignored-by-object")
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	merged := mergeProjectForOpenAPI(proj)
+	doc, err := buildOpenAPIDoc(merged, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := doc.Components.Schemas["Outer"]
+	if outer == nil || outer.Value == nil {
+		t.Fatal("no Outer schema")
+	}
+	child := outer.Value.Properties["child"]
+	if child == nil || child.Value == nil {
+		t.Fatal("no child property")
+	}
+	if child.Ref != "" {
+		t.Fatalf("child stayed a bare $ref; @doc dropped: %q", child.Ref)
+	}
+	if len(child.Value.AllOf) != 1 || child.Value.AllOf[0].Ref == "" {
+		t.Fatalf("child not wrapped in allOf:[{$ref}]: %+v", child.Value)
+	}
+	if child.Value.Description != "the inner child" {
+		t.Fatalf("@doc not carried onto the wrapper: %q", child.Value.Description)
+	}
+}
+
+// genDoc analyzes src into a merged OpenAPI doc for assertions.
+func genDoc(t *testing.T, src map[string]string, cfg *config.Config) *openapi3.T {
+	t.Helper()
+	root, files := projectFiles(t, src)
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	doc, err := buildOpenAPIDoc(mergeProjectForOpenAPI(proj), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return doc
+}
+
+// @minItems / @maxItems are array/map count keywords. On a NAMED-TYPE
+// (struct/enum) field they have no meaning, so the OpenAPI must not stamp
+// minProperties/maxProperties onto the field's anyOf-null wrapper (the runtime
+// enforces nothing there - it would be an unenforced, unsatisfiable
+// constraint). A map field still gets minProperties.
+func TestMinItemsNotLeakedOntoNamedTypeWrapper(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"m/m.craftgo": `package m
+type Inner { a string }
+type T {
+  x Inner? @minItems(2)
+  mp map<string, int> @minItems(2)
+}`,
+	}, &config.Config{})
+	props := doc.Components.Schemas["T"].Value.Properties
+	if got := props["x"].Value.MinProps; got != 0 {
+		t.Errorf("struct field wrapper leaked minProperties=%d (want 0)", got)
+	}
+	if got := props["mp"].Value.MinProps; got != 2 {
+		t.Errorf("map field should keep minProperties=2, got %d", got)
+	}
+}
+
+// @errors([...]) and @tags([...]) array-shortcut forms must contribute the
+// same responses / tags as the variadic form (they were silently dropped).
+func TestArrayShortcutErrorsAndTags(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"s/s.craftgo": `package s
+error NotFound Missing { resource string }
+type Out { ok bool }
+service S {
+  @errors([Missing])
+  @tags([alpha, beta])
+  get Arr /arr { response Out }
+}`,
+	}, &config.Config{})
+	op := doc.Paths.Find("/arr").Get
+	if op.Responses.Status(404) == nil {
+		t.Error("@errors([Missing]) dropped the 404 response")
+	}
+	if len(op.Tags) != 2 || op.Tags[0] != "alpha" || op.Tags[1] != "beta" {
+		t.Errorf("@tags([alpha, beta]) not applied, got: %v", op.Tags)
+	}
+}
+
+// Stacked exclusive bounds (@gt + @positive / @lt + @negative) must
+// advertise the TIGHTEST bound (intersect), not the last writer.
+func TestExclusiveBoundsIntersect(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"ct/ct.craftgo": `package ct
+type T {
+  a int @gt(5) @positive
+  b int @positive @gt(5)
+  c int @lt(-5) @negative
+}
+service S { post M /m { request T  response T } }`,
+	}, &config.Config{})
+	s := doc.Components.Schemas["T"].Value
+	for _, f := range []string{"a", "b"} {
+		got := s.Properties[f].Value.Extensions["exclusiveMinimum"]
+		if got != float64(5) {
+			t.Errorf("field %s exclusiveMinimum = %v, want 5 (tightest)", f, got)
+		}
+	}
+	if got := s.Properties["c"].Value.Extensions["exclusiveMaximum"]; got != float64(-5) {
+		t.Errorf("field c exclusiveMaximum = %v, want -5 (tightest)", got)
+	}
+}
+
+// A bodyless error must advertise the {code, message} envelope the runtime
+// actually returns (not an empty object).
+func TestBodylessErrorEnvelopeSchema(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"app/app.craftgo": `package app
+error NotFound RecordNotFound
+type Req { id string @path }
+type Item { id string }
+service App {
+  @errors(RecordNotFound)
+  get One /app/{id} { request Req  response Item }
+}`,
+	}, &config.Config{})
+	s := doc.Components.Schemas["RecordNotFoundErr"].Value
+	if s.Properties["code"] == nil || s.Properties["message"] == nil {
+		t.Errorf("bodyless error schema missing code/message envelope: %+v", s.Properties)
+	}
+}
+
+// A declared apiKey security scheme must be emitted with its config shape,
+// not the hardcoded http/bearer default.
+func TestSecuritySchemeFromConfig(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{
+		"MFA": {Type: "apiKey", In: "header", Name: "X-MFA-Token"},
+	}
+	doc := genDoc(t, map[string]string{
+		"s/s.craftgo": `package s
+type Out { ok bool }
+service S {
+  @security(MFA)
+  get A /a { response Out }
+}`,
+	}, cfg)
+	scheme := doc.Components.SecuritySchemes["MFA"]
+	if scheme == nil || scheme.Value == nil {
+		t.Fatal("MFA scheme not registered")
+	}
+	if scheme.Value.Type != "apiKey" || scheme.Value.In != "header" || scheme.Value.Name != "X-MFA-Token" {
+		t.Errorf("MFA scheme not emitted from config: type=%q in=%q name=%q", scheme.Value.Type, scheme.Value.In, scheme.Value.Name)
+	}
+}
+
+// @example(<enum-member>) must resolve to the member's wire value in the
+// spec, like @default does (it was silently dropped before).
+func TestExampleEnumMemberResolved(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"m/m.craftgo": `package m
+enum Color { Red Green Blue }
+type Thing { c Color @example(Green) }
+type Req { id string @path }
+service Svc { get Fetch /t/{id} { request Req  response Thing } }`,
+	}, &config.Config{})
+	thing := doc.Components.Schemas["Thing"].Value
+	c := thing.Properties["c"]
+	if c == nil || c.Value == nil || c.Value.Example == nil {
+		t.Fatalf("@example(Green) dropped from enum field: %+v", c)
+	}
+	if c.Value.Example != "Green" {
+		t.Errorf("@example(Green) = %v, want wire value \"Green\"", c.Value.Example)
+	}
+}
+
+// #5 (M6): two distinct cross-package decls that disambiguate to the same
+// merged component name (shared.User -> SharedUser, colliding with a real
+// api.SharedUser) are rejected instead of one silently overwriting the other.
+func TestCrossPkgMergeNameCollisionRejected(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type User { a string }`,
+		"api/a.craftgo": `package api
+import "shared"
+type User { b int }
+type SharedUser { c bool }
+type Resp { y shared.User  z SharedUser }
+type Req { ok bool }
+service S { get Do /do { request Req  response Resp } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	if dups := projectMergeCollisions(proj); len(dups) == 0 {
+		t.Error("expected cross-pkg merge name collision (shared.User vs api.SharedUser)")
+	}
 }

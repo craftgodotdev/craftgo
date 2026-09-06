@@ -5,9 +5,10 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
-func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	// `@length(N)` is the exact-length form (min == max == N); the
 	// two-arg `@length(min, max)` is a range. Both lower to one len()
 	// bounds check.
@@ -26,10 +27,10 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 		}
 		hi = v
 	}
-	uses["fmt"] = true
-	val := stringValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
-	count := lengthCount(f, val, uses)
+	count := lengthCount(f, val, ctx)
 	// Avoid the `if X != nil && l := count(*X); ...` form - Go forbids
 	// `:=` inside an `&&` expression. Inline the count twice instead; the
 	// second call is constant-folded by the compiler when the argument is a
@@ -52,7 +53,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 // minMaxLengthCheck handles `@minLength(n)` and `@maxLength(n)`.
 // Optional string fields are handled the same way as `lengthCheck` -
 // nil-guard plus pointer deref.
-func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, uses map[string]bool) string {
+func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, ctx emitCtx) string {
 	if !isLengthCheckable(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -64,10 +65,10 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	if kind == "max" {
 		op, label = ">", "greater than"
 	}
-	uses["fmt"] = true
-	val := stringValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, uses), op, n)
+	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, ctx), op, n)
 	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(fieldWireName(f)), label, n)
 	return ifReturnf(cond, msg)
 }
@@ -78,11 +79,11 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 // `minLength`/`maxLength` keyword and a Postgres `varchar(n)`, both of which
 // count characters, not bytes. A `bytes` field keeps `len()` (raw byte count,
 // the right measure for binary, and not advertised in the OpenAPI schema).
-func lengthCount(f *ast.Field, val string, uses map[string]bool) string {
+func lengthCount(f *ast.Field, val string, ctx emitCtx) string {
 	if f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "bytes" {
 		return "len(" + val + ")"
 	}
-	uses["unicode/utf8"] = true
+	ctx.uses["unicode/utf8"] = true
 	return "utf8.RuneCountInString(" + val + ")"
 }
 
@@ -100,7 +101,7 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	}
 	ctx.uses["fmt"] = true
 	ctx.uses["regexp"] = true
-	val := stringValueExpr(f, access)
+	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	patVar := ctx.regexes.intern(s)
 	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
@@ -108,13 +109,13 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	return ifReturnf(cond, msg)
 }
 
-// formatCheck handles `@format(name)` for the catalogue of standard
-// formats. Each entry in [formatValidators] declares the Go imports
-// needed and the emit shape (regex, single-expression Go check, or
-// init-statement check). The argument may be either a quoted string
-// (`@format("email")`) or a bare identifier (`@format(email)`) - both
-// accepted. Unknown names skip silently; projects can extend with
-// `@pattern("...")` for niche cases.
+// formatCheck handles `@format(name)` for the [strfmt] catalogue: each
+// spec declares the Go imports its check needs and the check itself - a
+// regular expression interned once per file so `MustCompile` runs once,
+// or a stdlib-backed condition (mail / url / time / ...) emitted verbatim.
+// The argument may be either a quoted string (`@format("email")`) or a
+// bare identifier (`@format(email)`) - both accepted. Unknown names skip
+// silently; projects can extend with `@pattern("...")` for niche cases.
 func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
@@ -123,25 +124,22 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	if name == "" {
 		return ""
 	}
-	v, ok := formatValidators[name]
+	sp, ok := strfmt.Lookup(name)
 	if !ok {
 		return ""
 	}
-	for _, imp := range v.imports {
+	for _, imp := range sp.Imports {
 		ctx.uses[imp] = true
 	}
 	ctx.uses["fmt"] = true
-	val := stringValueExpr(f, access)
-	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), v.label)
-	// Regex-backed formats intern their pattern in the package-level
-	// registry so `MustCompile` runs once; stdlib-backed formats
-	// (mail/url/time/...) emit their init-stmt verbatim.
-	emit := v.emit
-	if v.pattern != "" {
-		patVar := ctx.regexes.intern(v.pattern)
-		emit = func(val, msg string) string {
-			return ifReturnf("!"+patVar+".MatchString("+val+")", msg)
-		}
+	val := stringValueExpr(f, access, ctx)
+	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), sp.Label)
+	var check string
+	if sp.Pattern != "" {
+		ctx.uses["regexp"] = true
+		check = ifReturnf("!"+ctx.regexes.intern(sp.Pattern)+".MatchString("+val+")", msg)
+	} else {
+		check = ifReturnf(fmt.Sprintf(sp.Cond, val), msg)
 	}
 	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		// Pointer field (`?` optional OR `@nullable`): nest the check
@@ -150,8 +148,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		// present. Keying on Optional alone would miss `@nullable`-without-
 		// `?`, which is still a `*string` - an unguarded deref panics on
 		// `{"field": null}`.
-		inner := emit(val, msg)
-		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(inner))
+		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
-	return emit(val, msg)
+	return check
 }

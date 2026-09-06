@@ -1,74 +1,9 @@
-// Cross-decorator combination rules (defaults, bindings, single-binding, raw-mode redundancy) + ref walking helpers.
+// Cross-decorator combination rules (defaults, bindings, single-binding, raw-mode redundancy).
 package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
-
-func (a *analyzer) checkQualifiedRefs() {
-	for _, td := range a.pkg.Types {
-		a.walkTypeMembers(td.Name, td.Body)
-	}
-	for _, ed := range a.pkg.Errors {
-		a.walkTypeMembers(ed.Name, ed.Body)
-	}
-	for _, si := range a.pkg.Services {
-		for _, m := range si.Methods {
-			if m.Request != nil {
-				a.checkNamedRef("method "+m.Name+" request", m.Request)
-			}
-			if m.Response != nil && m.Response.Type != nil {
-				a.checkNamedRef("method "+m.Name+" response", m.Response.Type)
-			}
-		}
-	}
-}
-
-// walkTypeMembers checks every Field type reference in a type or error body
-// for a qualified prefix. Mixin members are skipped (see [checkQualifiedRefs]).
-func (a *analyzer) walkTypeMembers(parent string, members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
-		a.walkTypeRef("field "+parent+"."+f.Name, f.Type)
-	}
-}
-
-// walkTypeRef descends into a TypeRef and applies the qualified-name check
-// to every NamedTypeRef encountered. Map keys, map values, and generic
-// arguments are all visited recursively.
-func (a *analyzer) walkTypeRef(scope string, t *ast.TypeRef) {
-	if t == nil {
-		return
-	}
-	if t.Map != nil {
-		a.walkTypeRef(scope, t.Map.Key)
-		a.walkTypeRef(scope, t.Map.Value)
-		return
-	}
-	if t.Named != nil {
-		a.checkNamedRef(scope, t.Named)
-	}
-}
-
-// checkNamedRef reports a diagnostic when n.Name has more than one segment
-// and recurses through n.Args so generic arguments are validated too.
-func (a *analyzer) checkNamedRef(scope string, n *ast.NamedTypeRef) {
-	if n == nil || n.Name == nil {
-		return
-	}
-	if len(n.Name.Parts) > 1 {
-		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
-			"cross-package qualified reference %q in %s is not supported (folder-merge model); use the unqualified name",
-			n.Name.String(), scope)
-	}
-	for _, arg := range n.Args {
-		a.walkTypeRef(scope, arg)
-	}
-}
 
 // checkCombinationRules enforces the decorator-combination contract
 // documented in the README §"Combination rules":

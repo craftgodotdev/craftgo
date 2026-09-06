@@ -13,7 +13,7 @@ import (
 
 // DoReqService carries the per-request state for the
 // DoReq endpoint of RegressionBatch2. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id / request_id),
+// pre-bound to the request context (trace_id / span_id),
 // so handlers can call l.Info(...) / l.Error(...) directly.
 type DoReqService struct {
 	log.Logger

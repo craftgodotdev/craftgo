@@ -1,4 +1,4 @@
-// OpenAPI security scheme components emission + manifest cross-check.
+// OpenAPI security scheme components emission + manifest scheme validation.
 package codegen
 
 import (
@@ -15,9 +15,7 @@ import (
 
 // forEachSecurityScheme calls fn with every scheme name referenced by an
 // `@security(...)` decorator in ds (bare `@security(A)` and the array shortcut
-// `@security([A, B])` both flatten through DecoratorArgValues). Shared by the
-// scheme-emission and ref-validation walks so they agree on how a security
-// reference is spelled.
+// `@security([A, B])` both flatten through DecoratorArgValues).
 func forEachSecurityScheme(ds []*ast.Decorator, fn func(name string)) {
 	for _, d := range ds {
 		if d == nil || d.Name != "security" {
@@ -114,58 +112,22 @@ func oauthFlowsFor(f *config.OAuthFlows) *openapi3.OAuthFlows {
 	}
 }
 
-// ValidateSecurityRefs cross-checks every `@security(scheme)` reference
-// in pkg against the manifest's declared `openapi.securitySchemes` map.
-// The check is permissive when the manifest declares no schemes: in
-// that case we keep the legacy auto-generated bearer behaviour (so
-// projects that haven't migrated continue to work). When the manifest
-// HAS declared at least one scheme, every reference must resolve to a
-// key in that map; unknown references produce a sorted list of error
-// strings the caller can format. To express "this endpoint is public"
-// use `@ignoreSecurity` at the method level rather than a sentinel
-// scheme name.
-func ValidateSecurityRefs(pkg *semantic.Package, cfg *config.Config) []string {
-	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
+// ValidateSecuritySchemes checks the manifest's declared
+// `openapi.securitySchemes` definitions. An oauth2 scheme without a
+// `flows` object (with at least one flow) emits an OpenAPI document that
+// violates the spec and crashes downstream client generators, so it is
+// rejected with a clear message. `@security(...)` references are resolved
+// against the same declared set by the semantic analyser.
+func ValidateSecuritySchemes(cfg *config.Config) []string {
+	if cfg == nil {
 		return nil
 	}
-	declared := cfg.OpenAPI.SecuritySchemes
-	// An oauth2 scheme without a `flows` object (with at least one flow) emits
-	// an OpenAPI document that violates the spec and crashes downstream client
-	// generators. Reject it here with a clear message instead.
-	var schemeErrs []string
-	for name, sc := range declared {
-		if sc.Type == "oauth2" && !sc.Flows.HasFlow() {
-			schemeErrs = append(schemeErrs, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name))
+	var out []string
+	for _, name := range sortedKeys(cfg.OpenAPI.SecuritySchemes) {
+		if sc := cfg.OpenAPI.SecuritySchemes[name]; sc.Type == "oauth2" && !sc.Flows.HasFlow() {
+			out = append(out, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name))
 		}
 	}
-	collect := func(svcName, scope string, ds []*ast.Decorator, dst map[string]bool) {
-		forEachSecurityScheme(ds, func(name string) {
-			if _, exists := declared[name]; exists {
-				return
-			}
-			dst[svcName+"/"+scope+"/"+name] = true
-		})
-	}
-	bad := map[string]bool{}
-	for svcName, svc := range pkg.Services {
-		if svc.Primary != nil {
-			collect(svcName, "service", svc.Primary.Decorators, bad)
-		}
-		for _, m := range svc.Methods {
-			collect(svcName, "method "+m.Name, m.Decorators, bad)
-		}
-	}
-	out := make([]string, 0, len(bad)+len(schemeErrs))
-	for k := range bad {
-		parts := strings.SplitN(k, "/", 3)
-		// parts: svc, scope, name
-		out = append(out, fmt.Sprintf("@security(%s) on %s %s: scheme %q is not declared in openapi.securitySchemes", parts[2], parts[1], parts[0], parts[2]))
-	}
-	out = append(out, schemeErrs...)
-	if len(out) == 0 {
-		return nil
-	}
-	sort.Strings(out)
 	return out
 }
 

@@ -44,15 +44,6 @@ func itoa(n int) string {
 	return sb.String()
 }
 
-func diagsContain(diags []Diagnostic, substr string) bool {
-	for _, d := range diags {
-		if strings.Contains(d.Msg, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 func mustClean(t *testing.T, sources ...string) *Package {
 	t.Helper()
 	pkg, diags := Analyze(parseFiles(t, sources...))
@@ -96,12 +87,6 @@ service S { get GetUser /u {} }`)
 }
 
 // ---------- package name ----------
-
-func TestPackageNameMismatch(t *testing.T) {
-	expectMsg(t, "conflicts", `package a
-type X {}`, `package b
-type Y {}`)
-}
 
 func TestPackageNameMissing(t *testing.T) {
 	pkg := mustClean(t, `type X {}`)
@@ -264,43 +249,10 @@ func TestEnumDuplicateString(t *testing.T) {
 // hand-built decorator slice - kept defensive so a future parser
 // regression doesn't crash the analyser.
 func TestCheckDecoratorScopeNilEntry(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkDecoratorScope("test", []*ast.Decorator{nil, {Name: "doc"}, nil})
 	if len(a.diags) != 0 {
 		t.Errorf("expected no diags from nil-only chain, got %v", a.diags)
-	}
-}
-
-// TestWalkTypeRefShapes covers every shape branch of walkTypeRef:
-// nil ref (early return), map ref (recurses into key+value), and
-// named ref (delegates to checkNamedRef). The ast.Field comes from
-// the parser today, so we hand-construct a TypeRef directly.
-func TestWalkTypeRefShapes(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
-	a.walkTypeRef("nil-ref", nil)
-	if len(a.diags) != 0 {
-		t.Errorf("nil ref should produce no diag, got %v", a.diags)
-	}
-
-	mapRef := &ast.TypeRef{Map: &ast.MapType{
-		Key:   &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
-		Value: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "User"}}}},
-	}}
-	a.walkTypeRef("map-ref", mapRef)
-	if !diagsContain(a.diags, "cross-package qualified reference") {
-		t.Errorf("expected qualified-ref diag from map value, got %v", a.diags)
-	}
-}
-
-// TestCheckNamedRefNilGuards covers the nil + nil-Name early returns
-// of [analyzer.checkNamedRef]. Both branches are defensive, but the
-// coverage gate refuses anything below 100%.
-func TestCheckNamedRefNilGuards(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
-	a.checkNamedRef("nil-named", nil)
-	a.checkNamedRef("nil-name-field", &ast.NamedTypeRef{})
-	if len(a.diags) != 0 {
-		t.Errorf("expected no diags from nil-shaped refs, got %v", a.diags)
 	}
 }
 
@@ -372,15 +324,15 @@ type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 // ---------- qualified refs ----------
 
 func TestQualifiedRefInField(t *testing.T) {
-	expectMsg(t, "cross-package qualified reference", `type X { user shared.User }`)
+	expectMsg(t, "is not declared anywhere in the project", `type X { user shared.User }`)
 }
 
 func TestQualifiedRefInMethodResponse(t *testing.T) {
-	expectMsg(t, "cross-package qualified reference", `service S { get GetUser /u { response shared.User } }`)
+	expectMsg(t, "is not declared anywhere in the project", `service S { get GetUser /u { response shared.User } }`)
 }
 
 func TestQualifiedRefInGenericArg(t *testing.T) {
-	expectMsg(t, "cross-package qualified reference", `type X { items Page<shared.User> }`)
+	expectMsg(t, "is not declared anywhere in the project", `type X { items Page<shared.User> }`)
 }
 
 func TestUnqualifiedRefAccepted(t *testing.T) {
@@ -417,4 +369,26 @@ service S { get A /users/{id}/posts { request R } }`)
 	if got != "/users/{id}/posts" {
 		t.Errorf("got %q", got)
 	}
+}
+
+// TestDeclNamedAfterBuiltinRejected: a type/enum/scalar/error named after a
+// built-in spelling shadows the built-in in generated Go and won't compile, so
+// it is rejected. Middleware names live in a separate Go namespace (exempt).
+func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
+	expectError(t, `scalar int string`, CodeDeclBuiltinName)
+	expectError(t, `type string { a int }`, CodeDeclBuiltinName)
+	expectError(t, `enum bool { X Y }`, CodeDeclBuiltinName)
+	expectError(t, `error NotFound any`, CodeDeclBuiltinName)
+	// Middleware lives in a separate Go namespace, so a builtin name is NOT a
+	// collision error (it may still warn about the lowercase name).
+	if _, diags := AnalyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
+		t.Error("middleware named after a builtin should not be a builtin-collision error")
+	}
+	mustClean(t, `scalar Email string  scalar UserID string`)
+}
+
+// newTestAnalyzer returns an analyser over pkg whose project holds pkg
+// alone, for tests that drive a single check directly.
+func newTestAnalyzer(pkg *Package) *analyzer {
+	return &analyzer{pkg: pkg, proj: &Project{Packages: map[string]*Package{pkg.Name: pkg}}}
 }

@@ -54,6 +54,8 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 
 `RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory - each probe runs under `context.WithTimeout` and counts as a failure on deadline. `/healthz` (liveness) always returns 200 once the process is up.
 
+Both probes are answered ahead of the middleware chain (only `Recovery` wraps them): they are never access-logged, traced, counted in the HTTP metrics or CORS-processed, and no `srv.Use` middleware runs for them. `WithoutDefaultHealth()` removes them; register your own route for observed probes.
+
 ## Middleware
 
 `Middleware` is an alias for the standard shape:
@@ -67,8 +69,7 @@ type Middleware = func(http.Handler) http.Handler
 | Constructor | Purpose |
 |---|---|
 | `Recovery(logger)` | Converts a panic into a 500 (or logs + leaves the committed status if the response already started). Always outermost in the generated chain. |
-| `RequestID()` | Reads or generates `X-Request-Id`, stashes it on the context (`RequestIDFromContext(ctx)`). |
-| `AccessLog(logger)` | One structured log line per request. |
+| `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out. |
 | `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
 | `Timeout(d)` | Caps handler execution; cancels the context and returns 503 on deadline. Panics still propagate to `Recovery`. |
 
@@ -81,7 +82,7 @@ type Middleware = func(http.Handler) http.Handler
 ```go
 type Chain []Middleware
 
-base := server.NewChain(server.RequestID(), server.AccessLog(logger))
+base := server.NewChain(server.BodyLimit(1 << 20), server.AccessLog(logger))
 authed := base.Append(authMiddleware)          // returns a NEW chain (value semantics)
 
 srv.Handle("GET /me", authed.Then(meHandler))  // Then folds the chain over the handler
@@ -172,5 +173,4 @@ Or build a `CORSOptions` value directly for fine control over methods, headers, 
 ## Related packages
 
 - `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
-- `pkg/metrics` - Prometheus-style counters/histograms the access log can feed.
-- `pkg/otel` - OpenTelemetry tracing helpers. Generated `main.go` wires these when enabled.
+- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every request, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.

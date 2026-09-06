@@ -9,7 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
+func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
 	// Applies to arrays (element count) and maps (entry count) - both
 	// answer to len(). Anything else has no countable size, so the check
 	// is a no-op (the OpenAPI side likewise emits min/maxProperties only
@@ -33,7 +33,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	if op == "<=" {
 		flip = ">"
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
 	msg := fmt.Sprintf(`"%s: %s %d"`, fieldWireName(f), label, n)
 	check := ifReturnf(cond, msg)
@@ -41,7 +41,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	// "absent / null" state the OpenAPI null-union advertises, so skip the
 	// count check rather than reject it (`len(nil)` is 0). The collection
 	// nilability is syntactic, so no scalar resolver is needed.
-	if fieldNeedsNilGuard(f, nil, nil) {
+	if fieldNeedsNilGuard(f) {
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
 	return check
@@ -64,7 +64,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 // A bare block scopes `seen` to this check so multiple @uniqueItems
 // validators on the same struct don't shadow each other; `return` still
 // escapes back to the enclosing Validate() method.
-func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool, crossPkg CrossPkg) string {
+func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil || !f.Type.Array {
 		return ""
 	}
@@ -78,11 +78,11 @@ func uniqueItemsCheck(f *ast.Field, access string, uses map[string]bool, crossPk
 		// let logic deduplicate by-shape if it matters.
 		return ""
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	// The dedupe map keys on the element type; a cross-package element
 	// (`make(map[shared.Name]struct{})`) references that package, so its
 	// import must be registered or the validator won't compile.
-	walkCrossPkgImports(f.Type, crossPkg, uses)
+	walkCrossPkgImports(f.Type, ctx.resolver.CrossPkg, ctx.uses)
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {
@@ -100,7 +100,7 @@ seen[item] = struct{}{}
 // may be a Size literal (`5MB`, `2KB`, `1024B`) or a bare integer count
 // of bytes. Emits a nil-guarded comparison against `*multipart.FileHeader.Size`.
 // On non-file fields the decorator is silently skipped.
-func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isFileField(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -108,7 +108,7 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 	if !ok || bytes <= 0 {
 		return ""
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	cond := fmt.Sprintf("%s != nil && %s.Size > %d", access, access, bytes)
 	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, fieldWireName(f), bytes)
 	return ifReturnf(cond, msg)
@@ -119,7 +119,7 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string
 // outside the allowlist. The check is nil-guarded so a missing optional
 // upload is allowed by this decorator; drop the `?` suffix on the field
 // type to force presence (required-by-default).
-func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isFileField(f) || len(d.Args) == 0 {
 		return ""
 	}
@@ -131,7 +131,7 @@ func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, uses map[stri
 	if len(mimes) == 0 {
 		return ""
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	cases := make([]string, len(mimes))
 	for i, m := range mimes {
 		cases[i] = strconv.Quote(m)

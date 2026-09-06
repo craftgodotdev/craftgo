@@ -77,7 +77,7 @@ error BadRequest E { Auditable  details string }`)
 // ---------- Unresolved / non-type ----------
 
 func TestMixinUnresolved(t *testing.T) {
-	d := expectDiag(t, `type X { Mystery  name string }`, CodeMixinUnresolved)
+	d := expectDiag(t, `type X { Mystery  name string }`, CodeRefUnknownSymbol)
 	expectMessage(t, d, "Mystery")
 }
 
@@ -172,7 +172,7 @@ type User { Profile<X>  name string }`, CodeMixinArity)
 // hand-built AST that simulates expansion AT the outer host: a
 // single sourceLabel walking two paths to the same field name.
 func TestMixinDiamondSameTopLevel(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
 			"Base": {
 				Name: "Base",
@@ -188,12 +188,12 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 				},
 			},
 		},
-	}}
+	})
 	// Walk Combined as if it were the top-level mixin of an outer host
 	// - sourceLabel stays "Combined" for both nested Base visits.
 	seen := map[string]fieldOrigin{}
-	a.collectMixinFields("Combined", "Combined", lexer.Position{Line: 1},
-		seen, map[string]bool{"Outer": true})
+	a.collectMixinFields("", "Combined", "Combined", lexer.Position{Line: 1},
+		seen, map[string]bool{".Outer": true})
 	if len(a.diags) != 0 {
 		t.Errorf("same-source diamond should not diag, got %v", a.diags)
 	}
@@ -202,32 +202,24 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 	}
 }
 
-// TestMixinNestedQualifiedSkipped covers the nested-mixin defensive
-// guard: a qualified ref inside a mixin's body is silently skipped
-// rather than crashing the walker.
-func TestMixinNestedQualifiedSkipped(t *testing.T) {
-	// Top-level Mixin "Inner" is unqualified, but inside Inner there's
-	// a qualified mixin `shared.Other` - the qualified-ref pass handles
-	// the user-facing report; collectMixinFields skips silently.
-	mustClean(t, `type Inner { shared.Other  id string }
-type X { Inner  name string }`)
+// A qualified mixin whose package does not exist is reported once, as an
+// unknown package, whether it sits on the host or inside a nested mixin.
+func TestMixinNestedQualifiedUnknownPackage(t *testing.T) {
+	expectDiag(t, `type Inner { shared.Other  id string }
+type X { Inner  name string }`, CodeRefUnknownPackage)
 }
 
-func TestMixinQualifiedSkipped(t *testing.T) {
-	// Qualified mixin (`shared.Profile`) - codegen takes the trailing
-	// segment, so the mixin pass intentionally skips. The qualified-ref
-	// pass also exempts mixins (see [analyzer.checkQualifiedRefs]), so
-	// neither diagnostic fires.
-	expectNoCode(t, `type X { shared.Profile  name string }`, CodeMixinUnresolved)
+func TestMixinQualifiedUnknownPackage(t *testing.T) {
+	expectDiag(t, `type X { shared.Profile  name string }`, CodeRefUnknownPackage)
 }
 
 // TestMixinNilRefTolerated covers the defensive nil-ref / nil-Name
 // guards in [analyzer.processMixin]. Parser doesn't emit these
 // shapes today; the guard is for future regressions.
 func TestMixinNilRefTolerated(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{},
-	}}
+	})
 	a.processMixin("X", &ast.Mixin{Pos: lexer.Position{Line: 1}, Ref: nil}, map[string]fieldOrigin{})
 	a.processMixin("X", &ast.Mixin{Pos: lexer.Position{Line: 1}, Ref: &ast.NamedTypeRef{}}, map[string]fieldOrigin{})
 	if len(a.diags) != 0 {
@@ -240,12 +232,78 @@ func TestMixinNilRefTolerated(t *testing.T) {
 // unknown type, walker silently bails out (top-level resolveMixinTarget
 // already produced a diag).
 func TestMixinCollectMissingTarget(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{},
-	}}
-	a.collectMixinFields("Missing", "Missing", lexer.Position{Line: 1},
+	})
+	a.collectMixinFields("", "Missing", "Missing", lexer.Position{Line: 1},
 		map[string]fieldOrigin{}, map[string]bool{})
 	if len(a.diags) != 0 {
 		t.Errorf("missing nested mixin should not diag here, got %v", a.diags)
 	}
+}
+
+// A mixin embedded twice in one type body lowers to a Go struct that
+// declares the embedded type twice ("X redeclared") - rejected at design
+// time rather than shipped as non-compiling code.
+func TestDuplicateMixinEmbedRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Leaf { x string @minLength(1) }
+type Req { Leaf  Leaf  r string }`))
+	d := findCode(diags, CodeMixinConflict)
+	if d == nil {
+		t.Fatalf("expected duplicate-embed rejection; got %v", codes(diags))
+	}
+}
+
+// A local mixin and an imported one whose unqualified names match both
+// embed as the same Go field - rejected (would "redeclare").
+func TestLeafNameEmbedCollisionRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type Leaf { x int }`,
+		"api.craftgo": `package design
+import "shared"
+type Leaf { y int }
+type Req { Leaf  shared.Leaf  r string }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeMixinConflict) == nil {
+		t.Fatalf("expected leaf-name embed collision; got %v", codes(diags))
+	}
+}
+
+// Two DIFFERENT types each embedding a mixin of the same name is fine.
+func TestSameMixinNameDifferentTypesClean(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Leaf { x int }
+type A { Leaf }
+type B { Leaf }`))
+	if findCode(diags, CodeMixinConflict) != nil {
+		t.Errorf("same mixin in different types must be clean; got %v", codes(diags))
+	}
+}
+
+// A mixin embedding a bare type-parameter of the host generic
+// (`type Box<T> { T }`) is rejected - Go forbids embedding a type parameter,
+// so the generated struct would never compile.
+func TestTypeParamMixinRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Box<T> { T  note string }
+type R { b Box<string> }`))
+	if findCode(diags, CodeMixinConflict) == nil {
+		t.Fatalf("expected type-param mixin rejection; got %v", codes(diags))
+	}
+	// project mode (gen path) must reject it too
+	root, files := projectFixture(t, map[string]string{
+		"api.craftgo": `package design
+type Box<T> { T  note string }
+type R { b Box<string> }`,
+	})
+	_, pdiags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(pdiags, CodeMixinConflict) == nil {
+		t.Fatalf("expected type-param mixin rejection in project mode; got %v", codes(pdiags))
+	}
+}
+
+// A `value T` named field (not an embed) must NOT be rejected - the control.
+func TestTypeParamNamedFieldClean(t *testing.T) {
+	mustClean(t, `type Box<T> { value T  note string }
+type R { b Box<string> }`)
 }

@@ -329,29 +329,9 @@ func TestHealthConflictNonHealthPath(t *testing.T) {
 
 // ---------- Helpers ----------
 
-func TestExtractPathParams(t *testing.T) {
-	cases := []struct {
-		in   string
-		want []string
-	}{
-		{"/", nil},
-		{"/users", nil},
-		{"/users/{id}", []string{"id"}},
-		{"/users/{id}/posts/{post}", []string{"id", "post"}},
-		{"/{a}/{b}/{c}", []string{"a", "b", "c"}},
-		{"/{unclosed", nil},
-	}
-	for _, c := range cases {
-		got := extractPathParams(c.in)
-		if !equalSlice(got, c.want) {
-			t.Errorf("extractPathParams(%q) = %v, want %v", c.in, got, c.want)
-		}
-	}
-}
-
 func TestResolveMethodPathFallbackName(t *testing.T) {
 	// Method with no inline path: fallback is /<kebab(name)>.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	if got != "/ping" {
 		t.Errorf("got %q, want %q", got, "/ping")
@@ -366,7 +346,7 @@ service S { get GetUser /users {} }`), Options{})
 	if len(diags) > 0 {
 		t.Fatalf("unexpected diags: %v", diags)
 	}
-	a := &analyzer{pkg: pkg, opts: Options{}}
+	a := newTestAnalyzer(pkg)
 	si := pkg.Services["S"]
 	got := a.resolveMethodPath(si.Primary, si.Methods[0])
 	if got != "/v1/users" {
@@ -376,7 +356,7 @@ service S { get GetUser /users {} }`), Options{})
 
 func TestResolveMethodPathEmptyParts(t *testing.T) {
 	// No basePath, no prefix, no inline path → defaults to /<kebab>.
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	if got != "/ping" {
 		t.Errorf("got %q, want %q", got, "/ping")
@@ -410,21 +390,20 @@ func TestPathBindingNameVariants(t *testing.T) {
 }
 
 func TestRequestPathFieldsNilGuards(t *testing.T) {
-	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
-	env := a.pathParamEnv()
+	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
 	// nil request
-	if got := requestPathFields(&ast.Method{}, nil, env); got != nil {
+	if got := a.requestPathFields(&ast.Method{}, nil); got != nil {
 		t.Error("nil request should return nil")
 	}
 	// qualified name unresolvable in this package → nil
-	got := requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
+	got := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{"shared", "Req"}},
-	}}, nil, env)
+	}}, nil)
 	if got != nil {
 		t.Error("unresolved qualified ref should return nil")
 	}
 	// Request name is nil → skip
-	got = requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil, env)
+	got = a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil)
 	if got != nil {
 		t.Error("nil Name should return nil")
 	}
@@ -446,7 +425,8 @@ service S {
 // repairs a path which doesn't start with `/`. Pairs naturally with
 // the basePath format warning.
 func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
-	a := &analyzer{pkg: &Package{}, opts: Options{BasePath: "v1"}}
+	a := newTestAnalyzer(&Package{})
+	a.opts.BasePath = "v1"
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	// "v1" + "/ping" → "v1//ping" → "v1/ping" → "/v1/ping".
 	if got != "/v1/ping" {
@@ -454,11 +434,10 @@ func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
 	}
 }
 
-// TestWalkBodyForPathCyclicMixin covers the visited check inside
-// walkBodyForPath. Real cyclic mixins are flagged by the mixin pass
-// but path resolution still encounters the cycle and must not loop.
-func TestWalkBodyForPathCyclicMixin(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+// Real cyclic mixins are flagged by the mixin pass, but the request
+// field walk still encounters the cycle and must not loop.
+func TestRequestPathFieldsCyclicMixin(t *testing.T) {
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
 			"A": {
 				Name: "A",
@@ -474,19 +453,17 @@ func TestWalkBodyForPathCyclicMixin(t *testing.T) {
 				},
 			},
 		},
-	}}
-	out := &pathParamSet{all: map[string]bool{}}
-	walkBodyForPath(a.pkg.Types["A"], "", "A", map[string]bool{"id": true}, out, map[string]bool{}, a.pathParamEnv())
+	})
+	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("cyclic mixin should still surface reachable fields once")
 	}
 }
 
-// TestWalkBodyForPathQualifiedNestedMixin covers the qualified-mixin
-// skip inside walkBodyForPath (the recursive mixin walker shouldn't
-// follow `shared.Foo` - qualified-ref pass handles it).
-func TestWalkBodyForPathQualifiedNestedMixin(t *testing.T) {
-	a := &analyzer{pkg: &Package{
+// A mixin whose package is unknown is skipped (the reference pass reports
+// it); the host's own fields still surface.
+func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
+	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
 			"A": {
 				Name: "A",
@@ -496,9 +473,8 @@ func TestWalkBodyForPathQualifiedNestedMixin(t *testing.T) {
 				},
 			},
 		},
-	}}
-	out := &pathParamSet{all: map[string]bool{}}
-	walkBodyForPath(a.pkg.Types["A"], "", "A", map[string]bool{"id": true}, out, map[string]bool{}, a.pathParamEnv())
+	})
+	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("qualified mixin unresolvable in-package should be skipped, own fields still surface")
 	}
@@ -521,12 +497,12 @@ func TestPathBindingNameSkipsNonPathDecorator(t *testing.T) {
 func TestCheckMethodPathParamsNilName(t *testing.T) {
 	// Defensive: m.Request set but m.Request.Name nil - early-return
 	// branch in checkMethodPathParams.
-	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
-	checkMethodPathParams("S", &ast.Method{
+	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
+	a.checkMethodPathParams("S", &ast.Method{
 		Name:    "M",
 		Pos:     lexer.Position{Line: 1},
 		Request: &ast.NamedTypeRef{Name: nil},
-	}, "/users", a.pathParamEnv())
+	}, "/users")
 	if len(a.diags) != 0 {
 		t.Errorf("nil request name should not diag, got %v", a.diags)
 	}
@@ -541,14 +517,18 @@ func TestPathSetHasNil(t *testing.T) {
 
 // ---------- helper ----------
 
-func equalSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+// A field named like a path segment but diverted to @query no longer
+// satisfies the path-coverage check - the {id} segment is reported missing.
+func TestWireBoundFieldDoesNotCoverPathSegment(t *testing.T) {
+	src := `package p
+type R { id string @query }
+type Resp { x string }
+service S { get M /u/{id} { request R  response Resp } }`
+	diags := analyzeOneFile(t, src)
+	if len(diags) == 0 {
+		t.Fatalf("expected a path-coverage diagnostic for the diverted {id} field")
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
+	if !hasDiagContaining(diags, "path segment") && !hasDiagContaining(diags, "no matching field") {
+		t.Errorf("expected path-coverage reject, got: %v", diags)
 	}
-	return true
 }

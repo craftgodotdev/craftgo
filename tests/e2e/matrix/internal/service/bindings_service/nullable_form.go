@@ -13,7 +13,7 @@ import (
 
 // NullableFormService carries the per-request state for the
 // NullableForm endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id / request_id),
+// pre-bound to the request context (trace_id / span_id),
 // so handlers can call l.Info(...) / l.Error(...) directly.
 type NullableFormService struct {
 	log.Logger

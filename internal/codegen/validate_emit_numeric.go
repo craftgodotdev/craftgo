@@ -7,10 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-func numericValueExpr(f *ast.Field, access string) string {
-	// Only numeric-typed fields reach here, never a nilable scalar, so the
-	// pointer test needs no scalar resolver.
-	if goFieldIsPointer(f, nil, nil) {
+func numericValueExpr(f *ast.Field, access string, ctx emitCtx) string {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return "*" + access
 	}
 	return access
@@ -29,7 +27,7 @@ func numericValueExpr(f *ast.Field, access string) string {
 // Both int and float bound literals are accepted ([numericArg] handles
 // the rendering). Float fields with float bounds (`@gte(0.5)` on
 // float64) work the same as int-on-int.
-func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, uses map[string]bool) string {
+func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
 	if !isNumericField(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -50,8 +48,8 @@ func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label 
 	default:
 		return ""
 	}
-	uses["fmt"] = true
-	val := numericValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := numericValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s %s", guard, val, flip, n)
 	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(fieldWireName(f)), label, n)
@@ -62,7 +60,7 @@ func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label 
 // Pointer fields (T? / `T @nullable`) get the same nil-guard +
 // deref treatment as [numericBoundCheck]. Both int and float bound
 // literals accepted.
-func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func rangeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isNumericField(f) || len(d.Args) != 2 {
 		return ""
 	}
@@ -71,8 +69,8 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]b
 	if !ok1 || !ok2 {
 		return ""
 	}
-	uses["fmt"] = true
-	val := numericValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := numericValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	var cond string
 	if guard == "" {
@@ -91,16 +89,16 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]b
 // on numeric fields. Both produce a one-line conditional with no decorator
 // arguments - unlike `@min` they don't carry a bound, so the helper is a
 // pure dispatch on the kind string.
-func signCheck(f *ast.Field, access, kind string, uses map[string]bool) string {
+func signCheck(f *ast.Field, access, kind string, ctx emitCtx) string {
 	if !isNumericField(f) {
 		return ""
 	}
-	uses["fmt"] = true
+	ctx.uses["fmt"] = true
 	op, label := "<=", "must be positive"
 	if kind == "negative" {
 		op, label = ">=", "must be negative"
 	}
-	val := numericValueExpr(f, access)
+	val := numericValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s 0", guard, val, op)
 	msg := fmt.Sprintf(`"%s%s"`, errSubject(fieldWireName(f)), label)
@@ -111,7 +109,7 @@ func signCheck(f *ast.Field, access, kind string, uses map[string]bool) string {
 // excluded because `%` is integer-only in Go and a runtime modulus on a
 // float is rarely what designers intend (rounding error). A future revision
 // can layer a tolerance-based check for floats.
-func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isIntegerField(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -128,8 +126,8 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, uses map[str
 	if !ok || n == 0 {
 		return ""
 	}
-	uses["fmt"] = true
-	val := numericValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := numericValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s%%%d != 0", guard, val, n)
 	msg := fmt.Sprintf(`"%smust be a multiple of %d"`, errSubject(fieldWireName(f)), n)

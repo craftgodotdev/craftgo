@@ -6,7 +6,6 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -21,25 +20,18 @@ import (
 // SCREAMING_SNAKE error-code constant for every [ast.ErrorDecl] in pkg.
 // When pkg has no errors the function is a no-op.
 //
-// Equivalent to [GenerateErrorsPackage] with a nil resolver; kept for
-// single-package callers that don't reach across packages.
-func GenerateErrors(pkg *semantic.Package, outDir string) error {
-	return GenerateErrorsPackage(pkg, outDir, nil)
-}
-
-// GenerateErrorsPackage is the multi-package variant of [GenerateErrors].
-// The [ProjectResolver] supplies the cross-package import paths for body
-// fields (e.g. an error in `tasks` whose body carries a `users.UserRef`)
-// AND the cross-package scalar / enum resolution needed to format a
-// non-string `@header` / `@cookie` error field (`cost shared.Cents`).
-// A nil resolver falls back to local-only resolution.
-func GenerateErrorsPackage(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
+// r supplies the cross-package import paths for body fields (an error in
+// `tasks` whose body carries a `users.UserRef`) and the scalar / enum
+// resolution needed to format a non-string `@header` / `@cookie` error
+// field (`cost shared.Cents`). A nil resolver resolves local names only.
+func GenerateErrors(pkg *semantic.Package, outDir string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
+	r = resolverFor(pkg, r)
 	pkgDir := filepath.Join(outDir, pkg.Name)
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
@@ -61,12 +53,8 @@ func GenerateErrorsPackage(pkg *semantic.Package, outDir string, r *ProjectResol
 // shared [collectImports] machinery. The result is returned
 // pre-formatting; the caller runs `go/format` to normalise whitespace.
 func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
-	crossPkg := r.crossPkgMap()
-	names := make([]string, 0, len(pkg.Errors))
-	for n := range pkg.Errors {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	crossPkg := r.CrossPkg
+	names := sortedKeys(pkg.Errors)
 
 	needsHTTP := false
 	needsStrconv := false
@@ -98,12 +86,7 @@ func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
 		"package " + pkg.Name + "\n",
 	}
 	if len(imports) > 0 {
-		paths := make([]string, 0, len(imports))
-		for p := range imports {
-			paths = append(paths, p)
-		}
-		sort.Strings(paths)
-		parts = append(parts, renderImports(paths))
+		parts = append(parts, renderImports(sortedKeys(imports)))
 	}
 	for _, name := range names {
 		parts = append(parts, renderError(pkg, pkg.Errors[name], r))

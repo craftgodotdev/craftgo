@@ -98,12 +98,12 @@ type fieldBins struct {
 //   - Body verbs (POST/PUT/PATCH) keep unmarked fields in `body`.
 //   - Non-body verbs (GET/DELETE/HEAD/OPTIONS) keep unmarked fields in
 //     `query`.
-func binRequestFields(m *ast.Method, pkg *semantic.Package) fieldBins {
+func binRequestFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) fieldBins {
 	var bins fieldBins
 	// Read the resolved IR: the full binding (explicit + auto-@path/@query)
 	// is computed once in resolveRequestFields, so this categorisation can't
 	// drift from the transport binder's view of where each field rides.
-	for _, rf := range resolveRequestFields(m, pkg, nil) {
+	for _, rf := range resolveRequestFields(m, pkg, r) {
 		switch rf.Binding {
 		case BindSensitive:
 			continue
@@ -139,10 +139,10 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	// (buildOperation -> multipartRequestBody); it never $refs a `<base>ReqBody`
 	// component, so emitting one here would only orphan it - the same reasoning
 	// as the wire-param components above. Both sites read isMultipartRequest.
-	if isMultipartRequest(m, pkg) {
+	if isMultipartRequest(m, pkg, registry.resolver) {
 		return
 	}
-	bins := binRequestFields(m, pkg)
+	bins := binRequestFields(m, pkg, registry.resolver)
 	wireBound := len(bins.path)+len(bins.query)+len(bins.header)+len(bins.cookie) > 0
 	if !wireBound {
 		// Pure-body request: the JSON body IS the whole request type, so
@@ -161,7 +161,7 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Ref: "#/components/schemas/" + inst})
 			return
 		}
-		if requestHasBodyContent(m, pkg) {
+		if requestHasBodyContent(m, pkg, registry.resolver) {
 			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)})
 		}
 		return
@@ -189,12 +189,12 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 // to a JSON request body - any resolved field that rides the body
 // (OnWireBody). A request whose fields are all @sensitive / @header /
 // @cookie / wire-bound (even through a mixin) has no body schema to emit.
-func requestHasBodyContent(m *ast.Method, pkg *semantic.Package) bool {
+func requestHasBodyContent(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) bool {
 	// Read the resolved IR so this body-presence test uses the SAME
 	// verb-aware, mixin-flattened binding the handler decode-block
 	// (hasUnboundField) and the param categorisation (binRequestFields)
 	// use - a mixin of only @header/@cookie fields contributes no body.
-	for _, rf := range resolveRequestFields(m, pkg, nil) {
+	for _, rf := range resolveRequestFields(m, pkg, r) {
 		if rf.OnWireBody {
 			return true
 		}
@@ -213,7 +213,7 @@ func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic
 	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
-	bins := binResponseFields(m, pkg)
+	bins := binResponseFields(m, pkg, registry.resolver)
 	if len(bins.header) == 0 && len(bins.cookie) == 0 {
 		// Generic response (e.g. `response Envelope<Order>`) must
 		// $ref the synthetic instance name, NOT the bare generic
@@ -266,7 +266,7 @@ func substituteGenericFields(fields []*ast.Field, td *ast.TypeDecl, args []*ast.
 // explicit response-side binding decorator default to `body` (the JSON
 // payload), so adding @header / @cookie to a couple of fields does not
 // silently drop the rest.
-func binResponseFields(m *ast.Method, pkg *semantic.Package) fieldBins {
+func binResponseFields(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) fieldBins {
 	var bins fieldBins
 	if m.Response == nil || m.Response.Type == nil {
 		return bins
@@ -278,7 +278,7 @@ func binResponseFields(m *ast.Method, pkg *semantic.Package) fieldBins {
 	// Read the resolved IR instead of re-deriving binding/sensitivity from
 	// the AST: the same flattened field list + binding classification every
 	// other stage sees, so this categorisation can't drift from theirs.
-	for _, rf := range resolveFields(td, pkg, nil) {
+	for _, rf := range resolveFields(td, pkg, r) {
 		switch rf.Binding {
 		case BindSensitive:
 			continue
@@ -355,7 +355,7 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package, registry *gene
 		// same source addErrorSchemas uses) so the body-schema walk can't drift
 		// from the error-schema walk on which fields ride the body and which are
 		// required. nil resolver: the OpenAPI path runs on the merged package.
-		rf := resolveField(f, pkg, nil)
+		rf := resolveField(f, pkg, registry.resolver)
 		if !rf.OnWireBody {
 			continue
 		}

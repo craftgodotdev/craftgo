@@ -11,7 +11,7 @@ import (
 
 // LegacyPingService carries the per-request state for the
 // LegacyPing endpoint of AdminService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id / request_id),
+// pre-bound to the request context (trace_id / span_id),
 // so handlers can call l.Info(...) / l.Error(...) directly.
 type LegacyPingService struct {
 	log.Logger

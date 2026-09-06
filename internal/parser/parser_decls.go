@@ -164,7 +164,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 }
 
 // parseErrorDecl reads `error <Category> Name [{ Body }]`. The reserved
-// category set lives in [errcat] (the leaf codegen + the LSP also read), so the
+// category set lives in [errcat.Categories] (the leaf codegen + the LSP also read), so the
 // `error <Category>` form, the emitted HTTP status, and the editor completions
 // share one catalogue.
 func (p *Parser) parseErrorDecl(decs []*ast.Decorator) *ast.ErrorDecl {

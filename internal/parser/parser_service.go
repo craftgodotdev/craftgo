@@ -70,7 +70,7 @@ func (p *Parser) rejectMethodTypeSuffix(slot string) {
 	}
 }
 
-// parseMethod reads `[@decorators] <verb> Name [Path] { request? response? }`.
+// parseMethod reads `[@decorators] <verb> Name [ast.Path] { request? response? }`.
 func (p *Parser) parseMethod() *ast.Method {
 	p.captureDoc()
 	decs := p.parseDecorators()

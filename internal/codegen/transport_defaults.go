@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -171,10 +172,7 @@ func primitiveDefaultCast(t *ast.TypeRef, v ast.Expr) string {
 	default:
 		return ""
 	}
-	switch prim {
-	case "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
+	if prims.IsNumeric(prim) && prim != "int" {
 		return prim
 	}
 	return ""
@@ -192,7 +190,7 @@ func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 		return ""
 	}
 	name := t.Named.Name.String()
-	if _, ok := pkg.Scalars[name]; !ok && r.LookupScalar(name) == nil {
+	if r.LookupScalar(name) == nil {
 		return ""
 	}
 	base := *t
@@ -251,7 +249,7 @@ func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver,
 	var qualifier string
 	switch len(parts) {
 	case 1:
-		ed = pkg.Enums[parts[0]]
+		ed = r.LookupEnum(parts[0])
 		qualifier = pkgAlias
 	case 2:
 		ed = r.LookupEnum(t.Named.Name.String())

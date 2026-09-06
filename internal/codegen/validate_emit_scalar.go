@@ -30,14 +30,7 @@ func scalarFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return ""
 	}
-	name := f.Type.Named.Name.String()
-	var sd *ast.ScalarDecl
-	if ctx.pkg != nil {
-		sd = ctx.pkg.Scalars[name]
-	}
-	if sd == nil && ctx.resolver != nil {
-		sd = ctx.resolver.LookupScalar(name)
-	}
+	sd := ctx.resolver.LookupScalar(f.Type.Named.Name.String())
 	if sd == nil {
 		return ""
 	}
@@ -56,14 +49,7 @@ func enumFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return ""
 	}
-	name := f.Type.Named.Name.String()
-	var ed *ast.EnumDecl
-	if ctx.pkg != nil {
-		ed = ctx.pkg.Enums[name]
-	}
-	if ed == nil && ctx.resolver != nil {
-		ed = ctx.resolver.LookupEnum(name)
-	}
+	ed := ctx.resolver.LookupEnum(f.Type.Named.Name.String())
 	if ed == nil {
 		return ""
 	}
@@ -119,7 +105,7 @@ func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) s
 		// Optional / @nullable scalar over a value primitive lowers to *T:
 		// only run when present, and cast the dereferenced value.
 		return fmt.Sprintf("if %s != nil {\n%s := %s(*%s)\n%s\n}", access, local, primGo, access, body)
-	case scalarRefNilable(f.Type, ctx.pkg, ctx.resolver) && (f.Type.Optional || hasNullableDecorator(f.Decorators)):
+	case fieldNeedsNilGuard(f):
 		// Optional / @nullable scalar over a nilable primitive (bytes)
 		// carries no pointer, but a nil value is the valid absent / null
 		// state - guard, then cast the value directly (no deref).

@@ -4,8 +4,11 @@
 package semantic
 
 import (
+	"strings"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkMapKeyComparable rejects a map whose key type cannot be a Go map
@@ -56,15 +59,13 @@ func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []
 // struct key, but json.Marshal returns "unsupported type" for those at
 // runtime - so they are rejected even though they compile (the OpenAPI
 // would advertise a serializable object the server can't produce). A
-// qualified cross-package key is accepted conservatively (the project pass
-// resolves it); a bare type-parameter is never a valid key.
+// bare type-parameter is never a valid key; a qualified name that
+// resolves to nothing is left to the reference pass.
 func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 	if key == nil || key.Named == nil || key.Named.Name == nil || key.Array || key.Map != nil || key.Optional {
 		// An optional `?` key would render `map[*K]V`; encoding/json cannot
 		// use a pointer as an object key (marshal/unmarshal fail), so it is
-		// rejected here regardless of the underlying type. The Optional check
-		// precedes the cross-package defer below so a qualified `lib.ID?` key
-		// is caught too.
+		// rejected here regardless of the underlying type.
 		return false
 	}
 	name := key.Named.Name.String()
@@ -73,21 +74,20 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 			return false
 		}
 	}
-	if len(key.Named.Name.Parts) > 1 {
-		return true // cross-package ref; defer to the project resolver
-	}
-	if _, ok := a.pkg.Enums[name]; ok {
+	if a.lookupEnum(key.Named) != nil {
 		return true // string- or int-backed enum
 	}
-	prim := name
-	if sc, ok := a.pkg.Scalars[name]; ok {
-		prim = sc.Primitive
+	if sp, ok := prims.Lookup(a.primOf(key)); ok {
+		switch sp.Kind {
+		case prims.String, prims.Int, prims.Uint:
+			return true
+		}
 	}
-	switch prim {
-	case "string",
-		"int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
-		return true
+	if isQualifiedTypeRef(key) {
+		pkg, sym := a.resolveNamed(a.pkg.Name, key.Named)
+		if pkg == nil || !packageHasSymbol(pkg, sym) {
+			return true
+		}
 	}
 	return false
 }
@@ -99,9 +99,7 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 // produces either non-compiling Go (`invalid map key type`) or a runtime
 // `hash of unhashable type` panic, while the OpenAPI side still
 // advertises `uniqueItems: true`. Catching it at design time keeps the
-// generated validator compiling and the spec honest. Element types that
-// can't be resolved in this package (cross-package qualified refs) are
-// conservatively allowed to avoid false rejections.
+// generated validator compiling and the spec honest.
 func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string) {
 	if f == nil || f.Type == nil {
 		return
@@ -141,7 +139,7 @@ func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string)
 				}
 			}
 		}
-		if !a.typeRefComparable(elem, map[string]bool{}) {
+		if !a.typeRefComparable(elem, a.pkg.Name, map[string]bool{}) {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 				"@uniqueItems requires comparable elements (usable as a map key) - %s is not (a slice / map / `any`, or a struct/generic containing one). Restructure the element into a comparable shape, or drop @uniqueItems.",
 				describeTypeRef(elem))
@@ -161,9 +159,12 @@ func peelOneArray(t *ast.TypeRef) *ast.TypeRef {
 
 // typeRefComparable reports whether values of t are usable as a Go map
 // key. Arrays / maps / `any` / `bytes` are not; a named struct or generic
-// instance is comparable only when EVERY member is. `seen` guards against
-// recursive types (a cycle is treated as comparable along the back-edge).
-func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool {
+// instance is comparable only when EVERY member is. A bare name resolves
+// in homePkg - the package of the declaration being walked - so a member
+// of a foreign struct is followed into that struct's own package. `seen`
+// guards against recursive types (a cycle is treated as comparable along
+// the back-edge).
+func (a *analyzer) typeRefComparable(t *ast.TypeRef, homePkg string, seen map[string]bool) bool {
 	if t == nil {
 		return false
 	}
@@ -173,79 +174,80 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, seen map[string]bool) bool 
 	if t.Named == nil || t.Named.Name == nil {
 		return false
 	}
-	name := t.Named.Name.String()
-	switch name {
-	case "any", "bytes", "file":
-		return false
-	case "string", "bool",
-		"int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
-		return true
-	}
-	if sc, ok := a.pkg.Scalars[name]; ok {
-		return sc.Primitive != "bytes"
-	}
-	if _, ok := a.pkg.Enums[name]; ok {
-		return true
-	}
-	if td, ok := a.pkg.Types[name]; ok {
-		// Key the back-edge guard by the instantiated identity (name + args),
-		// not the bare decl name - otherwise a comparable instantiation
-		// (`Wrap<string>`) poisons the guard so a later non-comparable one
-		// (`Wrap<bytes>`) short-circuits to "comparable" and leaks a
-		// non-compiling dedupe map. A true cycle (same instantiation) still
-		// matches and breaks.
-		key := comparableKey(t)
-		if seen[key] {
+	if sp, ok := prims.Lookup(t.Named.Name.String()); ok {
+		switch sp.Kind {
+		case prims.Any, prims.Bytes, prims.File:
+			return false
+		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float:
 			return true
 		}
-		seen[key] = true
-		// For a generic instance (`Pair<bytes>`) substitute the type-args
-		// into the decl's fields: a field typed `T` is comparable only if the
-		// concrete argument is. Without this, `T` resolves to nothing and
-		// falls through to the "conservatively comparable" branch, so
-		// `Pair<bytes>[] @uniqueItems` would pass the check and then emit a
-		// non-compiling `map[Pair[[]byte]]`.
-		subst := map[string]*ast.TypeRef{}
-		if len(td.TypeParams) > 0 && t.Named != nil {
-			for i, tp := range td.TypeParams {
-				if i < len(t.Named.Args) {
-					subst[tp] = t.Named.Args[i]
-				}
-			}
-		}
-		for _, m := range td.Body {
-			switch v := m.(type) {
-			case *ast.Field:
-				ft := substTypeParam(v.Type, subst)
-				// An optional `?` non-collection field renders as a Go pointer
-				// (`*T`), which is comparable regardless of what T contains - so
-				// it doesn't break the struct's usability as a map key. Don't
-				// descend past the pointer. (Optional arrays/maps stay non-
-				// comparable: they render as a nil-able slice/map, not a pointer.)
-				if ft != nil && ft.Optional && !ft.Array && ft.Map == nil {
-					continue
-				}
-				if !a.typeRefComparable(ft, seen) {
-					return false
-				}
-			case *ast.Mixin:
-				if v.Ref != nil && v.Ref.Name != nil {
-					// Substitute the outer decl's type-args into the mixin ref
-					// too (a generic mixin `Inner<T>` becomes `Inner<bytes>`),
-					// mirroring the Field branch above - without it a bare `T`
-					// inside the mixin escapes the comparability check.
-					if !a.typeRefComparable(substTypeParam(&ast.TypeRef{Named: v.Ref}, subst), seen) {
-						return false
-					}
-				}
-			}
-		}
+	}
+	pkg, sym := a.resolveNamed(homePkg, t.Named)
+	if pkg == nil {
+		return true // unknown package - reported by the reference pass
+	}
+	if sc, ok := pkg.Scalars[sym]; ok {
+		return sc.Primitive != "bytes"
+	}
+	if _, ok := pkg.Enums[sym]; ok {
 		return true
 	}
-	// Unresolved here (cross-package qualified ref or bare generic
-	// type-param) - conservatively comparable to avoid a false reject.
+	td, ok := pkg.Types[sym]
+	if !ok {
+		// A generic type-param or an unresolved name - conservatively
+		// comparable to avoid a false reject.
+		return true
+	}
+	// Key the back-edge guard by the instantiated identity (package, name
+	// and args), not the bare decl name - otherwise a comparable
+	// instantiation (`Wrap<string>`) poisons the guard so a later
+	// non-comparable one (`Wrap<bytes>`) short-circuits to "comparable" and
+	// leaks a non-compiling dedupe map. A true cycle (same instantiation)
+	// still matches and breaks.
+	key := pkg.Name + "." + comparableKey(t)
+	if seen[key] {
+		return true
+	}
+	seen[key] = true
+	// For a generic instance (`Pair<bytes>`) substitute the type-args into
+	// the decl's fields: a field typed `T` is comparable only if the
+	// concrete argument is. Without this, `T` resolves to nothing and falls
+	// through to the "conservatively comparable" branch, so `Pair<bytes>[]
+	// @uniqueItems` would pass the check and then emit a non-compiling
+	// `map[Pair[[]byte]]`.
+	subst := map[string]*ast.TypeRef{}
+	for i, tp := range td.TypeParams {
+		if i < len(t.Named.Args) {
+			subst[tp] = t.Named.Args[i]
+		}
+	}
+	for _, m := range td.Body {
+		switch v := m.(type) {
+		case *ast.Field:
+			ft := substTypeParam(v.Type, subst)
+			// An optional `?` non-collection field renders as a Go pointer
+			// (`*T`), which is comparable regardless of what T contains - so
+			// it doesn't break the struct's usability as a map key. Don't
+			// descend past the pointer. (Optional arrays/maps stay non-
+			// comparable: they render as a nil-able slice/map, not a pointer.)
+			if ft != nil && ft.Optional && !ft.Array && ft.Map == nil {
+				continue
+			}
+			if !a.typeRefComparable(ft, pkg.Name, seen) {
+				return false
+			}
+		case *ast.Mixin:
+			if v.Ref != nil && v.Ref.Name != nil {
+				// Substitute the outer decl's type-args into the mixin ref
+				// too (a generic mixin `Inner<T>` becomes `Inner<bytes>`),
+				// mirroring the Field branch above - without it a bare `T`
+				// inside the mixin escapes the comparability check.
+				if !a.typeRefComparable(substTypeParam(&ast.TypeRef{Named: v.Ref}, subst), pkg.Name, seen) {
+					return false
+				}
+			}
+		}
+	}
 	return true
 }
 
@@ -274,4 +276,36 @@ func substTypeParam(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeRef 
 		return &clone
 	}
 	return t
+}
+
+// comparableKey renders a stable identity for a type instance - its name plus
+// generic args, with array / map structure - for the comparability back-edge
+// guard ([typeRefComparable] / [refResolver.projectComparable]). Keying the
+// `seen` set by this rather than the bare decl name keeps different
+// instantiations of one generic (`Wrap<string>` vs `Wrap<bytes>`) distinct, so
+// a comparable instantiation can't poison the guard for a later non-comparable
+// one, while a true cycle (the same instantiation) still matches and breaks.
+func comparableKey(t *ast.TypeRef) string {
+	if t == nil {
+		return ""
+	}
+	if t.Map != nil {
+		return "map<" + comparableKey(t.Map.Key) + "," + comparableKey(t.Map.Value) + ">"
+	}
+	prefix := strings.Repeat("[]", t.ArrayDepth)
+	if t.ArrayDepth == 0 && t.Array {
+		prefix = "[]"
+	}
+	if t.Named == nil || t.Named.Name == nil {
+		return prefix + "?"
+	}
+	key := prefix + t.Named.Name.String()
+	if len(t.Named.Args) > 0 {
+		parts := make([]string, len(t.Named.Args))
+		for i, a := range t.Named.Args {
+			parts[i] = comparableKey(a)
+		}
+		key += "<" + strings.Join(parts, ",") + ">"
+	}
+	return key
 }

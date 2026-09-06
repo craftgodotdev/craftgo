@@ -27,11 +27,11 @@ const (
 // body - it does NOT $ref a `<base>ReqBody` component. buildOperation (inline vs
 // $ref) and addRequestBodySchema (emit the component or not) both read this one
 // predicate so they can't disagree and leave an orphaned schema in the spec.
-func isMultipartRequest(m *ast.Method, pkg *semantic.Package) bool {
+func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) bool {
 	if m == nil || m.Request == nil {
 		return false
 	}
-	_, files, err := collectFormBindings(m, pkg, "", nil)
+	_, files, err := collectFormBindings(m, pkg, "", r)
 	return err == nil && len(files) > 0
 }
 
@@ -112,17 +112,17 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	// `*/*` - and for the success status of a raw response, which logic
 	// writes itself.
 	rawReq, rawResp := wire.RawSides(m.Decorators)
-	isMultipart := isMultipartRequest(m, pkg)
+	isMultipart := isMultipartRequest(m, pkg, registry.resolver)
 	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
 	if isMultipart {
 		// pkgAlias is empty here - the OpenAPI emission path doesn't care about
 		// Go-side cast aliasing, only about which fields are file vs text.
 		// Errors from form binding are surfaced by the transport gen pass; drop
 		// them here so a single source of truth owns the diagnostic.
-		formStrings, formFiles, _ = collectFormBindings(m, pkg, "", nil)
+		formStrings, formFiles, _ = collectFormBindings(m, pkg, "", registry.resolver)
 	}
 	if m.Request != nil {
-		bins := binRequestFields(m, pkg)
+		bins := binRequestFields(m, pkg, registry.resolver)
 		// Body-bearing verbs $ref the per-method body schema. The
 		// per-kind schemas live in components.schemas so consumers have
 		// a single canonical reference for each binding kind.
@@ -182,7 +182,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 				},
 			},
 		}
-		if respBins := binResponseFields(m, pkg); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
+		if respBins := binResponseFields(m, pkg, registry.resolver); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
 			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
 		}
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
@@ -220,45 +220,6 @@ func successDescription(code string) string {
 		return text
 	}
 	return "OK"
-}
-
-// statusOverride returns the explicit `@status(N)` code declared on the
-// method, if any. The value is range-validated (100..599) by the
-// semantic layer, so codegen can trust it.
-func statusOverride(m *ast.Method) (int, bool) {
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "status" || len(d.Args) == 0 {
-			continue
-		}
-		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
-			return int(i.Value), true
-		}
-	}
-	return 0, false
-}
-
-// methodSuccessStatus resolves the success status code for a method
-// whose response the framework writes. The transport handler and the
-// OpenAPI spec both call this so they always agree on the same code.
-// `@status(N)` wins; otherwise the default is verb-aware:
-//
-//   - no response body           → 204 No Content
-//   - POST returning a body       → 201 Created
-//   - any other verb with a body  → 200 OK
-//
-// The "no body → 204" rule deliberately takes precedence over the verb
-// default: a POST that returns nothing is 204, not 201.
-func methodSuccessStatus(m *ast.Method) int {
-	if code, ok := statusOverride(m); ok {
-		return code
-	}
-	if m.Response == nil || m.Response.Type == nil {
-		return http.StatusNoContent
-	}
-	if strings.EqualFold(m.Verb, "post") {
-		return http.StatusCreated
-	}
-	return http.StatusOK
 }
 
 // rawResponseStatus is the success code documented for an operation
@@ -319,7 +280,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		// An error's @header / @cookie body fields are written onto the
 		// response by the generated WriteResponseHeaders, so document
 		// them as response.headers - mirroring the success-response path.
-		hs, cs := errorHeaderCookieFields(ed, pkg)
+		hs, cs := errorHeaderCookieFields(ed, pkg, registry.resolver)
 		entry.headers = append(entry.headers, hs...)
 		entry.cookies = append(entry.cookies, cs...)
 	}
@@ -418,11 +379,11 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 // its @header and @cookie fields - the ones the runtime writes onto the
 // response via WriteResponseHeaders rather than into the JSON body.
 // Mirrors [binResponseFields] for the error path.
-func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package) (headers, cookies []*ast.Field) {
+func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []*ast.Field) {
 	// Flatten so a `@header` / `@cookie` field the error inherits through a
 	// mixin is documented as a response header too - matching the runtime,
 	// which writes the promoted field via WriteResponseHeaders.
-	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, nil, map[string]bool{}) {
+	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r, map[string]bool{}) {
 		switch bindingFromDecorators(f.Decorators) {
 		case wire.BindingHeader:
 			headers = append(headers, f)
@@ -544,7 +505,7 @@ func multipartRequestBody(forms, files []paramBinding, crossDecs []*ast.Decorato
 			ft.Optional = false
 			ref = schemaForTypeRef(&ft, pkg, registry)
 			if ref.Value != nil {
-				applyArrayConstraints(f.Field.Decorators, ref.Value)
+				applyConstraintFamilies(f.Field.Decorators, ref.Value, oasArray)
 			}
 		} else {
 			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}}
@@ -633,14 +594,6 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 	return params
 }
 
-// bindingFromDecorators returns the OpenAPI `in` string implied by a
-// field-binding decorator, or "" when the field has no explicit binding.
-// `@body` and `@form` are returned verbatim so the caller can recognise
-// and skip them - body-shaped fields land in requestBody, not parameters.
-func bindingFromDecorators(ds []*ast.Decorator) string {
-	return wire.BindingKind(ds)
-}
-
 // hasOwnDecorator reports whether ds carries a non-propagated decorator
 // with the given name. Used for the bare presence checks that drive
 // decorators copied onto the method from an enclosing scope (currently
@@ -679,21 +632,6 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	case "OPTIONS":
 		item.Options = op
 	}
-}
-
-// fieldIsRequired is THE spec-required rule - craftgo's "required by
-// default" model: a field must be present unless its type carries the `?`
-// suffix, OR it carries `@default` (the transport pre-fills the default
-// before decode, so an absent value is valid; advertising it required would
-// contradict the very default the schema carries). ResolvedField.SpecRequired
-// is computed from this function; raw-field call sites (the parameter/body
-// emitters, which work from field bins) call it directly - one rule, one
-// function.
-func fieldIsRequired(f *ast.Field) bool {
-	if f == nil || f.Type == nil || f.Type.Optional {
-		return false
-	}
-	return !ast.HasDecorator(f.Decorators, "default")
 }
 
 // operationID returns the OpenAPI operationId for a method. A method

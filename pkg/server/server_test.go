@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
 // newTestServer builds a Server, runs handler at "GET /ping", and returns
@@ -219,42 +222,8 @@ func TestServerWithCustomHealthPaths(t *testing.T) {
 	}
 }
 
-func TestRequestIDMiddlewareAddsHeader(t *testing.T) {
-	s := newTestServer(t).Use(RequestID())
-	captured := ""
-	s.HandleFunc("GET /id", func(_ http.ResponseWriter, r *http.Request) {
-		captured = RequestIDFromContext(r.Context())
-	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/id", nil))
-	if rec.Header().Get("X-Request-Id") == "" {
-		t.Error("missing X-Request-Id response header")
-	}
-	if captured == "" {
-		t.Error("handler saw empty request ID")
-	}
-}
-
-func TestRequestIDPassthrough(t *testing.T) {
-	s := newTestServer(t).Use(RequestID())
-	s.HandleFunc("GET /id", func(_ http.ResponseWriter, _ *http.Request) {})
-	req := httptest.NewRequest(http.MethodGet, "/id", nil)
-	req.Header.Set("X-Request-Id", "client-id-123")
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, req)
-	if rec.Header().Get("X-Request-Id") != "client-id-123" {
-		t.Errorf("expected client ID echoed back, got %q", rec.Header().Get("X-Request-Id"))
-	}
-}
-
-func TestRequestIDFromMissingContext(t *testing.T) {
-	if RequestIDFromContext(context.Background()) != "" {
-		t.Error("expected empty string for missing ID")
-	}
-}
-
 func TestAccessLogMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(AccessLog(s_logger(t))).Use(RequestID())
+	s := newTestServer(t).Use(AccessLog(s_logger(t)))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
@@ -262,6 +231,61 @@ func TestAccessLogMiddleware(t *testing.T) {
 	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/a", nil))
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("status = %d", rec.Code)
+	}
+}
+
+// Every request that reaches AccessLog is logged with its method, path and
+// status; AccessLogSkipPaths keeps the named routes out.
+func TestAccessLogSkipPaths(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
+	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
+	s.HandleFunc("GET /metrics", ok)
+	s.HandleFunc("GET /a", ok)
+	h := finalize(s)
+	for _, path := range []string{"/metrics", "/a", "/missing"} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	var got []string
+	for _, e := range logs.FilterMessage("http access").All() {
+		fields := e.ContextMap()
+		got = append(got, fmt.Sprintf("%s %v %v", fields["method"], fields["path"], fields["status"]))
+	}
+	want := []string{"GET /a 200", "GET /missing 404"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("access log lines = %v, want %v", got, want)
+	}
+}
+
+// The health probes are answered before the middleware chain: no `Use`
+// middleware sees them, on the default routes or on custom ones.
+func TestProbesBypassMiddlewareChain(t *testing.T) {
+	for name, opts := range map[string][]Option{
+		"default paths": nil,
+		"custom paths":  {WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"})},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := New(nil, opts...)
+			var seen []string
+			s.Use(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					seen = append(seen, r.URL.Path)
+					next.ServeHTTP(w, r)
+				})
+			})
+			s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+			h := finalize(s)
+			for _, path := range []string{s.healthPaths.Liveness, s.healthPaths.Readiness, "/a"} {
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+				if rec.Code != http.StatusOK {
+					t.Errorf("GET %s: status %d", path, rec.Code)
+				}
+			}
+			if strings.Join(seen, ",") != "/a" {
+				t.Errorf("middleware saw %v, want only /a", seen)
+			}
+		})
 	}
 }
 

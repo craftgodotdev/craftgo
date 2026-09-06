@@ -107,9 +107,6 @@ const (
 	// (an invalid spec) and the binder reads the same value into both.
 	CodeDuplicateWireName = "binding/duplicate-wire-name"
 
-	// CodePackageMismatch fires when files disagree on the `package`
-	// name.
-	CodePackageMismatch = "decl/package-mismatch"
 	// CodeDuplicateDecl fires when two top-level declarations share a
 	// name across the merged package.
 	CodeDuplicateDecl = "decl/duplicate"
@@ -261,9 +258,6 @@ const (
 	// resolver uses folder-merge imports and rejects qualified names.
 	CodeQualifiedRef = "ref/qualified"
 
-	// CodeMixinUnresolved fires when a mixin reference does not name
-	// a type declared in the package.
-	CodeMixinUnresolved = "mixin/unresolved"
 	// CodeMixinNonType fires when a mixin reference resolves to a
 	// non-type entity (enum, error, scalar, middleware).
 	CodeMixinNonType = "mixin/non-type"
@@ -296,7 +290,9 @@ const (
 	// gen normalises these so this is a warning, not an error.
 	CodePathBaseFormat = "path/base-format"
 	// CodePathCollision fires when two methods (across any service)
-	// resolve to the same VERB + final-path tuple.
+	// resolve to the same VERB + final-path tuple, or to patterns that
+	// overlap with neither more specific - either is a pair net/http's
+	// ServeMux refuses to register.
 	CodePathCollision = "path/collision"
 	// CodeDuplicateOperation fires when two methods resolve to the same
 	// OpenAPI operationId - auto-prefixing removes same-method-name

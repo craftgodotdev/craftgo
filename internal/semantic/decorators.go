@@ -167,8 +167,7 @@ func (k ArgKind) String() string {
 
 // ArgsRule captures the positional argument shape of a decorator. Named
 // arguments (`name: value`), nested decorators, and object literals are
-// validated by per-decorator hooks in [analyzer.checkArgsCustom] and do
-// not appear here.
+// outside its scope.
 type ArgsRule struct {
 	// Min is the minimum number of positional arguments. 0 allows the
 	// no-args form (`@deprecated`).
@@ -288,13 +287,17 @@ type Spec struct {
 	// than a duplicate. The duplicate-decorator check reads this so the rule
 	// lives ONCE here instead of a separate hardcoded list that drifts.
 	Repeatable bool
+	// Metadata marks a decorator that only documents its target (`@doc`,
+	// `@deprecated`, `@example`) and never shapes the wire or the
+	// generated code. Every other field decorator contradicts
+	// `@sensitive`, whose field never crosses the wire.
+	Metadata bool
 }
 
 // formatValues lists the named string formats accepted by `@format` on a
-// field or scalar. The catalogue lives in [strfmt] (a leaf both this
-// analyser and codegen read) so the legal-name set and the validator set
-// cannot drift.
-var formatValues = strfmt.Names
+// field or scalar: the [strfmt] catalogue codegen emits the checks from,
+// so the legal-name set and the validator set cannot drift.
+var formatValues = strfmt.Names()
 
 // Registry is the closed set of decorators the framework recognises. A
 // `@name` not present here is reported as `decorator/unknown` - there is
@@ -306,22 +309,25 @@ var formatValues = strfmt.Names
 var Registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
-		Name:   "doc",
-		Levels: LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlErrorField,
-		Doc:    "Free-form documentation surfaced in OpenAPI and IDE hover.",
-		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
+		Name:     "doc",
+		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlErrorField,
+		Doc:      "Free-form documentation surfaced in OpenAPI and IDE hover.",
+		Args:     ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
+		Metadata: true,
 	},
 	"deprecated": {
-		Name:   "deprecated",
-		Levels: LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlErrorField,
-		Doc:    "Marks the construct as deprecated; OpenAPI emits the deprecated flag.",
-		Args:   ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}},
+		Name:     "deprecated",
+		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlErrorField,
+		Doc:      "Marks the construct as deprecated; OpenAPI emits the deprecated flag.",
+		Args:     ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}},
+		Metadata: true,
 	},
 	"example": {
-		Name:   "example",
-		Levels: LvlField | LvlErrorField,
-		Doc:    "Example value rendered in the OpenAPI schema for this field. Argument is a literal (string / int / float / bool / null) or an array of those. Object examples are not accepted - a struct example is composed from each field's own @example; document a free-form any/map field's shape with @doc.",
-		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
+		Name:     "example",
+		Levels:   LvlField | LvlErrorField,
+		Doc:      "Example value rendered in the OpenAPI schema for this field. Argument is a literal (string / int / float / bool / null) or an array of those. Object examples are not accepted - a struct example is composed from each field's own @example; document a free-form any/map field's shape with @doc.",
+		Args:     ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
+		Metadata: true,
 	},
 	// ---- OpenAPI file-header metadata ----
 	// Per ast.File comment, file-level decorators carry top-of-file
@@ -576,45 +582,4 @@ var Registry = map[string]Spec{
 func Lookup(name string) (Spec, bool) {
 	s, ok := Registry[name]
 	return s, ok
-}
-
-// sensitiveConflicts lists every decorator whose semantics contradict
-// `@sensitive`. Validators are pointless because the field never
-// crosses the wire (nothing to validate, nothing to constrain).
-// Bindings (`@path`, `@query`, `@header`, `@cookie`, `@form`, `@body`)
-// contradict the "server-internal only" intent. `@nullable` and
-// `@default` shape wire behaviour that can't apply.
-//
-// Lives next to [Registry] because it's per-decorator metadata; the
-// check that consumes it lives in semantic.go alongside the other
-// small horizontal decorator checks.
-var sensitiveConflicts = map[string]bool{
-	"length":            true,
-	"minLength":         true,
-	"maxLength":         true,
-	"pattern":           true,
-	"format":            true,
-	"gt":                true,
-	"gte":               true,
-	"lt":                true,
-	"lte":               true,
-	"range":             true,
-	"positive":          true,
-	"negative":          true,
-	"multipleOf":        true,
-	"minItems":          true,
-	"maxItems":          true,
-	"uniqueItems":       true,
-	"maxSize":           true,
-	"mimeTypes":         true,
-	"requiresOneOf":     true,
-	"mutuallyExclusive": true,
-	"nullable":          true,
-	"default":           true,
-	"path":              true,
-	"query":             true,
-	"header":            true,
-	"cookie":            true,
-	"form":              true,
-	"body":              true,
 }

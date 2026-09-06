@@ -125,14 +125,10 @@ func activeParamIndex(view snapshotView, pos protocol.Position, max int) int {
 	depth := 0
 	for i := idx - 1; i >= 0; i-- {
 		t := view.tokens[i]
-		switch t.Kind {
-		case 0:
-			// reserved zero kind - skip defensively
-		}
-		switch {
-		case t.Text == ")":
+		switch t.Text {
+		case ")":
 			depth++
-		case t.Text == "(":
+		case "(":
 			if depth > 0 {
 				depth--
 				continue
@@ -141,7 +137,7 @@ func activeParamIndex(view snapshotView, pos protocol.Position, max int) int {
 				return max - 1
 			}
 			return commas
-		case t.Text == ",":
+		case ",":
 			if depth == 0 {
 				commas++
 			}

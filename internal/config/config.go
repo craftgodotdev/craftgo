@@ -70,14 +70,18 @@ type Output struct {
 	Config string `yaml:"config"`
 	// FileCase selects the naming convention for GENERATED file and
 	// directory names derived from DSL identifiers - the per-method
-	// handler/service files and the per-service directory. `kebab`
-	// (default) yields `create-user.go` / `user-service/`, `snake`
-	// yields `create_user.go` / `user_service/`, `camel` yields
+	// handler/service files and the per-service directory. `snake`
+	// (default) yields `create_user.go` / `user_service/`, `kebab`
+	// yields `create-user.go` / `user-service/`, `camel` yields
 	// `createUser.go` / `userService/`. It affects on-disk names only:
 	// URL routes stay kebab-case, and Go package names / identifiers
-	// are unchanged. Defaults to `kebab`.
+	// are unchanged.
 	FileCase string `yaml:"fileCase"`
 }
+
+// RuntimeDisabled reports whether the project opted out of the generated
+// runtime layer (main.go, config, svccontext) with `output.main: "-"`.
+func (o Output) RuntimeDisabled() bool { return o.Main == "-" }
 
 // Supported values for [Output.FileCase]. They name the case used for
 // generated file and directory names (not URLs or Go identifiers).
@@ -85,6 +89,8 @@ const (
 	FileCaseKebab = "kebab"
 	FileCaseSnake = "snake"
 	FileCaseCamel = "camel"
+	// DefaultFileCase applies when the manifest leaves fileCase unset.
+	DefaultFileCase = FileCaseSnake
 )
 
 // OpenAPI carries metadata that surfaces in the generated specification's
@@ -190,8 +196,7 @@ func IsDesignFile(path string) bool {
 // explicit folder via [FindAt].
 //
 // On success it returns the loaded [*Config], the absolute path of the
-// project root (the parent of the design folder, kept for backwards
-// compatibility with the existing positional-arg flow), and the
+// project root (the parent of the design folder), and the
 // absolute path of the design folder itself. Every `.craftgo` source
 // file lives in the design folder or its descendants.
 func Find(start string) (*Config, string, string, error) {
@@ -237,7 +242,7 @@ func Find(start string) (*Config, string, string, error) {
 
 // FindAt loads the manifest at `<designFolder>/craftgo.design.yaml` and
 // returns it alongside the resolved project root. When `projectRoot`
-// is empty the parent of `designFolder` is used (legacy convention);
+// is empty the parent of `designFolder` is used;
 // pass an explicit value (typically the current working directory)
 // when the design folder lives outside the project tree - the
 // monorepo case where contracts/ and services/ are siblings.
@@ -366,7 +371,7 @@ func (c *Config) applyDefaults() {
 		c.Output.Config = "./config"
 	}
 	if c.Output.FileCase == "" {
-		c.Output.FileCase = FileCaseSnake
+		c.Output.FileCase = DefaultFileCase
 	}
 }
 

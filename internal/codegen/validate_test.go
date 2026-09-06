@@ -18,7 +18,7 @@ func runValidateGen(t *testing.T, src string) string {
 	t.Helper()
 	pkg := analyze(t, src)
 	dir := t.TempDir()
-	if err := GenerateValidators(pkg, dir); err != nil {
+	if err := GenerateValidators(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
@@ -227,7 +227,7 @@ func tryRunValidateGen(t *testing.T, src string) string {
 		return ""
 	}
 	dir := t.TempDir()
-	if err := GenerateValidators(pkg, dir); err != nil {
+	if err := GenerateValidators(pkg, dir, nil); err != nil {
 		return ""
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
@@ -459,7 +459,7 @@ type Product {
 	}
 	dir := t.TempDir()
 	projTypes := BuildTypeTable(proj, "app")
-	if err := GenerateValidatorsWith(appPkg, dir, nil, nil, projTypes); err != nil {
+	if err := GenerateValidators(appPkg, dir, &ProjectResolver{Types: projTypes}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
@@ -531,7 +531,7 @@ type Pick {
 	appPkg := proj.Packages["app"]
 	cross := CrossPkg{"shared": "github.com/test/m/internal/types/shared"}
 	dir := t.TempDir()
-	if err := GenerateValidatorsAll(appPkg, dir, cross, nil, nil, BuildEnumTable(proj, "app")); err != nil {
+	if err := GenerateValidators(appPkg, dir, &ProjectResolver{Enums: BuildEnumTable(proj, "app"), CrossPkg: cross}); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
@@ -591,7 +591,7 @@ type Bag { byEmail map<shared.Email, string> }`,
 	}
 	appPkg := proj.Packages["app"]
 	dir := t.TempDir()
-	if err := GenerateValidatorsAll(appPkg, dir, nil, BuildScalarTable(proj, "app"), BuildTypeTable(proj, "app"), BuildEnumTable(proj, "app")); err != nil {
+	if err := GenerateValidators(appPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "app"), Types: BuildTypeTable(proj, "app"), Enums: BuildEnumTable(proj, "app")}); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
@@ -611,7 +611,7 @@ func TestValidateOmitsCallWhenNoTypeTable(t *testing.T) {
 	pkg := analyze(t, `package app
 type Product { id string }`)
 	dir := t.TempDir()
-	if err := GenerateValidators(pkg, dir); err != nil {
+	if err := GenerateValidators(pkg, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
@@ -975,7 +975,7 @@ type U { names shared.Name[] @uniqueItems }`,
 	}
 	cross := CrossPkg{"shared": "github.com/test/m/internal/types/shared"}
 	dir := t.TempDir()
-	if err := GenerateValidatorsAll(proj.Packages["app"], dir, cross, BuildScalarTable(proj, "app"), BuildTypeTable(proj, "app"), nil); err != nil {
+	if err := GenerateValidators(proj.Packages["app"], dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "app"), Types: BuildTypeTable(proj, "app"), CrossPkg: cross}); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
@@ -996,4 +996,100 @@ scalar Email string @format(email)
 type Page<T> { items T[] }
 type EmailList { p Page<Email> }`)
 	mustContainAll(t, src, "v.P.Validate()", "interface{ Validate() error }")
+}
+
+// A scalar over a nilable primitive can no longer participate in a
+// cross-field group: it lowers to a non-pointer nilable slice, so its
+// runtime presence is emptiness (not a clean `!= nil`), which disagrees
+// with the group's OpenAPI present-and-non-null - reject like raw bytes.
+func TestScalarOverBytesRejectedInCrossFieldGroup(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+scalar Blob bytes
+@requiresOneOf(a, b)
+type Pick {
+  a Blob?
+  b string?
+}`,
+	})
+	_, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) == 0 {
+		t.Fatal("expected a diagnostic rejecting the scalar-over-bytes cross-field member")
+	}
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "present/absent") || strings.Contains(d.Msg, "always treated as present") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a present/absent rejection, got: %v", diags)
+	}
+}
+
+// A scalar-over-VALUE primitive (int) stays pointer-backed when
+// optional, so it remains a clean cross-field member - the reject above
+// must not over-fire.
+func TestScalarOverValueCrossFieldClean(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+scalar Cents int
+@requiresOneOf(a, b)
+type Pick {
+  a Cents?
+  b string?
+}`,
+	})
+	_, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "present/absent") {
+			t.Fatalf("scalar-over-int cross-field member wrongly rejected: %v", d)
+		}
+	}
+}
+
+// A required any[] field must NOT get a runtime nil presence check (matching
+// every other required nilable slice).
+func TestRequiredAnyArrayNoPresenceCheck(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+type Body { reqStrArr string[]  reqAnyArr any[] }
+type Resp { ok bool }
+service S { post Op /x { request Body  response Resp } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	dir := t.TempDir()
+	mPkg := proj.Packages["m"]
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
+	if strings.Contains(string(out), "ReqAnyArr == nil") {
+		t.Errorf("any[] field wrongly got a nil presence check:\n%s", out)
+	}
+}
+
+// A `file` member of a cross-field group is presence-checked as a pointer:
+// its Go type is *multipart.FileHeader, so nil is the absent state.
+func TestCrossFieldFileMemberPresenceIsNilCheck(t *testing.T) {
+	pkg := analyze(t, `package design
+@requiresOneOf(doc, link)
+type Attach {
+  doc  file?
+  link string?
+}`)
+	dir := t.TempDir()
+	if err := GenerateValidators(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "v.Doc == nil") {
+		t.Fatalf("expected a nil presence check for the file member, got:\n%s", out)
+	}
 }

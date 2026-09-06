@@ -34,11 +34,11 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 	doc.Components.Schemas[name] = ref
 }
 
-// GenerateOpenAPI builds an OpenAPI 3.1 document for pkg and writes it as
+// writeOpenAPI builds an OpenAPI 3.1 document for pkg and writes it as
 // YAML to the path configured by `output.openapi`. Each service contributes
 // one set of operations under its `@prefix`; every concrete TypeDecl
 // becomes a schema in `components.schemas`.
-func GenerateOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
+func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
@@ -84,9 +84,9 @@ func ValidateProjectOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	return err
 }
 
-// GenerateProjectOpenAPI is the multi-package counterpart of
-// [GenerateOpenAPI]: it merges every package's types/enums/errors/
-// scalars/services into a single OpenAPI 3.1 document. When two
+// GenerateProjectOpenAPI merges every package's types/enums/errors/
+// scalars/services into a single OpenAPI 3.1 document written to
+// `output.openapi`. When two
 // packages declare a same-named entity, the second-and-subsequent
 // occurrences get renamed to `<PascalPkg><Name>` (e.g. two packages
 // each declaring `User` produce `User` for the first-seen and
@@ -105,7 +105,7 @@ func GenerateProjectOpenAPI(proj *semantic.Project, cfg *config.Config, projectR
 		// somewhere so use the manifest or a sensible default.
 		merged.Name = "design"
 	}
-	return GenerateOpenAPI(merged, cfg, projectRoot)
+	return writeOpenAPI(merged, cfg, projectRoot)
 }
 
 // mergeCollisionError formats the cross-package merge-collision diagnostic
@@ -132,6 +132,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	// instantiations encountered anywhere (type fields, method request/
 	// response, error bodies) deduplicate into one component each.
 	registry := newGenericRegistry()
+	registry.resolver = resolverFor(pkg, nil)
 	// Pre-pass: walk all TypeDecls / ErrorDecls / methods to seed the
 	// registry with every (decl, args) tuple. Emission then proceeds
 	// with the full set already known, which keeps component ordering
@@ -152,11 +153,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 		return doc, fmt.Errorf("duplicate component schema name(s): %s - a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(dedupSorted(names.dups), ", "))
 	}
 	if len(registry.dups) > 0 {
-		clashes := make([]string, 0, len(registry.dups))
-		for name := range registry.dups {
-			clashes = append(clashes, name)
-		}
-		sort.Strings(clashes)
+		clashes := sortedKeys(registry.dups)
 		return doc, fmt.Errorf("two structurally distinct generic instances map to the same component name(s): %s - e.g. an array argument and a struct of that array's element name collide. Rename the struct (or wrap the array) so each instantiation gets a distinct schema", strings.Join(clashes, ", "))
 	}
 	return doc, nil

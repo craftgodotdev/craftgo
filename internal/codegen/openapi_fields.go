@@ -11,27 +11,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// maxExactInt is 2^53 - the largest magnitude an int64 keeps EXACTLY when
-// converted to the float64 that JSON numbers (and openapi3.Schema.Min /
-// Max) carry. Beyond it, float64(int64) rounds, so a bound like
-// `@gte(9007199254740993)` or `@gte(math.MaxInt64)` would advertise a
-// value the runtime validator (which keeps the exact int64) never agrees
-// with - at the extreme an unsatisfiable spec.
-const maxExactInt = int64(1) << 53
-
-// openapiFormatName maps a craftgo @format name to the format keyword
-// OpenAPI / JSON Schema registers for it. craftgo spells the date-time
-// format `datetime`; the standard keyword is `date-time`, so emitting the
-// DSL spelling verbatim makes generators and validators treat it as an
-// unknown custom format. Names without a differing standard keyword pass
-// through unchanged.
-func openapiFormatName(name string) string {
-	if name == "datetime" {
-		return "date-time"
-	}
-	return name
-}
-
 // rawIfBigInt returns the exact decimal text of an integer-literal bound
 // whose magnitude exceeds float64's exact range, as a json.Number to be
 // emitted verbatim through Extensions. For in-range or non-integer args it
@@ -177,38 +156,6 @@ func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
 	return s
 }
 
-// applyFieldConstraints stamps every constraint family a field or scalar
-// schema can carry - numeric bounds, string length, pattern/format, and
-// array/map item counts - onto s. Each helper acts only on the decorators
-// actually present, and the semantic layer guarantees those are
-// type-appropriate, so calling all four is safe everywhere and "which
-// constraints a schema gets" is decided in ONE place (a new emit site can't
-// forget a family). The map-KEY propertyNames builder is the deliberate
-// exception - it omits numeric bounds no SDK generator honours - so it does
-// NOT route through here.
-func applyFieldConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
-	applyNumericConstraints(ds, s)
-	applyStringLengthConstraints(ds, s)
-	applyPatternFormat(ds, s)
-	applyArrayConstraints(ds, s)
-}
-
-// hasFieldConstraintDecorator reports whether ds carries any decorator
-// that maps to an OpenAPI validation keyword (the narrowing constraints).
-func hasFieldConstraintDecorator(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "gte", "gt", "lte", "lt", "range", "positive", "negative", "multipleOf",
-			"minLength", "maxLength", "length", "pattern", "format":
-			return true
-		}
-	}
-	return false
-}
-
 // isNullableRefWrapper recognises the `anyOf: [{$ref}, {type: null}]`
 // shape that schemaForTypeRef emits for an optional named-type (or
 // optional generic-instance) field - the OpenAPI 3.1 idiom for "ref OR
@@ -230,299 +177,6 @@ func isNullTypeSchema(s *openapi3.Schema) bool {
 	return s != nil && s.Type != nil && s.Type.Is("null")
 }
 
-// applyNumericConstraints translates the numeric comparison decorators
-// onto an OpenAPI schema using the OpenAPI 3.1 (JSON Schema 2020-12)
-// keyword shapes:
-//
-//	@gte(N) → minimum: N
-//	@gt(N)  → exclusiveMinimum: N        (a NUMBER, not a boolean)
-//	@lte(N) → maximum: N
-//	@lt(N)  → exclusiveMaximum: N        (a NUMBER, not a boolean)
-//	@range(lo, hi) → minimum: lo, maximum: hi (both inclusive)
-//	@multipleOf(N) → multipleOf: N
-//	@positive → exclusiveMinimum: 0
-//	@negative → exclusiveMaximum: 0
-//
-// In 3.1 the exclusive bounds ARE the numeric limit (they replace the
-// 3.0 `minimum: N + exclusiveMinimum: true` pair). kin-openapi still
-// models `ExclusiveMin/Max` as the 3.0 booleans, so the numeric form is
-// emitted through Extensions, which marshal as raw schema keywords. A
-// 3.1 validator / client generator (hey-api, openapi-typescript,
-// openapi-generator >=7) rejects the boolean form with
-// "'exclusiveMinimum' value must be a number". craftgo never runs
-// kin-openapi's own (3.0-era) validator on the emitted doc, so its
-// lagging support for the numeric form does not apply.
-//
-// Without this wiring, client generators see the field as an unbounded
-// `number` and produce types that allow values the server rejects at
-// validate time.
-func applyNumericConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
-	if s == nil {
-		return
-	}
-	ext := func(key string, v interface{}) {
-		if s.Extensions == nil {
-			s.Extensions = make(map[string]interface{})
-		}
-		s.Extensions[key] = v
-	}
-	// emitBound writes an inclusive minimum / maximum: a big integer literal
-	// rides through Extensions as a raw json.Number (exact), everything else
-	// uses the native float64 field so existing specs are unchanged.
-	emitBound := func(key string, d *ast.Decorator, i int, native func(float64)) {
-		if r, ok := rawIfBigInt(d, i); ok {
-			ext(key, r)
-			return
-		}
-		if v, ok := numericArgValue(d, i); ok {
-			native(v)
-		}
-	}
-	// curExtNumber reads the current numeric value of an Extensions key as a
-	// float64, handling both the float64 and json.Number representations.
-	curExtNumber := func(key string) (float64, bool) {
-		if s.Extensions == nil {
-			return 0, false
-		}
-		switch v := s.Extensions[key].(type) {
-		case float64:
-			return v, true
-		case json.Number:
-			if f, err := v.Float64(); err == nil {
-				return f, true
-			}
-		}
-		return 0, false
-	}
-	// setExclusive intersects an exclusive bound: the runtime runs EVERY
-	// decorator, so the tightest wins - the LARGEST exclusiveMinimum and the
-	// SMALLEST exclusiveMaximum. Without this, stacking `@gt(5) @positive`
-	// (or `@lt(-5) @negative`) would advertise the LOOSER last-writer bound
-	// (exclusiveMinimum 0) while the validator enforces the tighter one.
-	setExclusive := func(key string, v float64, raw interface{}) {
-		if cur, ok := curExtNumber(key); ok {
-			if key == "exclusiveMinimum" && v <= cur {
-				return
-			}
-			if key == "exclusiveMaximum" && v >= cur {
-				return
-			}
-		}
-		if raw != nil {
-			ext(key, raw)
-		} else {
-			ext(key, v)
-		}
-	}
-	// emitExclusive writes an exclusive bound, always through Extensions as a
-	// number (kin-openapi still models ExclusiveMin/Max as the 3.0 booleans);
-	// big integers ride as a raw json.Number, smaller values as a float64.
-	emitExclusive := func(key string, d *ast.Decorator, i int) {
-		if r, ok := rawIfBigInt(d, i); ok {
-			if f, err := r.Float64(); err == nil {
-				setExclusive(key, f, r)
-			} else {
-				ext(key, r)
-			}
-			return
-		}
-		if v, ok := numericArgValue(d, i); ok {
-			setExclusive(key, v, nil)
-		}
-	}
-	// Intersect rather than overwrite: the runtime validator runs EVERY
-	// decorator (tightest bound wins), so stacking `@gte(10) @range(0,100)`
-	// enforces min 10 at runtime - the spec must advertise the same, not
-	// the last writer's looser 0.
-	setMin := func(v float64) {
-		if s.Min == nil || v > *s.Min {
-			s.Min = &v
-		}
-	}
-	setMax := func(v float64) {
-		if s.Max == nil || v < *s.Max {
-			s.Max = &v
-		}
-	}
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "gte":
-			emitBound("minimum", d, 0, setMin)
-		case "gt":
-			emitExclusive("exclusiveMinimum", d, 0)
-		case "lte":
-			emitBound("maximum", d, 0, setMax)
-		case "lt":
-			emitExclusive("exclusiveMaximum", d, 0)
-		case "range":
-			emitBound("minimum", d, 0, setMin)
-			emitBound("maximum", d, 1, setMax)
-		case "positive":
-			setExclusive("exclusiveMinimum", float64(0), nil)
-		case "negative":
-			setExclusive("exclusiveMaximum", float64(0), nil)
-		case "multipleOf":
-			if r, ok := rawIfBigInt(d, 0); ok {
-				ext("multipleOf", r)
-			} else if v, ok := numericArgValue(d, 0); ok && v != 0 {
-				s.MultipleOf = &v
-			}
-		}
-	}
-}
-
-// applyStringLengthConstraints maps `@length`/`@minLength`/`@maxLength`
-// to the OpenAPI string keywords. Skipped on non-string schemas: caller
-// has the field context, but emitting these on, say, a numeric schema
-// would still validate (kin-openapi tolerates) - the guard is cheap.
-func applyStringLengthConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
-	if s == nil {
-		return
-	}
-	// `bytes` renders as `{type: string, format: byte}` (a base64 string).
-	// `minLength` / `maxLength` on that schema constrain the BASE64-encoded
-	// character count, whereas the runtime validator (and the author's
-	// intent) count RAW bytes - so emitting the keyword here would advertise
-	// a different bound than the server enforces. JSON Schema has no
-	// decoded-byte-length keyword, so the constraint is left to the runtime
-	// rather than advertised incorrectly; the byte count rides the field's
-	// `@doc` description if the author wants it documented.
-	if s.Format == "byte" {
-		return
-	}
-	// Intersect rather than overwrite (tightest wins), matching the runtime
-	// which runs every decorator: `@length(5) @minLength(3) @maxLength(10)`
-	// enforces exactly 5, so the spec must too - not the last writer's 3..10.
-	setMinLen := func(v uint64) {
-		if v > s.MinLength {
-			s.MinLength = v
-		}
-	}
-	setMaxLen := func(v uint64) {
-		if s.MaxLength == nil || v < *s.MaxLength {
-			s.MaxLength = &v
-		}
-	}
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "minLength":
-			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
-				setMinLen(uint64(v))
-			}
-		case "maxLength":
-			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
-				setMaxLen(uint64(v))
-			}
-		case "length":
-			// `@length(N)` is exact length - fold the single argument into
-			// both bounds (min == max == N), matching the runtime check and
-			// the map-key path; `@length(min, max)` is a range.
-			lo, ok := numericArgValue(d, 0)
-			if !ok || lo < 0 {
-				break
-			}
-			hi := lo
-			if v, ok := numericArgValue(d, 1); ok && v >= 0 {
-				hi = v
-			}
-			setMinLen(uint64(lo))
-			setMaxLen(uint64(hi))
-		}
-	}
-}
-
-// applyArrayConstraints maps `@minItems` / `@maxItems` / `@uniqueItems`
-// to the OpenAPI array keywords. No-op on non-array schemas - the
-// caller's field context disambiguates but the schema itself doesn't
-// reject these keywords on non-array shapes, so guarding here keeps
-// the spec clean.
-func applyArrayConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
-	if s == nil {
-		return
-	}
-	// Array fields count elements via minItems/maxItems; map (object) fields
-	// count entries via minProperties/maxProperties - the same decorators, but
-	// a different JSON-Schema keyword per underlying shape. The count keyword
-	// is emitted ONLY on a schema that IS an array or an object: a composition
-	// wrapper (the `anyOf:[{$ref}, {null}]` of a nullable named-type field) is
-	// neither, so it gets nothing - emitting minProperties there advertises an
-	// unenforced, unsatisfiable constraint. Includes, not Is, because an
-	// optional array is `type: [array, "null"]`. @uniqueItems is array-only.
-	isArray := s.Type != nil && s.Type.Includes("array")
-	isObject := s.Type != nil && s.Type.Includes("object")
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "minItems":
-			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
-				u := uint64(v)
-				switch {
-				case isArray:
-					s.MinItems = u
-				case isObject:
-					s.MinProps = u
-				}
-			}
-		case "maxItems":
-			if v, ok := numericArgValue(d, 0); ok && v >= 0 {
-				u := uint64(v)
-				switch {
-				case isArray:
-					s.MaxItems = &u
-				case isObject:
-					s.MaxProps = &u
-				}
-			}
-		case "uniqueItems":
-			if isArray {
-				s.UniqueItems = true
-			}
-		}
-	}
-}
-
-// applyPatternFormat maps `@pattern("...")` and `@format(name)` to
-// the OpenAPI keywords of the same name. Must be called for every
-// field-level schema; scalar component schemas have their own emit
-// path that sets these directly.
-func applyPatternFormat(ds []*ast.Decorator, s *openapi3.Schema) {
-	if s == nil {
-		return
-	}
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "pattern":
-			if len(d.Args) == 1 {
-				if sl, ok := d.Args[0].Value.(*ast.StringLit); ok {
-					s.Pattern = sl.Value
-				}
-			}
-		case "format":
-			if len(d.Args) == 1 {
-				switch v := d.Args[0].Value.(type) {
-				case *ast.StringLit:
-					s.Format = openapiFormatName(v.Value)
-				case *ast.IdentExpr:
-					if v.Name != nil {
-						s.Format = openapiFormatName(v.Name.String())
-					}
-				}
-			}
-		}
-	}
-}
-
 // numericArgValue pulls the i-th positional argument as a float64.
 // Accepts both IntLit and FloatLit so callers don't have to switch on
 // type. Returns (0, false) for any other kind of literal so the OpenAPI
@@ -536,146 +190,6 @@ func numericArgValue(d *ast.Decorator, i int) (float64, bool) {
 	}
 	return 0, false
 }
-
-// resolveDefaultValue resolves a field's `@default` to a typed value for
-// `openapi3.Schema.Default`. When the field is an enum type and the default
-// is a bare member identifier (`@default(active)`), it returns the member's
-// WIRE value (`= 1` / `= "ACTIVE"`), not the DSL spelling.
-func resolveDefaultValue(f *ast.Field, pkg *semantic.Package) (any, bool) {
-	return resolveDecoratorLiteral(f, pkg, "default")
-}
-
-// resolveDecoratorLiteral resolves the literal value of a value-bearing
-// decorator (`@default` / `@example`) on a field, resolving an enum-member
-// identifier (or an array of them) to its wire value. Shared so @example
-// and @default agree - without it, @example silently drops a bare
-// enum-member ident that @default handles.
-func resolveDecoratorLiteral(f *ast.Field, pkg *semantic.Package, decName string) (any, bool) {
-	if f == nil {
-		return nil, false
-	}
-	for _, d := range f.Decorators {
-		if d.Name != decName || len(d.Args) == 0 {
-			continue
-		}
-		// The enum a member identifier resolves against - for an array
-		// field (`Method[]`) the element type carries the enum name too, so
-		// the same lookup serves both `@default(Card)` and `@default([Card,
-		// Bank])`.
-		enumName := ""
-		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name != nil {
-			enumName = f.Type.Named.Name.String()
-		}
-		switch v := d.Args[0].Value.(type) {
-		case *ast.IdentExpr:
-			if v.Name == nil {
-				return nil, false
-			}
-			if wire, ok := resolveEnumMember(pkg, enumName, v.Name.String()); ok {
-				return wire, true
-			}
-			return v.Name.String(), true
-		case *ast.ArrayLit:
-			// Resolve each element so an array of enum members lands its
-			// wire values (`[Card, Bank]` -> `["card", "bank"]`); without
-			// this the whole array default is dropped, because literalToAny
-			// has no member-ident case and bails on the first one.
-			out := make([]any, 0, len(v.Elements))
-			for _, el := range v.Elements {
-				if id, ok := el.(*ast.IdentExpr); ok && id.Name != nil {
-					if wire, ok := resolveEnumMember(pkg, enumName, id.Name.String()); ok {
-						out = append(out, wire)
-					} else {
-						out = append(out, id.Name.String())
-					}
-					continue
-				}
-				x, ok := literalToAny(el)
-				if !ok {
-					return nil, false
-				}
-				out = append(out, x)
-			}
-			return out, true
-		default:
-			return literalToAny(d.Args[0].Value)
-		}
-	}
-	return nil, false
-}
-
-// resolveEnumMember returns the wire value of enumName's `member` (the
-// `= 1` / `= "ACTIVE"` literal), or ok=false when enumName is not an enum
-// in pkg or has no such member.
-func resolveEnumMember(pkg *semantic.Package, enumName, member string) (any, bool) {
-	if pkg == nil || enumName == "" {
-		return nil, false
-	}
-	ed, ok := pkg.Enums[enumName]
-	if !ok {
-		return nil, false
-	}
-	for _, ev := range ed.EnumValues() {
-		if ev.Name == member {
-			return enumMemberWire(ev), true
-		}
-	}
-	return nil, false
-}
-
-// exampleValue extracts an `@example(v)` argument as a typed Go value
-// suitable for `openapi3.Schema.Example`. Strings, ints, floats, and
-// booleans all round-trip through YAML correctly when assigned to the
-// `any` Example field. Array literals (`@example(["a", "b"])`) become
-// `[]any` so array-typed properties get a sensible YAML rendering.
-// Returns (nil, false) when no example decorator is present so the
-// caller leaves the schema untouched.
-func exampleValue(f *ast.Field, pkg *semantic.Package) (any, bool) {
-	return resolveDecoratorLiteral(f, pkg, "example")
-}
-
-// literalToAny converts an [ast.Expr] literal into the equivalent Go
-// runtime value. Arrays recurse so nested literals (e.g. an array of
-// ints) round-trip without losing element types. Unsupported nodes
-// return (nil, false) and the caller skips emission.
-func literalToAny(e ast.Expr) (any, bool) {
-	switch v := e.(type) {
-	case *ast.StringLit:
-		return v.Value, true
-	case *ast.IntLit:
-		return v.Value, true
-	case *ast.FloatLit:
-		return v.Value, true
-	case *ast.BoolLit:
-		return v.Value, true
-	case *ast.NullLit:
-		return nil, true
-	case *ast.ArrayLit:
-		out := make([]any, 0, len(v.Elements))
-		for _, el := range v.Elements {
-			x, ok := literalToAny(el)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, x)
-		}
-		return out, true
-	}
-	return nil, false
-}
-
-// hasNullableDecorator reports whether `@nullable` appears on the
-// field. The DSL already has `T?` for "optional" (field can be absent);
-// `@nullable` is the orthogonal "value can be null when present" flag,
-// surfaced via OpenAPI's null-type entry so spec consumers know
-// `null` is a valid wire value.
-func hasNullableDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "nullable") }
-
-// hasSensitiveDecorator reports whether ds contains the `@sensitive`
-// marker. Sensitive fields are server-only: they get `json:"-"` in
-// the Go struct (so neither the JSON decoder nor the encoder touches
-// them) and are skipped entirely from the OpenAPI spec.
-func hasSensitiveDecorator(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "sensitive") }
 
 // applyNullable marks a value schema as nullable using the OpenAPI 3.1
 // canonical form: it appends "null" to the schema's `type` list
@@ -713,4 +227,145 @@ func appendDescription(existing, note string) string {
 		return note
 	}
 	return existing + "\n\n" + note
+}
+
+// schemaExt sets a raw schema keyword through Extensions, which marshal as
+// plain keywords - the route for the OpenAPI 3.1 numeric forms kin-openapi
+// still models as 3.0 booleans, and for big-integer literals that must
+// survive as exact json.Number values.
+func schemaExt(s *openapi3.Schema, key string, v interface{}) {
+	if s.Extensions == nil {
+		s.Extensions = make(map[string]interface{})
+	}
+	s.Extensions[key] = v
+}
+
+// curExtNumber reads the current numeric value of an Extensions key as a
+// float64, handling both the float64 and json.Number representations.
+func curExtNumber(s *openapi3.Schema, key string) (float64, bool) {
+	if s.Extensions == nil {
+		return 0, false
+	}
+	switch v := s.Extensions[key].(type) {
+	case float64:
+		return v, true
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+// setMin / setMax intersect an inclusive bound rather than overwrite it:
+// the runtime validator runs EVERY decorator (tightest bound wins), so
+// stacking `@gte(10) @range(0,100)` enforces min 10 at runtime - the spec
+// must advertise the same, not the last writer's looser 0.
+func setMin(s *openapi3.Schema, v float64) {
+	if s.Min == nil || v > *s.Min {
+		s.Min = &v
+	}
+}
+
+func setMax(s *openapi3.Schema, v float64) {
+	if s.Max == nil || v < *s.Max {
+		s.Max = &v
+	}
+}
+
+// emitBound writes an inclusive minimum / maximum: a big integer literal
+// rides through Extensions as a raw json.Number (exact), everything else
+// uses the native float64 field so existing specs are unchanged.
+func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int, native func(*openapi3.Schema, float64)) {
+	if r, ok := rawIfBigInt(d, i); ok {
+		schemaExt(s, key, r)
+		return
+	}
+	if v, ok := numericArgValue(d, i); ok {
+		native(s, v)
+	}
+}
+
+// setExclusive intersects an exclusive bound: the runtime runs EVERY
+// decorator, so the tightest wins - the LARGEST exclusiveMinimum and the
+// SMALLEST exclusiveMaximum. Without this, stacking `@gt(5) @positive`
+// (or `@lt(-5) @negative`) would advertise the LOOSER last-writer bound
+// (exclusiveMinimum 0) while the validator enforces the tighter one.
+// Exclusive bounds always ride through Extensions as numbers (kin-openapi
+// still models ExclusiveMin/Max as the 3.0 booleans).
+func setExclusive(s *openapi3.Schema, key string, v float64, raw interface{}) {
+	if cur, ok := curExtNumber(s, key); ok {
+		if key == "exclusiveMinimum" && v <= cur {
+			return
+		}
+		if key == "exclusiveMaximum" && v >= cur {
+			return
+		}
+	}
+	if raw != nil {
+		schemaExt(s, key, raw)
+	} else {
+		schemaExt(s, key, v)
+	}
+}
+
+// emitExclusive writes an exclusive bound from a decorator argument: big
+// integers ride as a raw json.Number, smaller values as a float64.
+func emitExclusive(s *openapi3.Schema, key string, d *ast.Decorator, i int) {
+	if r, ok := rawIfBigInt(d, i); ok {
+		if f, err := r.Float64(); err == nil {
+			setExclusive(s, key, f, r)
+		} else {
+			schemaExt(s, key, r)
+		}
+		return
+	}
+	if v, ok := numericArgValue(d, i); ok {
+		setExclusive(s, key, v, nil)
+	}
+}
+
+// setMinLen / setMaxLen intersect a string-length bound (tightest wins),
+// matching the runtime which runs every decorator: `@length(5)
+// @minLength(3) @maxLength(10)` enforces exactly 5, so the spec must too.
+func setMinLen(s *openapi3.Schema, v uint64) {
+	if v > s.MinLength {
+		s.MinLength = v
+	}
+}
+
+func setMaxLen(s *openapi3.Schema, v uint64) {
+	if s.MaxLength == nil || v < *s.MaxLength {
+		s.MaxLength = &v
+	}
+}
+
+// lengthKeywordsApply reports whether string-length keywords belong on s.
+// `bytes` renders as `{type: string, format: byte}` (a base64 string):
+// `minLength` / `maxLength` there would constrain the BASE64-encoded
+// character count, whereas the runtime validator (and the author's intent)
+// count RAW bytes - so the keyword would advertise a different bound than
+// the server enforces. JSON Schema has no decoded-byte-length keyword, so
+// the constraint is left to the runtime rather than advertised incorrectly.
+func lengthKeywordsApply(s *openapi3.Schema) bool { return s.Format != "byte" }
+
+// itemCountKeyword stores an item-count bound on the keyword matching the
+// schema's shape: array fields count elements via minItems / maxItems, map
+// (object) fields count entries via minProperties / maxProperties. A
+// composition wrapper (the `anyOf:[{$ref}, {null}]` of a nullable
+// named-type field) is neither, so it gets nothing - emitting
+// minProperties there advertises an unenforced, unsatisfiable constraint.
+// Includes, not Is, because an optional array is `type: [array, "null"]`.
+func itemCountKeyword(s *openapi3.Schema, d *ast.Decorator, array func(uint64), object func(uint64)) {
+	v, ok := numericArgValue(d, 0)
+	if !ok || v < 0 {
+		return
+	}
+	u := uint64(v)
+	switch {
+	case s.Type != nil && s.Type.Includes("array"):
+		array(u)
+	case s.Type != nil && s.Type.Includes("object"):
+		object(u)
+	}
 }

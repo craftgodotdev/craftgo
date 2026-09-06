@@ -1,11 +1,13 @@
 package semantic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // A request type can embed a mixin from a SIBLING package whose fields
-// supply the @path binding. The per-package pass can't expand that mixin,
-// so the project-level check ([refResolver.checkProjectPathParams]) owns
-// the verdict - matching the codegen binder's cross-package flattening.
+// supply the @path binding, matching the codegen binder's cross-package
+// flattening.
 
 // Cross-package mixin supplies the @path field → the {id} segment binds,
 // no false "no matching field" error.
@@ -348,10 +350,7 @@ service S { post C /c { request Pick  response Resp } }`,
 }
 
 // A cross-package qualified struct (or other non-wire type) bound with
-// @header on an ERROR body field must be rejected - the per-package pass
-// defers qualified refs, and checkProjectBindings once iterated only
-// pkg.Types, so the error field slipped past both passes into non-compiling
-// `string(e.Detail)` Go. The project binding check now sweeps pkg.Errors too.
+// @header on an ERROR body field is rejected like one on a type body.
 func TestProjectErrorFieldCrossPkgStructHeaderRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -535,5 +534,54 @@ service BetaService { get Other /entries { response BResp } }`,
 	}
 	if n != 1 {
 		t.Errorf("same-package duplicate should report exactly once (per-package pass), got %d: %v", n, codes(diags))
+	}
+}
+
+// Two routes of one verb that overlap with neither more specific are a pair
+// net/http refuses to register; the analyser reports the later declaration
+// once, naming both methods.
+func TestProjectPathOverlapReported(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"m/x.craftgo": `package m
+type IDReq { id string @path }
+type StatusReq { status string @path }
+type Resp { ok bool }
+@prefix("/orders")
+service OrderService {
+    get Track /{id}/track { request IDReq  response Resp }
+    get Filter /by-status/{status} { request StatusReq  response Resp }
+}`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root, BasePath: "/api"})
+	if len(diags) != 1 {
+		t.Fatalf("want exactly one diagnostic, got %v", diags)
+	}
+	d := diags[0]
+	if d.Code != CodePathCollision {
+		t.Fatalf("code = %s, want %s", d.Code, CodePathCollision)
+	}
+	for _, want := range []string{"Filter", "Track", "overlaps", "/api/orders/{id}/track"} {
+		if !strings.Contains(d.Msg, want) {
+			t.Errorf("message should mention %q: %s", want, d.Msg)
+		}
+	}
+}
+
+// The same routes disambiguated (the filter under a literal sub-path) are
+// registrable side by side, so nothing is reported.
+func TestProjectPathOverlapClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"m/x.craftgo": `package m
+type IDReq { id string @path }
+type Resp { ok bool }
+@prefix("/orders")
+service OrderService {
+    get Track /{id}/track { request IDReq  response Resp }
+    get Filter /by-status { response Resp }
+    get Get /{id} { request IDReq  response Resp }
+}`,
+	})
+	if _, diags := AnalyzeProject(files, Options{DesignRoot: root, BasePath: "/api"}); len(diags) != 0 {
+		t.Errorf("clean routes should not conflict, got %v", diags)
 	}
 }

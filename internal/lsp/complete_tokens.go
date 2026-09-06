@@ -7,6 +7,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// identBefore returns the identifier token immediately before t (skipping
+// only whitespace, which the tokenizer has already stripped). Returns ok
+// = false when the previous token is not an identifier.
 func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
 	idx := -1
 	for i := range view.tokens {
@@ -24,13 +27,6 @@ func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
 	}
 	return prev.Text, true
 }
-
-// importPathCompletions walks the design root and returns one item per
-// subdirectory that contains at least one `.craftgo` file. Labels are
-// the directory path relative to the design root, matching the literal
-// the user is expected to type inside `import "…"` (e.g. `shared`,
-// `v1/api`, `auth/oauth`). The current file's own directory is
-// filtered out so users do not import themselves.
 
 var durationSuffixes = []string{"ns", "us", "µs", "ms", "s", "m", "h"}
 var sizeSuffixes = []string{"B", "KB", "MB", "GB"}
@@ -104,6 +100,17 @@ func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 	return nil
 }
 
+// isExtendServiceContext reports whether the cursor sits at the
+// identifier slot of an `extend service <cursor>` clause. The check
+// walks tokens backwards: if the two most recent non-cursor tokens
+// (skipping any partial ident the user is typing) are `service` then
+// `extend`, we are at the slot.
+//
+// Boundary handling: when the cursor sits past the last real token
+// (tokenAt returned -1 because EOF is the only thing left),
+// `idx == len(view.tokens)` and we must NOT index into the slice.
+// Likewise the partial-ident skip needs to verify `idx` is in range
+// before reading `view.tokens[idx]`.
 func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx < 0 {
@@ -121,13 +128,6 @@ func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	prev2 := view.tokens[idx-2]
 	return prev.Kind == lexer.KwService && prev2.Kind == lexer.KwExtend
 }
-
-// serviceNameCompletions enumerates primary `service Name`
-// declarations that are valid extension targets from the cursor's
-// current file. Extends resolve per-package, so cross-package
-// services would always trip `service/extend-orphan` - including
-// them in the completion list would mislead the user. The function
-// therefore filters by the current file's package name.
 
 // keywordCompletions surfaces every reserved keyword as a completion
 // item. The high-traffic declaration keywords (`type`, `service`,

@@ -1,9 +1,14 @@
 package codegen
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // TestResolveRequestFields pins the method-context auto-binding the IR
@@ -32,7 +37,7 @@ service S {
 	}
 	bind := func(m *ast.Method) map[string]Binding {
 		out := map[string]Binding{}
-		for _, rf := range resolveRequestFields(m, pkg, nil) {
+		for _, rf := range resolveRequestFields(m, pkg, resolverFor(pkg, nil)) {
 			out[rf.DSLName] = rf.Binding
 		}
 		return out
@@ -78,7 +83,7 @@ type Req {
 	if td == nil {
 		t.Fatal("Req not found")
 	}
-	got := resolveFields(td, pkg, nil)
+	got := resolveFields(td, pkg, resolverFor(pkg, nil))
 	byName := map[string]ResolvedField{}
 	for _, rf := range got {
 		byName[rf.DSLName] = rf
@@ -165,7 +170,7 @@ type T {
 	d string? @default("x")
 	e string  @nullable
 }`)
-	for _, rf := range resolveFields(pkg.Types["T"], pkg, nil) {
+	for _, rf := range resolveFields(pkg.Types["T"], pkg, resolverFor(pkg, nil)) {
 		optional := rf.Field.Type != nil && rf.Field.Type.Optional
 		nullable := hasNullableDecorator(rf.Field.Decorators)
 		if rf.SpecRequired && (optional || rf.HasDefault) {
@@ -200,4 +205,62 @@ func names(fs []ResolvedField) []string {
 		out[i] = f.DSLName
 	}
 	return out
+}
+
+// Two fields whose DSL names collide to the same Go identifier (`userId` /
+// `user_id` → `UserID`) get dedup-resolved (`UserID`, `UserID_2`) in the
+// struct. Every consumer - the validator (@minLength + the cross-field
+// @requiresOneOf) and the wire binder - must read the SAME resolved names, so
+// the binder assigns both fields and the validator checks both, rather than
+// `v.UserID` twice with `UserID_2` left unread.
+func TestCollidingGoFieldNamesDedupAcrossConsumers(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+@requiresOneOf(userId, user_id)
+type R {
+  userId  string? @minLength(2)
+  user_id string?
+  sortBy  string? @query("sortBy")
+  sort_by string? @query("sort_by")
+}
+type Resp { ok bool }
+service S {
+  post Echo /e { request R  response Resp }
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	// The collision raises a WARNING (codegen handles it via the `_2` suffix);
+	// only an error should fail the test.
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityError {
+			t.Fatalf("semantic error: %v", d)
+		}
+	}
+	dir := t.TempDir()
+	mPkg := proj.Packages["m"]
+	r := BuildProjectResolver(proj, newFixtureConfig(), "m")
+	if err := GenerateTypes(mPkg, dir, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The wire binder reads the resolved IR: each colliding field carries the
+	// dedup-resolved Go identifier, so the query assigns both, not one twice.
+	var goNames []string
+	for _, rf := range resolveRequestFields(mPkg.Services["S"].Methods[0], mPkg, r) {
+		goNames = append(goNames, rf.GoName)
+	}
+	mustContainAll(t, strings.Join(goNames, " "), "UserID", "UserID_2", "SortBy", "SortBy_2")
+
+	val, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
+	mustParseGo(t, string(val))
+	vs := string(val)
+	// @minLength fires on the first field (UserID); the cross-field group
+	// reads BOTH resolved names - not `v.UserID == nil && v.UserID == nil`.
+	mustContainAll(t, vs,
+		"v.UserID != nil",
+		"v.UserID == nil && v.UserID_2 == nil",
+	)
 }

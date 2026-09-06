@@ -1,3 +1,5 @@
+// Decorator-argument literal extractors shared by the validator, OpenAPI,
+// transport, and routes emitters.
 package codegen
 
 import (
@@ -181,4 +183,67 @@ func parseSizeText(text string) (int64, bool) {
 		return n, true
 	}
 	return 0, false
+}
+
+// maxExactInt is 2^53 - the largest magnitude an int64 keeps EXACTLY when
+// converted to the float64 that JSON numbers (and openapi3.Schema.Min /
+// Max) carry. Beyond it, float64(int64) rounds, so a bound like
+// `@gte(9007199254740993)` or `@gte(math.MaxInt64)` would advertise a
+// value the runtime validator (which keeps the exact int64) never agrees
+// with - at the extreme an unsatisfiable spec.
+const maxExactInt = int64(1) << 53
+
+// stringArrayDecoratorArg returns the field-name list passed to a
+// type-level decorator like `@requiresOneOf` / `@mutuallyExclusive`.
+// Three argument shapes are accepted, matching the syntax the
+// semantic argument-shape validator allows:
+//
+//   - Variadic bare idents:    @requiresOneOf(email, phone)
+//   - Variadic string literals: @requiresOneOf("email", "phone")
+//   - Array shortcut:           @requiresOneOf(["email", "phone"])
+//
+// Returns nil when the decorator has no arguments at all.
+func stringArrayDecoratorArg(d *ast.Decorator) []string {
+	if len(d.Args) == 0 {
+		return nil
+	}
+	// Array shortcut: single positional that's an [ ... ] literal.
+	if arr, ok := d.Args[0].Value.(*ast.ArrayLit); ok && len(d.Args) == 1 {
+		return collectStringOrIdent(arr.Elements)
+	}
+	// Variadic positional: each arg is its own ident or string lit.
+	out := make([]string, 0, len(d.Args))
+	for _, ag := range d.Args {
+		if ag.Named || ag.Object != nil || ag.Nested != nil {
+			continue
+		}
+		switch v := ag.Value.(type) {
+		case *ast.StringLit:
+			out = append(out, v.Value)
+		case *ast.IdentExpr:
+			if v.Name != nil {
+				out = append(out, v.Name.String())
+			}
+		}
+	}
+	return out
+}
+
+// collectStringOrIdent extracts every string-lit / ident-expr value
+// from an [ast.ArrayLit] elements slice, skipping anything else
+// silently. Other shapes are caught upstream by the
+// argument-shape validator.
+func collectStringOrIdent(elems []ast.Expr) []string {
+	out := make([]string, 0, len(elems))
+	for _, e := range elems {
+		switch v := e.(type) {
+		case *ast.StringLit:
+			out = append(out, v.Value)
+		case *ast.IdentExpr:
+			if v.Name != nil {
+				out = append(out, v.Name.String())
+			}
+		}
+	}
+	return out
 }

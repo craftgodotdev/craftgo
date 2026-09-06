@@ -574,12 +574,15 @@ The struct embeds `log.Logger` so logic can call `l.Info(...)` directly. Trace I
 ## Runtime entry points
 
 ```go
-import "github.com/craftgodotdev/craftgo/pkg/server"
+import (
+    "github.com/craftgodotdev/craftgo/pkg/server"
+    "github.com/craftgodotdev/craftgo/pkg/telemetry"
+)
 
+tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in config.yaml
 srv := server.New(svcCtx)
-srv.Use(server.RequestID())
+srv.Use(tel.HTTPMiddleware()) // opens the span first, so AccessLog sees the trace ids
 srv.Use(server.AccessLog(logger))
-srv.Use(craftotel.HTTPMiddleware(cfg.OTel.ServiceName))
 routes.RegisterAll(srv, svcCtx)
 srv.Start(":8080")
 ```
@@ -591,8 +594,7 @@ srv.Start(":8080")
 | Constructor                  | Effect                                                   |
 | ---------------------------- | -------------------------------------------------------- |
 | `server.Recovery(logger)`    | Panic -> 500 + structured log (auto-installed outermost) |
-| `server.RequestID()`         | Extract or generate `X-Request-Id`                       |
-| `server.AccessLog(logger)`   | One log line per request                                 |
+| `server.AccessLog(logger)`   | One `http access` line per request (health probes never reach it) |
 | `server.BodyLimit(maxBytes)` | Cap request body size                                    |
 | `server.Timeout(d)`          | Per-handler deadline                                     |
 | `srv.SetCORS(opts)`          | CORS headers + genuine-preflight short-circuit (opts via `server.CORSPermissive()` / `server.CORSStrict(origin)`; a Server method, not a `srv.Use` middleware) |

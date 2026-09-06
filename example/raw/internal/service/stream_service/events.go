@@ -19,7 +19,7 @@ import (
 
 // EventsService carries the per-request state for the Events endpoint of
 // StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id / request_id.
+// context so logging surfaces trace_id / span_id.
 type EventsService struct {
 	log.Logger
 	ctx    context.Context

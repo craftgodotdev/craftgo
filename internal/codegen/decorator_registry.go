@@ -5,9 +5,12 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// This file holds the decorator → emit-function dispatch table. The
+// This file holds the per-decorator emit table: the runtime check and
+// the OpenAPI keyword each constraint decorator produces. The
 // rest of the validate codegen is procedural; everything that decides
 // "which decorator triggers which Go code" lives here so adding a new
 // validator is one entry edit, not three (case label + impl + helper).
@@ -63,13 +66,36 @@ func (r *regexRegistry) intern(pattern string) string {
 	return name
 }
 
-// validatorEntry binds a decorator name to its emit function. The emit
-// signature is uniform so the dispatcher in [fieldChecksWithPkg] can
-// stay table-driven: every validator returns the Go source for one
-// check, or "" to opt out (type mismatch, missing args, etc.).
+// oasFamily groups the OpenAPI keywords a constraint decorator maps to,
+// so an emit site can stamp a subset: the map-key propertyNames builder
+// omits numeric bounds no SDK generator honours, and the multipart part
+// schema applies only the item counts.
+type oasFamily uint8
+
+const (
+	oasNumeric oasFamily = 1 << iota // minimum / maximum / exclusive* / multipleOf
+	oasLength                        // minLength / maxLength
+	oasText                          // pattern / format
+	oasArray                         // minItems / maxItems / uniqueItems (or the *Properties twins)
+
+	oasAll = oasNumeric | oasLength | oasText | oasArray
+	// oasNarrowing is every family a field can stack on a referenced
+	// type; a $ref field is never an array or a file.
+	oasNarrowing = oasNumeric | oasLength | oasText
+)
+
+// validatorEntry is the emit row for one constraint decorator: the runtime
+// check it compiles to and the OpenAPI keyword it advertises. The emit
+// signature is uniform so the dispatcher in [fieldChecksWithScalar] can
+// stay table-driven: every validator returns the Go source for one check,
+// or "" to opt out (type mismatch, missing args, etc.). oas stamps the
+// decorator's keyword onto a schema; nil when the decorator has no
+// OpenAPI form (the file validators).
 type validatorEntry struct {
-	name string
-	emit func(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string
+	name   string
+	emit   func(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string
+	family oasFamily
+	oas    func(d *ast.Decorator, s *openapi3.Schema)
 }
 
 // validators is the source-of-truth registry. Order doesn't matter for
@@ -82,59 +108,165 @@ type validatorEntry struct {
 // the type-level `?` suffix.
 var validators = []validatorEntry{
 	// string
-	{"length", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c.uses) }},
+	{"length", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c) },
+		oasLength, func(d *ast.Decorator, s *openapi3.Schema) {
+			if !lengthKeywordsApply(s) {
+				return
+			}
+			// `@length(N)` is exact length - fold the single argument into
+			// both bounds (min == max == N), matching the runtime check and
+			// the map-key path; `@length(min, max)` is a range.
+			lo, ok := numericArgValue(d, 0)
+			if !ok || lo < 0 {
+				return
+			}
+			hi := lo
+			if v, ok := numericArgValue(d, 1); ok && v >= 0 {
+				hi = v
+			}
+			setMinLen(s, uint64(lo))
+			setMaxLen(s, uint64(hi))
+		}},
 	{"minLength", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return minMaxLengthCheck(f, a, d, "min", c.uses)
+		return minMaxLengthCheck(f, a, d, "min", c)
+	}, oasLength, func(d *ast.Decorator, s *openapi3.Schema) {
+		if v, ok := numericArgValue(d, 0); ok && v >= 0 && lengthKeywordsApply(s) {
+			setMinLen(s, uint64(v))
+		}
 	}},
 	{"maxLength", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return minMaxLengthCheck(f, a, d, "max", c.uses)
+		return minMaxLengthCheck(f, a, d, "max", c)
+	}, oasLength, func(d *ast.Decorator, s *openapi3.Schema) {
+		if v, ok := numericArgValue(d, 0); ok && v >= 0 && lengthKeywordsApply(s) {
+			setMaxLen(s, uint64(v))
+		}
 	}},
-	{"pattern", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) }},
-	{"format", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) }},
+	{"pattern", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) },
+		oasText, func(d *ast.Decorator, s *openapi3.Schema) {
+			if len(d.Args) == 1 {
+				if sl, ok := d.Args[0].Value.(*ast.StringLit); ok {
+					s.Pattern = sl.Value
+				}
+			}
+		}},
+	{"format", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) },
+		oasText, func(d *ast.Decorator, s *openapi3.Schema) {
+			if len(d.Args) != 1 {
+				return
+			}
+			switch v := d.Args[0].Value.(type) {
+			case *ast.StringLit:
+				s.Format = strfmt.OpenAPIFormat(v.Value)
+			case *ast.IdentExpr:
+				if v.Name != nil {
+					s.Format = strfmt.OpenAPIFormat(v.Name.String())
+				}
+			}
+		}},
 
 	// numeric - math-style comparison operators. Strict variants
 	// (@gt, @lt) sit next to inclusive variants (@gte, @lte); no
 	// legacy aliases. `@positive`/`@negative` remain as flag-form
 	// sugar for `@gt(0)` / `@lt(0)`.
 	{"gt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, ">", "must be greater than", c.uses)
-	}},
+		return numericBoundCheck(f, a, d, ">", "must be greater than", c)
+	}, oasNumeric, func(d *ast.Decorator, s *openapi3.Schema) { emitExclusive(s, "exclusiveMinimum", d, 0) }},
 	{"gte", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, ">=", "below minimum", c.uses)
-	}},
+		return numericBoundCheck(f, a, d, ">=", "below minimum", c)
+	}, oasNumeric, func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "minimum", d, 0, setMin) }},
 	{"lt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, "<", "must be less than", c.uses)
-	}},
+		return numericBoundCheck(f, a, d, "<", "must be less than", c)
+	}, oasNumeric, func(d *ast.Decorator, s *openapi3.Schema) { emitExclusive(s, "exclusiveMaximum", d, 0) }},
 	{"lte", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, "<=", "above maximum", c.uses)
-	}},
-	{"range", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return rangeCheck(f, a, d, c.uses) }},
+		return numericBoundCheck(f, a, d, "<=", "above maximum", c)
+	}, oasNumeric, func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "maximum", d, 0, setMax) }},
+	{"range", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return rangeCheck(f, a, d, c) },
+		oasNumeric, func(d *ast.Decorator, s *openapi3.Schema) {
+			emitBound(s, "minimum", d, 0, setMin)
+			emitBound(s, "maximum", d, 1, setMax)
+		}},
 	{"positive", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return signCheck(f, a, "positive", c.uses)
-	}},
+		return signCheck(f, a, "positive", c)
+	}, oasNumeric, func(_ *ast.Decorator, s *openapi3.Schema) { setExclusive(s, "exclusiveMinimum", 0, nil) }},
 	{"negative", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return signCheck(f, a, "negative", c.uses)
-	}},
+		return signCheck(f, a, "negative", c)
+	}, oasNumeric, func(_ *ast.Decorator, s *openapi3.Schema) { setExclusive(s, "exclusiveMaximum", 0, nil) }},
 	{"multipleOf", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return multipleOfCheck(f, a, d, c.uses)
+		return multipleOfCheck(f, a, d, c)
+	}, oasNumeric, func(d *ast.Decorator, s *openapi3.Schema) {
+		if r, ok := rawIfBigInt(d, 0); ok {
+			schemaExt(s, "multipleOf", r)
+		} else if v, ok := numericArgValue(d, 0); ok && v != 0 {
+			s.MultipleOf = &v
+		}
 	}},
 
 	// array
 	{"minItems", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return itemsBoundCheck(f, a, d, ">=", "minItems", c.uses)
+		return itemsBoundCheck(f, a, d, ">=", "minItems", c)
+	}, oasArray, func(d *ast.Decorator, s *openapi3.Schema) {
+		itemCountKeyword(s, d, func(u uint64) { s.MinItems = u }, func(u uint64) { s.MinProps = u })
 	}},
 	{"maxItems", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return itemsBoundCheck(f, a, d, "<=", "maxItems", c.uses)
+		return itemsBoundCheck(f, a, d, "<=", "maxItems", c)
+	}, oasArray, func(d *ast.Decorator, s *openapi3.Schema) {
+		itemCountKeyword(s, d, func(u uint64) { s.MaxItems = &u }, func(u uint64) { s.MaxProps = &u })
 	}},
 	{"uniqueItems", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return uniqueItemsCheck(f, a, c.uses, c.resolver.crossPkgMap())
+		return uniqueItemsCheck(f, a, c)
+	}, oasArray, func(_ *ast.Decorator, s *openapi3.Schema) {
+		if s.Type != nil && s.Type.Includes("array") {
+			s.UniqueItems = true
+		}
 	}},
 
-	// file
-	{"maxSize", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c.uses) }},
+	// file - runtime only; a multipart part has no schema keyword for these.
+	{"maxSize", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c) }, 0, nil},
 	{"mimeTypes", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return mimeTypesCheck(f, a, d, c.uses)
-	}},
+		return mimeTypesCheck(f, a, d, c)
+	}, 0, nil},
+}
+
+// applyFieldConstraints stamps every constraint keyword a field or scalar
+// schema can carry onto s - numeric bounds, string length, pattern /
+// format, and item counts. Each row acts only when its decorator is
+// present, and the semantic layer guarantees those are type-appropriate,
+// so applying the whole table is safe everywhere and "which constraints a
+// schema gets" is decided in ONE place. The map-KEY propertyNames builder
+// is the deliberate exception - it omits numeric bounds no SDK generator
+// honours - so it applies a subset through [applyConstraintFamilies].
+func applyFieldConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
+	applyConstraintFamilies(ds, s, oasAll)
+}
+
+// applyConstraintFamilies stamps the keywords of the decorators in ds whose
+// family is in fams onto s.
+func applyConstraintFamilies(ds []*ast.Decorator, s *openapi3.Schema, fams oasFamily) {
+	if s == nil {
+		return
+	}
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		if v := validatorByName(d.Name); v != nil && v.oas != nil && v.family&fams != 0 {
+			v.oas(d, s)
+		}
+	}
+}
+
+// hasFieldConstraintDecorator reports whether ds carries a decorator that
+// narrows a referenced type with an OpenAPI validation keyword.
+func hasFieldConstraintDecorator(ds []*ast.Decorator) bool {
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		if v := validatorByName(d.Name); v != nil && v.oas != nil && v.family&oasNarrowing != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // validatorByName returns the registry entry for `name`, or nil when the
@@ -174,7 +306,6 @@ func validatorByName(name string) *validatorEntry {
 // fields throughout the emitter set.
 func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, ctx emitCtx) []string {
 	access := "v." + goName
-	uses := ctx.uses
 	var out []string
 
 	// "Required by default": every non-optional field gets the
@@ -203,7 +334,7 @@ func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, c
 	// defined empty value, so primitives the JSON decoder already
 	// rejects-on-null get no validate-time block.
 	if resolveField(f, pkg, ctx.resolver).RuntimeEnforced {
-		if s := requiredCheckEnumAware(f, access, pkg, ctx.resolver, uses); s != "" {
+		if s := requiredCheckEnumAware(f, access, ctx); s != "" {
 			out = append(out, s)
 		}
 	}

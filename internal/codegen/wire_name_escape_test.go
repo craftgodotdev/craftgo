@@ -30,7 +30,7 @@ type UploadReq { avatar file @form("a\"b") }
 service S { post Up /up { request UploadReq } }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
-	if err := GenerateTransport(pkg, sampleConfig(), root); err != nil {
+	if err := GenerateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/up.go"))

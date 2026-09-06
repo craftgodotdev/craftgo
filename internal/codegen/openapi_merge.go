@@ -17,13 +17,7 @@ type symbolKey struct{ pkg, name string }
 // package names. Shared by [mergeProjectForOpenAPI] and
 // [projectMergeCollisions] so the rename rule lives once.
 func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
-	pkgNames := make([]string, 0, len(proj.Packages))
-	for n := range proj.Packages {
-		if n != "" {
-			pkgNames = append(pkgNames, n)
-		}
-	}
-	sort.Strings(pkgNames)
+	pkgNames := sortedPackageNames(proj)
 	collide := func(name string) bool {
 		count := 0
 		for _, pn := range pkgNames {
@@ -206,23 +200,7 @@ func allDeclNames(p *semantic.Package) []string {
 	for n := range p.Scalars {
 		add(n)
 	}
-	out := make([]string, 0, len(seen))
-	for n := range seen {
-		out = append(out, n)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// sortedKeys returns the keys of m in alphabetical order. Used by
-// the merge to produce deterministic schema ordering.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	return sortedKeys(seen)
 }
 
 // cloneTypeDecl deep-copies td and rewrites every named type ref in
@@ -387,31 +365,4 @@ func rewriteNamedArgs(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *
 	cp := *n
 	cp.Args = args
 	return &cp
-}
-
-// pascalCase converts a DSL package name (commonly lowercase or
-// kebab-cased) into its PascalCase form for OpenAPI schema prefixing.
-// Empty / single-character inputs are passed through with the first
-// rune uppercased.
-func pascalCase(s string) string {
-	if s == "" {
-		return ""
-	}
-	var b []byte
-	upNext := true
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '-' || c == '_' || c == '/' {
-			upNext = true
-			continue
-		}
-		if upNext {
-			if c >= 'a' && c <= 'z' {
-				c -= 'a' - 'A'
-			}
-			upNext = false
-		}
-		b = append(b, c)
-	}
-	return string(b)
 }

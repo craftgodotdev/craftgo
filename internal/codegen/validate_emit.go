@@ -9,29 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// fieldWireName returns the name a client uses for f: the wire alias of a bound
-// field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
-// `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
-// the field name). Validation messages use it so a failure reports what the
-// caller actually sent - `x-source-domain: ...`, not the DSL field name. The
-// scalar synth field (no name, no decorators) maps to "", keeping the shared
-// scalar/enum Validate() message subject-less.
-//
-// The returned name is escaped for direct embedding in a generated
-// fmt.Errorf(...) format literal (see [escapeErrorfName]): a wire alias is a
-// user-controlled string that may contain a double quote, backslash, or `%`.
-// Every caller embeds the result in an error-message literal, never compares it
-// as a raw string, so escaping once here keeps all message sites safe.
-func fieldWireName(f *ast.Field) string {
-	kind := wire.BindingKind(f.Decorators)
-	name := f.Name
-	switch kind {
-	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
-		name = wire.WireName(f, kind)
-	}
-	return escapeErrorfName(name)
-}
-
 // escapeErrorfName makes a wire/field name safe to embed directly inside a
 // generated fmt.Errorf(...) format literal. strconv.Quote escapes a double
 // quote or backslash that would otherwise break the Go string literal (its
@@ -76,14 +53,11 @@ func errSubject(name string) string {
 //
 // The body is responsible for any `return ...` it needs; the wrapper
 // merely delivers control to it for each element.
-
-func shape(f *ast.Field, access string, body func(elem string) string) string {
+func shape(f *ast.Field, access string, ctx emitCtx, body func(elem string) string) string {
 	switch {
 	case f.Type != nil && f.Type.Array:
 		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
-	case goFieldIsPointer(f, nil, nil):
-		// Reached only for generic type-param probes, never a direct nilable
-		// scalar, so the pointer test needs no scalar resolver.
+	case goFieldIsPointer(f, ctx.pkg, ctx.resolver):
 		// The Go field is *T - from `?` (optional) OR `@nullable`
 		// (required-but-nullable). Key on the actual pointer-ness, not
 		// just the `?` suffix: a `@nullable` enum/scalar field lowers to
@@ -111,4 +85,27 @@ func ifReturnf(cond, msg string) string {
 // that has to nest under another statement.
 func indentBlock(s string) string {
 	return strings.ReplaceAll(s, "\n", "\n\t")
+}
+
+// fieldWireName returns the name a client uses for f: the wire alias of a bound
+// field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
+// `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
+// the field name). Validation messages use it so a failure reports what the
+// caller actually sent - `x-source-domain: ...`, not the DSL field name. The
+// scalar synth field (no name, no decorators) maps to "", keeping the shared
+// scalar/enum Validate() message subject-less.
+//
+// The returned name is escaped for direct embedding in a generated
+// fmt.Errorf(...) format literal (see [escapeErrorfName]): a wire alias is a
+// user-controlled string that may contain a double quote, backslash, or `%`.
+// Every caller embeds the result in an error-message literal, never compares it
+// as a raw string, so escaping once here keeps all message sites safe.
+func fieldWireName(f *ast.Field) string {
+	kind := wire.BindingKind(f.Decorators)
+	name := f.Name
+	switch kind {
+	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
+		name = wire.WireName(f, kind)
+	}
+	return escapeErrorfName(name)
 }

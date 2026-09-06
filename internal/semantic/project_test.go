@@ -306,23 +306,6 @@ func TestPackageHasSymbol(t *testing.T) {
 	}
 }
 
-func TestFileFilenameFallback(t *testing.T) {
-	if got := fileFilename(nil); got != "" {
-		t.Error("nil should be empty")
-	}
-	if got := fileFilename(&ast.File{}); got != "" {
-		t.Error("empty file should be empty")
-	}
-	got := fileFilename(&ast.File{
-		Decls: []ast.Decl{
-			&ast.TypeDecl{Pos: lexer.Position{Filename: "from-decl.craftgo", Line: 1}, Name: "X"},
-		},
-	})
-	if got != "from-decl.craftgo" {
-		t.Errorf("decl-fallback got %q", got)
-	}
-}
-
 func TestFilePosFallback(t *testing.T) {
 	got := filePos(&ast.File{})
 	if got.Line != 1 {
@@ -410,7 +393,7 @@ func TestFilePosFromPackage(t *testing.T) {
 }
 
 func TestProcessFileNilTolerated(t *testing.T) {
-	r := &refResolver{proj: &Project{Packages: map[string]*Package{}, FileImports: map[string]map[string]string{}}}
+	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
 	r.processFile(nil, "/root")
 	if len(r.diags) != 0 {
 		t.Errorf("nil file should not diag, got %v", r.diags)
@@ -431,7 +414,7 @@ func TestWalkRefNilGuards(t *testing.T) {
 // resolveImports. Parser doesn't normally emit empty paths but the
 // guard exists for malformed input.
 func TestProcessFileEmptyPathSkipped(t *testing.T) {
-	r := &refResolver{proj: &Project{Packages: map[string]*Package{}, FileImports: map[string]map[string]string{}}}
+	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
 	f := &ast.File{Imports: []*ast.Import{
 		{Pos: lexer.Position{Line: 1}, Path: ""},
 	}}
@@ -709,7 +692,7 @@ import "shared"
 type Order { shared.MissingType }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeMixinUnresolved) {
-		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeMixinUnresolved, diags)
+	if !hasCode(diags, CodeRefUnknownSymbol) {
+		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeRefUnknownSymbol, diags)
 	}
 }

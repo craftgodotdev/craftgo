@@ -217,10 +217,10 @@ extend service S {
 
 func TestRefsNilDecoratorTolerated(t *testing.T) {
 	// Defensive guard - parser doesn't emit nil entries today.
-	a := &analyzer{pkg: &Package{
+	a := newTestAnalyzer(&Package{
 		Errors:      map[string]*ast.ErrorDecl{},
 		Middlewares: map[string]*ast.MiddlewareDecl{},
-	}}
+	})
 	// Empty body decorators slice with a nil entry.
 	a.checkFieldGroupRefs("X", []*ast.Decorator{nil}, nil)
 	a.checkServiceLevelRefs([]*ast.Decorator{nil})
@@ -229,4 +229,148 @@ func TestRefsNilDecoratorTolerated(t *testing.T) {
 	if len(a.diags) != 0 {
 		t.Errorf("nil decorator entries should not diag, got %v", a.diags)
 	}
+}
+
+// A cross-field group (@requiresOneOf) may reference a field promoted by a
+// CROSS-PACKAGE mixin - the per-package pass can't expand it, but codegen
+// resolves it via the project resolver, so it must not false-reject.
+func TestCrossFieldOverCrossPkgMixinClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type Contactable { email string?  phone string? }`,
+		"api.craftgo": `package design
+import "shared"
+@requiresOneOf(email, phone)
+type Contact { shared.Contactable  note string? }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := findCode(diags, CodeDecoratorRef); d != nil {
+		t.Errorf("cross-field over cross-pkg mixin must not false-reject; got: %s", d.Msg)
+	}
+}
+
+// A cross-field group naming a member NO field provides must be rejected
+// even when the type embeds a cross-package mixin. The per-package pass
+// can't expand the foreign mixin so it defers; the project pass resolves
+// the full field set and catches the typo. Without the project re-check
+// the typo reaches codegen, which substitutes a literal `false` - a
+// validator that silently never fires.
+func TestCrossFieldTypoOverCrossPkgMixinRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type Contactable { email string?  phone string? }`,
+		"api.craftgo": `package design
+import "shared"
+@requiresOneOf(email, zzz)
+type Contact { shared.Contactable  note string? }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorRef) == nil {
+		t.Fatalf("expected typo rejection over cross-pkg mixin; got %v", codes(diags))
+	}
+}
+
+// The project re-check resolves NESTED cross-package mixins too: a member
+// promoted two mixin levels deep is a real field (no false-reject), while
+// a typo alongside it is still caught.
+func TestCrossFieldTypoOverNestedCrossPkgMixinRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type Inner { email string?  phone string? }
+type Outer { Inner  label string? }`,
+		"api.craftgo": `package design
+import "shared"
+@requiresOneOf(email, nope)
+type Contact { shared.Outer }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorRef) == nil {
+		t.Fatalf("expected typo rejection over nested cross-pkg mixin; got %v", codes(diags))
+	}
+}
+
+// A deeply-promoted member (two cross-package mixin levels) is a genuine
+// field and must NOT be false-rejected - the control for the typo test.
+func TestCrossFieldOverNestedCrossPkgMixinClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type Inner { email string?  phone string? }
+type Outer { Inner  label string? }`,
+		"api.craftgo": `package design
+import "shared"
+@requiresOneOf(email, phone)
+type Contact { shared.Outer }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := findCode(diags, CodeDecoratorRef); d != nil {
+		t.Errorf("nested cross-pkg promoted member must not false-reject; got: %s", d.Msg)
+	}
+}
+
+// The project re-check must re-apply the per-field quality rules to a
+// member promoted from a cross-package mixin - not only check the name
+// exists. A PLAIN (non-optional) promoted member has no clean present/
+// absent state, so a cross-field group referencing it is rejected exactly
+// as a local plain member is. (Per-package can't see the foreign field, so
+// without the re-check the rule was silently skipped.)
+func TestCrossFieldPlainMemberOverCrossPkgMixinRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/b.craftgo": `package base
+type BaseMix { gamma string }`,
+		"api.craftgo": `package design
+import "base"
+@requiresOneOf(alpha, gamma)
+type Host { base.BaseMix  alpha string? }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeCrossFieldNotOptional) == nil {
+		t.Fatalf("expected plain cross-pkg-promoted member rejection; got %v", codes(diags))
+	}
+}
+
+// A @default member promoted from a cross-package mixin is rejected too
+// (a defaulted field is always present, making the group a no-op the
+// OpenAPI contradicts) - the same rule the local case enforces.
+func TestCrossFieldDefaultMemberOverCrossPkgMixinRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/b.craftgo": `package base
+type BaseMix { gamma string? @default("x") }`,
+		"api.craftgo": `package design
+import "base"
+@requiresOneOf(alpha, gamma)
+type Host { base.BaseMix  alpha string? }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeCrossFieldNotOptional) == nil {
+		t.Fatalf("expected @default cross-pkg-promoted member rejection; got %v", codes(diags))
+	}
+}
+
+// A clean optional member promoted from a cross-package mixin alongside a
+// clean local one must NOT double-report or false-reject - the control.
+func TestCrossFieldCleanMembersOverCrossPkgMixinClean(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"base/b.craftgo": `package base
+type BaseMix { gamma string? }`,
+		"api.craftgo": `package design
+import "base"
+@requiresOneOf(alpha, gamma)
+type Host { base.BaseMix  alpha string? }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := findCode(diags, CodeCrossFieldNotOptional); d != nil {
+		t.Errorf("clean cross-pkg-promoted member must not be rejected; got: %s", d.Msg)
+	}
+	if d := findCode(diags, CodeDecoratorRef); d != nil {
+		t.Errorf("clean members must not false-reject; got: %s", d.Msg)
+	}
+}
+
+// TestObjectFieldTypeRejected: `object` is a broken half-alias (its Go renderer
+// emits an undefined type + dangling $ref); reject it and point at `any`.
+func TestObjectFieldTypeRejected(t *testing.T) {
+	expectError(t, `type X { f object }`, CodeRefUnknownSymbol)
+	expectError(t, `type X { f object[] }`, CodeRefUnknownSymbol)
+	// `any` is the valid arbitrary type.
+	mustClean(t, `type X { f any  g any[] }`)
 }

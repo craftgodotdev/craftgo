@@ -9,7 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// snapshot is the shared parse view that every feature handler operates
+// snapshotView is the shared parse view that every feature handler operates
 // on. Re-tokenising and re-parsing on every request keeps the wire model
 // simple and matches what `craftgo lint` would see - no risk of stale
 // AST drift between editor and CLI.
@@ -20,9 +20,9 @@ type snapshotView struct {
 }
 
 func parseSnapshot(filename, src string) snapshotView {
-	toks := lexer.New(filename, src).Tokenize()
-	f := parser.New(filename, src).Parse()
-	return snapshotView{src: src, tokens: toks, file: f}
+	p := parser.New(filename, src)
+	f := p.Parse()
+	return snapshotView{src: src, tokens: p.Tokens(), file: f}
 }
 
 // tokenAt returns the token whose source span covers the supplied
@@ -89,6 +89,21 @@ func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
 				continue
 			}
 			return f
+		}
+	}
+	return nil
+}
+
+// findDecl returns the first top-level declaration whose declared name
+// matches. Cross-package lookups are not handled here - the caller can
+// inspect the import list separately if needed.
+func findDecl(f *ast.File, name string) ast.Decl {
+	if f == nil {
+		return nil
+	}
+	for _, d := range f.Decls {
+		if d.DeclName() == name {
+			return d
 		}
 	}
 	return nil

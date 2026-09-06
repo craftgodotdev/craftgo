@@ -37,7 +37,7 @@ const (
 	// (`B`, `KB`, `MB`, `GB`).
 	Size
 
-	// --- Keywords (must stay contiguous; see [isKeywordKind] in parser). ---
+	// --- Keywords (must stay contiguous; the parser's keyword-range check relies on it). ---
 
 	KwPackage
 	KwImport

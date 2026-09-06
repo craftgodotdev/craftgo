@@ -23,6 +23,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkRangesAndExtras runs every per-decorator value sanity rule plus
@@ -51,10 +52,9 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		// must run on the scalar declaration as well as on plain fields.
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
 		// The capacity-overflow and unsigned-contradiction checks are
-		// otherwise field-only, so a scalar carrying an out-of-range bound
+		// field-shaped, so a scalar carrying an out-of-range bound
 		// (`scalar X uint8 @lte(300)`) or an always-false bound (`scalar X
-		// uint @lt(0)`) slipped through and generated non-compiling /
-		// reject-everything Go. Run them via a synthetic field typed as the
+		// uint @lt(0)`) runs them through a synthetic field typed as the
 		// scalar's primitive - exactly the decorators a using field inherits.
 		scalarAsField := &ast.Field{
 			Name:       dd.Name,
@@ -97,7 +97,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 					"@multipleOf does not support float scalars - Go's modulus operator is integer-only. Use an integer scalar, or add a tolerance check in your handler.")
 				continue
 			}
-			if integerPrim(dd.Primitive) && len(d.Args) == 1 {
+			if prims.IsInteger(dd.Primitive) && len(d.Args) == 1 {
 				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 						"@multipleOf on an integer scalar needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")

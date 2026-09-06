@@ -5,7 +5,7 @@ import (
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -42,6 +42,9 @@ type genericRegistry struct {
 	// this they silently share one schema and one field is advertised with
 	// the wrong shape; the generator rejects up front instead.
 	dups map[string]bool
+	// resolver resolves type names for the field IR the emitters read; it
+	// rides with the registry because every emitter already receives it.
+	resolver *ProjectResolver
 }
 
 // genericInstance is the descriptor stored in [genericRegistry] for one
@@ -228,10 +231,10 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 // types whose schema is inlined, not referenced. Primitives still need
 // a name fragment for generic component naming (`Page<string>` →
 // `PageOfString`) but they do not produce a separate component schema.
-// Delegates to [idents.IsBuiltin] so the codegen and the rest of the
+// Delegates to [prims.Is] so the codegen and the rest of the
 // pipeline share one source of truth for "is this a DSL builtin".
 func isPrimitiveName(name string) bool {
-	if !idents.IsBuiltin(name) {
+	if !prims.Is(name) {
 		return false
 	}
 	// `object` is the example-only bag type and never reaches the
@@ -341,19 +344,4 @@ func walkTypeRefForGenerics(t *ast.TypeRef, pkg *semantic.Package, registry *gen
 	if decl, ok := pkg.Types[t.Named.Name.String()]; ok && len(decl.TypeParams) > 0 {
 		registry.register(decl, t.Named.Args)
 	}
-}
-
-// substMap pairs a generic decl's type parameters with the concrete
-// arguments of one instantiation (`T` → `Item`). Extra params beyond the
-// supplied args are left unmapped. The OpenAPI schema instantiation, the
-// response-field substitution, and the mixin field flatten all build this
-// same map, so they share one definition.
-func substMap(typeParams []string, args []*ast.TypeRef) map[string]*ast.TypeRef {
-	subst := make(map[string]*ast.TypeRef, len(typeParams))
-	for i, p := range typeParams {
-		if i < len(args) {
-			subst[p] = args[i]
-		}
-	}
-	return subst
 }

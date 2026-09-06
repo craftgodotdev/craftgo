@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -319,7 +320,7 @@ func TestSingleNumericArgMissing(t *testing.T) {
 }
 
 func TestRangesNilDecoratorTolerated(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.checkDecoratorRanges([]*ast.Decorator{nil})
 	a.checkBodyRanges([]ast.TypeMember{
 		// Mixin members are skipped.
@@ -335,7 +336,7 @@ func TestRangesNilDecoratorTolerated(t *testing.T) {
 // these helpers are called with invalid shapes; we hit them directly
 // so the coverage gate stays at 100%.
 func TestRangeHelpersTolerateBadShape(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 
 	// Wrong arity: each helper returns early.
 	a.checkPairArgs(&ast.Decorator{Name: "length"}) // 0 args
@@ -407,4 +408,158 @@ func TestMapKeyMarshalableOK(t *testing.T) {
 	mustClean(t, "enum Color { Red  Blue }\ntype Item { id int }\ntype Bag { m map<Color, Item> }")
 	// Nested maps with string / int keys.
 	mustClean(t, "type V { x int }\ntype Bag { m map<string, map<int, V>> }")
+}
+
+// `@lt(0)` on an unsigned field demands "value < 0", which no uint* can
+// satisfy - the desugared spelling of `@negative`, which is already
+// rejected. The capacity guard misses it (0 is itself in range).
+func TestUnsignedLtZeroRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type T { c uint16 @lt(0) }`))
+	if findCode(diags, CodeDecoratorTypeMismatch) == nil {
+		t.Fatalf("expected @lt(0)-on-unsigned rejection; got %v", codes(diags))
+	}
+}
+
+// `@lt(N)` with N>0 on unsigned is satisfiable (0..N-1) and must NOT be
+// rejected - the guard targets only the empty predicate.
+func TestUnsignedLtPositiveClean(t *testing.T) {
+	mustClean(t, `type T { c uint16 @lt(10) }`)
+}
+
+// `@lt(0.0)` is the same always-false predicate as `@lt(0)`; the float
+// spelling must be rejected on unsigned too, not silently emit `value >= 0`.
+func TestUnsignedLtZeroFloatRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type T { c uint16 @lt(0.0) }`))
+	if findCode(diags, CodeDecoratorTypeMismatch) == nil {
+		t.Fatalf("expected @lt(0.0)-on-unsigned rejection; got %v", codes(diags))
+	}
+}
+
+// A positive float bound on unsigned is satisfiable and must stay clean -
+// argIsZero must not over-fire on non-zero floats.
+func TestUnsignedLtPositiveFloatClean(t *testing.T) {
+	mustClean(t, `type T { c uint16 @lt(10.0) }`)
+}
+
+// An integral float bound above the target's capacity must be rejected. The
+// old int64() round-trip saturated for values beyond MaxInt64, so the
+// integrality test failed, the capacity check was skipped, and codegen emitted
+// a constant that overflows uint64.
+func TestFloatBoundOverflowRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type T { c uint64 @lte(20000000000000000000.0) }`))
+	d := findCode(diags, CodeBoundOverflow)
+	if d == nil {
+		t.Fatalf("expected capacity-overflow rejection for out-of-range float bound; got %v", codes(diags))
+	}
+	if !strings.Contains(d.Msg, "20000000000000000000") {
+		t.Errorf("overflow message should show the whole-number bound, got: %s", d.Msg)
+	}
+}
+
+// An integral float bound within the target's range is valid and must stay
+// clean - isIntegralFloat must not trigger a false overflow.
+func TestFloatBoundInRangeClean(t *testing.T) {
+	mustClean(t, `type T { c uint64 @lte(18000000000000000000.0) }`)
+}
+
+// The float-zero rejection also fires on a CROSS-PACKAGE unsigned scalar,
+// through the project twin ([refResolver.checkScalarBoundContradictions]).
+func TestCrossPkgUnsignedLtZeroFloatRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+scalar Count uint32`,
+		"api.craftgo": `package design
+import "shared"
+type T1 { n shared.Count @lt(0.0) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeDecoratorTypeMismatch) == nil {
+		t.Fatalf("expected cross-pkg @lt(0.0)-on-unsigned rejection; got %v", codes(diags))
+	}
+}
+
+// A contradictory bound on a CROSS-PACKAGE unsigned scalar must be caught
+// (the per-package pass can't resolve the foreign scalar's primitive).
+func TestCrossPkgUnsignedBoundRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+scalar Count uint32`,
+		"api.craftgo": `package design
+import "shared"
+type T1 { n shared.Count @lt(0) }
+type T2 { m shared.Count @lte(-1) }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if !hasCode(diags, CodeDecoratorTypeMismatch) || !hasCode(diags, CodeBoundOverflow) {
+		t.Fatalf("expected unsigned @lt(0) + capacity-overflow rejections; got %v", codes(diags))
+	}
+}
+
+// A numeric bound that overflows the scalar's primitive must be rejected
+// at the scalar DECLARATION, matching the field path (else codegen emits
+// non-compiling Go like `if uint8(v) > 300`).
+func TestScalarDeclBoundCapacityRejected(t *testing.T) {
+	for _, src := range []string{
+		"package p\nscalar X uint8 @lte(300)\n",
+		"package p\nscalar X int8 @gte(200)\n",
+		"package p\nscalar X uint16 @gt(70000)\n",
+	} {
+		diags := analyzeOneFile(t, src)
+		if !hasDiagContaining(diags, "exceeds") {
+			t.Errorf("expected capacity reject for %q, got: %v", strings.TrimSpace(src), diags)
+		}
+	}
+}
+
+// @lt(0) / @negative on an unsigned scalar declaration is an always-false
+// validator - reject like the field path does.
+func TestScalarDeclUnsignedContradictionRejected(t *testing.T) {
+	for _, src := range []string{
+		"package p\nscalar X uint @lt(0)\n",
+		"package p\nscalar X uint8 @negative\n",
+	} {
+		diags := analyzeOneFile(t, src)
+		if !hasDiagContaining(diags, "cannot apply to an unsigned") {
+			t.Errorf("expected unsigned-contradiction reject for %q, got: %v", strings.TrimSpace(src), diags)
+		}
+	}
+}
+
+// An in-range scalar bound stays clean (the capacity check must not over-fire).
+func TestScalarDeclBoundInRangeClean(t *testing.T) {
+	diags := analyzeOneFile(t, "package p\nscalar X uint8 @lte(200) @gte(1)\n")
+	if hasDiagContaining(diags, "exceeds") {
+		t.Errorf("in-range scalar bound wrongly rejected: %v", diags)
+	}
+}
+
+// The 1-arg exact-length form `@length(-1)` must be rejected (it otherwise
+// emits an always-true reject while OpenAPI advertises no constraint).
+func TestNegativeExactLengthRejected(t *testing.T) {
+	diags := analyzeOneFile(t, "package p\ntype T { a string @length(-1) }\n")
+	if !hasDiagContaining(diags, "exact length must be") {
+		t.Errorf("expected @length(-1) reject, got: %v", diags)
+	}
+}
+
+// An out-of-capacity INTEGRAL-FLOAT bound must be rejected like the int form.
+func TestIntegralFloatBoundCapacityRejected(t *testing.T) {
+	diags := analyzeOneFile(t, "package p\ntype T { a int8 @gte(300.0) }\n")
+	if !hasDiagContaining(diags, "exceeds") {
+		t.Errorf("expected integral-float capacity reject, got: %v", diags)
+	}
+}
+
+// W2: a scalar declaration with contradictory pair bounds is rejected
+// (pair-ordering now runs on scalar decls, not only fields).
+func TestScalarDeclPairOrderingRejected(t *testing.T) {
+	for _, src := range []string{
+		"package p\nscalar Score int @gte(100) @lte(10)\n",
+		"package p\nscalar Name string @minLength(10) @maxLength(5)\n",
+	} {
+		diags := analyzeOneFile(t, src)
+		if !hasDiagContaining(diags, "must be ≥") && !hasDiagContaining(diags, "must be ≤") {
+			t.Errorf("expected scalar pair-ordering reject for %q, got: %v", strings.TrimSpace(src), diags)
+		}
+	}
 }

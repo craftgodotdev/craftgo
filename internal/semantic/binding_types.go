@@ -5,14 +5,12 @@ package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// Binding-type diagnostic messages, shared by the per-package
-// checkBindingFieldType and the cross-package checkBindingsOnQualifiedField so
-// the two binding-check twins can't drift on wording.
+// Binding-type diagnostic messages.
 const (
 	msgBindPath        = "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s"
 	msgBindWire        = "field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s"
@@ -99,20 +97,10 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 		}
 	}
-	// In project mode the per-package pass defers qualified-ref
-	// binding-type checks to the post-pass resolver, which has the
-	// full project symbol table. Without the skip a cross-pkg scalar
-	// like `id shared.Email @path` false-rejects because the local
-	// pkg.Scalars map can't see `shared.Email`. See
-	// [refResolver.checkProjectBindings] for the cross-pkg-aware
-	// re-check.
-	if a.opts.skipBindingTypeCheckQualified && isQualifiedTypeRef(f.Type) {
-		return
-	}
 	for _, d := range f.Decorators {
 		switch d.Name {
 		case wire.BindingPath:
-			if isPathBindingType(f.Type, a.pkg) {
+			if a.isPathBindingType(f.Type) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
@@ -129,7 +117,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 					parent, f.Name)
 				return
 			}
-			if isWireBindingType(f.Type, a.pkg) {
+			if a.isWireBindingType(f.Type) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
@@ -137,7 +125,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				parent, f.Name, d.Name, describeTypeRef(f.Type))
 			return
 		case wire.BindingForm:
-			if isFormBindingType(f.Type, a.pkg) {
+			if a.isFormBindingType(f.Type) {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
@@ -161,8 +149,8 @@ func isQualifiedTypeRef(t *ast.TypeRef) bool {
 // isPathBindingType reports whether t can bind to `@path`. A path
 // segment is parsed the same way as a `@query` value (string / bool /
 // int* / uint* / float*, or a scalar / enum wrapping one), so the
-// accepted set is exactly [isWireBindingType] MINUS two shapes a URL
-// path can't carry:
+// accepted set is exactly [analyzer.isWireBindingType] MINUS two shapes a
+// URL path can't carry:
 //   - optional: a matched route always supplies the segment, so a
 //     nilable path field is meaningless.
 //   - array: a path carries a single value per segment, with no
@@ -171,11 +159,17 @@ func isQualifiedTypeRef(t *ast.TypeRef) bool {
 // Numeric path IDs (`/users/{id}` with `id int`) are the common REST
 // case; the binder parses the segment via the same server.Parse* helper
 // a numeric @query field uses.
-func isPathBindingType(t *ast.TypeRef, pkg *Package) bool {
+func (a *analyzer) isPathBindingType(t *ast.TypeRef) bool {
+	return a.pathBindableIn(a.pkg.Name, t)
+}
+
+// pathBindableIn is [analyzer.isPathBindingType] with bare type names
+// resolved in homePkg.
+func (a *analyzer) pathBindableIn(homePkg string, t *ast.TypeRef) bool {
 	if t == nil || t.Optional || t.Array {
 		return false
 	}
-	return isWireBindingType(t, pkg)
+	return a.wireBindableIn(homePkg, t)
 }
 
 // isWireBindingType reports whether t is acceptable as a `@query`,
@@ -192,34 +186,14 @@ func isPathBindingType(t *ast.TypeRef, pkg *Package) bool {
 // Optional numerics are accepted too (the binder writes a `*T` and leaves
 // it nil when the key is absent). Rejects: maps, structs, generic
 // instantiations, and the `file` type (which only `@form` accepts).
-func isWireBindingType(t *ast.TypeRef, pkg *Package) bool {
-	// Local refs may be a builtin / file / primitive by bare name; scalars and
-	// enums resolve through the package's own tables.
-	return wireBindableNamed(t, true,
-		func(nt *ast.NamedTypeRef) *ast.ScalarDecl {
-			if pkg == nil {
-				return nil
-			}
-			return pkg.Scalars[nt.Name.String()]
-		},
-		func(nt *ast.NamedTypeRef) *ast.EnumDecl {
-			if pkg == nil {
-				return nil
-			}
-			return pkg.Enums[nt.Name.String()]
-		})
+func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
+	return a.wireBindableIn(a.pkg.Name, t)
 }
 
-// wireBindableNamed is the shared "may this named type ride a wire string"
-// predicate behind both the per-package [isWireBindingType] and the cross-package
-// [refResolver.qualifiedIsWireBindable] twins. The two differ only in how they
-// resolve a scalar / enum decl (local map vs project resolver) - injected as
-// scalar / enum - and whether bare builtin / `file` / primitive names are
-// considered (checkBuiltin: true for local bare refs, false for qualified
-// cross-package refs, which are never builtins). Keeping the rule here means a
-// change to what's wire-bindable can't drift between the two.
-func wireBindableNamed(t *ast.TypeRef, checkBuiltin bool, scalar func(*ast.NamedTypeRef) *ast.ScalarDecl, enum func(*ast.NamedTypeRef) *ast.EnumDecl) bool {
-	if t == nil || t.Map != nil || t.Named == nil || len(t.Named.Args) > 0 {
+// wireBindableIn is [analyzer.isWireBindingType] with bare type names
+// resolved in homePkg - the package of the type that declares the field.
+func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
+	if t == nil || t.Map != nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 {
 		return false
 	}
 	// A wire-string source encodes an array as repeated single values
@@ -227,32 +201,24 @@ func wireBindableNamed(t *ast.TypeRef, checkBuiltin bool, scalar func(*ast.Named
 	if t.ArrayDepth > 1 {
 		return false
 	}
-	if checkBuiltin {
+	// Only a bare name can be a builtin; a qualified ref always names a
+	// declaration.
+	if len(t.Named.Name.Parts) == 1 {
 		name := t.Named.Name.String()
 		if name == "file" {
 			return false
 		}
-		if isPrimitiveWireName(name) {
+		if prims.IsWireParseable(name) {
 			return true
 		}
 	}
-	if sc := scalar(t.Named); sc != nil {
-		return isPrimitiveWireName(sc.Primitive)
+	if sc := a.lookupScalarIn(homePkg, t.Named); sc != nil {
+		return prims.IsWireParseable(sc.Primitive)
 	}
-	if ed := enum(t.Named); ed != nil {
+	if ed := a.lookupEnumIn(homePkg, t.Named); ed != nil {
 		return enumWireKindOK(ed)
 	}
 	return false
-}
-
-// isPrimitiveWireName lists the Go builtin types the wire-bind codegen
-// can parse from a single HTTP string. Delegates to
-// [idents.IsWireParseable] so semantic-time and gen-time rejections
-// share one source of truth - the codegen's `queryPrims` table mirrors
-// the same set (semantic mustn't import codegen, so the canonical
-// table lives in the type-neutral idents package).
-func isPrimitiveWireName(name string) bool {
-	return idents.IsWireParseable(name)
 }
 
 // isFormBindingType is the wire-bind set plus the `file` type, which
@@ -260,7 +226,7 @@ func isPrimitiveWireName(name string) bool {
 // (the renderer drops the pointer wrap on already-nilable types);
 // `file[]` is rejected because the multipart binder writes a single
 // `*multipart.FileHeader` slot, not a slice.
-func isFormBindingType(t *ast.TypeRef, pkg *Package) bool {
+func (a *analyzer) isFormBindingType(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil {
 		return false
 	}
@@ -269,7 +235,7 @@ func isFormBindingType(t *ast.TypeRef, pkg *Package) bool {
 		// a map or a multi-dimensional `file[][]` has no multipart encoding.
 		return t.Map == nil && t.ArrayDepth <= 1
 	}
-	return isWireBindingType(t, pkg)
+	return a.isWireBindingType(t)
 }
 
 // describeTypeRef renders a short human label for a TypeRef so binding
@@ -325,4 +291,18 @@ func namedTypeRefs(t *ast.TypeRef) []string {
 		}
 	}
 	return out
+}
+
+// enumWireKindOK returns true when the enum's first member is one of
+// the wire-bindable kinds (bare / string / int).
+func enumWireKindOK(ed *ast.EnumDecl) bool {
+	for _, m := range ed.Members {
+		if v, ok := m.(*ast.EnumValue); ok {
+			switch v.Kind {
+			case ast.EnumBare, ast.EnumString, ast.EnumInt:
+				return true
+			}
+		}
+	}
+	return false
 }

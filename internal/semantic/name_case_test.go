@@ -69,7 +69,7 @@ extend service userService {
 // simply return without emitting a diagnostic so parse-error
 // recovery does not double-stack with a misleading case warning.
 func TestDeclNameCaseEmptyNameSkipped(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
+	a := newTestAnalyzer(&Package{})
 	a.warnNameCase("type", "", lexer.Position{})
 	for _, d := range a.diags {
 		if d.Code == CodeDeclNameCase {

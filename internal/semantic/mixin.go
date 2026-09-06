@@ -7,16 +7,15 @@ package semantic
 // embedding rules with one extra constraint: a name collision is a
 // hard error rather than promotion shadowing.
 //
-// Diagnostic codes:
+// Diagnostic codes (a name that resolves to nothing is reported by the
+// type-reference pass, not here):
 //
-//   - [CodeMixinUnresolved]    - name doesn't resolve to anything in
-//     the package.
 //   - [CodeMixinNonType]       - name resolves to a non-type entity
 //     (enum, error, scalar, middleware).
 //   - [CodeMixinCycle]         - A mixes B mixes A.
 //   - [CodeMixinConflict]      - two paths bring in the same field.
 //   - [CodeMixinArity]         - generic mixin args disagree with the
-//     target type's [TypeParams].
+//     target type's `TypeParams`.
 //
 // Generic mixin substitution (`Page<User>` → fields with T replaced by
 // User) is not modelled in detail here - for conflict detection we
@@ -121,8 +120,7 @@ type typeParamMixin struct {
 // findTypeParamMixins returns every mixin in body that embeds a bare
 // type-parameter of the host generic (`type Box<T> { T }`). Go forbids
 // embedding a type parameter ("embedded field type cannot be a (pointer to a)
-// type parameter"), so the generated struct would never compile. Shared by the
-// per-package and project mixin passes so both reject it identically.
+// type parameter"), so the generated struct would never compile.
 func findTypeParamMixins(typeParams []string, body []ast.TypeMember) []typeParamMixin {
 	if len(typeParams) == 0 {
 		return nil
@@ -151,8 +149,7 @@ func typeParamMixinMsg(host, param string) string {
 		host, param, param)
 }
 
-// checkTypeParamMixin rejects an embedded type-parameter at the per-package
-// pass; [refResolver.checkProjectMixins] mirrors it for project mode.
+// checkTypeParamMixin rejects an embedded type-parameter.
 func (a *analyzer) checkTypeParamMixin(host string, typeParams []string, body []ast.TypeMember) {
 	for _, tpm := range findTypeParamMixins(typeParams, body) {
 		a.diag(tpm.pos, tpm.pos, lexer.SeverityError, CodeMixinConflict, "%s", typeParamMixinMsg(host, tpm.param))
@@ -180,8 +177,7 @@ type fieldOrigin struct {
 // design time so the author renames one. seen holds every contributing field
 // (host's own + promoted) keyed by DSL name with its origin; a Go-name group
 // is safe only when all its members share one origin. emit anchors each
-// diagnostic at the colliding field. Shared by the per-package
-// ([analyzer.checkOneTypeMixins]) and project ([refResolver.checkOneTypeMixinsProject]) passes.
+// diagnostic at the colliding field.
 func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Position, msg string)) {
 	type ent struct {
 		dsl  string
@@ -223,17 +219,16 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 	}
 }
 
-// expandMixinsAndCheckCollisions runs the structural mixin collision checks
-// shared by the per-package and project passes: it lands the host's own field
-// origins into seen, rejects two mixins that lower to the same Go embed name,
-// expands each mixin's fields via processMixin (the pass's own resolution
-// scope), then reports field-vs-embed-name clashes and cross-embed Go-name
-// collisions. emit reports a diagnostic and returns it so a Related link can be
-// attached. seen is created by the caller and shared with processMixin so the
-// expansion accumulates into it. This is the one orchestration; only the
-// resolution scope (local pkg vs project) and the diag site differ between the
-// two passes, and those are injected.
-func expandMixinsAndCheckCollisions(host string, body []ast.TypeMember, seen map[string]fieldOrigin, processMixin func(mx *ast.Mixin), emit func(pos lexer.Position, code, format string, args ...any) *Diagnostic) {
+// checkOneTypeMixins validates every top-level mixin in body, walking
+// nested mixins recursively: it lands the host's own field origins into
+// seen, rejects two mixins that lower to the same Go embed name, expands
+// each mixin's fields, then reports field-vs-embed-name clashes and
+// cross-embed Go-name collisions.
+func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
+	seen := map[string]fieldOrigin{}
+	emit := func(pos lexer.Position, code, format string, args ...any) *Diagnostic {
+		return a.diag(pos, pos, lexer.SeverityError, code, format, args...)
+	}
 	// Host's own fields land first; they always win if a later mixin brings
 	// the same name in (the conflict is reported, never silently overridden).
 	for _, m := range body {
@@ -263,7 +258,7 @@ func expandMixinsAndCheckCollisions(host string, body []ast.TypeMember, seen map
 			}
 			seenMixin[leaf] = mixinEmbed{full: full, pos: mx.Pos}
 		}
-		processMixin(mx)
+		a.processMixin(host, mx, seen)
 	}
 	for _, c := range fieldEmbedClashes(body) {
 		emit(c.pos, CodeMixinConflict,
@@ -275,104 +270,91 @@ func expandMixinsAndCheckCollisions(host string, body []ast.TypeMember, seen map
 	})
 }
 
-// checkOneTypeMixins validates every top-level mixin in body, walking
-// nested mixins recursively. The `seen` map carries (fieldName →
-// origin) for the host plus all already-expanded mixins.
-func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
-	seen := map[string]fieldOrigin{}
-	expandMixinsAndCheckCollisions(host, body, seen,
-		func(mx *ast.Mixin) { a.processMixin(host, mx, seen) },
-		func(pos lexer.Position, code, format string, args ...any) *Diagnostic {
-			return a.diag(pos, pos, lexer.SeverityError, code, format, args...)
-		})
-}
-
-// processMixin validates one mixin reference against the package and
-// expands its fields into seen. visited is initialised with the host
-// so a self-mixin is detected immediately as a cycle.
-//
-// In project mode the per-package pass is skipped (see
-// [Options.skipMixinCheck]); the project-level resolver runs an
-// equivalent expansion that ALSO resolves qualified mixin refs
-// (`shared.Timestamps`). When this runs per-package, qualified refs
-// are silently skipped because we have no cross-package view.
+// processMixin resolves one mixin reference - bare in the host's package
+// or qualified `pkg.Type` - and expands its fields into seen. visited is
+// initialised with the host so a self-mixin is detected immediately as
+// a cycle. A name that resolves to nothing is left to the type-reference
+// pass, which reports it once.
 func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fieldOrigin) {
 	if mx.Ref == nil || mx.Ref.Name == nil {
 		return
 	}
-	if len(mx.Ref.Name.Parts) != 1 {
-		// Qualified - either rejected by [analyzer.checkQualifiedRefs]
-		// (single-package mode) or expanded by the project resolver
-		// (multi-package mode). Either way, do not fire here.
+	pkgName, name, ok := a.refHome(mx.Ref.Name)
+	if !ok {
 		return
 	}
-	target := mx.Ref.Name.Parts[0]
-	td := a.resolveMixinTarget(mx, target)
+	td := a.resolveMixinTarget(mx, pkgName, name)
 	if td == nil {
 		return
 	}
-	// Generic arity.
 	if len(mx.Ref.Args) != len(td.TypeParams) {
 		a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinArity,
 			"mixin %s expects %d generic argument(s), got %d",
-			target, len(td.TypeParams), len(mx.Ref.Args))
+			mx.Ref.Name.String(), len(td.TypeParams), len(mx.Ref.Args))
 		return
 	}
-	visited := map[string]bool{host: true}
-	a.collectMixinFields(target, target, mx.Pos, seen, visited)
+	visited := map[string]bool{a.pkg.Name + "." + host: true}
+	a.collectMixinFields(pkgName, name, mx.Ref.Name.String(), mx.Pos, seen, visited)
 }
 
-// resolveMixinTarget finds the *TypeDecl that target names. Reports a
-// distinct diagnostic when the name resolves to a different kind of
-// declaration (enum / error / scalar / middleware) so the user sees
-// "you mixin'd an enum" rather than a generic "unresolved".
-func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, target string) *ast.TypeDecl {
-	if td, ok := a.pkg.Types[target]; ok {
+// resolveMixinTarget finds the *TypeDecl that name declares in pkgName.
+// Reports a distinct diagnostic when the name resolves to a different
+// kind of declaration (enum / error / scalar / middleware) so the user
+// sees "you mixin'd an enum" rather than a generic "unresolved".
+func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.TypeDecl {
+	pkg := a.packageNamed(pkgName)
+	if pkg == nil {
+		return nil
+	}
+	if td, ok := pkg.Types[name]; ok {
 		return td
 	}
 	kind := ""
 	switch {
-	case a.pkg.Enums[target] != nil:
+	case pkg.Enums[name] != nil:
 		kind = "enum"
-	case a.pkg.Errors[target] != nil:
+	case pkg.Errors[name] != nil:
 		kind = "error"
-	case a.pkg.Scalars[target] != nil:
+	case pkg.Scalars[name] != nil:
 		kind = "scalar"
-	case a.pkg.Middlewares[target] != nil:
+	case pkg.Middlewares[name] != nil:
 		kind = "middleware"
 	}
 	if kind != "" {
 		a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinNonType,
-			"mixin %s is a %s, not a type", target, kind)
-		return nil
+			"mixin %s is a %s, not a type", a.refDisplay(pkgName, name), kind)
 	}
-	a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinUnresolved,
-		"mixin %s is not declared in this package", target)
 	return nil
 }
 
-// collectMixinFields walks the body of `name`, accumulating field
+// collectMixinFields walks the body of pkgName.name, accumulating field
 // origins into seen. Nested mixins recurse with the same `seen` map so
 // one deep conflict surfaces as one diagnostic at the offending
-// top-level mixin position. visited tracks the expansion stack to
-// catch cycles. Top-level call passes mixinPos as the diagnostic
-// anchor - we underline the host's `MixinName` token, not the
-// nested decl that actually contains the colliding field.
+// top-level mixin position; a bare nested mixin resolves in the package
+// of the type that embeds it. visited tracks the expansion stack by
+// qualified name to catch cycles, including ones that cross packages.
+// mixinPos is the diagnostic anchor - the host's `MixinName` token, not
+// the nested decl that actually contains the colliding field.
 func (a *analyzer) collectMixinFields(
-	name, sourceLabel string,
+	pkgName, name, sourceLabel string,
 	mixinPos lexer.Position,
 	seen map[string]fieldOrigin,
 	visited map[string]bool,
 ) {
-	if visited[name] {
+	key := pkgName + "." + name
+	if visited[key] {
 		a.diag(mixinPos, mixinPos, lexer.SeverityError, CodeMixinCycle,
-			"mixin %s forms a cycle", name)
+			"mixin %s forms a cycle", a.refDisplay(pkgName, name))
 		return
 	}
-	visited[name] = true
-	defer delete(visited, name)
+	visited[key] = true
+	defer delete(visited, key)
 
-	td, ok := a.pkg.Types[name]
+	pkg := a.packageNamed(pkgName)
+	if pkg == nil {
+		return
+	}
+	td, ok := pkg.Types[name]
 	if !ok {
 		return
 	}
@@ -394,10 +376,16 @@ func (a *analyzer) collectMixinFields(
 			}
 			seen[v.Name] = fieldOrigin{pos: v.Pos, from: sourceLabel}
 		case *ast.Mixin:
-			if v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) != 1 {
+			if v.Ref == nil || v.Ref.Name == nil {
 				continue
 			}
-			a.collectMixinFields(v.Ref.Name.Parts[0], sourceLabel, mixinPos, seen, visited)
+			parts := v.Ref.Name.Parts
+			switch len(parts) {
+			case 1:
+				a.collectMixinFields(pkgName, parts[0], sourceLabel, mixinPos, seen, visited)
+			case 2:
+				a.collectMixinFields(parts[0], parts[1], sourceLabel, mixinPos, seen, visited)
+			}
 		}
 	}
 }

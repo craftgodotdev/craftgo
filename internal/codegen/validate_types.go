@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // This file groups the field-shape predicates and small expression
@@ -32,8 +32,8 @@ func isLengthCheckable(f *ast.Field) bool {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return false
 	}
-	switch f.Type.Named.Name.String() {
-	case "string", "bytes":
+	switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
+	case prims.String, prims.Bytes:
 		return true
 	}
 	return false
@@ -47,13 +47,7 @@ func isNumericField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return false
 	}
-	switch f.Type.Named.Name.String() {
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
-		return true
-	}
-	return false
+	return prims.IsNumeric(f.Type.Named.Name.String())
 }
 
 // isIntegerField - non-array integer (signed or unsigned). Floats are
@@ -64,12 +58,7 @@ func isIntegerField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return false
 	}
-	switch f.Type.Named.Name.String() {
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
-		return true
-	}
-	return false
+	return prims.IsInteger(f.Type.Named.Name.String())
 }
 
 // isFileField reports whether the field's declared type is the DSL
@@ -154,37 +143,18 @@ func optionalGuard(f *ast.Field, access string) string {
 	// through [scalarFieldLevelChecks], which owns its own guard. So the
 	// nilability question here is answered by [isNilableGoType] alone and
 	// no scalar resolver is needed.
-	if fieldNeedsNilGuard(f, nil, nil) {
+	if fieldNeedsNilGuard(f) {
 		return access + " != nil && "
 	}
 	return ""
 }
 
-// fieldNeedsNilGuard reports whether f's value can be nil in a state the
-// contract treats as valid (absent / null), so a constraint check must
-// nil-guard first. True for any pointer field, and for a nilable Go type
-// - bytes / slice / map, OR a scalar whose underlying primitive is nilable
-// (`scalar Blob bytes`) - marked optional (`?`) or `@nullable`.
-func fieldNeedsNilGuard(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
-	if goFieldIsPointer(f, pkg, r) {
-		return true
-	}
-	if f == nil || f.Type == nil {
-		return false
-	}
-	if !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
-		return false
-	}
-	return isNilableGoType(GoTypeRef(f.Type)) || scalarRefNilable(f.Type, pkg, r)
-}
-
 // stringValueExpr returns the string-typed access expression. Pointer
 // fields (`T?` or `@nullable T`) get a single dereference; plain fields
 // pass through. Pair with [optionalGuard] so the dereference only
-// runs after the nil check. Only string-typed fields reach here, never a
-// nilable scalar, so the pointer test needs no scalar resolver.
-func stringValueExpr(f *ast.Field, access string) string {
-	if goFieldIsPointer(f, nil, nil) {
+// runs after the nil check.
+func stringValueExpr(f *ast.Field, access string, ctx emitCtx) string {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return "*" + access
 	}
 	return access

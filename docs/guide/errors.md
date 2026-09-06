@@ -206,7 +206,7 @@ The OpenAPI spec shows each declared error as a per-status response with the sch
 
 If your service returns an error that isn't declared in `@errors(...)`, it still surfaces on the wire correctly (the typed error implements `HTTPStatus()`), but the OpenAPI spec won't list it. Best practice: declare every error you intentionally return.
 
-For unexpected errors (raw `errors.New(...)` / `fmt.Errorf(...)` that carry no HTTP status), the framework logs the error with the request's trace context (`trace_id` / `span_id` / `request_id`) and responds 500 with a `{"message": ...}` JSON envelope.
+For unexpected errors (raw `errors.New(...)` / `fmt.Errorf(...)` that carry no HTTP status), the framework logs the error with the request's trace context (`trace_id` / `span_id`) and responds 500 with a `{"message": ...}` JSON envelope.
 
 ## Custom error responses
 

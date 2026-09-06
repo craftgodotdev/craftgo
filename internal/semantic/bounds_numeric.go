@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkMultipleOfTarget rejects `@multipleOf` where the generated validator
@@ -22,10 +23,7 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	isFloat := prim == "float32" || prim == "float64"
 	for _, d := range f.Decorators {
 		if d == nil || d.Name != "multipleOf" {
@@ -47,28 +45,6 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	}
 }
 
-// unsignedPrim reports whether a Go primitive name is an unsigned
-// integer. `@negative` is contradictory on these (the value is always
-// >= 0); `@positive` stays legal (it rejects only 0).
-func unsignedPrim(prim string) bool {
-	switch prim {
-	case "uint", "uint8", "uint16", "uint32", "uint64":
-		return true
-	}
-	return false
-}
-
-// integerPrim reports whether prim is a signed or unsigned integer
-// primitive - the set whose @multipleOf is enforced with Go's modulus.
-func integerPrim(prim string) bool {
-	switch prim {
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
-		return true
-	}
-	return false
-}
-
 // checkNegativeOnUnsigned rejects `@negative` on an unsigned-integer
 // field. The validator emits a `value >= 0` rejection, which fires for
 // EVERY value of a `uint*` (always >= 0) - the field could never
@@ -79,11 +55,8 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
-	if !unsignedPrim(prim) {
+	prim := a.primOf(f.Type)
+	if !prims.IsUnsigned(prim) {
 		return
 	}
 	a.diagNegativeUnsigned(f.Decorators, prim)
@@ -126,35 +99,6 @@ func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 	}
 }
 
-// intCapacity returns the value range a Go integer primitive can hold.
-// Returns ok=false for non-integer or unrecognised primitives so the
-// caller skips the check rather than emit a false-positive overflow
-// diagnostic.
-func intCapacity(primitive string) (lo, hi float64, ok bool) {
-	switch primitive {
-	case "int8":
-		return -128, 127, true
-	case "int16":
-		return -32768, 32767, true
-	case "int32":
-		return -2147483648, 2147483647, true
-	case "int64", "int":
-		// `int` is 32 or 64-bit depending on platform; treat as the
-		// narrower of the two so designs stay portable.
-		return -9223372036854775808, 9223372036854775807, true
-	case "uint8":
-		return 0, 255, true
-	case "uint16":
-		return 0, 65535, true
-	case "uint32":
-		return 0, 4294967295, true
-	case "uint64", "uint":
-		// `uint` follows the same portable-narrow rule as int.
-		return 0, 18446744073709551615, true
-	}
-	return 0, 0, false
-}
-
 // checkBoundCapacity rejects numeric bound literals that exceed the
 // field's primitive type capacity. Without this, codegen happily emits
 // `if v.Small > 300 { ... }` against an `int8` field, which fails to
@@ -166,11 +110,8 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
-	if lo, hi, ok := intCapacity(prim); ok {
+	prim := a.primOf(f.Type)
+	if lo, hi, ok := prims.Capacity(prim); ok {
 		forEachNumericBound(f, func(d *ast.Decorator, arg *ast.DecoratorArg) {
 			if v, disp, ok := integralBoundValue(arg); ok && (v < lo || v > hi) {
 				a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeBoundOverflow,
@@ -254,10 +195,7 @@ func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	a.checkIntBoundFloatLiteral(prim, fmt.Sprintf("field %q", f.Name), f.Decorators)
 }
 
@@ -276,7 +214,7 @@ func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 // included - its codegen takes the integer-only path and never emits a
 // float literal.
 func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.Decorator) {
-	if _, _, ok := intCapacity(prim); !ok {
+	if _, _, ok := prims.Capacity(prim); !ok {
 		return // not an integer primitive - float bounds are valid
 	}
 	for _, d := range decs {
@@ -330,10 +268,7 @@ func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	if prim != "bytes" {
 		return
 	}

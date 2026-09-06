@@ -83,17 +83,16 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 // is walked once to build a name set so multiple decorators on the same
 // type don't pay the O(n) cost twice.
 func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, body []ast.TypeMember) {
-	var fieldSet map[string]*ast.Field
+	var fieldSet map[string]promotedField
 	var incomplete bool
-	getFields := func() map[string]*ast.Field {
+	getFields := func() map[string]promotedField {
 		if fieldSet != nil {
 			return fieldSet
 		}
-		fieldSet = map[string]*ast.Field{}
 		// Mixin-promoted fields ARE fields of this type - the host struct
 		// embeds them and the validator runs their checks - so a cross-field
 		// decorator may reference them, not only the directly-declared ones.
-		incomplete = a.collectGroupFields(body, fieldSet, map[string]bool{})
+		fieldSet, incomplete = a.promotedFieldSet(a.pkg.Name, body)
 		return fieldSet
 	}
 	for _, d := range decs {
@@ -118,12 +117,12 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 				continue
 			}
 			seen[name.value] = true
-			f, ok := getFields()[name.value]
+			pf, ok := getFields()[name.value]
 			if !ok {
 				if incomplete {
-					// A cross-package mixin the per-package pass couldn't
-					// expand may promote this member; codegen resolves it via
-					// the project resolver, so defer rather than false-reject.
+					// An unresolved mixin may promote this member; its own
+					// diagnostic already fired, so don't pile a misleading
+					// "not a field" on top.
 					continue
 				}
 				a.diag(name.pos, name.pos, lexer.SeverityError, CodeDecoratorRef,
@@ -131,11 +130,9 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 					d.Name, typeName, name.value)
 				continue
 			}
-			if f != nil {
-				reportCrossFieldMemberIssues(d.Name, typeName, name.value, ResolveField(f, a.pkg, nil), func(code, msg string) {
-					a.diag(name.pos, name.pos, lexer.SeverityError, code, "%s", msg)
-				})
-			}
+			reportCrossFieldMemberIssues(d.Name, typeName, name.value, ResolveField(pf.Field, a.packageNamed(pf.Pkg), a.proj), func(code, msg string) {
+				a.diag(name.pos, name.pos, lexer.SeverityError, code, "%s", msg)
+			})
 		}
 		// `@mutuallyExclusive` with 0 or 1 distinct fields renders
 		// the counter check (`n > 1`) unreachable - dead code that
@@ -149,217 +146,12 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 	}
 }
 
-// checkProjectFieldGroups re-validates `@requiresOneOf` / `@mutuallyExclusive`
-// member names against the full field set, including fields promoted from
-// cross-package mixins. The per-package pass ([analyzer.checkFieldGroupRefs])
-// defers the "not a field" reject for any type whose mixin closure reaches a
-// cross-package mixin - its promoted fields aren't visible there. This pass
-// closes that gap: a typoed member would otherwise reach codegen, which
-// substitutes a literal `false` for the unknown name and emits a validator
-// that never fires.
-func (r *refResolver) checkProjectFieldGroups() {
-	for pkgName, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		for _, td := range pkg.Types {
-			r.checkOneTypeFieldGroups(pkgName, td)
-		}
-	}
-}
-
-// checkOneTypeFieldGroups runs the authoritative member check for one type,
-// but only when its mixin closure crossed a package boundary - that is
-// exactly the set the per-package pass deferred. Re-checking a type the
-// per-package pass already fully resolved would double-report. For each
-// member it (1) rejects a name no field provides and (2) re-applies the
-// per-field quality rules to a member promoted from a foreign mixin (which
-// the per-package pass never saw, so never checked); members the per-package
-// pass already had - direct fields and same-package-mixin-promoted ones - are
-// skipped to avoid double-reporting.
-func (r *refResolver) checkOneTypeFieldGroups(currentPkg string, td *ast.TypeDecl) {
-	if td == nil || !hasFieldGroupDecorator(td.Decorators) {
-		return
-	}
-	fullFields := map[string]*ast.Field{}
-	deferred := r.collectGroupFieldsProject(currentPkg, td.Body, fullFields, map[string]bool{})
-	if !deferred {
-		return
-	}
-	localFields := map[string]bool{}
-	r.collectLocalGroupFields(currentPkg, td.Body, localFields, map[string]bool{})
-	for _, d := range td.Decorators {
-		if d == nil || (d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive") {
-			continue
-		}
-		for _, arg := range collectIdentOrStringArgs(d) {
-			f, ok := fullFields[arg.value]
-			if !ok {
-				r.diag(arg.pos, lexer.SeverityError, CodeDecoratorRef,
-					"@%s on type %s: %q is not a field of this type",
-					d.Name, td.Name, arg.value)
-				continue
-			}
-			if localFields[arg.value] {
-				// The per-package pass had this member (a direct field or one
-				// from a same-package mixin) and already quality-checked it.
-				continue
-			}
-			if f != nil {
-				reportCrossFieldMemberIssues(d.Name, td.Name, arg.value, ResolveField(f, nil, r.proj), func(code, msg string) {
-					r.diag(arg.pos, lexer.SeverityError, code, "%s", msg)
-				})
-			}
-		}
-	}
-}
-
-// requalifyFieldType returns f with its bare (1-part) named type qualified to
-// pkg, so a field promoted across a package boundary carries a name the
-// project resolver can resolve (`base.Blob` rather than a bare `Blob`).
-// Builtins and already-qualified refs are returned unchanged. A COPY is
-// returned - the original field (and the AST codegen reads) is never mutated.
-func requalifyFieldType(f *ast.Field, pkg string) *ast.Field {
-	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
-		return f
-	}
-	if len(f.Type.Named.Name.Parts) != 1 {
-		return f
-	}
-	name := f.Type.Named.Name.Parts[0]
-	if isPrimitiveWireName(name) || name == "bytes" || name == "any" || name == "file" {
-		return f
-	}
-	cf := *f
-	ct := *f.Type
-	cn := *f.Type.Named
-	cn.Name = &ast.QualifiedIdent{Pos: f.Type.Named.Name.Pos, Parts: []string{pkg, name}}
-	ct.Named = &cn
-	cf.Type = &ct
-	return &cf
-}
-
-// collectGroupFieldsProject fills out with every field a type body
-// contributes (name → declaration), resolving embedded mixins across
-// packages. A name already present is not overwritten (first by body order
-// wins, mirroring [analyzer.collectGroupFields]). It returns `deferred` =
-// true when the closure reached a qualified cross-package mixin the
-// per-package pass could not expand - the signal that the type's members
-// were left for this project pass to validate.
-func (r *refResolver) collectGroupFieldsProject(currentPkg string, body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) (deferred bool) {
-	for _, m := range body {
-		switch v := m.(type) {
-		case *ast.Field:
-			// A DIRECT field whose own type is cross-package-qualified
-			// (`rawData shared.Blob`) also needs this project pass: the
-			// per-package presence check resolves it with proj=nil, so a
-			// scalar-over-bytes never reaches its nilable primitive and its
-			// unclean presence slips through. Defer so the group members get
-			// re-checked here with full resolution.
-			if isQualifiedTypeRef(v.Type) {
-				deferred = true
-			}
-			if _, dup := out[v.Name]; !dup {
-				// Requalify the field's bare named type to the package it was
-				// collected from (currentPkg), so a promoted field carries
-				// `base.Blob` rather than a bare `Blob` the project resolver
-				// can't see. ResolveField then resolves it through proj. A copy
-				// keeps the original AST (and codegen) untouched.
-				out[v.Name] = requalifyFieldType(v, currentPkg)
-			}
-		case *ast.Mixin:
-			if v == nil || v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			parts := v.Ref.Name.Parts
-			var mixPkg, sym string
-			switch len(parts) {
-			case 1:
-				mixPkg, sym = currentPkg, parts[0]
-			case 2:
-				mixPkg, sym = parts[0], parts[1]
-				deferred = true
-			default:
-				continue
-			}
-			key := mixPkg + "." + sym
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			pkg := r.proj.Packages[mixPkg]
-			if pkg == nil {
-				continue
-			}
-			mt, ok := pkg.Types[sym]
-			if !ok {
-				continue
-			}
-			if r.collectGroupFieldsProject(mixPkg, mt.Body, out, seen) {
-				deferred = true
-			}
-		}
-	}
-	return deferred
-}
-
-// collectLocalGroupFields fills out with the field names the per-package pass
-// could see: direct fields plus those from same-package (bare) mixins,
-// stopping at a qualified cross-package mixin (which the per-package pass
-// also can't expand). The result is exactly the members that pass already
-// quality-checked, so [checkOneTypeFieldGroups] can skip them and re-check
-// only the cross-package-promoted members.
-func (r *refResolver) collectLocalGroupFields(currentPkg string, body []ast.TypeMember, out map[string]bool, seen map[string]bool) {
-	for _, m := range body {
-		switch v := m.(type) {
-		case *ast.Field:
-			// A field whose TYPE is cross-package-qualified is NOT counted as
-			// locally checked: the per-package presence check can't resolve it
-			// (proj=nil), so leave it for the project re-check rather than
-			// skipping it as already-handled.
-			if !isQualifiedTypeRef(v.Type) {
-				out[v.Name] = true
-			}
-		case *ast.Mixin:
-			if v == nil || v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) != 1 {
-				continue
-			}
-			sym := v.Ref.Name.Parts[0]
-			if seen[sym] {
-				continue
-			}
-			seen[sym] = true
-			pkg := r.proj.Packages[currentPkg]
-			if pkg == nil {
-				continue
-			}
-			if mt, ok := pkg.Types[sym]; ok {
-				r.collectLocalGroupFields(currentPkg, mt.Body, out, seen)
-			}
-		}
-	}
-}
-
-// hasFieldGroupDecorator reports whether a decorator list carries a
-// cross-field group (`@requiresOneOf` / `@mutuallyExclusive`).
-func hasFieldGroupDecorator(decs []*ast.Decorator) bool {
-	for _, d := range decs {
-		if d != nil && (d.Name == "requiresOneOf" || d.Name == "mutuallyExclusive") {
-			return true
-		}
-	}
-	return false
-}
-
 // reportCrossFieldMemberIssues applies the per-field quality rules a
 // cross-field group member must satisfy and calls `report(code, msg)` for
-// each violation. It is the single home for these rules so the per-package
-// pass ([analyzer.checkFieldGroupRefs]) and the project-level re-check
-// ([refResolver.checkOneTypeFieldGroups], which sees fields promoted across
-// package boundaries) apply them identically - whether the member is a local
-// field or one promoted from a foreign mixin. The presence-unclean case
-// returns early (it subsumes the optional check); the remaining rules are
-// independent so a field can violate several at once.
+// each violation, whether the member is a local field or one promoted from
+// a foreign mixin. The presence-unclean case returns early (it subsumes
+// the optional check); the remaining rules are independent so a field can
+// violate several at once.
 func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf ResolvedField, report func(code, msg string)) {
 	f := rf.Field
 	// A nilable-but-not-pointer member has no clean cross-field presence:
@@ -427,46 +219,6 @@ func presenceUnclean(rf ResolvedField) bool {
 	return rf.IsNilable && rf.Category != CatFile
 }
 
-// collectGroupFields fills out with every field a type body contributes
-// (name -> declaration), expanding embedded mixins (recursively) so a
-// cross-field decorator can reference a promoted field. `seen` breaks
-// mixin cycles; an unresolved mixin ref is skipped (its own decl reports
-// the resolution error). A name already present (the host's own field)
-// is not overwritten by a promoted one - the host wins, matching Go
-// embedding.
-func (a *analyzer) collectGroupFields(body []ast.TypeMember, out map[string]*ast.Field, seen map[string]bool) (incomplete bool) {
-	for _, m := range body {
-		switch v := m.(type) {
-		case *ast.Field:
-			if _, dup := out[v.Name]; !dup {
-				out[v.Name] = v
-			}
-		case *ast.Mixin:
-			if v == nil || v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			name := v.Ref.Name.String()
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			if td, ok := a.pkg.Types[name]; ok {
-				if a.collectGroupFields(td.Body, out, seen) {
-					incomplete = true
-				}
-			} else {
-				// A cross-package (or otherwise unresolvable) mixin: its
-				// promoted fields aren't visible to the per-package pass, so
-				// the field set is incomplete - codegen resolves them via the
-				// project resolver. Signal so the caller doesn't false-reject
-				// a member that the mixin in fact provides.
-				incomplete = true
-			}
-		}
-	}
-	return incomplete
-}
-
 // checkServiceLevelRefs validates `@middlewares` and `@security` at the
 // service decoration site. The same logic applies on methods via
 // [checkMethodLevelRefs].
@@ -505,28 +257,31 @@ func (a *analyzer) checkMethodLevelRefs(m *ast.Method) {
 }
 
 // checkErrorsRef resolves every name passed to `@errors(...)` against
-// pkg.Errors. Both bare-ident (`UserNotFound`) and array-shortcut
-// (`["UserNotFound", ...]`) forms are accepted by the args pass; we
-// flatten via [collectIdentOrStringArgs].
+// the project's error declarations: a qualified `pkg.Name` must be
+// declared in that package, a bare name in any package. Both bare-ident
+// (`UserNotFound`) and array-shortcut (`["UserNotFound", ...]`) forms
+// are accepted by the args pass; we flatten via
+// [collectIdentOrStringArgs].
 func (a *analyzer) checkErrorsRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
-		if _, ok := a.pkg.Errors[arg.value]; ok {
+		if a.errorDeclared(arg.value) {
 			continue
 		}
 		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
-			"@errors: %q is not a declared error type", arg.value)
+			"@errors: %q is not a declared error type in any package", arg.value)
 	}
 }
 
-// checkMiddlewareRef resolves middleware names against pkg.Middlewares.
-// Same flattening rules as [checkErrorsRef].
+// checkMiddlewareRef resolves middleware names the same way
+// [checkErrorsRef] resolves errors: qualified against the named package,
+// bare against every package.
 func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
-		if _, ok := a.pkg.Middlewares[arg.value]; ok {
+		if a.middlewareDeclared(arg.value) {
 			continue
 		}
 		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
-			"@middlewares: %q is not a declared middleware", arg.value)
+			"@middlewares: %q is not a declared middleware in any package", arg.value)
 	}
 }
 

@@ -1,10 +1,6 @@
 package server
 
 import (
-	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -12,21 +8,9 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// requestIDHeader is the canonical header name read and written by the
-// RequestID middleware.
-const requestIDHeader = "X-Request-Id"
-
 // contentTypeJSON is the Content-Type the framework's JSON responses (health,
 // error envelopes, served OpenAPI spec) set.
 const contentTypeJSON = "application/json; charset=utf-8"
-
-// ctxKey is a private type so request-scoped values don't collide with
-// other packages' context keys.
-type ctxKey int
-
-const (
-	ctxKeyRequestID ctxKey = iota
-)
 
 // committedResponseWriter wraps http.ResponseWriter to remember whether
 // the response status / body has already been flushed. Recovery uses it
@@ -101,26 +85,6 @@ func Recovery(logger log.Logger) Middleware {
 	}
 }
 
-// RequestID extracts an existing X-Request-Id header or generates a new
-// hex string, then stores it on the context (under both this package's
-// internal key AND pkg/log's canonical key, so log.WithContext can
-// surface it without an import cycle) and echoes it back in the
-// response so clients can correlate logs.
-func RequestID() Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := r.Header.Get(requestIDHeader)
-			if id == "" {
-				id = newRequestID()
-			}
-			w.Header().Set(requestIDHeader, id)
-			ctx := withRequestID(r.Context(), id)
-			ctx = log.WithRequestID(ctx, id)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
-}
-
 // AccessLogOption configures [AccessLog].
 type AccessLogOption func(*accessLogConfig)
 
@@ -128,42 +92,28 @@ type accessLogConfig struct {
 	skip map[string]bool
 }
 
-// AccessLogSkipPaths replaces the set of request paths whose accesses are NOT
-// logged (by default, the health-probe paths). Pass no arguments to skip
-// nothing. Paths are matched against `r.URL.Path` exactly.
+// AccessLogSkipPaths keeps requests whose `r.URL.Path` equals one of paths
+// out of the log - a `/metrics` scrape served on the API port, for example.
+// The health probes need no entry here: they never reach the middleware
+// chain (see [Server.Handler]).
 func AccessLogSkipPaths(paths ...string) AccessLogOption {
 	return func(c *accessLogConfig) {
-		c.skip = make(map[string]bool, len(paths))
 		for _, p := range paths {
 			c.skip[p] = true
 		}
 	}
 }
 
-// AccessLogAll logs every request, including the health probes that [AccessLog]
-// omits by default.
-func AccessLogAll() AccessLogOption {
-	return func(c *accessLogConfig) { c.skip = nil }
-}
-
-// AccessLog logs one structured line per request after the response has been
-// written, including method, path, status, and elapsed time.
+// AccessLog logs one line per request after the response has been written:
+// message `http access` with `method`, `path`, `status` and `latency`, plus
+// the `trace_id` / `span_id` the request context carries (see
+// [log.Logger.WithContext]). Wire the telemetry HTTP middleware before
+// AccessLog so those ids are on the context.
 //
-// By default it SKIPS the health-probe paths ([DefaultLivenessPath] and
-// [DefaultReadinessPath]): liveness/readiness pollers hit those every few
-// seconds and would otherwise flood the log with noise. Pass [AccessLogAll] to
-// log them too, or [AccessLogSkipPaths] to choose a different skip set (custom
-// health routes set via [WithHealthPaths], `/metrics`, ...).
-//
-// Tracing identifiers (`trace_id`, `span_id`, `request_id`) are not added
-// explicitly - `WithContext(ctx)` extracts them from the request context. Wire
-// `otel.HTTPMiddleware(...)` and / or `RequestID()` upstream of AccessLog to
-// populate the context.
+// Every request that reaches the middleware logs; [AccessLogSkipPaths]
+// keeps chosen routes out.
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
-	cfg := &accessLogConfig{skip: map[string]bool{
-		DefaultLivenessPath:  true,
-		DefaultReadinessPath: true,
-	}}
+	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -238,28 +188,3 @@ func (s *statusRecorder) Flush() {
 // ReaderFrom - without it a WebSocket upgrade or raw Hijack under AccessLog
 // fails with "feature not supported".
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
-
-// newRequestID returns a 16-char hex string suitable for X-Request-Id.
-// Uses crypto/rand so collisions across nodes are vanishingly unlikely.
-func newRequestID() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("req-%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b[:])
-}
-
-// withRequestID stores id on ctx so downstream handlers can retrieve it.
-func withRequestID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, ctxKeyRequestID, id)
-}
-
-// RequestIDFromContext returns the request ID stored by RequestID, or "".
-func RequestIDFromContext(ctx context.Context) string {
-	if v := ctx.Value(ctxKeyRequestID); v != nil {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}

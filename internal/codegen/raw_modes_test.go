@@ -104,14 +104,10 @@ func renderGoldenBundle(t *testing.T, pkg *semantic.Package, r *ProjectResolver)
 	t.Helper()
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateTransportResolved(pkg, cfg, root, r); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, r); err != nil {
 		t.Fatalf("transport: %v", err)
 	}
-	var cross CrossPkg
-	if r != nil {
-		cross = r.CrossPkg
-	}
-	if err := GenerateServicePackage(pkg, cfg, root, cross); err != nil {
+	if err := GenerateService(pkg, cfg, root, r); err != nil {
 		t.Fatalf("service: %v", err)
 	}
 	var paths []string
@@ -149,10 +145,10 @@ func genRawModes(t *testing.T) func(kind, file string) string {
 	pkg := analyze(t, rawModesSampleDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateService(pkg, cfg, root); err != nil {
+	if err := GenerateService(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	return func(kind, file string) string {
@@ -310,7 +306,7 @@ func TestParityTransportCallMatchesStubSignature(t *testing.T) {
 	cfg := sampleConfig()
 	for _, m := range svc.Methods {
 		imps := importPathsForGroup(cfg, pkg, "DemoService", "")
-		td, err := buildTransportData("DemoService", m, imps, pkg, nil)
+		td, err := buildTransportData("DemoService", m, imps, pkg, resolverFor(pkg, nil))
 		if err != nil {
 			t.Fatalf("%s: %v", m.Name, err)
 		}
@@ -459,13 +455,13 @@ func TestRawModesMixWithMethodDecorators(t *testing.T) {
 	pkg := analyze(t, rawModesMixDSL)
 	root := t.TempDir()
 	cfg := sampleConfig()
-	if err := GenerateTransport(pkg, cfg, root); err != nil {
+	if err := GenerateTransport(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateService(pkg, cfg, root); err != nil {
+	if err := GenerateService(pkg, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateRoutes(pkg, cfg, root); err != nil {
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
 		t.Fatal(err)
 	}
 	read := func(rel string) string {

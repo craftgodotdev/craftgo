@@ -5,210 +5,11 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
-
-// flattenFields returns td's fields with embedded mixins expanded in
-// declaration order: every `Mixin` member contributes the fields of the
-// type it names (recursively), the same fields the JSON body schema
-// (allOf $ref) and the validator (mixinValidateCall) already pull in. The
-// wire-binding, OpenAPI-parameter, default pre-fill, and body-decode
-// passes call this so a field a request inherits through a mixin is bound,
-// documented, defaulted, and decoded - not silently dropped while the
-// validator still enforces it. `r` may be nil (the OpenAPI pass runs on
-// the merged single package, where pkg.Types already holds every type);
-// `seen` breaks mixin cycles.
-func flattenFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []*ast.Field {
-	return flattenFieldsIn(td, "", pkg, r, seen)
-}
-
-// flattenFieldsIn is [flattenFields] with a package-prefix context.
-// `prefix` is the package qualifier for BARE mixin names in td's body:
-// "" for the package being generated, or a sibling package name when td
-// was itself reached through a cross-package mixin. Without it a bare
-// mixin nested inside `shared.XMid` (e.g. `XDeep`, declared in `shared`)
-// is looked up against the current package and silently dropped - so its
-// fields never bind, default, or validate, while OpenAPI (built from a
-// flattened merged package) still advertises them. The prefix qualifies
-// the bare name (`shared.XDeep`) so the resolver finds it.
-func flattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []*ast.Field {
-	flat := flattenFieldsWithNames(td, prefix, pkg, r, seen)
-	out := make([]*ast.Field, len(flat))
-	for i, ff := range flat {
-		out[i] = ff.Field
-	}
-	return out
-}
-
-// flatField is a flattened request/response field paired with the Go
-// identifier it lands on. GoName is deduped within the field's DECLARING
-// struct (the type whose body literally lists it), so it matches what the
-// struct renderer emits - colliding siblings (`userId` / `user_id`) get the
-// `_2`/`_3` suffix in EVERY consumer (wire binder, default pre-fill, response
-// writer), not just the struct. A field promoted through a mixin keeps the
-// name from its own declaring struct, since the request embeds that mixin
-// (Go field promotion) rather than inlining its fields.
-type flatField struct {
-	Field  *ast.Field
-	GoName string
-}
-
-// flattenFieldsWithNames is [flattenFieldsIn] carrying each field's
-// dedup-resolved Go identifier. The dedup runs PER recursion level (over the
-// declaring type's direct fields), mirroring the struct renderer, so the
-// suffix a colliding field gets is identical to its struct field - the single
-// source of the Go field identity the whole pipeline reads.
-func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *ProjectResolver, seen map[string]bool) []flatField {
-	if td == nil {
-		return nil
-	}
-	// Dedup this level's direct fields exactly as the struct renderer does, so
-	// a promoted field carries the name it has in its own struct.
-	levelNames := resolvedGoFieldNames(td.Body)
-	var out []flatField
-	fieldIdx := 0
-	for _, m := range td.Body {
-		switch v := m.(type) {
-		case *ast.Field:
-			// A field promoted from a foreign package (prefix != "") names
-			// its type bare in its home package; re-qualify so the
-			// consumer's resolver (binder cast, default pre-fill, import
-			// collector) finds it as `prefix.Name`. No-op at the top level
-			// and for the r=nil (merged-package OpenAPI) path.
-			out = append(out, flatField{Field: requalifyFieldType(v, prefix, r), GoName: levelNames[fieldIdx]})
-			fieldIdx++
-		case *ast.Mixin:
-			if v == nil || v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			// Resolve the mixin in the package it lives in: a qualified
-			// ref names that package; a bare ref inherits the enclosing
-			// prefix (the package td itself came from).
-			parts := v.Ref.Name.Parts
-			key := v.Ref.Name.String()
-			childPrefix := prefix
-			if len(parts) == 2 {
-				childPrefix = parts[0]
-			} else if prefix != "" {
-				key = prefix + "." + key
-			}
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			var mt *ast.TypeDecl
-			// pkg.Types is bare-keyed for the current package only, so it
-			// only applies to a bare ref at the top level (prefix == "").
-			if pkg != nil && prefix == "" && len(parts) == 1 {
-				mt = pkg.Types[key]
-			}
-			if mt == nil && r != nil {
-				mt = r.LookupType(key)
-			}
-			sub := flattenFieldsWithNames(mt, childPrefix, pkg, r, seen)
-			// A generic mixin (`Page<Item>`) promotes fields typed in the
-			// type-parameter (`items T[]`). Substitute the concrete arguments
-			// so every consumer - wire binder, OpenAPI params/body, default
-			// pre-fill - sees `items Item[]`, not the bare `T`.
-			if mt != nil && len(v.Ref.Args) > 0 && len(mt.TypeParams) > 0 {
-				subst := substMap(mt.TypeParams, v.Ref.Args)
-				for i := range sub {
-					fc := *sub[i].Field
-					fc.Type = substituteTypeRef(sub[i].Field.Type, subst)
-					sub[i].Field = &fc
-				}
-			}
-			out = append(out, sub...)
-		}
-	}
-	return out
-}
-
-// requestFields is the mixin-aware field list of a request / response
-// type: [flattenFields] with a fresh cycle-guard.
-func requestFields(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver) []*ast.Field {
-	return flattenFields(td, pkg, r, map[string]bool{})
-}
-
-// requalifyFieldType returns f with its type re-qualified into package
-// `prefix` (see [requalifyTypeRef]), cloning only when a rewrite is needed.
-func requalifyFieldType(f *ast.Field, prefix string, r *ProjectResolver) *ast.Field {
-	if f == nil || prefix == "" || r == nil || f.Type == nil {
-		return f
-	}
-	nt := requalifyTypeRef(f.Type, prefix, r)
-	if nt == f.Type {
-		return f
-	}
-	fc := *f
-	fc.Type = nt
-	return &fc
-}
-
-// requalifyTypeRef rewrites every BARE named ref in t that names a
-// type / scalar / enum declared in package `prefix` into the qualified
-// form `prefix.Name`, recursing through arrays, map keys/values, and
-// generic args. A bare name that does NOT resolve in `prefix` (a builtin
-// like `string`/`int`, or a generic type-parameter) is left as-is. Used
-// when a field is promoted into another package through a cross-package
-// mixin: its type, written bare in its home package, must be qualified so
-// the consumer's resolver finds the scalar / enum / type.
-func requalifyTypeRef(t *ast.TypeRef, prefix string, r *ProjectResolver) *ast.TypeRef {
-	if t == nil || prefix == "" || r == nil {
-		return t
-	}
-	if t.Map != nil {
-		nk := requalifyTypeRef(t.Map.Key, prefix, r)
-		nv := requalifyTypeRef(t.Map.Value, prefix, r)
-		if nk == t.Map.Key && nv == t.Map.Value {
-			return t
-		}
-		clone := *t
-		mc := *t.Map
-		mc.Key, mc.Value = nk, nv
-		clone.Map = &mc
-		return &clone
-	}
-	if t.Named == nil || t.Named.Name == nil {
-		return t
-	}
-	var newArgs []*ast.TypeRef
-	argsChanged := false
-	if len(t.Named.Args) > 0 {
-		newArgs = make([]*ast.TypeRef, len(t.Named.Args))
-		for i, a := range t.Named.Args {
-			newArgs[i] = requalifyTypeRef(a, prefix, r)
-			if newArgs[i] != a {
-				argsChanged = true
-			}
-		}
-	}
-	qualify := false
-	if len(t.Named.Name.Parts) == 1 {
-		q := prefix + "." + t.Named.Name.Parts[0]
-		if r.LookupType(q) != nil || r.LookupScalar(q) != nil || r.LookupEnum(q) != nil {
-			qualify = true
-		}
-	}
-	if !qualify && !argsChanged {
-		return t
-	}
-	clone := *t
-	named := *t.Named
-	if argsChanged {
-		named.Args = newArgs
-	}
-	if qualify {
-		nm := *t.Named.Name
-		nm.Parts = []string{prefix, t.Named.Name.Parts[0]}
-		named.Name = &nm
-	}
-	clone.Named = &named
-	return &clone
-}
 
 // collectResponseBindings walks the response type's fields and renders
 // the `@header` / `@cookie` writers. Each entry's [paramBinding.Bind]
@@ -305,37 +106,24 @@ func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver
 // "int" (int-backed) or "string" (bare / string-backed). declName is
 // the field's own type name - it differs from prim for scalars and
 // enums and drives the Go conversion in [formatToString]. An
-// unresolvable type (a cross-package symbol with no resolver) falls
-// back to "string": the field already passed the wire-binding check, so
-// it wraps some string/number/bool, and a wrong guess surfaces as a
-// compile error rather than a silent drop.
+// unresolvable type falls back to "string": the field already passed the
+// wire-binding check, so it wraps some string/number/bool, and a wrong
+// guess surfaces as a compile error rather than a silent drop.
 func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim, declName string) {
 	if f.Type == nil || f.Type.Named == nil {
 		return "string", ""
 	}
 	declName = f.Type.Named.Name.String()
-	if idents.IsWireParseable(declName) {
+	if prims.IsWireParseable(declName) {
 		return declName, declName
 	}
-	if pkg != nil {
-		if sc, ok := pkg.Scalars[declName]; ok && sc != nil {
-			if idents.IsWireParseable(sc.Primitive) {
-				return sc.Primitive, declName
-			}
-		}
-		if ed, ok := pkg.Enums[declName]; ok && ed != nil {
-			return enumWirePrim(ed), declName
+	if sc := r.LookupScalar(declName); sc != nil {
+		if prims.IsWireParseable(sc.Primitive) {
+			return sc.Primitive, declName
 		}
 	}
-	if r != nil {
-		if sc := r.LookupScalar(declName); sc != nil {
-			if idents.IsWireParseable(sc.Primitive) {
-				return sc.Primitive, declName
-			}
-		}
-		if ed := r.LookupEnum(declName); ed != nil {
-			return enumWirePrim(ed), declName
-		}
+	if ed := r.LookupEnum(declName); ed != nil {
+		return enumWirePrim(ed), declName
 	}
 	return "string", declName
 }
@@ -359,43 +147,39 @@ func enumWirePrim(ed *ast.EnumDecl) string {
 // conversion the bare primitive does not.
 func formatToString(prim, declName, access string) (expr string, needsStrconv bool) {
 	named := declName != prim
-	switch prim {
-	case "string":
+	sp, ok := prims.Lookup(prim)
+	if !ok {
+		return access, false
+	}
+	switch sp.Kind {
+	case prims.String:
 		if named {
 			return "string(" + access + ")", false
 		}
 		return access, false
-	case "bool":
+	case prims.Bool:
 		if named {
 			return "strconv.FormatBool(bool(" + access + "))", true
 		}
 		return "strconv.FormatBool(" + access + ")", true
-	case "int":
-		if named {
-			return "strconv.FormatInt(int64(" + access + "), 10)", true
+	case prims.Int:
+		if !named && sp.Bits == 0 {
+			return "strconv.Itoa(" + access + ")", true
 		}
-		return "strconv.Itoa(" + access + ")", true
-	case "int8", "int16", "int32":
+		if !named && sp.Bits == 64 {
+			return "strconv.FormatInt(" + access + ", 10)", true
+		}
 		return "strconv.FormatInt(int64(" + access + "), 10)", true
-	case "int64":
-		if named {
-			return "strconv.FormatInt(int64(" + access + "), 10)", true
+	case prims.Uint:
+		if !named && sp.Bits == 64 {
+			return "strconv.FormatUint(" + access + ", 10)", true
 		}
-		return "strconv.FormatInt(" + access + ", 10)", true
-	case "uint", "uint8", "uint16", "uint32":
 		return "strconv.FormatUint(uint64(" + access + "), 10)", true
-	case "uint64":
-		if named {
-			return "strconv.FormatUint(uint64(" + access + "), 10)", true
+	case prims.Float:
+		if !named && sp.Bits == 64 {
+			return "strconv.FormatFloat(" + access + ", 'g', -1, 64)", true
 		}
-		return "strconv.FormatUint(" + access + ", 10)", true
-	case "float32":
-		return "strconv.FormatFloat(float64(" + access + "), 'g', -1, 32)", true
-	case "float64":
-		if named {
-			return "strconv.FormatFloat(float64(" + access + "), 'g', -1, 64)", true
-		}
-		return "strconv.FormatFloat(" + access + ", 'g', -1, 64)", true
+		return fmt.Sprintf("strconv.FormatFloat(float64(%s), 'g', -1, %d)", access, sp.Bits), true
 	}
 	return access, false
 }
@@ -591,9 +375,9 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 // Result keys the DSL package name (used as the Go alias in the
 // binder cast) to its full Go import path, ready to append to the
 // handler's extra-imports block.
-func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg CrossPkg, r *ProjectResolver) map[string]string {
+func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) map[string]string {
 	out := map[string]string{}
-	if m == nil || m.Request == nil || pkg == nil || len(crossPkg) == 0 {
+	if m == nil || m.Request == nil || pkg == nil || len(r.CrossPkg) == 0 {
 		return out
 	}
 	// A qualified cross-package request (`request shared.Holder`) isn't in the
@@ -617,7 +401,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 			// @form casts a cross-package scalar / enum the same way the
 			// other wire sources do (`shared.Cents(...)` in the multipart
 			// handler), so its foreign-package import must be collected too.
-			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
+			walkCrossPkgImports(rf.Field.Type, r.CrossPkg, set)
 		}
 		// Body field with `@default(...)` on a cross-pkg enum OR scalar
 		// emits a pre-fill line that references the foreign package and
@@ -627,11 +411,11 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		// aliases), so the cast references the foreign package and the
 		// import is required. The trigger is "field type is a cross-pkg
 		// named ref AND has @default".
-		if isQualifiedNamedWithDefault(rf.Field, crossPkg) {
-			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
+		if isQualifiedNamedWithDefault(rf.Field, r.CrossPkg) {
+			walkCrossPkgImports(rf.Field.Type, r.CrossPkg, set)
 		}
 	}
-	for pkgName, path := range crossPkg {
+	for pkgName, path := range r.CrossPkg {
 		if !set[path] {
 			continue
 		}
@@ -668,20 +452,6 @@ func isQualifiedNamedWithDefault(f *ast.Field, crossPkg CrossPkg) bool {
 		return true
 	}
 	return false
-}
-
-// bindingWireName returns the wire-side parameter name for a bound
-// field. The default is the DSL field name; an explicit string
-// argument on the binding decorator (`@path("user_id")`,
-// `@header("X-API-Key")`, etc.) overrides it so wire-side conventions
-// (snake_case path segments, kebab/hyphen HTTP headers) can differ
-// from the Go field name. `kind` selects which decorator to inspect
-// (`path`/`query`/`header`/`cookie`) so the same field may carry the
-// wrong-decorator's arg without leakage. The rule lives in
-// [wire.WireName] so the analyser's binding checks and these binders
-// agree on the emitted name.
-func bindingWireName(f *ast.Field, kind string) string {
-	return wire.WireName(f, kind)
 }
 
 // describeFieldType renders a short human-readable form of f's type

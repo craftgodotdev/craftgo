@@ -38,13 +38,13 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		// field that the error struct marshals and the validator enforces
 		// (errorCustomFields keeps them), so it belongs in the schema like
 		// any other property. Fields tagged `@header` / `@cookie` ride on
-		// the response writer (see [renderErrorResponseHeadersMethod]) and
+		// the response writer (see [errorResponseBindings]) and
 		// `@sensitive` fields are server-only, so both are excluded.
 		var mixinRefs openapi3.SchemaRefs
 		for _, m := range ed.Body {
 			switch v := m.(type) {
 			case *ast.Field:
-				rf := resolveField(v, pkg, nil)
+				rf := resolveField(v, pkg, registry.resolver)
 				// Same OnWireBody decision the type-schema walk uses, so error
 				// and entity schemas agree on which fields ride the body (a
 				// @header/@cookie field rides the response writer, a @sensitive
@@ -212,7 +212,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			rf := resolveField(v, pkg, nil)
+			rf := resolveField(v, pkg, registry.resolver)
 			// Wire-bound (`@path`/`@query`/`@header`/`@cookie`) and
 			// `@sensitive` fields carry `json:"-"` and never appear in the
 			// JSON body - OnWireBody is the resolved decision (same one the

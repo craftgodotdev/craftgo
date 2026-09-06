@@ -167,37 +167,15 @@ type paramBinding struct {
 // decodes the request, calls the user's logic, and writes the response.
 //
 // projectRoot is prepended to `cfg.Output.Transport` so the function can be
-// called with paths relative to the manifest's directory.
-//
-// Equivalent to [GenerateTransportWith] with nil [CrossPkg] and nil
-// [ScalarTable] - the convenience entry single-package tests reach
-// for. Production CLI flows go straight through [GenerateTransportWith]
-// because they always have a project-wide cross-package table to feed
-// in.
-func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	return GenerateTransportResolved(pkg, cfg, projectRoot, nil)
-}
-
-// GenerateTransportWith is the explicit-tables entry for single-package
-// tests that build CrossPkg / ScalarTable directly.
-// [GenerateTransportResolved] accepts a [ProjectResolver] bundling
-// every cross-package table.
-func GenerateTransportWith(pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg CrossPkg, scalars ScalarTable) error {
-	r := &ProjectResolver{Scalars: scalars, CrossPkg: crossPkg}
-	return GenerateTransportResolved(pkg, cfg, projectRoot, r)
-}
-
-// GenerateTransportResolved is the canonical entry point. The
-// [ProjectResolver] supplies every project-wide lookup the handler
-// emit chain may consult - scalar inheritance, cross-package
-// enum/type resolution for binding casts, and the Go import paths
-// the generated handler file needs when it emits qualified
-// identifiers. nil resolver yields the legacy single-package
-// behaviour: only `pkg`'s local symbols resolve.
-func GenerateTransportResolved(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
+// called with paths relative to the manifest's directory. r supplies every
+// project-wide lookup the handler emit chain consults - scalar inheritance,
+// cross-package enum/type resolution for binding casts, and the Go import
+// paths for qualified identifiers. A nil resolver resolves local names only.
+func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *ProjectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
+	r = resolverFor(pkg, r)
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
@@ -206,9 +184,6 @@ func GenerateTransportResolved(pkg *semantic.Package, cfg *config.Config, projec
 	}
 	return nil
 }
-
-// sortedServices returns the package's service names in deterministic order.
-func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Services) }
 
 // generateTransportFor emits all per-method handler files for a single
 // service. Each method becomes a separate file so that user-friendly diffs
@@ -250,7 +225,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // Go alias. Scalar inheritance for cross-package primitive bindings
 // (`shared.ID @path`) also flows through the resolver.
 func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *ProjectResolver) (transportData, error) {
-	crossPkg := r.crossPkgMap()
+	crossPkg := r.CrossPkg
 	mode := modeOf(m)
 	// NeedsTypes triggers the `types` import in the template. The
 	// handler body only references `types.X` for request decoding -
@@ -329,7 +304,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		// it into the file's import block, and the cast compiles to
 		// `undefined: shared`. Walk every field type of the request
 		// struct so transitively-referenced packages get pulled in.
-		fieldImports := collectRequestFieldImports(m, pkg, crossPkg, r)
+		fieldImports := collectRequestFieldImports(m, pkg, r)
 		for _, alias := range sortedKeys(fieldImports) {
 			addExtra(extraImport{Alias: alias, Path: fieldImports[alias]})
 		}

@@ -5,6 +5,58 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Changed
+
+- **`pkg/telemetry` is the one observability package.** The tracer and
+  meter bootstrap that lived in `pkg/otel` and `pkg/metrics` moved into it:
+  one exporter switch per signal, one resource rule (`service.name` over
+  the SDK defaults - an empty name now keeps the SDK's
+  `unknown_service:<binary>` for spans too, instead of `craftgo`; both
+  signals now carry the SDK's `telemetry.sdk.*` attributes next to
+  `service.name`), and no package-level gates or shared registry. `telemetry.Init` still installs
+  the stack it builds as the process-wide default, so `otel.Tracer` /
+  `otel.Meter` in application code keep reporting through it. New:
+  `Telemetry.ScrapeHandler()` serves the Prometheus scrape on a route of
+  your own when `metrics.adminAddr` is empty.
+
+- **Route overlaps are analyser diagnostics.** Two routes of one verb that
+  net/http would refuse to register together (they overlap and neither is
+  more specific) are reported as `path/collision` next to same-shape
+  duplicates, so the editor shows them as you type; `craftgo gen` no longer
+  runs a separate route-conflict check.
+- **Health probes are answered ahead of the middleware chain.** `/healthz`
+  and `/readyz` (or the `WithHealthPaths` overrides) go straight to the probe
+  handler, wrapped in `Recovery` alone: they are no longer access-logged,
+  traced, counted in the `http.server.*` metrics or CORS-processed, and no
+  `srv.Use` middleware runs for them. `server.AccessLog` therefore logs
+  every request that reaches it; `AccessLogSkipPaths(...)` keeps other
+  routes (a `/metrics` scrape on the API port) out.
+
+### Removed
+
+- **`server.AccessLogAll()`** - the access log has no built-in skip set to
+  undo any more.
+- **`server.RequestID()`**, `server.RequestIDFromContext`, `log.WithRequestID`
+  and the `request_id` log field. Tracing is on by default in the generated
+  `config.yaml` (`otel.exporter: none` keeps the spans in-process), so every
+  request already carries `trace_id` / `span_id` on its log lines and a
+  `traceparent` response header; a second correlation id added nothing. A
+  project that must honour an upstream `X-Request-Id` wires its own
+  middleware.
+- **The global-slot bootstrap API of `pkg/otel` and `pkg/metrics`**
+  (`otel.Init` / `InitDefault` / `InitFromConfig` / `HTTPMiddleware` /
+  `IsEnabled` / `Disable`, `metrics.Init` / `InitDefault` /
+  `InitFromConfig` / `StartAdmin` / `ShutdownAdmin` / `SnapshotHandler` /
+  `Registerer` and the `With*` options). Hand-wired projects switch to
+  `telemetry.Init(ctx, telemetry.Config{...})` and `tel.HTTPMiddleware()`.
+
+### Deprecated
+
+- **`pkg/otel` and `pkg/metrics`** now only alias the config types,
+  exporter names and defaults of `pkg/telemetry`, for one release.
+
 ## [1.6.0] - 2026-09-05 [UTC+7]
 
 ### Added

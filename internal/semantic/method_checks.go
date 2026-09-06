@@ -16,18 +16,17 @@ import (
 // the client payload is silently dropped (and a constraint-free scalar
 // produces non-compiling Go, since the handler calls a Validate() that
 // isn't generated). Wrap the value in a `type { value <T> }`. Mirrors the
-// existing bare-array request reject. Only local (unqualified) request
-// types are resolved here; a qualified cross-package scalar/enum request is
-// rare and left to codegen.
+// existing bare-array request reject.
 func (a *analyzer) checkRequestBodyType(m *ast.Method) {
-	if m == nil || m.Request == nil || m.Request.Name == nil || len(m.Request.Name.Parts) != 1 {
+	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
-	name := m.Request.Name.String()
-	kind := bareRequestKind(a.pkg, name)
+	pkg, sym := a.resolveNamed(a.pkg.Name, m.Request)
+	kind := bareRequestKind(pkg, sym)
 	if kind == "" {
 		return
 	}
+	name := m.Request.Name.String()
 	a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodeBindingType,
 		"request type %q is a %s, which has no fields to bind or decode as a request body - wrap it in a type (`type Req { value %s }`)",
 		name, kind, name)
@@ -35,7 +34,7 @@ func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 
 // bareRequestKind reports whether `name` resolves to a scalar or enum in pkg
 // (a fieldless type that has nothing to bind or decode as a request body), or
-// "" otherwise. Shared by the per-package and project request-type checks.
+// "" otherwise.
 func bareRequestKind(pkg *Package, name string) string {
 	if pkg == nil {
 		return ""
@@ -47,37 +46,6 @@ func bareRequestKind(pkg *Package, name string) string {
 		return "enum"
 	}
 	return ""
-}
-
-// checkProjectRequestBodyType is the cross-package twin of
-// checkRequestBodyType: a qualified `request shared.Email` whose target is a
-// scalar/enum in the sibling package is rejected (the per-package pass only
-// resolves a 1-part local name).
-func (r *refResolver) checkProjectRequestBodyType() {
-	for _, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		for _, si := range pkg.Services {
-			if si == nil {
-				continue
-			}
-			for _, m := range si.Methods {
-				if m == nil || m.Request == nil || m.Request.Name == nil || len(m.Request.Name.Parts) != 2 {
-					continue
-				}
-				parts := m.Request.Name.Parts
-				kind := bareRequestKind(r.proj.Packages[parts[0]], parts[1])
-				if kind == "" {
-					continue
-				}
-				name := m.Request.Name.String()
-				r.diag(m.Request.Pos, lexer.SeverityError, CodeBindingType,
-					"request type %q is a %s, which has no fields to bind or decode as a request body - wrap it in a type (`type Req { value %s }`)",
-					name, kind, name)
-			}
-		}
-	}
 }
 
 // checkNoContentStatusBody rejects a no-content success status (204, 304,
@@ -178,9 +146,9 @@ func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
 // likewise omits the requestBody for non-body verbs, so the contract and
 // the runtime agree only by both dropping the field. Reject up front.
 //
-// Resolves the request type from the local package; a cross-package
-// request DTO (rare) is left to the codegen pass. Body verbs route
-// `@body` through the JSON decoder and `@form` through the multipart
+// The request type is flattened so a field a request inherits through a
+// mixin is checked too - mirroring the codegen request flatten. Body verbs
+// route `@body` through the JSON decoder and `@form` through the multipart
 // handler, so the check only fires for the non-body set.
 func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if m == nil || m.Request == nil {
@@ -189,26 +157,15 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if wire.IsBodyVerb(m.Verb) {
 		return // body-bearing verbs decode @body / @form normally
 	}
-	td, ok := a.pkg.Types[m.Request.Name.String()]
-	if !ok {
+	td, fields := a.requestFields(m)
+	if td == nil {
 		return
 	}
-	// Flatten so a field a request inherits through a mixin is checked too:
-	// without this an auto-@query non-bindable field (or a @body / @form
-	// field) promoted via a mixin slips past the semantic gate and fails
-	// only at the codegen stage with a position-less error the LSP can't
-	// surface. Mirrors the codegen request flatten.
 	verb := strings.ToUpper(m.Verb)
 	reqName := m.Request.Name.String()
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
-	emit := func(start, end lexer.Position, code, format string, args ...any) {
-		a.diag(start, end, lexer.SeverityError, code, format, args...)
-	}
-	unbindable := func(f *ast.Field) bool {
-		return !isQualifiedTypeRef(f.Type) && !isWireBindingType(f.Type, a.pkg)
-	}
-	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
-		bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, unbindable, emit)
+	for _, pf := range fields {
+		a.bodyBindingVerbRules(reqName, verb, svcName, pathSegs, pf)
 	}
 }
 
@@ -217,13 +174,10 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 // so the field would be silently dropped); an un-decorated field auto-binds
 // to @query, where `@nullable` is meaningless (a query string has no
 // JSON-null form, and the pointer it lowers to can't take the binder's plain
-// string - non-compiling); and a non-bindable auto-@query type is rejected
-// when resolvable. The first two are STRUCTURAL (no type resolution) and fire
-// for cross-package fields too; the type check is delegated to typeUnbindable
-// (the per-package pass resolves against its local table and defers qualified
-// cross-package refs, the project twin resolves through the IR). Shared by the
-// per-package and project passes.
-func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, f *ast.Field, typeUnbindable func(*ast.Field) bool, emit func(start, end lexer.Position, code, format string, args ...any)) {
+// string - non-compiling); and a type that cannot ride a query string is
+// rejected. The field's type resolves in the package that declares it.
+func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, pf promotedField) {
+	f := pf.Field
 	if f == nil {
 		return
 	}
@@ -231,7 +185,7 @@ func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]boo
 		if d == nil || (d.Name != wire.BindingBody && d.Name != wire.BindingForm) {
 			continue
 		}
-		emit(d.Pos, decoratorEnd(d), CodeBindingVerb,
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingVerb,
 			"field %s.%s: @%s requires a body-bearing verb (POST/PUT/PATCH) - the %s %s handler decodes no request body, so the field would be silently dropped",
 			reqName, f.Name, d.Name, verb, svcName)
 		break // one diagnostic per field
@@ -243,71 +197,14 @@ func bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]boo
 		return
 	}
 	if ast.HasDecorator(f.Decorators, "nullable") {
-		emit(f.Pos, f.Pos, CodeDecoratorConflict,
+		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but @nullable has no meaning on a wire parameter - a query string has no JSON-null form. Use `?` to make it optional, or switch to a body verb (POST/PUT/PATCH).",
 			reqName, f.Name, verb, svcName)
 		return
 	}
-	if typeUnbindable != nil && typeUnbindable(f) {
-		emit(f.Pos, f.Pos, CodeBindingType,
+	if !a.wireBindableIn(pf.Pkg, f.Type) {
+		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string - switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
 			reqName, f.Name, verb, svcName, describeTypeRef(f.Type))
-	}
-}
-
-// checkProjectBodyBindingVerb is the cross-package twin of
-// checkBodyBindingVerb: the per-package pass bails for a QUALIFIED request
-// type, so a `@body`/`@form` field or an auto-@query `@nullable` field
-// (non-compiling) on a cross-package request on a body-less verb slipped
-// through. Only qualified requests are processed (local ones owned by the
-// per-package pass); the type-bindability arm is deferred (localPkg=nil).
-func (r *refResolver) checkProjectBodyBindingVerb() {
-	for _, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		for svcName, si := range pkg.Services {
-			if si == nil {
-				continue
-			}
-			for _, m := range si.Methods {
-				if m == nil || m.Request == nil || m.Request.Name == nil {
-					continue
-				}
-				if wire.IsBodyVerb(m.Verb) {
-					continue
-				}
-				parts := m.Request.Name.Parts
-				if len(parts) != 2 {
-					continue
-				}
-				home := r.proj.Packages[parts[0]]
-				if home == nil {
-					continue
-				}
-				td, ok := home.Types[parts[1]]
-				if !ok {
-					continue
-				}
-				verb := strings.ToUpper(m.Verb)
-				reqName := m.Request.Name.String()
-				pathSegs := MethodRoutePathVars(m, pkg.Services)
-				fields := map[string]*ast.Field{}
-				r.collectGroupFieldsProject(parts[0], td.Body, fields, map[string]bool{})
-				emit := func(start, end lexer.Position, code, format string, args ...any) {
-					r.diag(start, lexer.SeverityError, code, format, args...)
-				}
-				// The IR resolves a cross-package field's element type, so a
-				// foreign struct / map / nested array auto-binding to @query is
-				// caught here with a position - the gap the per-package pass
-				// defers to a position-less codegen error.
-				unbindable := func(f *ast.Field) bool {
-					return !wireBindableIR(f, r.proj)
-				}
-				for _, f := range fields {
-					bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, unbindable, emit)
-				}
-			}
-		}
 	}
 }

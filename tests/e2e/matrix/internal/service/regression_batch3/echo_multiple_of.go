@@ -13,7 +13,7 @@ import (
 
 // EchoMultipleOfService carries the per-request state for the
 // EchoMultipleOf endpoint of RegressionBatch3. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id / request_id),
+// pre-bound to the request context (trace_id / span_id),
 // so handlers can call l.Info(...) / l.Error(...) directly.
 type EchoMultipleOfService struct {
 	log.Logger
