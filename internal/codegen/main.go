@@ -23,11 +23,6 @@ type mainData struct {
 	SvccontextImport string
 	Middlewares      []string
 	HasMiddlewares   bool
-	// OperationName seeds otel.HTTPMiddleware's span name. Defaults to
-	// the project's last package segment (e.g. `example` for
-	// `github.com/craftgodotdev/craftgo/example`) so traces self-label
-	// without needing a manual edit.
-	OperationName string
 	// HasDocs gates the in-process API-docs wiring: the `embed` import, the
 	// embedded spec var, and the cfg.Docs ServeDocs call. False when the
 	// OpenAPI document is disabled or lives outside the main package's tree
@@ -94,7 +89,6 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 		RoutesImport:     goImportFromRel(cfg.Package, cfg.Output.Routes),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
-		OperationName:    operationNameFor(cfg.Package),
 	}
 	seen := map[string]bool{}
 	for _, k := range slices.Sorted(maps.Keys(proj.Packages)) {

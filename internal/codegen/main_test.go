@@ -14,7 +14,6 @@ func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 		ConfigImport:     "example.com/app/config",
 		RoutesImport:     "example.com/app/internal/routes",
 		SvccontextImport: "example.com/app/svccontext",
-		OperationName:    "app",
 	}
 	out, err := renderGo(tmpl("main.tmpl"), data)
 	if err != nil {
@@ -38,7 +37,6 @@ func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
 		ConfigImport:     "example.com/app/config",
 		RoutesImport:     "example.com/app/internal/routes",
 		SvccontextImport: "example.com/app/svccontext",
-		OperationName:    "app",
 	}
 	out, err := renderGo(tmpl("main.tmpl"), data)
 	if err != nil {
