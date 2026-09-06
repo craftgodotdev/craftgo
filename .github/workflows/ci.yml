@@ -36,6 +36,11 @@ jobs:
             echo "unformatted files:"; echo "$diff"; exit 1
           fi
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
       # Fails on a known vulnerability that the code actually reaches (call-graph
       # analysis); advisory-only findings in unused code do not break the build.
       - name: govulncheck
@@ -47,7 +52,7 @@ jobs:
       - name: build submodules
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce \
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow \
                    tests/e2e/matrix; do
             echo "→ build $d"
             (cd "$d" && go build ./...)
@@ -58,7 +63,7 @@ jobs:
       - name: generate
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce; do
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow; do
             echo "→ gen $d"
             go run ./cmd/craftgo gen -f "$d/design" -c "$d"
           done
@@ -101,7 +106,7 @@ jobs:
         run: |
           set -e
           go build ./...
-          for d in example/todo example/upload example/raw example/ecommerce \
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow \
                    tests/e2e/matrix; do
             (cd "$d" && go build ./...)
           done
@@ -125,7 +130,7 @@ jobs:
       - name: test submodules
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce \
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow \
                    tests/e2e/matrix; do
             echo "→ test $d"
             (cd "$d" && go test ${{ matrix.race }} -count=1 ./...)

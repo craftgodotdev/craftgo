@@ -295,7 +295,7 @@ func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 	start := l.offset
 	for {
 		r := l.peek()
-		if !(isLetter(r) || isDigit(r) || r == '_') {
+		if !isLetter(r) && !isDigit(r) && r != '_' {
 			break
 		}
 		l.advance()
@@ -338,7 +338,7 @@ func (l *Lexer) lexNumber(pos Position) Token {
 	suffStart := l.offset
 	for {
 		r := l.peek()
-		if !(isLetter(r) || r == 'µ') {
+		if !isLetter(r) && r != 'µ' {
 			break
 		}
 		l.advance()

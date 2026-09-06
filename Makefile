@@ -4,7 +4,7 @@
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
-EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce
+EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow
 
 GO           ?= go
 GOFLAGS      ?=
@@ -93,7 +93,11 @@ fmt-check: ## Fail if any Go file isn't gofmt'd.
 	fi
 
 .PHONY: lint
-lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
+lint: vet fmt-check golangci ## vet + fmt-check + golangci-lint.
+
+.PHONY: golangci
+golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not installed.
+	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run $(GO_PKGS); else echo "golangci-lint not installed - skipping"; fi
 
 # ---- codegen + example --------------------------------------------------
 # The single consolidated e2e fixture (matrix). Its design exercises every DSL
@@ -101,7 +105,7 @@ lint: vet fmt-check ## vet + fmt-check (cheap CI-style lint).
 E2E_DIRS := tests/e2e/matrix
 
 .PHONY: gen
-gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce).
+gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce, taskflow).
 	@for d in $(EXAMPLE_PROJECTS); do \
 		echo "→ gen $$d"; ./$(BIN) gen -f "$$d/design" -c "$$d" || exit 1; \
 	done

@@ -1,0 +1,20 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - gocyclo
+    - dupl
+  settings:
+    gocyclo:
+      min-complexity: 45
+    dupl:
+      threshold: 120
+  exclusions:
+    paths:
+      - testdata
+formatters:
+  enable:
+    - gofmt
