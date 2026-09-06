@@ -107,14 +107,6 @@ type Options struct {
 	// layout.
 	FileCase string
 
-	// skipExtendOrphanCheck disables the in-package orphan-extend
-	// diagnostic. [AnalyzeProject] sets it so the project-level
-	// resolver can produce a better message when the extended
-	// service exists in a SIBLING package (a common typo source);
-	// without the skip the per-package pass would fire first with
-	// the generic "no primary declaration" message.
-	skipExtendOrphanCheck bool
-
 	// skipMixinCheck disables the in-package
 	// [analyzer.checkMixins] pass so the project-level resolver
 	// can run the unified mixin expansion with cross-package
@@ -198,6 +190,7 @@ func (a *analyzer) runDeclPhase(files []*ast.File) {
 // Order: decl-name case before any field/enum collision so the
 // IDE squiggle highlights the spelling that needs fixing first.
 func (a *analyzer) runNamingPhase(files []*ast.File) {
+	a.checkExtendOrphans()
 	a.checkDeclNameCase(files)
 	a.checkFieldNameCollisions(files)
 	a.checkEnumValueCollisions(files)

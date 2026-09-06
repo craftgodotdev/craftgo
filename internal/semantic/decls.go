@@ -131,12 +131,6 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 func (a *analyzer) mergeServices() {
 	for name, si := range a.pkg.Services {
 		if si.Primary == nil {
-			if !a.opts.skipExtendOrphanCheck {
-				for _, e := range si.Extends {
-					a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
-						"extend service %q has no primary declaration", name)
-				}
-			}
 			continue
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
@@ -187,6 +181,31 @@ func (a *analyzer) mergeServices() {
 				}
 				si.Methods = append(si.Methods, m)
 			}
+		}
+	}
+}
+
+// checkExtendOrphans reports every `extend service` block whose service
+// has no primary declaration in this package. When the primary lives in
+// a sibling package the message names it: extend declarations are
+// per-package.
+func (a *analyzer) checkExtendOrphans() {
+	for _, name := range sortedNames(a.pkg.Services) {
+		si := a.pkg.Services[name]
+		if si == nil || si.Primary != nil {
+			continue
+		}
+		otherPkg, primary := a.primaryServiceElsewhere(name)
+		for _, e := range si.Extends {
+			if primary == nil {
+				a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
+					"extend service %q has no primary declaration", name)
+				continue
+			}
+			d := a.diag(e.Pos, e.Pos, lexer.SeverityError, CodeServiceExtendOrphan,
+				"extend service %q: primary lives in package %q - extend declarations are per-package, move this block into that package or rename the service",
+				name, otherPkg)
+			d.Related = related(primary.Pos, "primary service declared here")
 		}
 	}
 }

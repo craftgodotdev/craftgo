@@ -1,6 +1,5 @@
-// Project-level declaration checks: cross-package extend orphans, service /
-// middleware name uniqueness, and @middlewares / @errors reference
-// resolution against the full project.
+// Project-level declaration checks: service / middleware name uniqueness
+// across packages.
 package semantic
 
 import (
@@ -9,61 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
-
-// checkProjectExtendOrphans walks every package's orphan
-// `extend service` decls (those with no primary in the same
-// package) and fires a tailored diagnostic. Two outcomes:
-//
-//   - Primary lives in a SIBLING package → the message names that
-//     package and explains the per-package extend rule. The fix is
-//     unambiguous (declare the extend inside the owning package).
-//   - Primary doesn't exist anywhere → the "no primary declaration"
-//     message under the same [CodeServiceExtendOrphan] code.
-//
-// The per-package pass is muted under [Options.skipExtendOrphanCheck]
-// when [AnalyzeProject] runs, so this is the single emit site in
-// project mode.
-func (r *refResolver) checkProjectExtendOrphans() {
-	primaryPkg := map[string]string{}
-	primaryPos := map[string]lexer.Position{}
-	for pkgName, pkg := range r.proj.Packages {
-		for name, si := range pkg.Services {
-			if si == nil || si.Primary == nil {
-				continue
-			}
-			primaryPkg[name] = pkgName
-			primaryPos[name] = si.Primary.Pos
-		}
-	}
-	for _, pkg := range r.proj.Packages {
-		for name, si := range pkg.Services {
-			if si == nil || si.Primary != nil {
-				continue
-			}
-			otherPkg, found := primaryPkg[name]
-			for _, e := range si.Extends {
-				diag := Diagnostic{
-					Pos:      e.Pos,
-					End:      e.Pos,
-					Severity: lexer.SeverityError,
-					Code:     CodeServiceExtendOrphan,
-				}
-				if found {
-					diag.Msg = fmt.Sprintf(
-						"extend service %q: primary lives in package %q - extend declarations are per-package, move this block into that package or rename the service",
-						name, otherPkg)
-					diag.Related = []lexer.Related{{
-						Pos: primaryPos[name],
-						Msg: "primary service declared here",
-					}}
-				} else {
-					diag.Msg = fmt.Sprintf("extend service %q has no primary declaration", name)
-				}
-				r.diags = append(r.diags, diag)
-			}
-		}
-	}
-}
 
 // checkProjectServiceUniqueness fires when two packages declare a
 // primary `service` of the same name. Codegen writes per-service
