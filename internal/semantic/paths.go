@@ -7,7 +7,8 @@ package semantic
 //
 //   - [CodePathBaseFormat]     - basePath malformed (warning).
 //   - [CodePathCollision]      - two methods resolve to the same
-//     VERB + path across services.
+//     VERB + path across services or packages
+//     ([refResolver.checkProjectPathCollision]).
 //   - [CodePathParamMissing]   - `{name}` in path but no matching
 //     field binding in the request type.
 //   - [CodePathParamOrphan]    - `@path` field with no corresponding
@@ -36,9 +37,9 @@ import (
 // DefaultLivenessPath / DefaultReadinessPath, so the mirror cannot drift.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
-// checkPathResolution runs the four route-level validations described
-// in the package doc comment plus the basePath format warning. The
-// pass is idempotent and stateless beyond [analyzer.diags].
+// checkPathResolution runs the basePath format warning, the reserved
+// health-path check, and the `{param}` ↔ field check for every method.
+// The pass is idempotent and stateless beyond [analyzer.diags].
 func (a *analyzer) checkPathResolution() {
 	a.checkBasePathFormat()
 
@@ -50,60 +51,26 @@ func (a *analyzer) checkPathResolution() {
 	for _, h := range healths {
 		healthSet[h] = true
 	}
-
-	type routeKey struct {
-		verb string
-		path string
-	}
-	type routeMeta struct {
-		pos     lexer.Position
-		service string
-		method  string
-	}
-	seen := map[routeKey]routeMeta{}
-
 	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
 		si := a.pkg.Services[svcName]
 		for _, m := range si.Methods {
 			rt := a.resolveMethodPath(si.Primary, m)
-			verb := strings.ToUpper(m.Verb)
-
 			if healthSet[rt] {
 				a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathHealthConflict,
 					"method %s.%s resolves to %s, which is a reserved health path",
 					svcName, m.Name, rt)
 			}
-
 			a.checkMethodPathParams(svcName, m, rt)
-
-			// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide - they
-			// register against the same net/http pattern at boot. The
-			// displayed route keeps the literal form for the diagnostic.
-			key := routeKey{verb: verb, path: route.Shape(rt)}
-			if prev, dup := seen[key]; dup && prev.service != svcName {
-				diag := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathCollision,
-					"method %s.%s resolves to %s %s, which already binds %s.%s",
-					svcName, m.Name, verb, rt, prev.service, prev.method)
-				diag.Related = related(prev.pos, "first declared here")
-				continue
-			}
-			// Same-service duplicates are reported by checkServiceMethods -
-			// don't double-fire.
-			if _, dup := seen[key]; !dup {
-				seen[key] = routeMeta{pos: m.Pos, service: svcName, method: m.Name}
-			}
 		}
 	}
 }
 
-// checkProjectPathCollision is the cross-package twin of the route-collision
-// scan in [analyzer.checkPathResolution]: two methods in DIFFERENT packages
-// that resolve to the same VERB + route shape register the same net/http
-// pattern, so the second registration panics at boot. The per-package pass
-// only sees its own package's services (same-package pairs stay its job, and
-// [checkServiceMethods] owns same-service duplicates); this pass reports just
-// the cross-package pairs, so nothing double-fires. Packages and services
-// iterate in sorted order so "first declared here" is deterministic.
+// checkProjectPathCollision flags two methods that resolve to the same
+// VERB + route shape: they register the same net/http pattern, so the
+// second registration panics at boot. Pairs across services and across
+// packages are both reported here; a same-service duplicate is reported
+// by [analyzer.checkServiceMethods]. Packages and services iterate in
+// sorted order so "first declared here" is deterministic.
 func (r *refResolver) checkProjectPathCollision() {
 	type routeKey struct {
 		verb string
@@ -130,19 +97,28 @@ func (r *refResolver) checkProjectPathCollision() {
 			}
 			for _, m := range si.Methods {
 				rt := route.Resolve(r.basePath, si.Primary, m)
+				// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide - they
+				// register against the same net/http pattern at boot. The
+				// displayed route keeps the literal form for the diagnostic.
 				key := routeKey{verb: strings.ToUpper(m.Verb), path: route.Shape(rt)}
 				prev, dup := seen[key]
 				if !dup {
 					seen[key] = routeMeta{pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name}
 					continue
 				}
-				if prev.pkg == pkgName {
-					// Same package - the per-package pass owns the pair.
+				if prev.pkg == pkgName && prev.service == svcName {
 					continue
 				}
-				d := r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
-					"method %s.%s resolves to %s %s, which already binds %s.%s (package %s)",
-					svcName, m.Name, key.verb, rt, prev.service, prev.method, prev.pkg)
+				var d *Diagnostic
+				if prev.pkg == pkgName {
+					d = r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
+						"method %s.%s resolves to %s %s, which already binds %s.%s",
+						svcName, m.Name, key.verb, rt, prev.service, prev.method)
+				} else {
+					d = r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
+						"method %s.%s resolves to %s %s, which already binds %s.%s (package %s)",
+						svcName, m.Name, key.verb, rt, prev.service, prev.method, prev.pkg)
+				}
 				d.Related = related(prev.pos, "first declared here")
 			}
 		}

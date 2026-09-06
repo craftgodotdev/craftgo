@@ -4,9 +4,9 @@ package semantic
 // name a method emits are LANGUAGE facts (derived from the method name, its
 // service, and an explicit @operationId override) - not OpenAPI rendering - so
 // they are decided here, on the floor both the analyser and codegen read.
-// codegen's emit calls [OperationID] / [OperationBaseName]; the analyser's
-// [analyzer.checkOperationIDUniqueness] flags duplicates at design time so the
-// editor surfaces what would otherwise be a codegen-only error.
+// codegen's emit calls [OperationID] / [OperationBaseName];
+// [refResolver.checkProjectOperationIDUniqueness] flags duplicates at design
+// time so the editor surfaces what would otherwise be a codegen-only error.
 
 import (
 	"maps"
@@ -54,56 +54,13 @@ func OperationID(m *ast.Method, base string) string {
 	return base
 }
 
-// checkOperationIDUniqueness flags every method whose operationId collides
-// with another's. Runs after services are merged so it sees the full method
-// set per service.
-func (a *analyzer) checkOperationIDUniqueness() {
-	counts := MethodNameCounts(a.pkg)
-
-	type owner struct {
-		ref string
-		pos lexer.Position
-	}
-	owners := map[string][]owner{}
-
-	svcNames := slices.Sorted(maps.Keys(a.pkg.Services))
-	for _, svcName := range svcNames {
-		for _, m := range a.pkg.Services[svcName].Methods {
-			id := OperationID(m, OperationBaseName(svcName, m, counts))
-			owners[id] = append(owners[id], owner{ref: svcName + "." + m.Name, pos: m.Pos})
-		}
-	}
-
-	ids := slices.Sorted(maps.Keys(owners))
-	for _, id := range ids {
-		who := owners[id]
-		if len(who) < 2 {
-			continue
-		}
-		refs := make([]string, len(who))
-		for i, o := range who {
-			refs[i] = o.ref
-		}
-		joined := strings.Join(refs, ", ")
-		for _, o := range who {
-			a.diag(o.pos, o.pos, lexer.SeverityError, CodeDuplicateOperation,
-				"operationId %q is shared by %s - give each method a distinct @operationId(...)",
-				id, joined)
-		}
-	}
-}
-
-// checkProjectOperationIDUniqueness is the cross-package twin of
-// [analyzer.checkOperationIDUniqueness]. The single emitted OpenAPI document
-// merges every package's services, so two methods anywhere in the project that
-// resolve to the same operationId clash - yet the per-package pass only ever
-// sees one package. Method-name counts are taken PROJECT-WIDE (matching the
-// merged document), so an auto id shared by services in different packages is
-// service-prefixed and does not clash; an explicit @operationId override is
-// taken verbatim and can. Only collisions spanning two or more packages are
-// reported here, with a source position the editor can underline; same-package
-// pairs stay with the per-package pass, so nothing double-fires. Without this,
-// a cross-package duplicate surfaces only as a position-less gen-time error.
+// checkProjectOperationIDUniqueness flags every method whose operationId
+// collides with another's anywhere in the project. The single emitted
+// OpenAPI document merges every package's services, so method-name counts
+// are taken PROJECT-WIDE (matching the merged document): an auto id shared
+// by services in different packages is service-prefixed and does not
+// clash; an explicit @operationId override is taken verbatim and can. Runs
+// after services are merged so it sees the full method set per service.
 func (r *refResolver) checkProjectOperationIDUniqueness() {
 	counts := map[string]int{}
 	for _, pkg := range r.proj.Packages {
@@ -139,7 +96,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 			}
 			for _, m := range si.Methods {
 				id := OperationID(m, OperationBaseName(svcName, m, counts))
-				owners[id] = append(owners[id], owner{ref: pkgName + "." + svcName + "." + m.Name, pkg: pkgName, pos: m.Pos})
+				owners[id] = append(owners[id], owner{ref: svcName + "." + m.Name, pkg: pkgName, pos: m.Pos})
 			}
 		}
 	}
@@ -153,18 +110,20 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 		for _, o := range who {
 			pkgs[o.pkg] = true
 		}
-		if len(pkgs) < 2 {
-			continue // same-package collision - the per-package pass owns it
-		}
 		refs := make([]string, len(who))
 		for i, o := range who {
 			refs[i] = o.ref
+			if len(pkgs) > 1 {
+				refs[i] = o.pkg + "." + o.ref
+			}
 		}
 		joined := strings.Join(refs, ", ")
+		msg := "operationId %q is shared by %s - give each method a distinct @operationId(...)"
+		if len(pkgs) > 1 {
+			msg = "operationId %q is shared across packages by %s - give each method a distinct @operationId(...)"
+		}
 		for _, o := range who {
-			r.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation,
-				"operationId %q is shared across packages by %s - give each method a distinct @operationId(...)",
-				id, joined)
+			r.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation, msg, id, joined)
 		}
 	}
 }

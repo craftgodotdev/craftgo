@@ -194,7 +194,6 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkMixins()
 	a.checkGenerics()
 	a.checkPathResolution()
-	a.checkOperationIDUniqueness()
 	a.checkCombinationRules(files)
 	a.checkFilePosition()
 }
