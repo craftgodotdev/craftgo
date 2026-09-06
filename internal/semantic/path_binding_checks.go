@@ -4,8 +4,6 @@
 package semantic
 
 import (
-	"strings"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
@@ -37,21 +35,6 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	for _, pf := range fields {
 		a.autoPathFieldRule(reqName, pathSegs, pf)
 	}
-}
-
-// pathSegments returns the set of `{param}` segment names in a method's
-// route.
-func pathSegments(m *ast.Method) map[string]bool {
-	out := map[string]bool{}
-	if m == nil || m.Path == nil {
-		return out
-	}
-	for _, seg := range m.Path.Segments {
-		if seg.Param {
-			out[seg.Literal] = true
-		}
-	}
-	return out
 }
 
 // autoPathFieldRule checks one request field that auto-binds to a path
@@ -109,7 +92,7 @@ func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	// boot all the same.
 	seen := map[string]bool{}
 	fromPrefix := map[string]bool{}
-	for _, name := range prefixPathVars(svc) {
+	for _, name := range route.Vars(route.ServicePrefix(svc)) {
 		seen[name] = true
 		fromPrefix[name] = true
 	}
@@ -133,50 +116,36 @@ func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	}
 }
 
-// prefixPathVars returns the `{name}` path-variable names declared in a
-// service's @prefix (e.g. @prefix("/tenant/{tenantID}") → ["tenantID"]).
-// Empty when the service is nil, has no prefix, or no variable segments.
-func prefixPathVars(svc *ast.ServiceDecl) []string {
-	if svc == nil {
-		return nil
-	}
-	p := route.ServicePrefix(svc)
-	if p == "" {
-		return nil
-	}
-	var out []string
-	for seg := range strings.SplitSeq(p, "/") {
-		if len(seg) > 2 && strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-			out = append(out, seg[1:len(seg)-1])
-		}
-	}
-	return out
-}
-
 // MethodRoutePathVars returns the path-variable names in method m's full
 // registered route - its owning service's @prefix variables PLUS the method
-// path variables. The auto-binding rule ([wire.RequestFieldBinding]) and the
-// auto-@path / body-verb checks read this rather than the method path alone,
-// so they agree with the route that actually registers: a field whose name
-// matches a @prefix variable auto-binds to @path exactly like one matching a
-// method-path variable (without it, the field would wrongly fall through to
-// @query on a GET or @body on a POST, and the path value would never bind).
-// services is the analysed package's service table (pkg.Services), used to
-// find m's owning service for its prefix.
+// path variables, read off the route [route.Resolve] builds (without the
+// base path) with [route.Vars]. The auto-binding rule
+// ([wire.RequestFieldBinding]) and the auto-@path / body-verb checks read
+// this rather than the method path alone, so they agree with the route that
+// actually registers: a field whose name matches a @prefix variable
+// auto-binds to @path exactly like one matching a method-path variable
+// (without it, the field would wrongly fall through to @query on a GET or
+// @body on a POST, and the path value would never bind). services is the
+// analysed package's service table (pkg.Services), used to find m's owning
+// service for its prefix.
 func MethodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
-	vars := pathSegments(m)
+	vars := map[string]bool{}
+	if m == nil {
+		return vars
+	}
+	var owner *ast.ServiceDecl
 	for _, si := range services {
 		if si == nil {
 			continue
 		}
 		for _, sm := range si.Methods {
 			if sm == m {
-				for _, name := range prefixPathVars(si.Primary) {
-					vars[name] = true
-				}
-				return vars
+				owner = si.Primary
 			}
 		}
+	}
+	for _, name := range route.Vars(route.Resolve("", owner, m)) {
+		vars[name] = true
 	}
 	return vars
 }

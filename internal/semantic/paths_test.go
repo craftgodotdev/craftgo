@@ -329,26 +329,6 @@ func TestHealthConflictNonHealthPath(t *testing.T) {
 
 // ---------- Helpers ----------
 
-func TestExtractPathParams(t *testing.T) {
-	cases := []struct {
-		in   string
-		want []string
-	}{
-		{"/", nil},
-		{"/users", nil},
-		{"/users/{id}", []string{"id"}},
-		{"/users/{id}/posts/{post}", []string{"id", "post"}},
-		{"/{a}/{b}/{c}", []string{"a", "b", "c"}},
-		{"/{unclosed", nil},
-	}
-	for _, c := range cases {
-		got := extractPathParams(c.in)
-		if !equalSlice(got, c.want) {
-			t.Errorf("extractPathParams(%q) = %v, want %v", c.in, got, c.want)
-		}
-	}
-}
-
 func TestResolveMethodPathFallbackName(t *testing.T) {
 	// Method with no inline path: fallback is /<kebab(name)>.
 	a := newTestAnalyzer(&Package{})
@@ -536,18 +516,6 @@ func TestPathSetHasNil(t *testing.T) {
 }
 
 // ---------- helper ----------
-
-func equalSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
 
 // A field named like a path segment but diverted to @query no longer
 // satisfies the path-coverage check - the {id} segment is reported missing.

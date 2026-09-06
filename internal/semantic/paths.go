@@ -183,8 +183,8 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 // The request type and its mixins resolve across packages exactly as the
 // codegen binder does, so `type Req { shared.IdHolder }` binds its `@path`
 // field the same way.
-func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route string) {
-	pathParams := extractPathParams(route)
+func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt string) {
+	pathParams := route.Vars(rt)
 	// When the route declares `{param}` segments but the method has no
 	// request struct, the generated logic signature drops to bare
 	// `func() error` - path values land nowhere. Surface a warning so
@@ -231,7 +231,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, route st
 		if !inSet(name, pathParams) {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
 				"method %s.%s: field %q has @path binding but route %s has no {%s} segment",
-				svcName, m.Name, name, route, name)
+				svcName, m.Name, name, rt, name)
 		}
 	}
 }
@@ -329,23 +329,4 @@ func pathBindingName(f *ast.Field) (string, bool) {
 		return f.Name, true
 	}
 	return "", false
-}
-
-// extractPathParams returns every `{name}` segment in route in source
-// order. A malformed `{...` without closing `}` is silently ignored -
-// the parser would already have rejected it.
-func extractPathParams(route string) []string {
-	var out []string
-	for {
-		i := strings.IndexByte(route, '{')
-		if i < 0 {
-			return out
-		}
-		j := strings.IndexByte(route[i:], '}')
-		if j < 0 {
-			return out
-		}
-		out = append(out, route[i+1:i+j])
-		route = route[i+j+1:]
-	}
 }

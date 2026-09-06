@@ -70,28 +70,39 @@ func PathString(p *ast.Path) string {
 	return sb.String()
 }
 
-// Shape strips parameter names from a resolved route string, replacing
-// every `{name}` segment with `{}`, so routes that differ only in
-// parameter names compare equal.
+// Shape replaces every variable segment of a resolved route with `{}`, so
+// routes that differ only in variable names compare equal - they register
+// the same net/http pattern.
 func Shape(route string) string {
-	var sb strings.Builder
-	sb.Grow(len(route))
-	i := 0
-	for i < len(route) {
-		if route[i] == '{' {
-			end := strings.IndexByte(route[i:], '}')
-			if end < 0 {
-				sb.WriteString(route[i:])
-				break
-			}
-			sb.WriteString("{}")
-			i += end + 1
-			continue
+	segs := splitRouteSegments(route)
+	for i, seg := range segs {
+		if _, ok := varName(seg); ok {
+			segs[i] = "{}"
 		}
-		sb.WriteByte(route[i])
-		i++
 	}
-	return sb.String()
+	return "/" + strings.Join(segs, "/")
+}
+
+// Vars returns the `{name}` variable segments of a route, prefix or path
+// string, in order. This is the one rule every layer applies to decide
+// which segments bind a field and which patterns overlap.
+func Vars(route string) []string {
+	var out []string
+	for _, seg := range splitRouteSegments(route) {
+		if name, ok := varName(seg); ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// varName returns the name of a `{name}` segment - the only variable form
+// the parser produces.
+func varName(seg string) (string, bool) {
+	if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
+		return seg[1 : len(seg)-1], true
+	}
+	return "", false
 }
 
 // ServicePrefix returns the `@prefix("...")` string declared on the
@@ -195,7 +206,8 @@ func PatternsConflict(a, b string) bool {
 	}
 	aMoreSpecific, bMoreSpecific := false, false
 	for i := range as {
-		aWild, bWild := isWildcardSeg(as[i]), isWildcardSeg(bs[i])
+		_, aWild := varName(as[i])
+		_, bWild := varName(bs[i])
 		switch {
 		case !aWild && !bWild:
 			if as[i] != bs[i] {
@@ -221,8 +233,4 @@ func splitRouteSegments(pattern string) []string {
 		}
 	}
 	return out
-}
-
-func isWildcardSeg(seg string) bool {
-	return strings.HasPrefix(seg, "{")
 }
