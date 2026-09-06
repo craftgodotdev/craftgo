@@ -184,9 +184,6 @@ func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 	return nil
 }
 
-// sortedServices returns the package's service names in deterministic order.
-func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Services) }
-
 // generateTransportFor emits all per-method handler files for a single
 // service. Each method becomes a separate file so that user-friendly diffs
 // are produced when only one endpoint changes.

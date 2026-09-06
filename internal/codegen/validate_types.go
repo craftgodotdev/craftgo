@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // This file groups the field-shape predicates and small expression
@@ -158,24 +157,6 @@ func optionalGuard(f *ast.Field, access string) string {
 		return access + " != nil && "
 	}
 	return ""
-}
-
-// fieldNeedsNilGuard reports whether f's value can be nil in a state the
-// contract treats as valid (absent / null), so a constraint check must
-// nil-guard first. True for any pointer field, and for a nilable Go type
-// - bytes / slice / map, OR a scalar whose underlying primitive is nilable
-// (`scalar Blob bytes`) - marked optional (`?`) or `@nullable`.
-func fieldNeedsNilGuard(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
-	if goFieldIsPointer(f, pkg, r) {
-		return true
-	}
-	if f == nil || f.Type == nil {
-		return false
-	}
-	if !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
-		return false
-	}
-	return isNilableGoType(GoTypeRef(f.Type)) || scalarRefNilable(f.Type, pkg, r)
 }
 
 // stringValueExpr returns the string-typed access expression. Pointer

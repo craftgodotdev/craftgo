@@ -222,45 +222,6 @@ func successDescription(code string) string {
 	return "OK"
 }
 
-// statusOverride returns the explicit `@status(N)` code declared on the
-// method, if any. The value is range-validated (100..599) by the
-// semantic layer, so codegen can trust it.
-func statusOverride(m *ast.Method) (int, bool) {
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "status" || len(d.Args) == 0 {
-			continue
-		}
-		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
-			return int(i.Value), true
-		}
-	}
-	return 0, false
-}
-
-// methodSuccessStatus resolves the success status code for a method
-// whose response the framework writes. The transport handler and the
-// OpenAPI spec both call this so they always agree on the same code.
-// `@status(N)` wins; otherwise the default is verb-aware:
-//
-//   - no response body           → 204 No Content
-//   - POST returning a body       → 201 Created
-//   - any other verb with a body  → 200 OK
-//
-// The "no body → 204" rule deliberately takes precedence over the verb
-// default: a POST that returns nothing is 204, not 201.
-func methodSuccessStatus(m *ast.Method) int {
-	if code, ok := statusOverride(m); ok {
-		return code
-	}
-	if m.Response == nil || m.Response.Type == nil {
-		return http.StatusNoContent
-	}
-	if strings.EqualFold(m.Verb, "post") {
-		return http.StatusCreated
-	}
-	return http.StatusOK
-}
-
 // rawResponseStatus is the success code documented for an operation
 // whose response side is raw (`@rawResponse` / `@passthrough`). Logic
 // writes the response itself, so codegen cannot know the real status:
@@ -633,14 +594,6 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 	return params
 }
 
-// bindingFromDecorators returns the OpenAPI `in` string implied by a
-// field-binding decorator, or "" when the field has no explicit binding.
-// `@body` and `@form` are returned verbatim so the caller can recognise
-// and skip them - body-shaped fields land in requestBody, not parameters.
-func bindingFromDecorators(ds []*ast.Decorator) string {
-	return wire.BindingKind(ds)
-}
-
 // hasOwnDecorator reports whether ds carries a non-propagated decorator
 // with the given name. Used for the bare presence checks that drive
 // decorators copied onto the method from an enclosing scope (currently
@@ -679,21 +632,6 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	case "OPTIONS":
 		item.Options = op
 	}
-}
-
-// fieldIsRequired is THE spec-required rule - craftgo's "required by
-// default" model: a field must be present unless its type carries the `?`
-// suffix, OR it carries `@default` (the transport pre-fills the default
-// before decode, so an absent value is valid; advertising it required would
-// contradict the very default the schema carries). ResolvedField.SpecRequired
-// is computed from this function; raw-field call sites (the parameter/body
-// emitters, which work from field bins) call it directly - one rule, one
-// function.
-func fieldIsRequired(f *ast.Field) bool {
-	if f == nil || f.Type == nil || f.Type.Optional {
-		return false
-	}
-	return !ast.HasDecorator(f.Decorators, "default")
 }
 
 // operationID returns the OpenAPI operationId for a method. A method

@@ -4,13 +4,13 @@
 //   - validate.go          driver - orchestrates Generate / collect / template
 //   - validate_registry.go decorator → emit-function dispatch table
 //   - validate_emit.go     per-validator emitters + cross-cutting helpers
-//   - validate_args.go     decorator-argument extractors (intArg, sizeArg, ...)
+//   - decorator_args.go    decorator-argument extractors (intArg, sizeArg, ...)
 //   - validate_types.go    field-shape predicates (isStringOrOptString, ...)
 //
 // To add a new validator: write its emit function in validate_emit.go,
 // register it as one row in `validators` (validate_registry.go). Type
 // guards and arg helpers are reusable from validate_types.go /
-// validate_args.go - most new validators won't need new ones.
+// decorator_args.go - most new validators won't need new ones.
 
 package codegen
 

@@ -9,29 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// fieldWireName returns the name a client uses for f: the wire alias of a bound
-// field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
-// `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
-// the field name). Validation messages use it so a failure reports what the
-// caller actually sent - `x-source-domain: ...`, not the DSL field name. The
-// scalar synth field (no name, no decorators) maps to "", keeping the shared
-// scalar/enum Validate() message subject-less.
-//
-// The returned name is escaped for direct embedding in a generated
-// fmt.Errorf(...) format literal (see [escapeErrorfName]): a wire alias is a
-// user-controlled string that may contain a double quote, backslash, or `%`.
-// Every caller embeds the result in an error-message literal, never compares it
-// as a raw string, so escaping once here keeps all message sites safe.
-func fieldWireName(f *ast.Field) string {
-	kind := wire.BindingKind(f.Decorators)
-	name := f.Name
-	switch kind {
-	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
-		name = wire.WireName(f, kind)
-	}
-	return escapeErrorfName(name)
-}
-
 // escapeErrorfName makes a wire/field name safe to embed directly inside a
 // generated fmt.Errorf(...) format literal. strconv.Quote escapes a double
 // quote or backslash that would otherwise break the Go string literal (its
@@ -110,4 +87,27 @@ func ifReturnf(cond, msg string) string {
 // that has to nest under another statement.
 func indentBlock(s string) string {
 	return strings.ReplaceAll(s, "\n", "\n\t")
+}
+
+// fieldWireName returns the name a client uses for f: the wire alias of a bound
+// field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
+// `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
+// the field name). Validation messages use it so a failure reports what the
+// caller actually sent - `x-source-domain: ...`, not the DSL field name. The
+// scalar synth field (no name, no decorators) maps to "", keeping the shared
+// scalar/enum Validate() message subject-less.
+//
+// The returned name is escaped for direct embedding in a generated
+// fmt.Errorf(...) format literal (see [escapeErrorfName]): a wire alias is a
+// user-controlled string that may contain a double quote, backslash, or `%`.
+// Every caller embeds the result in an error-message literal, never compares it
+// as a raw string, so escaping once here keeps all message sites safe.
+func fieldWireName(f *ast.Field) string {
+	kind := wire.BindingKind(f.Decorators)
+	name := f.Name
+	switch kind {
+	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
+		name = wire.WireName(f, kind)
+	}
+	return escapeErrorfName(name)
 }

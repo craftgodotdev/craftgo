@@ -214,17 +214,6 @@ func allDeclNames(p *semantic.Package) []string {
 	return out
 }
 
-// sortedKeys returns the keys of m in alphabetical order. Used by
-// the merge to produce deterministic schema ordering.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // cloneTypeDecl deep-copies td and rewrites every named type ref in
 // its body using rewrite (which carries srcPkg context). The
 // returned decl is safe to mutate further.
@@ -387,31 +376,4 @@ func rewriteNamedArgs(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *
 	cp := *n
 	cp.Args = args
 	return &cp
-}
-
-// pascalCase converts a DSL package name (commonly lowercase or
-// kebab-cased) into its PascalCase form for OpenAPI schema prefixing.
-// Empty / single-character inputs are passed through with the first
-// rune uppercased.
-func pascalCase(s string) string {
-	if s == "" {
-		return ""
-	}
-	var b []byte
-	upNext := true
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '-' || c == '_' || c == '/' {
-			upNext = true
-			continue
-		}
-		if upNext {
-			if c >= 'a' && c <= 'z' {
-				c -= 'a' - 'A'
-			}
-			upNext = false
-		}
-		b = append(b, c)
-	}
-	return string(b)
 }
