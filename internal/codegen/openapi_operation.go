@@ -27,11 +27,11 @@ const (
 // body - it does NOT $ref a `<base>ReqBody` component. buildOperation (inline vs
 // $ref) and addRequestBodySchema (emit the component or not) both read this one
 // predicate so they can't disagree and leave an orphaned schema in the spec.
-func isMultipartRequest(m *ast.Method, pkg *semantic.Package) bool {
+func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) bool {
 	if m == nil || m.Request == nil {
 		return false
 	}
-	_, files, err := collectFormBindings(m, pkg, "", nil)
+	_, files, err := collectFormBindings(m, pkg, "", r)
 	return err == nil && len(files) > 0
 }
 
@@ -112,17 +112,17 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	// `*/*` - and for the success status of a raw response, which logic
 	// writes itself.
 	rawReq, rawResp := wire.RawSides(m.Decorators)
-	isMultipart := isMultipartRequest(m, pkg)
+	isMultipart := isMultipartRequest(m, pkg, registry.resolver)
 	formStrings, formFiles := []paramBinding(nil), []paramBinding(nil)
 	if isMultipart {
 		// pkgAlias is empty here - the OpenAPI emission path doesn't care about
 		// Go-side cast aliasing, only about which fields are file vs text.
 		// Errors from form binding are surfaced by the transport gen pass; drop
 		// them here so a single source of truth owns the diagnostic.
-		formStrings, formFiles, _ = collectFormBindings(m, pkg, "", nil)
+		formStrings, formFiles, _ = collectFormBindings(m, pkg, "", registry.resolver)
 	}
 	if m.Request != nil {
-		bins := binRequestFields(m, pkg)
+		bins := binRequestFields(m, pkg, registry.resolver)
 		// Body-bearing verbs $ref the per-method body schema. The
 		// per-kind schemas live in components.schemas so consumers have
 		// a single canonical reference for each binding kind.
@@ -182,7 +182,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 				},
 			},
 		}
-		if respBins := binResponseFields(m, pkg); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
+		if respBins := binResponseFields(m, pkg, registry.resolver); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
 			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
 		}
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
@@ -280,7 +280,7 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		// An error's @header / @cookie body fields are written onto the
 		// response by the generated WriteResponseHeaders, so document
 		// them as response.headers - mirroring the success-response path.
-		hs, cs := errorHeaderCookieFields(ed, pkg)
+		hs, cs := errorHeaderCookieFields(ed, pkg, registry.resolver)
 		entry.headers = append(entry.headers, hs...)
 		entry.cookies = append(entry.cookies, cs...)
 	}
@@ -379,11 +379,11 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 // its @header and @cookie fields - the ones the runtime writes onto the
 // response via WriteResponseHeaders rather than into the JSON body.
 // Mirrors [binResponseFields] for the error path.
-func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package) (headers, cookies []*ast.Field) {
+func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *ProjectResolver) (headers, cookies []*ast.Field) {
 	// Flatten so a `@header` / `@cookie` field the error inherits through a
 	// mixin is documented as a response header too - matching the runtime,
 	// which writes the promoted field via WriteResponseHeaders.
-	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, nil, map[string]bool{}) {
+	for _, f := range flattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r, map[string]bool{}) {
 		switch bindingFromDecorators(f.Decorators) {
 		case wire.BindingHeader:
 			headers = append(headers, f)

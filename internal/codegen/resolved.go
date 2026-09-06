@@ -146,8 +146,7 @@ func explicitBinding(f *ast.Field) Binding {
 // response-header/cookie writers - so a qualified type is never silently
 // dropped by one stage (an `undefined: pkg` import, a missing pre-fill, an
 // unwritten response header) while a sibling stage emits it. Returns (nil, "")
-// when unresolvable; a nil resolver (the OpenAPI single-package callers) keeps
-// the local-only behavior those callers had.
+// when unresolvable.
 func lookupMethodType(ref *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver) (*ast.TypeDecl, string) {
 	if ref == nil || ref.Name == nil {
 		return nil, ""
@@ -157,13 +156,8 @@ func lookupMethodType(ref *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectRe
 	if parts := ref.Name.Parts; len(parts) == 2 {
 		prefix = parts[0]
 	}
-	if td, ok := pkg.Types[name]; ok {
+	if td := r.LookupType(name); td != nil {
 		return td, prefix
-	}
-	if r != nil {
-		if td := r.LookupType(name); td != nil {
-			return td, prefix
-		}
 	}
 	return nil, prefix
 }

@@ -31,6 +31,7 @@ func GenerateErrors(pkg *semantic.Package, outDir string, r *ProjectResolver) er
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
+	r = resolverFor(pkg, r)
 	pkgDir := filepath.Join(outDir, pkg.Name)
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err
@@ -52,7 +53,7 @@ func GenerateErrors(pkg *semantic.Package, outDir string, r *ProjectResolver) er
 // shared [collectImports] machinery. The result is returned
 // pre-formatting; the caller runs `go/format` to normalise whitespace.
 func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
-	crossPkg := r.crossPkgMap()
+	crossPkg := r.CrossPkg
 	names := sortedKeys(pkg.Errors)
 
 	needsHTTP := false

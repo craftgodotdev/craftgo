@@ -394,7 +394,9 @@ func TestCollectRequestFieldImports(t *testing.T) {
 		},
 	}
 	cross := CrossPkg{"shared": "github.com/example/svc/internal/types/shared"}
-	got := collectRequestFieldImports(method, pkg, cross, nil)
+	r := resolverFor(pkg, nil)
+	r.CrossPkg = cross
+	got := collectRequestFieldImports(method, pkg, r)
 	if got["shared"] != "github.com/example/svc/internal/types/shared" {
 		t.Errorf("expected `shared` import in collected map, got %v", got)
 	}

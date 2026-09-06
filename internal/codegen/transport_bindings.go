@@ -106,10 +106,9 @@ func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *ProjectResolver
 // "int" (int-backed) or "string" (bare / string-backed). declName is
 // the field's own type name - it differs from prim for scalars and
 // enums and drives the Go conversion in [formatToString]. An
-// unresolvable type (a cross-package symbol with no resolver) falls
-// back to "string": the field already passed the wire-binding check, so
-// it wraps some string/number/bool, and a wrong guess surfaces as a
-// compile error rather than a silent drop.
+// unresolvable type falls back to "string": the field already passed the
+// wire-binding check, so it wraps some string/number/bool, and a wrong
+// guess surfaces as a compile error rather than a silent drop.
 func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim, declName string) {
 	if f.Type == nil || f.Type.Named == nil {
 		return "string", ""
@@ -118,25 +117,13 @@ func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim
 	if idents.IsWireParseable(declName) {
 		return declName, declName
 	}
-	if pkg != nil {
-		if sc, ok := pkg.Scalars[declName]; ok && sc != nil {
-			if idents.IsWireParseable(sc.Primitive) {
-				return sc.Primitive, declName
-			}
-		}
-		if ed, ok := pkg.Enums[declName]; ok && ed != nil {
-			return enumWirePrim(ed), declName
+	if sc := r.LookupScalar(declName); sc != nil {
+		if idents.IsWireParseable(sc.Primitive) {
+			return sc.Primitive, declName
 		}
 	}
-	if r != nil {
-		if sc := r.LookupScalar(declName); sc != nil {
-			if idents.IsWireParseable(sc.Primitive) {
-				return sc.Primitive, declName
-			}
-		}
-		if ed := r.LookupEnum(declName); ed != nil {
-			return enumWirePrim(ed), declName
-		}
+	if ed := r.LookupEnum(declName); ed != nil {
+		return enumWirePrim(ed), declName
 	}
 	return "string", declName
 }
@@ -392,9 +379,9 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *P
 // Result keys the DSL package name (used as the Go alias in the
 // binder cast) to its full Go import path, ready to append to the
 // handler's extra-imports block.
-func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg CrossPkg, r *ProjectResolver) map[string]string {
+func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, r *ProjectResolver) map[string]string {
 	out := map[string]string{}
-	if m == nil || m.Request == nil || pkg == nil || len(crossPkg) == 0 {
+	if m == nil || m.Request == nil || pkg == nil || len(r.CrossPkg) == 0 {
 		return out
 	}
 	// A qualified cross-package request (`request shared.Holder`) isn't in the
@@ -418,7 +405,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 			// @form casts a cross-package scalar / enum the same way the
 			// other wire sources do (`shared.Cents(...)` in the multipart
 			// handler), so its foreign-package import must be collected too.
-			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
+			walkCrossPkgImports(rf.Field.Type, r.CrossPkg, set)
 		}
 		// Body field with `@default(...)` on a cross-pkg enum OR scalar
 		// emits a pre-fill line that references the foreign package and
@@ -428,11 +415,11 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, crossPkg C
 		// aliases), so the cast references the foreign package and the
 		// import is required. The trigger is "field type is a cross-pkg
 		// named ref AND has @default".
-		if isQualifiedNamedWithDefault(rf.Field, crossPkg) {
-			walkCrossPkgImports(rf.Field.Type, crossPkg, set)
+		if isQualifiedNamedWithDefault(rf.Field, r.CrossPkg) {
+			walkCrossPkgImports(rf.Field.Type, r.CrossPkg, set)
 		}
 	}
-	for pkgName, path := range crossPkg {
+	for pkgName, path := range r.CrossPkg {
 		if !set[path] {
 			continue
 		}

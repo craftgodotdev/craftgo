@@ -180,15 +180,7 @@ func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Packa
 				continue
 			}
 			seen[key] = true
-			var mt *ast.TypeDecl
-			// pkg.Types is bare-keyed for the current package only, so it
-			// only applies to a bare ref at the top level (prefix == "").
-			if pkg != nil && prefix == "" && len(parts) == 1 {
-				mt = pkg.Types[key]
-			}
-			if mt == nil && r != nil {
-				mt = r.LookupType(key)
-			}
+			mt := r.LookupType(key)
 			sub := flattenFieldsWithNames(mt, childPrefix, pkg, r, seen)
 			// A generic mixin (`Page<Item>`) promotes fields typed in the
 			// type-parameter (`items T[]`). Substitute the concrete arguments

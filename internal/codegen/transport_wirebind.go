@@ -144,35 +144,14 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 	prim, ok := queryPrims[declName]
 	cast := ""
 	if !ok {
-		// Local first (cheap, matches the pre-resolver shape), then
-		// project-wide for qualified `pkg.X` refs. For cross-pkg the
-		// declName is already the full qualified name (`xshared.XEmail`),
+		// A scalar or enum casts to its declared name. For a cross-package
+		// ref declName is already the qualified name (`xshared.XEmail`),
 		// which is also the correct Go cast - no extra prefix needed.
-		if pkg != nil {
-			if sc, scOk := pkg.Scalars[declName]; scOk && sc != nil {
-				if p2, pOk := queryPrims[sc.Primitive]; pOk {
-					prim = p2
-					ok = true
-					cast = declName
-				}
-			}
-		}
-		if !ok {
-			if sc := r.LookupScalar(declName); sc != nil {
-				if p2, pOk := queryPrims[sc.Primitive]; pOk {
-					prim = p2
-					ok = true
-					cast = declName
-				}
-			}
-		}
-		if !ok {
-			if pkg != nil {
-				if ed, edOk := pkg.Enums[declName]; edOk && ed != nil {
-					prim = queryPrims[enumWirePrim(ed)]
-					ok = true
-					cast = declName
-				}
+		if sc := r.LookupScalar(declName); sc != nil {
+			if p2, pOk := queryPrims[sc.Primitive]; pOk {
+				prim = p2
+				ok = true
+				cast = declName
 			}
 		}
 		if !ok {

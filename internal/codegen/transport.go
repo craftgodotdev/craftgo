@@ -175,6 +175,7 @@ func GenerateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
+	r = resolverFor(pkg, r)
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
@@ -224,7 +225,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // Go alias. Scalar inheritance for cross-package primitive bindings
 // (`shared.ID @path`) also flows through the resolver.
 func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *ProjectResolver) (transportData, error) {
-	crossPkg := r.crossPkgMap()
+	crossPkg := r.CrossPkg
 	mode := modeOf(m)
 	// NeedsTypes triggers the `types` import in the template. The
 	// handler body only references `types.X` for request decoding -
@@ -303,7 +304,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		// it into the file's import block, and the cast compiles to
 		// `undefined: shared`. Walk every field type of the request
 		// struct so transitively-referenced packages get pulled in.
-		fieldImports := collectRequestFieldImports(m, pkg, crossPkg, r)
+		fieldImports := collectRequestFieldImports(m, pkg, r)
 		for _, alias := range sortedKeys(fieldImports) {
 			addExtra(extraImport{Alias: alias, Path: fieldImports[alias]})
 		}

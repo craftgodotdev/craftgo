@@ -30,14 +30,7 @@ func scalarFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return ""
 	}
-	name := f.Type.Named.Name.String()
-	var sd *ast.ScalarDecl
-	if ctx.pkg != nil {
-		sd = ctx.pkg.Scalars[name]
-	}
-	if sd == nil && ctx.resolver != nil {
-		sd = ctx.resolver.LookupScalar(name)
-	}
+	sd := ctx.resolver.LookupScalar(f.Type.Named.Name.String())
 	if sd == nil {
 		return ""
 	}
@@ -56,14 +49,7 @@ func enumFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return ""
 	}
-	name := f.Type.Named.Name.String()
-	var ed *ast.EnumDecl
-	if ctx.pkg != nil {
-		ed = ctx.pkg.Enums[name]
-	}
-	if ed == nil && ctx.resolver != nil {
-		ed = ctx.resolver.LookupEnum(name)
-	}
+	ed := ctx.resolver.LookupEnum(f.Type.Named.Name.String())
 	if ed == nil {
 		return ""
 	}

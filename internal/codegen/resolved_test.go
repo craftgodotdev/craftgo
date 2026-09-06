@@ -37,7 +37,7 @@ service S {
 	}
 	bind := func(m *ast.Method) map[string]Binding {
 		out := map[string]Binding{}
-		for _, rf := range resolveRequestFields(m, pkg, nil) {
+		for _, rf := range resolveRequestFields(m, pkg, resolverFor(pkg, nil)) {
 			out[rf.DSLName] = rf.Binding
 		}
 		return out
@@ -83,7 +83,7 @@ type Req {
 	if td == nil {
 		t.Fatal("Req not found")
 	}
-	got := resolveFields(td, pkg, nil)
+	got := resolveFields(td, pkg, resolverFor(pkg, nil))
 	byName := map[string]ResolvedField{}
 	for _, rf := range got {
 		byName[rf.DSLName] = rf
@@ -170,7 +170,7 @@ type T {
 	d string? @default("x")
 	e string  @nullable
 }`)
-	for _, rf := range resolveFields(pkg.Types["T"], pkg, nil) {
+	for _, rf := range resolveFields(pkg.Types["T"], pkg, resolverFor(pkg, nil)) {
 		optional := rf.Field.Type != nil && rf.Field.Type.Optional
 		nullable := hasNullableDecorator(rf.Field.Decorators)
 		if rf.SpecRequired && (optional || rf.HasDefault) {

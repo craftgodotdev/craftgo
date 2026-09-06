@@ -65,18 +65,10 @@ func requiredCheck(f *ast.Field, access string, uses map[string]bool) string {
 // generic `requiredCheck` path with len/nil semantics.
 func requiredCheckEnumAware(f *ast.Field, access string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
 	if f != nil && f.Type != nil && !f.Type.Array && !f.Type.Optional && f.Type.Map == nil && f.Type.Named != nil {
-		name := f.Type.Named.Name.String()
-		ed, ok := pkg.Enums[name]
-		if !ok && r != nil {
-			// A qualified enum (`shared.Priority`) misses the bare-keyed local
-			// table; resolve it project-wide so a cross-package enum field gets
-			// the same field-named "required" presence check a local one does,
-			// instead of only the enum's own value-set rejection.
-			if ed = r.LookupEnum(name); ed != nil {
-				ok = true
-			}
-		}
-		if ok {
+		// A cross-package enum field gets the same field-named "required"
+		// presence check a local one does, instead of only the enum's own
+		// value-set rejection.
+		if ed := r.LookupEnum(f.Type.Named.Name.String()); ed != nil {
 			if firstEnumKind(ed) == ast.EnumInt {
 				// An int-enum that defines 0 as a real member (`Inactive =
 				// 0`) can't use 0 as an "absent" sentinel - the required

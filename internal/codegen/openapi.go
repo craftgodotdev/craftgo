@@ -132,6 +132,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	// instantiations encountered anywhere (type fields, method request/
 	// response, error bodies) deduplicate into one component each.
 	registry := newGenericRegistry()
+	registry.resolver = resolverFor(pkg, nil)
 	// Pre-pass: walk all TypeDecls / ErrorDecls / methods to seed the
 	// registry with every (decl, args) tuple. Emission then proceeds
 	// with the full set already known, which keeps component ordering

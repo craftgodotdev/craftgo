@@ -127,7 +127,7 @@ var validators = []validatorEntry{
 		return itemsBoundCheck(f, a, d, "<=", "maxItems", c.uses)
 	}},
 	{"uniqueItems", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return uniqueItemsCheck(f, a, c.uses, c.resolver.crossPkgMap())
+		return uniqueItemsCheck(f, a, c.uses, c.resolver.CrossPkg)
 	}},
 
 	// file

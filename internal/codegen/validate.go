@@ -89,6 +89,7 @@ func GenerateValidators(pkg *semantic.Package, outDir string, r *ProjectResolver
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
+	r = resolverFor(pkg, r)
 	pkgDir := filepath.Join(outDir, pkg.Name)
 	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
 		return err

@@ -110,19 +110,8 @@ func namedIsScalarOrEnum(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectR
 		return false
 	}
 	name := n.Name.String()
-	if _, ok := pkg.Types[name]; ok {
-		return false // struct
-	}
-	if _, ok := pkg.Enums[name]; ok {
-		return true
-	}
-	if _, ok := pkg.Scalars[name]; ok {
-		return true
-	}
-	// Qualified / cross-package: a struct in the project tables wins (no wrap);
-	// otherwise treat an enum/scalar as the subject-less case.
 	if r.LookupType(name) != nil {
-		return false
+		return false // struct
 	}
 	return r.LookupEnum(name) != nil || r.LookupScalar(name) != nil
 }
@@ -330,27 +319,10 @@ func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *Pro
 		return false
 	}
 	name := n.Name.String()
-	// Local first: a single-part name resolved here matches the
-	// receiver-package lookup that pre-existed the resolver plumbing.
-	// Structs and enums always carry a Validate(); a scalar carries
-	// one only when it declares at least one validator decorator -
-	// matching exactly when [buildValidateData] emits the method.
-	if _, ok := pkg.Types[name]; ok {
-		return true
-	}
-	if _, ok := pkg.Enums[name]; ok {
-		return true
-	}
-	if sd, ok := pkg.Scalars[name]; ok {
-		return scalarDeclHasValidators(sd)
-	}
-	// Qualified ref → project-wide tables via resolver. nil-safe:
-	// the Lookup* helpers on a nil resolver return nil, preserving the
-	// single-package behaviour for callers without project context.
-	if r.LookupType(name) != nil {
-		return true
-	}
-	if r.LookupEnum(name) != nil {
+	// Structs and enums always carry a Validate(); a scalar carries one
+	// only when it declares at least one validator decorator - matching
+	// exactly when [buildValidateData] emits the method.
+	if r.LookupType(name) != nil || r.LookupEnum(name) != nil {
 		return true
 	}
 	if sd := r.LookupScalar(name); sd != nil {

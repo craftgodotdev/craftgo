@@ -17,10 +17,9 @@ package codegen
 // [ScalarTable] / [TypeTable] / [EnumTable] which the resolver
 // composes from.
 //
-// nil-tolerant: every method returns the zero result when the
-// receiver is nil, so single-package fixtures and callers without
-// project context work unchanged - mirroring the `nil`
-// ScalarTable / TypeTable / EnumTable handling elsewhere.
+// Every generator entry point normalises a nil resolver through
+// [resolverFor], so lookups never fall back to a package's local tables;
+// the methods stay nil-tolerant for the few callers with no context at all.
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -160,18 +159,6 @@ func (r *ProjectResolver) LookupMiddleware(name string) *ast.MiddlewareDecl {
 	return r.Middlewares[name]
 }
 
-// crossPkgMap returns the underlying [CrossPkg] alias→import map for
-// emitters that still consume the bare map (transport's
-// resolveTypeRef, collectRequestFieldImports, …). nil receiver
-// yields nil - those emitters treat nil as "no cross-package
-// imports needed".
-func (r *ProjectResolver) crossPkgMap() CrossPkg {
-	if r == nil {
-		return nil
-	}
-	return r.CrossPkg
-}
-
 // ImportPath returns the Go import path for the DSL package alias,
 // or "" when the alias isn't in the cross-package map. Used by emit
 // sites that need to register an import when they output a qualified
@@ -204,4 +191,15 @@ func (r *ProjectResolver) QualifierFor(n *ast.NamedTypeRef) (string, string) {
 		return "", ""
 	}
 	return parts[0] + ".", r.ImportPath(parts[0])
+}
+
+// resolverFor returns r, or a resolver over pkg alone when the caller has
+// no project context - so every lookup below a generator entry point goes
+// through one table set with pkg's own declarations keyed bare.
+func resolverFor(pkg *semantic.Package, r *ProjectResolver) *ProjectResolver {
+	if r != nil {
+		return r
+	}
+	proj := &semantic.Project{Packages: map[string]*semantic.Package{pkg.Name: pkg}}
+	return BuildProjectResolver(proj, nil, pkg.Name)
 }

@@ -62,7 +62,8 @@ func GenerateService(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
-	crossPkg := r.crossPkgMap()
+	r = resolverFor(pkg, r)
+	crossPkg := r.CrossPkg
 	for _, svcName := range sortedServices(pkg) {
 		svc := pkg.Services[svcName]
 		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {

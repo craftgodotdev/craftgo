@@ -192,7 +192,7 @@ func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 		return ""
 	}
 	name := t.Named.Name.String()
-	if _, ok := pkg.Scalars[name]; !ok && r.LookupScalar(name) == nil {
+	if r.LookupScalar(name) == nil {
 		return ""
 	}
 	base := *t
@@ -251,7 +251,7 @@ func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver,
 	var qualifier string
 	switch len(parts) {
 	case 1:
-		ed = pkg.Enums[parts[0]]
+		ed = r.LookupEnum(parts[0])
 		qualifier = pkgAlias
 	case 2:
 		ed = r.LookupEnum(t.Named.Name.String())

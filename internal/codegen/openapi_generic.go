@@ -42,6 +42,9 @@ type genericRegistry struct {
 	// this they silently share one schema and one field is advertised with
 	// the wrong shape; the generator rejects up front instead.
 	dups map[string]bool
+	// resolver resolves type names for the field IR the emitters read; it
+	// rides with the registry because every emitter already receives it.
+	resolver *ProjectResolver
 }
 
 // genericInstance is the descriptor stored in [genericRegistry] for one
