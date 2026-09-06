@@ -179,7 +179,7 @@ func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.
 
 // typeCompletionsProjectWide lists type-position completions: the
 // built-in primitives and every project-wide declaration except errors.
-func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *Server) typeCompletionsProjectWide(currentURI, currentSrc string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	for _, sp := range prims.All() {
 		if sp.Doc == "" {
@@ -191,7 +191,7 @@ func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, curre
 			Detail: "built-in",
 		})
 	}
-	items = append(items, s.declCompletions(view, currentURI, currentSrc, typePositionDecls)...)
+	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
 	return items
 }
 
@@ -204,9 +204,10 @@ const typePositionDecls = semantic.AnyDecl &^ semantic.ErrorDecls
 // the project. A declaration in another package is offered as `pkg.Name`
 // (label and inserted text) so picking it lands a complete reference;
 // a same-package declaration keeps its bare name, since qualifying a
-// self-reference is illegal. Every imported package alias is added as a
-// Module item so typing its first letter reaches the qualified path.
-func (s *Server) declCompletions(view snapshotView, currentURI, currentSrc string, kinds semantic.DeclKind) []protocol.CompletionItem {
+// self-reference is illegal. Every other package is added as a Module
+// item inserting `pkg.`, so typing its first letter reaches the
+// qualified path.
+func (s *Server) declCompletions(currentURI, currentSrc string, kinds semantic.DeclKind) []protocol.CompletionItem {
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	currentPkg := v.currentPackage()
 	var items []protocol.CompletionItem
@@ -228,12 +229,15 @@ func (s *Server) declCompletions(view snapshotView, currentURI, currentSrc strin
 			})
 		}
 	}
-	for _, alias := range importAliasesOf(view.file) {
+	for _, pkgName := range sortedKeys(v.proj.Packages) {
+		if pkgName == "" || pkgName == currentPkg {
+			continue
+		}
 		items = append(items, protocol.CompletionItem{
-			Label:      alias,
+			Label:      pkgName,
 			Kind:       protocol.CompletionItemKindModule,
-			Detail:     "imported package",
-			InsertText: alias + ".",
+			Detail:     "package",
+			InsertText: pkgName + ".",
 		})
 	}
 	return items

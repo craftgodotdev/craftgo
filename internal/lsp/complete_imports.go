@@ -7,8 +7,6 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -159,33 +157,6 @@ func (s *Server) packageDeclCompletions(currentURI, currentSrc, pkg string) []pr
 			Detail:        declSummary(d),
 			Documentation: strings.Join(declDoc(d), "\n"),
 		})
-	}
-	return out
-}
-
-// importAliasesOf returns every alias the file's imports expose at
-// the type-position level. Explicit aliases win; otherwise the
-// trailing path segment becomes the implicit alias. Duplicate aliases
-// are de-duped.
-func importAliasesOf(f *ast.File) []string {
-	if f == nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	var out []string
-	for _, imp := range f.Imports {
-		if imp == nil {
-			continue
-		}
-		alias := imp.Alias
-		if alias == "" {
-			alias = idents.LastSegment(imp.Path)
-		}
-		if alias == "" || seen[alias] {
-			continue
-		}
-		seen[alias] = true
-		out = append(out, alias)
 	}
 	return out
 }

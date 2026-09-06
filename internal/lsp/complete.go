@@ -128,7 +128,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// Type position: include builtins + every declared type
 	// (project-wide).
 	if prev != nil && isTypePositionTrigger(*prev) {
-		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
+		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
 	// `scalar Name <cursor>` - the primitive-type slot. The previous
 	// token is the scalar name (Ident) so isTypePositionTrigger
@@ -136,12 +136,12 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// tokens back to surface primitives in the position where they
 	// are the ONLY legal next token.
 	if isScalarPrimitivePosition(view, pos) {
-		return s.typeCompletionsProjectWide(view, currentURI, currentSrc)
+		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
 	// General context - keywords + project-wide declared types so
 	// users typing identifiers see what they have already defined.
 	items := keywordCompletions()
-	items = append(items, s.declCompletions(view, currentURI, currentSrc, typePositionDecls)...)
+	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
 	return items
 }
 
