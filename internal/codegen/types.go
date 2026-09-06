@@ -304,42 +304,45 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) string
 		return ""
 	}
 	// Render the base without the top-level optional pointer, then make
-	// the wrap decision here so a nilable scalar can opt out of it.
+	// the wrap decision from the resolved IR so a nilable scalar can opt
+	// out of it.
 	clone := *f.Type
 	clone.Optional = false
 	s := GoTypeRef(&clone)
-	if (f.Type.Optional || hasNullableDecorator(f.Decorators)) &&
-		!isNilableGoType(s) && !scalarRefNilable(f.Type, pkg, r) {
+	if goFieldPointerWrap(f, pkg, r) {
 		s = "*" + s
 	}
 	return s
 }
 
-// goFieldIsPointer reports whether the generated Go type for f is a
-// `*T` form. Used by validators that need to nil-guard before
-// dereferencing the underlying value.
-func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
-	return strings.HasPrefix(goFieldType(f, pkg, r), "*")
+// goFieldPointerWrap reports whether [goFieldType] prepends `*` to the
+// field's base type: the field is optional (`?`) or `@nullable` and its
+// resolved type does not already hold nil (slice, map, bytes, any, file,
+// or a scalar over one of those). The nilability fact comes from the
+// semantic field IR, so the emitted Go and the design-time checks cannot
+// disagree.
+func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
+	if f == nil || f.Type == nil {
+		return false
+	}
+	if !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
+		return false
+	}
+	return !semantic.ResolveField(f, pkg, r.project()).IsNilable
 }
 
-// scalarRefNilable reports whether t is a bare named scalar whose
-// underlying primitive is itself nilable in Go (today only `bytes` →
-// `[]byte`, plus `any`). Such a scalar field holds nil directly, so an
-// optional / `@nullable` use of it needs no redundant pointer - matching
-// how a raw `bytes` field is rendered. Arrays, maps, and generic
-// instances are excluded: their nilability is already syntactic. The
-// primitive-nilability verdict comes from [semantic.NilableScalarPrimitive],
-// the same authority the semantic resolved IR reads, so the emitted Go and
-// the design-time checks can't disagree on whether a scalar needs a `*T`.
-func scalarRefNilable(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
-	if t == nil || t.Array || t.ArrayDepth > 0 || t.Map != nil || t.Named == nil || t.Named.Name == nil {
+// goFieldIsPointer reports whether the generated Go type for f is a
+// pointer: a wrapped optional / `@nullable` field, or a `file` field,
+// whose Go type is `*multipart.FileHeader`. Validators nil-check such a
+// field for presence and dereference it before reading the value.
+func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
+	if f == nil || f.Type == nil {
 		return false
 	}
-	sd := r.LookupScalar(t.Named.Name.String())
-	if sd == nil {
-		return false
+	if semantic.ResolveField(f, pkg, r.project()).Category == semantic.CatFile {
+		return true
 	}
-	return semantic.NilableScalarPrimitive(sd.Primitive)
+	return goFieldPointerWrap(f, pkg, r)
 }
 
 // renderMixin returns one Go-level embedded-type line. Qualified

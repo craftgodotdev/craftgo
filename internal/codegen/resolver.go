@@ -96,6 +96,9 @@ func BuildMiddlewareTable(proj *semantic.Project, currentPkgName string) Middlew
 // is a usable zero value that always misses, matching the legacy
 // behaviour every callsite already handles for `nil` maps.
 type ProjectResolver struct {
+	// Proj is the analysed project the tables were built from; the
+	// semantic field IR resolves names against it.
+	Proj        *semantic.Project
 	Types       TypeTable
 	Enums       EnumTable
 	Scalars     ScalarTable
@@ -109,6 +112,7 @@ type ProjectResolver struct {
 // when proj is nil so callers don't have to nil-check before use.
 func BuildProjectResolver(proj *semantic.Project, cfg *config.Config, currentPkgName string) *ProjectResolver {
 	return &ProjectResolver{
+		Proj:        proj,
 		Types:       BuildTypeTable(proj, currentPkgName),
 		Enums:       BuildEnumTable(proj, currentPkgName),
 		Scalars:     BuildScalarTable(proj, currentPkgName),
@@ -116,6 +120,14 @@ func BuildProjectResolver(proj *semantic.Project, cfg *config.Config, currentPkg
 		Middlewares: BuildMiddlewareTable(proj, currentPkgName),
 		CrossPkg:    BuildCrossPkg(proj, cfg, currentPkgName),
 	}
+}
+
+// project returns the analysed project, or nil on a nil receiver.
+func (r *ProjectResolver) project() *semantic.Project {
+	if r == nil {
+		return nil
+	}
+	return r.Proj
 }
 
 // LookupType returns the type decl bound to name (bare for local,

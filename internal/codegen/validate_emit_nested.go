@@ -214,7 +214,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 			depth = 1
 		}
 		return emitNestedForLoops(access, depth, dispatch)
-	case fieldNeedsNilGuard(f, pkg, r):
+	case fieldNeedsNilGuard(f):
 		// The Go field can be nil in the valid "absent / null" state -
 		// either a *Type (`?` optional / `@nullable` value type) OR a
 		// scalar over a nilable primitive (`scalar Blob bytes` → `[]byte`),

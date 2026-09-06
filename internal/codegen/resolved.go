@@ -50,17 +50,16 @@ func (b Binding) String() string {
 }
 
 // ResolvedField is the resolved view of one field after mixin flattening
-// and generic-argument substitution. Every value is computed from the
-// canonical helper, so the field is the single source of truth a stage
-// reads instead of recomputing.
+// and generic-argument substitution: the layer-agnostic facts from the
+// semantic IR (category, primitive, home package, nilability) plus the Go
+// rendering derived from them. Every value is computed from the canonical
+// helper, so the field is the single source of truth a stage reads
+// instead of recomputing.
 type ResolvedField struct {
-	// Field is the (generic-substituted) source field; stages that still
-	// need raw decorators or the type ref read it from here.
-	Field *ast.Field
+	semantic.ResolvedField
 
-	DSLName string // wire/json base name (the source identifier)
-	GoName  string // exported Go field identifier
-	GoType  string // final Go type, including any *T nullable wrap
+	GoName string // exported Go field identifier
+	GoType string // final Go type, including any *T nullable wrap
 
 	Binding    Binding // wire placement (after request auto-binding, if any)
 	OnWireBody bool    // appears as a property in the JSON body schema/struct
@@ -71,8 +70,8 @@ type ResolvedField struct {
 	// silently). Always false for response/explicit fields.
 	AutoBound bool
 
-	IsPointer     bool // generated Go type is *T
-	NeedsNilGuard bool // a constraint check must nil-guard before len()/deref
+	IsPointer     bool // generated Go type is a pointer: a wrapped optional / @nullable field, or a file
+	NeedsNilGuard bool // a constraint check must nil-guard before len()/deref: optional or @nullable
 
 	HasDefault  bool // carries @default
 	DefaultWire any  // resolved OpenAPI default value (enum member -> wire), nil if none
@@ -237,14 +236,13 @@ func resolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *semantic.Pack
 func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) ResolvedField {
 	dv, hasDV := resolveDefaultValue(f, pkg)
 	return ResolvedField{
-		Field:         f,
-		DSLName:       f.Name,
+		ResolvedField: semantic.ResolveField(f, pkg, r.project()),
 		GoName:        GoFieldName(f.Name),
 		GoType:        goFieldType(f, pkg, r),
 		Binding:       explicitBinding(f),
 		OnWireBody:    !isNonBodyBound(f) && !hasSensitiveDecorator(f.Decorators),
 		IsPointer:     goFieldIsPointer(f, pkg, r),
-		NeedsNilGuard: fieldNeedsNilGuard(f, pkg, r),
+		NeedsNilGuard: fieldNeedsNilGuard(f),
 		HasDefault:    ast.HasDecorator(f.Decorators, "default"),
 		DefaultWire:   dv,
 		HasDefValue:   hasDV,
@@ -259,20 +257,10 @@ func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) Resol
 	}
 }
 
-// fieldNeedsNilGuard reports whether f's value can be nil in a state the
-// contract treats as valid (absent / null), so a constraint check must
-// nil-guard first. True for any pointer field, and for a nilable Go type
-// - bytes / slice / map, OR a scalar whose underlying primitive is nilable
-// (`scalar Blob bytes`) - marked optional (`?`) or `@nullable`.
-func fieldNeedsNilGuard(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) bool {
-	if goFieldIsPointer(f, pkg, r) {
-		return true
-	}
-	if f == nil || f.Type == nil {
-		return false
-	}
-	if !f.Type.Optional && !hasNullableDecorator(f.Decorators) {
-		return false
-	}
-	return isNilableGoType(GoTypeRef(f.Type)) || scalarRefNilable(f.Type, pkg, r)
+// fieldNeedsNilGuard reports whether a constraint check must nil-guard
+// the field before len() / deref: every optional (`?`) or `@nullable`
+// field, which lowers either to a pointer or to a nilable Go value whose
+// nil is the valid "absent / null" state.
+func fieldNeedsNilGuard(f *ast.Field) bool {
+	return f != nil && f.Type != nil && (f.Type.Optional || hasNullableDecorator(f.Decorators))
 }

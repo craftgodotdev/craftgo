@@ -105,7 +105,7 @@ func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) s
 		// Optional / @nullable scalar over a value primitive lowers to *T:
 		// only run when present, and cast the dereferenced value.
 		return fmt.Sprintf("if %s != nil {\n%s := %s(*%s)\n%s\n}", access, local, primGo, access, body)
-	case scalarRefNilable(f.Type, ctx.pkg, ctx.resolver) && (f.Type.Optional || hasNullableDecorator(f.Decorators)):
+	case fieldNeedsNilGuard(f):
 		// Optional / @nullable scalar over a nilable primitive (bytes)
 		// carries no pointer, but a nil value is the valid absent / null
 		// state - guard, then cast the value directly (no deref).

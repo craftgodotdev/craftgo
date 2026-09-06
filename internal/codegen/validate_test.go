@@ -1071,3 +1071,25 @@ service S { post Op /x { request Body  response Resp } }`,
 		t.Errorf("any[] field wrongly got a nil presence check:\n%s", out)
 	}
 }
+
+// A `file` member of a cross-field group is presence-checked as a pointer:
+// its Go type is *multipart.FileHeader, so nil is the absent state.
+func TestCrossFieldFileMemberPresenceIsNilCheck(t *testing.T) {
+	pkg := analyze(t, `package design
+@requiresOneOf(doc, link)
+type Attach {
+  doc  file?
+  link string?
+}`)
+	dir := t.TempDir()
+	if err := GenerateValidators(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "v.Doc == nil") {
+		t.Fatalf("expected a nil presence check for the file member, got:\n%s", out)
+	}
+}

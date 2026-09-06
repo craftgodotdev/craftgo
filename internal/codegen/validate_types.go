@@ -153,7 +153,7 @@ func optionalGuard(f *ast.Field, access string) string {
 	// through [scalarFieldLevelChecks], which owns its own guard. So the
 	// nilability question here is answered by [isNilableGoType] alone and
 	// no scalar resolver is needed.
-	if fieldNeedsNilGuard(f, nil, nil) {
+	if fieldNeedsNilGuard(f) {
 		return access + " != nil && "
 	}
 	return ""
