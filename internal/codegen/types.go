@@ -12,7 +12,6 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -158,12 +157,7 @@ func collectImports(pkg *semantic.Package, crossPkg CrossPkg) []string {
 	for _, td := range pkg.Types {
 		collectBodyImports(td.Body, crossPkg, imports)
 	}
-	var out []string
-	for imp := range imports {
-		out = append(out, imp)
-	}
-	sort.Strings(out)
-	return out
+	return sortedKeys(imports)
 }
 
 // collectFieldImports recurses into a TypeRef collecting any built-in

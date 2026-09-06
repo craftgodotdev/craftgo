@@ -152,11 +152,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 		return doc, fmt.Errorf("duplicate component schema name(s): %s - a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(dedupSorted(names.dups), ", "))
 	}
 	if len(registry.dups) > 0 {
-		clashes := make([]string, 0, len(registry.dups))
-		for name := range registry.dups {
-			clashes = append(clashes, name)
-		}
-		sort.Strings(clashes)
+		clashes := sortedKeys(registry.dups)
 		return doc, fmt.Errorf("two structurally distinct generic instances map to the same component name(s): %s - e.g. an array argument and a struct of that array's element name collide. Rename the struct (or wrap the array) so each instantiation gets a distinct schema", strings.Join(clashes, ", "))
 	}
 	return doc, nil

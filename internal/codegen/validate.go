@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -194,11 +193,7 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 		})
 	}
 
-	imps := make([]string, 0, len(uses))
-	for k := range uses {
-		imps = append(imps, k)
-	}
-	sort.Strings(imps)
+	imps := sortedKeys(uses)
 
 	return validateData{
 		Package:            pkg.Name,

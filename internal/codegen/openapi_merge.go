@@ -17,13 +17,7 @@ type symbolKey struct{ pkg, name string }
 // package names. Shared by [mergeProjectForOpenAPI] and
 // [projectMergeCollisions] so the rename rule lives once.
 func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
-	pkgNames := make([]string, 0, len(proj.Packages))
-	for n := range proj.Packages {
-		if n != "" {
-			pkgNames = append(pkgNames, n)
-		}
-	}
-	sort.Strings(pkgNames)
+	pkgNames := sortedPackageNames(proj)
 	collide := func(name string) bool {
 		count := 0
 		for _, pn := range pkgNames {
@@ -206,12 +200,7 @@ func allDeclNames(p *semantic.Package) []string {
 	for n := range p.Scalars {
 		add(n)
 	}
-	out := make([]string, 0, len(seen))
-	for n := range seen {
-		out = append(out, n)
-	}
-	sort.Strings(out)
-	return out
+	return sortedKeys(seen)
 }
 
 // cloneTypeDecl deep-copies td and rewrites every named type ref in

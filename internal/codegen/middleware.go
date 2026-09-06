@@ -5,7 +5,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -68,12 +67,7 @@ func projectSortedMiddlewareNames(proj *semantic.Project) []string {
 			seen[name] = struct{}{}
 		}
 	}
-	out := make([]string, 0, len(seen))
-	for name := range seen {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
+	return sortedKeys(seen)
 }
 
 // writeProjectMiddlewareImpls emits scaffold files for every middleware

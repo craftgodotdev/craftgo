@@ -67,3 +67,16 @@ func dedupeStrings(in []string) []string {
 	}
 	return out
 }
+
+// sortedPackageNames returns the project's non-blank package names in
+// alphabetical order so every per-package phase emits in a stable order.
+func sortedPackageNames(proj *semantic.Project) []string {
+	out := make([]string, 0, len(proj.Packages))
+	for k := range proj.Packages {
+		if k != "" {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}

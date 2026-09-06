@@ -6,7 +6,6 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -54,11 +53,7 @@ func GenerateErrors(pkg *semantic.Package, outDir string, r *ProjectResolver) er
 // pre-formatting; the caller runs `go/format` to normalise whitespace.
 func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
 	crossPkg := r.crossPkgMap()
-	names := make([]string, 0, len(pkg.Errors))
-	for n := range pkg.Errors {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	names := sortedKeys(pkg.Errors)
 
 	needsHTTP := false
 	needsStrconv := false
@@ -90,12 +85,7 @@ func buildErrorsGo(pkg *semantic.Package, r *ProjectResolver) string {
 		"package " + pkg.Name + "\n",
 	}
 	if len(imports) > 0 {
-		paths := make([]string, 0, len(imports))
-		for p := range imports {
-			paths = append(paths, p)
-		}
-		sort.Strings(paths)
-		parts = append(parts, renderImports(paths))
+		parts = append(parts, renderImports(sortedKeys(imports)))
 	}
 	for _, name := range names {
 		parts = append(parts, renderError(pkg, pkg.Errors[name], r))
