@@ -14,8 +14,6 @@ import (
 
 	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-
-	"github.com/craftgodotdev/craftgo/internal/otlpaddr"
 )
 
 // resourceFor is the resource every signal reports under: the SDK
@@ -44,7 +42,7 @@ func resourceFor(serviceName string) *sdkresource.Resource {
 func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sdkmetric.Reader, bool, error) {
 	switch c.Exporter {
 	case ExporterOTLPgRPC:
-		exp, err := otlpmetricgrpc.New(ctx, otlpaddr.Base(c.Endpoint,
+		exp, err := otlpmetricgrpc.New(ctx, otlpEndpoint(c.Endpoint,
 			otlpmetricgrpc.WithEndpointURL, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure)...)
 		if err != nil {
 			return nil, false, fmt.Errorf("otlp grpc metric exporter: %w", err)

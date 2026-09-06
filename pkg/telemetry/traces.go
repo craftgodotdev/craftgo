@@ -8,8 +8,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-
-	"github.com/craftgodotdev/craftgo/internal/otlpaddr"
 )
 
 // newTracerProvider builds the tracer c selects: the resource
@@ -39,7 +37,7 @@ func traceExporter(ctx context.Context, c OTelConfig) (sdktrace.SpanExporter, er
 		}
 		return exp, nil
 	case ExporterOTLPgRPC:
-		exp, err := otlptracegrpc.New(ctx, otlpaddr.Base(c.Endpoint,
+		exp, err := otlptracegrpc.New(ctx, otlpEndpoint(c.Endpoint,
 			otlptracegrpc.WithEndpointURL, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure)...)
 		if err != nil {
 			return nil, fmt.Errorf("otlp grpc trace exporter: %w", err)
