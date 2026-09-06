@@ -109,7 +109,6 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectServiceUniqueness()
 	r.checkProjectGroupChecks()
 	r.checkProjectMiddlewareUniqueness()
-	r.checkProjectFieldDefaults()
 	r.checkProjectPathCollision()
 	r.checkProjectOperationIDUniqueness()
 	return proj, r.diags
