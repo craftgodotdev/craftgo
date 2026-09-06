@@ -88,7 +88,6 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	// The skip flags mute the per-package rules whose project-aware
 	// twin runs below.
 	perPkgOpts := opts
-	perPkgOpts.skipMixinCheck = true
 	perPkgOpts.skipBindingTypeCheckQualified = true
 	perPkgOpts.skipPathParamCheck = true
 	analyzers := make(map[string]*analyzer, len(groups))
@@ -116,7 +115,6 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectGroupChecks()
 	r.checkProjectMiddlewareUniqueness()
 	r.checkProjectFieldDefaults()
-	r.checkProjectMixins()
 	r.checkProjectBindings()
 	r.checkProjectDuplicateWireNames()
 	r.checkProjectPathParams()

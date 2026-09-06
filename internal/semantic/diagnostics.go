@@ -258,9 +258,6 @@ const (
 	// resolver uses folder-merge imports and rejects qualified names.
 	CodeQualifiedRef = "ref/qualified"
 
-	// CodeMixinUnresolved fires when a mixin reference does not name
-	// a type declared in the package.
-	CodeMixinUnresolved = "mixin/unresolved"
 	// CodeMixinNonType fires when a mixin reference resolves to a
 	// non-type entity (enum, error, scalar, middleware).
 	CodeMixinNonType = "mixin/non-type"

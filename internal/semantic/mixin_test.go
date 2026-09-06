@@ -192,8 +192,8 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 	// Walk Combined as if it were the top-level mixin of an outer host
 	// - sourceLabel stays "Combined" for both nested Base visits.
 	seen := map[string]fieldOrigin{}
-	a.collectMixinFields("Combined", "Combined", lexer.Position{Line: 1},
-		seen, map[string]bool{"Outer": true})
+	a.collectMixinFields("", "Combined", "Combined", lexer.Position{Line: 1},
+		seen, map[string]bool{".Outer": true})
 	if len(a.diags) != 0 {
 		t.Errorf("same-source diamond should not diag, got %v", a.diags)
 	}
@@ -235,7 +235,7 @@ func TestMixinCollectMissingTarget(t *testing.T) {
 	a := &analyzer{pkg: &Package{
 		Types: map[string]*ast.TypeDecl{},
 	}}
-	a.collectMixinFields("Missing", "Missing", lexer.Position{Line: 1},
+	a.collectMixinFields("", "Missing", "Missing", lexer.Position{Line: 1},
 		map[string]fieldOrigin{}, map[string]bool{})
 	if len(a.diags) != 0 {
 		t.Errorf("missing nested mixin should not diag here, got %v", a.diags)

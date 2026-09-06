@@ -107,15 +107,6 @@ type Options struct {
 	// layout.
 	FileCase string
 
-	// skipMixinCheck disables the in-package
-	// [analyzer.checkMixins] pass so the project-level resolver
-	// can run the unified mixin expansion with cross-package
-	// scalars / enums / types in scope. Without the skip the
-	// per-package pass silently swallows qualified mixin refs
-	// (`shared.Timestamps`) and a cross-pkg field collision goes
-	// undetected.
-	skipMixinCheck bool
-
 	// skipBindingTypeCheckQualified suppresses the per-package
 	// binding-type check (`@path / @query / @header / @cookie /
 	// @form` shape rules in [analyzer.checkBindingFieldType]) for
@@ -222,9 +213,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkServiceMethods()
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
-	if !a.opts.skipMixinCheck {
-		a.checkMixins()
-	}
+	a.checkMixins()
 	a.checkGenerics()
 	a.checkPathResolution()
 	a.checkOperationIDUniqueness()

@@ -709,7 +709,7 @@ import "shared"
 type Order { shared.MissingType }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeMixinUnresolved) {
-		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeMixinUnresolved, diags)
+	if !hasCode(diags, CodeRefUnknownSymbol) {
+		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeRefUnknownSymbol, diags)
 	}
 }
