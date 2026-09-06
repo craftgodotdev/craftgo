@@ -43,7 +43,7 @@ func TestServiceNameReachesBothSignals(t *testing.T) {
 	buf := make([]byte, 1<<20)
 	n, _ := resp.Body.Read(buf)
 	body := string(buf[:n])
-	if !strings.Contains(body, `target_info{service_name="todo"}`) {
+	if !strings.Contains(body, `target_info{service_name="todo",`) {
 		t.Errorf("metrics carry no service_name=todo:\n%s", body[:min(len(body), 400)])
 	}
 	if !strings.Contains(body, "http_server_request_duration_seconds_count") {
@@ -98,7 +98,7 @@ func TestTwoStacksAreIndependent(t *testing.T) {
 	for _, tc := range []struct {
 		tel  *telemetry.Telemetry
 		want string
-	}{{a, `target_info{service_name="a"}`}, {b, `target_info{service_name="b"}`}} {
+	}{{a, `target_info{service_name="a",`}, {b, `target_info{service_name="b",`}} {
 		resp, err := http.Get("http://" + tc.tel.ScrapeURL())
 		if err != nil {
 			t.Fatal(err)
@@ -201,8 +201,9 @@ func TestTraceparentInjectedWhenTracing(t *testing.T) {
 	}
 }
 
-// A metrics-only stack instruments against the no-op tracer, so no trace
-// header leaks even when another stack owns the process-wide tracer.
+// A metrics-only stack neither adopts a caller's trace context nor emits
+// a trace header, even when another stack owns the process-wide tracer:
+// otherwise the caller's own span id would come back as the server's.
 func TestNoTraceparentWithoutTracing(t *testing.T) {
 	traced, err := telemetry.Init(context.Background(), telemetry.Config{
 		OTel: telemetry.OTelConfig{Enabled: true, Exporter: "none"},
@@ -219,10 +220,12 @@ func TestNoTraceparentWithoutTracing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
 	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
 	tel.HTTPMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).
-		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+		ServeHTTP(rec, req)
 	if got := rec.Header().Get("traceparent"); got != "" {
-		t.Errorf("metrics-only stack injected traceparent %q", got)
+		t.Errorf("metrics-only stack echoed traceparent %q", got)
 	}
 }
 
@@ -409,6 +412,9 @@ func TestAdminBindFailureSurfacesOnAdminErr(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = second.Shutdown(context.Background()) })
+	if second.ScrapeURL() != "" {
+		t.Errorf("ScrapeURL = %q after a failed bind, want empty", second.ScrapeURL())
+	}
 	select {
 	case err := <-second.AdminErr():
 		if err == nil {

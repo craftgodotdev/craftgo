@@ -20,14 +20,15 @@ import (
 
 // resourceFor is the resource every signal reports under: the SDK
 // defaults (telemetry.sdk.*, `unknown_service:<binary>` as the service
-// name) with `service.name` replaced by serviceName when given. Merge
-// fails on a schema-URL mismatch, and then the service-only resource
-// wins: losing telemetry.sdk.* beats losing the service name.
+// name) with `service.name` replaced by serviceName when given. The
+// service name merges in schemaless, so it cannot conflict with the
+// defaults' schema URL; should the merge still fail, the service name
+// wins over the defaults.
 func resourceFor(serviceName string) *sdkresource.Resource {
 	if serviceName == "" {
 		return sdkresource.Default()
 	}
-	svc := sdkresource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName(serviceName))
+	svc := sdkresource.NewSchemaless(semconv.ServiceName(serviceName))
 	merged, err := sdkresource.Merge(sdkresource.Default(), svc)
 	if err != nil {
 		return svc

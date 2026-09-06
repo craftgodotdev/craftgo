@@ -13,8 +13,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   meter bootstrap that lived in `pkg/otel` and `pkg/metrics` moved into it:
   one exporter switch per signal, one resource rule (`service.name` over
   the SDK defaults - an empty name now keeps the SDK's
-  `unknown_service:<binary>` for spans too, instead of `craftgo`), and no
-  package-level gates or shared registry. `telemetry.Init` still installs
+  `unknown_service:<binary>` for spans too, instead of `craftgo`; both
+  signals now carry the SDK's `telemetry.sdk.*` attributes next to
+  `service.name`), and no package-level gates or shared registry. `telemetry.Init` still installs
   the stack it builds as the process-wide default, so `otel.Tracer` /
   `otel.Meter` in application code keep reporting through it. New:
   `Telemetry.ScrapeHandler()` serves the Prometheus scrape on a route of

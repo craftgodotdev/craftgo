@@ -104,8 +104,12 @@ func (t *Telemetry) initMetrics(ctx context.Context, c MetricsConfig) error {
 		return nil
 	}
 	path := orDefault(c.Path, DefaultMetricsPath)
-	t.admin, t.adminErr = startAdmin(c.AdminAddr, path, scrapeHandler(reg))
-	t.adminURL = t.admin.Addr + path
+	srv, errCh := startAdmin(c.AdminAddr, path, scrapeHandler(reg))
+	t.adminErr = errCh
+	if srv != nil {
+		t.admin = srv
+		t.adminURL = srv.Addr + path
+	}
 	return nil
 }
 
@@ -147,7 +151,8 @@ func (t *Telemetry) ScrapeHandler() http.Handler {
 }
 
 // ScrapeURL is the `host:port/path` the listener bound to, or "" when
-// none started. The port is the resolved one, so a `:0` bind is loggable.
+// none started or the bind failed (see [Telemetry.AdminErr]). The port is
+// the resolved one, so a `:0` bind is loggable.
 func (t *Telemetry) ScrapeURL() string {
 	if t == nil {
 		return ""

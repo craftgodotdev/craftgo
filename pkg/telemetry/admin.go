@@ -18,9 +18,10 @@ func scrapeHandler(g prom.Gatherer) http.Handler {
 
 // startAdmin serves h on path from a dedicated listener on addr, so the
 // scrape stays off the public API port and can be firewalled separately.
-// Returns the server (its Addr resolved, so a `:0` bind is loggable) and
-// a channel carrying a bind or serve failure; the channel is buffered,
-// so an unread failure never blocks the listener goroutine.
+// Returns the listening server (its Addr resolved, so a `:0` bind is
+// loggable), or nil when the bind failed, and a channel carrying the bind
+// or serve failure; the channel is buffered, so an unread failure never
+// blocks the listener goroutine.
 func startAdmin(addr, path string, h http.Handler) (*http.Server, <-chan error) {
 	mux := http.NewServeMux()
 	mux.Handle(path, h)
@@ -30,7 +31,7 @@ func startAdmin(addr, path string, h http.Handler) (*http.Server, <-chan error) 
 	if err != nil {
 		errCh <- err
 		close(errCh)
-		return s, errCh
+		return nil, errCh
 	}
 	s.Addr = ln.Addr().String()
 	go func() {
