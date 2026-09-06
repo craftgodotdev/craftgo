@@ -69,8 +69,7 @@ type Middleware = func(http.Handler) http.Handler
 | Constructor | Purpose |
 |---|---|
 | `Recovery(logger)` | Converts a panic into a 500 (or logs + leaves the committed status if the response already started). Always outermost in the generated chain. |
-| `RequestID()` | Reads or generates `X-Request-Id`, stashes it on the context (`RequestIDFromContext(ctx)`). |
-| `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` / `request_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out. |
+| `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out. |
 | `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
 | `Timeout(d)` | Caps handler execution; cancels the context and returns 503 on deadline. Panics still propagate to `Recovery`. |
 
@@ -83,7 +82,7 @@ type Middleware = func(http.Handler) http.Handler
 ```go
 type Chain []Middleware
 
-base := server.NewChain(server.RequestID(), server.AccessLog(logger))
+base := server.NewChain(server.BodyLimit(1 << 20), server.AccessLog(logger))
 authed := base.Append(authMiddleware)          // returns a NEW chain (value semantics)
 
 srv.Handle("GET /me", authed.Then(meHandler))  // Then folds the chain over the handler

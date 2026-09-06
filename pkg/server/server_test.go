@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/craftgodotdev/craftgo/pkg/log"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
 // newTestServer builds a Server, runs handler at "GET /ping", and returns
@@ -221,42 +222,8 @@ func TestServerWithCustomHealthPaths(t *testing.T) {
 	}
 }
 
-func TestRequestIDMiddlewareAddsHeader(t *testing.T) {
-	s := newTestServer(t).Use(RequestID())
-	captured := ""
-	s.HandleFunc("GET /id", func(_ http.ResponseWriter, r *http.Request) {
-		captured = RequestIDFromContext(r.Context())
-	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/id", nil))
-	if rec.Header().Get("X-Request-Id") == "" {
-		t.Error("missing X-Request-Id response header")
-	}
-	if captured == "" {
-		t.Error("handler saw empty request ID")
-	}
-}
-
-func TestRequestIDPassthrough(t *testing.T) {
-	s := newTestServer(t).Use(RequestID())
-	s.HandleFunc("GET /id", func(_ http.ResponseWriter, _ *http.Request) {})
-	req := httptest.NewRequest(http.MethodGet, "/id", nil)
-	req.Header.Set("X-Request-Id", "client-id-123")
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, req)
-	if rec.Header().Get("X-Request-Id") != "client-id-123" {
-		t.Errorf("expected client ID echoed back, got %q", rec.Header().Get("X-Request-Id"))
-	}
-}
-
-func TestRequestIDFromMissingContext(t *testing.T) {
-	if RequestIDFromContext(context.Background()) != "" {
-		t.Error("expected empty string for missing ID")
-	}
-}
-
 func TestAccessLogMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(AccessLog(s_logger(t))).Use(RequestID())
+	s := newTestServer(t).Use(AccessLog(s_logger(t)))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})

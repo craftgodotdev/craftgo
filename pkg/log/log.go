@@ -16,9 +16,8 @@ import (
 
 // Logger is the structured-logging surface every craftgo middleware
 // depends on. Callers with a request context chain
-// `logger.WithContext(ctx).Info(...)` to fan trace_id / span_id /
-// request_id into the line; callers without one call `Info(...)`
-// directly.
+// `logger.WithContext(ctx).Info(...)` to fan trace_id / span_id into the
+// line; callers without one call `Info(...)` directly.
 type Logger interface {
 	Debug(msg string, fields ...Field)
 	Info(msg string, fields ...Field)
@@ -231,11 +230,9 @@ func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
 }
 
-// WithContext extracts the active OpenTelemetry trace IDs and the
-// X-Request-Id stored by the RequestID middleware from ctx, then
-// returns a Logger with those fields baked in. Subsequent calls on the
-// returned Logger automatically tag every line with `trace_id`,
-// `span_id`, and `request_id` - the standard observability triple.
+// WithContext extracts the active OpenTelemetry trace ids from ctx and
+// returns a Logger with `trace_id` and `span_id` baked in, so every
+// subsequent line on it carries them.
 //
 // When ctx carries no trace context (test runs, batch tools) the
 // trace fields are simply omitted from the output.
@@ -250,40 +247,10 @@ func (s *zapLogger) WithContext(ctx context.Context) Logger {
 			zap.String("span_id", sc.SpanID().String()),
 		)
 	}
-	if id := requestIDFromContext(ctx); id != "" {
-		fields = append(fields, zap.String("request_id", id))
-	}
 	if len(fields) == 0 {
 		return s
 	}
 	return &zapLogger{z: s.z.With(fields...)}
-}
-
-// requestIDKey is the unexported context-key type used by
-// [WithRequestID] / [requestIDFromContext]. Keeping the type private
-// stops third-party code from accidentally colliding with our key.
-type requestIDKey struct{}
-
-// WithRequestID returns ctx with the supplied request id stashed under
-// the package's canonical key. pkg/server.RequestID calls this so
-// `log.WithContext(ctx)` can pick the value up without taking a hard
-// dependency on pkg/server.
-func WithRequestID(ctx context.Context, id string) context.Context {
-	if ctx == nil || id == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, requestIDKey{}, id)
-}
-
-// requestIDFromContext is the inverse of [WithRequestID]. Returns ""
-// when the ctx wasn't tagged.
-func requestIDFromContext(ctx context.Context) string {
-	if v := ctx.Value(requestIDKey{}); v != nil {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
 }
 
 func (s *zapLogger) Enabled(level Level) bool {

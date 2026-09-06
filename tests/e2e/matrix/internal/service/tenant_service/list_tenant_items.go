@@ -13,7 +13,7 @@ import (
 
 // ListTenantItemsService carries the per-request state for the
 // ListTenantItems endpoint of TenantService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id / request_id),
+// pre-bound to the request context (trace_id / span_id),
 // so handlers can call l.Info(...) / l.Error(...) directly.
 type ListTenantItemsService struct {
 	log.Logger

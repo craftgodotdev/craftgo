@@ -35,7 +35,7 @@ srv.Start(":8080")
 `Handle` is variadic - `Handle(pattern, h, mws...)` - so a route can carry per-route middleware that wraps the handler outermost-first (the first middleware argument is the outermost frame, hit first on the way in). For composing a reusable stack, `server.Chain` folds a middleware list in the same order:
 
 ```go
-chain := server.NewChain(server.RequestID(), server.AccessLog(logger))
+chain := server.NewChain(server.BodyLimit(1 << 20), server.AccessLog(logger))
 srv.Handle("GET /healthz", chain.Then(healthHandler))
 ```
 
@@ -46,8 +46,7 @@ srv.Handle("GET /healthz", chain.Then(healthHandler))
 Out of the box:
 
 - `Recovery(logger)` - converts panics to 500 responses with structured logging
-- `RequestID()` - extracts or generates `X-Request-Id`
-- `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace / request ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out
+- `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out
 - `BodyLimit(maxBytes)` - caps request bodies
 - `Timeout(d)` - hard deadline on handler execution
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
@@ -57,7 +56,6 @@ You wire them in `main.go`:
 
 ```go
 srv := server.New(svcCtx)
-srv.Use(server.RequestID())
 srv.Use(server.AccessLog(logger))
 srv.Use(server.BodyLimit(1 << 20))
 ```
@@ -221,7 +219,7 @@ func (l *GetUserLogic) GetUser(req *pb.GetUserReq) (*pb.User, error) {
 }
 ```
 
-`trace_id`, `span_id`, and `request_id` flow into every log line automatically when OTel is enabled.
+`trace_id` and `span_id` flow into every log line automatically while tracing is on, which the generated `config.yaml` does by default (`otel.exporter: none` keeps the spans in-process); the response carries the matching `traceparent` header.
 
 ### Log level
 

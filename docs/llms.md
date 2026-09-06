@@ -582,7 +582,6 @@ import (
 tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in config.yaml
 srv := server.New(svcCtx)
 srv.Use(tel.HTTPMiddleware()) // opens the span first, so AccessLog sees the trace ids
-srv.Use(server.RequestID())
 srv.Use(server.AccessLog(logger))
 routes.RegisterAll(srv, svcCtx)
 srv.Start(":8080")
@@ -595,7 +594,6 @@ srv.Start(":8080")
 | Constructor                  | Effect                                                   |
 | ---------------------------- | -------------------------------------------------------- |
 | `server.Recovery(logger)`    | Panic -> 500 + structured log (auto-installed outermost) |
-| `server.RequestID()`         | Extract or generate `X-Request-Id`                       |
 | `server.AccessLog(logger)`   | One `http access` line per request (health probes never reach it) |
 | `server.BodyLimit(maxBytes)` | Cap request body size                                    |
 | `server.Timeout(d)`          | Per-handler deadline                                     |

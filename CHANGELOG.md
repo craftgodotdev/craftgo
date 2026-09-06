@@ -38,6 +38,13 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **`server.AccessLogAll()`** - the access log has no built-in skip set to
   undo any more.
+- **`server.RequestID()`**, `server.RequestIDFromContext`, `log.WithRequestID`
+  and the `request_id` log field. Tracing is on by default in the generated
+  `config.yaml` (`otel.exporter: none` keeps the spans in-process), so every
+  request already carries `trace_id` / `span_id` on its log lines and a
+  `traceparent` response header; a second correlation id added nothing. A
+  project that must honour an upstream `X-Request-Id` wires its own
+  middleware.
 - **The global-slot bootstrap API of `pkg/otel` and `pkg/metrics`**
   (`otel.Init` / `InitDefault` / `InitFromConfig` / `HTTPMiddleware` /
   `IsEnabled` / `Disable`, `metrics.Init` / `InitDefault` /

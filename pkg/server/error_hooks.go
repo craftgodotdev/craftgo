@@ -132,7 +132,7 @@ type UnknownErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 
 // defaultUnknownError is the wire default for errors without an HTTP status. An
 // unknown error is an unhandled failure, so the full error is logged at Error
-// level with the request's trace context (trace_id / span_id / request_id ride
+// level with the request's trace context (trace_id / span_id ride
 // the line via WithContext) and the client receives only a generic 500 with a
 // static message. The raw err.Error() text - which routinely carries DSNs, file
 // paths, upstream URLs, or other internal detail - is never written to the

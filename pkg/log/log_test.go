@@ -69,7 +69,6 @@ func TestZapLoggerWithContextExtractsTrace(t *testing.T) {
 		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
 	})
 	ctx := trace.ContextWithSpanContext(context.Background(), sc)
-	ctx = WithRequestID(ctx, "req-xyz")
 
 	l, logs := newObserver(t)
 	l.WithContext(ctx).Info("hello")
@@ -82,9 +81,6 @@ func TestZapLoggerWithContextExtractsTrace(t *testing.T) {
 	}
 	if cm["span_id"] != spanID.String() {
 		t.Errorf("expected span_id %q, got %v", spanID.String(), cm["span_id"])
-	}
-	if cm["request_id"] != "req-xyz" {
-		t.Errorf("expected request_id req-xyz, got %v", cm["request_id"])
 	}
 }
 

@@ -9,7 +9,7 @@ Middleware in craftgo is a regular `func(http.Handler) http.Handler`. There are 
 [ 2 ] Declared middleware - DSL keyword + @middlewares(...) - per-service or per-method
 ```
 
-Use **runtime middleware** for cross-cutting concerns that apply globally regardless of the API contract: request ID, access log, OTel, recovery.
+Use **runtime middleware** for cross-cutting concerns that apply globally regardless of the API contract: access log, OTel, recovery.
 
 Use **declared middleware** when the DSL needs to know about it: which services / methods opt in, which order, how it surfaces in OpenAPI's security section.
 
@@ -22,7 +22,6 @@ For cross-cutting concerns that apply globally regardless of the API contract, u
 ```go
 srv := server.New(svcCtx)
 srv.Use(tel.HTTPMiddleware()) // traces + metrics; first, so AccessLog sees the trace ids
-srv.Use(server.RequestID())
 srv.Use(server.AccessLog(logger))
 srv.SetDefaultMaxBodySize(1 << 20) // default body cap; a per-method @maxBodySize overrides it
 ```
