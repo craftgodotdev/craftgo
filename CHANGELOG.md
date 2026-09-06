@@ -20,8 +20,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Telemetry.ScrapeHandler()` serves the Prometheus scrape on a route of
   your own when `metrics.adminAddr` is empty.
 
+- **Health probes are answered ahead of the middleware chain.** `/healthz`
+  and `/readyz` (or the `WithHealthPaths` overrides) go straight to the probe
+  handler, wrapped in `Recovery` alone: they are no longer access-logged,
+  traced, counted in the `http.server.*` metrics or CORS-processed, and no
+  `srv.Use` middleware runs for them. `server.AccessLog` therefore logs
+  every request that reaches it; `AccessLogSkipPaths(...)` keeps other
+  routes (a `/metrics` scrape on the API port) out.
+
 ### Removed
 
+- **`server.AccessLogAll()`** - the access log has no built-in skip set to
+  undo any more.
 - **The global-slot bootstrap API of `pkg/otel` and `pkg/metrics`**
   (`otel.Init` / `InitDefault` / `InitFromConfig` / `HTTPMiddleware` /
   `IsEnabled` / `Disable`, `metrics.Init` / `InitDefault` /

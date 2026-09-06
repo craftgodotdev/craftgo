@@ -596,7 +596,7 @@ srv.Start(":8080")
 | ---------------------------- | -------------------------------------------------------- |
 | `server.Recovery(logger)`    | Panic -> 500 + structured log (auto-installed outermost) |
 | `server.RequestID()`         | Extract or generate `X-Request-Id`                       |
-| `server.AccessLog(logger)`   | One log line per request                                 |
+| `server.AccessLog(logger)`   | One `http access` line per request (health probes never reach it) |
 | `server.BodyLimit(maxBytes)` | Cap request body size                                    |
 | `server.Timeout(d)`          | Per-handler deadline                                     |
 | `srv.SetCORS(opts)`          | CORS headers + genuine-preflight short-circuit (opts via `server.CORSPermissive()` / `server.CORSStrict(origin)`; a Server method, not a `srv.Use` middleware) |

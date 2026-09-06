@@ -34,10 +34,9 @@ type Server struct {
 	defaultMaxBodySize    int64
 	defaultMaxHeaderKB    int
 
-	healthChecks  map[string]healthCheck
-	healthPaths   HealthPaths
-	noHealth      bool
-	healthMounted bool
+	healthChecks map[string]healthCheck
+	healthPaths  HealthPaths
+	noHealth     bool
 
 	registeredMW map[string]Middleware
 
@@ -299,19 +298,18 @@ func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func
 
 // Handler returns the fully-wrapped http.Handler: mux + every global
 // middleware registered via [Server.Use] + CORS (when configured) +
-// Recovery (always outermost). Health endpoints are wired the first
-// time Handler is called unless [WithoutDefaultHealth] was set.
+// Recovery (always outermost). The health probes are answered ahead of
+// that chain: a request whose path is exactly the liveness or readiness
+// route goes straight to the probe handler, wrapped in Recovery alone, so
+// probes are never access-logged, traced, measured, CORS-processed or
+// subject to `Use` middleware. [WithoutDefaultHealth] removes them; a
+// project that wants observed probes registers its own route instead.
 //
 // This is the entry point both [Server.Start] and tests use - wrap
 // `httptest.NewServer(srv.Handler())` to exercise the full chain
 // without binding a real listener.
 func (s *Server) Handler() http.Handler {
 	s.mu.Lock()
-	if !s.noHealth && !s.healthMounted {
-		s.mux.Handle(s.healthPaths.Liveness, s.livenessHandler())
-		s.mux.Handle(s.healthPaths.Readiness, s.readinessHandler())
-		s.healthMounted = true
-	}
 	// Build the chain outermost-first: Recovery wraps the user chain
 	// wraps CORS wraps the mux. CORS sits closest to the mux so it
 	// observes the final response headers; Recovery sits outermost so
@@ -322,9 +320,32 @@ func (s *Server) Handler() http.Handler {
 	if s.cors != nil {
 		chain = chain.Append(corsMiddleware(*s.cors))
 	}
-	inner := s.muxWithNotFoundLocked()
+	app := chain.Then(s.muxWithNotFoundLocked())
+	probes := s.probesLocked()
 	s.mu.Unlock()
-	return chain.Then(inner)
+	if probes == nil {
+		return app
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h, ok := probes[r.URL.Path]; ok {
+			h.ServeHTTP(w, r)
+			return
+		}
+		app.ServeHTTP(w, r)
+	})
+}
+
+// probesLocked returns the health probe handlers by route, each wrapped in
+// Recovery, or nil when [WithoutDefaultHealth] was set. Caller holds s.mu.
+func (s *Server) probesLocked() map[string]http.Handler {
+	if s.noHealth {
+		return nil
+	}
+	guard := Recovery(s.logger)
+	return map[string]http.Handler{
+		s.healthPaths.Liveness:  guard(s.livenessHandler()),
+		s.healthPaths.Readiness: guard(s.readinessHandler()),
+	}
 }
 
 // muxWithNotFoundLocked returns s.mux, or - if a custom NotFound

@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -262,6 +264,61 @@ func TestAccessLogMiddleware(t *testing.T) {
 	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/a", nil))
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("status = %d", rec.Code)
+	}
+}
+
+// Every request that reaches AccessLog is logged with its method, path and
+// status; AccessLogSkipPaths keeps the named routes out.
+func TestAccessLogSkipPaths(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
+	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
+	s.HandleFunc("GET /metrics", ok)
+	s.HandleFunc("GET /a", ok)
+	h := finalize(s)
+	for _, path := range []string{"/metrics", "/a", "/missing"} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	var got []string
+	for _, e := range logs.FilterMessage("http access").All() {
+		fields := e.ContextMap()
+		got = append(got, fmt.Sprintf("%s %v %v", fields["method"], fields["path"], fields["status"]))
+	}
+	want := []string{"GET /a 200", "GET /missing 404"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("access log lines = %v, want %v", got, want)
+	}
+}
+
+// The health probes are answered before the middleware chain: no `Use`
+// middleware sees them, on the default routes or on custom ones.
+func TestProbesBypassMiddlewareChain(t *testing.T) {
+	for name, opts := range map[string][]Option{
+		"default paths": nil,
+		"custom paths":  {WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"})},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := New(nil, opts...)
+			var seen []string
+			s.Use(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					seen = append(seen, r.URL.Path)
+					next.ServeHTTP(w, r)
+				})
+			})
+			s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+			h := finalize(s)
+			for _, path := range []string{s.healthPaths.Liveness, s.healthPaths.Readiness, "/a"} {
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+				if rec.Code != http.StatusOK {
+					t.Errorf("GET %s: status %d", path, rec.Code)
+				}
+			}
+			if strings.Join(seen, ",") != "/a" {
+				t.Errorf("middleware saw %v, want only /a", seen)
+			}
+		})
 	}
 }
 

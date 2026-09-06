@@ -54,6 +54,8 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 
 `RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory - each probe runs under `context.WithTimeout` and counts as a failure on deadline. `/healthz` (liveness) always returns 200 once the process is up.
 
+Both probes are answered ahead of the middleware chain (only `Recovery` wraps them): they are never access-logged, traced, counted in the HTTP metrics or CORS-processed, and no `srv.Use` middleware runs for them. `WithoutDefaultHealth()` removes them; register your own route for observed probes.
+
 ## Middleware
 
 `Middleware` is an alias for the standard shape:
@@ -68,7 +70,7 @@ type Middleware = func(http.Handler) http.Handler
 |---|---|
 | `Recovery(logger)` | Converts a panic into a 500 (or logs + leaves the committed status if the response already started). Always outermost in the generated chain. |
 | `RequestID()` | Reads or generates `X-Request-Id`, stashes it on the context (`RequestIDFromContext(ctx)`). |
-| `AccessLog(logger)` | One structured log line per request. |
+| `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` / `request_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out. |
 | `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
 | `Timeout(d)` | Caps handler execution; cancels the context and returns 503 on deadline. Panics still propagate to `Recovery`. |
 

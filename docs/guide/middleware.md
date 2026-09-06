@@ -21,10 +21,10 @@ For cross-cutting concerns that apply globally regardless of the API contract, u
 
 ```go
 srv := server.New(svcCtx)
+srv.Use(tel.HTTPMiddleware()) // traces + metrics; first, so AccessLog sees the trace ids
 srv.Use(server.RequestID())
 srv.Use(server.AccessLog(logger))
 srv.SetDefaultMaxBodySize(1 << 20) // default body cap; a per-method @maxBodySize overrides it
-srv.Use(otelhttp.NewMiddleware("api"))
 ```
 
 Order matters. The first `Use` is the outermost frame.

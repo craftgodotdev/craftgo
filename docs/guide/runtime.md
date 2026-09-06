@@ -47,7 +47,7 @@ Out of the box:
 
 - `Recovery(logger)` - converts panics to 500 responses with structured logging
 - `RequestID()` - extracts or generates `X-Request-Id`
-- `AccessLog(logger)` - one structured log line per request
+- `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace / request ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out
 - `BodyLimit(maxBytes)` - caps request bodies
 - `Timeout(d)` - hard deadline on handler execution
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
@@ -165,7 +165,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 
 The second argument is a per-check timeout - the check fails if it runs longer.
 
-Disable with `server.WithoutDefaultHealth()` if you do not want them.
+The probes are answered before the middleware chain: they are not access-logged, traced or counted in the HTTP metrics, and no `srv.Use` middleware (CORS, auth, rate limits) runs for them. Disable them with `server.WithoutDefaultHealth()` and register your own route when you want observed probes.
 
 ## API reference docs
 
