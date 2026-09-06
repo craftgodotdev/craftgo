@@ -55,7 +55,7 @@ func GenerateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot
 	if proj == nil {
 		return nil
 	}
-	if cfg.Output.Main == "-" {
+	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
 	// Skip when no package declares a service - there is no canonical

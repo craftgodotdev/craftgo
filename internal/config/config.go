@@ -70,14 +70,18 @@ type Output struct {
 	Config string `yaml:"config"`
 	// FileCase selects the naming convention for GENERATED file and
 	// directory names derived from DSL identifiers - the per-method
-	// handler/service files and the per-service directory. `kebab`
-	// (default) yields `create-user.go` / `user-service/`, `snake`
-	// yields `create_user.go` / `user_service/`, `camel` yields
+	// handler/service files and the per-service directory. `snake`
+	// (default) yields `create_user.go` / `user_service/`, `kebab`
+	// yields `create-user.go` / `user-service/`, `camel` yields
 	// `createUser.go` / `userService/`. It affects on-disk names only:
 	// URL routes stay kebab-case, and Go package names / identifiers
-	// are unchanged. Defaults to `kebab`.
+	// are unchanged.
 	FileCase string `yaml:"fileCase"`
 }
+
+// RuntimeDisabled reports whether the project opted out of the generated
+// runtime layer (main.go, config, svccontext) with `output.main: "-"`.
+func (o Output) RuntimeDisabled() bool { return o.Main == "-" }
 
 // Supported values for [Output.FileCase]. They name the case used for
 // generated file and directory names (not URLs or Go identifiers).
@@ -85,6 +89,8 @@ const (
 	FileCaseKebab = "kebab"
 	FileCaseSnake = "snake"
 	FileCaseCamel = "camel"
+	// DefaultFileCase applies when the manifest leaves fileCase unset.
+	DefaultFileCase = FileCaseSnake
 )
 
 // OpenAPI carries metadata that surfaces in the generated specification's
@@ -365,7 +371,7 @@ func (c *Config) applyDefaults() {
 		c.Output.Config = "./config"
 	}
 	if c.Output.FileCase == "" {
-		c.Output.FileCase = FileCaseSnake
+		c.Output.FileCase = DefaultFileCase
 	}
 }
 

@@ -235,7 +235,7 @@ func groupAnchor(block *ast.ServiceDecl) lexer.Position {
 // is the one that ends up on disk.
 func resolvedFileCase(fileCase string) string {
 	if fileCase == "" {
-		return config.FileCaseSnake
+		return config.DefaultFileCase
 	}
 	return fileCase
 }
