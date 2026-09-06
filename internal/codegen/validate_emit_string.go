@@ -7,7 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]bool) string {
+func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	// `@length(N)` is the exact-length form (min == max == N); the
 	// two-arg `@length(min, max)` is a range. Both lower to one len()
 	// bounds check.
@@ -26,10 +26,10 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 		}
 		hi = v
 	}
-	uses["fmt"] = true
-	val := stringValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
-	count := lengthCount(f, val, uses)
+	count := lengthCount(f, val, ctx)
 	// Avoid the `if X != nil && l := count(*X); ...` form - Go forbids
 	// `:=` inside an `&&` expression. Inline the count twice instead; the
 	// second call is constant-folded by the compiler when the argument is a
@@ -52,7 +52,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, uses map[string]
 // minMaxLengthCheck handles `@minLength(n)` and `@maxLength(n)`.
 // Optional string fields are handled the same way as `lengthCheck` -
 // nil-guard plus pointer deref.
-func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, uses map[string]bool) string {
+func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, ctx emitCtx) string {
 	if !isLengthCheckable(f) || len(d.Args) != 1 {
 		return ""
 	}
@@ -64,10 +64,10 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	if kind == "max" {
 		op, label = ">", "greater than"
 	}
-	uses["fmt"] = true
-	val := stringValueExpr(f, access)
+	ctx.uses["fmt"] = true
+	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, uses), op, n)
+	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, ctx), op, n)
 	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(fieldWireName(f)), label, n)
 	return ifReturnf(cond, msg)
 }
@@ -78,11 +78,11 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 // `minLength`/`maxLength` keyword and a Postgres `varchar(n)`, both of which
 // count characters, not bytes. A `bytes` field keeps `len()` (raw byte count,
 // the right measure for binary, and not advertised in the OpenAPI schema).
-func lengthCount(f *ast.Field, val string, uses map[string]bool) string {
+func lengthCount(f *ast.Field, val string, ctx emitCtx) string {
 	if f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "bytes" {
 		return "len(" + val + ")"
 	}
-	uses["unicode/utf8"] = true
+	ctx.uses["unicode/utf8"] = true
 	return "utf8.RuneCountInString(" + val + ")"
 }
 
@@ -100,7 +100,7 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	}
 	ctx.uses["fmt"] = true
 	ctx.uses["regexp"] = true
-	val := stringValueExpr(f, access)
+	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	patVar := ctx.regexes.intern(s)
 	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
@@ -131,7 +131,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		ctx.uses[imp] = true
 	}
 	ctx.uses["fmt"] = true
-	val := stringValueExpr(f, access)
+	val := stringValueExpr(f, access, ctx)
 	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), v.label)
 	// Regex-backed formats intern their pattern in the package-level
 	// registry so `MustCompile` runs once; stdlib-backed formats

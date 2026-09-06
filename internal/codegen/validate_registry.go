@@ -82,12 +82,12 @@ type validatorEntry struct {
 // the type-level `?` suffix.
 var validators = []validatorEntry{
 	// string
-	{"length", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c.uses) }},
+	{"length", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c) }},
 	{"minLength", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return minMaxLengthCheck(f, a, d, "min", c.uses)
+		return minMaxLengthCheck(f, a, d, "min", c)
 	}},
 	{"maxLength", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return minMaxLengthCheck(f, a, d, "max", c.uses)
+		return minMaxLengthCheck(f, a, d, "max", c)
 	}},
 	{"pattern", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) }},
 	{"format", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) }},
@@ -97,43 +97,43 @@ var validators = []validatorEntry{
 	// legacy aliases. `@positive`/`@negative` remain as flag-form
 	// sugar for `@gt(0)` / `@lt(0)`.
 	{"gt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, ">", "must be greater than", c.uses)
+		return numericBoundCheck(f, a, d, ">", "must be greater than", c)
 	}},
 	{"gte", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, ">=", "below minimum", c.uses)
+		return numericBoundCheck(f, a, d, ">=", "below minimum", c)
 	}},
 	{"lt", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, "<", "must be less than", c.uses)
+		return numericBoundCheck(f, a, d, "<", "must be less than", c)
 	}},
 	{"lte", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(f, a, d, "<=", "above maximum", c.uses)
+		return numericBoundCheck(f, a, d, "<=", "above maximum", c)
 	}},
-	{"range", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return rangeCheck(f, a, d, c.uses) }},
+	{"range", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return rangeCheck(f, a, d, c) }},
 	{"positive", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return signCheck(f, a, "positive", c.uses)
+		return signCheck(f, a, "positive", c)
 	}},
 	{"negative", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return signCheck(f, a, "negative", c.uses)
+		return signCheck(f, a, "negative", c)
 	}},
 	{"multipleOf", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return multipleOfCheck(f, a, d, c.uses)
+		return multipleOfCheck(f, a, d, c)
 	}},
 
 	// array
 	{"minItems", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return itemsBoundCheck(f, a, d, ">=", "minItems", c.uses)
+		return itemsBoundCheck(f, a, d, ">=", "minItems", c)
 	}},
 	{"maxItems", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return itemsBoundCheck(f, a, d, "<=", "maxItems", c.uses)
+		return itemsBoundCheck(f, a, d, "<=", "maxItems", c)
 	}},
 	{"uniqueItems", func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
-		return uniqueItemsCheck(f, a, c.uses, c.resolver.CrossPkg)
+		return uniqueItemsCheck(f, a, c)
 	}},
 
 	// file
-	{"maxSize", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c.uses) }},
+	{"maxSize", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c) }},
 	{"mimeTypes", func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return mimeTypesCheck(f, a, d, c.uses)
+		return mimeTypesCheck(f, a, d, c)
 	}},
 }
 
@@ -174,7 +174,6 @@ func validatorByName(name string) *validatorEntry {
 // fields throughout the emitter set.
 func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, ctx emitCtx) []string {
 	access := "v." + goName
-	uses := ctx.uses
 	var out []string
 
 	// "Required by default": every non-optional field gets the
@@ -203,7 +202,7 @@ func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, c
 	// defined empty value, so primitives the JSON decoder already
 	// rejects-on-null get no validate-time block.
 	if resolveField(f, pkg, ctx.resolver).RuntimeEnforced {
-		if s := requiredCheckEnumAware(f, access, pkg, ctx.resolver, uses); s != "" {
+		if s := requiredCheckEnumAware(f, access, ctx); s != "" {
 			out = append(out, s)
 		}
 	}

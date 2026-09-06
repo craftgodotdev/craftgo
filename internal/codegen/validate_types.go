@@ -162,10 +162,9 @@ func optionalGuard(f *ast.Field, access string) string {
 // stringValueExpr returns the string-typed access expression. Pointer
 // fields (`T?` or `@nullable T`) get a single dereference; plain fields
 // pass through. Pair with [optionalGuard] so the dereference only
-// runs after the nil check. Only string-typed fields reach here, never a
-// nilable scalar, so the pointer test needs no scalar resolver.
-func stringValueExpr(f *ast.Field, access string) string {
-	if goFieldIsPointer(f, nil, nil) {
+// runs after the nil check.
+func stringValueExpr(f *ast.Field, access string, ctx emitCtx) string {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return "*" + access
 	}
 	return access

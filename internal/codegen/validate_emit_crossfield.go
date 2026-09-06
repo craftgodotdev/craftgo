@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // crossFieldChecks emits the type-level validators @requiresOneOf and
@@ -17,7 +16,7 @@ import (
 //
 //	@requiresOneOf(["a", "b"])     → at least one must be present
 //	@mutuallyExclusive(["a", "b"]) → at most one may be present
-func crossFieldChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) []string {
+func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	if len(td.Decorators) == 0 {
 		return nil
 	}
@@ -27,12 +26,12 @@ func crossFieldChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolve
 		case "requiresOneOf":
 			names := dedupeStrings(stringArrayDecoratorArg(d))
 			if len(names) > 0 {
-				out = append(out, requiresOneOfCheck(td, names, pkg, r, uses))
+				out = append(out, requiresOneOfCheck(td, names, ctx))
 			}
 		case "mutuallyExclusive":
 			names := dedupeStrings(stringArrayDecoratorArg(d))
 			if len(names) >= 2 {
-				out = append(out, mutuallyExclusiveCheck(td, names, pkg, r, uses))
+				out = append(out, mutuallyExclusiveCheck(td, names, ctx))
 			}
 		}
 	}
@@ -45,9 +44,9 @@ func crossFieldChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolve
 // (De Morgan), so we invert each presence expression up-front and
 // join with `&&` - the generated source is what `staticcheck` would
 // rewrite to anyway.
-func requiresOneOfCheck(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
-	uses["fmt"] = true
-	parts := absenceParts(td, names, pkg, r)
+func requiresOneOfCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
+	ctx.uses["fmt"] = true
+	parts := absenceParts(td, names, ctx)
 	cond := strings.Join(parts, " && ")
 	msg := fmt.Sprintf(`"%s: requiresOneOf %v - at least one must be set"`, td.Name, names)
 	return ifReturnf(cond, msg)
@@ -58,9 +57,9 @@ func requiresOneOfCheck(td *ast.TypeDecl, names []string, pkg *semantic.Package,
 // thing is wrapped in a bare `{ ... }` block so the `n` counter
 // scopes locally - multiple @mutuallyExclusive declarations on the
 // same struct don't shadow each other.
-func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver, uses map[string]bool) string {
-	uses["fmt"] = true
-	parts := presenceParts(td, names, pkg, r)
+func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
+	ctx.uses["fmt"] = true
+	parts := presenceParts(td, names, ctx)
 	counters := make([]string, len(parts))
 	for i, p := range parts {
 		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
@@ -78,15 +77,15 @@ return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
 // list. Unknown names (typoed by the user) become a literal `false`
 // so the generated code compiles even when the decorator references a
 // missing field - the resulting check is a no-op for that slot.
-func presenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver) []string {
+func presenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		f, goName := lookupField(td, name, pkg, r)
+		f, goName := lookupField(td, name, ctx)
 		if f == nil {
 			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
-		parts = append(parts, presenceExpr(f, goName, pkg, r))
+		parts = append(parts, presenceExpr(f, goName, ctx))
 	}
 	return parts
 }
@@ -110,8 +109,8 @@ func unresolvedCrossFieldExpr(name string) string {
 // returns the field's dedup-resolved Go identifier so the cross-field access
 // (`v.UserID_2`) matches the struct rather than colliding on the bare name.
 // The Go access resolves through field promotion for a mixin-inherited field.
-func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *ProjectResolver) (*ast.Field, string) {
-	for _, ff := range flattenFieldsWithNames(td, "", pkg, r, map[string]bool{}) {
+func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string) {
+	for _, ff := range flattenFieldsWithNames(td, "", ctx.pkg, ctx.resolver, map[string]bool{}) {
 		if ff.Field.Name == name {
 			return ff.Field, ff.GoName
 		}
@@ -132,12 +131,12 @@ func lookupField(td *ast.TypeDecl, name string, pkg *semantic.Package, r *Projec
 // pointer check must come BEFORE the value-shape branches so cross-
 // field rules emit a nil-check rather than `v.X == ""` against a
 // `*string` (which fails to compile).
-func presenceExpr(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
+func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
 	if f.Type == nil {
 		return "true"
 	}
-	if goFieldIsPointer(f, pkg, r) {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return access + " != nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {
@@ -163,10 +162,10 @@ func presenceExpr(f *ast.Field, goName string, pkg *semantic.Package, r *Project
 // by [requiresOneOfCheck] so the emitted condition reads as
 // `!a && !b && !c` (idiomatic) instead of `!(a || b || c)` (which
 // staticcheck flags as QF1001).
-func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *ProjectResolver) []string {
+func absenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		f, goName := lookupField(td, name, pkg, r)
+		f, goName := lookupField(td, name, ctx)
 		if f == nil {
 			// Unresolved member - semantic analysis rejects this before
 			// codegen, so this is a drift guard, not a user path. Emit a
@@ -175,7 +174,7 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
-		parts = append(parts, absenceExpr(f, goName, pkg, r))
+		parts = append(parts, absenceExpr(f, goName, ctx))
 	}
 	return parts
 }
@@ -186,12 +185,12 @@ func absenceParts(td *ast.TypeDecl, names []string, pkg *semantic.Package, r *Pr
 // `!(...)` wrapping leaks into the output. Pointer-shape (`T?` or
 // `@nullable T`) is checked first via [goFieldIsPointer] so the emit
 // stays type-safe.
-func absenceExpr(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
+func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
 	if f.Type == nil {
 		return "false"
 	}
-	if goFieldIsPointer(f, pkg, r) {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return access + " == nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {

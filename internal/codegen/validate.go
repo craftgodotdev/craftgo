@@ -234,7 +234,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 			fieldIdx++
 			out = append(out, fieldChecksWithScalar(v, goName, pkg, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
-				if call := typeParamValidateCall(v, goName, ctx.uses); call != "" {
+				if call := typeParamValidateCall(v, goName, ctx); call != "" {
 					out = append(out, call)
 				}
 				continue
@@ -245,7 +245,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 			// method, and the field calls it (`v.Status.Validate()`).
 			// This keeps the check declared once and lets generic
 			// instances over a scalar / enum validate their elements.
-			if nested := nestedValidateCall(v, goName, pkg, r); nested != "" {
+			if nested := nestedValidateCall(v, goName, ctx); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:
@@ -266,7 +266,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *ProjectResolver, 
 	// @mutuallyExclusive) run AFTER per-field checks so a clearly-bad
 	// individual field surfaces its own error first. The cross-field
 	// rules then assume each visible value is structurally sound.
-	out = append(out, crossFieldChecks(td, pkg, r, ctx.uses)...)
+	out = append(out, crossFieldChecks(td, ctx)...)
 	return out
 }
 

@@ -53,13 +53,11 @@ func errSubject(name string) string {
 //
 // The body is responsible for any `return ...` it needs; the wrapper
 // merely delivers control to it for each element.
-func shape(f *ast.Field, access string, body func(elem string) string) string {
+func shape(f *ast.Field, access string, ctx emitCtx, body func(elem string) string) string {
 	switch {
 	case f.Type != nil && f.Type.Array:
 		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
-	case goFieldIsPointer(f, nil, nil):
-		// Reached only for generic type-param probes, never a direct nilable
-		// scalar, so the pointer test needs no scalar resolver.
+	case goFieldIsPointer(f, ctx.pkg, ctx.resolver):
 		// The Go field is *T - from `?` (optional) OR `@nullable`
 		// (required-but-nullable). Key on the actual pointer-ness, not
 		// just the `?` suffix: a `@nullable` enum/scalar field lowers to

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // enumSwitchBody renders the standard `switch expr { case ... default:
@@ -71,10 +70,10 @@ func enumCaseList(ed *ast.EnumDecl, qualifier string) string {
 // helper hands us the value-form expression for each form; we wrap it
 // with `&` for arrays/single, but optional fields are already a `*T`
 // so we use the pointer access as-is.
-func typeParamValidateCall(f *ast.Field, goName string, uses map[string]bool) string {
+func typeParamValidateCall(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
-	uses["reflect"] = true
-	return shape(f, access, func(elem string) string {
+	ctx.uses["reflect"] = true
+	return shape(f, access, ctx, func(elem string) string {
 		probe := "&" + elem
 		// An optional non-array `T?` lowers to a `*T` whose access is already
 		// the pointer to probe. An optional ARRAY (`T[]?`) still iterates
@@ -105,15 +104,15 @@ return err
 // whose Validate() already names its own fields. A field of a scalar/enum type
 // wraps the error with the field name (see [validateDispatch]); a struct field
 // does not, to avoid a synthetic outer path prefix.
-func namedIsScalarOrEnum(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
+func namedIsScalarOrEnum(n *ast.NamedTypeRef, ctx emitCtx) bool {
 	if n == nil || n.Name == nil {
 		return false
 	}
 	name := n.Name.String()
-	if r.LookupType(name) != nil {
+	if ctx.resolver.LookupType(name) != nil {
 		return false // struct
 	}
-	return r.LookupEnum(name) != nil || r.LookupScalar(name) != nil
+	return ctx.resolver.LookupEnum(name) != nil || ctx.resolver.LookupScalar(name) != nil
 }
 
 // validateDispatch emits the recursive `.Validate()` call for elem. wrapName !=
@@ -138,8 +137,8 @@ func validateDispatch(elem, wrapName string) string {
 // reads `v.Avatar.Validate()` rather than `(*v.Avatar).Validate()` -
 // Go's method-set rules dispatch through the pointer-receiver Validate
 // either way.
-func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *ProjectResolver) string {
-	if pkg == nil || f.Type == nil {
+func nestedValidateCall(f *ast.Field, goName string, ctx emitCtx) string {
+	if ctx.pkg == nil || f.Type == nil {
 		return ""
 	}
 	access := "v." + goName
@@ -147,7 +146,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 	// with this field's name; a struct's Validate() already names its fields, so
 	// its error passes through unwrapped.
 	wrapFor := func(n *ast.NamedTypeRef) string {
-		if namedIsScalarOrEnum(n, pkg, r) {
+		if namedIsScalarOrEnum(n, ctx) {
 			return fieldWireName(f)
 		}
 		return ""
@@ -162,8 +161,8 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 	if f.Type.Map != nil {
 		k := f.Type.Map.Key
 		v := f.Type.Map.Value
-		keyHas := typeRefHasValidator(k, pkg, r)
-		valHas := typeRefHasValidator(v, pkg, r)
+		keyHas := typeRefHasValidator(k, ctx)
+		valHas := typeRefHasValidator(v, ctx)
 		if !keyHas && !valHas {
 			return ""
 		}
@@ -178,7 +177,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 				stmts = append(stmts, validateDispatch("key", wrapFor(k.Named)))
 			}
 			if valHas {
-				stmts = append(stmts, nestedValueChecks(v, "val", 0, pkg, r, f.Name))
+				stmts = append(stmts, nestedValueChecks(v, "val", 0, ctx, f.Name))
 			}
 			return mapRangeLoop(mapAccess, keyHas, valHas, strings.Join(stmts, "\n"))
 		}
@@ -199,7 +198,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 	if f.Type.Named == nil {
 		return ""
 	}
-	if !typeRefNamedHasValidator(f.Type.Named, pkg, r) {
+	if !typeRefNamedHasValidator(f.Type.Named, ctx) {
 		return ""
 	}
 	dispatch := func(elem string) string { return validateDispatch(elem, wrapFor(f.Type.Named)) }
@@ -234,7 +233,7 @@ func nestedValidateCall(f *ast.Field, goName string, pkg *semantic.Package, r *P
 // struct that carries a generated Validate() method. Map keys go
 // through scalar-decorator emission elsewhere, so this only inspects
 // the value side.
-func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
+func typeRefHasValidator(t *ast.TypeRef, ctx emitCtx) bool {
 	if t == nil {
 		return false
 	}
@@ -242,12 +241,12 @@ func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 		// A map value can itself be a map (`map<K, map<K2, V>>`): the inner
 		// key / value may carry validators that still need walking, so
 		// recurse rather than treating every map as validator-free.
-		return typeRefHasValidator(t.Map.Key, pkg, r) || typeRefHasValidator(t.Map.Value, pkg, r)
+		return typeRefHasValidator(t.Map.Key, ctx) || typeRefHasValidator(t.Map.Value, ctx)
 	}
 	if t.Named == nil {
 		return false
 	}
-	return typeRefNamedHasValidator(t.Named, pkg, r)
+	return typeRefNamedHasValidator(t.Named, ctx)
 }
 
 // nestedValueChecks recursively emits Validate() dispatch for a value of
@@ -257,13 +256,13 @@ func typeRefHasValidator(t *ast.TypeRef, pkg *semantic.Package, r *ProjectResolv
 // outerName is the using field's name: a scalar/enum leaf (subject-less
 // message) is wrapped with it, a struct leaf is not. Returns "" when nothing
 // under t carries a validator.
-func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.Package, r *ProjectResolver, outerName string) string {
-	if t == nil || !typeRefHasValidator(t, pkg, r) {
+func nestedValueChecks(t *ast.TypeRef, access string, depth int, ctx emitCtx, outerName string) string {
+	if t == nil || !typeRefHasValidator(t, ctx) {
 		return ""
 	}
 	valErr := func(a string, n *ast.NamedTypeRef) string {
 		wrap := ""
-		if namedIsScalarOrEnum(n, pkg, r) {
+		if namedIsScalarOrEnum(n, ctx) {
 			wrap = outerName
 		}
 		return validateDispatch(a, wrap)
@@ -277,10 +276,10 @@ func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.P
 		iv := fmt.Sprintf("i%d", depth)
 		elem := t.ElemTypeRef()
 		return fmt.Sprintf("for %s := range %s {\n%s\n}", iv, access,
-			nestedValueChecks(elem, fmt.Sprintf("%s[%s]", access, iv), depth+1, pkg, r, outerName))
+			nestedValueChecks(elem, fmt.Sprintf("%s[%s]", access, iv), depth+1, ctx, outerName))
 	case t.Map != nil:
-		kHas := typeRefHasValidator(t.Map.Key, pkg, r)
-		vHas := typeRefHasValidator(t.Map.Value, pkg, r)
+		kHas := typeRefHasValidator(t.Map.Key, ctx)
+		vHas := typeRefHasValidator(t.Map.Value, ctx)
 		kv := fmt.Sprintf("k%d", depth)
 		vv := fmt.Sprintf("v%d", depth)
 		var inner []string
@@ -288,7 +287,7 @@ func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.P
 			inner = append(inner, valErr(kv, t.Map.Key.Named))
 		}
 		if vHas {
-			inner = append(inner, nestedValueChecks(t.Map.Value, vv, depth+1, pkg, r, outerName))
+			inner = append(inner, nestedValueChecks(t.Map.Value, vv, depth+1, ctx, outerName))
 		}
 		body := strings.Join(inner, "\n")
 		switch {
@@ -302,7 +301,7 @@ func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.P
 	case t.Optional:
 		base := *t
 		base.Optional = false
-		return fmt.Sprintf("if %s != nil {\n%s\n}", access, nestedValueChecks(&base, access, depth, pkg, r, outerName))
+		return fmt.Sprintf("if %s != nil {\n%s\n}", access, nestedValueChecks(&base, access, depth, ctx, outerName))
 	default:
 		return valErr(access, t.Named)
 	}
@@ -314,7 +313,7 @@ func nestedValueChecks(t *ast.TypeRef, access string, depth int, pkg *semantic.P
 // `shared.Page` lives in the project [TypeTable] (via the
 // [ProjectResolver]), not the local `pkg.Types` table, so qualified
 // refs consult the resolver to resolve.
-func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *ProjectResolver) bool {
+func typeRefNamedHasValidator(n *ast.NamedTypeRef, ctx emitCtx) bool {
 	if n == nil || n.Name == nil {
 		return false
 	}
@@ -322,10 +321,10 @@ func typeRefNamedHasValidator(n *ast.NamedTypeRef, pkg *semantic.Package, r *Pro
 	// Structs and enums always carry a Validate(); a scalar carries one
 	// only when it declares at least one validator decorator - matching
 	// exactly when [buildValidateData] emits the method.
-	if r.LookupType(name) != nil || r.LookupEnum(name) != nil {
+	if ctx.resolver.LookupType(name) != nil || ctx.resolver.LookupEnum(name) != nil {
 		return true
 	}
-	if sd := r.LookupScalar(name); sd != nil {
+	if sd := ctx.resolver.LookupScalar(name); sd != nil {
 		return scalarDeclHasValidators(sd)
 	}
 	return false
