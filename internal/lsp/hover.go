@@ -12,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -28,30 +29,6 @@ func isVerbToken(t lexer.Token) bool {
 		return true
 	}
 	return false
-}
-
-// builtinDocs is the doc table for the DSL's built-in primitives. It is
-// kept here (rather than in semantic) because the body is hover-text:
-// imperative, formatted markdown, opinionated, and likely to change as
-// docs improve. Keep entries sorted alphabetically.
-var builtinDocs = map[string]string{
-	"any":     "**`any`** - opaque JSON value.\n\nGenerates `any` in Go.",
-	"bool":    "**`bool`** - boolean primitive (`true` / `false`).",
-	"bytes":   "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go.",
-	"file":    "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`.",
-	"float32": "**`float32`** - 32-bit IEEE-754 float.",
-	"float64": "**`float64`** - 64-bit IEEE-754 float.",
-	"int":     "**`int`** - platform-sized signed integer.",
-	"int8":    "**`int8`** - 8-bit signed integer.",
-	"int16":   "**`int16`** - 16-bit signed integer.",
-	"int32":   "**`int32`** - 32-bit signed integer.",
-	"int64":   "**`int64`** - 64-bit signed integer.",
-	"string":  "**`string`** - UTF-8 text primitive.",
-	"uint":    "**`uint`** - platform-sized unsigned integer.",
-	"uint8":   "**`uint8`** - 8-bit unsigned integer.",
-	"uint16":  "**`uint16`** - 16-bit unsigned integer.",
-	"uint32":  "**`uint32`** - 32-bit unsigned integer.",
-	"uint64":  "**`uint64`** - 64-bit unsigned integer.",
 }
 
 // verbDocs documents the HTTP verb keywords so a hover on `get` /
@@ -122,9 +99,9 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	// `response`, `:`, a field name, etc.). The cheap heuristic: if it
 	// is a bare Ident and the spelling is a known builtin, render it.
 	if tok.Kind == lexer.Ident {
-		if doc, ok := builtinDocs[tok.Text]; ok {
+		if sp, ok := prims.Lookup(tok.Text); ok && sp.Doc != "" {
 			return &protocol.Hover{
-				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
+				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sp.Doc},
 				Range:    rangePtr(rangeOf(tok)),
 			}
 		}

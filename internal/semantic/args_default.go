@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
@@ -134,15 +135,18 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 // value-bearing decorator must carry. Unknown names (structs, unresolved
 // refs) return ArgAny so no kind check fires.
 func primitiveArgKind(prim string) ArgKind {
-	switch prim {
-	case "string", "bytes":
+	sp, ok := prims.Lookup(prim)
+	if !ok {
+		return ArgAny
+	}
+	switch sp.Kind {
+	case prims.String, prims.Bytes:
 		return ArgString
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
+	case prims.Int, prims.Uint:
 		return ArgInt
-	case "float32", "float64":
+	case prims.Float:
 		return ArgNumber
-	case "bool":
+	case prims.Bool:
 		return ArgBool
 	}
 	return ArgAny
@@ -204,7 +208,7 @@ func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, pri
 	}
 	if decName == "default" {
 		if il, ok := v.(*ast.IntLit); ok {
-			if lo, hi, capOK := intCapacity(prim); capOK {
+			if lo, hi, capOK := prims.Capacity(prim); capOK {
 				fv := float64(il.Value)
 				if fv < lo || fv > hi {
 					a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,

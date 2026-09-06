@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -20,21 +21,26 @@ type queryPrim struct {
 	label  string // human-readable kind for error messages
 }
 
-var queryPrims = map[string]queryPrim{
-	"string":  {label: "string"},
-	"bool":    {parser: "strconv.ParseBool", label: "bool"},
-	"int":     {parser: "strconv.ParseInt", goType: "int", label: "int"},
-	"int8":    {parser: "strconv.ParseInt", goType: "int8", label: "int"},
-	"int16":   {parser: "strconv.ParseInt", goType: "int16", label: "int"},
-	"int32":   {parser: "strconv.ParseInt", goType: "int32", label: "int"},
-	"int64":   {parser: "strconv.ParseInt", goType: "int64", label: "int"},
-	"uint":    {parser: "strconv.ParseUint", goType: "uint", label: "uint"},
-	"uint8":   {parser: "strconv.ParseUint", goType: "uint8", label: "uint"},
-	"uint16":  {parser: "strconv.ParseUint", goType: "uint16", label: "uint"},
-	"uint32":  {parser: "strconv.ParseUint", goType: "uint32", label: "uint"},
-	"uint64":  {parser: "strconv.ParseUint", goType: "uint64", label: "uint"},
-	"float32": {parser: "strconv.ParseFloat", goType: "float32", label: "float"},
-	"float64": {parser: "strconv.ParseFloat", goType: "float64", label: "float"},
+// wirePrim returns the binder metadata for a wire-parseable primitive.
+func wirePrim(name string) (queryPrim, bool) {
+	sp, ok := prims.Lookup(name)
+	if !ok || !prims.IsWireParseable(name) {
+		return queryPrim{}, false
+	}
+	q := queryPrim{parser: sp.Parser}
+	switch sp.Kind {
+	case prims.String:
+		q.label = "string"
+	case prims.Bool:
+		q.label = "bool"
+	case prims.Int:
+		q.label, q.goType = "int", name
+	case prims.Uint:
+		q.label, q.goType = "uint", name
+	case prims.Float:
+		q.label, q.goType = "float", name
+	}
+	return q, true
 }
 
 // wireSource describes a binding's HTTP wire source. Different bindings
@@ -141,14 +147,14 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		return "", fmt.Errorf("field %q: arrays cannot bind to @%s - this wire format carries a single value per name", f.Name, src.kind)
 	}
 	declName := f.Type.Named.Name.String()
-	prim, ok := queryPrims[declName]
+	prim, ok := wirePrim(declName)
 	cast := ""
 	if !ok {
 		// A scalar or enum casts to its declared name. For a cross-package
 		// ref declName is already the qualified name (`xshared.XEmail`),
 		// which is also the correct Go cast - no extra prefix needed.
 		if sc := r.LookupScalar(declName); sc != nil {
-			if p2, pOk := queryPrims[sc.Primitive]; pOk {
+			if p2, pOk := wirePrim(sc.Primitive); pOk {
 				prim = p2
 				ok = true
 				cast = declName
@@ -156,7 +162,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *ProjectResolver,
 		}
 		if !ok {
 			if ed := r.LookupEnum(declName); ed != nil {
-				prim = queryPrims[enumWirePrim(ed)]
+				prim, _ = wirePrim(enumWirePrim(ed))
 				ok = true
 				cast = declName
 			}

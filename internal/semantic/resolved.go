@@ -7,7 +7,10 @@
 // "semantic resolves a scalar one way, codegen another" class of drift.
 package semantic
 
-import "github.com/craftgodotdev/craftgo/internal/ast"
+import (
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
+)
 
 // NilableScalarPrimitive reports whether a scalar's underlying primitive
 // lowers to a Go type that already holds nil (so a scalar over it renders
@@ -16,7 +19,8 @@ import "github.com/craftgodotdev/craftgo/internal/ast"
 // pointer-wrap decision cite, so the two layers can't disagree on whether a
 // scalar field needs a `*T`.
 func NilableScalarPrimitive(prim string) bool {
-	return prim == "bytes" || prim == "any"
+	sp, ok := prims.Lookup(prim)
+	return ok && (sp.Kind == prims.Bytes || sp.Kind == prims.Any)
 }
 
 // FieldCategory classifies a field's resolved type independent of Go syntax.
@@ -102,20 +106,21 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		rf.HomePkg = pkg.Name
 	}
 
-	switch name {
-	case "bytes":
-		rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatBytes, "bytes", true, ""
-		return rf
-	case "any":
-		rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatAny, "any", true, ""
-		return rf
-	case "file":
-		rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""
-		return rf
-	}
-	if isPrimitiveWireName(name) {
-		rf.Category, rf.ResolvedPrim, rf.HomePkg = CatPrimitive, name, ""
-		return rf
+	if sp, ok := prims.Lookup(name); ok {
+		switch sp.Kind {
+		case prims.Bytes:
+			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatBytes, name, true, ""
+			return rf
+		case prims.Any:
+			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatAny, name, true, ""
+			return rf
+		case prims.File:
+			rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""
+			return rf
+		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float:
+			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatPrimitive, name, ""
+			return rf
+		}
 	}
 	if homePkg != nil {
 		if sd, ok := homePkg.Scalars[name]; ok && sd != nil {

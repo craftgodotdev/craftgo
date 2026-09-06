@@ -23,6 +23,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkRangesAndExtras runs every per-decorator value sanity rule plus
@@ -96,7 +97,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 					"@multipleOf does not support float scalars - Go's modulus operator is integer-only. Use an integer scalar, or add a tolerance check in your handler.")
 				continue
 			}
-			if integerPrim(dd.Primitive) && len(d.Args) == 1 {
+			if prims.IsInteger(dd.Primitive) && len(d.Args) == 1 {
 				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 						"@multipleOf on an integer scalar needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")

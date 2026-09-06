@@ -12,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
@@ -261,9 +262,12 @@ func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.
 // field types, request bodies, etc. Surfacing them here would invite the same
 func (s *Server) typeCompletionsProjectWide(view snapshotView, currentURI, currentSrc string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
-	for name := range builtinDocs {
+	for _, sp := range prims.All() {
+		if sp.Doc == "" {
+			continue
+		}
 		items = append(items, protocol.CompletionItem{
-			Label:  name,
+			Label:  sp.Name,
 			Kind:   protocol.CompletionItemKindKeyword,
 			Detail: "built-in",
 		})

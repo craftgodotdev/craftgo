@@ -4,8 +4,8 @@ package parser
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // parseTypeDecl reads `type Name[<TypeParams>] { Body }`.
@@ -163,14 +163,8 @@ func isFieldFollower(next lexer.Token, sameLine int) bool {
 	if next.Kind != lexer.Ident {
 		return false
 	}
-	return parserBuiltinTypes[next.Text]
+	return prims.Is(next.Text)
 }
-
-// parserBuiltinTypes aliases the canonical [idents.BuiltinTypes]
-// table so the parser's disambiguation rules ("Pascal followed by
-// builtin → field") consult the same set as the semantic resolver.
-// Adding a new primitive is a one-line edit in [internal/idents].
-var parserBuiltinTypes = idents.BuiltinTypes
 
 // parseTypeRef parses TypeRef = (MapType | NamedTypeRef) ArrayMod? OptionalMod?
 //

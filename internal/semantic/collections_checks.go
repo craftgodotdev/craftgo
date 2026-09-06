@@ -8,6 +8,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkMapKeyComparable rejects a map whose key type cannot be a Go map
@@ -76,11 +77,11 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 	if a.lookupEnum(key.Named) != nil {
 		return true // string- or int-backed enum
 	}
-	switch a.primOf(key) {
-	case "string",
-		"int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
-		return true
+	if sp, ok := prims.Lookup(a.primOf(key)); ok {
+		switch sp.Kind {
+		case prims.String, prims.Int, prims.Uint:
+			return true
+		}
 	}
 	if isQualifiedTypeRef(key) {
 		pkg, sym := a.resolveNamed(a.pkg.Name, key.Named)
@@ -173,14 +174,13 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, homePkg string, seen map[st
 	if t.Named == nil || t.Named.Name == nil {
 		return false
 	}
-	switch t.Named.Name.String() {
-	case "any", "bytes", "file":
-		return false
-	case "string", "bool",
-		"int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
-		return true
+	if sp, ok := prims.Lookup(t.Named.Name.String()); ok {
+		switch sp.Kind {
+		case prims.Any, prims.Bytes, prims.File:
+			return false
+		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float:
+			return true
+		}
 	}
 	pkg, sym := a.resolveNamed(homePkg, t.Named)
 	if pkg == nil {

@@ -4,6 +4,7 @@ package semantic
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // setPackageName records the `package X` name the group's files declare;
@@ -35,7 +36,7 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	seen := map[string]lexer.Position{}   // type / enum / scalar / error namespace
 	seenMW := map[string]lexer.Position{} // middleware namespace
 	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position, rejectBuiltin bool) bool {
-		if rejectBuiltin && builtinTypes[name] {
+		if rejectBuiltin && prims.Is(name) {
 			// A type / enum / scalar / error named after a built-in spelling
 			// (`int`, `string`, `any`, ...) lowers to a Go type that shadows
 			// the built-in and fails to compile. (Middleware names live in a

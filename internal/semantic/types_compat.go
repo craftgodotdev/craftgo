@@ -21,6 +21,7 @@ package semantic
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkFieldTypeCompat walks every type / error body and checks each
@@ -144,16 +145,18 @@ func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 // `object` - those are handled by the caller). Exported so the LSP reuses the
 // one classification instead of keeping its own copy.
 func PrimFromName(name string) Prims {
-	switch name {
-	case "string", "bytes":
+	sp, ok := prims.Lookup(name)
+	if !ok {
+		return 0
+	}
+	switch sp.Kind {
+	case prims.String, prims.Bytes:
 		return PrimString
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
+	case prims.Int, prims.Uint, prims.Float:
 		return PrimNumber
-	case "bool":
+	case prims.Bool:
 		return PrimBool
-	case "file":
+	case prims.File:
 		return PrimFile
 	}
 	return 0

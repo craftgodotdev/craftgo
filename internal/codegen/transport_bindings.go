@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
@@ -114,11 +114,11 @@ func wirePrimName(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) (prim
 		return "string", ""
 	}
 	declName = f.Type.Named.Name.String()
-	if idents.IsWireParseable(declName) {
+	if prims.IsWireParseable(declName) {
 		return declName, declName
 	}
 	if sc := r.LookupScalar(declName); sc != nil {
-		if idents.IsWireParseable(sc.Primitive) {
+		if prims.IsWireParseable(sc.Primitive) {
 			return sc.Primitive, declName
 		}
 	}
@@ -147,43 +147,39 @@ func enumWirePrim(ed *ast.EnumDecl) string {
 // conversion the bare primitive does not.
 func formatToString(prim, declName, access string) (expr string, needsStrconv bool) {
 	named := declName != prim
-	switch prim {
-	case "string":
+	sp, ok := prims.Lookup(prim)
+	if !ok {
+		return access, false
+	}
+	switch sp.Kind {
+	case prims.String:
 		if named {
 			return "string(" + access + ")", false
 		}
 		return access, false
-	case "bool":
+	case prims.Bool:
 		if named {
 			return "strconv.FormatBool(bool(" + access + "))", true
 		}
 		return "strconv.FormatBool(" + access + ")", true
-	case "int":
-		if named {
-			return "strconv.FormatInt(int64(" + access + "), 10)", true
+	case prims.Int:
+		if !named && sp.Bits == 0 {
+			return "strconv.Itoa(" + access + ")", true
 		}
-		return "strconv.Itoa(" + access + ")", true
-	case "int8", "int16", "int32":
+		if !named && sp.Bits == 64 {
+			return "strconv.FormatInt(" + access + ", 10)", true
+		}
 		return "strconv.FormatInt(int64(" + access + "), 10)", true
-	case "int64":
-		if named {
-			return "strconv.FormatInt(int64(" + access + "), 10)", true
+	case prims.Uint:
+		if !named && sp.Bits == 64 {
+			return "strconv.FormatUint(" + access + ", 10)", true
 		}
-		return "strconv.FormatInt(" + access + ", 10)", true
-	case "uint", "uint8", "uint16", "uint32":
 		return "strconv.FormatUint(uint64(" + access + "), 10)", true
-	case "uint64":
-		if named {
-			return "strconv.FormatUint(uint64(" + access + "), 10)", true
+	case prims.Float:
+		if !named && sp.Bits == 64 {
+			return "strconv.FormatFloat(" + access + ", 'g', -1, 64)", true
 		}
-		return "strconv.FormatUint(" + access + ", 10)", true
-	case "float32":
-		return "strconv.FormatFloat(float64(" + access + "), 'g', -1, 32)", true
-	case "float64":
-		if named {
-			return "strconv.FormatFloat(float64(" + access + "), 'g', -1, 64)", true
-		}
-		return "strconv.FormatFloat(" + access + ", 'g', -1, 64)", true
+		return fmt.Sprintf("strconv.FormatFloat(float64(%s), 'g', -1, %d)", access, sp.Bits), true
 	}
 	return access, false
 }

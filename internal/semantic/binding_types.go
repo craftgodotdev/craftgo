@@ -5,8 +5,8 @@ package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
@@ -208,27 +208,17 @@ func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
 		if name == "file" {
 			return false
 		}
-		if isPrimitiveWireName(name) {
+		if prims.IsWireParseable(name) {
 			return true
 		}
 	}
 	if sc := a.lookupScalarIn(homePkg, t.Named); sc != nil {
-		return isPrimitiveWireName(sc.Primitive)
+		return prims.IsWireParseable(sc.Primitive)
 	}
 	if ed := a.lookupEnumIn(homePkg, t.Named); ed != nil {
 		return enumWireKindOK(ed)
 	}
 	return false
-}
-
-// isPrimitiveWireName lists the Go builtin types the wire-bind codegen
-// can parse from a single HTTP string. Delegates to
-// [idents.IsWireParseable] so semantic-time and gen-time rejections
-// share one source of truth - the codegen's `queryPrims` table mirrors
-// the same set (semantic mustn't import codegen, so the canonical
-// table lives in the type-neutral idents package).
-func isPrimitiveWireName(name string) bool {
-	return idents.IsWireParseable(name)
 }
 
 // isFormBindingType is the wire-bind set plus the `file` type, which

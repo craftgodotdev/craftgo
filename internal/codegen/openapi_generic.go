@@ -5,7 +5,7 @@ import (
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -231,10 +231,10 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 // types whose schema is inlined, not referenced. Primitives still need
 // a name fragment for generic component naming (`Page<string>` →
 // `PageOfString`) but they do not produce a separate component schema.
-// Delegates to [idents.IsBuiltin] so the codegen and the rest of the
+// Delegates to [prims.Is] so the codegen and the rest of the
 // pipeline share one source of truth for "is this a DSL builtin".
 func isPrimitiveName(name string) bool {
-	if !idents.IsBuiltin(name) {
+	if !prims.Is(name) {
 		return false
 	}
 	// `object` is the example-only bag type and never reaches the

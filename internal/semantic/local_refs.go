@@ -2,16 +2,9 @@ package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
-
-// builtinTypes aliases the canonical [idents.BuiltinTypes] table so
-// existing local references keep compiling. Lives in [internal/idents]
-// so the parser's disambiguation rules consult the same set without
-// duplicating the entries - adding a primitive is now a one-place
-// edit.
-var builtinTypes = idents.BuiltinTypes
 
 // checkImports validates per-file import sections for redundancy and
 // alias collisions. The two diagnostics are complementary:
@@ -216,7 +209,7 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 			"`object` is not a usable field type - use `any` for an arbitrary JSON value, or `map<string, V>` / a declared `type` for a structured object")
 		return
 	}
-	if builtinTypes[name] {
+	if prims.Is(name) {
 		return
 	}
 	if typeParams != nil && typeParams[name] {

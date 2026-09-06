@@ -17,6 +17,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -103,9 +104,8 @@ func renderScalars(pkg *semantic.Package) string {
 // through verbatim - the parser only accepts a closed primitive set
 // so the fallback is conservative rather than defensive.
 func scalarPrimitiveGo(name string) string {
-	switch name {
-	case "bytes":
-		return "[]byte"
+	if sp, ok := prims.Lookup(name); ok && sp.Go != "" {
+		return sp.Go
 	}
 	return name
 }
@@ -428,18 +428,8 @@ func isNilableGoType(s string) bool {
 // e.g. `Page<Book>` becomes `Page[Book]`.
 func goNamedType(n *ast.NamedTypeRef) string {
 	name := n.Name.String()
-	switch name {
-	case "bytes":
-		return "[]byte"
-	case "any":
-		// Codec-agnostic: Go's empty interface lets every codec
-		// (json / msgpack / cbor / ...) decode and re-encode the
-		// value without being coupled to a specific raw-message
-		// type. `json.RawMessage` would preserve bytes verbatim
-		// under JSON but break the moment the codec changes.
-		return "any"
-	case "file":
-		return "*multipart.FileHeader"
+	if sp, ok := prims.Lookup(name); ok && sp.Go != "" {
+		return sp.Go
 	}
 	if len(n.Args) > 0 {
 		var parts []string

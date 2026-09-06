@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // crossFieldChecks emits the type-level validators @requiresOneOf and
@@ -143,14 +144,12 @@ func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 		return "len(" + access + ") > 0"
 	}
 	if f.Type.Named != nil {
-		switch f.Type.Named.Name.String() {
-		case "string":
+		switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
+		case prims.String:
 			return access + ` != ""`
-		case "int", "int8", "int16", "int32", "int64",
-			"uint", "uint8", "uint16", "uint32", "uint64",
-			"float32", "float64":
+		case prims.Int, prims.Uint, prims.Float:
 			return access + " != 0"
-		case "bool":
+		case prims.Bool:
 			return access
 		}
 	}
@@ -197,14 +196,12 @@ func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 		return "len(" + access + ") == 0"
 	}
 	if f.Type.Named != nil {
-		switch f.Type.Named.Name.String() {
-		case "string":
+		switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
+		case prims.String:
 			return access + ` == ""`
-		case "int", "int8", "int16", "int32", "int64",
-			"uint", "uint8", "uint16", "uint32", "uint64",
-			"float32", "float64":
+		case prims.Int, prims.Uint, prims.Float:
 			return access + " == 0"
-		case "bool":
+		case prims.Bool:
 			return "!" + access
 		}
 	}

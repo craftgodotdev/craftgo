@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // This file groups the field-shape predicates and small expression
@@ -31,8 +32,8 @@ func isLengthCheckable(f *ast.Field) bool {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return false
 	}
-	switch f.Type.Named.Name.String() {
-	case "string", "bytes":
+	switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
+	case prims.String, prims.Bytes:
 		return true
 	}
 	return false
@@ -46,13 +47,7 @@ func isNumericField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return false
 	}
-	switch f.Type.Named.Name.String() {
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64":
-		return true
-	}
-	return false
+	return prims.IsNumeric(f.Type.Named.Name.String())
 }
 
 // isIntegerField - non-array integer (signed or unsigned). Floats are
@@ -63,12 +58,7 @@ func isIntegerField(f *ast.Field) bool {
 	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return false
 	}
-	switch f.Type.Named.Name.String() {
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64":
-		return true
-	}
-	return false
+	return prims.IsInteger(f.Type.Named.Name.String())
 }
 
 // isFileField reports whether the field's declared type is the DSL

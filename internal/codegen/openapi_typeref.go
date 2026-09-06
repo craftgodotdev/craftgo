@@ -5,6 +5,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -210,38 +211,23 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 	return schemaFromTypeDecl(decl, subst, pkg, registry)
 }
 
-// primitiveSchema returns an inline Schema for DSL primitive type names,
-// or nil to signal "this is a user-defined type, emit a $ref".
+// primitiveSchema returns the OpenAPI schema for a built-in type, or nil
+// for a name that is not one. Only int32 / int64 have a registered
+// integer format, so the other widths emit a bare integer; an unsigned
+// width is conveyed via `minimum: 0` (a user @gte tightens it via setMin,
+// which keeps the largest, never loosens).
 func primitiveSchema(name string) *openapi3.Schema {
-	switch name {
-	case "string":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
-	case "bool":
-		return &openapi3.Schema{Type: &openapi3.Types{"boolean"}}
-	case "int32":
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int32"}
-	case "int64":
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int64"}
-	case "int", "int8", "int16":
-		// No distinct standard OpenAPI integer format for these widths
-		// (only int32 / int64 are registered), so emit a bare integer.
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}}
-	case "uint", "uint8", "uint16", "uint32", "uint64":
-		// Unsigned: advertise the implicit lower bound. There is no standard
-		// "uint" format keyword, so width is conveyed via minimum, not format.
-		// A user @gte tightens this (setMin keeps the largest), never loosens.
-		zero := 0.0
-		return &openapi3.Schema{Type: &openapi3.Types{"integer"}, Min: &zero}
-	case "float32":
-		return &openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "float"}
-	case "float64":
-		return &openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "double"}
-	case "bytes":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "byte"}
-	case "file":
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}
-	case "any":
+	sp, ok := prims.Lookup(name)
+	if !ok || sp.Kind == prims.Object {
+		return nil
+	}
+	if sp.OASType == "" {
 		return &openapi3.Schema{}
 	}
-	return nil
+	s := &openapi3.Schema{Type: &openapi3.Types{sp.OASType}, Format: sp.OASFormat}
+	if sp.Kind == prims.Uint {
+		zero := 0.0
+		s.Min = &zero
+	}
+	return s
 }
