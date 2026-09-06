@@ -98,9 +98,8 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 }
 
 // checkDecoratorConflicts fires CodeDecoratorConflict for any field
-// that pairs `@sensitive` with a wire-shaping decorator. The conflict
-// table lives next to [Registry] in decorators.go; this function only
-// walks the AST and emits the diagnostic.
+// that pairs `@sensitive` with a wire-shaping decorator: every field
+// decorator the [Registry] does not mark as [Spec.Metadata].
 func (a *analyzer) checkDecoratorConflicts(files []*ast.File) {
 	for _, f := range files {
 		for _, decl := range f.Decls {
@@ -115,8 +114,8 @@ func (a *analyzer) checkDecoratorConflicts(files []*ast.File) {
 }
 
 // checkSensitiveConflictsIn walks a type / error body once. For every
-// field that carries `@sensitive`, every other decorator listed in
-// [sensitiveConflicts] becomes a CodeDecoratorConflict diagnostic.
+// field that carries `@sensitive`, every other field decorator that is
+// not pure metadata becomes a CodeDecoratorConflict diagnostic.
 func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
@@ -130,7 +129,8 @@ func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
 			if d == nil || d.Name == "sensitive" {
 				continue
 			}
-			if !sensitiveConflicts[d.Name] {
+			spec, ok := Lookup(d.Name)
+			if !ok || spec.Metadata || spec.Levels&(LvlField|LvlErrorField) == 0 {
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError,
