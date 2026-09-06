@@ -263,12 +263,19 @@ func (s *Server) SetCORS(opts CORSOptions) *Server {
 // access-log middleware, and the health endpoints. The change is
 // process-wide via [SetGlobalJSONCodec]; the per-Server field is kept
 // for callers that want to introspect via [Server.Codec] but the
-// authoritative value lives on the package-level atomic.
-func (s *Server) SetJSONCodec(c JSONCodec) *Server {
-	s.codec = c
-	SetGlobalJSONCodec(c)
-	return s
+// authoritative value lives on the package-level atomic. Fails, keeping
+// the previous codec, when strict JSON is on and c has no DecodeStrict.
+func (s *Server) SetJSONCodec(c JSONCodec) error {
+	if err := SetGlobalJSONCodec(c); err != nil {
+		return err
+	}
+	s.codec = currentCodec().base
+	return nil
 }
+
+// SetStrictJSON is [SetStrictJSON]; like the codec, the setting is
+// process-wide.
+func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict) }
 
 // SetLogger replaces the active Logger and mirrors it to the
 // package-level [log.Default] so codegen-emitted logic files reach

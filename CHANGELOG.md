@@ -7,8 +7,22 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Added
+
+- **Strict JSON bodies.** `server.strictJSON: true` in `config.yaml` (the
+  default for new projects) rejects a request body with an unknown field
+  (`400 <field>: unknown field`) or data after the JSON value, instead of
+  silently ignoring them. `server.SetStrictJSON` toggles it at runtime. A
+  custom codec takes part by implementing `server.StrictDecoder`
+  (`DecodeStrict`, finishing with the shared `server.TrailingData` check);
+  a codec without it is refused while strict JSON is on, so the config can
+  never claim a strictness the server does not enforce.
+
 ### Changed
 
+- **`SetGlobalJSONCodec` and `Server.SetJSONCodec` return an error** (the
+  previous codec stays) instead of accepting a codec that cannot honour
+  strict JSON; `Server.SetJSONCodec` no longer chains.
 - **`pkg/telemetry` is the one observability package.** The tracer and
   meter bootstrap that lived in `pkg/otel` and `pkg/metrics` moved into it:
   one exporter switch per signal, one resource rule (`service.name` over

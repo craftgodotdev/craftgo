@@ -444,6 +444,7 @@ server:
   addr: ":8080"
   handlerTimeout: 0s
   maxBodySize: 0
+  strictJSON: true
   compression:
     enabled: false
     minSize: 0
