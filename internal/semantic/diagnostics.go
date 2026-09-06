@@ -290,7 +290,9 @@ const (
 	// gen normalises these so this is a warning, not an error.
 	CodePathBaseFormat = "path/base-format"
 	// CodePathCollision fires when two methods (across any service)
-	// resolve to the same VERB + final-path tuple.
+	// resolve to the same VERB + final-path tuple, or to patterns that
+	// overlap with neither more specific - either is a pair net/http's
+	// ServeMux refuses to register.
 	CodePathCollision = "path/collision"
 	// CodeDuplicateOperation fires when two methods resolve to the same
 	// OpenAPI operationId - auto-prefixing removes same-method-name

@@ -21,6 +21,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Telemetry.ScrapeHandler()` serves the Prometheus scrape on a route of
   your own when `metrics.adminAddr` is empty.
 
+- **Route overlaps are analyser diagnostics.** Two routes of one verb that
+  net/http would refuse to register together (they overlap and neither is
+  more specific) are reported as `path/collision` next to same-shape
+  duplicates, so the editor shows them as you type; `craftgo gen` no longer
+  runs a separate route-conflict check.
 - **Health probes are answered ahead of the middleware chain.** `/healthz`
   and `/readyz` (or the `WithHealthPaths` overrides) go straight to the probe
   handler, wrapped in `Recovery` alone: they are no longer access-logged,

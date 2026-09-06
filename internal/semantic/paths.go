@@ -65,64 +65,82 @@ func (a *analyzer) checkPathResolution() {
 	}
 }
 
-// checkProjectPathCollision flags two methods that resolve to the same
-// VERB + route shape: they register the same net/http pattern, so the
-// second registration panics at boot. Pairs across services and across
-// packages are both reported here; a same-service duplicate is reported
-// by [analyzer.checkServiceMethods]. Packages and services iterate in
-// sorted order so "first declared here" is deterministic.
+// checkProjectPathCollision reports every pair of methods, across all
+// services and packages, that net/http's ServeMux would refuse to register
+// together: two routes of one verb with the same shape (`/u/{id}` and
+// `/u/{uid}` are one pattern), or two that overlap with neither more
+// specific (`/orders/{id}/track` and `/orders/by-status/{status}` both
+// match `/orders/by-status/track`). Either panics at server boot; both are
+// diagnosed here at design time. A same-service duplicate shape is left to
+// [analyzer.checkServiceMethods]. Packages and services iterate in sorted
+// order so "first declared here" is deterministic.
 func (r *refResolver) checkProjectPathCollision() {
-	type routeKey struct {
-		verb string
-		path string
+	type routeEntry struct {
+		verb, route, shape   string
+		pos                  lexer.Position
+		pkg, service, method string
 	}
-	type routeMeta struct {
-		pos     lexer.Position
-		pkg     string
-		service string
-		method  string
-	}
-	pkgNames := slices.Sorted(maps.Keys(r.proj.Packages))
-	seen := map[routeKey]routeMeta{}
-	for _, pkgName := range pkgNames {
+	var entries []routeEntry
+	for _, pkgName := range slices.Sorted(maps.Keys(r.proj.Packages)) {
 		pkg := r.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
-		svcNames := slices.Sorted(maps.Keys(pkg.Services))
-		for _, svcName := range svcNames {
+		for _, svcName := range slices.Sorted(maps.Keys(pkg.Services)) {
 			si := pkg.Services[svcName]
 			if si == nil {
 				continue
 			}
 			for _, m := range si.Methods {
 				rt := route.Resolve(r.basePath, si.Primary, m)
-				// Key by SHAPE so `/u/{id}` and `/u/{uid}` collide - they
-				// register against the same net/http pattern at boot. The
-				// displayed route keeps the literal form for the diagnostic.
-				key := routeKey{verb: strings.ToUpper(m.Verb), path: route.Shape(rt)}
-				prev, dup := seen[key]
-				if !dup {
-					seen[key] = routeMeta{pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name}
-					continue
-				}
-				if prev.pkg == pkgName && prev.service == svcName {
-					continue
-				}
-				var d *Diagnostic
-				if prev.pkg == pkgName {
-					d = r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
-						"method %s.%s resolves to %s %s, which already binds %s.%s",
-						svcName, m.Name, key.verb, rt, prev.service, prev.method)
-				} else {
-					d = r.diag(m.Pos, lexer.SeverityError, CodePathCollision,
-						"method %s.%s resolves to %s %s, which already binds %s.%s (package %s)",
-						svcName, m.Name, key.verb, rt, prev.service, prev.method, prev.pkg)
-				}
-				d.Related = related(prev.pos, "first declared here")
+				entries = append(entries, routeEntry{
+					verb: strings.ToUpper(m.Verb), route: rt, shape: route.Shape(rt),
+					pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name,
+				})
 			}
 		}
 	}
+	// Same shape: the later declaration collides with the first one seen.
+	type routeKey struct{ verb, shape string }
+	first := map[routeKey]routeEntry{}
+	for _, e := range entries {
+		key := routeKey{e.verb, e.shape}
+		prev, dup := first[key]
+		if !dup {
+			first[key] = e
+			continue
+		}
+		if prev.pkg == e.pkg && prev.service == e.service {
+			continue
+		}
+		d := r.diag(e.pos, lexer.SeverityError, CodePathCollision,
+			"method %s.%s resolves to %s %s, which already binds %s.%s%s",
+			e.service, e.method, e.verb, e.route, prev.service, prev.method, packageNote(prev.pkg, e.pkg))
+		d.Related = related(prev.pos, "first declared here")
+	}
+	// Different shapes that overlap: one diagnostic per pair, at the later
+	// declaration.
+	for i := 1; i < len(entries); i++ {
+		for j := 0; j < i; j++ {
+			a, b := entries[i], entries[j]
+			if a.verb != b.verb || a.shape == b.shape || !route.PatternsConflict(a.route, b.route) {
+				continue
+			}
+			d := r.diag(a.pos, lexer.SeverityError, CodePathCollision,
+				"method %s.%s resolves to %s %s, which overlaps %s %s of %s.%s%s: both match the same paths and neither is more specific, so net/http rejects the pair at startup; give one route a distinct literal segment or move the variable to @query",
+				a.service, a.method, a.verb, a.route, b.verb, b.route, b.service, b.method, packageNote(b.pkg, a.pkg))
+			d.Related = related(b.pos, "overlaps this route")
+		}
+	}
+}
+
+// packageNote renders " (package X)" when the other declaration lives in a
+// package other than own.
+func packageNote(other, own string) string {
+	if other == own {
+		return ""
+	}
+	return " (package " + other + ")"
 }
 
 // checkBasePathFormat emits a warning when the configured basePath
