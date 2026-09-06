@@ -77,7 +77,7 @@ error BadRequest E { Auditable  details string }`)
 // ---------- Unresolved / non-type ----------
 
 func TestMixinUnresolved(t *testing.T) {
-	d := expectDiag(t, `type X { Mystery  name string }`, CodeMixinUnresolved)
+	d := expectDiag(t, `type X { Mystery  name string }`, CodeRefUnknownSymbol)
 	expectMessage(t, d, "Mystery")
 }
 
@@ -202,23 +202,15 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 	}
 }
 
-// TestMixinNestedQualifiedSkipped covers the nested-mixin defensive
-// guard: a qualified ref inside a mixin's body is silently skipped
-// rather than crashing the walker.
-func TestMixinNestedQualifiedSkipped(t *testing.T) {
-	// Top-level Mixin "Inner" is unqualified, but inside Inner there's
-	// a qualified mixin `shared.Other` - the qualified-ref pass handles
-	// the user-facing report; collectMixinFields skips silently.
-	mustClean(t, `type Inner { shared.Other  id string }
-type X { Inner  name string }`)
+// A qualified mixin whose package does not exist is reported once, as an
+// unknown package, whether it sits on the host or inside a nested mixin.
+func TestMixinNestedQualifiedUnknownPackage(t *testing.T) {
+	expectDiag(t, `type Inner { shared.Other  id string }
+type X { Inner  name string }`, CodeRefUnknownPackage)
 }
 
-func TestMixinQualifiedSkipped(t *testing.T) {
-	// Qualified mixin (`shared.Profile`) - codegen takes the trailing
-	// segment, so the mixin pass intentionally skips. The qualified-ref
-	// pass also exempts mixins (see [analyzer.checkQualifiedRefs]), so
-	// neither diagnostic fires.
-	expectNoCode(t, `type X { shared.Profile  name string }`, CodeMixinUnresolved)
+func TestMixinQualifiedUnknownPackage(t *testing.T) {
+	expectDiag(t, `type X { shared.Profile  name string }`, CodeRefUnknownPackage)
 }
 
 // TestMixinNilRefTolerated covers the defensive nil-ref / nil-Name

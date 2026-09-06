@@ -1,4 +1,4 @@
-// Symbol-table population + cross-file package-name check + extend-service merge.
+// Symbol-table population + package name + extend-service merge.
 package semantic
 
 import (
@@ -6,26 +6,15 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-func (a *analyzer) checkPackageName(files []*ast.File) {
-	var name string
-	var firstPos lexer.Position
+// setPackageName records the `package X` name the group's files declare;
+// a group without a declaration keeps the empty name.
+func (a *analyzer) setPackageName(files []*ast.File) {
 	for _, f := range files {
-		if f.Package == nil {
-			continue
-		}
-		if name == "" {
-			name = f.Package.Name
-			firstPos = f.Package.Pos
-			continue
-		}
-		if name != f.Package.Name {
-			d := a.diag(f.Package.Pos, f.Package.Pos, lexer.SeverityError,
-				CodePackageMismatch,
-				"package name %q conflicts with %q", f.Package.Name, name)
-			d.Related = related(firstPos, "first declared here")
+		if f.Package != nil {
+			a.pkg.Name = f.Package.Name
+			return
 		}
 	}
-	a.pkg.Name = name
 }
 
 // collectDecls walks every declaration once, populates the Package symbol

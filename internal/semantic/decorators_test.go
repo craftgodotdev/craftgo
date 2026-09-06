@@ -456,7 +456,7 @@ func TestCodeOnDuplicateDecorator(t *testing.T) {
 }
 
 func TestCodeOnQualifiedRef(t *testing.T) {
-	expectDiag(t, `type X { user shared.User }`, CodeQualifiedRef)
+	expectDiag(t, `type X { user shared.User }`, CodeRefUnknownPackage)
 }
 
 func TestCodeOnBindingConflict(t *testing.T) {
@@ -688,19 +688,6 @@ func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
     bucket     string?
 }`)
 }
-
-func TestCodeOnPackageMismatch(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package a
-type X {}`, `package b
-type Y {}`))
-	if findCode(diags, CodePackageMismatch) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-// Note: TestCodeOnPackageMismatch keeps the inline pattern because it
-// requires TWO source files (multi-package fixture); [expectDiag]
-// takes a single string and would lose the file split.
 
 // ---------- @sensitive: standalone is fine ----------
 

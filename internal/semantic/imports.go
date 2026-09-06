@@ -79,7 +79,7 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) map[string]
 				"import %q must be relative to the design root (no leading `/`, `./`, or `..`)", path)
 			continue
 		}
-		if !folderExists(designRoot, path) {
+		if designRoot != "" && !folderExists(designRoot, path) {
 			r.diag(imp.Pos, lexer.SeverityError, CodeImportUnresolved,
 				"import %q does not match any folder under the design root", path)
 			continue

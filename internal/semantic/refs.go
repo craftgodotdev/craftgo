@@ -505,28 +505,31 @@ func (a *analyzer) checkMethodLevelRefs(m *ast.Method) {
 }
 
 // checkErrorsRef resolves every name passed to `@errors(...)` against
-// pkg.Errors. Both bare-ident (`UserNotFound`) and array-shortcut
-// (`["UserNotFound", ...]`) forms are accepted by the args pass; we
-// flatten via [collectIdentOrStringArgs].
+// the project's error declarations: a qualified `pkg.Name` must be
+// declared in that package, a bare name in any package. Both bare-ident
+// (`UserNotFound`) and array-shortcut (`["UserNotFound", ...]`) forms
+// are accepted by the args pass; we flatten via
+// [collectIdentOrStringArgs].
 func (a *analyzer) checkErrorsRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
-		if _, ok := a.pkg.Errors[arg.value]; ok {
+		if a.errorDeclared(arg.value) {
 			continue
 		}
 		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
-			"@errors: %q is not a declared error type", arg.value)
+			"@errors: %q is not a declared error type in any package", arg.value)
 	}
 }
 
-// checkMiddlewareRef resolves middleware names against pkg.Middlewares.
-// Same flattening rules as [checkErrorsRef].
+// checkMiddlewareRef resolves middleware names the same way
+// [checkErrorsRef] resolves errors: qualified against the named package,
+// bare against every package.
 func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
-		if _, ok := a.pkg.Middlewares[arg.value]; ok {
+		if a.middlewareDeclared(arg.value) {
 			continue
 		}
 		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
-			"@middlewares: %q is not a declared middleware", arg.value)
+			"@middlewares: %q is not a declared middleware in any package", arg.value)
 	}
 }
 

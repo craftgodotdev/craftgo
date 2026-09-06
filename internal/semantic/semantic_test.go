@@ -44,15 +44,6 @@ func itoa(n int) string {
 	return sb.String()
 }
 
-func diagsContain(diags []Diagnostic, substr string) bool {
-	for _, d := range diags {
-		if strings.Contains(d.Msg, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 func mustClean(t *testing.T, sources ...string) *Package {
 	t.Helper()
 	pkg, diags := Analyze(parseFiles(t, sources...))
@@ -96,12 +87,6 @@ service S { get GetUser /u {} }`)
 }
 
 // ---------- package name ----------
-
-func TestPackageNameMismatch(t *testing.T) {
-	expectMsg(t, "conflicts", `package a
-type X {}`, `package b
-type Y {}`)
-}
 
 func TestPackageNameMissing(t *testing.T) {
 	pkg := mustClean(t, `type X {}`)
@@ -271,39 +256,6 @@ func TestCheckDecoratorScopeNilEntry(t *testing.T) {
 	}
 }
 
-// TestWalkTypeRefShapes covers every shape branch of walkTypeRef:
-// nil ref (early return), map ref (recurses into key+value), and
-// named ref (delegates to checkNamedRef). The ast.Field comes from
-// the parser today, so we hand-construct a TypeRef directly.
-func TestWalkTypeRefShapes(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
-	a.walkTypeRef("nil-ref", nil)
-	if len(a.diags) != 0 {
-		t.Errorf("nil ref should produce no diag, got %v", a.diags)
-	}
-
-	mapRef := &ast.TypeRef{Map: &ast.MapType{
-		Key:   &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
-		Value: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "User"}}}},
-	}}
-	a.walkTypeRef("map-ref", mapRef)
-	if !diagsContain(a.diags, "cross-package qualified reference") {
-		t.Errorf("expected qualified-ref diag from map value, got %v", a.diags)
-	}
-}
-
-// TestCheckNamedRefNilGuards covers the nil + nil-Name early returns
-// of [analyzer.checkNamedRef]. Both branches are defensive, but the
-// coverage gate refuses anything below 100%.
-func TestCheckNamedRefNilGuards(t *testing.T) {
-	a := &analyzer{pkg: &Package{}}
-	a.checkNamedRef("nil-named", nil)
-	a.checkNamedRef("nil-name-field", &ast.NamedTypeRef{})
-	if len(a.diags) != 0 {
-		t.Errorf("expected no diags from nil-shaped refs, got %v", a.diags)
-	}
-}
-
 // ---------- duplicate decorators ----------
 
 func TestDuplicateDecoratorOnField(t *testing.T) {
@@ -372,15 +324,15 @@ type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 // ---------- qualified refs ----------
 
 func TestQualifiedRefInField(t *testing.T) {
-	expectMsg(t, "cross-package qualified reference", `type X { user shared.User }`)
+	expectMsg(t, "is not declared anywhere in the project", `type X { user shared.User }`)
 }
 
 func TestQualifiedRefInMethodResponse(t *testing.T) {
-	expectMsg(t, "cross-package qualified reference", `service S { get GetUser /u { response shared.User } }`)
+	expectMsg(t, "is not declared anywhere in the project", `service S { get GetUser /u { response shared.User } }`)
 }
 
 func TestQualifiedRefInGenericArg(t *testing.T) {
-	expectMsg(t, "cross-package qualified reference", `type X { items Page<shared.User> }`)
+	expectMsg(t, "is not declared anywhere in the project", `type X { items Page<shared.User> }`)
 }
 
 func TestUnqualifiedRefAccepted(t *testing.T) {

@@ -107,9 +107,6 @@ const (
 	// (an invalid spec) and the binder reads the same value into both.
 	CodeDuplicateWireName = "binding/duplicate-wire-name"
 
-	// CodePackageMismatch fires when files disagree on the `package`
-	// name.
-	CodePackageMismatch = "decl/package-mismatch"
 	// CodeDuplicateDecl fires when two top-level declarations share a
 	// name across the merged package.
 	CodeDuplicateDecl = "decl/duplicate"

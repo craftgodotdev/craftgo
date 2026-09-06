@@ -18,9 +18,9 @@
 //   - Generic instantiation: arg arity, non-generic-with-args, and
 //     type-parameter scoping.
 //
-// Single-package [Analyze] uses a folder-merge import model and rejects
-// qualified names; [AnalyzeProject] resolves cross-package qualified
-// refs against the project's package set. Diagnostics carry stable
+// [AnalyzeProject] groups files by their `package X` declaration and
+// resolves cross-package qualified refs against the project's package
+// set; [Analyze] is the single-package convenience over it. Diagnostics carry stable
 // [lexer.Diagnostic.Code] identifiers (`decorator/arity`,
 // `mixin/conflict`, `generic/arity`, …) so the LSP and docs site can
 // reference each rule individually.
@@ -94,11 +94,8 @@ type Options struct {
 	HealthPaths []string
 
 	// DesignRoot is the absolute filesystem path of the project's
-	// design folder. When non-empty, [AnalyzeProject] splits files by
-	// subdirectory into separate packages and resolves cross-package
-	// qualified refs against each file's `import` declarations. When
-	// empty (or when calling [Analyze] / [AnalyzeWith]) the analyser
-	// behaves as a single-package merge.
+	// design folder, used to check `import "path"` declarations against
+	// the filesystem. When empty the import paths are not checked.
 	DesignRoot string
 
 	// FileCase is the project's `output.fileCase` from the manifest -
@@ -109,22 +106,6 @@ type Options struct {
 	// before codegen runs, so the analyser and the emitters agree on the
 	// layout.
 	FileCase string
-
-	// skipQualifiedRefCheck disables the in-package
-	// [analyzer.checkQualifiedRefs] pass. Set internally by
-	// [AnalyzeProject] when running per-package analysis - qualified
-	// refs are validated by the project-level cross-package resolver
-	// instead. Not exported: external callers should use
-	// [AnalyzeProject] when they want this behaviour.
-	skipQualifiedRefCheck bool
-
-	// skipMiddlewareRefCheck disables the in-package middleware-ref
-	// validation in [analyzer.checkDecoratorRefs]. Set internally by
-	// [AnalyzeProject] so a `@middlewares(AuthRequired)` reference in
-	// one package can resolve to a `middleware AuthRequired`
-	// declaration in a sibling package without the per-package pass
-	// reporting it as unknown first.
-	skipMiddlewareRefCheck bool
 
 	// skipExtendOrphanCheck disables the in-package orphan-extend
 	// diagnostic. [AnalyzeProject] sets it so the project-level
@@ -166,9 +147,9 @@ type Options struct {
 	skipPathParamCheck bool
 }
 
-// Analyze validates the supplied AST files as a single package and returns
-// the merged [Package] together with every diagnostic found. The Package
-// value is always non-nil even when diagnostics were reported, so callers
+// Analyze validates files as a project and returns the package they
+// declare together with every diagnostic found. The Package value is
+// always non-nil even when diagnostics were reported, so callers
 // (codegen, LSP) can do best-effort downstream work.
 //
 // Equivalent to AnalyzeWith(files, [Options]{}).
@@ -177,12 +158,17 @@ func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 }
 
 // AnalyzeWith is the [Analyze] variant that accepts cross-reference
-// truth sources. CLI / codegen invocations supply the project's
-// `craftgo.design.yaml` data here; the LSP either supplies the same
-// (when it has read the manifest) or leaves it empty for syntax-only
-// validation.
+// truth sources. It runs [AnalyzeProject] and returns the project's
+// single package - the named package when exactly one is declared, the
+// unnamed bucket otherwise.
 func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
-	a := &analyzer{
+	proj, diags := AnalyzeProject(files, opts)
+	return proj.singlePackage(), diags
+}
+
+// newAnalyzer returns an analyzer with empty symbol tables for one package.
+func newAnalyzer(proj *Project, opts Options) *analyzer {
+	return &analyzer{
 		pkg: &Package{
 			Types:       map[string]*ast.TypeDecl{},
 			Enums:       map[string]*ast.EnumDecl{},
@@ -191,21 +177,16 @@ func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 			Middlewares: map[string]*ast.MiddlewareDecl{},
 			Services:    map[string]*ServiceInfo{},
 		},
+		proj: proj,
 		opts: opts,
 	}
-	a.runDeclPhase(files)
-	a.runNamingPhase(files)
-	a.runDecoratorPhase(files)
-	a.runShapePhase(files)
-	a.runRefPhase(files)
-	return a.pkg, a.diags
 }
 
 // runDeclPhase parses the AST into the package symbol tables and
 // merges service primaries with their `extend` blocks. Every later
 // phase reads the resulting tables, so this MUST run first.
 func (a *analyzer) runDeclPhase(files []*ast.File) {
-	a.checkPackageName(files)
+	a.setPackageName(files)
 	a.collectDecls(files)
 	a.mergeServices()
 }
@@ -226,23 +207,14 @@ func (a *analyzer) runNamingPhase(files []*ast.File) {
 // runDecoratorPhase covers every decorator-level rule: duplicates on
 // the same site, placement against the registry, argument arity /
 // type / value enums, and reference resolution to declared
-// middlewares / errors / fields. Project-level cross-package
-// references (middleware / security / errors) are gated by
-// `skipMiddlewareRefCheck` because they need the full project symbol
-// table - those run in [AnalyzeProject] after per-package analysis.
-// LOCAL refs (field-group: `@requiresOneOf` / `@mutuallyExclusive`)
-// always run - their targets are same-type fields, no cross-package
-// resolution required, and skipping them silently allows typos like
-// `@requiresOneOf(emial, phone)` to slip through to codegen.
+// middlewares / errors / security schemes / fields.
 func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorDuplicates(files)
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
 	a.checkDecoratorConflicts(files)
 	a.checkLocalDecoratorRefs(files)
-	if !a.opts.skipMiddlewareRefCheck {
-		a.checkDecoratorRefs(files)
-	}
+	a.checkDecoratorRefs(files)
 }
 
 // runShapePhase covers the structural rules - uniqueness, enum
@@ -267,22 +239,17 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkFilePosition()
 }
 
-// runRefPhase resolves every type reference - file-local imports,
-// single-segment names against the package's symbol table, and
-// qualified `pkg.Type` shapes against sibling packages.
-// Cross-package qualified-ref validation is gated by
-// `skipQualifiedRefCheck` so single-file LSP analysis (where
-// sibling packages have not been loaded) does not over-report.
+// runRefPhase validates file-local imports and resolves every
+// single-segment type name against the package's symbol table;
+// qualified `pkg.Type` references resolve in the project pass.
 func (a *analyzer) runRefPhase(files []*ast.File) {
 	a.checkImports(files)
 	a.checkLocalTypeRefs(files)
-	if !a.opts.skipQualifiedRefCheck {
-		a.checkQualifiedRefs()
-	}
 }
 
 type analyzer struct {
 	pkg   *Package
+	proj  *Project
 	opts  Options
 	diags []Diagnostic
 }
