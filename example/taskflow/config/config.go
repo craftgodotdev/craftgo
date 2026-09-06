@@ -103,6 +103,12 @@ type ServerConfig struct {
 	// smaller). Zero = no default cap.
 	MaxBodySize int64 `yaml:"maxBodySize"`
 
+	// StrictJSON rejects a JSON request body that does not match the
+	// request type exactly: an unknown field answers 400 with
+	// `<field>: unknown field`, and so does data after the JSON value.
+	// False accepts and ignores both, as encoding/json does.
+	StrictJSON bool `yaml:"strictJSON"`
+
 	// Compression toggles gzip / deflate response compression. Disabled
 	// by default so deployments behind a compressing reverse proxy
 	// (Nginx, Envoy, CloudFront) don't double-encode.
