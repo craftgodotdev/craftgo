@@ -148,3 +148,20 @@ func expectNoMsg(t *testing.T, substr string, sources ...string) {
 		}
 	}
 }
+
+// analyzeOneFile runs a single-package analysis and returns the diagnostics.
+func analyzeOneFile(t *testing.T, src string) []Diagnostic {
+	t.Helper()
+	files := parseFiles(t, src)
+	_, diags := Analyze(files)
+	return diags
+}
+
+func hasDiagContaining(diags []Diagnostic, substr string) bool {
+	for _, d := range diags {
+		if strings.Contains(d.Msg, substr) {
+			return true
+		}
+	}
+	return false
+}

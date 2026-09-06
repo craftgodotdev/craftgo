@@ -960,3 +960,49 @@ error Forbidden Denied {
 		t.Errorf("error body must embed the Audit mixin:\n%s", src)
 	}
 }
+
+// A scalar over the nilable `bytes` primitive lowers to the bare named
+// slice, so an optional / @nullable field of it must NOT carry a
+// redundant pointer - it renders like a raw `bytes` field, and its
+// validator nil-guards before calling the scalar's own Validate().
+func TestScalarOverBytesNullableRendersWithoutPointer(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+scalar Blob bytes @minLength(4)
+type Doc {
+  reqBlob Blob
+  nulBlob Blob @nullable
+  optBlob Blob?
+}`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	dir := t.TempDir()
+	mPkg := proj.Packages["m"]
+	if err := GenerateTypes(mPkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
+		t.Fatal(err)
+	}
+	types, _ := os.ReadFile(filepath.Join(dir, "m", "types.go"))
+	val, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
+	mustParseGo(t, string(types))
+	mustParseGo(t, string(val))
+	ts := string(types)
+	if strings.Contains(ts, "*Blob") {
+		t.Errorf("scalar-over-bytes field rendered with a redundant pointer (*Blob):\n%s", ts)
+	}
+	mustContainAll(t, ts,
+		"NulBlob Blob `json:\"nulBlob\"`",
+		"OptBlob Blob `json:\"optBlob,omitempty\"`",
+	)
+	// The nullable/optional scalar's Validate() stays nil-guarded so a
+	// null / absent value skips the scalar's own constraint.
+	mustContainAll(t, string(val),
+		"if v.NulBlob != nil {",
+		"if v.OptBlob != nil {",
+	)
+}

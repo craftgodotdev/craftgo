@@ -249,3 +249,69 @@ func TestMixinCollectMissingTarget(t *testing.T) {
 		t.Errorf("missing nested mixin should not diag here, got %v", a.diags)
 	}
 }
+
+// A mixin embedded twice in one type body lowers to a Go struct that
+// declares the embedded type twice ("X redeclared") - rejected at design
+// time rather than shipped as non-compiling code.
+func TestDuplicateMixinEmbedRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Leaf { x string @minLength(1) }
+type Req { Leaf  Leaf  r string }`))
+	d := findCode(diags, CodeMixinConflict)
+	if d == nil {
+		t.Fatalf("expected duplicate-embed rejection; got %v", codes(diags))
+	}
+}
+
+// A local mixin and an imported one whose unqualified names match both
+// embed as the same Go field - rejected (would "redeclare").
+func TestLeafNameEmbedCollisionRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type Leaf { x int }`,
+		"api.craftgo": `package design
+import "shared"
+type Leaf { y int }
+type Req { Leaf  shared.Leaf  r string }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(diags, CodeMixinConflict) == nil {
+		t.Fatalf("expected leaf-name embed collision; got %v", codes(diags))
+	}
+}
+
+// Two DIFFERENT types each embedding a mixin of the same name is fine.
+func TestSameMixinNameDifferentTypesClean(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Leaf { x int }
+type A { Leaf }
+type B { Leaf }`))
+	if findCode(diags, CodeMixinConflict) != nil {
+		t.Errorf("same mixin in different types must be clean; got %v", codes(diags))
+	}
+}
+
+// A mixin embedding a bare type-parameter of the host generic
+// (`type Box<T> { T }`) is rejected - Go forbids embedding a type parameter,
+// so the generated struct would never compile.
+func TestTypeParamMixinRejected(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `type Box<T> { T  note string }
+type R { b Box<string> }`))
+	if findCode(diags, CodeMixinConflict) == nil {
+		t.Fatalf("expected type-param mixin rejection; got %v", codes(diags))
+	}
+	// project mode (gen path) must reject it too
+	root, files := projectFixture(t, map[string]string{
+		"api.craftgo": `package design
+type Box<T> { T  note string }
+type R { b Box<string> }`,
+	})
+	_, pdiags := AnalyzeProject(files, Options{DesignRoot: root})
+	if findCode(pdiags, CodeMixinConflict) == nil {
+		t.Fatalf("expected type-param mixin rejection in project mode; got %v", codes(pdiags))
+	}
+}
+
+// A `value T` named field (not an embed) must NOT be rejected - the control.
+func TestTypeParamNamedFieldClean(t *testing.T) {
+	mustClean(t, `type Box<T> { value T  note string }
+type R { b Box<string> }`)
+}

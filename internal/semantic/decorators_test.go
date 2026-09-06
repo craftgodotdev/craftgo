@@ -1021,3 +1021,29 @@ func findCode(diags []Diagnostic, code string) *Diagnostic {
 	}
 	return nil
 }
+
+// The file validators @maxSize / @mimeTypes are pointless on a @sensitive
+// field (it never crosses the wire), so they conflict - like every other
+// validator already listed in sensitiveConflicts.
+func TestSensitiveConflictsFileValidators(t *testing.T) {
+	expectError(t, `type Req { secret file @sensitive @maxSize(1000) }`, CodeDecoratorConflict)
+	expectError(t, `type Req { secret file @sensitive @mimeTypes(["image/png"]) }`, CodeDecoratorConflict)
+}
+
+// Repeated @errors (extend-service idiom) must NOT be false-rejected as a
+// duplicate decorator.
+func TestRepeatedErrorsNotDuplicate(t *testing.T) {
+	src := `package p
+type Resp { ok bool }
+error NotFound Gone {}
+error Conflict Taken {}
+service S {
+  @errors(Gone)
+  @errors(Taken)
+  get X /x { response Resp }
+}`
+	diags := analyzeOneFile(t, src)
+	if hasDiagContaining(diags, "duplicate decorator") {
+		t.Errorf("repeated @errors wrongly rejected as duplicate: %v", diags)
+	}
+}

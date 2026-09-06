@@ -123,3 +123,45 @@ service S {
 		t.Errorf("same-package duplicate wire name should report exactly once, got %d: %v", n, codes(diags))
 	}
 }
+
+// An empty `@path("")` wire-name arg falls back to the field name rather
+// than false-rejecting the path-param check.
+func TestEmptyPathWireNameClean(t *testing.T) {
+	mustClean(t, `type Req { foo string @path("") }
+service S { get G /users/{foo} { request Req } }`)
+}
+
+// Two fields bound to case-variant HTTP header names (`X-Trace` / `x-trace`)
+// collide - net/http canonicalises both to one header.
+func TestDuplicateWireNameHeaderCase(t *testing.T) {
+	expectError(t, `type R { a string @header("X-Trace")  b string @header("x-trace") }`, CodeDuplicateWireName)
+}
+
+// A wire binding promoted through a same-package mixin collides with a re-bind
+// of the same name in the host body.
+func TestDuplicateWireNameMixin(t *testing.T) {
+	expectError(t, `type Base { a string @query("q") }
+type R { Base  b string @query("q") }`, CodeDuplicateWireName)
+}
+
+// An undecorated field auto-binding to a {segment} path collides with an
+// explicit @path of the same name on a sibling.
+func TestDuplicateAutoPathWireName(t *testing.T) {
+	expectError(t, `type R { id string  other string @path("id") }
+service S { get G /g/{id} { request R } }`, CodeDuplicateWireName)
+}
+
+// An undecorated field auto-binding to @query (body-less verb) collides with
+// an explicit @query of the same name.
+func TestDuplicateAutoQueryWireName(t *testing.T) {
+	expectError(t, `type R { sort string  order string @query("sort") }
+type Resp { ok bool }
+service S { get G /g { request R  response Resp } }`, CodeDuplicateWireName)
+}
+
+// Control: distinct wire names are clean.
+func TestDistinctWireNamesClean(t *testing.T) {
+	expectNoCode(t, `type R { sortBy string @query("sortBy")  order string @query("order") }
+type Resp { ok bool }
+service S { get G /g { request R  response Resp } }`, CodeDuplicateWireName)
+}

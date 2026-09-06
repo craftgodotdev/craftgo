@@ -552,3 +552,19 @@ func equalSlice(a, b []string) bool {
 	}
 	return true
 }
+
+// A field named like a path segment but diverted to @query no longer
+// satisfies the path-coverage check - the {id} segment is reported missing.
+func TestWireBoundFieldDoesNotCoverPathSegment(t *testing.T) {
+	src := `package p
+type R { id string @query }
+type Resp { x string }
+service S { get M /u/{id} { request R  response Resp } }`
+	diags := analyzeOneFile(t, src)
+	if len(diags) == 0 {
+		t.Fatalf("expected a path-coverage diagnostic for the diverted {id} field")
+	}
+	if !hasDiagContaining(diags, "path segment") && !hasDiagContaining(diags, "no matching field") {
+		t.Errorf("expected path-coverage reject, got: %v", diags)
+	}
+}

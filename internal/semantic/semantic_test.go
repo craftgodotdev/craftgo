@@ -418,3 +418,19 @@ service S { get A /users/{id}/posts { request R } }`)
 		t.Errorf("got %q", got)
 	}
 }
+
+// TestDeclNamedAfterBuiltinRejected: a type/enum/scalar/error named after a
+// built-in spelling shadows the built-in in generated Go and won't compile, so
+// it is rejected. Middleware names live in a separate Go namespace (exempt).
+func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
+	expectError(t, `scalar int string`, CodeDeclBuiltinName)
+	expectError(t, `type string { a int }`, CodeDeclBuiltinName)
+	expectError(t, `enum bool { X Y }`, CodeDeclBuiltinName)
+	expectError(t, `error NotFound any`, CodeDeclBuiltinName)
+	// Middleware lives in a separate Go namespace, so a builtin name is NOT a
+	// collision error (it may still warn about the lowercase name).
+	if _, diags := AnalyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
+		t.Error("middleware named after a builtin should not be a builtin-collision error")
+	}
+	mustClean(t, `scalar Email string  scalar UserID string`)
+}

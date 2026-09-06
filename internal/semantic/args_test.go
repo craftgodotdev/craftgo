@@ -425,3 +425,106 @@ func TestJoinQuoted(t *testing.T) {
 		t.Errorf("empty got %q", got)
 	}
 }
+
+// An integer @default outside the field primitive's capacity (negative on
+// unsigned, or out of a narrow int's range) would emit a non-compiling
+// cast (`uint(-5)` / `int8(200)`); rejected at design time.
+func TestDefaultOutOfRangeRejected(t *testing.T) {
+	expectError(t, `type Req { u uint? @default(-5) }`, CodeBoundOverflow)
+	expectError(t, `type Req { b int8? @default(200) }`, CodeBoundOverflow)
+}
+
+// An in-range @default on a narrow int is accepted.
+func TestDefaultInRangeClean(t *testing.T) {
+	mustClean(t, `type Req { b int8? @default(100)  u uint8? @default(0) }`)
+}
+
+// @default on a `bytes` field has no unambiguous literal form (Go []byte vs
+// OpenAPI base64); rejected rather than emitting non-compiling Go.
+func TestBytesDefaultRejected(t *testing.T) {
+	expectError(t, `type Req { p bytes? @default("Ynl0ZXM=") }`, CodeDecoratorConflict)
+	expectError(t, `type Req { ps bytes[]? @default(["YQ=="]) }`, CodeDecoratorConflict)
+}
+
+// A multi-dimensional array @default is rejected: a default may target a
+// primitive / scalar / enum or a single-level array of those, not a nested
+// array. Covers primitive and named (enum) element types.
+func TestMultiDimArrayDefaultRejected(t *testing.T) {
+	expectError(t, `type Req { grid int[][]? @default([[1, 2], [3, 4]]) }`, CodeDecoratorConflict)
+	expectError(t, `enum Color { Red  Green  Blue }
+type Req { swatch Color[][]? @default([[Red, Green], [Blue]]) }`, CodeDecoratorConflict)
+}
+
+// A single-level array @default is still accepted (the established shape).
+func TestSingleDimArrayDefaultClean(t *testing.T) {
+	mustClean(t, `type Req { arr int[]? @default([1, 2, 3]) }`)
+}
+
+// A multi-dimensional array @example is rejected with the same structural
+// message @default uses, rather than the per-element walk misreporting the
+// inner array as "expects a single value" (the @default/@example parity twin).
+func TestMultiDimArrayExampleRejected(t *testing.T) {
+	expectError(t, `type Req { rows int[][] @example([[1, 2], [3, 4]]) }`, CodeDecoratorConflict)
+}
+
+// A single-level array @example is still accepted.
+func TestSingleDimArrayExampleClean(t *testing.T) {
+	mustClean(t, `type Req { flat int[] @example([1, 2, 3]) }`)
+}
+
+// Explicit `@path @default` must be rejected, mirroring the auto-@path form
+// (a path segment is always supplied, so the default can never apply).
+func TestExplicitPathDefaultRejected(t *testing.T) {
+	src := `package p
+type R { id string @path @default("x") }
+type Resp { x string }
+service S { get M /u/{id} { request R  response Resp } }`
+	diags := analyzeOneFile(t, src)
+	if !hasDiagContaining(diags, "@default cannot be combined with @path") {
+		t.Errorf("expected explicit @path @default reject, got: %v", diags)
+	}
+}
+
+// @default on a file field is rejected (no literal default form).
+func TestDefaultOnFileRejected(t *testing.T) {
+	diags := analyzeOneFile(t, "package p\ntype U { blob file @form @default(\"x\") }\nservice S { post Up /up { request U  response U } }")
+	if !hasDiagContaining(diags, "@default is not supported on a `file`") {
+		t.Errorf("expected @default-on-file reject, got: %v", diags)
+	}
+}
+
+// W1 (#22): @example is now type-checked against the field like @default -
+// a kind mismatch and a non-member enum example are rejected.
+func TestExampleTypeChecked(t *testing.T) {
+	cases := map[string]bool{ // src -> expectReject
+		`package p
+type T { count int @example("nope") }`: true,
+		`package p
+enum Color { Red Green }
+type T { c Color @example(Purple) }`: true,
+		`package p
+enum Color { Red Green }
+type T { c Color @example(Green) }`: false,
+		`package p
+type T { name string @example("alice") }`: false,
+	}
+	for src, expectReject := range cases {
+		diags := analyzeOneFile(t, src)
+		got := hasDiagContaining(diags, "requires a") || hasDiagContaining(diags, "not a value of enum") || hasDiagContaining(diags, "must reference an enum")
+		if got != expectReject {
+			t.Errorf("@example type-check: reject=%v want=%v for:\n%s\ndiags: %v", got, expectReject, src, diags)
+		}
+	}
+}
+
+// Parity: @default and @example reject the SAME type mismatch - they share
+// checkLiteralType, so a string literal on an int field fails for both.
+func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
+	defDiags := analyzeOneFile(t, "package p\ntype T { n int @default(\"nope\") }")
+	exDiags := analyzeOneFile(t, "package p\ntype T { n int @example(\"nope\") }")
+	defRej := hasDiagContaining(defDiags, "requires a")
+	exRej := hasDiagContaining(exDiags, "requires a")
+	if !defRej || !exRej {
+		t.Errorf("@default/@example type-check parity broken: default rejected=%v, example rejected=%v", defRej, exRej)
+	}
+}

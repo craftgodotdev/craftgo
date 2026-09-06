@@ -997,3 +997,77 @@ type Page<T> { items T[] }
 type EmailList { p Page<Email> }`)
 	mustContainAll(t, src, "v.P.Validate()", "interface{ Validate() error }")
 }
+
+// A scalar over a nilable primitive can no longer participate in a
+// cross-field group: it lowers to a non-pointer nilable slice, so its
+// runtime presence is emptiness (not a clean `!= nil`), which disagrees
+// with the group's OpenAPI present-and-non-null - reject like raw bytes.
+func TestScalarOverBytesRejectedInCrossFieldGroup(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+scalar Blob bytes
+@requiresOneOf(a, b)
+type Pick {
+  a Blob?
+  b string?
+}`,
+	})
+	_, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) == 0 {
+		t.Fatal("expected a diagnostic rejecting the scalar-over-bytes cross-field member")
+	}
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "present/absent") || strings.Contains(d.Msg, "always treated as present") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a present/absent rejection, got: %v", diags)
+	}
+}
+
+// A scalar-over-VALUE primitive (int) stays pointer-backed when
+// optional, so it remains a clean cross-field member - the reject above
+// must not over-fire.
+func TestScalarOverValueCrossFieldClean(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+scalar Cents int
+@requiresOneOf(a, b)
+type Pick {
+  a Cents?
+  b string?
+}`,
+	})
+	_, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "present/absent") {
+			t.Fatalf("scalar-over-int cross-field member wrongly rejected: %v", d)
+		}
+	}
+}
+
+// A required any[] field must NOT get a runtime nil presence check (matching
+// every other required nilable slice).
+func TestRequiredAnyArrayNoPresenceCheck(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"m/m.craftgo": `package m
+type Body { reqStrArr string[]  reqAnyArr any[] }
+type Resp { ok bool }
+service S { post Op /x { request Body  response Resp } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	dir := t.TempDir()
+	mPkg := proj.Packages["m"]
+	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
+	if strings.Contains(string(out), "ReqAnyArr == nil") {
+		t.Errorf("any[] field wrongly got a nil presence check:\n%s", out)
+	}
+}
