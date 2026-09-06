@@ -247,7 +247,7 @@ func resolveField(f *ast.Field, pkg *semantic.Package, r *ProjectResolver) Resol
 		DefaultWire:   dv,
 		HasDefValue:   hasDV,
 		SpecRequired:  fieldIsRequired(f),
-		// The validator's presence gate (validate_registry.go): a
+		// The validator's presence gate (decorator_registry.go): a
 		// non-optional, non-@nullable field gets a presence check. @nullable
 		// opts out (an explicit null is allowed); optional opts out (absence
 		// is allowed); @sensitive opts out too - it is `json:"-"` (off the

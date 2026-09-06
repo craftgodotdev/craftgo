@@ -505,7 +505,7 @@ func multipartRequestBody(forms, files []paramBinding, crossDecs []*ast.Decorato
 			ft.Optional = false
 			ref = schemaForTypeRef(&ft, pkg, registry)
 			if ref.Value != nil {
-				applyArrayConstraints(f.Field.Decorators, ref.Value)
+				applyConstraintFamilies(f.Field.Decorators, ref.Value, oasArray)
 			}
 		} else {
 			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}}

@@ -170,8 +170,7 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		// string-pattern equivalent - so its key constraint is left to the
 		// runtime rather than advertised in a shape clients can't validate.
 		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		applyPatternFormat(sc.Decorators, base)
-		applyStringLengthConstraints(sc.Decorators, base)
+		applyConstraintFamilies(sc.Decorators, base, oasLength|oasText)
 		return base
 	}
 	return nil

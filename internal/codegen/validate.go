@@ -2,13 +2,13 @@
 // by layer rather than by decorator:
 //
 //   - validate.go          driver - orchestrates Generate / collect / template
-//   - validate_registry.go decorator → emit-function dispatch table
+//   - decorator_registry.go per-decorator emit table (runtime check + OpenAPI keyword)
 //   - validate_emit.go     per-validator emitters + cross-cutting helpers
 //   - decorator_args.go    decorator-argument extractors (intArg, sizeArg, ...)
 //   - validate_types.go    field-shape predicates (isStringOrOptString, ...)
 //
 // To add a new validator: write its emit function in validate_emit.go,
-// register it as one row in `validators` (validate_registry.go). Type
+// register it as one row in `validators` (decorator_registry.go). Type
 // guards and arg helpers are reusable from validate_types.go /
 // decorator_args.go - most new validators won't need new ones.
 
@@ -211,7 +211,7 @@ func buildValidateData(pkg *semantic.Package, r *ProjectResolver) validateData {
 //
 // Per-field, the order of checks is:
 //
-//  1. Decorator-driven validators (registry dispatch in validate_registry.go).
+//  1. Decorator-driven validators (registry dispatch in decorator_registry.go).
 //  2. Generic type-parameter fields → runtime type-assertion path.
 //  3. Fields whose type carries a Validate() - user structs, generic
 //     instances, enums, and constrained scalars → recursive
