@@ -3,9 +3,8 @@ package semantic
 import "testing"
 
 // A request type can embed a mixin from a SIBLING package whose fields
-// supply the @path binding. The per-package pass can't expand that mixin,
-// so the project-level check ([refResolver.checkProjectPathParams]) owns
-// the verdict - matching the codegen binder's cross-package flattening.
+// supply the @path binding, matching the codegen binder's cross-package
+// flattening.
 
 // Cross-package mixin supplies the @path field → the {id} segment binds,
 // no false "no matching field" error.

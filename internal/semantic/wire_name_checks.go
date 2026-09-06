@@ -3,8 +3,6 @@
 package semantic
 
 import (
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -14,25 +12,31 @@ import (
 
 // checkDuplicateWireNames rejects two EXPLICITLY wire-bound fields that share a
 // wire name on one source (request / response / error). The body is flattened
-// so a binding promoted through a same-package mixin is seen, and header names
-// are case-folded so `X-Trace` / `x-trace` collide. Auto-promoted bindings are
-// route/verb-dependent and handled per-method by [analyzer.checkDuplicateAutoWireNames].
+// so a binding promoted through a mixin - same-package or cross-package - is
+// seen, and header names are case-folded so `X-Trace` / `x-trace` collide.
+// Auto-promoted bindings are route/verb-dependent and handled per-method by
+// [analyzer.checkDuplicateAutoWireNames].
 func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
-	seen := map[string]lexer.Position{}
-	for _, f := range a.flattenRequestFields(members, map[string]bool{}) {
+	fields, _ := a.promotedFields(a.pkg.Name, members)
+	seen := map[string]promotedField{}
+	for _, pf := range fields {
+		f := pf.Field
 		kind, name, bound := wireBinding(f)
 		if !bound {
 			continue
 		}
 		key := kind + "\x00" + wire.CanonicalWireName(kind, name)
-		if prev, dup := seen[key]; dup {
-			d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
-				"%s.%s: @%s(%q) reuses a wire name already bound on the same source - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names.",
-				parent, f.Name, kind, name)
-			d.Related = related(prev, "first bound here")
+		prev, dup := seen[key]
+		if !dup {
+			seen[key] = pf
 			continue
 		}
-		seen[key] = f.Pos
+		msg := "%s.%s: @%s(%q) reuses a wire name already bound on the same source - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names."
+		if pf.Pkg != a.pkg.Name || prev.Pkg != a.pkg.Name {
+			msg = "%s.%s: @%s(%q) reuses a wire name already bound on this request through a cross-package mixin - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names."
+		}
+		d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName, msg, parent, f.Name, kind, name)
+		d.Related = related(prev.Field.Pos, "first bound here")
 	}
 }
 
@@ -49,9 +53,9 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
-	td, ok := a.pkg.Types[m.Request.Name.String()]
-	if !ok {
-		return // cross-package request - not modelled here
+	td, fields := a.requestFields(m)
+	if td == nil {
+		return
 	}
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
 	bodyVerb := wire.IsBodyVerb(m.Verb)
@@ -61,7 +65,8 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 		auto bool
 	}
 	seen := map[string]binding{}
-	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
+	for _, pf := range fields {
+		f := pf.Field
 		kind, auto := wire.RequestFieldBinding(f, pathSegs, bodyVerb)
 		switch kind {
 		case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
@@ -92,125 +97,6 @@ func wireBinding(f *ast.Field) (kind, name string, bound bool) {
 		return k, wire.WireName(f, k), true
 	default:
 		return "", "", false
-	}
-}
-
-// wireBindingSite records one explicitly wire-bound field found while
-// flattening a request/error body across packages: its position, field name,
-// binding kind and wire name, and whether it was promoted through a
-// cross-package mixin (and so is invisible to the per-package pass).
-type wireBindingSite struct {
-	pos      lexer.Position
-	field    string
-	kind     string
-	name     string
-	promoted bool
-}
-
-// checkProjectDuplicateWireNames re-runs the explicit duplicate-wire-name
-// check with cross-package visibility. The per-package
-// [analyzer.checkDuplicateWireNames] flattens only same-package mixins
-// ([analyzer.flattenRequestFields] skips qualified refs), so a wire name
-// bound by a field promoted through a CROSS-package mixin escapes it: the
-// binder then reads one wire value into two fields and the OpenAPI advertises
-// a duplicate parameter - a direct types<->transport<->spec disagreement. This
-// pass expands cross-package mixin bodies exactly as the codegen binder does
-// and reports a collision only when at least one of the two fields was
-// promoted from another package, so it never double-reports the same-package
-// collisions the per-package pass already covers.
-func (r *refResolver) checkProjectDuplicateWireNames() {
-	for _, pkgName := range slices.Sorted(maps.Keys(r.proj.Packages)) {
-		pkg := r.proj.Packages[pkgName]
-		if pkg == nil {
-			continue
-		}
-		current := pkgName
-		lookup := func(name string) *ast.TypeDecl {
-			if i := strings.LastIndexByte(name, '.'); i >= 0 {
-				if p := r.proj.Packages[name[:i]]; p != nil {
-					return p.Types[name[i+1:]]
-				}
-				return nil
-			}
-			if p := r.proj.Packages[current]; p != nil {
-				return p.Types[name]
-			}
-			return nil
-		}
-		for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
-			td := pkg.Types[name]
-			r.reportCrossPkgWireCollisions(td.Name, td.Body, lookup)
-		}
-		for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
-			ed := pkg.Errors[name]
-			r.reportCrossPkgWireCollisions(ed.Name, ed.Body, lookup)
-		}
-	}
-}
-
-// reportCrossPkgWireCollisions flattens one type/error body across packages
-// and emits a [CodeDuplicateWireName] diagnostic for each wire-name reuse
-// whose two fields do not both live in this package (a same-package clash is
-// the per-package pass's job). The first field bound to a given wire name
-// anchors the "first bound here" back-reference. The key formula matches
-// [analyzer.checkDuplicateWireNames] so the two passes agree on what collides.
-func (r *refResolver) reportCrossPkgWireCollisions(parent string, body []ast.TypeMember, lookup func(string) *ast.TypeDecl) {
-	var sites []wireBindingSite
-	collectWireBindingSites(body, "", parent, map[string]bool{}, lookup, &sites)
-	seen := map[string]wireBindingSite{}
-	for _, s := range sites {
-		key := s.kind + "\x00" + wire.CanonicalWireName(s.kind, s.name)
-		prev, dup := seen[key]
-		if !dup {
-			seen[key] = s
-			continue
-		}
-		if s.promoted || prev.promoted {
-			d := r.diag(s.pos, lexer.SeverityError, CodeDuplicateWireName,
-				"%s.%s: @%s(%q) reuses a wire name already bound on this request through a cross-package mixin - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names.",
-				parent, s.field, s.kind, s.name)
-			d.Related = related(prev.pos, "first bound here")
-		}
-	}
-}
-
-// collectWireBindingSites appends every explicitly wire-bound field in body to
-// out, descending into mixin targets resolved through lookup the same way
-// [walkBodyForPath] does. prefix is the package a bare mixin resolves against
-// (empty for the body's own package); any field reached under a non-empty
-// prefix was promoted from another package and so is invisible to the
-// per-package duplicate-wire check. visited keys on label to stop cyclic mixin
-// graphs and to collapse diamond embeds to a single visit.
-func collectWireBindingSites(body []ast.TypeMember, prefix, label string, visited map[string]bool, lookup func(string) *ast.TypeDecl, out *[]wireBindingSite) {
-	if visited[label] {
-		return
-	}
-	visited[label] = true
-	promoted := prefix != ""
-	for _, mem := range body {
-		switch v := mem.(type) {
-		case *ast.Field:
-			if kind, name, bound := wireBinding(v); bound {
-				*out = append(*out, wireBindingSite{pos: v.Pos, field: v.Name, kind: kind, name: name, promoted: promoted})
-			}
-		case *ast.Mixin:
-			if v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			// Resolve the mixin in the package it lives in: a qualified ref
-			// names that package; a bare ref nested inside a foreign mixin
-			// inherits that mixin's package (the prefix).
-			key := v.Ref.Name.String()
-			childPrefix := prefix
-			if len(v.Ref.Name.Parts) == 2 {
-				childPrefix = v.Ref.Name.Parts[0]
-			} else if prefix != "" {
-				key = prefix + "." + key
-			}
-			if next := lookup(key); next != nil {
-				collectWireBindingSites(next.Body, childPrefix, key, visited, lookup, out)
-			}
-		}
 	}
 }
 

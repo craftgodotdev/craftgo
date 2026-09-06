@@ -411,20 +411,19 @@ func TestPathBindingNameVariants(t *testing.T) {
 
 func TestRequestPathFieldsNilGuards(t *testing.T) {
 	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
-	env := a.pathParamEnv()
 	// nil request
-	if got := requestPathFields(&ast.Method{}, nil, env); got != nil {
+	if got := a.requestPathFields(&ast.Method{}, nil); got != nil {
 		t.Error("nil request should return nil")
 	}
 	// qualified name unresolvable in this package → nil
-	got := requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
+	got := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{"shared", "Req"}},
-	}}, nil, env)
+	}}, nil)
 	if got != nil {
 		t.Error("unresolved qualified ref should return nil")
 	}
 	// Request name is nil → skip
-	got = requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil, env)
+	got = a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil)
 	if got != nil {
 		t.Error("nil Name should return nil")
 	}
@@ -454,10 +453,9 @@ func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
 	}
 }
 
-// TestWalkBodyForPathCyclicMixin covers the visited check inside
-// walkBodyForPath. Real cyclic mixins are flagged by the mixin pass
-// but path resolution still encounters the cycle and must not loop.
-func TestWalkBodyForPathCyclicMixin(t *testing.T) {
+// Real cyclic mixins are flagged by the mixin pass, but the request
+// field walk still encounters the cycle and must not loop.
+func TestRequestPathFieldsCyclicMixin(t *testing.T) {
 	a := &analyzer{pkg: &Package{
 		Types: map[string]*ast.TypeDecl{
 			"A": {
@@ -475,17 +473,15 @@ func TestWalkBodyForPathCyclicMixin(t *testing.T) {
 			},
 		},
 	}}
-	out := &pathParamSet{all: map[string]bool{}}
-	walkBodyForPath(a.pkg.Types["A"], "", "A", map[string]bool{"id": true}, out, map[string]bool{}, a.pathParamEnv())
+	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("cyclic mixin should still surface reachable fields once")
 	}
 }
 
-// TestWalkBodyForPathQualifiedNestedMixin covers the qualified-mixin
-// skip inside walkBodyForPath (the recursive mixin walker shouldn't
-// follow `shared.Foo` - qualified-ref pass handles it).
-func TestWalkBodyForPathQualifiedNestedMixin(t *testing.T) {
+// A mixin whose package is unknown is skipped (the reference pass reports
+// it); the host's own fields still surface.
+func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
 	a := &analyzer{pkg: &Package{
 		Types: map[string]*ast.TypeDecl{
 			"A": {
@@ -497,8 +493,7 @@ func TestWalkBodyForPathQualifiedNestedMixin(t *testing.T) {
 			},
 		},
 	}}
-	out := &pathParamSet{all: map[string]bool{}}
-	walkBodyForPath(a.pkg.Types["A"], "", "A", map[string]bool{"id": true}, out, map[string]bool{}, a.pathParamEnv())
+	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("qualified mixin unresolvable in-package should be skipped, own fields still surface")
 	}
@@ -522,11 +517,11 @@ func TestCheckMethodPathParamsNilName(t *testing.T) {
 	// Defensive: m.Request set but m.Request.Name nil - early-return
 	// branch in checkMethodPathParams.
 	a := &analyzer{pkg: &Package{Types: map[string]*ast.TypeDecl{}}}
-	checkMethodPathParams("S", &ast.Method{
+	a.checkMethodPathParams("S", &ast.Method{
 		Name:    "M",
 		Pos:     lexer.Position{Line: 1},
 		Request: &ast.NamedTypeRef{Name: nil},
-	}, "/users", a.pathParamEnv())
+	}, "/users")
 	if len(a.diags) != 0 {
 		t.Errorf("nil request name should not diag, got %v", a.diags)
 	}

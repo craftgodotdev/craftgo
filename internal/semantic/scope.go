@@ -126,32 +126,33 @@ func (a *analyzer) resolveNamed(homePkg string, n *ast.NamedTypeRef) (*Package, 
 	return nil, ""
 }
 
-// lookupScalar returns the scalar declaration n names - bare in the
-// analyser's package or qualified `pkg.Name` - or nil.
-func (a *analyzer) lookupScalar(n *ast.NamedTypeRef) *ast.ScalarDecl {
-	pkg, sym := a.resolveNamed(a.pkg.Name, n)
+// lookupScalarIn returns the scalar declaration n names - a bare name
+// resolved in homePkg, a qualified `pkg.Name` in pkg - or nil.
+func (a *analyzer) lookupScalarIn(homePkg string, n *ast.NamedTypeRef) *ast.ScalarDecl {
+	pkg, sym := a.resolveNamed(homePkg, n)
 	if pkg == nil {
 		return nil
 	}
 	return pkg.Scalars[sym]
 }
 
-// lookupEnum is the enum counterpart of [analyzer.lookupScalar].
-func (a *analyzer) lookupEnum(n *ast.NamedTypeRef) *ast.EnumDecl {
-	pkg, sym := a.resolveNamed(a.pkg.Name, n)
+// lookupScalar is [analyzer.lookupScalarIn] for the analyser's own package.
+func (a *analyzer) lookupScalar(n *ast.NamedTypeRef) *ast.ScalarDecl {
+	return a.lookupScalarIn(a.pkg.Name, n)
+}
+
+// lookupEnumIn is the enum counterpart of [analyzer.lookupScalarIn].
+func (a *analyzer) lookupEnumIn(homePkg string, n *ast.NamedTypeRef) *ast.EnumDecl {
+	pkg, sym := a.resolveNamed(homePkg, n)
 	if pkg == nil {
 		return nil
 	}
 	return pkg.Enums[sym]
 }
 
-// lookupType is the type counterpart of [analyzer.lookupScalar].
-func (a *analyzer) lookupType(n *ast.NamedTypeRef) *ast.TypeDecl {
-	pkg, sym := a.resolveNamed(a.pkg.Name, n)
-	if pkg == nil {
-		return nil
-	}
-	return pkg.Types[sym]
+// lookupEnum is [analyzer.lookupEnumIn] for the analyser's own package.
+func (a *analyzer) lookupEnum(n *ast.NamedTypeRef) *ast.EnumDecl {
+	return a.lookupEnumIn(a.pkg.Name, n)
 }
 
 // primOf returns the primitive a non-collection named type lowers to:

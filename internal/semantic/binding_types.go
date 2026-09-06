@@ -149,8 +149,8 @@ func isQualifiedTypeRef(t *ast.TypeRef) bool {
 // isPathBindingType reports whether t can bind to `@path`. A path
 // segment is parsed the same way as a `@query` value (string / bool /
 // int* / uint* / float*, or a scalar / enum wrapping one), so the
-// accepted set is exactly [isWireBindingType] MINUS two shapes a URL
-// path can't carry:
+// accepted set is exactly [analyzer.isWireBindingType] MINUS two shapes a
+// URL path can't carry:
 //   - optional: a matched route always supplies the segment, so a
 //     nilable path field is meaningless.
 //   - array: a path carries a single value per segment, with no
@@ -160,10 +160,16 @@ func isQualifiedTypeRef(t *ast.TypeRef) bool {
 // case; the binder parses the segment via the same server.Parse* helper
 // a numeric @query field uses.
 func (a *analyzer) isPathBindingType(t *ast.TypeRef) bool {
+	return a.pathBindableIn(a.pkg.Name, t)
+}
+
+// pathBindableIn is [analyzer.isPathBindingType] with bare type names
+// resolved in homePkg.
+func (a *analyzer) pathBindableIn(homePkg string, t *ast.TypeRef) bool {
 	if t == nil || t.Optional || t.Array {
 		return false
 	}
-	return a.isWireBindingType(t)
+	return a.wireBindableIn(homePkg, t)
 }
 
 // isWireBindingType reports whether t is acceptable as a `@query`,
@@ -181,6 +187,12 @@ func (a *analyzer) isPathBindingType(t *ast.TypeRef) bool {
 // it nil when the key is absent). Rejects: maps, structs, generic
 // instantiations, and the `file` type (which only `@form` accepts).
 func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
+	return a.wireBindableIn(a.pkg.Name, t)
+}
+
+// wireBindableIn is [analyzer.isWireBindingType] with bare type names
+// resolved in homePkg - the package of the type that declares the field.
+func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
 	if t == nil || t.Map != nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 {
 		return false
 	}
@@ -200,10 +212,10 @@ func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
 			return true
 		}
 	}
-	if sc := a.lookupScalar(t.Named); sc != nil {
+	if sc := a.lookupScalarIn(homePkg, t.Named); sc != nil {
 		return isPrimitiveWireName(sc.Primitive)
 	}
-	if ed := a.lookupEnum(t.Named); ed != nil {
+	if ed := a.lookupEnumIn(homePkg, t.Named); ed != nil {
 		return enumWireKindOK(ed)
 	}
 	return false

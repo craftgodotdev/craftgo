@@ -2,12 +2,10 @@ package semantic
 
 import "testing"
 
-// The per-package duplicate-wire-name check flattens only same-package
-// mixins, so a wire name reused by a field promoted through a CROSS-package
-// mixin escapes it. [refResolver.checkProjectDuplicateWireNames] owns that
-// verdict, matching the codegen binder's cross-package flattening: without
-// it the binder reads one wire value into two fields and the OpenAPI carries
-// a duplicate parameter.
+// A wire name reused by a field promoted through a CROSS-package mixin
+// collides like a same-package one, matching the codegen binder's
+// cross-package flattening: otherwise the binder reads one wire value into
+// two fields and the OpenAPI carries a duplicate parameter.
 
 // A local @query and a cross-package-mixin @query sharing a wire name collide.
 func TestProjectDuplicateWireNameCrossPkgMixin(t *testing.T) {
