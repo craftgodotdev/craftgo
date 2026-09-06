@@ -1226,11 +1226,7 @@ service S {
 
 // ---------- @security cross-check ----------
 
-func TestValidateSecurityRefsHappyPath(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @security(bearerAuth)
-    get GetUser /u {}
-}`)
+func TestValidateSecuritySchemesHappyPath(t *testing.T) {
 	cfg := &config.Config{
 		Package: "x/y",
 		OpenAPI: config.OpenAPI{
@@ -1239,16 +1235,12 @@ func TestValidateSecurityRefsHappyPath(t *testing.T) {
 			},
 		},
 	}
-	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
+	if errs := ValidateSecuritySchemes(cfg); len(errs) != 0 {
 		t.Errorf("expected no errors, got: %v", errs)
 	}
 }
 
-func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @security(OAuth2)
-    get GetUser /u {}
-}`)
+func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 	base := func(flows *config.OAuthFlows) *config.Config {
 		return &config.Config{Package: "x/y", OpenAPI: config.OpenAPI{
 			SecuritySchemes: map[string]config.SecurityScheme{
@@ -1257,7 +1249,7 @@ func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
 		}}
 	}
 	// No flows → rejected (would emit invalid OpenAPI).
-	if errs := ValidateSecurityRefs(pkg, base(nil)); len(errs) == 0 {
+	if errs := ValidateSecuritySchemes(base(nil)); len(errs) == 0 {
 		t.Error("expected an error for an oauth2 scheme with no flows")
 	}
 	// With a flow → accepted.
@@ -1265,93 +1257,13 @@ func TestValidateSecurityRefsOAuth2RequiresFlows(t *testing.T) {
 		TokenURL: "https://example.com/token",
 		Scopes:   map[string]string{"read": "Read"},
 	}}
-	if errs := ValidateSecurityRefs(pkg, base(withFlow)); len(errs) != 0 {
+	if errs := ValidateSecuritySchemes(base(withFlow)); len(errs) != 0 {
 		t.Errorf("oauth2 with a flow should validate, got: %v", errs)
 	}
 	// The emitted scheme carries the flows object.
 	sc := securitySchemeFor("OAuth2", base(withFlow))
 	if sc.Flows == nil || sc.Flows.ClientCredentials == nil || sc.Flows.ClientCredentials.TokenURL == "" {
 		t.Errorf("expected oauth2 flows emitted in the scheme, got %+v", sc.Flows)
-	}
-}
-
-func TestValidateSecurityRefsUnknownScheme(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @security(BearAuth)
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{
-		Package: "x/y",
-		OpenAPI: config.OpenAPI{
-			SecuritySchemes: map[string]config.SecurityScheme{
-				"bearerAuth": {Type: "http", Scheme: "bearer"},
-			},
-		},
-	}
-	errs := ValidateSecurityRefs(pkg, cfg)
-	if len(errs) == 0 {
-		t.Fatal("expected error for unknown scheme")
-	}
-	joined := strings.Join(errs, "\n")
-	if !strings.Contains(joined, `"BearAuth"`) {
-		t.Errorf("expected scheme name in error, got: %s", joined)
-	}
-	if !strings.Contains(joined, "is not declared") {
-		t.Errorf("expected declaration error, got: %s", joined)
-	}
-}
-
-func TestValidateSecurityRefsServiceLevel(t *testing.T) {
-	pkg := analyze(t, `@security(typo)
-service S {
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{
-		Package: "x/y",
-		OpenAPI: config.OpenAPI{
-			SecuritySchemes: map[string]config.SecurityScheme{
-				"bearerAuth": {Type: "http", Scheme: "bearer"},
-			},
-		},
-	}
-	errs := ValidateSecurityRefs(pkg, cfg)
-	if len(errs) == 0 {
-		t.Fatal("expected error for service-level unknown scheme")
-	}
-}
-
-func TestValidateSecurityRefsPermissiveWhenNoSchemes(t *testing.T) {
-	// When the manifest declares no schemes the cross-check is a no-op
-	// - projects that haven't migrated continue to work.
-	pkg := analyze(t, `service S {
-    @security(anything)
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{Package: "x/y"}
-	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
-		t.Errorf("expected permissive pass-through, got: %v", errs)
-	}
-}
-
-// TestValidateSecurityRefsIgnoreSecurityNotChecked ensures
-// `@ignoreSecurity` is not mistaken for a scheme reference. It is a
-// method-level opt-out decorator, not a security requirement, so
-// ValidateSecurityRefs should never flag it as "unknown scheme".
-func TestValidateSecurityRefsIgnoreSecurityNotChecked(t *testing.T) {
-	pkg := analyze(t, `service S {
-    @ignoreSecurity
-    get GetUser /u {}
-}`)
-	cfg := &config.Config{
-		Package: "x/y",
-		OpenAPI: config.OpenAPI{
-			SecuritySchemes: map[string]config.SecurityScheme{
-				"bearerAuth": {Type: "http", Scheme: "bearer"},
-			},
-		},
-	}
-	if errs := ValidateSecurityRefs(pkg, cfg); len(errs) != 0 {
-		t.Errorf("@ignoreSecurity must not be treated as a scheme ref: %v", errs)
 	}
 }
 

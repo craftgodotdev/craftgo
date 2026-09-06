@@ -62,18 +62,12 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) er
 }
 
 // validateProject runs the checks that must reject a design before any
-// file is written: unknown security schemes, route patterns net/http's
-// ServeMux would refuse to register together, and operationId /
-// component-schema name collisions.
+// file is written: malformed security scheme definitions, route patterns
+// net/http's ServeMux would refuse to register together, and operationId
+// / component-schema name collisions.
 func validateProject(proj *semantic.Project, cfg *config.Config, pkgNames []string) error {
-	for _, name := range pkgNames {
-		p := proj.Packages[name]
-		if p == nil {
-			continue
-		}
-		if errs := ValidateSecurityRefs(p, cfg); len(errs) > 0 {
-			return fmt.Errorf("security scheme errors in package %s:\n  %s", name, strings.Join(errs, "\n  "))
-		}
+	if errs := ValidateSecuritySchemes(cfg); len(errs) > 0 {
+		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
 	}
 	if msgs := ValidateRouteConflicts(proj, cfg); len(msgs) > 0 {
 		return fmt.Errorf("conflicting routes:\n  %s", strings.Join(msgs, "\n  "))
