@@ -348,10 +348,7 @@ service S { post C /c { request Pick  response Resp } }`,
 }
 
 // A cross-package qualified struct (or other non-wire type) bound with
-// @header on an ERROR body field must be rejected - the per-package pass
-// defers qualified refs, and checkProjectBindings once iterated only
-// pkg.Types, so the error field slipped past both passes into non-compiling
-// `string(e.Detail)` Go. The project binding check now sweeps pkg.Errors too.
+// @header on an ERROR body field is rejected like one on a type body.
 func TestProjectErrorFieldCrossPkgStructHeaderRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared

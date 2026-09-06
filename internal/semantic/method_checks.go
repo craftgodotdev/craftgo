@@ -205,7 +205,7 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 		a.diag(start, end, lexer.SeverityError, code, format, args...)
 	}
 	unbindable := func(f *ast.Field) bool {
-		return !isQualifiedTypeRef(f.Type) && !isWireBindingType(f.Type, a.pkg)
+		return !isQualifiedTypeRef(f.Type) && !a.isWireBindingType(f.Type)
 	}
 	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
 		bodyBindingVerbRules(reqName, verb, svcName, pathSegs, f, unbindable, emit)

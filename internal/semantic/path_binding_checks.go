@@ -40,7 +40,7 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	// Resolve bindability against the local table; a qualified cross-package
 	// type is deferred to the project twin, which sees the foreign package.
 	unbindable := func(f *ast.Field) bool {
-		return !isQualifiedTypeRef(f.Type) && !isPathBindingType(f.Type, a.pkg)
+		return !isQualifiedTypeRef(f.Type) && !a.isPathBindingType(f.Type)
 	}
 	for _, f := range a.flattenRequestFields(td.Body, map[string]bool{}) {
 		autoPathFieldRule(reqName, pathSegs, f, unbindable, emit)

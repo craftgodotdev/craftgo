@@ -12,8 +12,7 @@ package semantic
 //   1. Inspecting the AST [ast.TypeRef] modifiers: `T[]` and `map<K,V>`
 //      collapse to PrimArray.
 //   2. Looking up the named type - built-in primitives map directly;
-//      custom scalars are followed via [Package.Scalars] to their
-//      underlying primitive.
+//      custom scalars are followed to their underlying primitive.
 //
 // Generic type parameters and unknown named types fall back to PrimAny
 // so the check doesn't false-positive while semantic resolution catches
@@ -110,16 +109,15 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 }
 
 // fieldPrim resolves a field's [ast.TypeRef] to a single primitive
-// category. Returns 0 (PrimAny) for unresolved / cross-package types
-// so callers can skip the check rather than emit a misleading mismatch.
+// category. Returns 0 (PrimAny) for unresolved types so callers can skip
+// the check rather than emit a misleading mismatch.
 //
 // Resolution rules:
 //   - Array (`T[]`) and map (`map<K,V>`) collapse to PrimArray.
 //   - Built-in primitives map directly via [PrimFromName].
-//   - Named refs that match a scalar in pkg.Scalars are followed; the
-//     scalar's underlying primitive wins.
-//   - Cross-package qualified names (`pkg.Type`) and generic params
-//     return 0 - the qualified-ref pass already flagged them.
+//   - A scalar - bare or qualified `pkg.Name` - is followed to its
+//     underlying primitive.
+//   - Generic params and unknown names return 0.
 func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 	if t == nil {
 		return 0
@@ -127,15 +125,15 @@ func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 	if t.Array || t.Map != nil {
 		return PrimArray
 	}
-	if t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+	if t.Named == nil || t.Named.Name == nil {
 		return 0
 	}
-	name := t.Named.Name.Parts[0]
-	if p := PrimFromName(name); p != 0 {
-		return p
+	if len(t.Named.Name.Parts) == 1 {
+		if p := PrimFromName(t.Named.Name.Parts[0]); p != 0 {
+			return p
+		}
 	}
-	// Custom scalar: follow to its underlying primitive.
-	if sd, ok := a.pkg.Scalars[name]; ok {
+	if sd := a.lookupScalar(t.Named); sd != nil {
 		return PrimFromName(sd.Primitive)
 	}
 	return 0

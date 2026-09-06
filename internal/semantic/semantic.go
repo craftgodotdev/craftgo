@@ -107,17 +107,6 @@ type Options struct {
 	// layout.
 	FileCase string
 
-	// skipBindingTypeCheckQualified suppresses the per-package
-	// binding-type check (`@path / @query / @header / @cookie /
-	// @form` shape rules in [analyzer.checkBindingFieldType]) for
-	// QUALIFIED refs only - bare names still resolve locally. The
-	// per-package pass can't see another package's scalars / enums
-	// so cross-pkg refs (`shared.Email @path`) would otherwise
-	// false-reject. Project mode flips this on; the post-pass
-	// [refResolver.checkProjectBindings] re-runs the check with
-	// the full project symbol table.
-	skipBindingTypeCheckQualified bool
-
 	// skipPathParamCheck disables the per-package `@path` segment ↔
 	// field check ([analyzer.checkMethodPathParams]). A request type
 	// can embed a mixin from a SIBLING package whose fields supply the

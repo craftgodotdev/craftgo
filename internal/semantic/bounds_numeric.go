@@ -22,10 +22,7 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	isFloat := prim == "float32" || prim == "float64"
 	for _, d := range f.Decorators {
 		if d == nil || d.Name != "multipleOf" {
@@ -79,10 +76,7 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	if !unsignedPrim(prim) {
 		return
 	}
@@ -166,10 +160,7 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	if lo, hi, ok := intCapacity(prim); ok {
 		forEachNumericBound(f, func(d *ast.Decorator, arg *ast.DecoratorArg) {
 			if v, disp, ok := integralBoundValue(arg); ok && (v < lo || v > hi) {
@@ -254,10 +245,7 @@ func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	a.checkIntBoundFloatLiteral(prim, fmt.Sprintf("field %q", f.Name), f.Decorators)
 }
 
@@ -330,10 +318,7 @@ func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return
 	}
-	prim := f.Type.Named.Name.String()
-	if sd, ok := a.pkg.Scalars[prim]; ok {
-		prim = sd.Primitive
-	}
+	prim := a.primOf(f.Type)
 	if prim != "bytes" {
 		return
 	}
