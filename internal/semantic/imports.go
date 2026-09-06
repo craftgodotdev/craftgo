@@ -4,17 +4,15 @@ package semantic
 // file has been grouped into a package (by `package X` declaration)
 // and each package has been individually analysed. For every file we:
 //
-//  1. Walk `import` declarations, validate the path against the
-//     design filesystem, and store the per-file alias map for the LSP.
+//  1. Walk `import` declarations and validate the path against the
+//     design filesystem.
 //  2. Walk every NamedTypeRef (in fields, mixin refs, method
 //     request/response, generic args, map keys/values) and resolve
 //     multi-part qualified names against the project's package set
 //     keyed by the `package X` declaration name.
 //
-// Aliases (`import alias "path"`) are parsed and recorded but DO NOT
-// drive resolution - qualified refs use the bare package name. The
-// alias is preserved for IDE tooling that wants to surface "this
-// import is referenced under name X".
+// Aliases (`import alias "path"`) are parsed but DO NOT drive
+// resolution - qualified refs use the bare package name.
 
 import (
 	"fmt"
@@ -45,11 +43,7 @@ func (r *refResolver) processFile(f *ast.File, designRoot string) {
 	if f == nil {
 		return
 	}
-	aliases := r.resolveImports(f, designRoot)
-	if filename := fileFilename(f); filename != "" {
-		r.proj.FileImports[filename] = aliases
-	}
-
+	r.resolveImports(f, designRoot)
 	currentPkg := ""
 	if f.Package != nil {
 		currentPkg = f.Package.Name
@@ -59,12 +53,9 @@ func (r *refResolver) processFile(f *ast.File, designRoot string) {
 	}
 }
 
-// resolveImports walks f.Imports, validating each path and building
-// the file's alias → relative-import-path map. The alias map is
-// returned for storage on the project's [Project.FileImports] index;
-// resolution itself uses package names, not aliases.
-func (r *refResolver) resolveImports(f *ast.File, designRoot string) map[string]string {
-	aliases := map[string]string{}
+// resolveImports walks f.Imports, validating each path against the
+// design root; resolution itself uses package names, not aliases.
+func (r *refResolver) resolveImports(f *ast.File, designRoot string) {
 	currentPkg := ""
 	if f.Package != nil {
 		currentPkg = f.Package.Name
@@ -93,17 +84,7 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) map[string]
 				"import %q resolves back into the current package %q (the files are merged anyway)",
 				path, currentPkg)
 		}
-		alias := imp.Alias
-		if alias == "" {
-			alias = idents.LastSegment(path)
-		}
-		// First-binding-wins for duplicate aliases - IDE may want to
-		// surface the conflict but resolution doesn't depend on it.
-		if _, dup := aliases[alias]; !dup {
-			aliases[alias] = path
-		}
 	}
-	return aliases
 }
 
 // walkDeclRefs descends into a top-level declaration, applying the

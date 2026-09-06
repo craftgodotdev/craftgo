@@ -18,7 +18,7 @@ package semantic
 //   3. Build every package's symbol tables, then run the per-package
 //      rule phases with the whole project in scope.
 //   4. For each file, validate `import "path"` against the design
-//      filesystem (when a root is known) and record metadata for the LSP.
+//      filesystem (when a root is known).
 //   5. Walk every NamedTypeRef across every file; multi-part names
 //      `pkg.Type` resolve directly to the Package whose pkg.Name ==
 //      `pkg`. The DSL keeps no alias-based indirection - `import
@@ -51,21 +51,14 @@ import (
 // Project is the cross-package analysis result. Packages is keyed by
 // the package's `package X` declaration name (the value of
 // [Package.Name]), so files in any folder sharing the same name
-// merge into a single entry. FileImports retains the per-file import
-// metadata for LSP "go-to-definition" - at the analysis layer
-// resolution uses package names directly, but the IDE benefits from
-// knowing which folder each `import "path"` referred to.
+// merge into a single entry.
 type Project struct {
 	// Root is the absolute design folder used for filesystem
 	// validation of `import "path"`. Empty when AnalyzeProject was
-	// called without [Options.DesignRoot] - in that case Packages
-	// holds the same single-package result as [Analyze].
+	// called without [Options.DesignRoot].
 	Root string
 	// Packages maps `package X` name → analysed [Package].
 	Packages map[string]*Package
-	// FileImports maps file path → alias → relative import path
-	// (path is the value the user wrote in `import "path"`).
-	FileImports map[string]map[string]string
 }
 
 // AnalyzeProject groups files into packages by their `package X`
@@ -75,9 +68,8 @@ type Project struct {
 // are reported.
 func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	proj := &Project{
-		Root:        opts.DesignRoot,
-		Packages:    map[string]*Package{},
-		FileImports: map[string]map[string]string{},
+		Root:     opts.DesignRoot,
+		Packages: map[string]*Package{},
 	}
 	groups := groupFilesByPackage(files)
 	names := make([]string, 0, len(groups))
@@ -205,23 +197,4 @@ func filePos(f *ast.File) lexer.Position {
 		return d.DeclPos()
 	}
 	return lexer.Position{Line: 1, Column: 1}
-}
-
-// fileFilename extracts the filename used to parse a file. Best-effort
-// fallback to scanning the first decl when the package decl is
-// missing, so synthetic ASTs (`hand-built in tests`) still land in a
-// consistent group.
-func fileFilename(f *ast.File) string {
-	if f == nil {
-		return ""
-	}
-	if f.Package != nil && f.Package.Pos.Filename != "" {
-		return f.Package.Pos.Filename
-	}
-	for _, d := range f.Decls {
-		if pos := d.DeclPos(); pos.Filename != "" {
-			return pos.Filename
-		}
-	}
-	return ""
 }
