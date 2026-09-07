@@ -39,11 +39,18 @@ func TestPathSlashes(t *testing.T) {
 	}
 }
 
-// File-level decorators with nothing after them are reported, not lost.
+// Decorators with nothing after them are reported, not lost: at the top
+// of a file whose package line is missing, and after the last declaration.
 func TestOrphanDecoratorsReported(t *testing.T) {
-	_, msgs := parseWithErrors(t, "@doc(\"pkg\")\n@version(\"1\")\n// package p\n")
-	if !strings.Contains(firstMsg(msgs), "decorators without a declaration") {
-		t.Errorf("diagnostics = %v", msgs)
+	for _, src := range []string{
+		"@doc(\"pkg\")\n@version(\"1\")\n// package p\n",
+		"package p\n\ntype A { x string }\n\n@deprecated\n",
+		"package p\n\nmiddleware Auth\n@ RequestStamp\n",
+	} {
+		_, msgs := parseWithErrors(t, src)
+		if !strings.Contains(firstMsg(msgs), "decorators without a declaration") {
+			t.Errorf("%q: diagnostics = %v", src, msgs)
+		}
 	}
 }
 

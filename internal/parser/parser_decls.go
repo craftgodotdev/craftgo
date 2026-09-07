@@ -85,6 +85,9 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		}
 		return sd
 	case lexer.EOF:
+		if len(decs) > 0 {
+			p.errorf(decs[0].Pos, "decorators without a declaration to attach to")
+		}
 		return nil
 	}
 	p.errorf(t.Pos, "expected declaration, got %s", t.Kind)

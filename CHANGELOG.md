@@ -28,8 +28,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   format.
 - **The parser reports what the formatter used to paper over.** A trailing
   slash in a path (`/items/`) is an error rather than being dropped from the
-  route; file-level decorators with no
-  declaration after them are reported rather than lost; a missing comma
+  route; decorators with no
+  declaration after them (at the top of a file, or after the last
+  declaration) are reported rather than lost; a missing comma
   between decorator arguments, array elements, object fields, type
   parameters or type arguments (`@length(1 80)`) is an error rather than
   being inserted on format.
