@@ -254,8 +254,9 @@ const (
 	// rename or consolidate.
 	CodeMiddlewareCollision = "middleware/collision"
 
-	// CodeQualifiedRef fires for a `pkg.Type` reference. The current
-	// resolver uses folder-merge imports and rejects qualified names.
+	// CodeQualifiedRef fires for a malformed qualified reference: more
+	// than one package segment (`a.b.Type`), or a type in its own package
+	// referenced as `pkg.Type` instead of by its bare name.
 	CodeQualifiedRef = "ref/qualified"
 
 	// CodeMixinNonType fires when a mixin reference resolves to a
