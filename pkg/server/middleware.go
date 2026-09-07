@@ -89,7 +89,16 @@ func Recovery(logger log.Logger) Middleware {
 type AccessLogOption func(*accessLogConfig)
 
 type accessLogConfig struct {
-	skip map[string]bool
+	skip   map[string]bool
+	fields func(*http.Request) []log.Field
+}
+
+// AccessLogFields appends the fields fn derives from the request to every
+// `http access` line - the client address, the user agent, the matched
+// route (`r.Pattern`). fn runs after the handler, so it sees the route the
+// mux matched.
+func AccessLogFields(fn func(r *http.Request) []log.Field) AccessLogOption {
+	return func(c *accessLogConfig) { c.fields = fn }
 }
 
 // AccessLogSkipPaths keeps requests whose `r.URL.Path` equals one of paths
@@ -111,7 +120,7 @@ func AccessLogSkipPaths(paths ...string) AccessLogOption {
 // AccessLog so those ids are on the context.
 //
 // Every request that reaches the middleware logs; [AccessLogSkipPaths]
-// keeps chosen routes out.
+// keeps chosen routes out and [AccessLogFields] adds fields of your own.
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
@@ -126,12 +135,16 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 			start := time.Now()
 			rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rw, r)
-			logger.WithContext(r.Context()).Info("http access",
+			fields := []log.Field{
 				log.String("method", r.Method),
 				log.String("path", r.URL.Path),
 				log.Int("status", rw.status),
 				log.Duration("latency", time.Since(start)),
-			)
+			}
+			if cfg.fields != nil {
+				fields = append(fields, cfg.fields(r)...)
+			}
+			logger.WithContext(r.Context()).Info("http access", fields...)
 		})
 	}
 }

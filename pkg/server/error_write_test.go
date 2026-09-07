@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -138,5 +139,24 @@ func TestSetHandleUnknownError_Swaps(t *testing.T) {
 	}
 	if gotErr != nil {
 		t.Error("typed error must not reach the unknown-error hook")
+	}
+}
+
+// A typed error wrapped with %w keeps its status, message and code: it is
+// an expected outcome, not an unknown error, so nothing is logged and the
+// client never sees a 500.
+func TestWriteErrorUnwrapsTypedErrors(t *testing.T) {
+	logs := observeLogs(t)
+	rec := httptest.NewRecorder()
+	err := fmt.Errorf("charge card: %w", fakeStatusError{msg: "card declined", status: http.StatusPaymentRequired})
+	WriteError(rec, httptest.NewRequest(http.MethodPost, "/pay", nil), err)
+	if rec.Code != http.StatusPaymentRequired {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusPaymentRequired)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"message":"card declined"`) {
+		t.Errorf("body = %q, want the typed error's message", body)
+	}
+	if logs.Len() != 0 {
+		t.Errorf("a typed error must not be logged, got %v", logs.All())
 	}
 }
