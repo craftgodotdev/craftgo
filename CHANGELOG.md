@@ -17,6 +17,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`DecodeStrict`, finishing with the shared `server.TrailingData` check);
   a codec without it is refused while strict JSON is on, so the config can
   never claim a strictness the server does not enforce.
+- **Fields of your own on every log line.** `log.SetContextFields(fn)`
+  derives fields from the request context (a tenant or user id a middleware
+  stored) and `WithContext` appends them next to the trace ids, so the
+  framework's lines and the generated logic's carry them alike.
+  `server.AccessLogFields(fn)` appends request-derived fields (client
+  address, user agent, the matched `r.Pattern`) to the `http access` line.
 
 ### Changed
 

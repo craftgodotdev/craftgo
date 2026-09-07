@@ -217,3 +217,29 @@ func TestToZapLevelMapping(t *testing.T) {
 		t.Error("error mapping wrong")
 	}
 }
+
+type tenantKey struct{}
+
+// Fields derived from the context by SetContextFields ride every line
+// logged through WithContext.
+func TestWithContextAppendsRegisteredFields(t *testing.T) {
+	SetContextFields(func(ctx context.Context) []Field {
+		if v, ok := ctx.Value(tenantKey{}).(string); ok {
+			return []Field{String("tenant", v)}
+		}
+		return nil
+	})
+	t.Cleanup(func() { SetContextFields(nil) })
+	l, logs := newObserver(t)
+	l.WithContext(context.WithValue(context.Background(), tenantKey{}, "acme")).Info("hello")
+	l.WithContext(context.Background()).Info("plain")
+	if logs.Len() != 2 {
+		t.Fatalf("expected 2 entries, got %d", logs.Len())
+	}
+	if got := logs.All()[0].ContextMap()["tenant"]; got != "acme" {
+		t.Errorf("tenant = %v, want acme", got)
+	}
+	if _, ok := logs.All()[1].ContextMap()["tenant"]; ok {
+		t.Error("a context without a tenant must not carry the field")
+	}
+}
