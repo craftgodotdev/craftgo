@@ -14,6 +14,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   and a default on `name`, so formatting moved the decorator to the wrong
   field. The parser now reports it; `craftgo fmt` and the editor leave the
   file alone.
+- **An unfinished type-argument list no longer hangs the parser.** Typing
+  `Page<` and pausing froze the language server; it is reported and parsing
+  moves on. An empty list (`Box<>`) is an error instead of vanishing on
+  format.
 
 ## [1.7.0] - 2026-09-07 [UTC+7]
 

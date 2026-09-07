@@ -222,11 +222,20 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 	qi := p.parseQualifiedIdent()
 	nt := &ast.NamedTypeRef{Pos: qi.Pos, Name: qi}
 	if p.peek().Kind == lexer.LAngle {
-		p.advance()
+		langle := p.advance()
+		if p.peek().Kind == lexer.RAngle {
+			p.errorf(langle.Pos, "type argument list cannot be empty")
+		}
 		for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
+			start := p.pos
 			nt.Args = append(nt.Args, p.parseTypeRef())
 			if p.peek().Kind == lexer.Comma {
 				p.advance()
+			}
+			if p.pos == start {
+				// parseTypeRef reported the token and consumed nothing; leave
+				// it to the caller instead of spinning on it.
+				break
 			}
 		}
 		p.expect(lexer.RAngle)
