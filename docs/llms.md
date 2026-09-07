@@ -100,7 +100,7 @@ Disambiguation rules (parser, in priority order):
 3. First identifier starts with lowercase -> field
 4. Otherwise -> mixin (PascalCase ident alone, or followed by another non-builtin ident)
 
-Mixin targets must be `type` declarations. Referencing an `enum`, `error`, `scalar`, or `middleware` as a mixin fires `mixin/non-type`; unknown names fire `mixin/unresolved`; embedding a type parameter of the enclosing generic (`type Box<T> { T }`) is also rejected. Becomes Go struct embedding.
+Mixin targets must be `type` declarations. Referencing an `enum`, `error`, `scalar`, or `middleware` as a mixin fires `mixin/non-type`; an unknown name fires `ref/unknown-symbol` (or `ref/unknown-package` for a `pkg.Type` whose package does not exist), like any other type reference; embedding a type parameter of the enclosing generic (`type Box<T> { T }`) is also rejected. Becomes Go struct embedding.
 
 ### Generics
 

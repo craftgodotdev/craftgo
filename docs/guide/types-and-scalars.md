@@ -165,7 +165,7 @@ The recommended style is to keep field names lowercase (`createdAt string`) and 
 
 #### Restrictions
 
-A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. Unknown names raise `mixin/unresolved`.
+A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist).
 
 The Go output uses struct embedding:
 
