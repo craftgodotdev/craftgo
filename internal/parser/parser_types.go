@@ -132,6 +132,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
 		ref := p.parseNamedTypeRef()
 		p.rejectMixinDecorators(t.Pos, decs)
+		p.rejectMixinTrailingDecorators(t.Pos)
 		return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
 	}
 	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
@@ -142,7 +143,20 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	}
 	ref := p.parseNamedTypeRef()
 	p.rejectMixinDecorators(t.Pos, decs)
+	p.rejectMixinTrailingDecorators(t.Pos)
 	return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
+}
+
+// rejectMixinTrailingDecorators reports a decorator chain that starts on
+// the mixin's own line. A mixin takes no decorators, and left alone the
+// chain would attach to the member below: `user string S @default("")`
+// above `name string` would silently give `name` the default. Consuming
+// the chain keeps the member below clean.
+func (p *Parser) rejectMixinTrailingDecorators(pos lexer.Position) {
+	if p.peek().Kind != lexer.At || p.peek().Pos.Line != p.tokens[p.pos-1].Pos.Line {
+		return
+	}
+	p.rejectMixinDecorators(pos, p.parseDecorators())
 }
 
 // isFieldFollower reports whether `next` (the token AFTER a leading

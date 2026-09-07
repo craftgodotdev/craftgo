@@ -5,6 +5,16 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Fixed
+
+- **A decorator stranded after a mixin is an error.** `user string S
+  @default("")` above `name string` parsed silently as field, mixin `S`,
+  and a default on `name`, so formatting moved the decorator to the wrong
+  field. The parser now reports it; `craftgo fmt` and the editor leave the
+  file alone.
+
 ## [1.7.0] - 2026-09-07 [UTC+7]
 
 ### Added
