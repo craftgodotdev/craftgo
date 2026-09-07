@@ -84,6 +84,18 @@ func (v projectView) currentPackage() string {
 	return ""
 }
 
+// hasErrors reports whether the buffer the view was built for carries an
+// error (a warning does not count): its own file's diagnostics, plus the
+// untagged ones, which the diagnostics partition also assigns to it.
+func (v projectView) hasErrors() bool {
+	for _, d := range v.diags {
+		if d.IsError() && (d.Pos.Filename == v.current || d.Pos.Filename == "") {
+			return true
+		}
+	}
+	return false
+}
+
 // lookup resolves name (bare or `pkg.Name`) to a declaration of the
 // selected kinds as seen from the buffer's package.
 func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {

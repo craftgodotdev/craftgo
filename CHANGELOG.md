@@ -7,6 +7,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Changed
+
+- **Formatting touches only files without errors.** `craftgo fmt` and the
+  editor's Format Document skip a file that has a parse or a semantic error
+  (warnings do not count), report the diagnostics, and `craftgo fmt` exits
+  1 when it left a file unformatted. A mistake the parser tolerates reads
+  as a different construct, and formatting used to write that reading back.
+
 ### Fixed
 
 - **A decorator stranded after a mixin is an error.** `user string S

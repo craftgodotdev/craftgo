@@ -430,3 +430,25 @@ func mustWrite(t *testing.T, root, rel, content string) {
 		t.Fatal(err)
 	}
 }
+
+// fmt formats only the files without errors; a file the analyser rejects
+// is left untouched and reported, and the command fails so CI notices.
+func TestRunFmtLeavesFilesWithErrorsAlone(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/ok.craftgo", "package d\n\ntype A {  x   string }\n")
+	bad := "package d\n\ntype B {  y   Missing }\n"
+	mustWrite(t, dir, "design/bad.craftgo", bad)
+	err := runFmt([]string{"-w", filepath.Join(dir, "design")})
+	if err == nil || !strings.Contains(err.Error(), "1 file(s) left unformatted") {
+		t.Fatalf("err = %v, want the unformatted-file error", err)
+	}
+	okOut, _ := os.ReadFile(filepath.Join(dir, "design", "ok.craftgo"))
+	if !strings.Contains(string(okOut), "\tx string\n") {
+		t.Errorf("clean file not formatted:\n%s", okOut)
+	}
+	badOut, _ := os.ReadFile(filepath.Join(dir, "design", "bad.craftgo"))
+	if string(badOut) != bad {
+		t.Errorf("file with errors was rewritten:\n%s", badOut)
+	}
+}
