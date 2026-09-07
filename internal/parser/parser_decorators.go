@@ -57,8 +57,12 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 		d.HasParens = true
 		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
 			d.Args = append(d.Args, p.parseDecoratorArg())
-			if p.peek().Kind == lexer.Comma {
+			switch p.peek().Kind {
+			case lexer.Comma:
 				p.advance()
+			case lexer.RParen, lexer.EOF:
+			default:
+				p.errorf(p.peek().Pos, "expected ',' or ')' after decorator argument, got %s", p.peek().Kind)
 			}
 		}
 		rparen, _ := p.expect(lexer.RParen)
@@ -103,8 +107,12 @@ func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 		p.expect(lexer.Colon)
 		val := p.parseValueOrArray()
 		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name.Text, Value: val})
-		if p.peek().Kind == lexer.Comma {
+		switch p.peek().Kind {
+		case lexer.Comma:
 			p.advance()
+		case lexer.RBrace, lexer.EOF:
+		default:
+			p.errorf(p.peek().Pos, "expected ',' or '}' after object field, got %s", p.peek().Kind)
 		}
 	}
 	p.expect(lexer.RBrace)
@@ -128,8 +136,12 @@ func (p *Parser) parseArray() ast.Expr {
 		// like `[["a", "b"], ["c"]]` parses - parseValue has no `[` case
 		// and would record a diagnostic on the inner bracket.
 		arr.Elements = append(arr.Elements, p.parseValueOrArray())
-		if p.peek().Kind == lexer.Comma {
+		switch p.peek().Kind {
+		case lexer.Comma:
 			p.advance()
+		case lexer.RBracket, lexer.EOF:
+		default:
+			p.errorf(p.peek().Pos, "expected ',' or ']' after array element, got %s", p.peek().Kind)
 		}
 	}
 	p.expect(lexer.RBracket)

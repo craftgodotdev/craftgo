@@ -18,6 +18,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Page<` and pausing froze the language server; it is reported and parsing
   moves on. An empty list (`Box<>`) is an error instead of vanishing on
   format.
+- **The parser reports what the formatter used to paper over.** A trailing
+  slash in a path (`/items/`) is an error rather than being dropped from the
+  route; file-level decorators with no
+  declaration after them are reported rather than lost; a missing comma
+  between decorator arguments, array elements, object fields, type
+  parameters or type arguments (`@length(1 80)`) is an error rather than
+  being inserted on format.
 
 ## [1.7.0] - 2026-09-07 [UTC+7]
 

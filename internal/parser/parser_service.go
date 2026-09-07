@@ -178,8 +178,19 @@ func (p *Parser) parsePath() *ast.Path {
 			path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Literal: sb.String()})
 			continue
 		}
-		// Trailing slash: anything else means we have `/` followed by a
-		// non-segment token (typically the method body's opening brace).
+		// `/` followed by something that is not a segment. Another `/` is
+		// an empty segment; after a segment it is a trailing slash, which
+		// the route cannot carry - a mux pattern ending in `/` matches a
+		// whole subtree - so both are reported rather than dropped. On its
+		// own, `/` is the root path.
+		if p.peek().Kind == lexer.Slash {
+			p.errorf(segPos, "empty path segment ('//')")
+			continue
+		}
+		if len(path.Segments) > 0 {
+			p.errorf(segPos, "path ends with '/'")
+			break
+		}
 		path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Literal: ""})
 		break
 	}

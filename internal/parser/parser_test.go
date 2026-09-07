@@ -992,11 +992,16 @@ func TestMethodDuplicateClause(t *testing.T) {
 
 // ---------- path trailing slash ----------
 
+// A trailing slash is reported and left out of the route: the route
+// builder and the formatter both dropped it silently before.
 func TestPathTrailingSlash(t *testing.T) {
-	f := mustParse(t, `service S { get Op /users/ {} }`)
+	f, errs := parseWithErrors(t, `service S { get Op /users/ {} }`)
+	if len(errs) != 1 || !strings.Contains(errs[0], "path ends with '/'") {
+		t.Fatalf("diagnostics = %v", errs)
+	}
 	segs := f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path.Segments
-	if len(segs) != 2 {
-		t.Errorf("got %d segments", len(segs))
+	if len(segs) != 1 || segs[0].Literal != "users" {
+		t.Errorf("segments = %v", segs)
 	}
 }
 

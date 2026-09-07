@@ -50,8 +50,12 @@ func (p *Parser) parseTypeParams() []string {
 			seen[t.Text] = true
 			params = append(params, t.Text)
 		}
-		if p.peek().Kind == lexer.Comma {
+		switch p.peek().Kind {
+		case lexer.Comma:
 			p.advance()
+		case lexer.RAngle, lexer.EOF:
+		default:
+			p.errorf(p.peek().Pos, "expected ',' or '>' after type parameter, got %s", p.peek().Kind)
 		}
 	}
 	p.expect(lexer.RAngle)
@@ -229,8 +233,12 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 		for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
 			start := p.pos
 			nt.Args = append(nt.Args, p.parseTypeRef())
-			if p.peek().Kind == lexer.Comma {
+			switch p.peek().Kind {
+			case lexer.Comma:
 				p.advance()
+			case lexer.RAngle, lexer.EOF:
+			default:
+				p.errorf(p.peek().Pos, "expected ',' or '>' after type argument, got %s", p.peek().Kind)
 			}
 			if p.pos == start {
 				// parseTypeRef reported the token and consumed nothing; leave
