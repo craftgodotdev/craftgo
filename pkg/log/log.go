@@ -230,9 +230,9 @@ func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
 }
 
-// WithContext extracts the active OpenTelemetry trace ids from ctx and
-// returns a Logger with `trace_id` and `span_id` baked in, so every
-// subsequent line on it carries them.
+// WithContext extracts the active OpenTelemetry trace ids from ctx, plus
+// whatever [SetContextFields] derives from it, and returns a Logger with
+// those fields baked in, so every subsequent line on it carries them.
 //
 // When ctx carries no trace context (test runs, batch tools) the
 // trace fields are simply omitted from the output.
@@ -247,11 +247,31 @@ func (s *zapLogger) WithContext(ctx context.Context) Logger {
 			zap.String("span_id", sc.SpanID().String()),
 		)
 	}
+	if fn := contextFields.Load().(contextFieldsHolder).fn; fn != nil {
+		fields = append(fields, fieldsToZap(fn(ctx))...)
+	}
 	if len(fields) == 0 {
 		return s
 	}
 	return &zapLogger{z: s.z.With(fields...)}
 }
+
+// ContextFields derives extra fields from a request context - a tenant or
+// user id a middleware stored there, for example.
+type ContextFields func(ctx context.Context) []Field
+
+type contextFieldsHolder struct{ fn ContextFields }
+
+var contextFields atomic.Value
+
+func init() { contextFields.Store(contextFieldsHolder{}) }
+
+// SetContextFields installs fn; [Logger.WithContext] appends what it
+// returns next to the trace ids, so every line logged through a request
+// context carries the fields - the framework's own lines (access log,
+// unknown errors, recovered panics) and the generated logic's alike. Nil
+// removes it. Call once at startup.
+func SetContextFields(fn ContextFields) { contextFields.Store(contextFieldsHolder{fn: fn}) }
 
 func (s *zapLogger) Enabled(level Level) bool {
 	return s.z.Core().Enabled(toZapLevel(level))

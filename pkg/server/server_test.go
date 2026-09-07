@@ -486,3 +486,24 @@ func s_logger(t *testing.T) Logger {
 	t.Helper()
 	return newTestServer(t).Logger()
 }
+
+// AccessLogFields appends request-derived fields to the access line, after
+// the handler ran, so the matched route pattern is available.
+func TestAccessLogFields(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogFields(func(r *http.Request) []log.Field {
+		return []log.Field{log.String("route", r.Pattern), log.String("ua", r.UserAgent())}
+	})))
+	s.HandleFunc("GET /items/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/items/7", nil)
+	req.Header.Set("User-Agent", "probe/1")
+	finalize(s).ServeHTTP(httptest.NewRecorder(), req)
+	entries := logs.FilterMessage("http access").All()
+	if len(entries) != 1 {
+		t.Fatalf("want 1 access line, got %d", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if fields["route"] != "GET /items/{id}" || fields["ua"] != "probe/1" || fields["status"] != int64(http.StatusOK) {
+		t.Errorf("fields = %v", fields)
+	}
+}

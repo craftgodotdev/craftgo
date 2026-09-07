@@ -46,7 +46,7 @@ srv.Handle("GET /healthz", chain.Then(healthHandler))
 Out of the box:
 
 - `Recovery(logger)` - converts panics to 500 responses with structured logging
-- `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out
+- `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out, `AccessLogFields(...)` adds fields of your own
 - `BodyLimit(maxBytes)` - caps request bodies
 - `Timeout(d)` - hard deadline on handler execution
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
@@ -219,7 +219,16 @@ func (l *GetUserLogic) GetUser(req *pb.GetUserReq) (*pb.User, error) {
 }
 ```
 
-`trace_id` and `span_id` flow into every log line automatically while tracing is on, which the generated `config.yaml` does by default (`otel.exporter: none` keeps the spans in-process); the response carries the matching `traceparent` header.
+`trace_id` and `span_id` flow into every log line automatically while tracing is on, which the generated `config.yaml` does by default (`otel.exporter: none` keeps the spans in-process); the response carries the matching `traceparent` header. `log.SetContextFields(fn)` adds fields of your own from the request context the same way - a tenant or user id a middleware stored there reaches every line, the framework's and your logic's alike:
+
+```go
+log.SetContextFields(func(ctx context.Context) []log.Field {
+    if u, ok := auth.UserFrom(ctx); ok {
+        return []log.Field{log.String("user_id", u.ID)}
+    }
+    return nil
+})
+```
 
 ### Log level
 
