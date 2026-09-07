@@ -71,6 +71,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`pkg/otel` and `pkg/metrics`** now only alias the config types,
   exporter names and defaults of `pkg/telemetry`, for one release.
 
+### Fixed
+
+- **A typed error wrapped with `%w` keeps its status.** `WriteError` now finds
+  the typed error with `errors.As`; a wrapped one used to fall through to the
+  unknown-error path and come back as a logged 500.
+
 ## [1.6.0] - 2026-09-05 [UTC+7]
 
 ### Added
