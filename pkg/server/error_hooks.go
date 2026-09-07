@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -163,13 +164,15 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 // returns a non-nil error. It splits on whether the error is a recognised
 // craftgo typed error:
 //
-//   - a [StatusError] is rendered directly from its interface - the declared
-//     HTTP status, the optional `@header`/`@cookie` writes via
-//     [ResponseHeaderWriter], then a JSON body: the codec encodes the error's
-//     declared body struct, or - when the error declares no body and would
-//     marshal to `{}` - a `{code, message}` envelope built from `ErrCode()` /
-//     `Error()` so clients can still discriminate the failure. A typed error is
-//     an expected outcome (a declared 4xx/5xx), so it is NOT logged;
+//   - a [StatusError] anywhere in err's chain (found with errors.As, so a
+//     typed error wrapped with `%w` keeps its status) is rendered from its
+//     interface - the declared HTTP status, the optional `@header`/`@cookie`
+//     writes via [ResponseHeaderWriter], then a JSON body: the codec encodes
+//     the typed error's declared body struct, or - when the error declares no
+//     body and would marshal to `{}` - a `{code, message}` envelope built from
+//     its `ErrCode()` / `Error()` so clients can still discriminate the
+//     failure. A typed error is an expected outcome (a declared 4xx/5xx), so
+//     it is NOT logged;
 //   - anything else (a bare errors.New / fmt.Errorf) is delegated to the
 //     [SetHandleUnknownError] handler, whose default logs the error with the
 //     request's trace context and responds 500.
@@ -193,22 +196,24 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		)
 		return
 	}
-	se, ok := err.(StatusError)
-	if !ok {
+	var se StatusError
+	if !errors.As(err, &se) {
 		unknownError.Load().(UnknownErrorHandler)(w, r, err)
 		return
 	}
-	if hw, ok := err.(ResponseHeaderWriter); ok {
+	var hw ResponseHeaderWriter
+	if errors.As(err, &hw) {
 		hw.WriteResponseHeaders(w)
 	}
 	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(se.HTTPStatus())
 	codec := JSON()
 	var buf bytes.Buffer
-	if mErr := codec.Encode(&buf, err); mErr != nil || strings.TrimSpace(buf.String()) == "{}" {
-		env := map[string]string{"message": err.Error()}
-		if c, ok := err.(interface{ ErrCode() string }); ok {
-			env["code"] = c.ErrCode()
+	if mErr := codec.Encode(&buf, se); mErr != nil || strings.TrimSpace(buf.String()) == "{}" {
+		env := map[string]string{"message": se.Error()}
+		var coded interface{ ErrCode() string }
+		if errors.As(err, &coded) {
+			env["code"] = coded.ErrCode()
 		}
 		_ = codec.Encode(w, env)
 		return
