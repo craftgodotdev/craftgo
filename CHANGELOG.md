@@ -5,7 +5,7 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [Unreleased]
+## [1.7.0] - 2026-09-07 [UTC+7]
 
 ### Added
 
@@ -35,12 +35,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   the SDK defaults - an empty name now keeps the SDK's
   `unknown_service:<binary>` for spans too, instead of `craftgo`; both
   signals now carry the SDK's `telemetry.sdk.*` attributes next to
-  `service.name`), and no package-level gates or shared registry. `telemetry.Init` still installs
-  the stack it builds as the process-wide default, so `otel.Tracer` /
-  `otel.Meter` in application code keep reporting through it. New:
-  `Telemetry.ScrapeHandler()` serves the Prometheus scrape on a route of
-  your own when `metrics.adminAddr` is empty.
-
+  `service.name`), and no package-level gates or shared registry.
+  `telemetry.Init` still installs the stack it builds as the process-wide
+  default, so `otel.Tracer` / `otel.Meter` in application code keep
+  reporting through it. New: `Telemetry.ScrapeHandler()` serves the
+  Prometheus scrape on a route of your own when `metrics.adminAddr` is
+  empty.
 - **Route overlaps are analyser diagnostics.** Two routes of one verb that
   net/http would refuse to register together (they overlap and neither is
   more specific) are reported as `path/collision` next to same-shape
@@ -53,6 +53,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   `srv.Use` middleware runs for them. `server.AccessLog` therefore logs
   every request that reaches it; `AccessLogSkipPaths(...)` keeps other
   routes (a `/metrics` scrape on the API port) out.
+- **Analyser codes.** `decl/package-mismatch` is gone: files group into
+  packages by their `package` declaration wherever they sit under the
+  design root, and a file without one joins the project's only named
+  package. `mixin/unresolved` is gone: an unknown mixin name is reported by
+  the type-reference pass as `ref/unknown-symbol`, or `ref/unknown-package`
+  for a `pkg.Type` naming a package that does not exist, like any other
+  reference. `ref/qualified` covers a malformed qualifier only: more than
+  one package segment, or a redundant self-qualification.
+- **Editor.** Go-to-definition, hover and completion resolve names exactly
+  as the analyser does: a qualified `pkg.Name` by package name (an `import`
+  alias no longer redirects them), a bare name in the buffer's package
+  first and then in any sibling package. Untitled buffers get diagnostics,
+  workspace symbols include the open document, and completions work
+  outside a project.
 
 ### Removed
 
