@@ -44,7 +44,7 @@ import (
 // `go install`; release builds inject the git tag via
 // `-ldflags="-X ...internal/lsp.Version=<tag>"` (see .goreleaser.yaml), so it
 // must be a var - `-X` cannot write a const.
-var Version = "1.7.0"
+var Version = "1.7.1"
 
 // Serve runs the LSP loop on the supplied stdio streams. It blocks until
 // the peer closes the connection or context is cancelled, and returns the
