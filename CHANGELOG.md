@@ -5,7 +5,7 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
-## [Unreleased]
+## [1.7.1] - 2026-09-08 [UTC+7]
 
 ### Changed
 
