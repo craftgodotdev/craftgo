@@ -50,8 +50,12 @@ func (p *Parser) parseTypeParams() []string {
 			seen[t.Text] = true
 			params = append(params, t.Text)
 		}
-		if p.peek().Kind == lexer.Comma {
+		switch p.peek().Kind {
+		case lexer.Comma:
 			p.advance()
+		case lexer.RAngle, lexer.EOF:
+		default:
+			p.errorf(p.peek().Pos, "expected ',' or '>' after type parameter, got %s", p.peek().Kind)
 		}
 	}
 	p.expect(lexer.RAngle)
@@ -132,6 +136,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
 		ref := p.parseNamedTypeRef()
 		p.rejectMixinDecorators(t.Pos, decs)
+		p.rejectMixinTrailingDecorators(t.Pos)
 		return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
 	}
 	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
@@ -142,7 +147,20 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	}
 	ref := p.parseNamedTypeRef()
 	p.rejectMixinDecorators(t.Pos, decs)
+	p.rejectMixinTrailingDecorators(t.Pos)
 	return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
+}
+
+// rejectMixinTrailingDecorators reports a decorator chain that starts on
+// the mixin's own line. A mixin takes no decorators, and left alone the
+// chain would attach to the member below: `user string S @default("")`
+// above `name string` would silently give `name` the default. Consuming
+// the chain keeps the member below clean.
+func (p *Parser) rejectMixinTrailingDecorators(pos lexer.Position) {
+	if p.peek().Kind != lexer.At || p.peek().Pos.Line != p.tokens[p.pos-1].Pos.Line {
+		return
+	}
+	p.rejectMixinDecorators(pos, p.parseDecorators())
 }
 
 // isFieldFollower reports whether `next` (the token AFTER a leading
@@ -208,11 +226,24 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 	qi := p.parseQualifiedIdent()
 	nt := &ast.NamedTypeRef{Pos: qi.Pos, Name: qi}
 	if p.peek().Kind == lexer.LAngle {
-		p.advance()
+		langle := p.advance()
+		if p.peek().Kind == lexer.RAngle {
+			p.errorf(langle.Pos, "type argument list cannot be empty")
+		}
 		for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
+			start := p.pos
 			nt.Args = append(nt.Args, p.parseTypeRef())
-			if p.peek().Kind == lexer.Comma {
+			switch p.peek().Kind {
+			case lexer.Comma:
 				p.advance()
+			case lexer.RAngle, lexer.EOF:
+			default:
+				p.errorf(p.peek().Pos, "expected ',' or '>' after type argument, got %s", p.peek().Kind)
+			}
+			if p.pos == start {
+				// parseTypeRef reported the token and consumed nothing; leave
+				// it to the caller instead of spinning on it.
+				break
 			}
 		}
 		p.expect(lexer.RAngle)

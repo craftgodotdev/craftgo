@@ -116,6 +116,10 @@ func (p *Parser) Parse() *ast.File {
 			p.advance()
 		}
 	}
+	if len(leading) > 0 {
+		// The file ended before a declaration could take the decorators.
+		p.errorf(leading[0].Pos, "decorators without a declaration to attach to")
+	}
 	f.Comments = p.allComments
 	// Whatever leading comment no Doc field or body harvest claimed is a
 	// file-scope free-floating block (between declarations, above the

@@ -72,6 +72,12 @@ type Diagnostic struct {
 	Related  []Related
 }
 
+// IsError reports whether d blocks a build or a format: everything but a
+// warning, an info or a hint.
+func (d Diagnostic) IsError() bool {
+	return d.Severity != SeverityWarning && d.Severity != SeverityInfo && d.Severity != SeverityHint
+}
+
 // Error implements the error interface, formatted as `pos: msg`. Severity
 // and code are omitted from the default rendering; the LSP layer reads the
 // structured fields directly.

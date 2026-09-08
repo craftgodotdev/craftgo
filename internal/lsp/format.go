@@ -25,6 +25,12 @@ func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req j
 	if src == "" {
 		return reply(ctx, []protocol.TextEdit{}, nil)
 	}
+	// A buffer with an error, parse or semantic, is left alone: a mistake
+	// the parser tolerates reads as a different construct, and formatting
+	// would write that reading back.
+	if s.loadProject(uriToPath(string(params.TextDocument.URI)), src).hasErrors() {
+		return reply(ctx, []protocol.TextEdit{}, nil)
+	}
 	formatted, diags := format.Format(string(params.TextDocument.URI), src)
 	if len(diags) > 0 || formatted == src {
 		return reply(ctx, []protocol.TextEdit{}, nil)

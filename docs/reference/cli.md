@@ -56,6 +56,8 @@ Flags:
 
 Use `-l` in CI to fail when files are not formatted. Use the default in local pre-commit hooks.
 
+A file is formatted only when it has no errors, parse or semantic: a mistake the parser tolerates (a stray word read as a mixin, for example) must never be rearranged into something else. Such a file is reported on stderr with its diagnostics and left untouched, and the command exits 1. A file inside a project is checked with its whole project, so cross-package references resolve.
+
 ## `craftgo version`
 
 Prints the CLI version.
@@ -74,7 +76,7 @@ Top-level help. Same content as running `craftgo` with no arguments.
 | Code | Meaning                                      |
 | ---- | -------------------------------------------- |
 | 0    | Success                                      |
-| 1    | Generic failure (unrecognized command, etc.) |
+| 1    | Generic failure, or `fmt` left a file with errors unformatted |
 | 2    | Semantic errors found                        |
 
 CI scripts can rely on these to fail builds.

@@ -5,6 +5,36 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Changed
+
+- **Formatting touches only files without errors.** `craftgo fmt` and the
+  editor's Format Document skip a file that has a parse or a semantic error
+  (warnings do not count), report the diagnostics, and `craftgo fmt` exits
+  1 when it left a file unformatted. A mistake the parser tolerates reads
+  as a different construct, and formatting used to write that reading back.
+
+### Fixed
+
+- **A decorator stranded after a mixin is an error.** `user string S
+  @default("")` above `name string` parsed silently as field, mixin `S`,
+  and a default on `name`, so formatting moved the decorator to the wrong
+  field. The parser now reports it; `craftgo fmt` and the editor leave the
+  file alone.
+- **An unfinished type-argument list no longer hangs the parser.** Typing
+  `Page<` and pausing froze the language server; it is reported and parsing
+  moves on. An empty list (`Box<>`) is an error instead of vanishing on
+  format.
+- **The parser reports what the formatter used to paper over.** A trailing
+  slash in a path (`/items/`) is an error rather than being dropped from the
+  route; decorators with no
+  declaration after them (at the top of a file, or after the last
+  declaration) are reported rather than lost; a missing comma
+  between decorator arguments, array elements, object fields, type
+  parameters or type arguments (`@length(1 80)`) is an error rather than
+  being inserted on format.
+
 ## [1.7.0] - 2026-09-07 [UTC+7]
 
 ### Added

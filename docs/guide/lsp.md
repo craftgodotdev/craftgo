@@ -104,7 +104,7 @@ Errors appear inline as you type:
 
 ### Format
 
-The `craftgo fmt` CLI rewrites a file in canonical form: aligned field columns, consistent decorator spacing, sorted imports. The VS Code extension wires this to the editor's "Format Document" command.
+The `craftgo fmt` CLI rewrites a file in canonical form: aligned field columns, consistent decorator spacing, sorted imports. The VS Code extension wires this to the editor's "Format Document" command. A buffer with an error, parse or semantic, is left untouched: fix the diagnostic first, then format.
 
 ## Other editors
 

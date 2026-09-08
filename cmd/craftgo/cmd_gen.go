@@ -124,12 +124,7 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 			cfg.OpenAPI.Description = d
 		}
 	}
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
-		SecuritySchemes: securitySchemeNames(cfg),
-		BasePath:        cfg.OpenAPI.BasePath,
-		DesignRoot:      designDir,
-		FileCase:        cfg.Output.FileCase,
-	})
+	proj, diags := semantic.AnalyzeProject(files, analysisOptions(designDir, cfg))
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)
 	}
@@ -176,32 +171,13 @@ func securitySchemeNames(cfg *config.Config) []string {
 // returns the collected AST. Parser diagnostics are aggregated and returned
 // as a single error so the caller doesn't see a half-parsed package.
 func parseDesign(designDir string) ([]*ast.File, error) {
-	var files []*ast.File
+	files, diags, err := parseDesignFiles(designDir)
+	if err != nil {
+		return nil, err
+	}
 	var parseDiags []string
-	walkErr := filepath.Walk(designDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if !config.IsDesignFile(path) {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		p := parser.New(path, string(data))
-		f := p.Parse()
-		for _, e := range p.Diagnostics() {
-			parseDiags = append(parseDiags, fmt.Sprintf("  %s: %s", e.Pos.String(), e.Msg))
-		}
-		files = append(files, f)
-		return nil
-	})
-	if walkErr != nil {
-		return nil, walkErr
+	for _, e := range diags {
+		parseDiags = append(parseDiags, fmt.Sprintf("  %s: %s", e.Pos.String(), e.Msg))
 	}
 	if len(parseDiags) > 0 {
 		return nil, fmt.Errorf("parse errors:\n%s", strings.Join(parseDiags, "\n"))
@@ -212,6 +188,43 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 	return files, nil
 }
 
+// parseDesignFiles walks designDir for `.craftgo` files, parses each one
+// and returns every AST with the parser diagnostics in walk order.
+func parseDesignFiles(designDir string) ([]*ast.File, []lexer.Diagnostic, error) {
+	var files []*ast.File
+	var diags []lexer.Diagnostic
+	walkErr := filepath.Walk(designDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !config.IsDesignFile(path) {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		p := parser.New(path, string(data))
+		files = append(files, p.Parse())
+		diags = append(diags, p.Diagnostics()...)
+		return nil
+	})
+	if walkErr != nil {
+		return nil, nil, walkErr
+	}
+	return files, diags, nil
+}
+
+// analysisOptions returns the analyser options a manifest configures.
+func analysisOptions(designDir string, cfg *config.Config) semantic.Options {
+	return semantic.Options{
+		SecuritySchemes: securitySchemeNames(cfg),
+		BasePath:        cfg.OpenAPI.BasePath,
+		DesignRoot:      designDir,
+		FileCase:        cfg.Output.FileCase,
+	}
+}
+
 // formatSemanticErrors filters severity-error diagnostics out of
 // `diags` and renders them as a single multi-line message suitable
 // for `fmt.Errorf`. Returns "" when nothing surfaces - warnings,
@@ -220,7 +233,7 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 func formatSemanticErrors(diags []semantic.Diagnostic) string {
 	lines := make([]string, 0, len(diags))
 	for _, d := range diags {
-		if d.Severity == lexer.SeverityWarning || d.Severity == lexer.SeverityInfo || d.Severity == lexer.SeverityHint {
+		if !d.IsError() {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("  %s: %s", d.Pos.String(), d.Msg))

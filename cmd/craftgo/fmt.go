@@ -8,8 +8,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/format"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // runFmt is the `craftgo fmt [path] [-l] [-w]` entry point. Behaviour mirrors
@@ -46,20 +50,23 @@ func runFmt(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no .craftgo files found under %q", path)
 	}
+	blocked := blockingDiagnostics(files)
 	var changed []string
+	skipped := 0
 	for _, f := range files {
+		if msgs := blocked[f]; len(msgs) > 0 {
+			skipped++
+			fmt.Fprintf(os.Stderr, "%s: not formatted, fix these first:\n", f)
+			for _, m := range msgs {
+				fmt.Fprintf(os.Stderr, "  %s\n", m)
+			}
+			continue
+		}
 		raw, err := os.ReadFile(f)
 		if err != nil {
 			return err
 		}
-		formatted, diags := format.Format(f, string(raw))
-		if len(diags) > 0 {
-			fmt.Fprintf(os.Stderr, "%s: skipped (parse errors)\n", f)
-			for _, d := range diags {
-				fmt.Fprintf(os.Stderr, "  %s: %s\n", d.Pos, d.Msg)
-			}
-			continue
-		}
+		formatted, _ := format.Format(f, string(raw))
 		if formatted == string(raw) {
 			continue
 		}
@@ -75,12 +82,66 @@ func runFmt(args []string) error {
 			fmt.Print(formatted)
 		}
 	}
+	if skipped > 0 {
+		return fmt.Errorf("%d file(s) left unformatted because of errors", skipped)
+	}
 	if *list && len(changed) > 0 {
 		// Mirror `gofmt -l`: non-zero exit when any file is mis-formatted,
 		// so CI can `craftgo fmt -l` as a check.
 		os.Exit(1)
 	}
 	return nil
+}
+
+// blockingDiagnostics returns, per file, the errors that keep it from
+// being formatted: parser and analyser errors alike, because a mistake
+// the parser tolerates (a stray word read as a mixin, a decorator on the
+// wrong line) reads as a different construct, and formatting would write
+// that reading back. A file inside a project is analysed with its whole
+// project, so cross-package references resolve; a file outside any
+// project is analysed on its own.
+func blockingDiagnostics(files []string) map[string][]string {
+	out := map[string][]string{}
+	add := func(diags []lexer.Diagnostic, fallback string) {
+		for _, d := range diags {
+			if !d.IsError() {
+				continue
+			}
+			key := d.Pos.Filename
+			if key == "" {
+				key = fallback
+			}
+			out[key] = append(out[key], fmt.Sprintf("%s: %s", d.Pos, d.Msg))
+		}
+	}
+	analysed := map[string]bool{}
+	for _, f := range files {
+		cfg, _, designDir, err := config.Find(filepath.Dir(f))
+		if err != nil {
+			data, readErr := os.ReadFile(f)
+			if readErr != nil {
+				continue
+			}
+			p := parser.New(f, string(data))
+			file := p.Parse()
+			add(p.Diagnostics(), f)
+			_, diags := semantic.Analyze([]*ast.File{file})
+			add(diags, f)
+			continue
+		}
+		if analysed[designDir] {
+			continue
+		}
+		analysed[designDir] = true
+		asts, parseDiags, err := parseDesignFiles(designDir)
+		if err != nil {
+			continue
+		}
+		add(parseDiags, f)
+		_, diags := semantic.AnalyzeProject(asts, analysisOptions(designDir, cfg))
+		add(diags, f)
+	}
+	return out
 }
 
 // collectCraftgoFiles returns every `*.craftgo` file under target. If target
