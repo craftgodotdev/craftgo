@@ -13,6 +13,8 @@ import (
 // Publisher and consumer both address the contract by this value.
 const PayBatchedContract = "xrefs.PayBatched"
 
+// The service's ONLY event, and its payload reaches no local type: the publisher must carry no canonical `types` import, though the rendered payload spells `paytypes.XPayItem`. An event with a local payload elsewhere in the same service would supply the import and hide it.
+//
 // PayBatched is the xrefs.PayBatched contract.
 // PayBatched.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.

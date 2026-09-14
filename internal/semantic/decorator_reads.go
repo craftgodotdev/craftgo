@@ -59,6 +59,18 @@ func Description(decs []*ast.Decorator, doc []string) string {
 	return strings.Join(doc, "\n")
 }
 
+// descriptionLines is [Description] as the comment lines a target
+// renders, one `//` apiece: the `@doc("...")` override when present,
+// otherwise the leading comment block. Nothing is re-wrapped - the
+// generated comment breaks where the author's text breaks.
+func descriptionLines(decs []*ast.Decorator, doc []string) []string {
+	desc := Description(decs, doc)
+	if desc == "" {
+		return nil
+	}
+	return strings.Split(desc, "\n")
+}
+
 // FieldIsRequired is the spec-required rule under craftgo's
 // "required by default" model: a field must be present unless its type
 // carries the `?` suffix, or it carries `@default` - the transport

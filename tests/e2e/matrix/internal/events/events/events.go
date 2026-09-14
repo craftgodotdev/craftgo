@@ -12,6 +12,8 @@ import (
 // Publisher and consumer both address the contract by this value.
 const EnvelopedContract = "events.Enveloped"
 
+// Generic payload: the argument must survive into every target.
+//
 // Enveloped is the events.Enveloped contract.
 // Enveloped.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -21,6 +23,8 @@ var Enveloped = craftevents.NewEvent[types.Envelope[types.ItemStocked]](Envelope
 // Publisher and consumer both address the contract by this value.
 const ForgedContract = "events.Forged"
 
+// A second publishing service, here for its name.
+//
 // Forged is the events.Forged contract.
 // Forged.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -30,6 +34,8 @@ var Forged = craftevents.NewEvent[types.ItemStocked](ForgedContract, (*types.Ite
 // Publisher and consumer both address the contract by this value.
 const ItemStockedContract = "events.ItemStocked"
 
+// Stock arrived at a warehouse. Its sku rides in through the mixin.
+//
 // ItemStocked is the events.ItemStocked contract.
 // ItemStocked.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -39,6 +45,8 @@ var ItemStocked = craftevents.NewEvent[types.ItemStocked](ItemStockedContract, (
 // Publisher and consumer both address the contract by this value.
 const ReconciledContract = "legacy.inventory.reconciled.v2"
 
+// The wire name is fixed by a system outside this design.
+//
 // Reconciled is the legacy.inventory.reconciled.v2 contract.
 // Reconciled.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -48,6 +56,8 @@ var Reconciled = craftevents.NewEvent[types.ItemStocked](ReconciledContract, (*t
 // Publisher and consumer both address the contract by this value.
 const ShipmentDispatchedContract = "events.ShipmentDispatched"
 
+// A shipment left. Its id is a scalar over a string primitive.
+//
 // ShipmentDispatched is the events.ShipmentDispatched contract.
 // ShipmentDispatched.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -57,6 +67,8 @@ var ShipmentDispatched = craftevents.NewEvent[types.ShipmentDispatched](Shipment
 // Publisher and consumer both address the contract by this value.
 const StocktakeStartedContract = "events.StocktakeStarted"
 
+// Published without a key, so the transport places it where it likes.
+//
 // StocktakeStarted is the events.StocktakeStarted contract.
 // StocktakeStarted.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -66,6 +78,8 @@ var StocktakeStarted = craftevents.NewEvent[types.StocktakeStarted](StocktakeSta
 // Publisher and consumer both address the contract by this value.
 const TierPromotedContract = "events.TierPromoted"
 
+// Carries an int-valued enum declared in another package.
+//
 // TierPromoted is the events.TierPromoted contract.
 // TierPromoted.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.
@@ -75,6 +89,8 @@ var TierPromoted = craftevents.NewEvent[types.TierPromoted](TierPromotedContract
 // Publisher and consumer both address the contract by this value.
 const WarehouseClosedContract = "events.WarehouseClosed"
 
+// Carries an int-valued enum declared in this package.
+//
 // WarehouseClosed is the events.WarehouseClosed contract.
 // WarehouseClosed.Publish(ctx, bus, payload) sends one; a consumer reaches it
 // through the handler interface of the service that declares the consume.

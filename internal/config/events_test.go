@@ -81,28 +81,6 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 	}
 }
 
-// A manifest carrying a target craftgo used to generate is told the
-// target was removed, not that it never existed - the generic
-// "not supported" list reads as a typo and sends the user looking for
-// one.
-func TestRemovedLangIsNamedAsRemoved(t *testing.T) {
-	_, err := Load(writeManifest(t, `events:
-  targets:
-    - lang: go
-      out: ./internal/events
-    - lang: typescript
-      out: ./web/src/events
-`))
-	if err == nil {
-		t.Fatal("a removed lang must be rejected")
-	}
-	for _, want := range []string{"typescript", "was removed", "drop the row"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error does not mention %q: %v", want, err)
-		}
-	}
-}
-
 // No target reads a `layout:`, so the key is rejected rather than
 // silently ignored.
 func TestTargetLayoutIsRejected(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 // Publisher and consumer both address the contract by this value.
 const PaymentSettledContract = "payments.settled.v1"
 
-// Published by the payments platform; the wire name is theirs.
+// A payment cleared upstream.
 //
 // PaymentSettled is the payments.settled.v1 contract.
 // PaymentSettled.Publish(ctx, bus, payload) sends one; a consumer reaches it

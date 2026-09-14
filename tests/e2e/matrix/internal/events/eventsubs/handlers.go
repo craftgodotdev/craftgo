@@ -23,6 +23,7 @@ import (
 type AnalyticsServiceHandler interface {
 	CountStocked(ctx context.Context, payload *events.ItemStocked) error
 
+	// A different contract in the same handler interface.
 	CountDispatched(ctx context.Context, payload *events.ShipmentDispatched) error
 
 	TrackTier(ctx context.Context, payload *events.TierPromoted) error
@@ -68,10 +69,13 @@ func RegisterAnalyticsServiceHandler(bus *craftevents.Bus, h AnalyticsServiceHan
 // One method per `consume` the design declares; the payload is decoded
 // and validated before a method runs.
 type GuardedServiceHandler interface {
+	// Registered behind the deployable's chain; the retry sits nearest the handler.
 	GuardedStock(ctx context.Context, payload *events.ItemStocked) error
 
+	// A second consume of the same service, registered from the same call.
 	BareStock(ctx context.Context, payload *events.StocktakeStarted) error
 
+	// Inherited from the extend block.
 	InheritedStock(ctx context.Context, payload *events.WarehouseClosed) error
 }
 
@@ -115,12 +119,16 @@ func RegisterGuardedServiceHandler(bus *craftevents.Bus, h GuardedServiceHandler
 // One method per `consume` the design declares; the payload is decoded
 // and validated before a method runs.
 type NotificationServiceHandler interface {
+	// Cross-package consumer: the payload type lives in `events`.
 	SendStockAlert(ctx context.Context, payload *events.ItemStocked) error
 
+	// Consumes the @contract-renamed event by its DSL name.
 	AuditReconciliation(ctx context.Context, payload *events.ItemStocked) error
 
+	// Declared in an extend block; merges into the same service.
 	NotifyDispatch(ctx context.Context, payload *events.ShipmentDispatched) error
 
+	// A second extend block, merged into the same handler interface.
 	TrackStocktake(ctx context.Context, payload *events.StocktakeStarted) error
 }
 
@@ -171,6 +179,7 @@ func RegisterNotificationServiceHandler(bus *craftevents.Bus, h NotificationServ
 // One method per `consume` the design declares; the payload is decoded
 // and validated before a method runs.
 type OpsServiceHandler interface {
+	// The only consumer of events.WarehouseClosed.
 	RecordClosure(ctx context.Context, payload *events.WarehouseClosed) error
 }
 

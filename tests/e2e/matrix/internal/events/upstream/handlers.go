@@ -16,6 +16,7 @@ import (
 // One method per `consume` the design declares; the payload is decoded
 // and validated before a method runs.
 type LedgerServiceHandler interface {
+	// Records the settlement against the invoice.
 	RecordSettlement(ctx context.Context, payload *types.PaymentSettledPayload) error
 }
 

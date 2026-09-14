@@ -213,6 +213,47 @@ func RegisterNotificationServiceHandler(bus *craftevents.Bus, h NotificationServ
 	}
 }
 
+// `@doc("...")` is the author's override for the generated comment, so
+// it reaches the descriptor and the handler method in place of the
+// leading `//` block.
+func TestDocDecoratorDocumentsTheDescriptorAndTheHandler(t *testing.T) {
+	proj := analyzeProject(t, `package themes
+type ThemePayload { id string }
+service ThemeService {
+	// an implementation note the decorator overrides
+	@doc("Fires when a theme is created.")
+	event ThemeCreated { payload ThemePayload }
+	// another note the decorator overrides
+	@doc("Warms the render cache for a new theme.")
+	consume WarmCache { event ThemeCreated }
+}`)
+	dir := genEvents(t, proj, eventsConfig())
+
+	events := readGen(t, dir, "internal/events/themes/events.go")
+	wantEvent := `// Fires when a theme is created.
+//
+// ThemeCreated is the themes.ThemeCreated contract.
+// ThemeCreated.Publish(ctx, bus, payload) sends one; a consumer reaches it
+// through the handler interface of the service that declares the consume.
+var ThemeCreated = craftevents.NewEvent[`
+	if !strings.Contains(events, wantEvent) {
+		t.Errorf("@doc did not document the descriptor:\n%s", events)
+	}
+
+	handlers := readGen(t, dir, "internal/events/themes/handlers.go")
+	wantConsume := "\t// Warms the render cache for a new theme.\n\tWarmCache(ctx context.Context, payload *"
+	if !strings.Contains(handlers, wantConsume) {
+		t.Errorf("@doc did not document the handler method:\n%s", handlers)
+	}
+
+	// The decorator replaces the leading comment rather than joining it.
+	for _, gen := range []string{events, handlers} {
+		if strings.Contains(gen, "the decorator overrides") {
+			t.Errorf("the leading comment outlived the @doc override:\n%s", gen)
+		}
+	}
+}
+
 // A contract declared in the consuming service's own package is a value
 // in the file being written, so it needs no import and no qualifier.
 func TestHandlersReferenceALocalDescriptorBare(t *testing.T) {

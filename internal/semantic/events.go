@@ -49,7 +49,10 @@ type ResolvedEvent struct {
 	// Payload is the resolved declaration, nil when the ref did not
 	// resolve (the analyser has already reported that).
 	Payload *ast.TypeDecl
-	Doc     []string
+	// Doc is the documentation a target renders above the contract: the
+	// `@doc("...")` argument when one is given, otherwise the leading
+	// comment block.
+	Doc []string
 }
 
 // ResolvedConsumer is the layer-agnostic view of one consumer.
@@ -61,7 +64,9 @@ type ResolvedConsumer struct {
 	// Event is the contract this consumer handles. Zero-valued Contract
 	// means the reference did not resolve.
 	Event ResolvedEvent
-	Doc   []string
+	// Doc reads like [ResolvedEvent.Doc]: the `@doc("...")` argument
+	// when one is given, otherwise the leading comment block.
+	Doc []string
 }
 
 // Events returns every event declared in the project, ordered by contract
@@ -132,7 +137,7 @@ func (p *Project) resolveEvent(pkg *Package, ei *EventInfo) ResolvedEvent {
 		Service:  ei.Service,
 		Name:     d.Name,
 		Contract: ContractName(pkg.Name, d),
-		Doc:      d.Doc,
+		Doc:      descriptionLines(d.Decorators, d.Doc),
 	}
 	if d.Payload == nil || d.Payload.Type == nil || d.Payload.Type.Name == nil {
 		return re
@@ -171,7 +176,7 @@ func (p *Project) ResolveConsumer(pkg *Package, svcName string, d *ast.ConsumerD
 		Package: pkg.Name,
 		Service: svcName,
 		Name:    d.Name,
-		Doc:     d.Doc,
+		Doc:     descriptionLines(d.Decorators, d.Doc),
 	}
 	if ev, ok := p.LookupEvent(pkg.Name, eventRefName(d.Event)); ok {
 		rc.Event = ev

@@ -16,6 +16,7 @@ import (
 // One method per `consume` the design declares; the payload is decoded
 // and validated before a method runs.
 type InventoryServiceHandler interface {
+	// A service may consume a contract it declares itself.
 	MirrorStock(ctx context.Context, payload *types.ItemStocked) error
 }
 

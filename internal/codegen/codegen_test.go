@@ -178,21 +178,6 @@ func TestUnknownTargetIsRejected(t *testing.T) {
 	}
 }
 
-// `--target typescript` names a target craftgo used to generate, so it is
-// told the target was removed rather than that the name is unknown.
-func TestRemovedTargetIsNamedAsRemoved(t *testing.T) {
-	proj := analyzeProject(t, ordersSrc)
-	err := Generate(proj, eventsConfig(), t.TempDir(), "typescript")
-	if err == nil {
-		t.Fatal("a removed target must be rejected")
-	}
-	for _, want := range []string{"typescript", "was removed"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error does not mention %q: %v", want, err)
-		}
-	}
-}
-
 // Every selectable name must be one the run actually understands.
 func TestSelectableTargetsAreKnown(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)

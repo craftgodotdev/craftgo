@@ -154,14 +154,6 @@ const (
 // than silently producing nothing.
 var SupportedLangs = []string{LangGo}
 
-// RemovedLangs names languages craftgo used to generate, and what became
-// of each. A manifest - or a `--target` - still naming one is told what
-// happened rather than being handed the generic list of accepted names,
-// which reads as a typo and sends the user looking for one.
-var RemovedLangs = map[string]string{
-	"typescript": "the typescript target was removed",
-}
-
 // DefaultEventTargets is the implicit target set for a manifest with no
 // `events.targets` block. A contracts project is imported across modules,
 // where Go forbids an `internal/` path, so its default lands outside.
@@ -514,9 +506,6 @@ func (c *Config) validate() error {
 	for _, t := range c.Events.Targets {
 		if t.Lang == "" {
 			return errors.New("events.targets entry is missing `lang`")
-		}
-		if gone, ok := RemovedLangs[t.Lang]; ok {
-			return fmt.Errorf("events.targets lang %q: %s - drop the row; the DSL and the Go output are unaffected", t.Lang, gone)
 		}
 		if !slices.Contains(SupportedLangs, t.Lang) {
 			return fmt.Errorf("events.targets lang %q is not supported - use %s",

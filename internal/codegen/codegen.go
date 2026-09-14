@@ -117,9 +117,6 @@ func selection(targets []string) (map[string]bool, error) {
 	}
 	sel := map[string]bool{}
 	for _, name := range targets {
-		if gone, ok := config.RemovedLangs[name]; ok {
-			return nil, fmt.Errorf("target %q: %s - use %s", name, gone, strings.Join(SelectableTargets(), ", "))
-		}
 		if !known[name] {
 			return nil, fmt.Errorf("unknown target %q - use %s", name, strings.Join(SelectableTargets(), ", "))
 		}
