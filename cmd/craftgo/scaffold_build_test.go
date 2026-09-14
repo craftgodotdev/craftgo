@@ -183,11 +183,9 @@ func TestScaffoldsCompile(t *testing.T) {
 				t.Fatalf("the generated project does not compile: %v\n%s", err, out)
 			}
 
-			// The YAML scaffolds reach no compiler, so parsing them is all
-			// that stands behind them. It catches a template that emits
-			// malformed YAML; a key the generated Config does not declare
-			// still passes, because config.Load unmarshals non-strictly and
-			// ignores it at runtime too.
+			// The YAML scaffolds reach no compiler, so a parse is what
+			// stands behind them. example.config.yaml stops here: nothing
+			// ever loads it, so its syntax is all that can be checked.
 			for rel, tmpl := range shape.yamlScaffolds {
 				body, err := os.ReadFile(filepath.Join(dir, rel))
 				if err != nil {
@@ -198,7 +196,57 @@ func TestScaffoldsCompile(t *testing.T) {
 					t.Errorf("%s emits invalid YAML in %s: %v", tmpl, rel, err)
 				}
 			}
+			if len(shape.yamlScaffolds) > 0 {
+				assertConfigRoundTrips(t, dir)
+			}
 		})
+	}
+}
+
+// configRoundTripTest decodes the generated config.yaml into the Config
+// the generated config.go declares, refusing a key the struct has no field
+// for. It runs inside the generated module because that is the only place
+// the type exists. KnownFields is the test being stricter than the
+// scaffold on purpose: config.Load unmarshals leniently, so at runtime a
+// key that no longer matches is dropped in silence and the setting it was
+// meant to carry reverts to its zero value.
+const configRoundTripTest = `package config
+
+import (
+	"bytes"
+	"os"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+func TestGeneratedConfigRoundTrips(t *testing.T) {
+	body, err := os.ReadFile("config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(body))
+	dec.KnownFields(true)
+	var c Config
+	if err := dec.Decode(&c); err != nil {
+		t.Fatalf("config.yaml does not fit the Config config.go declares: %v", err)
+	}
+}
+`
+
+// assertConfigRoundTrips runs configRoundTripTest against the generated
+// project. Only the shape carrying the YAML scaffolds needs it: neither
+// config template branches on the design - config.go.tmpl has no
+// conditional at all and config.yaml.tmpl substitutes one service name -
+// so a second shape would decode the same pair of files.
+func assertConfigRoundTrips(t *testing.T, dir string) {
+	t.Helper()
+	mustWrite(t, filepath.Join(dir, "config"), "roundtrip_test.go", configRoundTripTest)
+	run := exec.Command("go", "test", "./config/")
+	run.Dir = dir
+	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Errorf("config.yaml.tmpl and config.go.tmpl disagree: %v\n%s", err, out)
 	}
 }
 
