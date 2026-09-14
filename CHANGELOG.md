@@ -1006,7 +1006,66 @@ breaking change to the DSL or the generated layout bumps the major version.
   does not write, that no other design claims, and that still carries the
   `DO NOT EDIT` header. Gen-once scaffolds are never claimed, so your logic
   stubs stay.
+- **A keyless event no longer pins every message to one Kafka partition.**
+  The adapter built the record with `Key: []byte(msg.Key)`, which is
+  non-nil even when the key is empty, and kafka-go's hash balancer
+  round-robins only on a nil key - so every event without `@key` hashed
+  the empty slice to the same partition, capping throughput at one
+  consumer and leaving the rest idle.
 
+- **A claim is keyed to the event output, not to the project root.** Two
+  manifests sharing an output directory need not share a project root - a
+  deployable generating handlers under the repo root and the contract set
+  generating beside itself are rooted differently. Each recorded its design
+  path against its own root, so neither could resolve the other's, read it
+  as a design that had been deleted, and pruned the other's output away.
+- **Two designs writing one event file is an error.** Several manifests may
+  share an events output so a contract set has a single Go copy, but two
+  declaring the same service name wrote the same `publisher.go` -
+  last-writer-wins, with `make gen` ordering deciding which contract the
+  directory held and no diagnostic anywhere. The collision is reported
+  before anything is written, so the first design's output survives. The
+  rule now covers every file craftgo regenerates, not only the event ones -
+  see the claim records under Added.
+- **Two services consuming one contract under the same name is an error.**
+  The consumer name is the broker's consumer group, so `service Audit {
+  consume Process { event orders.Placed } }` and `service Metrics { consume
+  Process { event orders.Placed } }` joined one group and split the stream
+  half each instead of both receiving it - silently, and across design
+  packages, where neither team can see the other. The name only has to be
+  unique per contract, so two services may still share it on different
+  events.
+- **A type whose fields all delegate to another package compiles.** A struct
+  built only from scalars or enums declared elsewhere - `orderId
+  money.OrderID`, `total money.Amount`, no constraint decorator of its own -
+  generated a `validate.go` that called `fmt.Errorf` without importing `fmt`.
+  Generation exited 0 and the package did not build. The import now comes
+  from the emitter that writes the call.
+- **A `@group` whose name ends in `time` no longer breaks its routes file.**
+  The routes file imported `time` when the rendered handler call contained
+  `time.`; `@group("uptime")` renders `transportUptime.Ping(svcCtx)`, so a
+  segment with no `@timeout` anywhere imported `time` and used nothing. The
+  decision now comes from the decorator that renders the duration.
+- **A service named `Craft` no longer collides with the event runtime
+  import.** Its publisher was imported as `craftevents`, the alias the event
+  templates bind to `pkg/events`, so `svccontext/events.go` declared the name
+  twice. Publisher and consumer aliases now go through the same reserved-name
+  escape that payload packages already use.
+- **A design package whose name ends in `types` no longer breaks the files
+  that reference it.** Three emitters - the handler, the service scaffold and
+  the event publisher - decided whether to import the canonical `types`
+  package by searching the rendered type for the substring `types.`. A
+  reference such as `genpkg.GBox<paytypes.PItem>` touches nothing local but
+  contains that substring, so the import was emitted and nothing used it:
+  `imported as types and not used`, and in the scaffold's case the user had
+  to delete it by hand. The renderer now reports what it reached.
+- **`@key` over an enum from another package uses that enum's own backing
+  type.** `@key(tier)` on a field typed `xshared.XTier` (an int-valued enum)
+  resolved the enum against the package that *uses* it, found nothing, and
+  fell back to the string default, so Go emitted `string(payload.Tier)` - one
+  rune, not the digits, which `go vet` reports. The backing primitive is now
+  read from the declaring package, so a cross-package key renders the same text
+  as a local one.
 
 ### Removed
 
@@ -1057,35 +1116,6 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
-- **A keyless event no longer pins every message to one Kafka partition.**
-  The adapter built the record with `Key: []byte(msg.Key)`, which is
-  non-nil even when the key is empty, and kafka-go's hash balancer
-  round-robins only on a nil key - so every event without `@key` hashed
-  the empty slice to the same partition, capping throughput at one
-  consumer and leaving the rest idle.
-
-- **A claim is keyed to the event output, not to the project root.** Two
-  manifests sharing an output directory need not share a project root - a
-  deployable generating handlers under the repo root and the contract set
-  generating beside itself are rooted differently. Each recorded its design
-  path against its own root, so neither could resolve the other's, read it
-  as a design that had been deleted, and pruned the other's output away.
-- **Two designs writing one event file is an error.** Several manifests may
-  share an events output so a contract set has a single Go copy, but two
-  declaring the same service name wrote the same `publisher.go` -
-  last-writer-wins, with `make gen` ordering deciding which contract the
-  directory held and no diagnostic anywhere. The collision is reported
-  before anything is written, so the first design's output survives. The
-  rule now covers every file craftgo regenerates, not only the event ones -
-  see the claim records under Added.
-- **Two services consuming one contract under the same name is an error.**
-  The consumer name is the broker's consumer group, so `service Audit {
-  consume Process { event orders.Placed } }` and `service Metrics { consume
-  Process { event orders.Placed } }` joined one group and split the stream
-  half each instead of both receiving it - silently, and across design
-  packages, where neither team can see the other. The name only has to be
-  unique per contract, so two services may still share it on different
-  events.
 - **A decorator stranded after a mixin is an error.** `user string S
   @default("")` above `name string` parsed silently as field, mixin `S`,
   and a default on `name`, so formatting moved the decorator to the wrong
@@ -1103,37 +1133,6 @@ breaking change to the DSL or the generated layout bumps the major version.
   between decorator arguments, array elements, object fields, type
   parameters or type arguments (`@length(1 80)`) is an error rather than
   being inserted on format.
-- **A type whose fields all delegate to another package compiles.** A struct
-  built only from scalars or enums declared elsewhere - `orderId
-  money.OrderID`, `total money.Amount`, no constraint decorator of its own -
-  generated a `validate.go` that called `fmt.Errorf` without importing `fmt`.
-  Generation exited 0 and the package did not build. The import now comes
-  from the emitter that writes the call.
-- **A `@group` whose name ends in `time` no longer breaks its routes file.**
-  The routes file imported `time` when the rendered handler call contained
-  `time.`; `@group("uptime")` renders `transportUptime.Ping(svcCtx)`, so a
-  segment with no `@timeout` anywhere imported `time` and used nothing. The
-  decision now comes from the decorator that renders the duration.
-- **A service named `Craft` no longer collides with the event runtime
-  import.** Its publisher was imported as `craftevents`, the alias the event
-  templates bind to `pkg/events`, so `svccontext/events.go` declared the name
-  twice. Publisher and consumer aliases now go through the same reserved-name
-  escape that payload packages already use.
-- **A design package whose name ends in `types` no longer breaks the files
-  that reference it.** Three emitters - the handler, the service scaffold and
-  the event publisher - decided whether to import the canonical `types`
-  package by searching the rendered type for the substring `types.`. A
-  reference such as `genpkg.GBox<paytypes.PItem>` touches nothing local but
-  contains that substring, so the import was emitted and nothing used it:
-  `imported as types and not used`, and in the scaffold's case the user had
-  to delete it by hand. The renderer now reports what it reached.
-- **`@key` over an enum from another package uses that enum's own backing
-  type.** `@key(tier)` on a field typed `xshared.XTier` (an int-valued enum)
-  resolved the enum against the package that *uses* it, found nothing, and
-  fell back to the string default, so Go emitted `string(payload.Tier)` - one
-  rune, not the digits, which `go vet` reports. The backing primitive is now
-  read from the declaring package, so a cross-package key renders the same text
-  as a local one.
 
 ## [1.7.0] - 2026-09-07 [UTC+7]
 
