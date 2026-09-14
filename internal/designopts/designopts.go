@@ -13,6 +13,7 @@
 package designopts
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -81,21 +82,54 @@ type Source struct {
 	Text string
 }
 
-// Files lists every design file under designRoot, in walk order. Whatever
-// was found before an unreadable directory is returned alongside the
-// error, so a caller that would rather carry on can.
+// Files lists every design file under designRoot, in walk order. A
+// directory it cannot read fails the call and the paths are nil: a tool
+// that GENERATES from a design must not generate from half of one, and a
+// partial list is the input that would let it.
+//
+// [FilesBestEffort] is the other policy, for a caller that has to keep
+// working on a tree it can only partly see. The difference between them
+// is one line, and it is the whole decision.
 func Files(designRoot string) ([]string, error) {
 	var out []string
-	err := filepath.Walk(designRoot, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(designRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && config.IsDesignFile(path) {
+		if !d.IsDir() && config.IsDesignFile(path) {
 			out = append(out, path)
 		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// FilesBestEffort lists every design file it can read, in walk order,
+// SKIPPING a directory it cannot rather than stopping at it - so a file
+// after the unreadable one is still found.
+//
+// It returns no error, deliberately. A caller on this policy has already
+// decided it will carry on, and an error it must then discard is
+// indistinguishable from one it dropped by accident - which is exactly
+// how the editor came to analyse a truncated project and invent
+// unknown-symbol errors for types it simply had not read.
+func FilesBestEffort(designRoot string) []string {
+	var out []string
+	_ = filepath.WalkDir(designRoot, func(path string, d fs.DirEntry, err error) error {
+		// Returning nil for the error the walk reports is what continues
+		// past an unreadable directory; returning the error stops there.
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && config.IsDesignFile(path) {
+			out = append(out, path)
+		}
+		return nil
+	})
+	return out
 }
 
 // Load reads every design file under designRoot from disk.

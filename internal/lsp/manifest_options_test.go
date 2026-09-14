@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -182,5 +183,40 @@ func TestDesignProjectOfReturnsTheManifestWithTheRoot(t *testing.T) {
 	// two always travel together.
 	if cfg, root := designProjectOf(""); cfg != nil || root != "" {
 		t.Errorf("an untitled buffer = %v, %q; want nil and empty", cfg, root)
+	}
+}
+
+// The verifier's repro, at the level the symptom appeared. An unreadable
+// directory between two readable ones used to truncate the walk, so the
+// editor analysed a project missing `ccc` and reported the type it
+// declares as unknown - an error the CLI never produces and that no edit
+// by the user could clear.
+func TestAnUnreadableDirectoryDoesNotInventUnknownSymbols(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)
+	user := filepath.Join(root, "design", "aaa", "a.craftgo")
+	mustWrite(t, user, `package aaa
+type Uses { z ccc.Zed }
+`)
+	mustWrite(t, filepath.Join(root, "design", "bbb", "b.craftgo"), "package bbb\n")
+	mustWrite(t, filepath.Join(root, "design", "ccc", "c.craftgo"), `package ccc
+type Zed { id string }
+`)
+
+	blocked := filepath.Join(root, "design", "bbb")
+	if err := os.Chmod(blocked, 0o000); err != nil {
+		t.Skipf("cannot make %s unreadable: %v", blocked, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+	if _, err := os.ReadDir(blocked); err == nil {
+		t.Skip("directory is still readable (running as root?)")
+	}
+
+	s := newTestServer()
+	v := s.loadProject(user, readFileT(t, user))
+	for _, d := range v.diags {
+		if d.IsError() {
+			t.Errorf("the editor invented %q at %s - ccc is readable and declares Zed", d.Msg, d.Pos)
+		}
 	}
 }

@@ -149,8 +149,7 @@ func designProjectOf(fsPath string) (*config.Config, string) {
 // request: an editor has to keep working on a tree it can only partly
 // see.
 func designFilePaths(root string) []string {
-	out, _ := designopts.Files(root)
-	return out
+	return designopts.FilesBestEffort(root)
 }
 
 // designFiles reads every design file under root. The buffer at fsPath
