@@ -138,6 +138,7 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 		serves  bool
 	}{
 		{"4.2", kversion.V4_2_0(), true},
+		{"4.1", kversion.V4_1_0(), true},
 		{"4.0", kversion.V4_0_0(), false},
 		{"3.9", kversion.V3_9_0(), false},
 	}
@@ -154,7 +155,9 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 			})
 
 			if c.serves {
-				if err != nil {
+				// 4.1 serves every share key; what it cannot do is renew a
+				// lock, which is asserted separately.
+				if err != nil && !strings.Contains(err.Error(), "WithLockRenewInterval") {
 					t.Fatalf("Kafka %s serves the share APIs: %v", c.release, err)
 				}
 				return
@@ -162,7 +165,7 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 			if err == nil {
 				t.Fatalf("Kafka %s does not serve the share APIs and must be refused", c.release)
 			}
-			for _, want := range []string{"WithShareGroup", "4.2", "classic consumer group"} {
+			for _, want := range []string{"WithShareGroup", "4.1", "classic consumer group"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("refusal does not mention %q: %v", want, err)
 				}
@@ -588,4 +591,59 @@ func TestAnOrdinaryClientOptionIsPassedThrough(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("an ordinary option must not fail construction: %v", err)
 	}
+}
+
+// Kafka 4.1 serves every share key, so a presence check lets it through -
+// but renewal rides on ShareAcknowledge v2, and franz-go sets the renew
+// flag whatever the negotiated version is. On 4.1 the flag is simply not
+// on the wire, so the lock lapses under a slow handler and nothing
+// reports it. The floor is asserted on the VERSION, and only when
+// renewal is on.
+func TestSubscribeRefusesABrokerThatCannotRenewTheLock(t *testing.T) {
+	const contract = "orders.Placed"
+	addrs := cluster(t, contract, kversion.V4_1_0())
+
+	tr := New(addrs, WithShareGroup())
+	defer func() { _ = tr.Close() }()
+	err := tr.Subscribe(context.Background(), events.Subscription{
+		Event: contract, Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("subscribed to a broker that cannot renew a lock")
+	}
+	for _, want := range []string{"WithLockRenewInterval", "ShareAcknowledge v2", "v1"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
+	}
+}
+
+// The refusal is the renewal's, not share mode's: 4.1 serves share groups
+// and honours release and reject, which are v1 ack types. A deployment
+// that turns renewal off gets them.
+func TestABrokerWithoutRenewalStillServesShareModeWithoutIt(t *testing.T) {
+	const contract = "orders.Placed"
+	addrs := cluster(t, contract, kversion.V4_1_0())
+	shareFromEarliest(t, addrs, "no-renew")
+
+	tr := New(addrs, WithShareGroup(), WithLockRenewInterval(0))
+	defer func() { _ = tr.Close() }()
+	publish(t, tr, contract, "o-1", []byte(`{}`))
+
+	got := newDeliveries()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: contract, Consumer: "C", Group: "no-renew",
+		Handle: func(_ context.Context, msg *events.Message) error {
+			got.add(msg)
+			msg.Redeliver()
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	// Release is a v1 ack type, so the record comes back on 4.1.
+	got.waitFor(t, 2)
 }

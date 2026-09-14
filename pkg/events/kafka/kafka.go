@@ -29,7 +29,9 @@
 // broker answered would change under a failover with nothing to see it,
 // so a share group is asked for and, if the broker cannot serve one,
 // [Transport.Subscribe] refuses rather than quietly consuming as a
-// classic group. Share groups need Kafka 4.2 or newer.
+// classic group. Share groups need Kafka 4.1 or newer; renewing a
+// record's acquisition lock needs 4.2, and [WithLockRenewInterval] says
+// what happens without it.
 //
 // # Ordering across contracts is not supported
 //
@@ -189,10 +191,13 @@ func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err 
 // one calling [events.Message.Reject] gives it up.
 //
 // Requires a broker serving ShareGroupHeartbeat, ShareFetch and
-// ShareAcknowledge - Kafka 4.2 or newer. [Transport.Subscribe] probes for
+// ShareAcknowledge - Kafka 4.1 or newer. [Transport.Subscribe] probes for
 // all three and refuses rather than consuming as a classic group, because
 // a delivery guarantee that changed with the broker would change under a
 // failover with nothing to see it. Off by default.
+//
+// [WithLockRenewInterval] needs more: renewal rides on ShareAcknowledge
+// v2, which is Kafka 4.2.
 //
 // A share group starts at the END of the topic unless the group config
 // share.auto.offset.reset says otherwise, so a group joining a topic that
@@ -608,8 +613,18 @@ func (t *Transport) probeShareAPIs(ctx context.Context) error {
 		{apiShareAcknowledge, "ShareAcknowledge"},
 	} {
 		if !served.HasKey(api.key) {
-			return fmt.Errorf("kafka: WithShareGroup needs %s (API key %d), which this broker does not serve - share groups are Kafka 4.2 and newer; drop the option to consume as a classic consumer group, which cannot redeliver or reject",
+			return fmt.Errorf("kafka: WithShareGroup needs %s (API key %d), which this broker does not serve - share groups are Kafka 4.1 and newer; drop the option to consume as a classic consumer group, which cannot redeliver or reject",
 				api.name, api.key)
+		}
+	}
+
+	// Renewal rides on ShareAcknowledge v2: the renew flag is a v2 field,
+	// so a v1 broker never receives it and the lock lapses under a slow
+	// handler with nothing to see. Kafka 4.1 serves every share key at v1.
+	if t.lockRenew > 0 {
+		if v, _ := served.LookupMaxKeyVersion(apiShareAcknowledge); v < 2 {
+			return fmt.Errorf("kafka: WithLockRenewInterval needs ShareAcknowledge v2 (API key %d), and this broker serves v%d - renewing a record's acquisition lock is Kafka 4.2 and newer, and on an older one a handler slower than the lock is delivered again with nothing reporting it; pass WithLockRenewInterval(0) to consume without renewal",
+				apiShareAcknowledge, v)
 		}
 	}
 

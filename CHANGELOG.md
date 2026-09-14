@@ -777,6 +777,17 @@ breaking change to the DSL or the generated layout bumps the major version.
   own mutex with a `sync.Cond`, and a nested publish from inside a handler is
   joined the way the dead-letter shape has always needed.
 
+- **The share-mode probe asserts the version renewal needs, not the key.** Kafka
+  4.1 serves ShareGroupHeartbeat, ShareFetch and ShareAcknowledge, so a
+  presence-only check let a 4.1 broker in while the refusal text promised 4.2.
+  Renewal rides on ShareAcknowledge **v2** - `IsRenewAck` is a v2 field and
+  franz-go sets it whatever version was negotiated - so on 4.1 the flag never
+  reached the broker and the lock lapsed under a slow handler with nothing to
+  see. `Subscribe` now refuses such a broker, naming the capability rather than
+  the API key, and only when renewal is on: `WithLockRenewInterval(0)` consumes
+  on 4.1 without it. Release and reject are v1 ack types and have always worked
+  there.
+
 - **A Kafka share-group handler keeps its record while it runs.** The broker
   holds each record under an acquisition lock -
   `group.share.record.lock.duration.ms`, 30s by default - and a handler slower

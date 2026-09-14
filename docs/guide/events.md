@@ -752,11 +752,18 @@ just succeeded without preventing one duplicate run - they all happen before
 any ack.
 :::
 
-::: warning Share groups need Kafka 4.2, and the mode is never detected
+::: warning Share groups need Kafka 4.1, renewal needs 4.2, and neither is detected
 `Subscribe` asks the broker what it serves and **refuses** if the share APIs are
 missing, rather than quietly consuming as a classic group. A delivery guarantee
 that changed with whichever broker answered would change under a failover with
 nothing to see it.
+
+The two floors are different. Share mode itself is **4.1**: release and reject
+are v1 ack types and work there. Lock renewal is **4.2**, because the renew flag
+is a ShareAcknowledge **v2** field - on 4.1 it is not on the wire at all, so a
+handler slower than the lock is delivered again and nothing reports it. So the
+version is asserted, not the key's presence, and only when renewal is on:
+`WithLockRenewInterval(0)` consumes on 4.1 without it.
 
 The refusal is at subscribe, not at the first message, which matters more than
 it sounds: the client reports a missing API on its first poll, on a goroutine
