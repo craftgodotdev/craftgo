@@ -148,6 +148,17 @@ breaking change to the DSL or the generated layout bumps the major version.
   server's attempt number, 1 on the first, the same base as a Kafka share group.
   No new dependency: `nats.go` already ships the `jetstream` package.
 
+  **`nats.WithMaxDeliveries(n)` bounds a redelivery loop** - the same guard the
+  Kafka adapter has, with the same default of 5, and zero unbounded and chosen
+  explicitly. A middleware that keeps asking for a message nothing can handle
+  stops being obeyed once the server's count reaches it, and the message is
+  terminated; one that SUCCEEDS on the last attempt is still taken as done. The
+  cap is applied in the adapter rather than through the consumer's own
+  `MaxDeliver`, which counts every delivery whatever its outcome - it would give
+  up on a message three crashed consumers merely handed on - and which lives on
+  the durable, where the last subscriber to start would set it for everyone else
+  in the group.
+
   **`Subscribe` refuses at start-up rather than consuming nothing.** It checks
   that JetStream is on, that a stream carries the subject, and that the durable
   name is legal, in that order, registering nothing on failure. The subject

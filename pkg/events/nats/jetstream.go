@@ -51,10 +51,11 @@ type JetStream struct {
 	subject func(contract string) string
 	onError func(sub events.Subscription, msg *events.Message, err error)
 
-	probeTimeout time.Duration
-	ackWait      time.Duration
-	maxInFlight  int
-	heartbeat    time.Duration
+	probeTimeout  time.Duration
+	ackWait       time.Duration
+	maxInFlight   int
+	maxDeliveries int
+	heartbeat     time.Duration
 
 	mu        sync.Mutex
 	consuming []jetstream.ConsumeContext
@@ -113,6 +114,24 @@ func WithMaxInFlight(n int) JetStreamOption {
 	return func(j *JetStream) { j.maxInFlight = n }
 }
 
+// WithMaxDeliveries caps how many times the server may hand one message
+// over before this adapter gives it up rather than asking for it again.
+// It bounds a redelivery loop: a middleware that keeps calling
+// [events.Message.Redeliver] on a message nothing can handle stops being
+// obeyed once the count is reached, and the message is terminated. A
+// delivery that SUCCEEDS on the last attempt is still taken as done.
+//
+// Default 5. Zero is unbounded and has to be chosen.
+//
+// The cap is applied here rather than through the consumer's own
+// MaxDeliver, which counts every delivery whatever its outcome and would
+// give up on a message three crashed consumers merely handed on. It also
+// lives on the consumer, so the last subscriber to start would set it for
+// every other member of the group.
+func WithMaxDeliveries(n int) JetStreamOption {
+	return func(j *JetStream) { j.maxDeliveries = n }
+}
+
 // NewJetStream binds a transport to an existing connection. The caller
 // owns the connection's lifetime; [JetStream.Close] stops only this
 // transport's subscriptions.
@@ -122,13 +141,14 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 		return nil, fmt.Errorf("nats: jetstream: %w", err)
 	}
 	j := &JetStream{
-		js:           js,
-		subject:      func(c string) string { return c },
-		probeTimeout: 5 * time.Second,
-		ackWait:      30 * time.Second,
-		maxInFlight:  64,
-		heartbeat:    0, // derived from ackWait at subscribe time
-		streamFor:    map[string]string{},
+		js:            js,
+		subject:       func(c string) string { return c },
+		probeTimeout:  5 * time.Second,
+		ackWait:       30 * time.Second,
+		maxInFlight:   64,
+		maxDeliveries: 5,
+		heartbeat:     0, // derived from ackWait at subscribe time
+		streamFor:     map[string]string{},
 	}
 	for _, o := range opts {
 		o(j)
@@ -427,6 +447,9 @@ func (j *JetStream) holdOpen(m jetstream.Msg) func() {
 func (j *JetStream) answer(m jetstream.Msg, msg *events.Message) error {
 	switch msg.Disposition() {
 	case events.DispositionRedeliver:
+		if j.maxDeliveries > 0 && msg.Deliveries() >= j.maxDeliveries {
+			return m.Term()
+		}
 		return m.Nak()
 	case events.DispositionReject:
 		return m.Term()

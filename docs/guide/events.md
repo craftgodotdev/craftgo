@@ -677,6 +677,21 @@ through either arrives the same. It is a separate type because a JetStream
 delivery is **not** a `*nats.Msg` - reach it with `nats.JetStreamMsgFrom(ctx)`,
 which gives the stream and consumer sequences.
 
+`nats.WithMaxDeliveries` bounds a redelivery loop, exactly as the Kafka option
+of the same name does: a middleware that keeps asking for a message nothing can
+handle stops being obeyed once the server's count reaches it, and the message is
+terminated. A delivery that *succeeds* on the last attempt is still taken as
+done. The default is 5; zero is unbounded and has to be chosen.
+
+```go
+nats.NewJetStream(conn, nats.WithMaxDeliveries(5))
+```
+
+The cap is the adapter's, not the consumer's `MaxDeliver`. That one counts every
+delivery whatever its outcome, so it would give up on a message three crashed
+consumers merely handed on, and it lives on the durable - where the last
+subscriber to start would set it for every other member of the group.
+
 ::: warning You provision the stream; craftgo never does
 craftgo does not create streams and could not correctly: one stream covering
 `orders.>` spans contracts any single subscription knows nothing about, and

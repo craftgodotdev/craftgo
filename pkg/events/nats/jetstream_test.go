@@ -296,6 +296,104 @@ func TestJetStreamRedeliversAndRejects(t *testing.T) {
 	}
 }
 
+// A middleware that keeps asking for a message nothing can handle is a
+// loop, and the cap is what ends it. Measured without one: the same
+// message passes 200,000 deliveries inside ten seconds.
+func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
+	const cap = 3
+	seen := redeliverForever(t, "capped", craftnats.WithMaxDeliveries(cap))
+
+	seen.waitFor(t, cap, 20*time.Second)
+	time.Sleep(3 * time.Second) // a terminated message must not come back
+	if got := seen.counts(); len(got) != cap {
+		t.Fatalf("%d deliveries, want %d - the cap has to end the loop", len(got), cap)
+	} else if got[0] != 1 || got[cap-1] != cap {
+		t.Errorf("delivery counts = %v, want 1..%d", got, cap)
+	}
+}
+
+// The cap is a guard a middleware author can forget, so it applies
+// without being asked for. Five, the same as the Kafka adapter's.
+func TestTheDefaultMaxDeliveriesIsFive(t *testing.T) {
+	seen := redeliverForever(t, "default")
+
+	seen.waitFor(t, 5, 20*time.Second)
+	time.Sleep(3 * time.Second)
+	if got := seen.counts(); len(got) != 5 {
+		t.Fatalf("%d deliveries, want 5 - the default cap has to apply on its own", len(got))
+	}
+}
+
+// Zero is unbounded, which is what makes the default a decision rather
+// than a ceiling nobody chose. The same loop keeps going well past where
+// the default would have stopped it.
+func TestMaxDeliveriesZeroIsUnbounded(t *testing.T) {
+	seen := redeliverForever(t, "uncapped", craftnats.WithMaxDeliveries(0))
+	seen.waitFor(t, 50, 20*time.Second)
+}
+
+// redeliverForever runs one message through a handler that always fails
+// and a middleware that always asks for it back, and reports every
+// delivery the server made.
+func redeliverForever(t *testing.T, group string, opts ...craftnats.JetStreamOption) *attempts {
+	t.Helper()
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn, append(opts, craftnats.WithAckWait(2*time.Second))...)
+
+	seen := &attempts{}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: group,
+		Handle: func(_ context.Context, m *events.Message) error {
+			seen.add(m.Deliveries())
+			m.Redeliver() // never gives up
+			return errors.New("nothing can handle this")
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return seen
+}
+
+// attempts is the delivery count of every delivery, in order.
+type attempts struct {
+	mu  sync.Mutex
+	got []int
+}
+
+func (a *attempts) add(n int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.got = append(a.got, n)
+}
+
+func (a *attempts) counts() []int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]int(nil), a.got...)
+}
+
+func (a *attempts) waitFor(t *testing.T, n int, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		if got := a.counts(); len(got) >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d deliveries after %s, want %d", len(a.counts()), within, n)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // THE HEARTBEAT'S VALUE. A handler slower than AckWait is not redelivered
 // behind itself: the message is held open while it runs. Without it this
 // is a duplicate roughly one run in ten, which is the worst kind of bug -
