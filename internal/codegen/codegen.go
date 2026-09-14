@@ -113,7 +113,11 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string, ta
 			return err
 		}
 	}
-	// Filed last: a prune reads what the previous run claimed.
+	// The sweep reads what the LAST run claimed, and the record is filed
+	// last because it overwrites that list.
+	if err := pruneClaims(outs, proj.Root); err != nil {
+		return err
+	}
 	return recordClaims(outs, cfg, proj.Root)
 }
 
@@ -177,15 +181,18 @@ func GenerateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoo
 	if err := generateEventTargets(deployed, cfg, projectRoot, sel); err != nil {
 		return err
 	}
+	if err := pruneClaims(outs, proj.Root); err != nil {
+		return err
+	}
 	return recordClaims(outs, cfg, proj.Root)
 }
 
 // generateEventTargets is [GenerateEventTargets] narrowed to a selection.
 func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string, sel map[string]bool) error {
-	// A design with no event still runs every target: each one prunes
-	// what it owns, and the artefacts of an event the design used to
-	// declare are exactly what has to go. Skipping the run would leave a
-	// publisher on disk for a contract nobody declares.
+	// A design with no event still runs every target: the artefacts of an
+	// event the design used to declare are exactly what has to go, and a
+	// target that does not run also claims nothing - so nothing would
+	// prune the publisher left on disk for a contract nobody declares.
 	for _, target := range LangTargets {
 		if !sel[target.Lang] {
 			continue

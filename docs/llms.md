@@ -584,7 +584,7 @@ Every REGENERATED file (the ones carrying `DO NOT EDIT`) is claimed by the desig
 
 - Two DIFFERENT designs writing one file is an error, reported before anything is written and naming both designs and both manifests.
 - Two manifests reading ONE design file one claim, so the deployables of a shared design may write the contract half together.
-- A prune removes only what the same design produced on its last run.
+- A prune removes only what the same design produced on its last run, across every regenerated output - transport, routes, wiring, `svccontext`, the event packages, a removed DSL package's `output.types` folder, the documents - and only while the file still carries its `DO NOT EDIT` header.
 - Gen-once scaffolds are never claimed: they are written only when missing.
 
 ### `openapi.basePath`

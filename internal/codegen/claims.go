@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -106,6 +107,74 @@ func checkClaims(outs []claim.Output, cfg *config.Config, designRoot, projectRoo
 		}
 	}
 	return nil
+}
+
+// pruneClaims deletes what this design wrote last run and does not write
+// this one. The claim record is the only list that can identify them: a
+// service the design has dropped takes its name with it, so nothing left
+// in the design says which file on disk used to be its.
+//
+// It runs over the whole plan rather than inside one emitter, so every
+// regenerated output is swept on the same terms - the handler set of a
+// service that is gone, its library package, its routes, the container's
+// generated files, the types folder of a DSL package that was deleted.
+//
+// A file goes only when it is this design's (another design's claim wins
+// - that is how deployables share a contract set), the plan no longer
+// names it, and it still carries the generated header, so a hand-written
+// file or a gen-once scaffold at the same path stays. Gen-once scaffolds
+// are never claimed, so they are never even considered.
+//
+// It must run after every generator and before [recordClaims], which
+// overwrites the record it reads.
+func pruneClaims(outs []claim.Output, designRoot string) error {
+	for _, out := range outs {
+		keep := make(map[string]bool, len(out.Files))
+		for _, file := range out.Files {
+			keep[file] = true
+		}
+		mine := claim.Name(claim.Key(out.Root, designRoot))
+		record, filed := claim.Live(claim.Read(out.Root), out.Root)[mine]
+		if !filed {
+			continue
+		}
+		foreign := claim.Foreign(out.Root, mine)
+		var emptied []string
+		for _, rel := range record.Files {
+			file := filepath.Join(out.Root, filepath.FromSlash(rel))
+			if _, taken := foreign[file]; taken || keep[file] {
+				continue
+			}
+			if !claim.Generated(file) {
+				continue
+			}
+			if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			emptied = append(emptied, filepath.Dir(file))
+		}
+		pruneEmptyDirs(out.Root, emptied)
+	}
+	return nil
+}
+
+// pruneEmptyDirs removes the directories a prune emptied, deepest first,
+// and the parents that empties in turn. It stops at the output root: the
+// directory is the claim's, and a run that leaves it bare still owns it.
+func pruneEmptyDirs(root string, dirs []string) {
+	sort.Sort(sort.Reverse(sort.StringSlice(dirs)))
+	for _, dir := range dirs {
+		for strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) > 0 {
+				break
+			}
+			if os.Remove(dir) != nil {
+				break
+			}
+			dir = filepath.Dir(dir)
+		}
+	}
 }
 
 // recordClaims files this run's claim on every directory it wrote into.

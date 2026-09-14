@@ -992,6 +992,21 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **An absolute `design.from` or `design.root` is read as the path it is**,
   instead of being appended to the folder holding the manifest.
 
+- **Renaming or deleting a service clears its application half too.** The
+  prune ran over the event contracts only, so recutting a design - 25
+  consuming services into 15 under new names - wrote the new
+  `internal/transport/<service>-consumers.go` files and pruned the old
+  library packages, but left the 25 old handler sets on disk importing logic
+  packages the run no longer generated. The project stopped building, and
+  `craftgo gen` could not put it right: the claim record naming those files
+  was overwritten on the way out. One prune now sweeps every output a run
+  regenerates - transport, routes, wiring, the `svccontext` fields, the event
+  packages, the `output.types` folder of a DSL package that is gone, the
+  documents - deleting what this design's last run claimed, that this one
+  does not write, that no other design claims, and that still carries the
+  `DO NOT EDIT` header. Gen-once scaffolds are never claimed, so your logic
+  stubs stay.
+
 
 ### Removed
 

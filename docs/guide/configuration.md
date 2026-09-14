@@ -220,7 +220,7 @@ Commit them. They are what lets several manifests write into one tree safely:
 
 - **Two designs writing one file is an error**, reported before anything is written and naming both designs and both manifests. Without it the second run silently overwrote the first, and the order of your build decided what the directory held - a deployable could subscribe half its consumers and say nothing.
 - **Two manifests reading ONE design file one claim**, so the deployables of a shared design keep writing the contract half they agree on. Both are listed under `manifests`.
-- **A prune deletes only what the same design produced last time**, so a design that drops a service clears its own stale output and leaves a sibling's alone.
+- **A prune deletes only what the same design produced last time**, so a design that drops a service clears its own stale output and leaves a sibling's alone. It covers every output the run regenerates, not just the event contracts: the handler sets, routes, wiring, the `svccontext` fields, the publisher and consumer packages, the `output.types` folder of a DSL package that is gone, the documents. Rename a service and its old files go with its name - the claim record is the only list that still knows what they were called. A file whose `DO NOT EDIT` header you removed is left where it is.
 
 Gen-once scaffolds are outside this: they are written only when missing, so no second manifest can overwrite one.
 
