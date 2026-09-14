@@ -462,6 +462,45 @@ than installed with `WithMiddleware`: the bus wraps that from outside, as one
 opaque handler, so put `craftevents.Recover()` at its innermost end to get the
 same visibility. A chain on the bus needs nothing.
 
+### Reaching the broker's own message
+
+`events.Message` carries what every transport has. When a middleware needs what
+only one of them has - a Kafka partition and offset, a NATS reply subject, a
+header craftgo did not map - the adapter hands it over:
+
+```go
+func PartitionLog(logger log.Logger) craftevents.Middleware {
+	return func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
+		return func(ctx context.Context, msg *craftevents.Message) error {
+			if rec, ok := kafka.RecordFrom(ctx); ok {
+				logger.Info("delivery", log.Int("partition", int(rec.Partition)))
+			}
+			return next(ctx, msg)
+		}
+	}
+}
+```
+
+`kafka.RecordFrom(ctx)` gives a `*kgo.Record`, `nats.MsgFrom(ctx)` a `*nats.Msg`.
+Each reports `false` on a delivery from any other transport - the key is private
+to its adapter, so a Kafka-typed read on a NATS delivery cannot find anything.
+`MustRecord` / `MustMsg` panic instead, which the bus turns into a
+`*PanicError` naming the consumer, the group and the contract: use those when
+running elsewhere is a wiring mistake you want to hear about on the first
+message.
+
+The in-process transport has no raw message and so has **no accessor at all** -
+a middleware that reads one will not compile against it, which is the mistake
+caught as early as it can be.
+
+::: warning Read it, do not keep it
+Take what you need and let the record go. In a Kafka share group the next poll
+finalises the previous one, so a record held past the handler's return reports a
+delivery count of zero and its `Ack` does nothing, both silently. Decide through
+`msg.Settle()` / `Redeliver()` / `Reject()` instead - that is answered for at the
+right moment whatever the transport.
+:::
+
 ### Deciding what happens to a delivery
 
 A middleware can ask for something other than "done" - through the message,

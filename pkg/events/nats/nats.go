@@ -162,7 +162,7 @@ func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) erro
 	subject := t.subject(sub.Event)
 	s, err := t.conn.QueueSubscribe(subject, sub.GroupName(), func(m *nats.Msg) {
 		msg := decode(sub.Event, m)
-		if err := sub.Handle(ctx, msg); err != nil && t.onError != nil {
+		if err := sub.Handle(withMsg(ctx, m), msg); err != nil && t.onError != nil {
 			t.onError(sub, msg, err)
 		}
 	})

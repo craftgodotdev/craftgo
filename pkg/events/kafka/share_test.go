@@ -452,3 +452,60 @@ func TestAForeignContractOnTheTopicIsReported(t *testing.T) {
 		t.Errorf("report does not name the skipped contract: %v", reported[0])
 	}
 }
+
+// A middleware reaching for what events.Message does not carry - the
+// partition, the offset, the record timestamp - gets the record the
+// delivery came from.
+func TestTheRecordIsReachableFromADelivery(t *testing.T) {
+	const contract = "orders.Placed"
+	addrs := cluster(t, contract, kversion.V4_2_0())
+
+	tr := New(addrs)
+	defer func() { _ = tr.Close() }()
+
+	type seen struct {
+		topic  string
+		key    string
+		offset int64
+		found  bool
+	}
+	var (
+		mu  sync.Mutex
+		got seen
+	)
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: contract, Consumer: "C", Group: "raw",
+		Handle: func(hctx context.Context, _ *events.Message) error {
+			mu.Lock()
+			if rec, ok := RecordFrom(hctx); ok {
+				got = seen{topic: rec.Topic, key: string(rec.Key), offset: rec.Offset, found: true}
+			}
+			mu.Unlock()
+			close(done)
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	publish(t, tr, contract, "o-1", []byte(`{"id":1}`))
+
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("no delivery")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !got.found {
+		t.Fatal("RecordFrom found no record on a Kafka delivery")
+	}
+	if got.topic != contract || got.key != "o-1" {
+		t.Errorf("record = topic %q key %q, want %q / o-1", got.topic, got.key, contract)
+	}
+	if got.offset < 0 {
+		t.Errorf("offset = %d - the record is not the delivered one", got.offset)
+	}
+}

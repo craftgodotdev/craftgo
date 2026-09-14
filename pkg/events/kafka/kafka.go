@@ -606,7 +606,7 @@ func (t *Transport) deliver(ctx context.Context, sub events.Subscription, rec *k
 		return
 	}
 
-	if err := sub.Handle(ctx, msg); err != nil && t.onError != nil {
+	if err := sub.Handle(withRecord(ctx, rec), msg); err != nil && t.onError != nil {
 		t.onError(sub, msg, err)
 	}
 	if t.share {

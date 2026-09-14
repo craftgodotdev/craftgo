@@ -141,6 +141,24 @@ breaking change to the DSL or the generated layout bumps the major version.
   broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
   where the transport does not keep one.
 
+- **A middleware can reach the broker's own message.** `kafka.RecordFrom(ctx)`
+  returns the `*kgo.Record` a delivery came from and `nats.MsgFrom(ctx)` the
+  `*nats.Msg` - for the partition, the offset, the record timestamp, a reply
+  subject, a header craftgo did not map. `MustRecord` / `MustMsg` panic instead
+  of reporting false, which the bus turns into a `*PanicError` naming the
+  subscription.
+
+  Each adapter keeps its own unexported context key, so a Kafka-typed read on a
+  NATS delivery cannot find anything: the failure is structural rather than a
+  nil that reads as "this delivery had none". The in-process transport has no
+  raw message and so has **no accessor at all** - a middleware that reads one
+  does not compile against it.
+
+  Take what you need and let it go rather than keeping the record: in a Kafka
+  share group the next poll finalises the previous one, so a record held past
+  the handler's return reports a delivery count of zero and its `Ack` does
+  nothing. Decide through `msg.Settle()` / `Redeliver()` / `Reject()`.
+
 - **The Kafka adapter no longer destroys `WithDedupID`.** It is carried as the
   `craftgo-dedup-id` record header and read back on the consuming side, so a
   consumer can recognise a repeat for itself. Before this it reached no record

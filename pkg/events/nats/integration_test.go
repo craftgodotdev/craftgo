@@ -292,3 +292,72 @@ func TestCallerMetadataOverNATS(t *testing.T) {
 		t.Fatal("no delivery")
 	}
 }
+
+// A middleware reaching for what events.Message does not carry gets the
+// NATS message the delivery came from - proved through the real Subscribe
+// path against a real server, because the wiring is what is under test
+// and a unit test of the accessor would not exercise it.
+func TestTheRawMessageIsReachableOverNATS(t *testing.T) {
+	conn := runServer(t)
+	tr := craftnats.New(conn)
+	defer func() { _ = tr.Close() }()
+
+	type seen struct {
+		subject  string
+		reply    string
+		unmapped string
+		found    bool
+	}
+	var (
+		mu   sync.Mutex
+		got  seen
+		done = make(chan struct{})
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.OrderPlaced", Consumer: "C", Group: "raw",
+		Handle: func(hctx context.Context, _ *events.Message) error {
+			mu.Lock()
+			if m, ok := craftnats.MsgFrom(hctx); ok {
+				got = seen{
+					subject:  m.Subject,
+					reply:    m.Reply,
+					unmapped: m.Header.Get("x-unmapped"),
+					found:    true,
+				}
+			}
+			mu.Unlock()
+			close(done)
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	// Published raw so the message carries a header this adapter does not
+	// map, which is the reason to reach for the raw message at all.
+	raw := natsclient.NewMsg("orders.OrderPlaced")
+	raw.Data = []byte(`{"orderId":"o-1"}`)
+	raw.Header.Set("x-unmapped", "kept")
+	if err := conn.PublishMsg(raw); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no delivery")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !got.found {
+		t.Fatal("MsgFrom found no message on a NATS delivery - Subscribe did not carry it")
+	}
+	if got.subject != "orders.OrderPlaced" {
+		t.Errorf("subject = %q", got.subject)
+	}
+	if got.unmapped != "kept" {
+		t.Errorf("the unmapped header is not reachable: %q", got.unmapped)
+	}
+}
