@@ -808,6 +808,25 @@ breaking change to the DSL or the generated layout bumps the major version.
   inside it. Longer than that window and the retry lands outside it, where
   nothing deduplicates it.
 
+- **A JetStream publish is not failed because the caller's context ended.** The
+  single-message `Publish` had the batch bug one method over: the caller's
+  context bounded the wait for the stream's acknowledgement, and the message is
+  on the wire before any answer can come back, so a context that ended in that
+  window turned a stored message into a reported failure. `Publish` returns a
+  plain error, which `BatchPublisher`'s contract defines as "nothing arrived",
+  so the caller republishes. Measured against an embedded server, 50 publishes
+  per budget: at 10µs and 50µs every one of the 50 was reported failed and all
+  50 were on the stream; at 150µs, 6 of 50; at 400µs the window closed. One
+  message and one retry rather than a whole batch, but the same mechanism and
+  the same duplicate.
+
+  The wait now drops the caller's cancellation and keeps this transport's own,
+  so `Close` still ends it, and `nats.WithPublishAckTimeout` bounds it - the
+  rule being that a wait for a broker's verdict is bounded by the adapter's
+  timeout, never by the caller's context. A context already cancelled is still
+  refused before anything is published, which is now `Publish`'s own check
+  rather than the client's.
+
 - **`memory.Transport.Drain()` is safe to call while another goroutine
   publishes.** It joined on a `sync.WaitGroup` that `Publish` counted into from
   the CALLER's goroutine, which is the one thing a WaitGroup forbids - so a

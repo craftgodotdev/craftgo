@@ -242,10 +242,40 @@ func (j *JetStream) CanDisposition(d events.Disposition) bool {
 // Publish sends one message and waits for the stream to acknowledge it.
 // A nil error means the stream stored it.
 //
+// ctx decides whether the message is published, and not what becomes of
+// it, exactly as in [JetStream.PublishBatch]: one already cancelled sends
+// nothing, and one cancelled while the acknowledgement is in flight does
+// not end the wait. It cannot usefully - the message is on the wire
+// before any answer can come back, so giving up unsends nothing and
+// reports a stored message as failed, which the caller reads as "nothing
+// arrived" and publishes again.
+//
+// The wait is bounded by [WithPublishAckTimeout], through the deadline
+// the client applies to a publish that carries none, and ended by
+// [JetStream.Close].
+//
 // For fire-and-forget, publish through the core [Transport] instead: the
 // two are separate types precisely so a project can use one for each side.
 func (j *JetStream) Publish(ctx context.Context, msg *events.Message) error {
-	if _, err := j.js.PublishMsg(ctx, encodeTo(j.subject(msg.Event), msg)); err != nil {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
+	}
+	if j.closeCtx.Err() != nil {
+		return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
+	}
+
+	// Stripped of the caller's cancellation, and re-armed with this
+	// transport's own: Close is a fact about the waiter, a cancelled ctx
+	// only a fact about the caller.
+	waitCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancel()
+	stopOnClose := context.AfterFunc(j.closeCtx, cancel)
+	defer stopOnClose()
+
+	if _, err := j.js.PublishMsg(waitCtx, encodeTo(j.subject(msg.Event), msg)); err != nil {
+		if j.closeCtx.Err() != nil {
+			return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
+		}
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
 	}
 	return nil

@@ -699,6 +699,11 @@ the wire, and one cancelled after that does not cut the wait short. It cannot -
 by then every message is on the wire, and giving up would name messages the
 stream has stored as unsent, which the caller retries and so publishes twice.
 
+The single-message `Publish` follows the same rule for the same reason. A wait
+for the stream's verdict is bounded by the adapter's own timeout, never by the
+caller's context - a context that ends mid-acknowledgement unsends nothing and
+only turns a stored message into a reported failure.
+
 `nats.WithPublishAckTimeout` bounds that wait instead, and an acknowledgement
 that never arrives fails its own message. The default is 30s, and the same
 number bounds a synchronous `Publish` that arrives without a deadline of its

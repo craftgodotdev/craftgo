@@ -962,3 +962,95 @@ func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
 		t.Errorf("publish took %s - it is bounded by the client's default, not WithPublishAckTimeout", elapsed)
 	}
 }
+
+// A context that ends while the acknowledgement is in flight does not
+// fail a message the stream stored.
+//
+// The publish is on the wire before any answer can come back, so ending
+// the wait unsends nothing - it only turns a stored message into a
+// reported failure, and the caller reads a plain error as "nothing
+// arrived". Measured against this server, a budget below the ack round
+// trip failed every publish while the stream held every one of them.
+func TestPublishDoesNotFailAMessageTheStreamStored(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Microsecond)
+	defer cancel()
+
+	if err := tr.Publish(ctx, &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
+		t.Fatalf("publish: %v - the stream stored this, so reporting it failed has the caller publish it twice", err)
+	}
+	if n := storedIn(t, conn, "ORDERS"); n != 1 {
+		t.Errorf("stream holds %d messages, want 1", n)
+	}
+}
+
+// A context already cancelled sends nothing. The wait drops the caller's
+// cancellation, so this is what keeps a cancelled publish from going out.
+func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := tr.Publish(ctx, &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+		t.Errorf("stream holds %d messages, want 0", n)
+	}
+}
+
+// Close ends a single publish that is waiting, the way it ends a batch.
+func TestCloseEndsASinglePublishThatIsWaiting(t *testing.T) {
+	conn := runJetStreamServer(t)
+	quietStream(t, conn, "QUIET", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(60*time.Second))
+
+	done := make(chan error, 1)
+	started := time.Now()
+	go func() {
+		done <- tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)})
+	}()
+
+	time.Sleep(300 * time.Millisecond)
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if elapsed := time.Since(started); elapsed > 10*time.Second {
+			t.Errorf("the publish took %s to return - it waited out the ack timeout instead of the close", elapsed)
+		}
+		if !errors.Is(err, craftnats.ErrClosed) {
+			t.Errorf("err = %v, want ErrClosed", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Close did not end the publish")
+	}
+}
+
+// A publish that starts after Close is refused, and reaches the broker
+// not at all.
+func TestPublishAfterCloseSendsNothing(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); !errors.Is(err, craftnats.ErrClosed) {
+		t.Fatalf("err = %v, want ErrClosed", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+		t.Errorf("stream holds %d messages, want 0", n)
+	}
+}
