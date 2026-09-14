@@ -346,19 +346,28 @@ craftgo classifies nothing for you. A handler error is an error; what to do
 about it is a decision, and a decision belongs to the
 [middleware](#consumer-middleware) you write rather than to the runtime.
 
-What the runtime does give you is enough to decide with. A recovered panic
-arrives as a `*craftevents.PanicError`, so `errors.As` picks one out; a decode
-or `Validate()` failure names the contract it arrived on; and
-`msg.Reached()` separates a message the handler failed on from a chain that
-broke before the handler ran.
+What the runtime does give you is the error and a typed case for the one
+failure it can name for itself. A recovered panic arrives as a
+`*craftevents.PanicError`, so `errors.As` picks one out:
 
 ```go
 var panicked *craftevents.PanicError
-switch {
-case errors.As(err, &panicked):
+if errors.As(err, &panicked) {
 	// the same bytes run the same code and panic again
-case !msg.Reached():
-	// the chain refused it; the handler never saw these bytes
+}
+```
+
+Everything else arrives as an ordinary error. A payload the generated wrapper
+could not decode or could not `Validate()` names the contract it arrived on in
+its text, but no type separates one of those from a failure in your own
+handler - so a chain that needs to tell "these bytes can never work" from "try
+again later" makes the distinction on its own side, by returning an error type
+of its own from the handler:
+
+```go
+var poison *myapp.PoisonPayload
+if errors.As(err, &poison) {
+	msg.Reject()
 }
 ```
 
@@ -532,8 +541,9 @@ func RetryOnce(_ craftevents.Subscription, next craftevents.Handler) craftevents
 | nothing | the zero value, `DispositionUnset`, which settles |
 
 `msg.Deliveries()` is the broker's count of how many times it has handed this
-message over, and `msg.Reached()` separates a message the handler failed on from
-a chain that broke before the handler ran.
+message over. Whether another attempt can succeed is the chain's to decide from
+the error the handler returned - see
+[Telling one failure from another](#telling-one-failure-from-another).
 
 **The last writer wins, and clearing is allowed.** The chain returns innermost
 first, so the outermost middleware decides last and can see what everything

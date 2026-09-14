@@ -334,7 +334,6 @@ func (m *Message) Redeliver()
 func (m *Message) Reject()
 func (m *Message) Disposition() Disposition
 func (m *Message) Deliveries() int   // the broker's count; 0 where it keeps none
-func (m *Message) Reached() bool     // the subscription's handler was entered
 func (m *Message) SetDeliveries(n int) // transport adapters only
 
 type Dispositioner interface {

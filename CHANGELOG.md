@@ -137,9 +137,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   recover voids what it asked for - unset rather than settle, leaving the
   decision to whatever is above it.
 
-  `msg.Reached()` separates a message the handler failed on from a chain that
-  broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
-  where the transport does not keep one.
+  `msg.Deliveries()` is the broker's count, zero where the transport does not
+  keep one. Whether another attempt can succeed is the chain's to decide from
+  the error the handler returned: nothing here separates a decode or
+  `Validate()` failure from a handler's own, so a chain that needs that
+  returns an error type of its own and reads it back with `errors.As`.
 
 - **A NATS JetStream transport, `nats.NewJetStream(conn, opts...)`.** A second
   type beside the core `nats.Transport`, sharing its wire format byte for byte,
@@ -945,6 +947,23 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`kafka.WithDialer`.** It was never reachable - nothing set the dialer, so
   TLS and SASL settings were dropped. A supported way to reach a secured
   broker replaces it.
+
+- **`events.Message.Reached`.** Cut before release - it appears in no shipped
+  version, so nothing to upgrade. It reported whether the delivery had entered
+  the subscription's handler, and was meant to separate a message the handler
+  failed on from a chain that broke before the handler ran. On a generated
+  subscription it could not: the wrapper `craftgo` emits *is* `sub.Handle`, so
+  the mark went on before decode and `Validate()` ran, and a payload that could
+  never validate read the same as one whose logic failed. A chain written to
+  that promise - hand back what reached the logic, give up what did not - would
+  have handed poison payloads back forever.
+
+  Marking it accurately is not small: the bus cannot tell a generated
+  `sub.Handle` from a hand-written one, so either the runtime stops marking and
+  every hand-written `Subscription` reports false, or the mark is set in one
+  place and cleared in another. If the signal is wanted later, `Subscription`
+  can carry the phase boundary the runtime is missing and the mark can be made
+  once, for both kinds.
 
 
 ## [1.7.1] - 2026-09-08 [UTC+7]

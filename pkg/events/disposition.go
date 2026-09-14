@@ -52,6 +52,14 @@ func (m *Message) Settle() { m.disposition = DispositionSettle }
 // ([Dispositioner]) settles instead, so declare the need at the bus with
 // [WithDispositionRequired] and find out at startup. See [Message.Settle]
 // for when a decision may be written.
+//
+// Whether another attempt can ever succeed is the chain's to work out, and
+// the error the handler returned is all it has to work from. A payload the
+// generated wrapper could not decode or validate comes back as an error
+// naming the contract it arrived on, but no type separates one of those
+// from a failure in the handler's own logic - so a chain that needs the
+// distinction makes it on its own side, by returning an error type of its
+// own from the handler and reading it back with [errors.As].
 func (m *Message) Redeliver() { m.disposition = DispositionRedeliver }
 
 // Reject gives this message up. See [Message.Redeliver] for what a
@@ -62,11 +70,6 @@ func (m *Message) Reject() { m.disposition = DispositionReject }
 // Disposition returns what has been asked for this delivery, which a
 // transport reads once the chain has returned.
 func (m *Message) Disposition() Disposition { return m.disposition }
-
-// Reached reports whether the delivery entered the subscription's own
-// handler, which tells a message that failed from a chain that broke
-// before reaching it. A handler that panicked has still been reached.
-func (m *Message) Reached() bool { return m.reached }
 
 // Deliveries is how many times the broker has handed this message over,
 // this one included. Zero means the transport does not count.

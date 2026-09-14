@@ -65,28 +65,22 @@ func deliver(t *testing.T, build func(*craftevents.Bus) []craftevents.Subscripti
 	return nil, nil
 }
 
-// A middleware reads two things off a delivery to decide what to ask the
-// broker for: whether the chain REACHED the consumer's own logic, and
-// what - if anything - anyone decided. Both are written beneath the
-// generated wrapper, and the wrapper is the one frame a transport test
-// cannot reach.
+// The generated wrapper decodes, validates, then dispatches - and decides
+// nothing about the delivery on the chain's behalf. Both halves matter.
 //
-// The pair is what separates "the logic failed" from "the payload never
-// got that far", and a chain that could not tell them apart would do the
-// opposite of what it meant on the case that matters: a poison payload
-// that can never validate would be handed back forever, while a
-// transient handler failure would be settled and lost.
+// Validating first is what keeps a payload that cannot be decoded or
+// cannot satisfy its constraints out of logic that assumes both. Deciding
+// nothing is what leaves the choice where the design puts it: a
+// disposition is a middleware's to write, and a wrapper that settled or
+// rejected on its own would overrule every chain above it with nothing to
+// see it happen - the transport reads the last decision, not the reason.
 //
-// Neither is a state the broker can be asked about afterwards - an
+// Nothing here is a state the broker can be asked about afterwards: an
 // accepted record and a rejected one are both terminal and both advance
-// the share-group offset - so the reading has to be taken here, off the
-// delivery, before an adapter answers for it.
-//
-// What the pair can and cannot separate is the point: both cases below
-// report the same Reached, because a generated subscription's handler is
-// the wrapper rather than the logic inside it.
-func TestTheGeneratedWrapperReportsWhatTheChainReached(t *testing.T) {
-	t.Run("a payload that dispatches is reached and left undecided", func(t *testing.T) {
+// the share-group offset. The reading has to be taken off the delivery,
+// before an adapter answers for it.
+func TestTheGeneratedWrapperValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
+	t.Run("a valid payload dispatches once and is left undecided", func(t *testing.T) {
 		probe := &dispositionProbe{}
 		delivered, err := deliver(t,
 			func(bus *craftevents.Bus) []craftevents.Subscription {
@@ -105,15 +99,12 @@ func TestTheGeneratedWrapperReportsWhatTheChainReached(t *testing.T) {
 		if probe.ran != 1 {
 			t.Fatalf("the consumer ran %d times, want 1", probe.ran)
 		}
-		if !delivered.Reached() {
-			t.Error("the delivery reports it never entered the consumer, but the consumer ran")
-		}
 		if got := delivered.Disposition(); got != craftevents.DispositionUnset {
 			t.Errorf("nothing decided anything, yet the delivery carries %v - a wrapper that decides for the chain takes the choice away from it", got)
 		}
 	})
 
-	t.Run("a payload the wrapper turns back never reaches logic and stays undecided", func(t *testing.T) {
+	t.Run("a payload the wrapper turns back never reaches logic and is left undecided", func(t *testing.T) {
 		// carrier is @minLength(1), so an empty one fails Validate and
 		// never reaches NotifyDispatch.
 		probe := &notifyProbe{}
@@ -133,17 +124,6 @@ func TestTheGeneratedWrapperReportsWhatTheChainReached(t *testing.T) {
 		}
 		if probe.ran != 0 {
 			t.Errorf("an invalid payload reached logic %d time(s)", probe.ran)
-		}
-		// Reached is marked on the way INTO the subscription's handler,
-		// and on a generated subscription that handler is the wrapper -
-		// decode, validate, dispatch. So a payload the wrapper turned
-		// back reads the same as one the logic ran and failed, and the
-		// returned error is the only thing separating them. Pinned as it
-		// behaves, not as a chain writing "retry what reached the logic"
-		// would want it: that chain hands a payload that can never
-		// validate back forever, and nothing here would say so.
-		if !delivered.Reached() {
-			t.Error("Reached is false on a delivery that entered the wrapper - the mark moved, and a chain reading it now means something else")
 		}
 		if got := delivered.Disposition(); got != craftevents.DispositionUnset {
 			t.Errorf("the wrapper decided %v on the chain's behalf; the decision is the chain's to make", got)

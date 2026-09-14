@@ -61,12 +61,10 @@ type Message struct {
 
 	// Each delivery owns its Message, so these are the state of one
 	// attempt rather than of the message: what the chain asked for
-	// ([Message.Settle] and friends), whether the subscription's handler
-	// was entered, and the broker's delivery count. They are unexported
-	// because a decision about a delivery is not a value a transport
-	// carries from one side to the other.
+	// ([Message.Settle] and friends) and the broker's delivery count.
+	// They are unexported because a decision about a delivery is not a
+	// value a transport carries from one side to the other.
 	disposition Disposition
-	reached     bool
 	deliveries  int
 }
 
@@ -622,27 +620,11 @@ func (b *Bus) decorated(sub Subscription) Handler {
 	if sub.Handle == nil {
 		return nil
 	}
-	h := recoverHandler(sub, reachHandler(sub.Handle))
+	h := recoverHandler(sub, sub.Handle)
 	if len(b.chain) == 0 {
 		return h
 	}
 	return recoverHandler(sub, b.chain.wrap(sub, h))
-}
-
-// reachHandler marks the delivery as having entered the subscription's own
-// handler, so a middleware can tell a message that failed from a chain
-// that broke before reaching it.
-//
-// The mark goes on before the call, so a handler that panics still counts
-// as reached. Nothing here forms a verdict from it: a middleware writes
-// the policy.
-func reachHandler(h Handler) Handler {
-	return func(ctx context.Context, msg *Message) error {
-		if msg != nil {
-			msg.reached = true
-		}
-		return h(ctx, msg)
-	}
 }
 
 // recoverHandler wraps h so a panic becomes a [*PanicError] naming sub.

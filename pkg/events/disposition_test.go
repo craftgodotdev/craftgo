@@ -77,9 +77,6 @@ func TestTheZeroDispositionIsUnset(t *testing.T) {
 	if got := msg.Disposition(); got != events.DispositionUnset {
 		t.Errorf("zero disposition = %v, want unset", got)
 	}
-	if msg.Reached() {
-		t.Error("a message nothing delivered has been reached")
-	}
 	if got := msg.Deliveries(); got != 0 {
 		t.Errorf("deliveries = %d, want 0", got)
 	}
@@ -139,29 +136,6 @@ func TestAPanicVoidsTheDispositionAskedForBeneathIt(t *testing.T) {
 		func(context.Context, *events.Message) error { panic("boom") })
 	if got := msg.Disposition(); got != events.DispositionUnset {
 		t.Errorf("disposition after a panic = %v, want unset", got)
-	}
-}
-
-// Reached separates a message that failed from a chain that broke before
-// the handler ran. A handler that panics has still been reached.
-func TestReachedSaysWhetherTheHandlerWasEntered(t *testing.T) {
-	msg := deliverThrough(t, nil, func(context.Context, *events.Message) error { return nil })
-	if !msg.Reached() {
-		t.Error("a delivered message was not marked reached")
-	}
-
-	msg = deliverThrough(t, nil, func(context.Context, *events.Message) error { panic("boom") })
-	if !msg.Reached() {
-		t.Error("a handler that panicked was not marked reached")
-	}
-
-	stops := func(_ events.Subscription, _ events.Handler) events.Handler {
-		return func(context.Context, *events.Message) error { return errors.New("chain refused") }
-	}
-	msg = deliverThrough(t, events.NewChain(stops),
-		func(context.Context, *events.Message) error { return nil })
-	if msg.Reached() {
-		t.Error("a chain that never called the handler marked the message reached")
 	}
 }
 

@@ -23,7 +23,6 @@ type attempts struct {
 type attempt struct {
 	consumer   string
 	deliveries int
-	reached    bool
 }
 
 func (a *attempts) add(r attempt) {
@@ -72,7 +71,7 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 		}
 		return func(ctx context.Context, msg *craftevents.Message) error {
 			err := next(ctx, msg)
-			seen.add(attempt{consumer: sub.Consumer, deliveries: msg.Deliveries(), reached: msg.Reached()})
+			seen.add(attempt{consumer: sub.Consumer, deliveries: msg.Deliveries()})
 			// Ask for it back once, then give it up.
 			if msg.Deliveries() <= 1 {
 				msg.Redeliver()
@@ -108,11 +107,6 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 	// came back rather than a second one arriving.
 	if rows[0].deliveries != 1 || rows[1].deliveries != 2 {
 		t.Errorf("delivery counts = %d then %d, want 1 then 2", rows[0].deliveries, rows[1].deliveries)
-	}
-	for i, r := range rows {
-		if !r.reached {
-			t.Errorf("delivery %d reports it never entered the consumer, but the consumer ran", i)
-		}
 	}
 	got := svc.DeliveredTo(trackTier)
 	if len(got) != 2 {
