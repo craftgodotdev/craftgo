@@ -141,6 +141,38 @@ breaking change to the DSL or the generated layout bumps the major version.
   broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
   where the transport does not keep one.
 
+- **A partial batch names which envelopes did not go out.**
+  `events.PartialPublishError` gained `Unsent []int` - the indices, ascending,
+  into the slice handed to `PublishAll` - so retrying exactly those sends
+  nothing twice:
+
+  ```go
+  var partial *craftevents.PartialPublishError
+  if errors.As(err, &partial) {
+      for _, i := range partial.Unsent {
+          retry = append(retry, envs[i])
+      }
+  }
+  ```
+
+  A set rather than a count because a transport publishing to several
+  partitions or topics at once does not fail in batch order: the envelopes that
+  landed need not be the first. `Sent` is **redefined** from "how many were
+  published" to the length of the leading published run, which is `Unsent[0]`.
+
+  **An existing caller keeps compiling and stops losing messages.** On a batch
+  `[A, B, C]` where B fails, the old `Sent` was 2, so the documented
+  `envs[Sent:]` resent C and **dropped B**; `Sent` is now 1, so `envs[1:]`
+  resends B and duplicates C. A duplicate is already inside craftgo's delivery
+  model - a nil error means the adapter took responsibility, not that a broker
+  stored it - and a loss never was.
+
+  `PublishAll` checks the adapter's report against the batch: one naming an
+  index outside it, or out of order, is replaced with "none of it was sent" and
+  the error names the adapter. `BatchPublisher` now states the obligation -
+  never a bare error after a partial send, which a caller reads as "nothing
+  arrived". The in-process transport returned exactly that and no longer does.
+
 - **The Kafka adapter can redeliver and reject, through a share group.**
   `pkg/events/kafka` moved from `segmentio/kafka-go` to `twmb/franz-go`, and
   `kafka.WithShareGroup()` consumes through a KIP-932 share group where the

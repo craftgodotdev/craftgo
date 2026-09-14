@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -125,6 +126,19 @@ type Publisher interface {
 // groups by topic-partition, SQS caps a batch at one queue - and nothing
 // here makes the batch atomic; a transport that can do better says so in
 // its own documentation.
+//
+// What an implementation owes its caller:
+//
+//   - nil means every message was handed over;
+//   - a partial failure means a [*PartialPublishError] whose Unsent holds
+//     the indices, ascending, into the slice it was GIVEN;
+//   - a failure before anything went out means a plain error;
+//   - never a bare error after a partial send. The caller reads one as
+//     "nothing arrived" and republishes what did.
+//
+// [Bus.PublishAll] checks the report against the batch and replaces one
+// that cannot be true, naming the adapter - but it can only catch a
+// report that contradicts itself, not one that is quietly short.
 type BatchPublisher interface {
 	PublishBatch(ctx context.Context, msgs []*Message) error
 }
@@ -301,43 +315,70 @@ func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...Pu
 	return b.pub.Publish(ctx, msg)
 }
 
-// PartialPublishError reports a batch that stopped partway. Sent counts
-// the messages the transport took.
+// PartialPublishError reports a batch that stopped partway. Unsent names
+// exactly which envelopes did not go out, so retrying them sends nothing
+// twice:
 //
-// It is NOT an index to retry from. A transport that publishes to several
-// partitions or topics at once reports how many succeeded, and those need
-// not be the first Sent of the batch - so `envs[Sent:]` can resend one
-// that landed and skip one that did not. Only [Bus.PublishAll]'s own
-// one-at-a-time fallback stops at the first failure, and nothing at the
-// call site says which path ran.
+//	var partial *events.PartialPublishError
+//	if errors.As(err, &partial) {
+//	    retry := make([]events.Envelope, 0, len(partial.Unsent))
+//	    for _, i := range partial.Unsent {
+//	        retry = append(retry, envs[i])
+//	    }
+//	}
 //
-// So there is no safe automatic retry for a partial batch: republish the
-// whole batch where the broker de-duplicates ([WithDedupID]), or keep the
-// envelopes and reconcile against what the consumer actually saw.
+// A set rather than a count because a transport publishing to several
+// partitions or topics at once does not fail in batch order: the
+// envelopes that landed need not be the first ones. The bus's own
+// one-at-a-time fallback DOES stop at the first failure, and reports the
+// contiguous tail through the same field - a prefix is a set.
 type PartialPublishError struct {
-	// Sent is how many envelopes the transport took before it reported the
-	// failure. A count, not an index - see the type doc.
+	// Sent is the length of the leading run that was published: every
+	// envelope before it landed, and from it onward some did not. It is
+	// Unsent[0], so a caller already reading `envs[Sent:]` resends from
+	// the first gap rather than skipping past it.
 	Sent int
-	// Event is the contract whose publish failed.
+	// Unsent holds the indices, ascending, of the envelopes that did not
+	// go out. Indices are into the slice handed to [Bus.PublishAll].
+	Unsent []int
+	// Event is the contract of the first unsent envelope.
 	Event string
 	Err   error
 }
 
 func (e *PartialPublishError) Error() string {
-	return fmt.Sprintf("events: publish %s (%d already sent): %v", e.Event, e.Sent, e.Err)
+	return fmt.Sprintf("events: publish %s (%d of the batch unsent, %d already sent): %v",
+		e.Event, len(e.Unsent), e.Sent, e.Err)
 }
 
 func (e *PartialPublishError) Unwrap() error { return e.Err }
+
+// partialFrom builds the error for a batch that failed from index i
+// onward, which is what a one-at-a-time loop produces.
+func partialFrom(i int, msgs []*Message, err error) *PartialPublishError {
+	unsent := make([]int, 0, len(msgs)-i)
+	for j := i; j < len(msgs); j++ {
+		unsent = append(unsent, j)
+	}
+	return &PartialPublishError{Sent: i, Unsent: unsent, Event: msgs[i].Event, Err: err}
+}
 
 // PublishAll encodes every envelope and hands the batch to the transport
 // in one call when it implements [BatchPublisher], otherwise one message
 // at a time in order. Encoding is done up front, so a payload that cannot
 // be encoded fails before anything is sent.
 //
-// It is not atomic: with a transport that publishes one at a time, an
-// error partway through leaves the earlier messages sent and returns a
-// [*PartialPublishError] naming how many, so a caller can retry the tail
-// instead of replaying the batch.
+// It is not atomic. An error partway through leaves the earlier messages
+// sent and returns a [*PartialPublishError] whose Unsent names exactly
+// which envelopes did not go out - on both paths, so a caller does not
+// have to know which one ran to retry correctly.
+//
+// The adapter's report is checked against the batch before it is
+// returned. An adapter that names an index outside the batch, or one out
+// of order, has its report replaced with "none of it was sent" and the
+// error says which adapter broke the contract: an understated Unsent
+// loses messages silently, which is the one failure a caller cannot
+// detect for itself.
 func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 	if len(envs) == 0 {
 		return nil
@@ -357,14 +398,79 @@ func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 		msgs = append(msgs, msg)
 	}
 	if batch, ok := b.pub.(BatchPublisher); ok {
-		return batch.PublishBatch(ctx, msgs)
+		return b.checkedBatch(batch.PublishBatch(ctx, msgs), msgs)
 	}
 	for i, msg := range msgs {
 		if err := b.pub.Publish(ctx, msg); err != nil {
-			return &PartialPublishError{Sent: i, Event: msg.Event, Err: err}
+			return partialFrom(i, msgs, err)
 		}
 	}
 	return nil
+}
+
+// checkedBatch validates a [BatchPublisher]'s partial report against the
+// batch it was handed. A report that cannot be true is replaced with one
+// that is - every envelope unsent - because a caller acting on an
+// understated Unsent loses the messages it names as delivered, and
+// nothing downstream can tell that happened.
+//
+// Only a [*PartialPublishError] is inspected. Any other error means the
+// adapter is not claiming a partial send, which the caller reads as
+// "assume nothing arrived".
+func (b *Bus) checkedBatch(err error, msgs []*Message) error {
+	var partial *PartialPublishError
+	if err == nil || !errors.As(err, &partial) {
+		return err
+	}
+	if bad := validateUnsent(partial, len(msgs)); bad != "" {
+		return &PartialPublishError{
+			Sent:   0,
+			Unsent: allIndices(len(msgs)),
+			Event:  msgs[0].Event,
+			Err: fmt.Errorf("events: transport %s reported an impossible partial publish (%s); treating the whole batch as unsent: %w",
+				adapterLabel(b.pub), bad, partial.Err),
+		}
+	}
+	partial.Sent = partial.Unsent[0]
+	return err
+}
+
+// validateUnsent names the way a partial report is impossible, or "" when
+// it holds. Sent is not checked: it is derived from Unsent on the way out,
+// so an adapter that got it wrong is corrected rather than refused.
+func validateUnsent(p *PartialPublishError, n int) string {
+	if len(p.Unsent) == 0 {
+		return "it names no unsent envelope, so it is not a partial publish"
+	}
+	prev := -1
+	for _, i := range p.Unsent {
+		if i < 0 || i >= n {
+			return fmt.Sprintf("index %d is outside the batch of %d", i, n)
+		}
+		if i <= prev {
+			return fmt.Sprintf("index %d does not follow %d, so the list is not ascending", i, prev)
+		}
+		prev = i
+	}
+	return ""
+}
+
+// allIndices is every index of a batch of n.
+func allIndices(n int) []int {
+	out := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
+// adapterLabel names a transport for a diagnostic: the name it answers to
+// under [WithAdapterOption] when it has one, else its Go type.
+func adapterLabel(p Publisher) string {
+	if aware, ok := p.(OptionAware); ok {
+		return strconv.Quote(aware.AdapterName())
+	}
+	return fmt.Sprintf("%T", p)
 }
 
 // encode resolves the contract's codec and builds the wire envelope,

@@ -101,7 +101,11 @@ func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	for i, msg := range msgs {
 		if err := t.conn.PublishMsg(t.encode(msg)); err != nil {
-			return &events.PartialPublishError{Sent: i, Event: msg.Event, Err: err}
+			unsent := make([]int, 0, len(msgs)-i)
+			for j := i; j < len(msgs); j++ {
+				unsent = append(unsent, j)
+			}
+			return &events.PartialPublishError{Sent: i, Unsent: unsent, Event: msg.Event, Err: err}
 		}
 	}
 	return t.flush(ctx)

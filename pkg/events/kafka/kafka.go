@@ -51,6 +51,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -288,16 +289,20 @@ func (t *Transport) Publish(ctx context.Context, msg *events.Message) error {
 // a message this adapter cannot encode fails the batch before anything is
 // sent.
 //
-// A failure partway reports how many records the broker took. The count
-// is not a prefix: franz-go produces to every partition at once, so the
-// ones that succeeded are not necessarily the ones sent first.
+// A failure partway names exactly which messages did not go out. They are
+// not a tail: franz-go produces to every partition at once and reports in
+// completion order, so a batch mixing two topics can fail on one and
+// deliver the other, leaving gaps. Each result carries the record it is
+// for, which is what makes the indices recoverable.
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	recs := make([]*kgo.Record, 0, len(msgs))
-	for _, msg := range msgs {
+	index := make(map[*kgo.Record]int, len(msgs))
+	for i, msg := range msgs {
 		rec, err := t.encode(msg)
 		if err != nil {
 			return err
 		}
+		index[rec] = i
 		recs = append(recs, rec)
 	}
 	cl, err := t.producerClient()
@@ -306,36 +311,34 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 	}
 	results := cl.ProduceSync(ctx, recs...)
 
-	sent := 0
-	var failed *kgo.Record
+	var unsent []int
 	var firstErr error
 	for _, r := range results {
 		if r.Err == nil {
-			sent++
 			continue
 		}
 		if firstErr == nil {
-			firstErr, failed = r.Err, r.Record
+			firstErr = r.Err
+		}
+		if i, ok := index[r.Record]; ok {
+			unsent = append(unsent, i)
 		}
 	}
 	if firstErr == nil {
 		return nil
 	}
-	return &events.PartialPublishError{Sent: sent, Event: contractOf(failed), Err: firstErr}
-}
-
-// contractOf reads the contract back off a record's own header, so a
-// partial failure names the event rather than the topic it mapped to.
-func contractOf(rec *kgo.Record) string {
-	if rec == nil {
-		return ""
+	if len(unsent) == 0 {
+		// Every result failed to name its record - nothing is known to
+		// have landed, so say so rather than claiming a partial send.
+		return firstErr
 	}
-	for _, h := range rec.Headers {
-		if h.Key == HeaderEvent {
-			return string(h.Value)
-		}
+	sort.Ints(unsent)
+	return &events.PartialPublishError{
+		Sent:   unsent[0],
+		Unsent: unsent,
+		Event:  msgs[unsent[0]].Event,
+		Err:    firstErr,
 	}
-	return rec.Topic
 }
 
 // encode maps a craftgo message onto a Kafka record. Metadata becomes

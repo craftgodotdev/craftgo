@@ -291,10 +291,16 @@ generated publishers call it.
 `PublishAll` encodes every envelope up front, then hands the batch to the
 transport in one call when it implements `BatchPublisher` and one message at a
 time otherwise; a failure partway through returns a `*PartialPublishError` whose
-`Sent` is how many reached the transport. It is a **count, not an index**: a
-transport publishing to several partitions at once reports how many landed, not
-which, so `envs[Sent:]` is not the unsent tail. There is no safe automatic retry
-for a partial batch today.
+`Unsent` holds the indices, ascending, of the envelopes that did not go out, so
+retrying exactly those sends nothing twice. It is a **set, not a count**,
+because a transport publishing to several partitions at once does not fail in
+batch order - the ones that landed need not be the first. `Sent` is the length
+of the leading published run, which is `Unsent[0]`.
+
+`PublishAll` checks the adapter's report against the batch before returning it.
+One that names an index outside the batch, or out of order, is replaced with
+"none of it was sent" and the error names the adapter: an understated `Unsent`
+loses the messages it calls delivered, and nothing downstream can tell.
 
 ### Dispositions
 

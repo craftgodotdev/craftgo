@@ -428,6 +428,11 @@ func TestPublishAllReportsProgressOnPartialFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "2 already sent") {
 		t.Errorf("error does not say how far it got: %v", err)
 	}
+	// The fallback stops at the first failure, so its unsent set is the
+	// contiguous tail - a prefix reported through the same field.
+	if got := partial.Unsent; len(got) != 2 || got[0] != 2 || got[1] != 3 {
+		t.Errorf("Unsent = %v, want [2 3]", got)
+	}
 }
 
 // The broker identity is the group; Consumer only names the handler.
@@ -879,5 +884,142 @@ func TestMetadataIsPerEnvelope(t *testing.T) {
 	}
 	if _, leaked := tr.sent[1].Metadata["hops"]; leaked {
 		t.Fatalf("metadata leaked onto the next envelope: %v", tr.sent[1].Metadata)
+	}
+}
+
+// batchTransport is a BatchPublisher whose report the test dictates, so
+// the bus's validation can be exercised without a broker.
+type batchTransport struct {
+	recordingTransport
+	report func(msgs []*events.Message) error
+}
+
+func (b *batchTransport) PublishBatch(_ context.Context, msgs []*events.Message) error {
+	return b.report(msgs)
+}
+
+func batchBus(t *batchTransport) *events.Bus {
+	return events.New(events.WithTransport(t), events.WithCodec(codecjson.Codec{}))
+}
+
+func fourEnvelopes() []events.Envelope {
+	return []events.Envelope{
+		{Event: "a.One", Payload: 1},
+		{Event: "b.Two", Payload: 2},
+		{Event: "a.Three", Payload: 3},
+		{Event: "b.Four", Payload: 4},
+	}
+}
+
+// THE NON-CONTIGUOUS CASE. A batch of [a,b,a,b] where the b topic fails
+// leaves gaps: indices 1 and 3 did not go out while 0 and 2 did. A count
+// cannot say that, which is why the contract is a set.
+func TestAPartialBatchNamesExactlyTheUnsentIndices(t *testing.T) {
+	tr := &batchTransport{report: func(msgs []*events.Message) error {
+		return &events.PartialPublishError{
+			Sent: 1, Unsent: []int{1, 3}, Event: msgs[1].Event,
+			Err: errors.New("topic b unavailable"),
+		}
+	}}
+	err := batchBus(tr).PublishAll(context.Background(), fourEnvelopes())
+
+	var partial *events.PartialPublishError
+	if !errors.As(err, &partial) {
+		t.Fatalf("err = %T %v, want *PartialPublishError", err, err)
+	}
+	if len(partial.Unsent) != 2 || partial.Unsent[0] != 1 || partial.Unsent[1] != 3 {
+		t.Fatalf("Unsent = %v, want [1 3] - the sent ones are not a prefix", partial.Unsent)
+	}
+	// Sent is the leading published run, which is Unsent[0].
+	if partial.Sent != partial.Unsent[0] {
+		t.Errorf("Sent = %d, want %d (Unsent[0])", partial.Sent, partial.Unsent[0])
+	}
+	if partial.Event != "b.Two" {
+		t.Errorf("Event = %q, want the first unsent envelope's contract", partial.Event)
+	}
+	// Retrying exactly Unsent sends nothing twice, which is the promise.
+	envs := fourEnvelopes()
+	var retry []string
+	for _, i := range partial.Unsent {
+		retry = append(retry, envs[i].Event)
+	}
+	if len(retry) != 2 || retry[0] != "b.Two" || retry[1] != "b.Four" {
+		t.Errorf("retrying Unsent resends %v, want the two b envelopes", retry)
+	}
+}
+
+// Sent is derived from Unsent on the way out, so an adapter that reports
+// a stale or optimistic count is corrected rather than believed.
+func TestAnOverstatedSentIsCorrectedFromUnsent(t *testing.T) {
+	tr := &batchTransport{report: func(msgs []*events.Message) error {
+		return &events.PartialPublishError{
+			Sent: 3, Unsent: []int{1, 3}, Event: msgs[1].Event, Err: errors.New("boom"),
+		}
+	}}
+	err := batchBus(tr).PublishAll(context.Background(), fourEnvelopes())
+
+	var partial *events.PartialPublishError
+	if !errors.As(err, &partial) {
+		t.Fatalf("err = %v", err)
+	}
+	if partial.Sent != 1 {
+		t.Errorf("Sent = %d, want 1 - everything below Unsent[0] is necessarily published", partial.Sent)
+	}
+}
+
+// A report that cannot be true is replaced with one that is, and the
+// error names the adapter. An understated Unsent loses the messages it
+// calls delivered, and nothing downstream can tell that happened.
+func TestAnImpossiblePartialReportIsNormalisedAndTheAdapterNamed(t *testing.T) {
+	cases := []struct {
+		name   string
+		report *events.PartialPublishError
+		says   string
+	}{
+		{"index past the batch", &events.PartialPublishError{Unsent: []int{1, 9}}, "outside the batch of 4"},
+		{"negative index", &events.PartialPublishError{Unsent: []int{-1}}, "outside the batch of 4"},
+		{"not ascending", &events.PartialPublishError{Unsent: []int{3, 1}}, "not ascending"},
+		{"no unsent at all", &events.PartialPublishError{Unsent: nil}, "names no unsent envelope"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			report := *c.report
+			report.Err = errors.New("underlying")
+			tr := &batchTransport{report: func([]*events.Message) error { return &report }}
+			err := batchBus(tr).PublishAll(context.Background(), fourEnvelopes())
+
+			var partial *events.PartialPublishError
+			if !errors.As(err, &partial) {
+				t.Fatalf("err = %v", err)
+			}
+			if len(partial.Unsent) != 4 || partial.Sent != 0 {
+				t.Errorf("Sent/Unsent = %d/%v, want the whole batch treated as unsent",
+					partial.Sent, partial.Unsent)
+			}
+			if !strings.Contains(err.Error(), c.says) {
+				t.Errorf("error does not say what was impossible (%q): %v", c.says, err)
+			}
+			if !strings.Contains(err.Error(), "reported an impossible partial publish") {
+				t.Errorf("error does not name the adapter as the source: %v", err)
+			}
+			if !errors.Is(err, report.Err) {
+				t.Errorf("the underlying failure is no longer reachable: %v", err)
+			}
+		})
+	}
+}
+
+// A bare error from a batch transport means "nothing arrived" and is
+// passed through untouched - the validator only inspects a partial claim.
+func TestABareBatchErrorIsNotTreatedAsPartial(t *testing.T) {
+	boom := errors.New("connection refused")
+	tr := &batchTransport{report: func([]*events.Message) error { return boom }}
+	err := batchBus(tr).PublishAll(context.Background(), fourEnvelopes())
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the adapter's own error", err)
+	}
+	var partial *events.PartialPublishError
+	if errors.As(err, &partial) {
+		t.Error("a bare error must not be dressed up as a partial publish")
 	}
 }

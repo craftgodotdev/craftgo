@@ -158,15 +158,18 @@ encoded fails the whole batch without a partial publish.
 
 On a transport without the batch upgrade, a failure partway leaves the
 earlier messages **already sent**. The error is a `*events.PartialPublishError`
-naming how many the transport took:
+naming exactly which envelopes did not go out:
 
 ```go
 if err := b.Publish(ctx); err != nil {
 	var partial *craftevents.PartialPublishError
 	if errors.As(err, &partial) {
-		// partial.Sent is a COUNT, not an index: a transport that
-		// publishes to several partitions at once reports how many
-		// landed, not which. envs[partial.Sent:] is not the unsent tail.
+		// partial.Unsent holds the indices that did not go out, so
+		// retrying exactly those sends nothing twice.
+		retry := make([]craftevents.Envelope, 0, len(partial.Unsent))
+		for _, i := range partial.Unsent {
+			retry = append(retry, envs[i])
+		}
 	}
 	return err
 }

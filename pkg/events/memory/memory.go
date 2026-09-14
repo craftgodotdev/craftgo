@@ -172,10 +172,19 @@ func cloneMeta(in map[string]string) map[string]string {
 // ships exercises the same path a broker adapter does rather than leaving
 // every project on the one-at-a-time fallback.
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
-	for _, msg := range msgs {
-		if err := t.Publish(ctx, msg); err != nil {
-			return err
+	for i, msg := range msgs {
+		err := t.Publish(ctx, msg)
+		if err == nil {
+			continue
 		}
+		// A bare error here would read as "nothing arrived" while the
+		// messages before this one have already been delivered. Name the
+		// tail instead, which is what [events.BatchPublisher] asks for.
+		unsent := make([]int, 0, len(msgs)-i)
+		for j := i; j < len(msgs); j++ {
+			unsent = append(unsent, j)
+		}
+		return &events.PartialPublishError{Sent: i, Unsent: unsent, Event: msg.Event, Err: err}
 	}
 	return nil
 }
