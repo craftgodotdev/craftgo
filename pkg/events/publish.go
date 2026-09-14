@@ -64,28 +64,34 @@ type Envelope struct {
 // rather than a sentence per option that can drift from a sentence per
 // adapter:
 //
-//	         WithKey                      WithDedupID
-//	kafka    partitions on it, so one     carried as a header;
-//	         key is one partition and     nothing deduplicates
-//	         its messages are ordered
-//	         within that contract
-//	nats     carried as a header;         carried as Nats-Msg-Id; core
-//	         routing is by subject, so    NATS does not deduplicate, a
-//	         nothing is ordered           JetStream stream with a
-//	                                      duplicate window does
-//	memory   carried; deliveries run      carried; nothing
-//	         concurrently, so nothing     deduplicates
-//	         is ordered
+//	           WithKey                    WithDedupID
+//	kafka      partitions on it, so one   carried as a header;
+//	           key is one partition and   nothing deduplicates
+//	           its messages are ordered
+//	           within that contract
+//	nats       carried as a header;       carried as Nats-Msg-Id; core
+//	           routing is by subject, so  NATS does not deduplicate
+//	           nothing is ordered
+//	jetstream  carried as a header;       carried as Nats-Msg-Id, and
+//	           routing is by subject, so  the STREAM deduplicates within
+//	           nothing is ordered         its duplicate window
+//	memory     carried; deliveries run    carried; nothing
+//	           concurrently, so nothing   deduplicates
+//	           is ordered
 //
-// Two things that table is for. **No transport craftgo ships
-// deduplicates**, and only Kafka orders on a key - so neither option is a
-// guarantee you can assume, and [WithDedupID] in particular does nothing
-// on its own today.
+// Only Kafka orders on a key, and only a JetStream stream deduplicates -
+// so neither option is a guarantee you may assume without knowing what
+// you are wired to.
 //
-// But every one of them CARRIES both values through to the consumer, and
-// that is the difference between a feature a transport has not got and a
-// value it destroys: a consumer handed the ID can recognise a repeat
-// itself even where the broker will not.
+// The JetStream cell is not optional and cannot be switched off: a stream
+// deduplicates on this ID within a window the server always has, so two
+// publishes sharing one become one message there. That is a reason to set
+// the ID deliberately rather than incidentally.
+//
+// Every transport CARRIES both values through to the consumer, which is
+// the difference between a feature one has not got and a value it
+// destroys: a consumer handed the ID can recognise a repeat itself even
+// where the broker will not.
 type PublishOption func(*Envelope)
 
 // WithKey sets the key identifying the entity the message is about.
@@ -110,11 +116,12 @@ func WithKey(key string) PublishOption {
 // the broker's own window is one message, which is what makes a retry
 // after an ambiguous failure safe.
 //
-// The window, and whether there is one at all, is the broker's. **No
-// transport craftgo ships deduplicates today** - every one of them
-// carries the ID to the consumer and none acts on it, so a retry is only
-// safe here if the consumer itself is. See [PublishOption] for what each
-// adapter does.
+// The window, and whether there is one at all, is the broker's. Of the
+// transports craftgo ships, only a JetStream stream deduplicates - and it
+// always does, within a window that cannot be turned off. Everywhere else
+// the ID is carried to the consumer and acted on by nobody, so a retry is
+// only safe there if the consumer itself is. See [PublishOption] for what
+// each adapter does.
 func WithDedupID(id string) PublishOption {
 	return func(env *Envelope) { env.DedupID = id }
 }

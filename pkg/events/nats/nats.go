@@ -127,8 +127,15 @@ func (t *Transport) flush(ctx context.Context) error {
 // one, and a message published without a key would otherwise arrive
 // carrying the caller's value as one.
 func (t *Transport) encode(msg *events.Message) *nats.Msg {
+	return encodeTo(t.subject(msg.Event), msg)
+}
+
+// encodeTo is the wire format, shared by both transports in this package
+// so a message published through one is byte-identical to the same
+// message published through the other.
+func encodeTo(subject string, msg *events.Message) *nats.Msg {
 	out := &nats.Msg{
-		Subject: t.subject(msg.Event),
+		Subject: subject,
 		Data:    msg.Payload,
 		Header:  nats.Header{},
 	}
@@ -186,18 +193,25 @@ func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) erro
 // [HeaderKey] is consumed into Key rather than left in Metadata, so a
 // consumer sees the same entries here as on any other transport.
 func decode(contract string, m *nats.Msg) *events.Message {
+	return decodeFrom(contract, m.Header, m.Data)
+}
+
+// decodeFrom is the reverse of [encodeTo], taking the parts rather than a
+// *nats.Msg: a JetStream delivery carries the same headers and body
+// behind a different type.
+func decodeFrom(contract string, header nats.Header, data []byte) *events.Message {
 	out := &events.Message{
 		Event:    contract,
-		Key:      m.Header.Get(HeaderKey),
-		DedupID:  m.Header.Get(HeaderDedupID),
-		Payload:  m.Data,
+		Key:      header.Get(HeaderKey),
+		DedupID:  header.Get(HeaderDedupID),
+		Payload:  data,
 		Metadata: map[string]string{},
 	}
-	for k := range m.Header {
+	for k := range header {
 		if k == HeaderKey || k == HeaderDedupID {
 			continue
 		}
-		out.Metadata[k] = m.Header.Get(k)
+		out.Metadata[k] = header.Get(k)
 	}
 	return out
 }

@@ -662,6 +662,45 @@ kafka.New(brokers, kafka.WithTopic(func(c string) string { return "app." + c }))
 
 A subscription's group is the Kafka group.
 
+### NATS JetStream
+
+`nats.NewJetStream(conn)` is a second NATS transport, beside the core one, that
+consumes from a stream. It is what makes `msg.Redeliver()` and `msg.Reject()`
+mean something on NATS:
+
+```go
+tr, err := nats.NewJetStream(conn, nats.WithAckWait(30*time.Second))
+```
+
+The wire format is identical to the core transport's, so a message published
+through either arrives the same. It is a separate type because a JetStream
+delivery is **not** a `*nats.Msg` - reach it with `nats.JetStreamMsgFrom(ctx)`,
+which gives the stream and consumer sequences.
+
+::: warning You provision the stream; craftgo never does
+craftgo does not create streams and could not correctly: one stream covering
+`orders.>` spans contracts any single subscription knows nothing about, and
+per-contract streams would overlap on those subjects, which the server refuses.
+
+`Subscribe` **refuses** when JetStream is off, when no stream carries the
+subject, or when the durable name is illegal - each at start-up, before
+registering anything. The subject check is the one that matters: a consumer
+whose filter subject no stream carries is created successfully, validates, and
+then receives nothing for ever with no error on any path.
+:::
+
+::: tip A slow handler is not redelivered behind itself
+The adapter holds a message open while the handler runs, resetting the server's
+redelivery timer. Without that, a handler slower than `AckWait` gets a duplicate
+that is invisible and nondeterministic.
+
+The trade is that a **hung** handler stalls its subscription instead - a visible,
+deterministic failure that shows as a stopped consumer and a climbing pending
+count. There is no option to bound it, because a bounded one would do nothing:
+measured, the server does not redeliver while a delivery is still outstanding.
+A hung handler needs process-level detection.
+:::
+
 ### Two modes
 
 The default is a **classic consumer group**: the client owns partitions, offsets
@@ -920,13 +959,17 @@ adapter is wired up:
 | | `WithKey` | `WithDedupID` |
 | --- | --- | --- |
 | kafka | partitions on it, so one key is one partition and its messages are ordered within that contract | carried as a header; nothing deduplicates |
-| nats | carried as a header; routing is by subject, so nothing is ordered | carried as `Nats-Msg-Id`; core NATS does not deduplicate, a JetStream stream with a duplicate window does |
+| nats | carried as a header; routing is by subject, so nothing is ordered | carried as `Nats-Msg-Id`; core NATS does not deduplicate |
+| jetstream | carried as a header; routing is by subject, so nothing is ordered | carried as `Nats-Msg-Id`, and the **stream deduplicates** within its window |
 | memory | carried; deliveries run concurrently, so nothing is ordered | carried; nothing deduplicates |
 
-**No transport craftgo ships deduplicates**, and only Kafka orders on a key. But
-all three **carry** both values to the consumer, which is the difference between
-a feature a transport has not got and a value it destroys: a consumer handed the
-ID can recognise a repeat itself even where the broker will not.
+Only Kafka orders on a key, and only a JetStream stream deduplicates. The
+JetStream cell cannot be switched off - the window is always there - which is a
+reason to set the ID deliberately rather than incidentally. Everywhere else both
+values are **carried** to the consumer and acted on by nobody, which is the
+difference between a feature a transport has not got and a value it destroys: a
+consumer handed the ID can recognise a repeat itself even where the broker will
+not.
 
 Kafka's idempotent producer is not that feature. It covers a request the client
 reissued after a network failure, keyed on a producer ID and sequence craftgo

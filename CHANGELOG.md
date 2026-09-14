@@ -141,6 +141,37 @@ breaking change to the DSL or the generated layout bumps the major version.
   broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
   where the transport does not keep one.
 
+- **A NATS JetStream transport, `nats.NewJetStream(conn, opts...)`.** A second
+  type beside the core `nats.Transport`, sharing its wire format byte for byte,
+  and the second adapter that can honour `msg.Redeliver()` and `msg.Reject()` -
+  Settle maps to Ack, Redeliver to Nak, Reject to Term. `Deliveries()` is the
+  server's attempt number, 1 on the first, the same base as a Kafka share group.
+  No new dependency: `nats.go` already ships the `jetstream` package.
+
+  **`Subscribe` refuses at start-up rather than consuming nothing.** It checks
+  that JetStream is on, that a stream carries the subject, and that the durable
+  name is legal, in that order, registering nothing on failure. The subject
+  check is the one that earns the rest: a consumer whose filter subject no
+  stream carries is created successfully, validates, consumes successfully - and
+  receives nothing, for ever, with no error on any path at any time.
+
+  **craftgo never creates a stream**, and could not correctly - one stream
+  covering `orders.>` spans contracts a single subscription knows nothing about,
+  and per-contract streams would overlap, which the server refuses. Provision one.
+
+  A durable is named from the group AND the contract. Group alone would let two
+  subscriptions in one group on different contracts collide, where the second
+  silently retargets the first and the first then receives the other contract's
+  messages - and craftgo actively encourages one group across several contracts.
+
+  A handler slower than `AckWait` is **not** redelivered behind itself: the
+  adapter holds the message open while it runs. The trade is that a hung handler
+  stalls its subscription instead, which is visible and deterministic where the
+  duplicate was neither. There is deliberately no option to bound that: measured
+  against a real server, the server does not redeliver while a delivery is still
+  outstanding, so a bounded heartbeat would only stop resetting a timer that
+  never fires.
+
 - **`pkg/events/logging` and a logging line in the scaffold.**
   `logging.AccessLog(log.Slog())` writes one line per delivery - contract,
   consumer, group, key, duration, and the error when there was one - and the

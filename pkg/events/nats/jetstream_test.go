@@ -1,0 +1,469 @@
+package nats_test
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	natsserver "github.com/nats-io/nats-server/v2/server"
+	natsclient "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+
+	events "github.com/craftgodotdev/craftgo/pkg/events"
+	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
+)
+
+// runJetStreamServer starts an in-process server WITH JetStream, so the
+// adapter is exercised against a real one without Docker.
+func runJetStreamServer(t *testing.T) *natsclient.Conn {
+	t.Helper()
+	srv, err := natsserver.NewServer(&natsserver.Options{
+		Host: "127.0.0.1", Port: -1, NoLog: true, NoSigs: true,
+		JetStream: true, StoreDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	go srv.Start()
+	if !srv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("server not ready")
+	}
+	t.Cleanup(srv.Shutdown)
+
+	conn, err := natsclient.Connect(srv.ClientURL())
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(conn.Close)
+	return conn
+}
+
+// provision creates a stream covering subjects, which is the operator's
+// job and never craftgo's.
+func provision(t *testing.T, conn *natsclient.Conn, name string, subjects ...string) {
+	t.Helper()
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatalf("jetstream: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := js.CreateStream(ctx, jetstream.StreamConfig{Name: name, Subjects: subjects}); err != nil {
+		t.Fatalf("create stream: %v", err)
+	}
+}
+
+// WHY THERE IS NO WithMaxProcessingTime. A bounded heartbeat would only
+// stop resetting a timer, and the server does not redeliver a message
+// whose delivery is still outstanding - so bounding it buys nothing and
+// the option would be an escape that does not escape.
+//
+// Measured rather than reasoned: the handler blocks for ever, the
+// heartbeat stops after 3s, AckWait is 1s. If bounding worked, a second
+// delivery would arrive; it does not. This test is what makes the absence
+// of that option a finding rather than an omission, and it goes red if
+// the client ever changes its mind.
+func TestAHungHandlerIsNotRedeliveredSoThereIsNoEscapeToShip(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Built by hand rather than through the adapter, so the heartbeat can
+	// be stopped at a chosen moment - which is exactly what a
+	// WithMaxProcessingTime escape would do.
+	cons, err := js.CreateOrUpdateConsumer(ctx, "ORDERS", jetstream.ConsumerConfig{
+		Durable:       "escape-probe",
+		FilterSubject: "orders.Placed",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       time.Second,
+		MaxAckPending: 64,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var deliveries atomic.Int64
+	release := make(chan struct{})
+	cc, err := cons.Consume(func(m jetstream.Msg) {
+		n := deliveries.Add(1)
+		if n > 1 {
+			return // a redelivery arrived; nothing more to prove
+		}
+		// First delivery: heartbeat for 3s, then stop and block for ever.
+		stop := make(chan struct{})
+		go func() {
+			tk := time.NewTicker(500 * time.Millisecond)
+			defer tk.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-tk.C:
+					_ = m.InProgress()
+				}
+			}
+		}()
+		time.Sleep(3 * time.Second)
+		close(stop)
+		<-release // hung for ever
+	}, jetstream.PullMaxMessages(64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { close(release); cc.Stop() }()
+
+	if _, err := js.Publish(ctx, "orders.Placed", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(8 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			if got := deliveries.Load(); got != 1 {
+				t.Errorf("deliveries = %d, want 1 - the client now redelivers an outstanding message, so a bounded heartbeat WOULD be an escape and the option should exist", got)
+			}
+			return
+		case <-time.After(250 * time.Millisecond):
+			if deliveries.Load() >= 2 {
+				t.Fatalf("redelivered while the first delivery was outstanding - a bounded heartbeat would work after all, so WithMaxProcessingTime should ship")
+			}
+		}
+	}
+}
+
+// jsTransport wires a JetStream adapter over a provisioned stream.
+func jsTransport(t *testing.T, conn *natsclient.Conn, opts ...craftnats.JetStreamOption) *craftnats.JetStream {
+	t.Helper()
+	tr, err := craftnats.NewJetStream(conn, opts...)
+	if err != nil {
+		t.Fatalf("new jetstream: %v", err)
+	}
+	t.Cleanup(func() { _ = tr.Close() })
+	return tr
+}
+
+// A published contract reaches a consumer with its key, dedup id and
+// payload intact - the same wire format the core transport uses.
+func TestJetStreamRoundTrip(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	got := make(chan *events.Message, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "receipts",
+		Handle: func(_ context.Context, m *events.Message) error {
+			got <- m
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Key: "o-1", DedupID: "attempt-1", Payload: []byte(`{"id":1}`),
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	select {
+	case m := <-got:
+		if m.Key != "o-1" || m.DedupID != "attempt-1" || string(m.Payload) != `{"id":1}` {
+			t.Errorf("delivered %+v", m)
+		}
+		if m.Deliveries() != 1 {
+			t.Errorf("Deliveries = %d, want 1 - the count is 1-based, as on a Kafka share group", m.Deliveries())
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("no delivery")
+	}
+}
+
+// THE CHECK THAT EARNS THE PROBE. A consumer whose filter subject no
+// stream carries is created successfully, validates, consumes
+// successfully - and receives nothing for ever, with no error on any path
+// at any time. Subscribe refuses instead.
+func TestSubscribeRefusesASubjectNoStreamCarries(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := tr.Subscribe(ctx, events.Subscription{
+		Event: "billing.Invoiced", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("a subject no stream carries must be refused, not consumed silently")
+	}
+	for _, want := range []string{"no JetStream stream carries", "billing.Invoiced", "does not create streams"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// A server without JetStream is named as such, rather than surfacing as
+// "no responders available" from a later call.
+func TestSubscribeRefusesAServerWithoutJetStream(t *testing.T) {
+	conn := runServer(t) // the plain server, no JetStream
+	tr := jsTransport(t, conn, craftnats.WithProbeTimeout(2*time.Second))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("a server without JetStream must be refused")
+	}
+	if !strings.Contains(err.Error(), "JetStream is not available") {
+		t.Errorf("refusal does not name the cause: %v", err)
+	}
+	// The timeout is the other way a cluster answers, so the message has
+	// to say so or an operator reads a timeout as a network problem.
+	if !strings.Contains(err.Error(), "does not answer at all") {
+		t.Errorf("refusal does not explain the timeout case: %v", err)
+	}
+}
+
+// Redeliver brings the SAME message back and Reject gives it up - which
+// is the whole reason this adapter exists beside the core one.
+func TestJetStreamRedeliversAndRejects(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithAckWait(2*time.Second))
+
+	var (
+		mu   sync.Mutex
+		seen []int
+	)
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "redeliver",
+		Handle: func(_ context.Context, m *events.Message) error {
+			mu.Lock()
+			seen = append(seen, m.Deliveries())
+			n := len(seen)
+			mu.Unlock()
+			if n == 1 {
+				m.Redeliver()
+				return nil
+			}
+			m.Reject()
+			close(done)
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the message was not redelivered")
+	}
+	time.Sleep(3 * time.Second) // a rejected message must not come back
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 2 {
+		t.Fatalf("deliveries = %v, want exactly two - redeliver once, then reject", seen)
+	}
+	if seen[0] != 1 || seen[1] != 2 {
+		t.Errorf("delivery counts = %v, want [1 2]", seen)
+	}
+}
+
+// THE HEARTBEAT'S VALUE. A handler slower than AckWait is not redelivered
+// behind itself: the message is held open while it runs. Without it this
+// is a duplicate roughly one run in ten, which is the worst kind of bug -
+// invisible and nondeterministic.
+func TestASlowHandlerIsNotRedeliveredBehindItself(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithAckWait(time.Second))
+
+	var deliveries atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "slow",
+		Handle: func(context.Context, *events.Message) error {
+			deliveries.Add(1)
+			time.Sleep(4 * time.Second) // four times AckWait
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(9 * time.Second)
+	if got := deliveries.Load(); got != 1 {
+		t.Errorf("the handler ran %d times for one message - a handler slower than AckWait was redelivered behind itself", got)
+	}
+}
+
+// The JetStream transport can do what the core one cannot, and says so.
+// The answer is a constant because the bus asks it BEFORE the transport
+// subscribes - the consumer it would ask about does not exist yet.
+func TestJetStreamCanDisposition(t *testing.T) {
+	tr, err := craftnats.NewJetStream(runJetStreamServer(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tr.Close() }()
+	for _, d := range []events.Disposition{
+		events.DispositionSettle, events.DispositionRedeliver, events.DispositionReject,
+	} {
+		if !tr.CanDisposition(d) {
+			t.Errorf("JetStream claims it cannot %v", d)
+		}
+	}
+	if tr.CanDisposition(events.DispositionUnset) {
+		t.Error("unset is not something a transport honours")
+	}
+}
+
+// A middleware reaching for the stream sequence gets the JetStream
+// message - and the CORE transport's accessor does not find it, because a
+// JetStream delivery is not a *nats.Msg.
+func TestTheJetStreamMessageIsReachableAndIsNotACoreMessage(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	type seen struct {
+		streamSeq uint64
+		foundJS   bool
+		foundCore bool
+	}
+	got := make(chan seen, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "raw",
+		Handle: func(hctx context.Context, _ *events.Message) error {
+			var s seen
+			if m, ok := craftnats.JetStreamMsgFrom(hctx); ok {
+				s.foundJS = true
+				if meta, err := m.Metadata(); err == nil {
+					s.streamSeq = meta.Sequence.Stream
+				}
+			}
+			_, s.foundCore = craftnats.MsgFrom(hctx)
+			got <- s
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case s := <-got:
+		if !s.foundJS {
+			t.Error("JetStreamMsgFrom found nothing on a JetStream delivery")
+		}
+		if s.streamSeq == 0 {
+			t.Error("the stream sequence is not reachable - that is the point of the accessor")
+		}
+		if s.foundCore {
+			t.Error("MsgFrom found a core message on a JetStream delivery - the two keys must not collide")
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("no delivery")
+	}
+}
+
+// A batch reaches the stream, and a message the stream will not take is
+// named by index rather than by a count.
+func TestJetStreamPublishBatch(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	var got atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "batch",
+		Handle: func(context.Context, *events.Message) error {
+			got.Add(1)
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Key: "a", Payload: []byte(`{}`)},
+		{Event: "orders.Placed", Key: "b", Payload: []byte(`{}`)},
+		{Event: "orders.Placed", Key: "c", Payload: []byte(`{}`)},
+	}
+	if err := tr.PublishBatch(context.Background(), msgs); err != nil {
+		t.Fatalf("publish batch: %v", err)
+	}
+
+	deadline := time.After(15 * time.Second)
+	for got.Load() < 3 {
+		select {
+		case <-deadline:
+			t.Fatalf("delivered %d of 3", got.Load())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+// A batch whose subject no stream carries names every message as unsent
+// rather than reporting a count that reads as partial success.
+func TestAJetStreamBatchToNoStreamIsAllUnsent(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	msgs := []*events.Message{
+		{Event: "billing.One", Payload: []byte(`{}`)},
+		{Event: "billing.Two", Payload: []byte(`{}`)},
+	}
+	err := tr.PublishBatch(context.Background(), msgs)
+	if err == nil {
+		t.Fatal("a batch no stream carries must fail")
+	}
+	var partial *events.PartialPublishError
+	if !errors.As(err, &partial) {
+		t.Fatalf("err = %T %v, want *PartialPublishError", err, err)
+	}
+	if len(partial.Unsent) != 2 {
+		t.Errorf("Unsent = %v, want both indices - nothing was stored", partial.Unsent)
+	}
+}
