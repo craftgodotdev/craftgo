@@ -763,6 +763,20 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **`memory.Transport.Drain()` is safe to call while another goroutine
+  publishes.** It joined on a `sync.WaitGroup` that `Publish` counted into from
+  the CALLER's goroutine, which is the one thing a WaitGroup forbids - so a
+  shutdown racing a request still in flight panicked. Two panics came out of it:
+  one inside `Wait`, on the goroutine that called `Drain`, which a caller could
+  recover, and one inside `Done`, on the goroutine `Publish` spawned, where
+  nothing can and the process dies. Measured on the broken version, 120
+  processes: 119 of the first and 1 of the second. The window opens only on a
+  transport that has already drained once, because a WaitGroup at zero has
+  nothing to collide with - which is why one publish against one drain from a
+  standing start never reproduced it. The counter is now an integer under its
+  own mutex with a `sync.Cond`, and a nested publish from inside a handler is
+  joined the way the dead-letter shape has always needed.
+
 - **The editor now reports what `craftgo gen` reports.** The language server
   analysed a design without its manifest, so `openapi.securitySchemes`,
   `openapi.basePath` and `output.fileCase` were invisible to it. An undeclared

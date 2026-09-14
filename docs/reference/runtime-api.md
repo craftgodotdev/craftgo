@@ -470,7 +470,9 @@ its innermost end for the same visibility. A bus chain needs it nowhere. See
 
 - `pkg/events/memory` - an in-process transport for tests, local development and
   single-binary deployments. Subscriptions sharing a group for one contract form
-  one competing-consumer group. `Drain()` waits for in-flight deliveries.
+  one competing-consumer group. `Drain()` waits for in-flight deliveries, and
+  is safe to call while another goroutine publishes - which is what a shutdown
+  racing a request still in flight looks like.
 - `pkg/events/codecjson` - a JSON codec.
 
 A broker integration (Kafka, NATS, RabbitMQ, SQS, Pub/Sub, Redis Streams, …) is

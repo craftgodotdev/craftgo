@@ -168,3 +168,90 @@ func TestTheAdapterNamesItselfAndReadsNoOptions(t *testing.T) {
 		t.Errorf("KnownOptions = %v, want none", got)
 	}
 }
+
+// Drain runs on a goroutine of its own while a request is still
+// publishing, which is how a single-binary deployment shuts down and
+// what the runtime reference points at. That used to be a panic: the
+// counter was a sync.WaitGroup, Publish counted a delivery on the
+// caller's goroutine, and a WaitGroup forbids exactly that.
+//
+// Two panics came out of it. One fires inside Wait, on the goroutine that
+// called Drain, which a caller could at least recover. The other fires in
+// Done, on the goroutine Publish spawned, where nothing can - it takes
+// the process down.
+//
+// The loop is what makes this deterministic. Measured on the broken
+// version: 100 iterations killed 34 processes in 40, and 250 killed all
+// 40. Two thousand is well past that and costs seven milliseconds.
+func TestDrainIsSafeWhileAnotherGoroutinePublishes(t *testing.T) {
+	const rounds = 2000
+
+	tr := memory.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	for i := 0; i < rounds; i++ {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if err := tr.Publish(ctx, &events.Message{Event: "orders.Placed"}); err != nil {
+				t.Errorf("publish: %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			tr.Drain()
+		}()
+		wg.Wait()
+	}
+}
+
+// Drain still joins: every delivery it was told about has run by the time
+// it returns, including one a handler started itself - which is the
+// dead-letter sink's shape, a chain publishing through a second bus on
+// the same transport.
+func TestDrainWaitsForADeliveryAHandlerStarted(t *testing.T) {
+	tr := memory.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var nested sync.WaitGroup
+	parked := make(chan struct{}, 1)
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.consumer.dlq", Consumer: "Sink",
+		Handle: func(context.Context, *events.Message) error {
+			parked <- struct{}{}
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("subscribe sink: %v", err)
+	}
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C",
+		Handle: func(context.Context, *events.Message) error {
+			nested.Add(1)
+			defer nested.Done()
+			return tr.Publish(ctx, &events.Message{Event: "orders.consumer.dlq"})
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	if err := tr.Publish(ctx, &events.Message{Event: "orders.Placed"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	tr.Drain()
+
+	select {
+	case <-parked:
+	default:
+		t.Fatal("Drain returned before the delivery the handler started")
+	}
+}

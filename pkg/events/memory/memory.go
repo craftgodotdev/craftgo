@@ -34,8 +34,14 @@ type Transport struct {
 	mu     sync.RWMutex
 	groups map[groupKey]*group
 
-	// wg tracks in-flight deliveries for [Transport.Drain].
-	wg sync.WaitGroup
+	// inflight counts deliveries that have started and not finished;
+	// idle broadcasts when it reaches zero. A sync.WaitGroup cannot hold
+	// this: Publish counts a delivery on the CALLER's goroutine, which
+	// may run while another goroutine is inside Drain, and a WaitGroup
+	// panics when Add meets Wait.
+	inflightMu sync.Mutex
+	idle       *sync.Cond
+	inflight   int
 
 	onError func(sub events.Subscription, msg *events.Message, err error)
 }
@@ -74,6 +80,7 @@ func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err 
 // New returns an empty in-process transport.
 func New(opts ...Option) *Transport {
 	t := &Transport{groups: map[groupKey]*group{}}
+	t.idle = sync.NewCond(&t.inflightMu)
 	for _, o := range opts {
 		o(t)
 	}
@@ -122,9 +129,9 @@ func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 	t.mu.RUnlock()
 
 	for _, sub := range targets {
-		t.wg.Add(1)
+		t.begin()
 		go func(sub events.Subscription) {
-			defer t.wg.Done()
+			defer t.finish()
 			// Own copy per delivery: a handler mutating Metadata must
 			// not be visible to the next subscriber.
 			delivered := *msg
@@ -137,8 +144,33 @@ func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 	return nil
 }
 
-// Drain blocks until every delivery started so far has finished.
-func (t *Transport) Drain() { t.wg.Wait() }
+// Drain blocks until every delivery started so far has finished. It is
+// safe to call while another goroutine publishes.
+func (t *Transport) Drain() {
+	t.inflightMu.Lock()
+	defer t.inflightMu.Unlock()
+	for t.inflight > 0 {
+		t.idle.Wait()
+	}
+}
+
+// begin counts a delivery about to start.
+func (t *Transport) begin() {
+	t.inflightMu.Lock()
+	t.inflight++
+	t.inflightMu.Unlock()
+}
+
+// finish counts a delivery that has ended, waking Drain when the last one
+// does.
+func (t *Transport) finish() {
+	t.inflightMu.Lock()
+	t.inflight--
+	if t.inflight == 0 {
+		t.idle.Broadcast()
+	}
+	t.inflightMu.Unlock()
+}
 
 // pick returns the next live member of the group, round-robin. A member
 // whose context was cancelled carries a nil Handle and is skipped.
