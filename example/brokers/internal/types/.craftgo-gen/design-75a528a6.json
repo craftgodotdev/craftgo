@@ -4,14 +4,8 @@
     "../../design"
   ],
   "files": [
-    "analytics/types.go",
-    "analytics/validate.go",
-    "ledger/types.go",
-    "ledger/validate.go",
     "money/types.go",
     "money/validate.go",
-    "notifications/types.go",
-    "notifications/validate.go",
     "orders/types.go",
     "orders/validate.go",
     "payments/types.go",

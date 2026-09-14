@@ -85,9 +85,16 @@ type validatorType struct {
 // scalar inheritance, generic Validate dispatch, cross-pkg enum value-set
 // checks, and the matching Go import registrations. A nil resolver
 // resolves local names only.
+//
+// A package that declares nothing to validate writes no file, and the
+// directory is left uncreated.
 func generateValidators(pkg *semantic.Package, outDir string, r *projectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
+	}
+	if !pkgValidates(pkg) {
+		pruneTypesFile(outDir, pkg.Name, "validate.go")
+		return nil
 	}
 	r = resolverFor(pkg, r)
 	pkgDir := filepath.Join(outDir, pkg.Name)
@@ -100,6 +107,40 @@ func generateValidators(pkg *semantic.Package, outDir string, r *projectResolver
 		return fmt.Errorf("render validate.go: %w", err)
 	}
 	return os.WriteFile(filepath.Join(pkgDir, "validate.go"), formatted, 0o644)
+}
+
+// pkgValidates reports whether the package declares anything that carries
+// a generated Validate() method - a type, an enum, a constrained scalar,
+// or an error with a body. It is the emit condition for validate.go, and
+// [PlannedOutputs] claims the file on the same terms.
+func pkgValidates(pkg *semantic.Package) bool {
+	if len(pkg.Types) > 0 || len(pkg.Enums) > 0 {
+		return true
+	}
+	for _, sd := range pkg.Scalars {
+		if scalarDeclHasValidators(sd) {
+			return true
+		}
+	}
+	for _, ed := range pkg.Errors {
+		if len(errorBodyMembers(ed)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// errorBodyMembers returns the fields and mixins of an error body - what
+// the synthetic `<Name>Body` type validates.
+func errorBodyMembers(ed *ast.ErrorDecl) []ast.TypeMember {
+	var out []ast.TypeMember
+	for _, m := range ed.Body {
+		switch m.(type) {
+		case *ast.Field, *ast.Mixin:
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // buildValidateData walks every TypeDecl, builds the per-field check
@@ -177,13 +218,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		// error body struct embeds the mixin and the OpenAPI allOf advertises
 		// its constrained fields, so the validator must check them too, the
 		// same as any other type that embeds a mixin.
-		body := &ast.TypeDecl{Name: name + "Body"}
-		for _, m := range ed.Body {
-			switch m.(type) {
-			case *ast.Field, *ast.Mixin:
-				body.Body = append(body.Body, m)
-			}
-		}
+		body := &ast.TypeDecl{Name: name + "Body", Body: errorBodyMembers(ed)}
 		if len(body.Body) == 0 {
 			continue
 		}

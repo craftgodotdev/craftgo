@@ -30,9 +30,12 @@ func PlannedOutputs(proj *semantic.Project, cfg *config.Config, projectRoot stri
 		if pkg == nil {
 			continue
 		}
-		types.Files = append(types.Files,
-			filepath.Join(typesRoot, name, "types.go"),
-			filepath.Join(typesRoot, name, "validate.go"))
+		if pkgDeclaresTypes(pkg) {
+			types.Files = append(types.Files, filepath.Join(typesRoot, name, "types.go"))
+		}
+		if pkgValidates(pkg) {
+			types.Files = append(types.Files, filepath.Join(typesRoot, name, "validate.go"))
+		}
 		if len(pkg.Enums) > 0 {
 			types.Files = append(types.Files, filepath.Join(typesRoot, name, "enums.go"))
 		}

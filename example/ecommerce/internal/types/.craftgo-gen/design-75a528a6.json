@@ -8,8 +8,6 @@
     "catalog/validate.go",
     "customers/types.go",
     "customers/validate.go",
-    "design/types.go",
-    "design/validate.go",
     "orders/enums.go",
     "orders/errors.go",
     "orders/types.go",

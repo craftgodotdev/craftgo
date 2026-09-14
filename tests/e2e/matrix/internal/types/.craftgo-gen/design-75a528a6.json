@@ -22,8 +22,6 @@
     "events/enums.go",
     "events/types.go",
     "events/validate.go",
-    "eventsubs/types.go",
-    "eventsubs/validate.go",
     "nested/types.go",
     "nested/validate.go",
     "numbers/types.go",

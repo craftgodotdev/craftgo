@@ -4,14 +4,10 @@
     "../../design"
   ],
   "files": [
-    "activity/types.go",
-    "activity/validate.go",
     "admin/types.go",
     "admin/validate.go",
     "attachments/types.go",
     "attachments/validate.go",
-    "design/types.go",
-    "design/validate.go",
     "project/enums.go",
     "project/types.go",
     "project/validate.go",

@@ -30,9 +30,18 @@ import (
 // segment is appended so that types live alongside the rest of the
 // service-scoped artefacts. r supplies the Go imports for cross-package
 // field types and mixin refs; a nil resolver resolves local names only.
+//
+// A package with no type and no scalar - one holding only services, or
+// only consume middleware - writes nothing: the file would carry a
+// package clause and nothing else. The directory is left uncreated, and
+// what an earlier run put there goes.
 func generateTypes(pkg *semantic.Package, outDir string, r *projectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
+	}
+	if !pkgDeclaresTypes(pkg) {
+		pruneTypesFile(outDir, pkg.Name, "types.go")
+		return nil
 	}
 	r = resolverFor(pkg, r)
 	pkgDir := filepath.Join(outDir, pkg.Name)
@@ -45,6 +54,24 @@ func generateTypes(pkg *semantic.Package, outDir string, r *projectResolver) err
 		return fmt.Errorf("format types.go: %w\n--- source ---\n%s", err, src)
 	}
 	return os.WriteFile(filepath.Join(pkgDir, "types.go"), formatted, 0o644)
+}
+
+// pkgDeclaresTypes reports whether the package declares anything types.go
+// carries: a struct or a scalar defined type.
+func pkgDeclaresTypes(pkg *semantic.Package) bool {
+	return len(pkg.Types) > 0 || len(pkg.Scalars) > 0
+}
+
+// pruneTypesFile drops the named file an earlier run wrote for pkgName
+// under outDir, and the package directory once the removal leaves it
+// empty. Only a file carrying the generated header goes, so a hand-written
+// one sharing the directory stays where its author put it.
+func pruneTypesFile(outDir, pkgName, file string) {
+	pkgDir := filepath.Join(outDir, pkgName)
+	removeGenerated(filepath.Join(pkgDir, file))
+	if entries, err := os.ReadDir(pkgDir); err == nil && len(entries) == 0 {
+		_ = os.Remove(pkgDir)
+	}
 }
 
 // buildTypesGo assembles the textual contents of types.go, including the
