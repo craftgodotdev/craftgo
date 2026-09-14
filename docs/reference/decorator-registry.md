@@ -15,15 +15,15 @@ A decorator's **level** is where it may be written. Applying one at the wrong le
 | error / error-field | `error` declaration / a field in its body |
 | scalar | `scalar` declaration |
 | middleware | `middleware` declaration |
-| event | an `event` inside a `service` |
+| event | an `event` declaration, at file level or inside a `service` |
 | consumer | a `consume` inside a `service` |
 
 ## Documentation & lifecycle
 
 | Decorator | Levels | Args | Effect |
 |---|---|---|---|
-| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in the OpenAPI / AsyncAPI `description` and IDE hover. |
-| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, consumer, error-field | `(string?)` | Marks the construct deprecated; OpenAPI / AsyncAPI emit the `deprecated` flag. |
+| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in the OpenAPI `description` and IDE hover. |
+| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, consumer, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
 | `@example(v)` | field | `(literal \| {k: v})` | Example value rendered in the field's OpenAPI schema. |
 | `@version("1.2.3")` | file | `(string)` | OpenAPI document version (overrides `openapi.version` in the manifest). |
 
@@ -112,7 +112,6 @@ See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with f
 | `@prefix("/v1")` | `(string)` | Path prefix prepended to every method route. |
 | `@group("admin/ops")` | `(string)` | **Replaces** the service-name segment on disk, so handlers, service stubs and `routes.go` land under `<output>/<group>/` instead of `<output>/<service>/`, and adds its value as an OpenAPI tag. Does not affect the route or OpenAPI path. Services may share a group: they merge into one folder with a single `routes.go`. Contributors from different DSL packages raise `group/package-straddle`; two contributors declaring the same method name raise `group/method-collision`. |
 | `@middlewares(A, B)` | variadic idents / array | Apply named middlewares (also valid at method level - see below). |
-| `@consumeMiddlewares(A, B)` | variadic idents / array | Apply named consume middlewares to this service's consumers (also valid at consumer level). Names come from `consume middleware Name`, never from `middleware Name`. First name is outermost - which on the consume side means it runs LAST on the way out. |
 | `@tags(a, b)` | variadic idents/strings / array | OpenAPI tags (also method level). |
 | `@security(scheme)` | variadic idents / array | Security-scheme requirements (also method level). Within one decorator schemes AND-combine; multiple `@security(...)` OR-combine. |
 
@@ -131,7 +130,7 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 | `@rawResponse` | - | Logic writes the response to `http.ResponseWriter`; the request is still bound + validated. A `response` block is a docs-only contract. Stub: `(w, r, req *types.Req) error` (flag form). |
 | `@rawRequest` | - | Logic reads the raw `*http.Request`; the response is still JSON-encoded. A `request` block is a docs-only contract. Stub: `(r *http.Request) (*types.Resp, error)` (flag form). |
 | `@passthrough` | - | Both sides raw - exactly `@rawRequest @rawResponse`. Stub: `(w, r) error`. Optional blocks document the contract (flag form). |
-| `@ignoreMiddleware` | - | Clear the inherited middleware chain on this member. The site picks the chain: `@middlewares` on a method, `@consumeMiddlewares` on a consumer. |
+| `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method - the method's own decorator then starts from empty instead of appending to the service-level chain. |
 | `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service). |
 | `@ignoreTags` | - | Clear the inherited `@tags` list. |
 
@@ -143,13 +142,9 @@ See the [Events guide](/guide/events) for the full picture.
 |---|---|---|
 | `@contract("order.placed.v2")` | `(string)` | Override the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes. Two events resolving to one name raise `event/contract-collision`. |
 
-## Consumer level
+`@doc` and `@deprecated` also apply at event and consumer level; nothing else does.
 
-| Decorator | Levels | Args | Effect |
-|---|---|---|---|
-| `@consumerGroup("order-worker")` | service, consumer | `(string)` | The broker identity a consumer joins - the Kafka consumer group, the NATS queue group. Its members divide the stream between them, so a group is a unit of scaling and of failure isolation, **not of ordering** (no craftgo transport orders two contracts against each other). On Kafka and JetStream the name is also where those consumers resume, and one the broker has never seen has no position: the default `<package>-<Service>-<Consumer>` moves when you rename any of the three, so **if it has an offset, write the name down.** Core NATS keeps no position, so there a rename costs nothing. On a service it is the default for every `consume` in the body; on a consumer it overrides that. Consumers of different contracts may share one group inside a service; two consumers of one contract may not (`consumer/group-collision`) and two services may not (`consumer/group-cross-service`). A dot or whitespace in the value is rejected (`consumer/group-format`) - NATS JetStream refuses a durable name with either. `@group` never affects it. |
-
-`@doc` and `@deprecated` also apply at event and consumer level.
+`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed. All three are the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), and the group and the chain are arguments to the generated `Register<Service>Handler` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
 
 ## Not supported
 
@@ -158,6 +153,6 @@ See the [Events guide](/guide/events) for the full picture.
 ## Argument forms
 
 - **Flag** (`@positive`, `@uniqueItems`, `@nullable`, `@sensitive`, `@passthrough`, `@rawRequest`, `@rawResponse`, `@ignore*`) take no parentheses. Writing empty `()` raises `decorator/flag-empty-parens`.
-- **Variadic** decorators (`@middlewares`, `@consumeMiddlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal `(["A", "B", "C"])`.
+- **Variadic** decorators (`@middlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal `(["A", "B", "C"])`.
 - **Durations** (`@timeout`) take Go duration syntax: `3s`, `500ms`, `1h30m`.
 - **Sizes** (`@maxSize`, `@maxBodySize`) take `KB` / `MB` / `GB` suffixes or bare bytes.

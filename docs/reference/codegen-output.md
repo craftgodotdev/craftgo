@@ -23,26 +23,23 @@ internal/
 │   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
-│   ├── <method>.go              http.HandlerFunc per method
-│   └── <consumer>.go            events.Subscription per consumer
+│   └── <method>.go              http.HandlerFunc per method
 ├── service/<svc>/               GEN-ONCE - your business logic
-│   ├── <method>.go              the stub you fill in
-│   └── <consumer>.go            the consumer stub you fill in
-├── events/                      REGEN - only when the design declares events
-│   ├── events.go                umbrella RegisterAll over every consumer
-│   └── <svc>/publisher.go       typed publisher per publishing service
+│   └── <method>.go              the stub you fill in
+├── events/<pkg>/                REGEN - one folder per DSL package
+│   ├── events.go                contract constant + descriptor per event
+│   └── handlers.go              handler interface, groups, Register per consuming service
 ├── routes/
-│   ├── routes.go                REGEN - umbrella RegisterRoutes
-│   └── <svc>/routes.go          REGEN - per-service registration
+│   ├── routes.go                REGEN - umbrella RegisterAll
+│   └── <svc>/routes.go          REGEN - per-service RegisterRoutes
 ├── middleware/
 │   └── <name>_middleware.go     GEN-ONCE - one per declared middleware
-└── consume/
-    └── <name>_middleware.go     GEN-ONCE - one per declared consume middleware
+└── wiring/
+    └── wiring.go                REGEN - the single Register call main.go makes
 
 svccontext/
 ├── svccontext.go                GEN-ONCE - your dependency container
-├── middlewares.go               REGEN - typed middleware fields
-└── events.go                    REGEN - typed publishers + consume middleware fields
+└── middlewares.go               REGEN - typed middleware fields
 
 config/                          GEN-ONCE - runtime config loader
 ├── config.go
@@ -50,9 +47,12 @@ config/                          GEN-ONCE - runtime config loader
 └── example.config.yaml
 
 docs/openapi.yaml                REGEN - OpenAPI 3.1 spec
-docs/asyncapi.yaml               REGEN - AsyncAPI 3.0 projection (events only)
 main.go                          GEN-ONCE - wired entry point
 ```
+
+The two `events/<pkg>/` files are written per DSL **package**, not per service:
+`events.go` when the package declares an event, `handlers.go` when a service in
+it consumes one. A package that does neither leaves no folder behind.
 
 Here `<method>` / `<svc>` / `<name>` render in the case set by `output.fileCase`
 (**snake_case** by default, so `create_user.go` and `user_service/`; `kebab` and
@@ -115,9 +115,25 @@ This is the only place you write code. Everything above and below it is regenera
 
 `routes/<svc>/routes.go` registers each method on the mux via `srv.Handle("VERB /path", transport.X(svcCtx), mws...)`, applying declared middleware. `routes/routes.go` is the umbrella that calls every per-service `RegisterRoutes`.
 
+### `wiring/wiring.go` (regen)
+
+The one call `main.go` makes to attach the design:
+
+```go
+func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error)
+```
+
+It calls `routes.RegisterAll` and fails at startup for every middleware the
+design applies that `svcCtx` leaves nil, naming the line that would assign it -
+a nil middleware is skipped by the chain rather than called, so without the
+check the guarantee the design makes is silently missing. The returned shutdown
+runs beside `srv.Stop`. The body changes with the design; the signature does
+not, which is what lets `main.go` be written once and never edited again. It is
+emitted even for a design with no route.
+
 ### `svccontext/` (gen-once + regen)
 
-`svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against. Consume middleware lands on `events.go` instead, as `svcCtx.Events.Consume.<Name>` - a named field rather than an embedded struct, so adding one never edits the gen-once `svccontext.go`.
+`svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against.
 
 ### `docs/openapi.yaml` (regen)
 
@@ -127,39 +143,44 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 
 Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. Yours to customize - add a flag, change the listen address, register an extra middleware.
 
-### `events/<svc>/publisher.go` (regen)
+### `events/<pkg>/events.go` (regen)
 
-One `Publisher` per service that declares an `event`, with a
-`Publish<Event>(ctx, payload)` method per contract and a `<Event>Contract`
-constant holding its wire identity. `svccontext/events.go` binds them all to a
-bus. See the [Events guide](/guide/events).
+The contract descriptors of one DSL package, written when it declares at least
+one `event` - wherever the declaration sits, at file level or inside a
+`service` body. Per event: a `<Name>Contract` constant holding the wire
+identity (`<package>.<Event>` unless `@contract("...")` names another), and one
+`events.Event[T]` descriptor bound to the payload type and its `Validate()`:
 
-### `events/<svc>/consumers.go` (regen)
+```go
+const PlacedContract = "orders.Placed"
 
-The `Consumers` interface a consuming service asks for - one method per
-`consume` declaration - and `Subscriptions(bus, h)`, which builds one
-`events.Subscription` per contract. The subscription decodes the payload with
-the bus codec and runs its `Validate()` before calling a handler, the
-event-side counterpart of the HTTP handler's bind-then-validate. It imports
-only the event runtime and the payload types, so the contract output stays
-importable on its own.
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
+```
 
-### `transport/<svc>_consumers.go` (regen)
+The validator argument is `nil` when the payload package emits no
+`validate.go`. A descriptor holds no bus - the bus is a parameter at
+`Placed.Publish(ctx, bus, payload)` - so one library serves every deployable.
 
-One `<Svc>Consumers` per consuming service, at the ROOT of the transport
-output, with a `New<Svc>Consumers(svcCtx)` constructor and one method per
-`consume` forwarding the payload to the logic stub. It is what satisfies the
-interface above, so decode-and-validate is spelled once, in the contract.
+### `events/<pkg>/handlers.go` (regen)
 
-It sits at the root rather than under the service's `@group` because `@group`
-may be declared per `extend service` block: one service's consumers can land
-in two logic packages while the contract declares a single interface for all
-of them.
+The application-facing half, written when a service in the package consumes a
+contract that resolves. Per consuming service, three declarations:
 
-### `service/<svc>/<consumer>.go` (gen-once)
+| Declaration | Shape |
+|---|---|
+| `<Svc>Handler` | The interface you implement - one `(ctx, payload *types.X) error` method per `consume`, payload decoded and validated before it runs |
+| `<Svc>Groups` | A `Default` field plus one field per consume; a field left empty falls back to `Default` |
+| `Register<Svc>Handler(bus, h, chain, groups) error` | Registers one subscription per consume, each behind `chain`; nothing is delivered until `bus.Start` |
 
-The consumer logic stub, next to the method stubs because it is service logic:
-`func (l *<Consumer>Consumer) <Consumer>(payload *types.X) error`.
+Both files import only the event runtime and the payload types, which is what
+keeps the library importable on its own - by the publisher, by a consumer, by a
+project that only needs the contract. Delivery is not in them: which group each
+consume joins, what middleware wraps it and which process runs what are the
+application's to decide and arrive as arguments. `@group` nests the HTTP
+handlers and service stubs; the event library is placed per DSL package and is
+unaffected by it.
+
+See [Events](/guide/events) for the whole picture.
 
 ## Drift safety
 

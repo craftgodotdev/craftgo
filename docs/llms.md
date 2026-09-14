@@ -255,136 +255,133 @@ svc.AuthRequired = middleware.NewAuthRequiredMiddleware()
 
 ## Events
 
-A service may also declare **event contracts** and **consumers**. One
-declaration serves both sides: the publisher is derived from the contract, so
-there is no producer declaration to keep in sync.
+The design is a **contract catalogue** plus **handler interfaces** - what is on the wire, and who
+consumes it. Groups, middleware, transport and delivery settings are the application's and never
+appear in the DSL.
 
 ```craftgo
 package orders
 
-type OrderPlacedPayload {
-    orderId string @minLength(1)
-    total   int64  @gte(0)
-}
+type OrderPlaced  { orderId string @minLength(1)  total int64 @gte(0) }
+type OrderShipped { orderId string  carrier string }
 
-@prefix("/v1")
+@doc("Emitted once an order is accepted.")
+event Placed { payload OrderPlaced }              // file level
+
 service OrderService {
     post PlaceOrder /orders { request PlaceOrderReq  response Order }
-
-    @doc("Emitted once an order is accepted.")
-    event OrderPlaced {
-        payload OrderPlacedPayload
-    }
+    event Shipped { payload OrderShipped }        // or in a service - same output
 }
 ```
 
 ```craftgo
 package notifications
 
-service NotificationService {
-    consume SendReceipt {
-        event orders.OrderPlaced          // qualified: another package's contract
-    }
+service Notifier {
+    consume SendReceipt { event orders.Placed }   // qualified: another package's contract
 }
 ```
 
-- `event Name { payload Type }` - `Type` must name a `type` declaration.
-- `consume Name { event Ref }` - `Ref` is an event name, bare or `pkg.Event`.
-- Events and consumers live in their own name namespaces, so `type OrderPlaced`
-  and `event OrderPlaced` may coexist.
-- Both merge across `extend service` like methods do.
-- The contract's wire identity is `<package>.<Event>`, overridable with
-  `@contract("...")`. Two events resolving to one identity are rejected.
-- The ordering key is NOT in the design. It is a publish option:
-  `PublishOrderPlaced(ctx, payload, craftevents.WithKey(string(payload.OrderID)))`,
-  and the batch builder takes the same. A publish without it is keyless.
-  `WithDedupID`, `WithHeader(k, v)` and `WithAdapterOption(adapter, k, v)` are the
-  rest of the set; `NewPublisher(bus, opts...)` and `svccontext.NewEvents(bus, opts...)`
-  take defaults applied before a call's own options, which win. `@key` was
-  removed - a design still carrying it is rejected with `decorator/removed`.
-- A consumer joins a **consumer group** - the broker identity it resumes from -
-  named `<package>-<Service>-<Consumer>` by default and pinned with
-  `@consumerGroup("...")` on the consumer or on its service. The derived name
-  moves when you rename any of the three, and a broker that has never seen the
-  new name has no position for it: if it has an offset, write the name down.
-  Consumers of different contracts may share one group inside a service (a group
-  is the unit of scaling and of failure isolation - NOT of ordering: no craftgo
-  transport orders two contracts against each other); two consumers of one
-  contract may not share a group, and two services may not. `@group` never
-  affects it. Kafka and JetStream keep a position per group; core NATS keeps
-  none, so there a rename costs nothing.
+- `event Name { payload Type }` - `Type` must name a `type` declaration (`event/payload-kind`
+  otherwise). File level or inside a `service`: the position no longer changes what is generated,
+  and an event in a service no longer means that service publishes it.
+- Wire identity is `<package>.<Event>`, overridden by `@contract("orders.placed.v2")`. Two events
+  resolving to one identity: `event/contract-collision`.
+- `consume Name { event Ref }` - one method on the generated handler interface. `Ref` is bare or
+  `pkg.Event`; absent is `consumer/event-missing`, unresolvable `consumer/event-unknown`. Consume
+  names are unique within their service.
+- Events and consumers have their own namespaces (`type OrderPlaced` and `event OrderPlaced`
+  coexist), merge across `extend service`, and take `@doc` / `@deprecated`. `@group` is HTTP-only.
+- Removed, each rejected with `decorator/removed` and a migration note: `@key`, the decorator that
+  named a consumer's broker group, the one that named its middleware, and the standalone
+  consumer-middleware declaration. A group and a `Chain` are arguments to `Register<Svc>Handler`.
 
-Generated for the event model:
+Generated per DSL package under an `events.targets[].out`, and nothing else - no publisher, no
+consumer stub, no event field on `svccontext`, no `internal/transport/events.go`:
 
-```
-internal/events/<svc>/publisher.go     GEN every run   typed publisher
-internal/events/<svc>/consumers.go     GEN every run   handler interface + subscriptions
-internal/transport/<svc>_consumers.go  GEN every run   handler set bound to logic
-internal/service/<seg>/<name>.go       GEN ONCE        consumer logic stub
-internal/transport/events.go           GEN every run   SubscribeAll
-svccontext/events.go                   GEN every run   the publishers container
-docs/asyncapi.yaml                     GEN every run   AsyncAPI 3.0 projection
+```go
+// <out>/orders/events.go - GEN every run, when the package declares an event
+const PlacedContract = "orders.Placed"
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
+
+// <out>/notifications/handlers.go - GEN every run, when a service in the package consumes
+type NotifierHandler interface {                                     // payload decoded + validated
+	SendReceipt(ctx context.Context, payload *orders.OrderPlaced) error
+}
+type NotifierGroups struct{ Default, SendReceipt craftevents.Group }  // empty field -> Default
+func RegisterNotifierHandler(bus *craftevents.Bus, h NotifierHandler,
+	chain craftevents.Chain, groups NotifierGroups) error             // one bus.Register per consume
 ```
 
-Runtime wiring lives in `main.go`, not in the design - the transport and the
-codec are deployment choices:
+A descriptor holds no bus - it is a parameter at every call, so one contract package serves every
+deployable, and `wiring.Register` / `svccontext` / `main.go` keep only their HTTP duties:
 
 ```go
 bus := craftevents.New(
 	craftevents.WithTransport(memory.New()),      // or a broker adapter
 	craftevents.WithCodec(codecjson.Codec{}),     // or protobuf / msgpack / ...
+	craftevents.WithMiddleware(logging.AccessLog(logger)),
 )
-svc.Events = svccontext.NewEvents(bus)
-if err := events.Subscribe(ctx, bus, svc); err != nil { ... }
+err := notifications.RegisterNotifierHandler(bus, h, craftevents.Chain{retry},
+	notifications.NotifierGroups{Default: "notifier"})  // both group fields empty -> error
+err = bus.Start(ctx)                                   // the whole batch, in one call
+
+err = ordersevents.Placed.Publish(ctx, bus, payload, craftevents.WithKey(payload.OrderID))
+err = bus.Publish(ctx, ordersevents.PlacedContract, payload)  // the untyped path
+
+func (b *Bus) Register(sub Subscription) error   // refused once started
+func (b *Bus) Start(ctx context.Context) error
+func (b *Bus) Plan() Plan                        // groups -> consumers, stable order
+func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error
+func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error
+
+type Subscription struct{ Event, Consumer string; Group Group; Chain Chain; Handle Handler }
+type Subscriber interface{ Subscribe(ctx context.Context, subs []Subscription) error } // batch only
 ```
 
-`pkg/events` defines `Message`, `Codec`, `Publisher`, `Subscriber`, `Subscription`
-and `Bus`; it knows nothing about any broker or encoding. `pkg/events/memory` is
-an in-process transport, `pkg/events/codecjson` a JSON codec. A broker adapter is
-an external package implementing `Publisher` and/or `Subscriber`.
+`Register` refuses a started bus, a nil `Handle`, an empty `Group` (`ErrNoGroup` - no fallback), a
+contract with no codec, a disposition the transport cannot honour, and a duplicate `(Event, Group)`;
+whether the BROKER accepts the set is `Start`'s answer. A second `Start` or a later `Register` is
+`ErrStarted`, even after one that failed. `Plan()` works either side of `Start` and marshals in
+stable order - pin it in a golden file to state a deployable's consumption.
 
-Message metadata is the publisher's to set, on `Envelope.Metadata` - so a single
-message with metadata is a one-envelope `Bus.PublishAll`; `Bus.Publish` takes
-none. `events.IsReservedMeta` names the keys that are not a caller's: `MetaCodec`
-(`content-codec`), and anything under `MetaPrefix` (`craftgo-`, where the
-adapters keep their own headers). An entry under one of those is dropped
-silently. A generated consumer is handed the decoded payload, so metadata is read
-in a middleware or a hand-written `Subscription`, both of which get the `Message`.
+The ordering key is a publish option, not a design decision; without one a publish is keyless.
+`WithDedupID`, `WithHeader(k, v)` and `WithAdapterOption(adapter, k, v)` are the rest;
+`WithPublishDefaults(opts...)` sets bus-wide defaults a call's own options win over. `pkg/events`
+knows no broker and no encoding: `pkg/events/memory` is an in-process transport, `codecjson` a JSON
+codec, `logging` the shipped consumer middleware, `kafka` and `nats` broker adapters (own modules).
 
-Consumer middleware goes on the BUS, not in the design and not in generated
-code: `craftevents.New(..., craftevents.WithMiddleware(mws...))`. The bus is the
-only seam every subscription passes through - a generated `SubscribeAll`, a
-hand-built `Subscriptions(bus, h)` slice, and one built against another design's
-contracts. A `Middleware` is `func(sub Subscription, next Handler) Handler` - it
-receives the subscription, so it needs no decorator to select a target, and it
-folds outermost-first like `server.Chain`. `Bus.Subscribe` recovers on both sides
-of the chain, so a panicking consumer reaches your middleware as a `*PanicError`
-and a panicking middleware still cannot end the process.
+Metadata is the publisher's to set, on `Envelope.Metadata`, so a message carrying any is a
+one-envelope `Bus.PublishAll` (`Bus.Publish` takes none). `events.IsReservedMeta` names the keys
+that are not a caller's - `MetaCodec` (`content-codec`) and anything under `MetaPrefix` (`craftgo-`);
+an entry under one is dropped silently. A handler method gets the decoded payload, so metadata is
+read in a middleware or a hand-written `Subscription`.
 
-`Bus.Subscribe` wraps every handler in a recover, so a panicking consumer does
-not end the process - it reaches the transport's error handler as a
-`*events.PanicError` and delivery continues with the next message. A payload the
-generated wrapper could not decode or that failed `Validate()` is a
-`*events.PayloadError` naming the contract; a message stamped with another codec
-is `events.ErrCodecMismatch`. The runtime classifies nothing beyond that: what
-to do about a failure is a middleware's decision, not the runtime's.
+Consumer middleware is ordinary Go, never declared in the DSL: `func(sub Subscription, next Handler)
+Handler`, folded outermost-first into a `Chain`. `WithMiddleware` installs one bus-wide; the `chain`
+argument of `Register<Svc>Handler` becomes `Subscription.Chain`, applied inside it.
 
-On JetStream a consumer group is the durable name, filtering every subject the
-group consumes, so a group keeps its position under its name; an existing
-durable is adopted with only its filter subjects patched. `Bus.SubscribeAll`
-hands a transport implementing `events.BatchSubscriber` the whole slice at once.
+`Bus.Start` wraps every handler in a recover, so a panicking consumer reaches the transport's error
+handler as a `*events.PanicError` and delivery continues. A payload that would not decode or failed
+`Validate()` is a `*events.PayloadError` naming the contract; another codec's stamp is
+`events.ErrCodecMismatch`. Beyond that the runtime classifies nothing: what to do is a middleware's.
 
-Publishing from logic:
+On JetStream a group is the durable name, carrying one filter subject per contract it consumes, so
+a group keeps its position under its name. An existing durable is adopted and verified: an equal
+filter set is adopted, a strict subset is widened to the plan, anything else - a narrower plan, a
+partial overlap, a durable with no filter - is refused naming both sets unless the group carries
+`AllowNarrow()`. Per-group settings come from `nats.WithGroupConfig(group, MaxInFlight(n),
+AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`. `AckWait`, `DeliverPolicy` and
+`ConsumerConfig` apply only when the durable is created; `MaxInFlight` is the prefetch, default 1 -
+raise it only where n x the slowest handler stays under `AckWait`.
 
-```go
-return l.svcCtx.Events.OrderService.PublishOrderPlaced(l.ctx, &types.OrderPlacedPayload{...})
-```
-
-Consuming (the stub; the payload arrives decoded and validated):
-
-```go
-func (l *SendReceiptConsumer) SendReceipt(payload *types.OrderPlacedPayload) error
-```
+Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-events) -
+[generated](/guide/events#what-is-generated) - [publishing](/guide/events#publishing) -
+[consuming](/guide/events#consuming) - [groups](/guide/events#groups) -
+[middleware](/guide/events#middleware) - [dispositions](/guide/events#dispositions) -
+[bus](/guide/events#wiring-the-bus) - [plan](/guide/events#the-plan) -
+[JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory) -
+[config](/guide/events#configuration)
 
 ## Decorator registry
 
@@ -503,7 +500,7 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | Decorator          | Sites    | Args                  | Effect                                                                                     |
 | ------------------ | -------- | --------------------- | ------------------------------------------------------------------------------------------ |
 | `@contract("...")` | event    | `(string)`            | Override the wire identity. Default `<package>.<Event>`.                                     |
-| `@consumerGroup("...")` | service, consumer | `(string)` | Broker identity a consumer joins (Kafka consumer group / NATS queue group). Unit of scaling and failure isolation, not of ordering. Service level defaults the body; consumer level overrides. Default `<package>-<Service>-<Consumer>`. |
+| `@doc` / `@deprecated` | event, consumer | see above  | Carried onto the generated descriptor / handler method.                                      |
 
 ## CLI
 
@@ -528,17 +525,14 @@ Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic er
 Lives **inside** the design folder. The folder is the design root; its parent is the project root.
 
 ```yaml
-design: # optional; omit it and the .craftgo files sit beside this manifest
-  from: ../../../contracts/design # design source: several deployables may name one
-  root: ../../../contracts # required with `from`: the project root that design is generated with (its own `-c`)
-
 output:
-  services: [] # optional; `<package>.<Service>` entries. Empty = every service
+  kind: application # application (default) | contracts
   types: ./internal/types # directory
   transport: ./internal/transport # directory
   routes: ./internal/routes # directory
   service: ./internal/service # directory
   middleware: ./internal/middleware # directory
+  wiring: ./internal/wiring # directory; holds the one Register call main.go makes
   svccontext: ./svccontext/svccontext.go # FILE PATH (single file)
   openapi: ./docs/openapi.yaml # FILE PATH (single file)
   config: ./config # directory
@@ -548,8 +542,7 @@ output:
 events: # optional; a design with no event generates nothing either way
   targets: # one row per language; Go is a row, not a privileged default
     - lang: go
-      out: ./internal/events
-  asyncapi: ./docs/asyncapi.yaml # FILE PATH; "-" skips it
+      out: ./internal/events # "-" skips the target
 
 openapi:
   title: My API
@@ -567,16 +560,7 @@ All `output.*` paths resolve against the **project root** (the directory holding
 
 The Go module path is **not** in this file. craftgo reads it from `go.mod` at gen time.
 
-### `design.*` - several deployables from one design
-
-A manifest naming `design.from` is a **projection**: it generates from a design folder it does not contain, so an API, a consumer and a cronjob build from one design instead of each copying it. Generate it with the deployable's own root: `craftgo gen -f services/notifier/design -c services/notifier`.
-
-- The projection holds no `.craftgo` files; a manifest that both names a source and holds a design is rejected.
-- `design.root` is required beside `design.from`. It is the source design's own `-c`, which craftgo cannot infer: `contracts/upstream/design` may be generated with `contracts` as its root as readily as with `contracts/upstream`, and guessing produces an import that does not exist. Both paths are relative to the folder holding the manifest, or absolute.
-- `output.types`, `events.targets` and `output.fileCase` come from the source manifest and resolve against `design.root`, so every deployable writes one shared contract half, imported under that root's module path. Stating them in a projection is rejected.
-- `openapi.*` keys the projection does not state are inherited, `securitySchemes` included - the shared design's `@security(...)` references resolve against them.
-- Everything else (`transport`, `routes`, `service`, `wiring`, `middleware`, `config`, `svccontext`, `main`, documents) is the deployable's, against its own project root.
-- `output.services` narrows the application half - handlers, logic stubs, routes, wiring, `SubscribeAll`, the publishers on `svccontext.Events` - to the named services. It never narrows the contract half or the documents, which describe the whole design. An unknown entry fails at gen time naming the near misses.
+`output.kind: contracts` generates only what other projects import - payload types, the event library and the documents - and stops before the application half. Its defaults move out of `internal/`, which Go forbids importing across modules: `output.types: ./gen/types` and `events.targets[].out: ./gen/events`.
 
 ### `.craftgo-gen/` - who generated what
 
@@ -584,7 +568,7 @@ Every REGENERATED file (the ones carrying `DO NOT EDIT`) is claimed by the desig
 
 - Two DIFFERENT designs writing one file is an error, reported before anything is written and naming both designs and both manifests.
 - Two manifests reading ONE design file one claim, so the deployables of a shared design may write the contract half together.
-- A prune removes only what the same design produced on its last run, across every regenerated output - transport, routes, wiring, `svccontext`, the event packages, a removed DSL package's `output.types` folder, the documents - and only while the file still carries its `DO NOT EDIT` header.
+- A prune removes only what the same design produced on its last run, across every regenerated output - transport, routes, wiring, `svccontext/middlewares.go`, the event packages, a removed DSL package's `output.types` folder, the OpenAPI document - and only while the file still carries its `DO NOT EDIT` header.
 - Gen-once scaffolds are never claimed: they are written only when missing.
 
 ### `openapi.basePath`
@@ -668,24 +652,24 @@ project/
 │   │   ├── validate.go
 │   │   ├── enums.go
 │   │   └── errors.go
+│   ├── events/<pkg>/                             GEN every run (when events are declared)
+│   │   ├── events.go
+│   │   └── handlers.go
 │   ├── transport/<svc>/                          GEN every run
 │   │   └── <method>.go
 │   ├── service/<svc>/<method>.go           GEN ONCE
 │   ├── routes/routes.go                          GEN every run (umbrella)
 │   ├── routes/<svc>/routes.go                    GEN every run
+│   ├── wiring/wiring.go                          GEN every run
 │   └── middleware/<name>_middleware.go           GEN ONCE per declared middleware
 ├── svccontext/
 │   ├── svccontext.go                             GEN ONCE
-│   ├── middlewares.go                            GEN every run
-│   └── events.go                                 GEN every run (when events are declared)
+│   └── middlewares.go                            GEN every run
 ├── config/
 │   ├── config.go                                 GEN ONCE
 │   ├── config.yaml                               GEN ONCE
 │   └── example.config.yaml                       GEN ONCE
-├── internal/events/events.go                      GEN every run (when events are declared)
-├── internal/events/<svc>/publisher.go             GEN every run
 ├── docs/openapi.yaml                             GEN every run
-├── docs/asyncapi.yaml                            GEN every run (when events are declared)
 ├── main.go                                       GEN ONCE
 ├── go.mod                                        YOU WRITE (`go mod init`)
 └── go.sum
@@ -934,8 +918,8 @@ Both methods share `/users` prefix and `AuthRequired`. `PurgeUser` additionally 
 - Database model generation
 - gRPC code generation (yet)
 - Runtime middleware library (auth, ratelimit, breaker) - use any `func(http.Handler) http.Handler`
-- Multi-language client gen - emit OpenAPI / AsyncAPI and run a generator over them; Go is craftgo's only source-code target
-- Broker adapters - `pkg/events` defines the transport interfaces; Kafka / NATS / RabbitMQ / SQS integrations live outside the core
+- Multi-language client gen - emit OpenAPI and run a generator over it; Go is craftgo's only source-code target
+- Broker adapters in the core module - `pkg/events` defines the transport interfaces and depends on nothing; the Kafka and NATS adapters ship as their own modules under `pkg/events/`, and anything else (RabbitMQ, SQS) is an external `Publisher` / `Subscriber`
 - Custom routers - uses Go 1.22+ stdlib `*http.ServeMux`
 - Environment-variable config - YAML file is the single source of runtime values
 
@@ -947,4 +931,4 @@ Both methods share `/users` prefix and `AuthRequired`. `PurgeUser` additionally 
 - The generated OpenAPI is structurally valid OAS 3.1 and renders cleanly in Swagger UI, ReDoc, and openapi-generator (Spectral / Redocly may flag nullable-union representations under their default 3.1 rulesets)
 - The runtime is `net/http` only - no fork, no patch, no parallel runtime
 - The DSL is a closed set: unknown decorators fire `decorator/unknown` at gen time, never silently ignored
-- The event model carries no broker, codec or AsyncAPI concept: transports and codecs are runtime wiring, and AsyncAPI is a one-way projection
+- The event model carries no broker or codec concept: transports, codecs, groups and consumer middleware are the application's runtime wiring, never the design's

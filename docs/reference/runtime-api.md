@@ -226,45 +226,142 @@ type Publisher interface {
 }
 
 type Subscriber interface {
-	Subscribe(ctx context.Context, sub Subscription) error
-}
-
-type BatchSubscriber interface { // optional: SubscribeAll hands over the whole sorted slice
-	SubscribeBatch(ctx context.Context, subs []Subscription) error
+	Subscribe(ctx context.Context, subs []Subscription) error
 }
 
 type Handler func(ctx context.Context, msg *Message) error
 
+type Group string // the broker identity: Kafka group, NATS queue group, JetStream durable
+
 type Subscription struct {
-	Event    string // the contract
-	Consumer string // the handler's design-declared name
-	Group    string // the broker identity; empty falls back to Consumer
+	Event    string // the contract, matching Message.Event
+	Consumer string // the handler's design-declared name; diagnostics and Plan only
+	Group    Group  // the broker identity; Register refuses an empty one
+	Chain    Chain  // this subscription's own middleware, applied inside the bus chain
 	Handle   Handler
 }
-
-func (s Subscription) GroupName() string // Group, else Consumer
 ```
+
+`Subscribe` takes the whole batch, and there is no one-at-a-time path beside it.
+A broker that binds one identity to several contracts - a JetStream durable
+filtering every subject its group consumes - cannot register a group one contract
+at a time, so every adapter is handed the set. It registers and returns; it must
+not block. A push transport hands the handler its callback, a pull transport
+starts its own loop; delivery runs until `ctx` is cancelled. A handler error
+means the message was not processed - retry, nack and dead-letter are the
+transport's policy.
+
+`Group` is a named type so an application declares its groups once and passes
+them around as values rather than as loose strings. It has no fallback: a
+subscription without one is refused at registration, because the name is where a
+consumer resumes on a broker that keeps a position, and that is the deployable's
+to choose rather than something to default into.
 
 `events.New(opts...)` builds a `*Bus` binding one transport to one codec;
 `WithPublisher` / `WithSubscriber` / `WithTransport` install the transport,
 `WithCodec` the codec, `WithCodecFor(contract, c)` overrides it for a single
-contract, and `WithMiddleware(mws...)` installs the [consumer
-chain](#consumer-middleware). There is no default codec - a bus built without one
+contract, `WithMiddleware(mws...)` installs the [consumer
+chain](#consumer-middleware), `WithPublishDefaults(opts...)` sets the [publish
+options](#publishing) every message through this bus starts from, and
+`WithDispositionRequired(d)` refuses a transport that cannot honour a
+[disposition](#dispositions). There is no default codec - a bus built without one
 fails rather than picking an encoding.
 
-`Bus.SubscribeAll(ctx, subs)` registers a list of subscriptions in group,
-contract then consumer order. A transport implementing `BatchSubscriber`
-receives the whole slice in one call, every handler already wrapped and every
-entry already checked - a JetStream durable filters every subject its group
-consumes, so it cannot register a group one contract at a time. Any other
-transport gets one `Subscribe` per entry. The generated
-`transport.SubscribeAll(ctx, bus, svcCtx)` builds that list and calls it.
-Delivery stops when `ctx` is cancelled.
+### Register and start
 
-`Subscribe` registers and returns; it must not block. A push transport hands the
-handler its callback, a pull transport starts its own loop. A handler error means
-the message was not processed - retry, nack and dead-letter are the transport's
-policy.
+```go
+func (b *Bus) Register(sub Subscription) error
+func (b *Bus) Start(ctx context.Context) error
+
+type RegisterError struct {
+	Event    string
+	Consumer string
+	Group    Group
+	Err      error // one of the sentinels; errors.Is reaches it
+}
+```
+
+`Register` records one subscription, to be handed over by `Start`. It makes the
+checks the bus can make on its own: the bus has not started, `Handle` is
+non-nil, `Group` is non-empty, a codec resolves for the contract, the transport
+can honour every disposition `WithDispositionRequired` named, and no earlier
+subscription holds the same contract and group. A refusal is a `*RegisterError`
+carrying the offending subscription, so `errors.Is(err, events.ErrNoGroup)`
+reaches the reason while the message still names which consumer. Whether the
+*broker* accepts the set is the transport's answer, and it comes from `Start`.
+
+The generated `Register<Service>Handler(bus, h, chain, groups)` is what calls it:
+one `Register` per `consume` the design declares.
+
+`Start` hands every registered subscription to the transport in **one** call,
+each handler already wrapped: a recover outermost, then the bus-wide chain, then
+the subscription's own `Chain` innermost. The batch is sorted by group, contract
+then consumer. Group leads because it is the identity a transport can refuse a
+second claim on, so the order decides which of two colliding subscriptions
+registers first; contract and consumer complete it, since two services may name a
+consumer alike and an order that is not total would move the refusal between
+runs.
+
+A second `Start`, or a `Register` after one, is `ErrStarted` - including after a
+`Start` that failed, since the transport may have taken part of the batch before
+it did. A bus with nothing registered starts successfully and hands the transport
+nothing.
+
+### Event descriptors
+
+A generated contract package declares one descriptor per event, and everything
+typed about that event goes through it:
+
+```go
+type Event[T any] struct{ ... }
+
+func NewEvent[T any](contract string, validate func(*T) error) Event[T]
+
+func (e Event[T]) Contract() string
+func (e Event[T]) Publish(ctx context.Context, bus *Bus, payload *T, opts ...PublishOption) error
+func (e Event[T]) Handler(bus *Bus, fn func(ctx context.Context, payload *T) error) Handler
+func (e Event[T]) Subscription(bus *Bus, consumer string, group Group, chain Chain,
+	fn func(ctx context.Context, payload *T) error) Subscription
+```
+
+`validate` may be nil, for a payload type that carries none. `Publish` validates
+first and sends nothing when that fails - the contract is refused where it is
+broken rather than at every consumer. `Handler` adapts a typed function to the
+untyped one a transport delivers to, decoding and validating before it runs.
+`Subscription` is what generated registration code hands to `Register`.
+
+The bus is a parameter at every call and never a field: a descriptor is a value
+in a contract package and knows nothing about how any deployable is wired, so one
+contract catalogue serves every binary that imports it.
+
+### The plan
+
+```go
+func (b *Bus) Plan() Plan
+
+type Plan struct {
+	Groups []PlanGroup `json:"groups"`
+}
+
+type PlanGroup struct {
+	Name      Group          `json:"name"`
+	Consumers []PlanConsumer `json:"consumers"`
+}
+
+type PlanConsumer struct {
+	Event    string `json:"event"`
+	Consumer string `json:"consumer"`
+}
+
+func (p Plan) MarshalJSON() ([]byte, error)
+```
+
+`Plan` reports what is registered, before or after `Start`: groups ordered by
+name, consumers within a group by contract then consumer, so two runs of the same
+wiring produce the same plan. `MarshalJSON` renders that order rather than the one
+the plan was built in, so a golden file compares a plan and not a map iteration.
+No generated file states a deployable's consumption any more - the groups are the
+application's - so a project that wants it stated pins this in a test.
 
 ### Publishing
 
@@ -293,9 +390,10 @@ func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error
 ```
 
 Options apply in order, so the last one setting a given value wins - which is
-what makes a publisher's defaults defaults. `JoinOptions` puts a publisher's
-defaults first and the per-call options after, without writing into either; the
-generated publishers call it.
+what makes a defaults list defaults. `WithPublishDefaults` is that list for a
+whole bus. `JoinOptions` does the same join for a hand-written publisher carrying
+its own - defaults first, the per-call options after, without writing into
+either.
 
 `PublishAll` encodes every envelope up front, then hands the batch to the
 transport in one call when it implements `BatchPublisher` and one message at a
@@ -362,7 +460,7 @@ leaving the decision to whatever is above it.
 `Dispositioner` is asked per INSTANCE, not per type: one adapter may be built in
 a mode that can redeliver and in a mode that cannot. A transport that does not
 implement it honours settle alone. `WithDispositionRequired` refuses at
-`Subscribe` rather than at the first message, because a chain calling
+`Register` rather than at the first message, because a chain calling
 `Redeliver()` on a transport that settles instead loses every message it meant
 to retry with nothing to report it.
 
@@ -385,7 +483,7 @@ by the bus before anything is encoded: an option under **another** adapter's
 name is ignored, and one under its **own** name that `KnownOptions` does not
 list fails the publish with an `*UnknownOptionError`. A transport that does not
 implement it gets neither - nothing can tell an option meant for it from one
-meant for somebody else. The three adapters craftgo ships implement it;
+meant for somebody else. Every adapter craftgo ships implements it;
 `kafka.OptionTimestamp` (a `time.Time`) is the only option any of them reads.
 
 ```go
@@ -410,14 +508,14 @@ which are handed the `Message`.
 type PanicError struct {
 	Event    string // the contract being delivered
 	Consumer string // the handler that panicked
-	Group    string // its broker identity
+	Group    Group  // its broker identity
 	Value    any    // what the handler passed to panic
 	Stack    []byte // the trace where the panic fired; not part of Error()
 }
 ```
 
-`Bus.Subscribe` wraps every handler it registers in a recover before the
-subscription reaches the transport, so a panicking consumer cannot end the
+`Bus.Start` wraps every handler it hands over in a recover before the batch
+reaches the transport, so a panicking consumer cannot end the
 process - the same rule `Recovery` is for the HTTP chain, and every transport
 inherits it, including adapters written outside craftgo. With a chain installed
 the wrap goes on both sides of it, so the chain observes the panic and a panic in
@@ -438,7 +536,7 @@ type PayloadError struct {
 var ErrCodecMismatch = errors.New(...)
 ```
 
-A payload the generated wrapper could not decode or that failed its
+A payload `Event[T].Handler` could not decode or that failed its
 `Validate()` comes back as a `*PayloadError` - the same bytes fail the same way
 on every delivery. A message stamped with a codec the consumer is not
 configured for fails with `ErrCodecMismatch` instead, a configuration error
@@ -459,15 +557,14 @@ func (c Chain) Apply(subs []Subscription) []Subscription
 func Recover() Middleware
 ```
 
-A generated `Middlewares` struct - one field per consume middleware a service's
-design applies - carries `Missing() []string`, naming the fields left nil, for
-a caller that wires `Subscriptions` by hand.
-
 `WithMiddleware` installs the chain every subscription registered through the bus
-is wrapped in, outermost first. It is the only seam that covers all of them - a
-generated `SubscribeAll`, a hand-built `Subscriptions(bus, h)` slice, and one
-built against another design's contracts all reach the broker through
-`Bus.Subscribe`. Repeating the option appends. Nothing is generated for this.
+is wrapped in, outermost first. The bus is the seam that covers all of them
+because every subscription passes through `Bus.Register` - a generated
+`Register<Service>Handler`, a hand-built `Subscription`, and one built against
+another design's contracts alike. A subscription's own `Chain` is applied
+*inside* this one, so a bus-wide concern - logging, tracing - still sees what a
+per-consumer chain did. Repeating the option appends. Nothing is generated for
+any of it.
 
 Each middleware is handed the `Subscription` it wraps, so one chain can read the
 contract, the consumer and the group it is running for.
@@ -480,7 +577,7 @@ wrap is handed the subscription it wraps. Most projects never call `Apply`;
 it is for decorating a slice the bus will not see, or one slice differently from
 the rest.
 
-`Bus.Subscribe` recovers on *both* sides of the chain: the inner recover turns a
+`Bus.Start` recovers on *both* sides of the chain: the inner recover turns a
 panicking handler into a `*PanicError` your middleware observes as an ordinary
 error, the outer one catches a panic in the chain itself. Exactly one
 `PanicError` is built per panic. A bus with no middleware installs the inner one
@@ -489,7 +586,7 @@ alone.
 `Recover()` is for a chain folded by `Apply` instead of installed on the bus -
 the bus wraps that from outside as one opaque handler, so place `Recover()` at
 its innermost end for the same visibility. A bus chain needs it nowhere. See
-[Events](/guide/events#consumer-middleware).
+[Events](/guide/events#middleware).
 
 ### Shipped implementations
 
@@ -498,11 +595,23 @@ its innermost end for the same visibility. A bus chain needs it nowhere. See
   one competing-consumer group. `Drain()` waits for in-flight deliveries, and
   is safe to call while another goroutine publishes - which is what a shutdown
   racing a request still in flight looks like.
+- `pkg/events/nats` - core NATS, where a contract is a subject and a group is a
+  queue group, plus a separate `JetStream` transport binding one durable per
+  group, filtered to every subject that group consumes. See
+  [NATS JetStream](/guide/events#nats-jetstream).
+- `pkg/events/kafka` - one contract per topic by default, the publish key as the
+  record key. A classic consumer group by default; `WithShareGroup` asks for a
+  KIP-932 share group, which is what makes `Redeliver` and `Reject` mean anything
+  there.
 - `pkg/events/codecjson` - a JSON codec.
+- `pkg/events/logging` - `AccessLog(l *slog.Logger, opts ...AccessLogOption)`,
+  one line per delivery. It is a sub-package so `log/slog` stays out of the
+  exported surface of `pkg/events`, which every generated contract package
+  imports.
 
-A broker integration (Kafka, NATS, RabbitMQ, SQS, Pub/Sub, Redis Streams, …) is
-an external package implementing `Publisher` and/or `Subscriber`. See
-[Events](/guide/events).
+Any other broker - RabbitMQ, SQS, Pub/Sub, Redis Streams - is an outside package
+implementing `Publisher` and/or `Subscriber`, and those two interfaces are all it
+needs: none of the above is privileged. See [Events](/guide/events).
 
 ## Related packages
 

@@ -316,7 +316,7 @@ type User { ... }
 
 ## Next
 
-- [Events](/guide/events) - event contracts, consumers, and the AsyncAPI projection
+- [Events](/guide/events) - event contracts, consumers, and the event runtime
 - [Decorators](/guide/decorators) - the full decorator catalog
 - [Validators](/guide/validators) - validation runtime semantics
 - [Types and Scalars](/guide/types-and-scalars) - generics, mixins, advanced types

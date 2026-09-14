@@ -76,8 +76,8 @@ Top-level help. Same content as running `craftgo` with no arguments.
 | Code | Meaning                                      |
 | ---- | -------------------------------------------- |
 | 0    | Success                                      |
-| 1    | Generic failure, or `fmt` left a file with errors unformatted |
-| 2    | Semantic errors found                        |
+| 1    | Any failure: parse or semantic errors, a generation error, or `fmt` left a file with errors unformatted |
+| 2    | Usage error: no command, or an unknown one   |
 
 CI scripts can rely on these to fail builds.
 

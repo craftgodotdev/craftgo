@@ -15,8 +15,7 @@ The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifie
 | `service`    | top level   | Declare an HTTP service                                       |
 | `extend`     | top level   | Add methods to an existing service (`extend service Name`)    |
 | `middleware` | top level   | Declare a named middleware slot                               |
-| `consume middleware` | top level | Declare a named consume-middleware slot (wraps a consumer, not an HTTP handler) |
-| `event`      | top level   | Declare a contract this design does not publish               |
+| `event`      | top level   | Declare an event contract this package owns                   |
 
 ## Member body keywords
 
@@ -25,7 +24,7 @@ The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifie
 | `request`   | inside method body    | Names the request type                   |
 | `response`  | inside method body    | Names the response type                  |
 | `payload`   | inside event body     | Names the type an event contract carries |
-| `event`     | inside service body   | Declare a contract this service publishes |
+| `event`     | inside service body   | Same declaration, written beside the service that cares about it - the position changes nothing |
 | `event`     | inside consumer body  | Names the contract a consumer handles    |
 | `consume`   | inside service body   | Declare a consumer of a contract          |
 

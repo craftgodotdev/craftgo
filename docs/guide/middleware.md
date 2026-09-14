@@ -2,7 +2,7 @@
 
 Middleware in craftgo is a regular `func(http.Handler) http.Handler`. There are two ways to wire it up: directly in `main.go`, or declared in the DSL and attached to services / methods.
 
-This page is the **HTTP** side. Event consumers have their own middleware - a different Go shape, a different declaration (`consume middleware Name`), a different decorator (`@consumeMiddlewares`), and an ordering rule that is the *opposite* of the one below. See [Per-consumer middleware](/guide/events#per-consumer-middleware).
+This page is the **HTTP** side. Event consumers have their own middleware - a different Go shape (`func(sub events.Subscription, next events.Handler) events.Handler`), never declared in the DSL, but the same outermost-first ordering as below. See [Middleware](/guide/events#middleware) in the events guide.
 
 ## At a glance
 
@@ -11,7 +11,7 @@ This page is the **HTTP** side. Event consumers have their own middleware - a di
 [ 2 ] Declared middleware - DSL keyword + @middlewares(...) - per-service or per-method
 ```
 
-(For consumers: `consume middleware Name` + `@consumeMiddlewares(...)`, covered in the [events guide](/guide/events#per-consumer-middleware).)
+(For consumers: an `events.Chain` built in ordinary Go where the bus is, covered in the [events guide](/guide/events#middleware).)
 
 Use **runtime middleware** for cross-cutting concerns that apply globally regardless of the API contract: access log, OTel, recovery.
 
@@ -213,7 +213,7 @@ For a request to a method like `DeleteUser` above, the chain executes outermost-
 [handler] decode body, validate, call logic, encode response
 ```
 
-An HTTP middleware does its work on the way IN, so the first one listed is the first to run and that reads the way it sounds. **A consume middleware is the mirror image** - it works on the error coming back, so the first one listed runs last and wins. Do not carry the intuition from this page over to [`@consumeMiddlewares`](/guide/events#order-is-the-whole-contract).
+An HTTP middleware does its work on the way IN, so the first one listed is the first to run and that reads the way it sounds. A consumer [`events.Chain`](/guide/events#middleware) folds the same way - first listed is outermost - so the intuition carries over unchanged.
 
 Recovery sits at the outermost position so a panic in any user middleware still surfaces as a 500 instead of crashing the server. The generated `routes.go` reads the DSL `@middlewares(...)` values as typed fields on `svcCtx` (e.g. `svcCtx.AuthRequired`, `svcCtx.RateLimit`, pre-wired at startup by `main.go`) and passes them as variadic args to `srv.Handle(pattern, h, mws...)`. The service- and method-level chains are merged into one flat, outermost-first list before the call (first entry = first hit on the way in). See the [Runtime API](/reference/runtime-api#chain) for composing your own chains with `server.Chain`.
 
