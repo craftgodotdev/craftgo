@@ -124,12 +124,6 @@ func FlattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver,
 	return out
 }
 
-// RequestFieldList is the mixin-aware field list of a request / response
-// type: [FlattenFields] with a fresh cycle-guard.
-func RequestFieldList(td *ast.TypeDecl, pkg *Package, r *Resolver) []*ast.Field {
-	return FlattenFields(td, pkg, r, map[string]bool{})
-}
-
 // RequalifyFieldType returns f with its type re-qualified into package
 // `prefix` (see [RequalifyTypeRef]), cloning only when a rewrite is needed.
 func RequalifyFieldType(f *ast.Field, prefix string, r *Resolver) *ast.Field {

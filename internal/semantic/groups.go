@@ -9,7 +9,7 @@ import (
 // member's artefacts land and how a document tags it, so both answers come
 // from here.
 
-// methodGroupOf returns the @group of the block that declared m (primary or an
+// MethodGroupOf returns the @group of the block that declared m (primary or an
 // extend), or "" when ungrouped / not found. The map-free form for callers
 // that need one method's group without building the whole table.
 func MethodGroupOf(svc *ServiceInfo, m *ast.Method) string {
@@ -27,16 +27,9 @@ func MethodGroupOf(svc *ServiceInfo, m *ast.Method) string {
 	for _, e := range svc.Extends {
 		for _, em := range e.Methods() {
 			if em.Name == m.Name {
-				return EffectiveGroup(e, primaryGroup)
+				return route.EffectiveGroup(e, primaryGroup)
 			}
 		}
 	}
 	return ""
-}
-
-// EffectiveGroup returns the @group that applies to a service block -
-// [route.EffectiveGroup] under codegen's own name. The block's own @group wins;
-// an extend block that declares none inherits the primary block's.
-func EffectiveGroup(block *ast.ServiceDecl, primaryGroup string) string {
-	return route.EffectiveGroup(block, primaryGroup)
 }

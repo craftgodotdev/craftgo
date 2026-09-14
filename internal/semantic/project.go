@@ -45,7 +45,6 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // Project is the cross-package analysis result. Packages is keyed by
@@ -184,22 +183,4 @@ func folderExists(designRoot, importPath string) bool {
 		}
 	}
 	return false
-}
-
-// filePos returns a representative position for diagnostics anchored
-// at the file as a whole. Falls back to line 1 column 1 for files
-// without a package decl. Test-only today, but kept on the package
-// surface because project diagnostics anchored to a whole file (e.g.
-// import-resolution, package-name conflicts) eventually need it.
-func filePos(f *ast.File) lexer.Position {
-	if f == nil {
-		return lexer.Position{}
-	}
-	if f.Package != nil {
-		return f.Package.Pos
-	}
-	for _, d := range f.Decls {
-		return d.DeclPos()
-	}
-	return lexer.Position{Line: 1, Column: 1}
 }

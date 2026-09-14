@@ -180,7 +180,7 @@ func memberGroups(svc *semantic.ServiceInfo, names func(*ast.ServiceDecl) []stri
 		}
 	}
 	for _, e := range svc.Extends {
-		g := semantic.EffectiveGroup(e, primaryGroup)
+		g := route.EffectiveGroup(e, primaryGroup)
 		for _, n := range names(e) {
 			out[n] = g
 		}

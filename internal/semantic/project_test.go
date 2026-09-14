@@ -306,24 +306,6 @@ func TestPackageHasSymbol(t *testing.T) {
 	}
 }
 
-func TestFilePosFallback(t *testing.T) {
-	got := filePos(&ast.File{})
-	if got.Line != 1 {
-		t.Errorf("empty file should fallback to line 1, got %v", got)
-	}
-	if got := filePos(nil); got.Line != 0 {
-		t.Errorf("nil should be zero pos, got %v", got)
-	}
-	got = filePos(&ast.File{
-		Decls: []ast.Decl{
-			&ast.TypeDecl{Pos: lexer.Position{Line: 42}, Name: "X"},
-		},
-	})
-	if got.Line != 42 {
-		t.Errorf("decl fallback got %v", got)
-	}
-}
-
 func TestIsEscapingPath(t *testing.T) {
 	cases := map[string]bool{
 		"":           false,
@@ -380,15 +362,6 @@ func TestFolderExists(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(noPerm, 0o755) })
 	if folderExists(root, "noperm") {
 		t.Error("unreadable folder should report false")
-	}
-}
-
-// TestFilePosFromPackage covers the f.Package != nil branch (mirrors
-// the decl-fallback test below).
-func TestFilePosFromPackage(t *testing.T) {
-	got := filePos(&ast.File{Package: &ast.PackageDecl{Pos: lexer.Position{Line: 7}, Name: "x"}})
-	if got.Line != 7 {
-		t.Errorf("expected line 7, got %v", got)
 	}
 }
 
