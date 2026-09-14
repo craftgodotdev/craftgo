@@ -672,6 +672,19 @@ service Orders { event Placed { payload P } }
 service Watchers { @consumerGroup("orders watch") consume Watch { event Placed } }`, CodeConsumerGroupFormat)
 }
 
+// JetStream's checkConsumerName refuses these too, so a design carrying
+// one compiles and then fails at the broker.
+func TestConsumerGroupWithASubjectWildcardIsRejected(t *testing.T) {
+	for _, name := range []string{"orders>watch", "orders*watch", "orders/watch", `orders\\watch`} {
+		t.Run(name, func(t *testing.T) {
+			expectDiag(t, `package p
+type P { id string }
+service Orders { event Placed { payload P } }
+service Watchers { @consumerGroup("`+name+`") consume Watch { event Placed } }`, CodeConsumerGroupFormat)
+		})
+	}
+}
+
 func TestConsumerGroupEmptyIsRejected(t *testing.T) {
 	expectDiag(t, `package p
 type P { id string }

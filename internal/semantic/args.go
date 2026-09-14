@@ -152,9 +152,11 @@ func (a *analyzer) checkConsumerGroupArg(d *ast.Decorator) {
 			"@consumerGroup needs a non-empty name - it is the identity the broker remembers this consumer's position under")
 		return
 	}
-	if strings.ContainsAny(s.Value, ". \t\n") {
+	// The set JetStream's checkConsumerName refuses, not a subset of it:
+	// a name it rejects fails at the broker, after the design compiles.
+	if strings.ContainsAny(s.Value, ". \t\n\r>*/\\") {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeConsumerGroupFormat,
-			"@consumerGroup value %q may not contain a dot or whitespace - NATS JetStream refuses a durable name with either, so the group could not be created", s.Value)
+			"@consumerGroup value %q may not contain whitespace or any of . > * / \\ - NATS JetStream refuses a durable name carrying one, so the group could not be created", s.Value)
 	}
 }
 

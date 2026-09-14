@@ -399,8 +399,8 @@ const (
 	// services cannot do.
 	CodeConsumerGroupCrossService = "consumer/group-cross-service"
 	// CodeConsumerGroupFormat fires when an authored `@consumerGroup`
-	// value is empty or carries a dot or whitespace - none of which a
-	// broker accepts as a group name.
+	// value is empty or carries whitespace or one of . > * / \\ - the
+	// set NATS JetStream refuses in a durable name.
 	CodeConsumerGroupFormat = "consumer/group-format"
 )
 
