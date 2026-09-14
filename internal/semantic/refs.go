@@ -58,7 +58,7 @@ func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
 // (`@requiresOneOf` / `@mutuallyExclusive`) run via
 // [checkLocalDecoratorRefs] before this path because they're always
 // local - TypeDecl bodies skipped here to avoid double-emission.
-// Method / service refs delegate to a shared helper.
+// Member / service refs delegate to a shared helper.
 func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -69,11 +69,19 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 		// @mutuallyExclusive (the placement matrix gates this); the
 		// case stays here so future additions slot in symmetrically.
 	case *ast.ServiceDecl:
-		if !dd.Extend {
+		if dd.Extend {
+			// An extend block's decorators are member decorators that
+			// [analyzer.mergeServices] copies onto the block's methods.
+			// They resolve here, on the block that writes them, so a
+			// block carrying no method - one holding only consumers -
+			// still has its names checked, and a block carrying several
+			// reports one diagnostic rather than one per method.
+			a.checkMemberLevelRefs(dd.Decorators)
+		} else {
 			a.checkServiceLevelRefs(dd.Decorators)
 		}
 		for _, m := range dd.Methods() {
-			a.checkMethodLevelRefs(m)
+			a.checkMemberLevelRefs(m.Decorators)
 		}
 	}
 }
@@ -236,13 +244,16 @@ func (a *analyzer) checkServiceLevelRefs(decs []*ast.Decorator) {
 	}
 }
 
-// checkMethodLevelRefs validates `@errors`, `@middlewares`, and
-// `@security` on a single method. Method-level decorators take
-// precedence over service-level (per README) but resolution targets are
-// the same.
-func (a *analyzer) checkMethodLevelRefs(m *ast.Method) {
-	for _, d := range m.Decorators {
-		if d == nil {
+// checkMemberLevelRefs validates `@errors`, `@middlewares`, and
+// `@security` on one member's decorator list. Member-level decorators
+// take precedence over service-level (per README) but resolution targets
+// are the same.
+//
+// Propagated decorators are skipped: they are copies of an extend
+// block's own list, which resolves at the block.
+func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator) {
+	for _, d := range decs {
+		if d == nil || d.Propagated {
 			continue
 		}
 		switch d.Name {
