@@ -141,6 +141,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
   where the transport does not keep one.
 
+- **The Kafka adapter no longer destroys `WithDedupID`.** It is carried as the
+  `craftgo-dedup-id` record header and read back on the consuming side, so a
+  consumer can recognise a repeat for itself. Before this it reached no record
+  at all, which made the option's documented "a transport without the notion
+  ignores this" false: Kafka did not ignore the ID, it threw it away.
+
+  **No transport craftgo ships deduplicates** - NATS and the in-process
+  transport carry the ID without acting on it too, and Kafka's idempotent
+  producer is not that feature (it covers a request the client reissued after a
+  network failure, keyed on a producer ID and sequence craftgo never sets). The
+  `PublishOption` doc now carries one table saying what each adapter does with
+  both portable options, rather than a sentence per option that can drift from
+  the adapters.
+
 - **A partial batch names which envelopes did not go out.**
   `events.PartialPublishError` gained `Unsent []int` - the indices, ascending,
   into the slice handed to `PublishAll` - so retrying exactly those sends

@@ -368,3 +368,84 @@ func TestAnUnsetDispositionSettles(t *testing.T) {
 		t.Errorf("ackFor(reject) = %v, want reject", got)
 	}
 }
+
+// Kafka used to DESTROY a deduplication ID: it never reached a record, so
+// a consumer could not recognise a repeat for itself either. Carrying it
+// is what makes "a transport without the notion ignores this" true.
+func TestTheDeduplicationIDSurvivesARoundTrip(t *testing.T) {
+	tr := New(nil)
+	in := &events.Message{
+		Event:    "orders.OrderPlaced",
+		Key:      "order-1",
+		DedupID:  "attempt-7",
+		Payload:  []byte("body"),
+		Metadata: map[string]string{"content-codec": "json"},
+	}
+	rec := mustEncode(t, tr, in)
+
+	var onRecord string
+	for _, h := range rec.Headers {
+		if h.Key == HeaderDedupID {
+			onRecord = string(h.Value)
+		}
+	}
+	if onRecord != "attempt-7" {
+		t.Errorf("the record carries dedup id %q, want attempt-7", onRecord)
+	}
+
+	out := decode("orders.OrderPlaced", rec)
+	if out.DedupID != "attempt-7" {
+		t.Errorf("round trip lost the dedup id: %q", out.DedupID)
+	}
+	// It is this adapter's header, not a caller value, so it must not
+	// come back as metadata too.
+	if _, leaked := out.Metadata[HeaderDedupID]; leaked {
+		t.Errorf("the dedup header leaked into metadata: %v", out.Metadata)
+	}
+}
+
+// A message published without one carries no header at all, so a consumer
+// can tell "no identity given" from "this identity".
+func TestNoDeduplicationIDMeansNoHeader(t *testing.T) {
+	rec := mustEncode(t, New(nil), &events.Message{Event: "shop.Placed", Payload: []byte(`{}`)})
+	for _, h := range rec.Headers {
+		if h.Key == HeaderDedupID {
+			t.Errorf("a message with no dedup id carries %q", h.Value)
+		}
+	}
+	if got := decode("shop.Placed", rec).DedupID; got != "" {
+		t.Errorf("DedupID = %q, want empty", got)
+	}
+}
+
+// The header is this adapter's. A caller's metadata under that name must
+// not be written a second time, or decode would read the caller's value
+// as the message's deduplication identity.
+func TestTheDeduplicationHeaderCannotBeForgedByMetadata(t *testing.T) {
+	rec := mustEncode(t, New(nil), &events.Message{
+		Event:    "shop.Placed",
+		DedupID:  "real",
+		Payload:  []byte(`{}`),
+		Metadata: map[string]string{HeaderDedupID: "forged"},
+	})
+	seen := 0
+	for _, h := range rec.Headers {
+		if h.Key == HeaderDedupID {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Errorf("%s written %d times, want once", HeaderDedupID, seen)
+	}
+	if got := decode("shop.Placed", rec).DedupID; got != "real" {
+		t.Errorf("DedupID = %q, want the message's own", got)
+	}
+}
+
+// And the runtime blocks it a layer earlier: the name is under
+// events.MetaPrefix, so a caller cannot even get it into Metadata.
+func TestTheDeduplicationHeaderNameIsReserved(t *testing.T) {
+	if !events.IsReservedMeta(HeaderDedupID) {
+		t.Errorf("%s is not reserved, so WithHeader could set it", HeaderDedupID)
+	}
+}

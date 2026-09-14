@@ -55,14 +55,45 @@ type Envelope struct {
 // Options apply in order, so the last one setting a given value wins.
 // That is what makes a publisher's defaults defaults: [JoinOptions] puts
 // them first and the per-call options after.
+//
+// # What each shipped transport does with a key and a deduplication ID
+//
+// [WithHeader] and [WithAdapterOption] behave the same everywhere. The
+// two PORTABLE options do not, because what they ask for is a broker
+// feature - so this is the one place that says what each adapter does,
+// rather than a sentence per option that can drift from a sentence per
+// adapter:
+//
+//	         WithKey                      WithDedupID
+//	kafka    partitions on it, so one     carried as a header;
+//	         key is one partition and     nothing deduplicates
+//	         its messages are ordered
+//	         within that contract
+//	nats     carried as a header;         carried as Nats-Msg-Id; core
+//	         routing is by subject, so    NATS does not deduplicate, a
+//	         nothing is ordered           JetStream stream with a
+//	                                      duplicate window does
+//	memory   carried; deliveries run      carried; nothing
+//	         concurrently, so nothing     deduplicates
+//	         is ordered
+//
+// Two things that table is for. **No transport craftgo ships
+// deduplicates**, and only Kafka orders on a key - so neither option is a
+// guarantee you can assume, and [WithDedupID] in particular does nothing
+// on its own today.
+//
+// But every one of them CARRIES both values through to the consumer, and
+// that is the difference between a feature a transport has not got and a
+// value it destroys: a consumer handed the ID can recognise a repeat
+// itself even where the broker will not.
 type PublishOption func(*Envelope)
 
 // WithKey sets the key identifying the entity the message is about.
 //
 // A transport that preserves per-entity ordering uses it to place the
-// message - the Kafka partition key, a subject suffix - so two messages
-// under one key keep their order within one contract. Nothing orders
-// across contracts. A transport without the notion ignores it.
+// message, so two messages under one key keep their order within one
+// contract. Nothing orders across contracts, and only some transports
+// order at all - see [PublishOption] for what each one does.
 //
 // A message published without a key is keyless, and a keyless message is
 // placed wherever the transport likes: that is the right default for a
@@ -79,8 +110,11 @@ func WithKey(key string) PublishOption {
 // the broker's own window is one message, which is what makes a retry
 // after an ambiguous failure safe.
 //
-// The window, and whether there is one at all, is the broker's; a
-// transport without the notion ignores this.
+// The window, and whether there is one at all, is the broker's. **No
+// transport craftgo ships deduplicates today** - every one of them
+// carries the ID to the consumer and none acts on it, so a retry is only
+// safe here if the consumer itself is. See [PublishOption] for what each
+// adapter does.
 func WithDedupID(id string) PublishOption {
 	return func(env *Envelope) { env.DedupID = id }
 }

@@ -71,6 +71,22 @@ const HeaderEvent = "craftgo-event"
 // decoding the payload. The same value is the record key.
 const HeaderKey = "craftgo-key"
 
+// HeaderDedupID carries [events.Message.DedupID]. Kafka does not
+// deduplicate on it, and neither does this adapter: carrying it lets a
+// CONSUMER recognise a repeat for itself, which destroying it made
+// impossible.
+//
+// The producer's idempotence is not that feature and does not stand in
+// for it. It covers a request this client reissued after a transient
+// network failure, keyed on a producer ID and a sequence number that
+// craftgo never sets - two separate Publish calls carrying one dedup ID
+// are two records through one client, not one.
+//
+// It sits under [events.MetaPrefix], so a caller cannot forge one through
+// [events.WithHeader]: the runtime drops a metadata entry under that name
+// before the message reaches this adapter.
+const HeaderDedupID = "craftgo-dedup-id"
+
 // Adapter is the name [events.WithAdapterOption] addresses this adapter
 // by.
 const Adapter = "kafka"
@@ -338,19 +354,23 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 // encode maps a craftgo message onto a Kafka record. Metadata becomes
 // headers beside the contract and the key, which keep their own.
 //
-// [HeaderEvent] and [HeaderKey] are this adapter's, so a metadata entry
-// under either name is skipped rather than written a second time: decode
-// reads the last header of a name, so a duplicate would rename the
-// message or move it to another entity. The runtime drops those keys
-// before a message gets here; a hand-built [events.Message] does not go
-// through it.
+// [HeaderEvent], [HeaderKey] and [HeaderDedupID] are this adapter's, so a
+// metadata entry under any of their names is skipped rather than written
+// a second time: decode reads the last header of a name, so a duplicate
+// would rename the message, move it to another entity, or give it another
+// message's deduplication identity. The runtime drops those keys before a
+// message gets here; a hand-built [events.Message] does not go through
+// it.
 func (t *Transport) encode(msg *events.Message) (*kgo.Record, error) {
 	headers := []kgo.RecordHeader{{Key: HeaderEvent, Value: []byte(msg.Event)}}
 	if msg.Key != "" {
 		headers = append(headers, kgo.RecordHeader{Key: HeaderKey, Value: []byte(msg.Key)})
 	}
+	if msg.DedupID != "" {
+		headers = append(headers, kgo.RecordHeader{Key: HeaderDedupID, Value: []byte(msg.DedupID)})
+	}
 	for k, v := range msg.Metadata {
-		if k == HeaderEvent || k == HeaderKey {
+		if k == HeaderEvent || k == HeaderKey || k == HeaderDedupID {
 			continue
 		}
 		headers = append(headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
@@ -621,6 +641,8 @@ func decode(contract string, rec *kgo.Record) *events.Message {
 			out.Event = string(h.Value)
 		case HeaderKey:
 			out.Key = string(h.Value)
+		case HeaderDedupID:
+			out.DedupID = string(h.Value)
 		default:
 			out.Metadata[h.Key] = string(h.Value)
 		}

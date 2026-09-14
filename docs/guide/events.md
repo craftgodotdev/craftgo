@@ -873,6 +873,27 @@ b.OrderService().OrderShipped(shipped, craftevents.WithKey(string(shipped.OrderI
 
 Options apply in order, so the last one setting a given value wins.
 
+::: warning The two portable options are not guarantees
+`WithHeader` and `WithAdapterOption` behave the same on every transport. The
+other two ask for a **broker feature**, so what they do depends on which
+adapter is wired up:
+
+| | `WithKey` | `WithDedupID` |
+| --- | --- | --- |
+| kafka | partitions on it, so one key is one partition and its messages are ordered within that contract | carried as a header; nothing deduplicates |
+| nats | carried as a header; routing is by subject, so nothing is ordered | carried as `Nats-Msg-Id`; core NATS does not deduplicate, a JetStream stream with a duplicate window does |
+| memory | carried; deliveries run concurrently, so nothing is ordered | carried; nothing deduplicates |
+
+**No transport craftgo ships deduplicates**, and only Kafka orders on a key. But
+all three **carry** both values to the consumer, which is the difference between
+a feature a transport has not got and a value it destroys: a consumer handed the
+ID can recognise a repeat itself even where the broker will not.
+
+Kafka's idempotent producer is not that feature. It covers a request the client
+reissued after a network failure, keyed on a producer ID and sequence craftgo
+never sets - two `Publish` calls sharing one `WithDedupID` are two records.
+:::
+
 ::: tip The key is not in the design
 A contract says what a message *is*; which entity it belongs to is a property
 of the message, and one publisher may key the same contract differently from
