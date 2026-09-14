@@ -3,10 +3,9 @@
 // # Topics
 //
 // The default maps one contract to one topic. A message's ordering key -
-// [events.WithKey] at the publish call - becomes the Kafka message key,
-// so one entity's messages land in one partition and Kafka orders them,
-// within that one contract. A message published without a key is
-// round-robined across the partitions instead.
+// [events.WithKey] at the publish call - becomes the Kafka record key, so
+// one entity's messages land in one partition and Kafka orders them,
+// within that one contract.
 //
 // [WithTopic] replaces the mapping when the broker's naming is not yours
 // to choose:
@@ -16,32 +15,50 @@
 // The contract always travels in the [HeaderEvent] header, so a topic
 // carrying several contracts stays self-describing.
 //
+// # Two modes
+//
+// The default is a classic consumer group: the client owns partitions,
+// offsets advance as a high-water mark, and a delivery can only be taken
+// as done. [WithShareGroup] switches to a KIP-932 share group, where the
+// broker tracks each record and a consumer can hand one back for
+// redelivery or give it up as poison - which is what makes
+// [events.Message.Redeliver] and [events.Message.Reject] mean anything
+// here.
+//
+// The mode is never detected. A delivery guarantee that depended on which
+// broker answered would change under a failover with nothing to see it,
+// so a share group is asked for and, if the broker cannot serve one,
+// [Transport.Subscribe] refuses rather than quietly consuming as a
+// classic group. Share groups need Kafka 4.2 or newer.
+//
 // # Ordering across contracts is not supported
 //
 // Two contracts about one entity have no order between them, and no
 // configuration of this adapter gives them one. Collapsing them onto one
 // topic does not: [Transport.Subscribe] refuses one group reading two
-// different contracts on one topic, because the readers would split that
-// topic's partitions and each commit-and-skip the other's contract. One
-// reader over several topics does not either: kafka-go drains one topic
-// before the next, so a keyed pair arrives in the wrong order. Separate
-// groups on one topic are separate readers, so they are not ordered
-// either. Use a group for scale and for failure isolation; do not use one
-// expecting cross-contract order.
+// different contracts on one topic, because the members would divide that
+// topic between them and each skip the other's contract. Separate groups
+// on one topic are separate readers, so they are not ordered either. Use a
+// group for scale and for failure isolation; do not use one expecting
+// cross-contract order.
 //
-// A subscription's group is the Kafka consumer group, so replicas
-// sharing one group share the partitions and a different group gets its
-// own copy.
+// A subscription's group is the Kafka group - consumer or share - so
+// replicas sharing one share the work and a different group gets its own
+// copy.
 package kafka
 
 import (
 	"context"
-	"errors"
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
 
-	kgo "github.com/segmentio/kafka-go"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
+	"github.com/twmb/franz-go/pkg/kversion"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
@@ -51,19 +68,8 @@ import (
 const HeaderEvent = "craftgo-event"
 
 // HeaderKey carries the ordering key for consumers that want it without
-// decoding the payload. The same value is the Kafka message key.
+// decoding the payload. The same value is the record key.
 const HeaderKey = "craftgo-key"
-
-// A Transport is a full transport: it publishes, subscribes, takes a
-// batch in one call, and names itself to the per-message option check.
-// Asserted here so a change to the runtime interfaces fails this package
-// rather than a user's wiring.
-var (
-	_ events.Publisher      = (*Transport)(nil)
-	_ events.Subscriber     = (*Transport)(nil)
-	_ events.BatchPublisher = (*Transport)(nil)
-	_ events.OptionAware    = (*Transport)(nil)
-)
 
 // Adapter is the name [events.WithAdapterOption] addresses this adapter
 // by.
@@ -77,28 +83,49 @@ const Adapter = "kafka"
 // message replayed from an outbox does not want.
 const OptionTimestamp = "timestamp"
 
-// AdapterName implements [events.OptionAware].
-func (t *Transport) AdapterName() string { return Adapter }
+// The share-group API keys this adapter needs, probed before a share
+// subscription is registered. Named because the refusal quotes them.
+const (
+	apiShareGroupHeartbeat = 76
+	apiShareFetch          = 78
+	apiShareAcknowledge    = 79
+)
 
-// KnownOptions implements [events.OptionAware]: the per-message options
-// this adapter reads. Anything else addressed to `kafka` fails the
-// publish rather than being dropped.
-func (t *Transport) KnownOptions() []string { return []string{OptionTimestamp} }
+// A Transport is a full transport: it publishes, subscribes, takes a
+// batch in one call, names itself to the per-message option check, and
+// says which dispositions it can honour. Asserted here so a change to the
+// runtime interfaces fails this package rather than a user's wiring.
+var (
+	_ events.Publisher      = (*Transport)(nil)
+	_ events.Subscriber     = (*Transport)(nil)
+	_ events.BatchPublisher = (*Transport)(nil)
+	_ events.OptionAware    = (*Transport)(nil)
+	_ events.Dispositioner  = (*Transport)(nil)
+)
 
 // Transport publishes and consumes over Kafka.
 type Transport struct {
-	brokers   []string
-	topic     func(contract string) string
-	onError   func(sub events.Subscription, msg *events.Message, err error)
-	autoTopic bool
+	brokers       []string
+	topic         func(contract string) string
+	onError       func(sub events.Subscription, msg *events.Message, err error)
+	autoTopic     bool
+	share         bool
+	maxDeliveries int
+	// dial carries the connection settings every client this transport
+	// opens is built with - TLS, SASL.
+	dial []kgo.Opt
 
-	mu      sync.Mutex
-	writers map[string]*kgo.Writer
-	readers []*kgo.Reader
+	mu       sync.Mutex
+	producer *kgo.Client
+	clients  []*kgo.Client
 	// held records what each (group, topic) pair is being read for, so a
 	// second reader asking for a DIFFERENT contract is refused rather
-	// than silently splitting the partitions with the first.
+	// than silently splitting the topic with the first.
 	held map[groupTopic]*topicClaim
+	// shareOK caches a successful share-API probe. Only success is
+	// cached: a probe that failed on a network blip must be retried, and
+	// one that failed because the broker is too old will fail again.
+	shareOK bool
 }
 
 // groupTopic is one consumer group's claim on one topic.
@@ -131,25 +158,116 @@ func WithAutoCreateTopics(on bool) Option {
 }
 
 // WithErrorHandler installs a callback for a handler that returns an
-// error. The message is committed and dropped either way (see
-// [Transport.Subscribe]), so this callback is the only record that it
-// arrived - without one, a failing consumer is observed by nothing.
+// error, and for the failures a read loop meets on its own. In a classic
+// group the message is taken as done either way, so this callback is the
+// only record that it arrived.
 func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err error)) Option {
 	return func(t *Transport) { t.onError = fn }
+}
+
+// WithShareGroup consumes through a Kafka share group (KIP-932) instead
+// of a classic consumer group. The broker tracks each record, so a
+// middleware calling [events.Message.Redeliver] gets the record back and
+// one calling [events.Message.Reject] gives it up.
+//
+// Requires a broker serving ShareGroupHeartbeat, ShareFetch and
+// ShareAcknowledge - Kafka 4.2 or newer. [Transport.Subscribe] probes for
+// all three and refuses rather than consuming as a classic group, because
+// a delivery guarantee that changed with the broker would change under a
+// failover with nothing to see it. Off by default.
+//
+// A share group starts at the END of the topic unless the group config
+// share.auto.offset.reset says otherwise, so a group joining a topic that
+// already holds records sees none of them until it is set.
+func WithShareGroup() Option {
+	return func(t *Transport) { t.share = true }
+}
+
+// WithMaxDeliveries caps how many times the broker may hand one record
+// over before this adapter gives it up rather than asking for it again.
+// It bounds a redelivery loop: a middleware that keeps calling
+// [events.Message.Redeliver] on a record nothing can handle stops being
+// obeyed once the count is reached, and the record is rejected. A
+// delivery that SUCCEEDS on the last attempt is still taken as done.
+//
+// Default 5. Zero is unbounded and has to be chosen. Share mode only -
+// a classic group has no delivery count to read.
+func WithMaxDeliveries(n int) Option {
+	return func(t *Transport) { t.maxDeliveries = n }
+}
+
+// WithTLS dials the brokers over TLS. A nil config uses the system roots.
+func WithTLS(cfg *tls.Config) Option {
+	return func(t *Transport) { t.dial = append(t.dial, kgo.DialTLSConfig(cfg)) }
+}
+
+// WithSASLPlain authenticates with SASL/PLAIN. Pair it with [WithTLS]:
+// PLAIN sends the password where anything on the path can read it.
+func WithSASLPlain(user, pass string) Option {
+	return func(t *Transport) {
+		t.dial = append(t.dial, kgo.SASL(plain.Auth{User: user, Pass: pass}.AsMechanism()))
+	}
+}
+
+// WithSASLSCRAMSHA256 authenticates with SASL/SCRAM-SHA-256.
+func WithSASLSCRAMSHA256(user, pass string) Option {
+	return func(t *Transport) {
+		t.dial = append(t.dial, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha256Mechanism()))
+	}
+}
+
+// WithSASLSCRAMSHA512 authenticates with SASL/SCRAM-SHA-512.
+func WithSASLSCRAMSHA512(user, pass string) Option {
+	return func(t *Transport) {
+		t.dial = append(t.dial, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha512Mechanism()))
+	}
 }
 
 // New binds a Transport to a broker list.
 func New(brokers []string, opts ...Option) *Transport {
 	t := &Transport{
-		brokers: brokers,
-		topic:   func(c string) string { return c },
-		writers: map[string]*kgo.Writer{},
-		held:    map[groupTopic]*topicClaim{},
+		brokers:       brokers,
+		topic:         func(c string) string { return c },
+		maxDeliveries: 5,
+		held:          map[groupTopic]*topicClaim{},
 	}
 	for _, o := range opts {
 		o(t)
 	}
 	return t
+}
+
+// AdapterName implements [events.OptionAware].
+func (t *Transport) AdapterName() string { return Adapter }
+
+// KnownOptions implements [events.OptionAware]: the per-message options
+// this adapter reads. Anything else addressed to `kafka` fails the
+// publish rather than being dropped.
+func (t *Transport) KnownOptions() []string { return []string{OptionTimestamp} }
+
+// CanDisposition implements [events.Dispositioner]. Redeliver and reject
+// need the broker to be tracking each record, which is what a share group
+// does and a classic consumer group does not - so the answer depends on
+// how THIS transport was built, and is fixed once it is.
+func (t *Transport) CanDisposition(d events.Disposition) bool {
+	switch d {
+	case events.DispositionSettle:
+		return true
+	case events.DispositionRedeliver, events.DispositionReject:
+		return t.share
+	}
+	return false
+}
+
+// clientOpts returns the options every client this transport opens shares.
+func (t *Transport) clientOpts(extra ...kgo.Opt) []kgo.Opt {
+	opts := make([]kgo.Opt, 0, len(t.dial)+len(extra)+2)
+	opts = append(opts, kgo.SeedBrokers(t.brokers...))
+	opts = append(opts, t.dial...)
+	if t.autoTopic {
+		opts = append(opts, kgo.AllowAutoTopicCreation())
+	}
+	return append(opts, extra...)
 }
 
 // Publish sends one message.
@@ -158,67 +276,66 @@ func (t *Transport) Publish(ctx context.Context, msg *events.Message) error {
 	if err != nil {
 		return err
 	}
-	return t.write(ctx, t.topic(msg.Event), rec)
-}
-
-// write sends records to one topic.
-//
-// With auto-creation on, the broker creates a missing topic while
-// refusing the write that triggered it, so the first publish to a new
-// topic fails with UnknownTopicOrPartition. Retrying briefly turns that
-// into the behaviour a caller expects; without auto-creation a missing
-// topic is a real error and is returned unchanged.
-func (t *Transport) write(ctx context.Context, topic string, recs ...kgo.Message) error {
-	w := t.writerFor(topic)
-	err := w.WriteMessages(ctx, recs...)
-	if !t.autoTopic || !isUnknownTopic(err) {
+	cl, err := t.producerClient()
+	if err != nil {
 		return err
 	}
-	for attempt := 0; attempt < 10; attempt++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(250 * time.Millisecond):
-		}
-		if err = w.WriteMessages(ctx, recs...); !isUnknownTopic(err) {
-			return err
-		}
-	}
-	return err
+	return cl.ProduceSync(ctx, rec).FirstErr()
 }
 
-// isUnknownTopic reports the broker's "topic does not exist" answer.
-func isUnknownTopic(err error) bool {
-	return err != nil && errors.Is(err, kgo.UnknownTopicOrPartition)
-}
-
-// PublishBatch groups the batch by topic and writes each group in one
-// call, which is what lets the client batch them on the wire. Every
-// record is built first, so a message this adapter cannot encode fails
-// the batch before anything is sent.
+// PublishBatch hands the whole batch to one ProduceSync, which is what
+// lets the client batch them on the wire. Every record is built first, so
+// a message this adapter cannot encode fails the batch before anything is
+// sent.
+//
+// A failure partway reports how many records the broker took. The count
+// is not a prefix: franz-go produces to every partition at once, so the
+// ones that succeeded are not necessarily the ones sent first.
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
-	byTopic := map[string][]kgo.Message{}
-	order := []string{}
+	recs := make([]*kgo.Record, 0, len(msgs))
 	for _, msg := range msgs {
 		rec, err := t.encode(msg)
 		if err != nil {
 			return err
 		}
-		topic := t.topic(msg.Event)
-		if _, seen := byTopic[topic]; !seen {
-			order = append(order, topic)
-		}
-		byTopic[topic] = append(byTopic[topic], rec)
+		recs = append(recs, rec)
 	}
+	cl, err := t.producerClient()
+	if err != nil {
+		return err
+	}
+	results := cl.ProduceSync(ctx, recs...)
+
 	sent := 0
-	for _, topic := range order {
-		group := byTopic[topic]
-		if err := t.write(ctx, topic, group...); err != nil {
-			return &events.PartialPublishError{Sent: sent, Event: topic, Err: err}
+	var failed *kgo.Record
+	var firstErr error
+	for _, r := range results {
+		if r.Err == nil {
+			sent++
+			continue
 		}
-		sent += len(group)
+		if firstErr == nil {
+			firstErr, failed = r.Err, r.Record
+		}
 	}
-	return nil
+	if firstErr == nil {
+		return nil
+	}
+	return &events.PartialPublishError{Sent: sent, Event: contractOf(failed), Err: firstErr}
+}
+
+// contractOf reads the contract back off a record's own header, so a
+// partial failure names the event rather than the topic it mapped to.
+func contractOf(rec *kgo.Record) string {
+	if rec == nil {
+		return ""
+	}
+	for _, h := range rec.Headers {
+		if h.Key == HeaderEvent {
+			return string(h.Value)
+		}
+	}
+	return rec.Topic
 }
 
 // encode maps a craftgo message onto a Kafka record. Metadata becomes
@@ -230,85 +347,152 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 // message or move it to another entity. The runtime drops those keys
 // before a message gets here; a hand-built [events.Message] does not go
 // through it.
-func (t *Transport) encode(msg *events.Message) (kgo.Message, error) {
-	headers := []kgo.Header{{Key: HeaderEvent, Value: []byte(msg.Event)}}
+func (t *Transport) encode(msg *events.Message) (*kgo.Record, error) {
+	headers := []kgo.RecordHeader{{Key: HeaderEvent, Value: []byte(msg.Event)}}
 	if msg.Key != "" {
-		headers = append(headers, kgo.Header{Key: HeaderKey, Value: []byte(msg.Key)})
+		headers = append(headers, kgo.RecordHeader{Key: HeaderKey, Value: []byte(msg.Key)})
 	}
 	for k, v := range msg.Metadata {
 		if k == HeaderEvent || k == HeaderKey {
 			continue
 		}
-		headers = append(headers, kgo.Header{Key: k, Value: []byte(v)})
+		headers = append(headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
 	}
-	// A keyless message must carry a nil Key, not an empty one: the Hash
-	// balancer round-robins only on nil, and hashes []byte("") to a single
-	// partition for every message that has no key.
+	// A keyless message must carry a nil Key, not an empty one. The
+	// default partitioner keys on `r.Key != nil`, so []byte("") counts as
+	// a key and hashes every keyless record onto one partition.
 	var key []byte
 	if msg.Key != "" {
 		key = []byte(msg.Key)
 	}
-	rec := kgo.Message{Key: key, Value: msg.Payload, Headers: headers}
+	rec := &kgo.Record{Topic: t.topic(msg.Event), Key: key, Value: msg.Payload, Headers: headers}
 	if v, ok := msg.AdapterOption(Adapter, OptionTimestamp); ok {
 		ts, ok := v.(time.Time)
 		if !ok {
-			return kgo.Message{}, fmt.Errorf("kafka: option %q on %s is %T, want time.Time", OptionTimestamp, msg.Event, v)
+			return nil, fmt.Errorf("kafka: option %q on %s is %T, want time.Time", OptionTimestamp, msg.Event, v)
 		}
-		rec.Time = ts
+		rec.Timestamp = ts
 	}
 	return rec, nil
 }
 
-// writerFor returns the writer for one topic, creating it once.
-func (t *Transport) writerFor(topic string) *kgo.Writer {
+// producerClient returns the transport's producer, opening it once. One
+// client serves every topic: a record carries its own.
+func (t *Transport) producerClient() (*kgo.Client, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if w, ok := t.writers[topic]; ok {
-		return w
+	if t.producer != nil {
+		return t.producer, nil
 	}
-	w := &kgo.Writer{
-		Addr:                   kgo.TCP(t.brokers...),
-		Topic:                  topic,
-		Balancer:               &kgo.Hash{}, // the key decides the partition, so a keyed message orders per entity
-		AllowAutoTopicCreation: t.autoTopic,
+	cl, err := kgo.NewClient(t.clientOpts()...)
+	if err != nil {
+		return nil, fmt.Errorf("kafka: open producer: %w", err)
 	}
-	t.writers[topic] = w
-	return w
+	t.producer = cl
+	return cl, nil
 }
 
-// Subscribe joins the consumer group named by sub.Group and reads until
-// ctx is cancelled. A handler error is reported and the message dropped;
-// see [Transport.consume] for why it cannot be held.
+// Subscribe joins the group named by sub.Group and reads until ctx is
+// cancelled.
 //
-// One group may read several contracts, but not two of them on one
-// topic: the two readers would be two members of the group, splitting
-// that topic's partitions while each commits-and-skips the contract the
-// other asked for, so both lose messages. That pair is refused. It is
-// reachable only through a [WithTopic] mapping that puts two contracts
-// on one topic; under the default mapping the check never fires.
+// One group may read several contracts, but not two of them on one topic:
+// the two readers would be two members of the group, dividing that topic
+// between them while each skips the contract the other asked for, so both
+// lose messages. That pair is refused. It is reachable only through a
+// [WithTopic] mapping that puts two contracts on one topic; under the
+// default mapping the check never fires.
 //
 // Replicas are not that case. Two readers in one group on one topic for
-// the SAME contract are ordinary group members dividing the partitions,
-// which is what the in-process transport does with two identical
-// subscriptions, so they are allowed.
+// the SAME contract are ordinary members dividing the work, which is what
+// the in-process transport does with two identical subscriptions, so they
+// are allowed.
+//
+// In share mode the broker is probed for the share APIs first, and
+// Subscribe returns an error if it does not serve them. The probe is the
+// only thing standing between an old broker and a deployable that boots,
+// serves HTTP, passes readiness and consumes nothing: franz-go reports
+// the lack on the first poll, which happens on a goroutine nobody is
+// waiting on.
 func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) error {
 	group, topic := sub.GroupName(), t.topic(sub.Event)
 	if err := t.claim(group, topic, sub.Event); err != nil {
 		return err
 	}
-	r := kgo.NewReader(kgo.ReaderConfig{
-		Brokers: t.brokers,
-		Topic:   topic,
-		GroupID: group,
-	})
-	t.mu.Lock()
-	t.readers = append(t.readers, r)
-	t.mu.Unlock()
-
+	cl, err := t.openConsumer(ctx, group, topic)
+	if err != nil {
+		t.release(group, topic)
+		return err
+	}
 	go func() {
 		defer t.release(group, topic)
-		t.consume(ctx, r, sub)
+		t.consume(ctx, cl, sub)
 	}()
+	return nil
+}
+
+// openConsumer probes for the share APIs when they are needed and returns
+// the client for one subscription.
+func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo.Client, error) {
+	mode := kgo.ConsumerGroup(group)
+	if t.share {
+		if err := t.probeShareAPIs(ctx); err != nil {
+			return nil, err
+		}
+		mode = kgo.ShareGroup(group)
+	}
+	cl, err := kgo.NewClient(t.clientOpts(mode, kgo.ConsumeTopics(topic))...)
+	if err != nil {
+		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, err)
+	}
+	t.mu.Lock()
+	t.clients = append(t.clients, cl)
+	t.mu.Unlock()
+	return cl, nil
+}
+
+// probeShareAPIs asks the broker what it serves and refuses a share
+// subscription it could not honour. It runs before the subscription is
+// registered, so the refusal reaches the caller rather than a read loop.
+func (t *Transport) probeShareAPIs(ctx context.Context) error {
+	t.mu.Lock()
+	ok := t.shareOK
+	t.mu.Unlock()
+	if ok {
+		return nil
+	}
+
+	cl, err := kgo.NewClient(t.clientOpts()...)
+	if err != nil {
+		return fmt.Errorf("kafka: probe share support: %w", err)
+	}
+	defer cl.Close()
+
+	resp, err := cl.Request(ctx, kmsg.NewPtrApiVersionsRequest())
+	if err != nil {
+		return fmt.Errorf("kafka: probe share support: %w", err)
+	}
+	versions, isVersions := resp.(*kmsg.ApiVersionsResponse)
+	if !isVersions {
+		return fmt.Errorf("kafka: probe share support: broker answered %T", resp)
+	}
+	served := kversion.FromApiVersionsResponse(versions)
+	for _, api := range []struct {
+		key  int16
+		name string
+	}{
+		{apiShareGroupHeartbeat, "ShareGroupHeartbeat"},
+		{apiShareFetch, "ShareFetch"},
+		{apiShareAcknowledge, "ShareAcknowledge"},
+	} {
+		if !served.HasKey(api.key) {
+			return fmt.Errorf("kafka: WithShareGroup needs %s (API key %d), which this broker does not serve - share groups are Kafka 4.2 and newer; drop the option to consume as a classic consumer group, which cannot redeliver or reject",
+				api.name, api.key)
+		}
+	}
+
+	t.mu.Lock()
+	t.shareOK = true
+	t.mu.Unlock()
 	return nil
 }
 
@@ -325,7 +509,7 @@ func (t *Transport) claim(group, topic, contract string) error {
 		return nil
 	}
 	if held.contract != contract {
-		return fmt.Errorf("kafka: consumer group %q already reads topic %q for contract %q, so it cannot also read %q there - the two readers would be two members of the group, splitting the topic's partitions while each commits-and-skips the other's contract, and both would lose messages; map the contracts onto separate topics or give this subscription its own group",
+		return fmt.Errorf("kafka: group %q already reads topic %q for contract %q, so it cannot also read %q there - the two readers would be two members of the group, dividing the topic between them while each skips the other's contract, and both would lose messages; map the contracts onto separate topics or give this subscription its own group",
 			group, topic, held.contract, contract)
 	}
 	held.readers++
@@ -347,51 +531,92 @@ func (t *Transport) release(group, topic string) {
 	}
 }
 
-// consume is the per-subscription read loop. Every record it fetches is
-// committed - handled, failed, or addressed to another contract.
+// consume is the per-subscription read loop.
 //
-// A handler error is REPORTED AND THE MESSAGE DROPPED; it is not
-// redelivered. Leaving it uncommitted would not hold it: a group offset
-// is a per-partition high-water mark and kafka-go commits offset+1, so
-// the next message that succeeds on that partition commits past the
-// failure anyway. Nor can the loop stop advancing that partition -
-// FetchMessage reads one channel fed by every partition the reader owns,
-// so blocking would stall all of them. Committing immediately at least
-// makes the drop happen at a defined point instead of whenever an
-// unrelated message happens to succeed. Install [WithErrorHandler]:
-// it is the only record that the message arrived.
-func (t *Transport) consume(ctx context.Context, r *kgo.Reader, sub events.Subscription) {
-	defer func() { _ = r.Close() }()
+// In a classic group every record is taken as done - handled, failed, or
+// addressed to another contract. Leaving one uncommitted would not hold
+// it: a group offset is a per-partition high-water mark, so the next
+// record that succeeds on that partition commits past the failure anyway.
+// Install [WithErrorHandler]; it is the only record that the message
+// arrived.
+//
+// In a share group the broker holds each record until this loop answers
+// for it, so what a middleware asked for through [events.Message] is what
+// the record gets.
+func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subscription) {
+	defer cl.Close()
 	for {
-		rec, err := r.FetchMessage(ctx)
-		if err != nil {
-			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		fetches := cl.PollFetches(ctx)
+		if fetches.IsClientClosed() || ctx.Err() != nil {
+			return
+		}
+		fetches.EachError(func(topic string, _ int32, err error) {
+			if ctx.Err() != nil || t.onError == nil {
 				return
 			}
-			if t.onError != nil {
-				t.onError(sub, nil, fmt.Errorf("kafka: fetch %s: %w", r.Config().Topic, err))
+			t.onError(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
+		})
+
+		var polled []*kgo.Record
+		fetches.EachRecord(func(rec *kgo.Record) {
+			polled = append(polled, rec)
+			t.deliver(ctx, sub, rec)
+		})
+		if !t.share && len(polled) > 0 {
+			if err := cl.CommitRecords(ctx, polled...); err != nil && t.onError != nil && ctx.Err() == nil {
+				t.onError(sub, nil, fmt.Errorf("kafka: commit: %w", err))
 			}
-			continue
-		}
-		msg := decode(sub.Event, rec)
-		// A topic may carry several contracts; skip what this
-		// subscription did not ask for rather than handing a handler a
-		// payload of the wrong type.
-		if msg.Event == sub.Event {
-			if err := sub.Handle(ctx, msg); err != nil && t.onError != nil {
-				t.onError(sub, msg, err)
-			}
-		}
-		if err := r.CommitMessages(ctx, rec); err != nil && t.onError != nil {
-			t.onError(sub, msg, fmt.Errorf("kafka: commit: %w", err))
 		}
 	}
+}
+
+// deliver hands one record to the subscription and answers for it.
+func (t *Transport) deliver(ctx context.Context, sub events.Subscription, rec *kgo.Record) {
+	msg := decode(sub.Event, rec)
+	msg.SetDeliveries(int(rec.DeliveryCount()))
+
+	// A topic may carry several contracts; a record this subscription did
+	// not ask for is not handed to a handler that would decode it as the
+	// wrong type. It is reported rather than passed over in silence -
+	// being sent one is a mapping mistake somebody has to hear about.
+	if msg.Event != sub.Event {
+		if t.onError != nil {
+			t.onError(sub, msg, fmt.Errorf("kafka: topic %s carried %s, which %s does not consume - skipped", rec.Topic, msg.Event, sub.Consumer))
+		}
+		if t.share {
+			rec.Ack(kgo.AckAccept)
+		}
+		return
+	}
+
+	if err := sub.Handle(ctx, msg); err != nil && t.onError != nil {
+		t.onError(sub, msg, err)
+	}
+	if t.share {
+		rec.Ack(t.ackFor(msg))
+	}
+}
+
+// ackFor turns what the chain asked for into the broker's answer. An
+// unset disposition settles: a middleware that decided nothing is not
+// asking for the record back.
+func (t *Transport) ackFor(msg *events.Message) kgo.AckStatus {
+	switch msg.Disposition() {
+	case events.DispositionRedeliver:
+		if t.maxDeliveries > 0 && msg.Deliveries() >= t.maxDeliveries {
+			return kgo.AckReject
+		}
+		return kgo.AckRelease
+	case events.DispositionReject:
+		return kgo.AckReject
+	}
+	return kgo.AckAccept
 }
 
 // decode rebuilds a craftgo message from a Kafka record. The contract
 // comes from the header, falling back to the subscription's own contract
 // for a record written by something that does not set it.
-func decode(contract string, rec kgo.Message) *events.Message {
+func decode(contract string, rec *kgo.Record) *events.Message {
 	out := &events.Message{Event: contract, Key: string(rec.Key), Payload: rec.Value, Metadata: map[string]string{}}
 	for _, h := range rec.Headers {
 		switch h.Key {
@@ -406,19 +631,18 @@ func decode(contract string, rec kgo.Message) *events.Message {
 	return out
 }
 
-// Close shuts every writer and reader this transport opened.
+// Close shuts every client this transport opened.
 func (t *Transport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	var errs []error
-	for _, w := range t.writers {
-		errs = append(errs, w.Close())
+	if t.producer != nil {
+		t.producer.Close()
+		t.producer = nil
 	}
-	for _, r := range t.readers {
-		errs = append(errs, r.Close())
+	for _, cl := range t.clients {
+		cl.Close()
 	}
-	t.writers = map[string]*kgo.Writer{}
-	t.readers = nil
+	t.clients = nil
 	t.held = map[groupTopic]*topicClaim{}
-	return errors.Join(errs...)
+	return nil
 }

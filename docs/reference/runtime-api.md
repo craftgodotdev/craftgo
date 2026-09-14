@@ -291,7 +291,51 @@ generated publishers call it.
 `PublishAll` encodes every envelope up front, then hands the batch to the
 transport in one call when it implements `BatchPublisher` and one message at a
 time otherwise; a failure partway through returns a `*PartialPublishError` whose
-`Sent` is how many reached the transport - everything after it did not.
+`Sent` is how many reached the transport. It is a **count, not an index**: a
+transport publishing to several partitions at once reports how many landed, not
+which, so `envs[Sent:]` is not the unsent tail. There is no safe automatic retry
+for a partial batch today.
+
+### Dispositions
+
+```go
+type Disposition uint8
+
+const (
+	DispositionUnset Disposition = iota // nothing decided; settles
+	DispositionSettle
+	DispositionRedeliver
+	DispositionReject
+)
+
+func (m *Message) Settle()
+func (m *Message) Redeliver()
+func (m *Message) Reject()
+func (m *Message) Disposition() Disposition
+func (m *Message) Deliveries() int   // the broker's count; 0 where it keeps none
+func (m *Message) Reached() bool     // the subscription's handler was entered
+func (m *Message) SetDeliveries(n int) // transport adapters only
+
+type Dispositioner interface {
+	CanDisposition(d Disposition) bool
+}
+
+func WithDispositionRequired(d Disposition) Option
+var ErrDispositionUnsupported = errors.New(...)
+```
+
+A middleware asks for something other than "done" through the message. Options
+apply in chain order and the last writer wins: the chain returns innermost
+first, so the outermost middleware decides last. A frame that panicked did not
+finish deciding, so the recover clears what it asked for - unset, not settle,
+leaving the decision to whatever is above it.
+
+`Dispositioner` is asked per INSTANCE, not per type: one adapter may be built in
+a mode that can redeliver and in a mode that cannot. A transport that does not
+implement it honours settle alone. `WithDispositionRequired` refuses at
+`Subscribe` rather than at the first message, because a chain calling
+`Redeliver()` on a transport that settles instead loses every message it meant
+to retry with nothing to report it.
 
 ### Per-adapter options
 

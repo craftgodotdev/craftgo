@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	kgo "github.com/segmentio/kafka-go"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// The ordering key becomes the Kafka key, which is what puts one entity
+// The ordering key becomes the record key, which is what puts one entity
 // in one partition, and the contract always travels in a header so a
 // topic carrying several contracts stays self-describing.
 func TestEncodeCarriesContractAndKey(t *testing.T) {
@@ -23,7 +23,10 @@ func TestEncodeCarriesContractAndKey(t *testing.T) {
 		Metadata: map[string]string{"content-codec": "json"},
 	})
 	if string(rec.Key) != "order-1" {
-		t.Errorf("kafka key = %q, want the ordering key", rec.Key)
+		t.Errorf("record key = %q, want the ordering key", rec.Key)
+	}
+	if rec.Topic != "orders.OrderPlaced" {
+		t.Errorf("topic = %q, want the contract", rec.Topic)
 	}
 	got := map[string]string{}
 	for _, h := range rec.Headers {
@@ -62,10 +65,10 @@ func TestDecodeRoundTrip(t *testing.T) {
 	}
 }
 
-// A custom mapping reaches both the writer and the subscription. Mapping
-// two contracts onto one topic is not supported for consuming - Subscribe
-// refuses the second reader - but the mapping itself is one function and
-// both halves must read it.
+// A custom mapping reaches both the producer and the subscription.
+// Mapping two contracts onto one topic is not supported for consuming -
+// Subscribe refuses the second reader - but the mapping itself is one
+// function and both halves must read it.
 func TestTopicMappingCollapsesContracts(t *testing.T) {
 	tr := New(nil, WithTopic(func(string) string { return "orders" }))
 	if got := tr.topic("orders.OrderPlaced"); got != "orders" {
@@ -84,9 +87,9 @@ func TestDefaultTopicIsTheContract(t *testing.T) {
 }
 
 // THE LOSSY SHAPE: one group, one topic, two DIFFERENT contracts. The
-// readers would be two members splitting the topic's partitions, each
-// commit-and-skipping the other's contract. Only a WithTopic mapping
-// that collapses contracts can reach it.
+// readers would be two members dividing the topic, each skipping the
+// other's contract. Only a WithTopic mapping that collapses contracts can
+// reach it.
 func TestOneGroupCannotReadTwoContractsOnOneTopic(t *testing.T) {
 	tr := New(nil, WithTopic(func(string) string { return "orders" }))
 	if err := tr.claim("worker", tr.topic("orders.Placed"), "orders.Placed"); err != nil {
@@ -97,8 +100,8 @@ func TestOneGroupCannotReadTwoContractsOnOneTopic(t *testing.T) {
 		t.Fatal("one group reading two contracts on one topic must be refused")
 	}
 	for _, want := range []string{
-		`consumer group "worker" already reads topic "orders" for contract "orders.Placed"`,
-		"splitting the topic's partitions",
+		`group "worker" already reads topic "orders" for contract "orders.Placed"`,
+		"dividing the topic between them",
 		"both would lose messages",
 	} {
 		if !strings.Contains(err.Error(), want) {
@@ -108,8 +111,8 @@ func TestOneGroupCannotReadTwoContractsOnOneTopic(t *testing.T) {
 }
 
 // THE BENIGN SHAPE: one group, one topic, the SAME contract twice -
-// ordinary replicas dividing the partitions, which is what the
-// in-process transport does with two identical subscriptions.
+// ordinary replicas dividing the work, which is what the in-process
+// transport does with two identical subscriptions.
 func TestOneGroupMayRunReplicasOnOneContract(t *testing.T) {
 	tr := New(nil)
 	topic := tr.topic("orders.Placed")
@@ -168,9 +171,7 @@ func TestCloseReleasesGroupClaims(t *testing.T) {
 	}
 }
 
-// A caller's metadata rides a record header and comes back. There is no
-// broker harness here, so the proof is at the encode/decode boundary the
-// adapter owns.
+// A caller's metadata rides a record header and comes back.
 func TestCallerMetadataRoundTripsThroughARecord(t *testing.T) {
 	tr := New(nil)
 	in := &events.Message{
@@ -221,9 +222,10 @@ func TestReservedHeadersAreNotForgedByMetadata(t *testing.T) {
 	}
 }
 
-// A message with no ordering key must reach the balancer with a nil Key.
-// kgo.Hash round-robins only on nil; []byte("") is non-nil and hashes to
-// one partition, so every keyless message would pin to it.
+// A message with no ordering key must reach the partitioner with a nil
+// Key. The default partitioner keys on `r.Key != nil`, so []byte("") is a
+// key as far as it is concerned and hashes every keyless record onto one
+// partition.
 func TestAKeylessMessageCarriesANilKey(t *testing.T) {
 	tr := New([]string{"localhost:9092"})
 	rec := mustEncode(t, tr, &events.Message{Event: "shop.Placed", Payload: []byte(`{}`)})
@@ -238,7 +240,7 @@ func TestAKeylessMessageCarriesANilKey(t *testing.T) {
 
 // mustEncode builds the Kafka record for msg, failing the test if this
 // adapter refuses it.
-func mustEncode(t *testing.T, tr *Transport, msg *events.Message) kgo.Message {
+func mustEncode(t *testing.T, tr *Transport, msg *events.Message) *kgo.Record {
 	t.Helper()
 	rec, err := tr.encode(msg)
 	if err != nil {
@@ -256,8 +258,8 @@ func TestTheTimestampOptionSetsTheRecordTime(t *testing.T) {
 		Payload:        []byte(`{}`),
 		AdapterOptions: map[string]map[string]any{Adapter: {OptionTimestamp: want}},
 	})
-	if !rec.Time.Equal(want) {
-		t.Errorf("record time = %v, want %v", rec.Time, want)
+	if !rec.Timestamp.Equal(want) {
+		t.Errorf("record timestamp = %v, want %v", rec.Timestamp, want)
 	}
 }
 
@@ -286,7 +288,83 @@ func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 		Payload:        []byte(`{}`),
 		AdapterOptions: map[string]map[string]any{"sqs": {"messageGroupId": "g-1"}},
 	})
-	if !rec.Time.IsZero() {
+	if !rec.Timestamp.IsZero() {
 		t.Errorf("another adapter's option changed this record: %+v", rec)
+	}
+}
+
+// What this transport can do with a delivery depends on the mode it was
+// built in, not on the type - which is why the capability is asked per
+// instance.
+func TestCanDispositionFollowsTheMode(t *testing.T) {
+	classic := New(nil)
+	share := New(nil, WithShareGroup())
+
+	for _, d := range []events.Disposition{events.DispositionRedeliver, events.DispositionReject} {
+		if classic.CanDisposition(d) {
+			t.Errorf("a classic consumer group claims it can %v", d)
+		}
+		if !share.CanDisposition(d) {
+			t.Errorf("a share group claims it cannot %v", d)
+		}
+	}
+	for _, tr := range []*Transport{classic, share} {
+		if !tr.CanDisposition(events.DispositionSettle) {
+			t.Error("every mode settles")
+		}
+		if tr.CanDisposition(events.DispositionUnset) {
+			t.Error("unset is not something a transport honours")
+		}
+	}
+}
+
+// The cap bounds REDELIVERY, not delivery: a message that succeeds on the
+// last attempt is still taken as done. Rejecting it because it arrived
+// often would throw away the one delivery that worked.
+func TestMaxDeliveriesBoundsRedeliveryAndNotSuccess(t *testing.T) {
+	tr := New(nil, WithShareGroup(), WithMaxDeliveries(3))
+
+	asked := &events.Message{}
+	asked.SetDeliveries(2)
+	asked.Redeliver()
+	if got := tr.ackFor(asked); got != kgo.AckRelease {
+		t.Errorf("delivery 2 of 3 = %v, want release", got)
+	}
+
+	atCap := &events.Message{}
+	atCap.SetDeliveries(3)
+	atCap.Redeliver()
+	if got := tr.ackFor(atCap); got != kgo.AckReject {
+		t.Errorf("delivery 3 of 3 = %v, want reject - the loop has to end", got)
+	}
+
+	succeeded := &events.Message{}
+	succeeded.SetDeliveries(9)
+	if got := tr.ackFor(succeeded); got != kgo.AckAccept {
+		t.Errorf("a delivery that succeeded on attempt 9 = %v, want accept", got)
+	}
+
+	unbounded := New(nil, WithShareGroup(), WithMaxDeliveries(0))
+	forever := &events.Message{}
+	forever.SetDeliveries(1000)
+	forever.Redeliver()
+	if got := unbounded.ackFor(forever); got != kgo.AckRelease {
+		t.Errorf("an unbounded transport = %v, want release", got)
+	}
+}
+
+// An unset disposition settles. A middleware that decided nothing is not
+// asking for the record back, and this is the line that stops a panicking
+// chain from redelivering for ever - the runtime clears the flag, and
+// cleared has to mean accept.
+func TestAnUnsetDispositionSettles(t *testing.T) {
+	tr := New(nil, WithShareGroup())
+	if got := tr.ackFor(&events.Message{}); got != kgo.AckAccept {
+		t.Errorf("ackFor(unset) = %v, want accept", got)
+	}
+	rejected := &events.Message{}
+	rejected.Reject()
+	if got := tr.ackFor(rejected); got != kgo.AckReject {
+		t.Errorf("ackFor(reject) = %v, want reject", got)
 	}
 }

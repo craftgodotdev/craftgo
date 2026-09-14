@@ -158,13 +158,15 @@ encoded fails the whole batch without a partial publish.
 
 On a transport without the batch upgrade, a failure partway leaves the
 earlier messages **already sent**. The error is a `*events.PartialPublishError`
-naming how many, so retry the tail rather than the batch:
+naming how many the transport took:
 
 ```go
 if err := b.Publish(ctx); err != nil {
 	var partial *craftevents.PartialPublishError
 	if errors.As(err, &partial) {
-		// partial.Sent reached the transport; everything after it did not.
+		// partial.Sent is a COUNT, not an index: a transport that
+		// publishes to several partitions at once reports how many
+		// landed, not which. envs[partial.Sent:] is not the unsent tail.
 	}
 	return err
 }
@@ -457,6 +459,62 @@ than installed with `WithMiddleware`: the bus wraps that from outside, as one
 opaque handler, so put `craftevents.Recover()` at its innermost end to get the
 same visibility. A chain on the bus needs nothing.
 
+### Deciding what happens to a delivery
+
+A middleware can ask for something other than "done" - through the message,
+because a decision about one delivery is not a value the transport carries:
+
+```go
+func RetryOnce(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
+	return func(ctx context.Context, msg *craftevents.Message) error {
+		err := next(ctx, msg)
+		if err != nil && msg.Deliveries() < 2 {
+			msg.Redeliver()
+		}
+		return err
+	}
+}
+```
+
+| call | what it asks for |
+| --- | --- |
+| `msg.Settle()` | take this delivery as done |
+| `msg.Redeliver()` | hand it back; the same message returns |
+| `msg.Reject()` | give it up - no attempt will handle it |
+| nothing | the zero value, `DispositionUnset`, which settles |
+
+`msg.Deliveries()` is the broker's count of how many times it has handed this
+message over, and `msg.Reached()` separates a message the handler failed on from
+a chain that broke before the handler ran.
+
+**The last writer wins, and clearing is allowed.** The chain returns innermost
+first, so the outermost middleware decides last and can see what everything
+below it asked for. Decide from the handler's goroutine and before the chain
+returns - a decision written from a goroutine of your own is both a race and a
+lost write.
+
+::: danger Only some transports can honour this
+Redeliver and reject need the broker to be tracking each record. A
+[Kafka share group](#two-modes) can; a classic consumer group, core NATS and the
+in-process transport cannot, and there **Redeliver settles instead** - which
+loses every message the chain meant to retry, silently.
+
+Say what you need at the bus and find out at startup:
+
+```go
+bus := craftevents.New(
+	craftevents.WithTransport(tr),
+	craftevents.WithCodec(codecjson.Codec{}),
+	craftevents.WithDispositionRequired(craftevents.DispositionRedeliver),
+)
+```
+
+`Subscribe` then refuses on a transport that cannot, and the error travels out
+of the generated `SubscribeAll` and out of `main`. An adapter declares what it
+can do by implementing `craftevents.Dispositioner`; one that does not implement
+it settles and nothing else.
+:::
+
 ## Wiring it up
 
 Events need two runtime choices you make in `main.go`: **which transport** moves
@@ -560,33 +618,74 @@ not yours to choose:
 kafka.New(brokers, kafka.WithTopic(func(c string) string { return "app." + c }))
 ```
 
-A subscription's group is the Kafka consumer group.
+A subscription's group is the Kafka group.
+
+### Two modes
+
+The default is a **classic consumer group**: the client owns partitions, offsets
+advance as a high-water mark, and a delivery can only be taken as done.
+
+`kafka.WithShareGroup()` switches to a **share group** (KIP-932), where the
+broker tracks each record. That is what makes `msg.Redeliver()` and
+`msg.Reject()` mean anything - see [dispositions](#deciding-what-happens-to-a-delivery):
+
+```go
+kafka.New(brokers, kafka.WithShareGroup(), kafka.WithMaxDeliveries(5))
+```
+
+`WithMaxDeliveries` bounds a redelivery loop: a middleware that keeps asking for
+a record nothing can handle stops being obeyed once the count is reached, and
+the record is rejected. A delivery that *succeeds* on the last attempt is still
+taken as done. The default is 5; zero is unbounded and has to be chosen.
+
+::: warning Share groups need Kafka 4.2, and the mode is never detected
+`Subscribe` asks the broker what it serves and **refuses** if the share APIs are
+missing, rather than quietly consuming as a classic group. A delivery guarantee
+that changed with whichever broker answered would change under a failover with
+nothing to see it.
+
+The refusal is at subscribe, not at the first message, which matters more than
+it sounds: the client reports a missing API on its first poll, on a goroutine
+nobody is waiting on - so without the check the deployable boots, serves HTTP,
+passes readiness, and consumes nothing.
+
+A share group also starts at the *end* of a topic unless the group config
+`share.auto.offset.reset` says otherwise.
+:::
 
 ::: warning Ordering across contracts is not supported
 Two contracts about one entity have no order between them, and no configuration
 of this adapter gives them one. Collapsing them onto one topic does not:
 `Subscribe` refuses one group reading two different contracts on one topic,
-because the readers would split that topic's partitions and each commit-and-skip
-the other's contract. One reader over several topics does not either - kafka-go
-drains one topic before the next, so a keyed pair arrives in the wrong order.
-Separate groups on one topic are separate readers, so they are not ordered
-either.
+because the members would divide that topic between them and each skip the
+other's contract. Separate groups on one topic are separate readers, so they are
+not ordered either.
 
 Use a group for scale and for failure isolation. Do not use one expecting
 cross-contract order.
 :::
 
-::: danger A failed message is dropped, not redelivered
+::: danger In a classic group a failed message is dropped, not redelivered
 When a handler returns an error, the adapter reports it to
-`kafka.WithErrorHandler` and commits the message anyway. Leaving it uncommitted
-would not hold it: a group offset is a per-partition high-water mark and
-kafka-go commits `offset+1`, so the next message that succeeds on that partition
-commits past the failure regardless. The loop cannot stop advancing that
-partition either - `FetchMessage` reads one channel fed by every partition the
-reader owns, so blocking would stall all of them.
+`kafka.WithErrorHandler` and takes the message as done anyway. Leaving it
+uncommitted would not hold it: a group offset is a per-partition high-water
+mark, so the next message that succeeds on that partition commits past the
+failure regardless.
 
-Install an error handler. It is the only record that the message arrived.
+Install an error handler. It is the only record that the message arrived. Or use
+a share group, where the broker holds each record until the chain answers for it.
 :::
+
+### TLS and SASL
+
+```go
+kafka.New(brokers,
+	kafka.WithTLS(nil),                       // nil uses the system roots
+	kafka.WithSASLSCRAMSHA256(user, pass))
+```
+
+`WithSASLPlain` and `WithSASLSCRAMSHA512` are the other two. PLAIN sends the
+password where anything on the path can read it, so pair it with `WithTLS`.
 
 ### Codecs
 

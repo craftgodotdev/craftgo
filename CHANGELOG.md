@@ -141,6 +141,42 @@ breaking change to the DSL or the generated layout bumps the major version.
   broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
   where the transport does not keep one.
 
+- **The Kafka adapter can redeliver and reject, through a share group.**
+  `pkg/events/kafka` moved from `segmentio/kafka-go` to `twmb/franz-go`, and
+  `kafka.WithShareGroup()` consumes through a KIP-932 share group where the
+  broker tracks each record - which is what makes `Redeliver` and `Reject` mean
+  anything. `kafka.WithMaxDeliveries(n)` bounds a redelivery loop; the default
+  is 5, and zero is unbounded and has to be chosen.
+
+  **The mode is never detected.** `Subscribe` asks the broker what it serves and
+  refuses if the share APIs are missing rather than quietly consuming as a
+  classic group. The check is synchronous and runs before the subscription is
+  registered, because the client reports a missing API on its first poll - on a
+  goroutine nobody is waiting on - so without it the deployable boots, serves
+  HTTP, passes readiness and consumes nothing. Share groups need **Kafka 4.2**.
+
+- **`kafka.WithTLS`, `WithSASLPlain`, `WithSASLSCRAMSHA256` and
+  `WithSASLSCRAMSHA512`.** The supported way to reach a secured broker, replacing
+  the unreachable `WithDialer`. None of them puts a broker client's type in
+  craftgo's signature: `WithTLS` takes a `*tls.Config` from the standard library
+  and the SASL options take a user and a password.
+
+- **A record for a contract the subscription does not consume is reported.** A
+  topic carrying several contracts used to have the foreign ones taken as done
+  in silence, with the error handler called zero times. It is now reported
+  through `kafka.WithErrorHandler` naming the contract that was skipped.
+
+- **Keyless records now distribute differently on Kafka.** kafka-go's hash
+  balancer round-robined a keyless record per record; franz-go's default sticks
+  to one partition until 64 KiB has accumulated, which produces larger batches.
+  **Keyed ordering is unchanged** - a non-nil key still hashes - so only traffic
+  published without `WithKey` moves. Anyone watching partition spread for
+  keyless traffic will see it.
+
+- **`pkg/events/kafka` now needs Go 1.25.** franz-go's floor. It is that module
+  alone: `pkg/events`, which is what a generated contract package depends on,
+  still builds on Go 1.21 - which is the reason the adapter is a separate module.
+
 - **A transport says what it can honour, and the bus refuses at startup.**
   `events.Dispositioner` is an optional per-INSTANCE capability - one adapter may
   be built in a mode that can redeliver and in a mode that cannot. A transport
@@ -583,6 +619,27 @@ breaking change to the DSL or the generated layout bumps the major version.
   `internal/transport/events.go` do not move. Regenerating writes the new
   files; delete the old `transport/<seg>/<consumer>.go` by hand, craftgo does
   not prune them.
+
+### Fixed
+
+- **The editor now reports what `craftgo gen` reports.** The language server
+  analysed a design without its manifest, so `openapi.securitySchemes`,
+  `openapi.basePath` and `output.fileCase` were invisible to it. An undeclared
+  `@security` scheme drew no squiggle; worse, with a `basePath` set the editor
+  reported a reserved-path conflict on a route that resolves elsewhere - and a
+  buffer with any error gets no formatting edits, so that phantom error made
+  format-on-save silently do nothing for as long as the method existed. The
+  manifest is now watched, so editing it refreshes the diagnostics.
+
+- **A design file without a `package` declaration resolves the same way in the
+  editor as on the command line.** The server gave such a file its folder's
+  name, which pre-empted the analyser's own rule that an unnamed file joins the
+  project's only named package - so a type declared in one and referenced from
+  its sibling read as unknown in the editor and built fine with `craftgo gen`.
+
+- **`@security` scheme names are listed in a stable order** in the
+  `decorator/ref` message.
+
 
 ### Removed
 
