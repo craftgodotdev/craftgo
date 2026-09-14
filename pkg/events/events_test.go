@@ -1108,3 +1108,91 @@ func TestAConstructorWithAnOutOfRangeIndexDoesNotPanic(t *testing.T) {
 		t.Errorf("Unsent = %v, want empty when the batch ends before i", got.Unsent)
 	}
 }
+
+// ctxDeafPublisher is a transport that ignores ctx entirely, the way an
+// in-process one reasonably can.
+type ctxDeafPublisher struct {
+	published int
+	batched   int
+}
+
+func (p *ctxDeafPublisher) Publish(context.Context, *events.Message) error {
+	p.published++
+	return nil
+}
+
+func (p *ctxDeafPublisher) PublishBatch(_ context.Context, msgs []*events.Message) error {
+	p.batched += len(msgs)
+	return nil
+}
+
+// A context already cancelled publishes nothing, on the batch upgrade and
+// on the one-at-a-time fallback alike.
+//
+// The check is the bus's so that a transport free to ignore ctx cannot
+// answer differently: one that publishes the batch anyway then reports
+// messages it has just sent as unsent, and the caller retrying those
+// publishes all of them twice.
+func TestPublishAllRefusesAnAlreadyCancelledContext(t *testing.T) {
+	envs := []events.Envelope{
+		{Event: "orders.OrderPlaced", Payload: map[string]string{"id": "o-1"}},
+		{Event: "orders.OrderPlaced", Payload: map[string]string{"id": "o-2"}},
+	}
+
+	t.Run("batch upgrade", func(t *testing.T) {
+		p := &ctxDeafPublisher{}
+		bus := events.New(events.WithPublisher(p), events.WithCodec(codecjson.Codec{}))
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := bus.PublishAll(ctx, envs)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		var partial *events.PartialPublishError
+		if errors.As(err, &partial) {
+			t.Errorf("err is a partial report (%v), but nothing was published", partial)
+		}
+		if p.batched != 0 {
+			t.Errorf("the transport took %d messages, want 0", p.batched)
+		}
+	})
+
+	t.Run("one at a time", func(t *testing.T) {
+		p := &publisherOnly{inner: &ctxDeafPublisher{}}
+		bus := events.New(events.WithPublisher(p), events.WithCodec(codecjson.Codec{}))
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if err := bus.PublishAll(ctx, envs); !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		if p.inner.published != 0 {
+			t.Errorf("the transport took %d messages, want 0", p.inner.published)
+		}
+	})
+}
+
+// publisherOnly hides the batch upgrade, so the bus takes its
+// one-at-a-time fallback.
+type publisherOnly struct{ inner *ctxDeafPublisher }
+
+func (p *publisherOnly) Publish(ctx context.Context, msg *events.Message) error {
+	return p.inner.Publish(ctx, msg)
+}
+
+// A live context still reaches the transport - the check refuses a
+// cancelled one, it does not stand between the bus and every batch.
+func TestPublishAllStillPublishesOnALiveContext(t *testing.T) {
+	p := &ctxDeafPublisher{}
+	bus := events.New(events.WithPublisher(p), events.WithCodec(codecjson.Codec{}))
+	err := bus.PublishAll(context.Background(), []events.Envelope{
+		{Event: "orders.OrderPlaced", Payload: map[string]string{"id": "o-1"}},
+	})
+	if err != nil {
+		t.Fatalf("publish all: %v", err)
+	}
+	if p.batched != 1 {
+		t.Errorf("the transport took %d messages, want 1", p.batched)
+	}
+}

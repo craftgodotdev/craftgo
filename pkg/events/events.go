@@ -134,9 +134,26 @@ type Publisher interface {
 //     the indices, ascending, into the slice it was GIVEN - build it with
 //     [UnsentFrom] when the transport stopped at one message, [UnsentAt]
 //     when the failures are scattered;
-//   - a failure before anything went out means a plain error;
+//   - a plain error means nothing went out. The converse does not hold: a
+//     batch where nothing went out may be reported either way, since a
+//     report naming every index says the same thing and a caller acts on
+//     both identically;
 //   - never a bare error after a partial send. The caller reads one as
-//     "nothing arrived" and republishes what did.
+//     "nothing arrived" and republishes what did;
+//   - never call a message sent without this adapter's own confirmation,
+//     and never turn one already on the wire into an unsent one by giving
+//     up on learning its outcome. Confirmation means [Publisher]'s "handed
+//     over", not "a broker stored it".
+//
+// An outcome the adapter could not learn counts as UNSENT. The two
+// mistakes are not symmetrical: a caller retrying a message that did land
+// publishes it twice and can see that it did, while one told a lost
+// message arrived drops it with nothing downstream able to tell.
+//
+// A context already cancelled when the call starts is refused by
+// [Bus.PublishAll] before any adapter is reached, so every transport
+// answers that the same way. An adapter reached directly - they are
+// exported, and usable without a bus - answers for it itself.
 //
 // [Bus.PublishAll] checks the report against the batch and replaces one
 // that cannot be true, naming the adapter - but it can only catch a
@@ -403,6 +420,12 @@ func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError {
 // which envelopes did not go out - on both paths, so a caller does not
 // have to know which one ran to retry correctly.
 //
+// A context already cancelled publishes nothing and returns its error.
+// The rule lives here rather than in each transport because a transport
+// is free to ignore ctx, and one that publishes a batch anyway then
+// reports messages it has just sent as unsent - which the caller retries,
+// publishing every one of them a second time.
+//
 // The adapter's report is checked against the batch before it is
 // returned. An adapter that names an index outside the batch, or one out
 // of order, has its report replaced with "none of it was sent" and the
@@ -415,6 +438,12 @@ func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 	}
 	if b == nil || b.pub == nil {
 		return ErrNoPublisher
+	}
+	// One transport per broker would otherwise answer this differently,
+	// and the ones that publish anyway report what they just sent as
+	// unsent - which the caller retries, publishing all of it twice.
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	msgs := make([]*Message, 0, len(envs))
 	for i, env := range envs {

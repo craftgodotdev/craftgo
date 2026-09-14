@@ -852,6 +852,27 @@ breaking change to the DSL or the generated layout bumps the major version.
   on 4.1 without it. Release and reject are v1 ack types and have always worked
   there.
 
+- **`PublishAll` refuses a cancelled context once, for every transport.**
+  Whether a batch went out on a context that had already ended was decided
+  separately by each adapter, and they did not agree: Kafka's client failed the
+  records before the wire, the in-process transport delivered the lot and
+  returned nil, and JetStream published everything and then reported all of it
+  unsent. A transport is free to ignore a context - the in-process one takes
+  `_ context.Context` and always has - so the rule cannot live in the adapters
+  and be relied on. It is now the bus's: `PublishAll` returns the context's
+  error and publishes nothing. The adapters that already refused still do, on
+  their own, because a transport is exported and usable without a bus.
+
+  `BatchPublisher`'s contract says the two rules this leaves an adapter. An
+  outcome the adapter could not learn counts as **unsent**, and a message
+  already on the wire is never turned into an unsent one by giving up on
+  learning its outcome - the two mistakes are not symmetrical, since a caller
+  retrying a message that did land can see the duplicate, while one told a lost
+  message arrived drops it with nothing able to tell. The promise about plain
+  errors is also stated in the direction callers can use it: a plain error means
+  nothing went out, and a batch where nothing went out may be reported either
+  way, because a report naming every index says the same thing.
+
 - **A Kafka share-group handler keeps its record while it runs.** The broker
   holds each record under an acquisition lock -
   `group.share.record.lock.duration.ms`, 30s by default - and a handler slower

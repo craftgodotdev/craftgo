@@ -156,6 +156,12 @@ queue, and whether anything arrives atomically is the transport's business.
 Encoding happens before anything is sent, so a payload that cannot be
 encoded fails the whole batch without a partial publish.
 
+A context already cancelled publishes nothing and returns its error. That is
+decided once, by the bus, rather than by each transport: a transport is free
+to ignore the context, and one that publishes the batch anyway then reports
+messages it has just sent as unsent - which you retry, publishing all of them
+a second time.
+
 On a transport without the batch upgrade, a failure partway leaves the
 earlier messages **already sent**. The error is a `*events.PartialPublishError`
 naming exactly which envelopes did not go out:
