@@ -539,6 +539,7 @@ func (c *Config) validate() error {
 		{"output.svccontext", c.Output.Svccontext},
 		{"output.openapi", c.Output.OpenAPI},
 		{"output.middleware", c.Output.Middleware},
+		{"output.consumeMiddleware", c.Output.ConsumeMiddleware},
 		{"output.config", c.Output.Config},
 		{"output.wiring", c.Output.Wiring},
 		{"events.asyncapi", c.Events.AsyncAPI},
@@ -757,6 +758,7 @@ func (c *Config) checkOutputUsable() error {
 		{"output.service", c.Output.Service},
 		{"output.svccontext", c.Output.Svccontext},
 		{"output.middleware", c.Output.Middleware},
+		{"output.consumeMiddleware", c.Output.ConsumeMiddleware},
 		{"output.config", c.Output.Config},
 	} {
 		if out.val == "-" {
@@ -780,6 +782,7 @@ func (c *Config) checkOutputCollisions() error {
 		{"output.wiring", outputDir(c.Output.Wiring)},
 		{"output.service", outputDir(c.Output.Service)},
 		{"output.middleware", outputDir(c.Output.Middleware)},
+		{"output.consumeMiddleware", outputDir(c.Output.ConsumeMiddleware)},
 		{"output.config", outputDir(c.Output.Config)},
 		{"output.svccontext", outputFileDir(c.Output.Svccontext)},
 		{"output.main", outputFileDir(c.Output.Main)},
