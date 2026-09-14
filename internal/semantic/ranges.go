@@ -45,6 +45,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBodyRanges(dd.Body, dd.TypeParams)
 	case *ast.ErrorDecl:
 		a.checkBodyRanges(dd.Body, nil)
+	case *ast.EventDecl:
+		a.checkDecoratorRanges(dd.Decorators)
 	case *ast.ScalarDecl:
 		a.checkDecoratorRanges(dd.Decorators)
 		// A scalar's bound decorators are inherited into the validator
@@ -105,8 +107,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 			}
 		}
 	case *ast.ServiceDecl:
-		for _, m := range dd.Methods() {
-			a.checkDecoratorRanges(m.Decorators)
+		for _, s := range serviceMemberSites(dd) {
+			a.checkDecoratorRanges(s.Decorators)
 		}
 	}
 }

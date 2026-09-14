@@ -1,0 +1,61 @@
+// Package xdelegate isolates a package whose ONLY validation is
+// delegation: every field is typed by a scalar or enum declared in
+// another package, and no field carries a constraint decorator of its
+// own.
+//
+// That combination is what makes the package interesting. A delegating
+// wrapper renders
+//
+// 	if err := v.Sku.Validate(); err != nil {
+// 	    return fmt.Errorf("sku: %w", err)
+// 	}
+//
+// so validate.go needs `fmt` - but the emitters that normally register
+// the import are the ones rendering a DIRECT check, and this package has
+// none. Anywhere else in the matrix a sibling field carries a direct
+// decorator and supplies the import by accident; here nothing does, so a
+// missing registration produces a file that parses and does not compile.
+//
+// Every field is deliberately decorator-free. Adding one here would
+// restore the accidental import and retire the fixture.
+package xdelegate
+
+// XDelegatedScalars is the marquee case: three cross-package scalars,
+// nothing else. Each field wraps the scalar's subject-less message with
+// its own name, which is the only use of fmt in the package.
+type XDelegatedScalars {
+	email xshared.XEmail
+	node  xshared.XNodeID
+	seen  xshared.XTimestamp?
+}
+
+// XDelegatedShapes puts the same delegation behind every container the
+// emitter walks separately - array, optional array, map key and map
+// value - so a registration that covers the flat field but not the loop
+// bodies still fails here.
+type XDelegatedShapes {
+	many    xshared.XNodeID[]
+	maybe   xshared.XNodeID[]?
+	byEmail map<xshared.XEmail, xshared.XSize>
+	byLabel map<string, xshared.XEmail>
+}
+
+// XDelegatedEnum covers the enum half of the same rule: an enum's
+// Validate() message is subject-less too, so an enum-typed field wraps
+// it exactly like a scalar.
+//
+// The field is optional because a REQUIRED enum field also emits a
+// presence check, and that check registers fmt - which would hand the
+// whole package the import the fixture exists to withhold. xrefs covers
+// the required-enum shape.
+type XDelegatedEnum {
+	color xshared.XColor?
+}
+
+service XDelegateService {
+	@doc("Round-trips the delegating types so the handler path compiles too.")
+	post Store /xdelegate/store {
+		request  XDelegatedScalars
+		response XDelegatedShapes
+	}
+}

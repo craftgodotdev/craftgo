@@ -9,6 +9,12 @@ output:
   config:     ./config
   main:       ./main.go
 
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+  asyncapi: ./docs/asyncapi.yaml
+
 openapi:
   title:    Taskflow API
   version:  1.2.0

@@ -1,0 +1,10 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "routes.go",
+    "todo_service/routes.go"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "admin/routes.go",
+    "attachment_service/routes.go",
+    "project/v1/routes.go",
+    "project/v2/routes.go",
+    "routes.go",
+    "task_service/routes.go"
+  ]
+}

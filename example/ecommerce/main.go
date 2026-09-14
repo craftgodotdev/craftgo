@@ -25,7 +25,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/example/ecommerce/config"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/middleware"
-	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/wiring"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
@@ -109,9 +109,16 @@ func main() {
 		}))
 	}
 
-	// One call wires every service. The umbrella RegisterAll is
-	// generated from the DSL service set on every `craftgo gen`.
-	routes.RegisterAll(srv, svc)
+	// One call attaches the whole design: every HTTP route, and every
+	// event consumer reading from svc.Events.Bus. The wiring package is
+	// regenerated on each `craftgo gen`, so this line stays put when the
+	// design gains or loses either. The returned shutdown stops delivery
+	// and runs beside srv.Stop below.
+	shutdownWiring, err := wiring.Register(ctx, srv, svc)
+	if err != nil {
+		log.Default().Error("wire services", log.Err(err))
+		os.Exit(1)
+	}
 
 	// Serve the API-reference docs (config.docs). The OpenAPI document is
 	// embedded above; the UI assets load from a CDN.
@@ -139,6 +146,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Stop(shutdownCtx)
+	// Consumers stop taking new messages and the in-flight ones finish
+	// within the same budget the HTTP drain uses.
+	_ = shutdownWiring(shutdownCtx)
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))

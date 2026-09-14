@@ -95,6 +95,12 @@ func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 		r.walkBodyRefs(dd.Body, currentPkg)
 	case *ast.ErrorDecl:
 		r.walkBodyRefs(dd.Body, currentPkg)
+	case *ast.EventDecl:
+		// Same reference as a service-level event's payload, just declared
+		// outside one.
+		if dd.Payload != nil && dd.Payload.Type != nil {
+			r.walkNamedRef(dd.Payload.Type, currentPkg)
+		}
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
 			if m.Request != nil {
@@ -102,6 +108,11 @@ func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 			}
 			if m.Response != nil && m.Response.Type != nil {
 				r.walkNamedRef(m.Response.Type, currentPkg)
+			}
+		}
+		for _, e := range dd.Events() {
+			if e.Payload != nil && e.Payload.Type != nil {
+				r.walkNamedRef(e.Payload.Type, currentPkg)
 			}
 		}
 	}

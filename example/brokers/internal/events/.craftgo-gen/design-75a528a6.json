@@ -1,0 +1,12 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "analytics_service/consumers.go",
+    "ledger_service/consumers.go",
+    "notification_service/consumers.go",
+    "order_service/publisher.go"
+  ]
+}

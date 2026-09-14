@@ -22,6 +22,18 @@ service AdminApi {
 	}
 }
 
+// The group segment ends in `time`, so the transport import alias reads
+// `transportUptime` and the handler call spells `transportUptime.PingUptime`.
+// No method in this segment carries @timeout, so its routes.go must import
+// no `time` - a decision made by searching the handler call for `time.`
+// keeps the import and the file fails with "imported and not used".
+@group("admin/uptime")
+extend service AdminApi {
+	get PingUptime /uptime/ping {
+		response VerResp
+	}
+}
+
 @group("admin/v2")
 extend service AdminApi {
 	get PingV2 /v2/ping {

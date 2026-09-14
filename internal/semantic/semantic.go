@@ -4,7 +4,8 @@
 // Responsibilities:
 //
 //   - Package-name consistency across files.
-//   - Symbol tables for types, enums, errors, scalars, middlewares.
+//   - Symbol tables for types, enums, errors, scalars, middlewares,
+//     events, consumers.
 //   - Primary / `extend service` merge.
 //   - Duplicate names (top-level, fields, methods, routes) and
 //     uniform enum value kinds.
@@ -56,15 +57,24 @@ type Package struct {
 	Middlewares map[string]*ast.MiddlewareDecl
 	// Services maps service names to the merged primary + extends bundle.
 	Services map[string]*ServiceInfo
+	// Events maps `event Name { ... }` declarations by name. Events have
+	// their own namespace, so an event and its payload type may share a
+	// name.
+	Events map[string]*EventInfo
+	// Consumers maps `consume Name { ... }` declarations by name, in
+	// their own namespace for the same reason.
+	Consumers map[string]*ConsumerInfo
 }
 
 // ServiceInfo bundles the primary `service` declaration with every `extend
-// service` continuation that targets the same name. Methods is the merged
-// list in source order.
+// service` continuation that targets the same name. Methods, Events and
+// Consumers are the merged lists in source order.
 type ServiceInfo struct {
-	Primary *ast.ServiceDecl
-	Extends []*ast.ServiceDecl
-	Methods []*ast.Method
+	Primary   *ast.ServiceDecl
+	Extends   []*ast.ServiceDecl
+	Methods   []*ast.Method
+	Events    []*ast.EventDecl
+	Consumers []*ast.ConsumerDecl
 }
 
 // Options configure the analyser's optional cross-reference checks.
@@ -137,6 +147,8 @@ func newAnalyzer(proj *Project, opts Options) *analyzer {
 			Scalars:     map[string]*ast.ScalarDecl{},
 			Middlewares: map[string]*ast.MiddlewareDecl{},
 			Services:    map[string]*ServiceInfo{},
+			Events:      map[string]*EventInfo{},
+			Consumers:   map[string]*ConsumerInfo{},
 		},
 		proj: proj,
 		opts: opts,
@@ -196,6 +208,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkPathResolution()
 	a.checkCombinationRules(files)
 	a.checkFilePosition()
+	a.checkEvents()
 }
 
 // runRefPhase validates file-local imports and resolves every

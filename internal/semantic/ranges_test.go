@@ -347,10 +347,10 @@ func TestRangeHelpersTolerateBadShape(t *testing.T) {
 	a.checkNonNegativeInt(&ast.Decorator{Name: "minLength"})
 
 	// Non-numeric value: helpers also return early.
-	stringArg := []*ast.DecoratorArg{{Value: &ast.StringLit{}}}
-	a.checkPairArgs(&ast.Decorator{Name: "length", Args: append(stringArg, &ast.DecoratorArg{Value: &ast.StringLit{}})})
-	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf", Args: stringArg})
-	a.checkHTTPStatus(&ast.Decorator{Name: "status", Args: stringArg})
+	StringArg := []*ast.DecoratorArg{{Value: &ast.StringLit{}}}
+	a.checkPairArgs(&ast.Decorator{Name: "length", Args: append(StringArg, &ast.DecoratorArg{Value: &ast.StringLit{}})})
+	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf", Args: StringArg})
+	a.checkHTTPStatus(&ast.Decorator{Name: "status", Args: StringArg})
 
 	if len(a.diags) != 0 {
 		t.Errorf("defensive helpers should not diag on bad shape, got %v", a.diags)

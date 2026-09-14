@@ -70,6 +70,20 @@
     "datetime",
     "zstd",
     "Precompressed",
-    "precompressed"
+    "precompressed",
+    "asyncapi",
+    "craftevents",
+    "codecjson",
+    "msgpack",
+    "protobuf",
+    "nats",
+    "rabbitmq",
+    "eventsubs",
+    "stocktake",
+    "apollo",
+    "gemini",
+    "taskflow",
+    "vitepress",
+    "subscriptions"
   ]
 }

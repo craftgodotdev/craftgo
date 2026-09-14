@@ -1,0 +1,26 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "activity/types.go",
+    "activity/validate.go",
+    "admin/types.go",
+    "admin/validate.go",
+    "attachments/types.go",
+    "attachments/validate.go",
+    "design/types.go",
+    "design/validate.go",
+    "project/enums.go",
+    "project/types.go",
+    "project/validate.go",
+    "shared/enums.go",
+    "shared/errors.go",
+    "shared/types.go",
+    "shared/validate.go",
+    "tasks/enums.go",
+    "tasks/types.go",
+    "tasks/validate.go"
+  ]
+}

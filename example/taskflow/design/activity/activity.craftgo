@@ -1,0 +1,17 @@
+// activity.craftgo is the consumer side: a service that handles the
+// contracts TaskService publishes without sharing its package, its
+// storage, or its deployment. The only thing the two agree on is the
+// contract name and the payload shape.
+package activity
+
+service ActivityService {
+	@doc("Appends every created task to the project activity feed.")
+	consume RecordTaskCreated {
+		event tasks.TaskCreated
+	}
+
+	@doc("Appends every status transition to the project activity feed.")
+	consume RecordStatusChange {
+		event tasks.TaskStatusChanged
+	}
+}

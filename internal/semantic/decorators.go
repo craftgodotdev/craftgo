@@ -24,7 +24,7 @@ import (
 // at least one bit overlaps with the current site. Single-bit values are
 // used for diagnostic rendering - never combine bits when calling
 // [Level.Name].
-type Level uint16
+type Level uint32
 
 const (
 	// LvlFile is a file-header decorator, before `package`. Examples:
@@ -51,6 +51,10 @@ const (
 	LvlScalar
 	// LvlMiddleware is a `middleware Name(...)` declaration.
 	LvlMiddleware
+	// LvlEvent is an `event Name { ... }` inside a service body.
+	LvlEvent
+	// LvlConsumer is a `consume Name { ... }` inside a service body.
+	LvlConsumer
 	// LvlErrorField is a field inside an `error` body. Distinct from
 	// [LvlField] because errors are server-emitted, so request-only
 	// decorators (`@path`, `@query`, `@body`, `@form`, `@maxSize`,
@@ -79,6 +83,8 @@ var levelNames = []struct {
 	{LvlError, "error"},
 	{LvlScalar, "scalar"},
 	{LvlMiddleware, "middleware"},
+	{LvlEvent, "event"},
+	{LvlConsumer, "consumer"},
 	{LvlErrorField, "error field"},
 }
 
@@ -243,6 +249,35 @@ func (p Prims) String() string {
 	return strings.Join(parts, ", ")
 }
 
+// ConstraintFamily classifies what a constraint decorator restricts.
+// Targets read it to decide which checks or schema keywords a decorator
+// contributes, so the classification is stated once here rather than
+// re-derived per target.
+type ConstraintFamily uint8
+
+const (
+	// ConstraintNumeric bounds a number: @gt, @gte, @lt, @lte, @range,
+	// @positive, @negative, @multipleOf.
+	ConstraintNumeric ConstraintFamily = 1 << iota
+	// ConstraintLength bounds text length: @length, @minLength, @maxLength.
+	ConstraintLength
+	// ConstraintText restricts text shape: @pattern, @format.
+	ConstraintText
+	// ConstraintItems bounds a collection: @minItems, @maxItems,
+	// @uniqueItems.
+	ConstraintItems
+	// ConstraintRuntime is checked at runtime but has no schema form:
+	// @maxSize, @mimeTypes on a multipart part.
+	ConstraintRuntime
+)
+
+// ConstraintNarrowing is every family a field may stack on a referenced
+// type; a $ref field is never a collection or a file.
+const ConstraintNarrowing = ConstraintNumeric | ConstraintLength | ConstraintText
+
+// ConstraintSchema is every family with a schema form.
+const ConstraintSchema = ConstraintNumeric | ConstraintLength | ConstraintText | ConstraintItems
+
 // Spec describes one decorator: its canonical name, every site it may
 // appear, a short doc string for IDE hover, and the positional argument
 // shape. Every decorator validates through the generic
@@ -267,6 +302,10 @@ type Spec struct {
 	// field-type compatibility check reads this when LvlField or
 	// LvlScalar is the current site.
 	AppliesTo Prims
+	// Constraint classifies the decorator as a constraint and says what
+	// it restricts. Zero means the decorator is not a constraint
+	// (metadata, binding, routing).
+	Constraint ConstraintFamily
 	// Flag reports whether the decorator never accepts arguments. It
 	// is a presentation hint, not a parser rule:
 	//
@@ -310,15 +349,15 @@ var Registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
 		Name:     "doc",
-		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlErrorField,
-		Doc:      "Free-form documentation surfaced in OpenAPI and IDE hover.",
+		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlEvent | LvlConsumer | LvlErrorField,
+		Doc:      "Free-form documentation surfaced in OpenAPI / AsyncAPI and IDE hover.",
 		Args:     ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
 	},
 	"deprecated": {
 		Name:     "deprecated",
-		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlErrorField,
-		Doc:      "Marks the construct as deprecated; OpenAPI emits the deprecated flag.",
+		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlEvent | LvlConsumer | LvlErrorField,
+		Doc:      "Marks the construct as deprecated; OpenAPI / AsyncAPI emit the deprecated flag.",
 		Args:     ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
 	},
@@ -368,27 +407,31 @@ var Registry = map[string]Spec{
 	// is generated for ErrorDecl types.
 	"length": {
 		Name: "length", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Exact or [min,max] length for strings.",
-		Args:      ArgsRule{Min: 1, Max: 2, Kinds: []ArgKind{ArgInt, ArgInt}},
-		AppliesTo: PrimString,
+		Doc:        "Exact or [min,max] length for strings.",
+		Args:       ArgsRule{Min: 1, Max: 2, Kinds: []ArgKind{ArgInt, ArgInt}},
+		AppliesTo:  PrimString,
+		Constraint: ConstraintLength,
 	},
 	"minLength": {
 		Name: "minLength", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Minimum string length.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo: PrimString,
+		Doc:        "Minimum string length.",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
+		AppliesTo:  PrimString,
+		Constraint: ConstraintLength,
 	},
 	"maxLength": {
 		Name: "maxLength", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Maximum string length.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo: PrimString,
+		Doc:        "Maximum string length.",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
+		AppliesTo:  PrimString,
+		Constraint: ConstraintLength,
 	},
 	"pattern": {
 		Name: "pattern", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "RE2 regex the value must match.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
-		AppliesTo: PrimString,
+		Doc:        "RE2 regex the value must match.",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
+		AppliesTo:  PrimString,
+		Constraint: ConstraintText,
 	},
 	"format": {
 		Name:   "format",
@@ -399,76 +442,87 @@ var Registry = map[string]Spec{
 			Kinds: []ArgKind{ArgStringOrIdent},
 			Enum:  formatValues,
 		},
-		AppliesTo: PrimString,
+		AppliesTo:  PrimString,
+		Constraint: ConstraintText,
 	},
 
 	// ---- Field validation: number ----
 	"gt": {
 		Name: "gt", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be strictly greater than N (x > N).",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
-		AppliesTo: PrimNumber,
+		Doc:        "Value must be strictly greater than N (x > N).",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo:  PrimNumber,
+		Constraint: ConstraintNumeric,
 	},
 	"gte": {
 		Name: "gte", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be greater than or equal to N (x >= N).",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
-		AppliesTo: PrimNumber,
+		Doc:        "Value must be greater than or equal to N (x >= N).",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo:  PrimNumber,
+		Constraint: ConstraintNumeric,
 	},
 	"lt": {
 		Name: "lt", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be strictly less than N (x < N).",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
-		AppliesTo: PrimNumber,
+		Doc:        "Value must be strictly less than N (x < N).",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo:  PrimNumber,
+		Constraint: ConstraintNumeric,
 	},
 	"lte": {
 		Name: "lte", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be less than or equal to N (x <= N).",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
-		AppliesTo: PrimNumber,
+		Doc:        "Value must be less than or equal to N (x <= N).",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo:  PrimNumber,
+		Constraint: ConstraintNumeric,
 	},
 	"range": {
 		Name: "range", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Numeric range [min, max] - both bounds inclusive.",
-		Args:      ArgsRule{Min: 2, Max: 2, Kinds: []ArgKind{ArgNumber, ArgNumber}},
-		AppliesTo: PrimNumber,
+		Doc:        "Numeric range [min, max] - both bounds inclusive.",
+		Args:       ArgsRule{Min: 2, Max: 2, Kinds: []ArgKind{ArgNumber, ArgNumber}},
+		AppliesTo:  PrimNumber,
+		Constraint: ConstraintNumeric,
 	},
-	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber, Flag: true},
-	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber, Flag: true},
+	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber, Flag: true, Constraint: ConstraintNumeric},
+	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber, Flag: true, Constraint: ConstraintNumeric},
 	"multipleOf": {
 		Name: "multipleOf", Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:       "Value must be a multiple of N.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
-		AppliesTo: PrimNumber,
+		Doc:        "Value must be a multiple of N.",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
+		AppliesTo:  PrimNumber,
+		Constraint: ConstraintNumeric,
 	},
 
 	// ---- Field validation: array / map ----
 	"minItems": {
 		Name: "minItems", Levels: LvlField | LvlErrorField,
-		Doc:       "Minimum array / map length.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo: PrimArray,
+		Doc:        "Minimum array / map length.",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
+		AppliesTo:  PrimArray,
+		Constraint: ConstraintItems,
 	},
 	"maxItems": {
 		Name: "maxItems", Levels: LvlField | LvlErrorField,
-		Doc:       "Maximum array / map length.",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo: PrimArray,
+		Doc:        "Maximum array / map length.",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
+		AppliesTo:  PrimArray,
+		Constraint: ConstraintItems,
 	},
-	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Flag: true},
+	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Flag: true, Constraint: ConstraintItems},
 
 	// ---- Field validation: file ----
 	"maxSize": {
 		Name: "maxSize", Levels: LvlField,
-		Doc:       "Upload size cap (bytes / KB / MB / GB).",
-		Args:      ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}},
-		AppliesTo: PrimFile,
+		Doc:        "Upload size cap (bytes / KB / MB / GB).",
+		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}},
+		AppliesTo:  PrimFile,
+		Constraint: ConstraintRuntime,
 	},
 	"mimeTypes": {
 		Name: "mimeTypes", Levels: LvlField,
-		Doc:       "Allowed Content-Type list for uploads. Args: variadic strings or a single array literal.",
-		Args:      ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true},
-		AppliesTo: PrimFile,
+		Doc:        "Allowed Content-Type list for uploads. Args: variadic strings or a single array literal.",
+		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true},
+		AppliesTo:  PrimFile,
+		Constraint: ConstraintRuntime,
 	},
 
 	// ---- Field metadata ----
@@ -497,6 +551,20 @@ var Registry = map[string]Spec{
 		Doc:  "Path prefix prepended to every method route.",
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 	},
+	// ---- Events ----
+	"contract": {
+		Name:   DecoratorContract,
+		Levels: LvlEvent,
+		Doc:    "Overrides the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes.",
+		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
+	},
+	"consumerGroup": {
+		Name:   DecoratorConsumerGroup,
+		Levels: LvlService | LvlConsumer,
+		Doc:    "The broker identity a consumer joins - the Kafka consumer group, the NATS queue group. Consumers sharing a group divide the stream between them, which makes a group a unit of scaling and of failure isolation (not of ordering - no transport orders across contracts). On a transport that remembers a position per group, Kafka and JetStream, the name is also where those consumers resume: the default `<package>-<Service>-<Consumer>` moves when you rename any of the three, and a name the broker has never seen has no position at all, so if it has an offset, write the name down. On a service the decorator is the default for every `consume` in the body; on a consumer it overrides that. Consumers of different contracts may share one group inside a service; two services may not share one.",
+		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
+	},
+
 	"group": {
 		Name: "group", Levels: LvlService,
 		Doc:  "Nests the service's generated handlers and service stubs under <service>/<group>/ on disk and adds its value as an OpenAPI tag on every method; does not affect the route or OpenAPI path. Accepts a nested path like \"admin/ops\".",
@@ -582,4 +650,37 @@ var Registry = map[string]Spec{
 func Lookup(name string) (Spec, bool) {
 	s, ok := Registry[name]
 	return s, ok
+}
+
+// removed maps a decorator craftgo once accepted to the sentence telling
+// an author what takes its place. A design written against an older
+// craftgo then gets a migration note instead of "not in the framework
+// registry", which says nothing about what to do.
+//
+// It is deliberately separate from [Registry]: a removed decorator is not
+// a decorator, so nothing that walks the registry - completion, hover,
+// the argument-shape pass - has to learn to skip it.
+var removed = map[string]string{
+	"key": "@key was removed: which entity a message belongs to is decided when it is published, not by the contract. " +
+		"Pass the key to the generated publisher instead - `PublishOrderPlaced(ctx, payload, craftevents.WithKey(string(payload.OrderID)))`, " +
+		"or `craftevents.WithKey(...)` on a batch entry.",
+}
+
+// RemovedDecorator returns the migration note for a decorator craftgo has
+// removed, and whether `name` is one. The LSP reads it so hovering the
+// decorator in an unmigrated design says the same thing the diagnostic
+// does.
+func RemovedDecorator(name string) (string, bool) {
+	msg, ok := removed[name]
+	return msg, ok
+}
+
+// ConstraintOf returns the decorator's constraint classification, or zero
+// when the name is unknown or the decorator is not a constraint.
+func ConstraintOf(name string) ConstraintFamily {
+	spec, ok := Lookup(name)
+	if !ok {
+		return 0
+	}
+	return spec.Constraint
 }

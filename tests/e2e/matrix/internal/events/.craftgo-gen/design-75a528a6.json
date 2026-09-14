@@ -1,0 +1,17 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../deploy/notifier/design",
+    "../../design"
+  ],
+  "files": [
+    "analytics_service/consumers.go",
+    "craft/publisher.go",
+    "inventory_service/consumers.go",
+    "inventory_service/publisher.go",
+    "ledger_service/consumers.go",
+    "notification_service/consumers.go",
+    "ops_service/consumers.go",
+    "x_refs_service/publisher.go"
+  ]
+}

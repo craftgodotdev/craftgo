@@ -5,6 +5,606 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Added
+
+- **Events on a service.** A `service` body now holds `event` contracts and
+  `consume` declarations alongside its HTTP methods. One declaration serves
+  both sides - the typed publisher is derived from the contract, so producer
+  and consumer cannot drift apart:
+
+  ```craftgo
+  service OrderService {
+      post PlaceOrder /orders { request PlaceOrderReq  response Order }
+
+      event OrderPlaced { payload OrderPlacedPayload }
+  }
+
+  service NotificationService {
+      consume SendReceipt { event orders.OrderPlaced }
+  }
+  ```
+
+  `craftgo gen` emits a typed publisher per publishing service, an
+  `events.Subscription` per consumer in the transport layer, a gen-once logic
+  stub next to the method stubs, an umbrella `RegisterAll`, and the
+  `svccontext.Events` container the publishers hang off.
+
+- **Event runtime, `pkg/events`.** Transport- and codec-neutral: `Message`,
+  `Codec`, `Publisher`, `Subscriber`, `Subscription`, `Bus`, `Registry`. The
+  core names no broker and no encoding. `pkg/events/memory` is an in-process
+  transport (tests, local development, single-binary deployments);
+  `pkg/events/codecjson` is a JSON codec. A broker adapter is an external
+  package implementing two small interfaces.
+
+- **Consumer middleware, on the bus.** Logging, metrics and tracing compose on
+  the event side the way they do on routes. The chain goes where the transport
+  and the codec already go:
+
+  ```go
+  bus := craftevents.New(
+      craftevents.WithTransport(t),
+      craftevents.WithCodec(c),
+      craftevents.WithMiddleware(Logging(logger), Metrics(reg)),
+  )
+  ```
+
+  Nothing is generated for it - no `svccontext` field, no template change - and
+  there is nothing to declare in the design. A
+  `Middleware func(sub Subscription, next Handler) Handler` is handed the
+  subscription, which already carries the contract, the consumer and the group;
+  an `http.Handler` gives a middleware no handle on the route it wraps, which is
+  why the HTTP side needs `@middlewares(...)` to name one. What HTTP solves with
+  a decorator, events solves with a parameter.
+
+  The bus is the seam because it is the only thing every subscription passes
+  through. A chain applied inside the generated `SubscribeAll` would cover what
+  that function can see, and a deployable that appends a hand-built
+  `Subscriptions(bus, h)` slice - one consuming another design's contracts, say -
+  would find those silently unwrapped. `output.services` projections make it
+  worse: one `SubscribeAll` per manifest, each over its own `ServiceContext`, so
+  the chain would have to be configured once per container with no compiler help
+  for the one you forget. One bus, one chain, every subscription. A project
+  wanting two chains builds two buses.
+
+  This is not a new concern for the Bus: `Bus.Subscribe` already applied exactly
+  one middleware - the panic recover - and the option generalises that into a
+  configurable list. `Chain`, `NewChain` and `Append` mirror `server.Chain`
+  exactly: outermost-first fold, nil entries skipped, `Append` returns a new
+  chain without mutating the receiver. The verb differs -
+  `Apply([]Subscription) []Subscription` rather than `Then(h)` - because each
+  wrap needs the subscription it is wrapping.
+
+- **A panicking consumer now reaches your own middleware.** Recovery goes on
+  *both* sides of the chain. The inner one turns a panicking handler into a
+  `*PanicError` before your middleware sees the result, so a logger written as
+  `err := next(ctx, msg)` logs the failure it most needs to - previously the
+  guard wrapped the decorated handler from outside, and a panic unwound past
+  every layer a project had installed. The outer one catches a panic in the
+  chain itself, which the inner one sits beneath and can never see, so a bug in
+  your own middleware still cannot end the process.
+
+  Exactly one `PanicError` is built per panic: once the inner recover catches, no
+  panic is in flight, so the outer `recover()` returns nil and passes the error
+  through untouched. A bus with no middleware installs the inner recover alone,
+  which is the single wrap it has always applied - unchanged behaviour for a
+  project that adds nothing.
+
+  `craftevents.Recover()` covers the one case the bus cannot: a chain folded by
+  `Chain.Apply` rather than installed with `WithMiddleware` is wrapped from
+  outside as one opaque handler, so placing `Recover()` at its innermost end
+  gives it the visibility a bus chain gets for free.
+
+- **A panicking consumer no longer ends the process.** `Bus.Subscribe` wraps
+  every handler it registers in a recover before handing the subscription to
+  the transport, which is the rule `pkg/server` already has for HTTP: `Recovery`
+  is always outermost, unconditional, nothing to declare. The events side never
+  had it, and because `wiring.Register` puts the HTTP server and the consumers
+  in one binary, one panicking consumer took the API down with it.
+
+  The wrapper has to sit on the handler. The panic fires on a goroutine the
+  transport spawned, so a `recover` around `SubscribeAll` is on the wrong
+  goroutine and has already returned. Putting it in `Bus.Subscribe` also means
+  every transport inherits it - craftgo's three and any adapter written
+  elsewhere - rather than each spelling it again.
+
+  The recovered panic is returned as a `*events.PanicError` naming the consumer,
+  its group and the contract, and carrying the stack as a field. The transport
+  sees an ordinary handler error: it reaches the error handler installed on the
+  transport and delivery continues with the next message. Nothing is redelivered.
+
+- **A chain decides what happens to a delivery.** `events.Disposition` is what
+  has been asked for one message - `DispositionSettle`, `DispositionRedeliver`,
+  `DispositionReject`, or the zero `DispositionUnset` when nothing decided. A
+  middleware asks through the message:
+
+  ```go
+  func RetryOnce(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
+      return func(ctx context.Context, msg *craftevents.Message) error {
+          err := next(ctx, msg)
+          if err != nil && msg.Deliveries() < 2 {
+              msg.Redeliver()
+          }
+          return err
+      }
+  }
+  ```
+
+  The last writer wins and clearing is allowed: the chain returns innermost
+  first, so the outermost middleware decides last and can see what everything
+  below it asked for. A frame that panicked did not finish deciding, so the
+  recover voids what it asked for - unset rather than settle, leaving the
+  decision to whatever is above it.
+
+  `msg.Reached()` separates a message the handler failed on from a chain that
+  broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
+  where the transport does not keep one.
+
+- **A transport says what it can honour, and the bus refuses at startup.**
+  `events.Dispositioner` is an optional per-INSTANCE capability - one adapter may
+  be built in a mode that can redeliver and in a mode that cannot. A transport
+  that does not implement it honours settle alone, so an adapter with one mode
+  needs no code and has no answer that can go stale.
+
+  `events.WithDispositionRequired(d)` refuses to subscribe on a transport that
+  cannot honour `d`, returning `events.ErrDispositionUnsupported` through the
+  generated `SubscribeAll` and out of `main`. A chain that calls `Redeliver()` on
+  a transport that settles instead loses every message it meant to retry, and
+  nothing reports it - this is how you find out at boot rather than in
+  production.
+
+- **A publisher can set message metadata.** `events.Envelope` gained an optional
+  `Metadata map[string]string`, merged into `Message.Metadata` on the way out.
+  Every transport already carried metadata both ways and every consumer chain
+  could read it; only the publishing side had no way to contribute, so a hop
+  count or a dead-letter marker had nowhere to live:
+
+  ```go
+  bus.PublishAll(ctx, []craftevents.Envelope{{
+      Event:    orders.OrderPlacedContract,
+      Key:      string(placed.OrderID),
+      Payload:  placed,
+      Metadata: map[string]string{"hops": "1"},
+  }})
+  ```
+
+  `Bus.Publish` is unchanged and still sends the codec stamp alone: a single
+  message with metadata is a one-envelope batch, so there is one way to attach
+  it rather than two. An envelope with no metadata encodes to exactly the
+  message it did before.
+
+  Reserved keys are named in one place by `events.IsReservedMeta`:
+  `events.MetaCodec` (`content-codec`), and anything under `events.MetaPrefix`
+  (`craftgo-`), case-insensitively - which is where the adapters keep their own
+  headers, Kafka's `craftgo-event` and `craftgo-key` and NATS's `Craftgo-Key`. A
+  caller entry under one of those is **dropped silently** and the runtime's or
+  the adapter's own value takes its place, so a publisher can forge neither the
+  codec stamp nor the contract name. The two adapters skip those names on encode
+  as well, for a `Message` built by hand rather than by the bus. Nothing
+  generated changes.
+
+  The NATS adapter now also consumes its key header into `Message.Key` instead
+  of leaving a copy in `Metadata`, so a consumer sees the same entries on every
+  transport.
+
+- **`events.targets`, the language target list.** The manifest names the
+  languages the event artefacts are generated for, one row each, so Go states
+  where its artefacts land rather than being an implied default: `out: "-"`
+  turns a row off without deleting it. Go is the only language craftgo
+  generates; the AsyncAPI document is what other languages read the contracts
+  from.
+
+- **AsyncAPI projection.** `craftgo gen` writes an AsyncAPI 3.0 document with
+  one channel per contract, a `send` operation for the declaring service and a
+  `receive` operation for every consumer. Payload schemas come from the builder
+  the OpenAPI document already uses. The projection is one-way: no AsyncAPI
+  concept shapes the event model.
+
+- **`@contract("...")`.** Overrides an event's wire identity (default
+  `<package>.<Event>`) for interoperating with a name another system already
+  publishes.
+
+- **Publish options.** Everything about a message beside its contract and its
+  payload is decided where it is published, by a `craftevents.PublishOption`
+  the generated publisher and batch builder both take:
+
+  ```go
+  svcCtx.Events.OrderService.PublishPlaced(ctx, placed,
+      craftevents.WithKey(string(placed.OrderID)))
+
+  b := svcCtx.Events.Batch()
+  b.OrderService().Shipped(shipped, craftevents.WithKey(string(shipped.OrderID)))
+  ```
+
+  `WithKey` is the ordering key a transport places a message by - the Kafka
+  partition key, a subject suffix. `WithDedupID` is the identity a broker that
+  de-duplicates recognises a repeat by (SQS FIFO, Azure Service Bus, the NATS
+  `Nats-Msg-Id` header). `WithHeader` sets one side-band value. `WithAdapterOption`
+  is the namespaced escape hatch for a broker feature that does not generalise.
+
+  `NewPublisher(bus, opts...)` and `svccontext.NewEvents(bus, opts...)` take
+  defaults applied to every message before the options of the call itself, so a
+  tenant header is set once and a per-call option of the same kind still wins.
+  Batches started from `Events.Batch()` carry the same defaults.
+
+  An option addressed to an adapter other than the configured one is ignored, so
+  the same code publishes through whichever broker is wired up. One addressed to
+  the configured adapter under a key it does not read fails the publish, naming
+  what it does read: dropping a per-message option silently is how a message
+  goes out configured differently from how its caller asked. An adapter opts
+  into both by implementing `events.OptionAware`; the three craftgo ships do.
+
+- **`@consumerGroup("...")`.** Names the broker identity a consumer joins - the
+  Kafka consumer group, the NATS queue group. Valid on a `consume` and on the
+  `service` declaring it, where it is the default for every consumer in the
+  body; a consumer's own value wins. Consumers of different contracts may share
+  one group inside a service, which makes a group a unit of scaling and of
+  failure isolation rather than a per-contract label:
+
+  ```craftgo
+  @consumerGroup("order-worker")
+  service NotificationService {
+      consume SendReceipt { event orders.Placed }
+      consume SendDispatchNote { event orders.Shipped }
+  }
+  ```
+
+  Two consumers of one contract may not share a group
+  (`consumer/group-collision`), and neither may two services
+  (`consumer/group-cross-service`): a shared group requires every process that
+  joins it to register the same consumers, which two separately deployed
+  binaries cannot do - each would skip the other's contracts. An authored value
+  may not be empty or contain a dot or whitespace (`consumer/group-format`),
+  because NATS JetStream refuses a durable name with either.
+
+  A shared group buys scale and failure isolation, not ordering: no transport
+  craftgo ships orders two contracts against each other, whether or not they
+  share a group. On Kafka and JetStream the group is also where those consumers
+  resume; core NATS keeps no position, so there the name only decides who
+  competes for a message.
+
+  The group also rides the AsyncAPI document as `x-craftgo-group` on each
+  `receive` operation, and `craftgo check` reports a changed one as breaking.
+
+- **`events:` manifest block.** `events.targets[].lang` / `.out` per language
+  and `events.asyncapi` for the projection. Omit it and a design that declares
+  events gets one Go target at `./internal/events`; a design with no events
+  generates nothing either way.
+
+- **`design:` manifest block - several deployables from one design.** A
+  manifest may name a design source it does not sit in, making it a
+  *projection* of that design:
+
+  ```yaml
+  design:
+    from: ../../../contracts/design # where the .craftgo files are
+    root: ../../../contracts        # the project root that design generates with
+  output:
+    services: [eventsubs.NotificationService, eventsubs.AnalyticsService]
+  ```
+
+  An API, a consumer and a cronjob now generate from one design instead of
+  each copying it. `craftgo gen -f <manifest folder> -c <deployable root>`
+  reads the `.craftgo` files from `design.from`; both paths are relative to
+  the manifest's folder, and both are required. `design.root` is the project
+  root the design source itself is generated with - its own `-c` - which
+  craftgo cannot read off the folder: a design at `contracts/upstream/design`
+  may be generated with `contracts` as its root as readily as with
+  `contracts/upstream`, and guessing wrong produces an import path that does
+  not exist. A manifest that both names a source and holds `.craftgo` files of
+  its own is rejected - that is ambiguous, not a merge.
+
+  The contract half stays the design's: `output.types`, `events.targets` and
+  `output.fileCase` come from the source manifest and resolve against
+  `design.root`, so every deployable writes the same payload types and the
+  same event library, to one directory, imported under the module path that
+  directory carries. A projection stating one of those keys is rejected rather
+  than writing a second copy. `openapi.*` keys it does not state are inherited,
+  `securitySchemes` included, which is what the shared design's `@security(...)`
+  references resolve against. Everything else - `transport`, `routes`,
+  `service`, `wiring`, `middleware`, `config`, `svccontext`, `main`, the
+  documents - is the deployable's own, against its own project root.
+
+- **`output.services` selects the services a deployable generates.** A list of
+  `<package>.<Service>` entries; empty or absent generates every service, which
+  is what every existing manifest gets. It narrows the application half -
+  handlers, consumer handler sets, logic stubs, routes, `wiring.Register`,
+  `SubscribeAll`, and the publishers hanging off `svccontext.Events` - and
+  never the contract half or the documents, which describe the whole design and
+  must read the same from every deployable. An entry naming a service the
+  design does not declare fails before anything is written, naming the near
+  misses.
+
+  Two deployables of one design therefore write byte-identical contract halves,
+  and may share that output directory: the claim craftgo files there is keyed
+  to the design source, so it is the same claim. Two *different* designs
+  writing one file are still refused.
+
+- **craftgo claims every file it regenerates, not only the event ones.** Each
+  output directory holds a `.craftgo-gen/` record per design writing into it -
+  the design, the manifests that generate through it, and the files it
+  produced - and a run is refused, before it writes anything, when a file it
+  would regenerate is already claimed by another design. Commit the records;
+  they are how several manifests write into one tree safely.
+
+  The claim used to cover only `events.targets[].out`, so everything else was
+  unguarded: two manifests generating into one project root overwrote each
+  other's `transport/events.go`, `svccontext/events.go`, the routes umbrella,
+  the wiring and the documents. Each of those is a complete rewrite from one
+  design's point of view, so the second run won, silently and with exit 0 - a
+  deployable built that way subscribed the consumers of whichever manifest ran
+  last, and which half that was depended on the order of the build. The
+  refusal now names both designs and both manifests.
+
+  Gen-once scaffolds - logic stubs, middleware impls, `config/`, `main.go`,
+  `svccontext.go` - are not claimed: they are written only when missing, so
+  no second manifest can overwrite one.
+
+### Changed
+
+- **`@key` is removed; the ordering key is a publish option.** Which entity a
+  message belongs to is decided where it is published, not by the contract, so
+  `@key(field)` is gone and `craftevents.WithKey(...)` takes its place:
+
+  ```craftgo
+  // before
+  @key(orderId)
+  event Placed { payload OrderPlaced }
+
+  // after
+  event Placed { payload OrderPlaced }
+  ```
+
+  ```go
+  svcCtx.Events.OrderService.PublishPlaced(ctx, placed,
+      craftevents.WithKey(string(placed.OrderID)))
+  ```
+
+  A design still carrying the decorator is rejected with `decorator/removed`,
+  which names the replacement rather than reporting an unknown decorator, and
+  the language server says the same on hover. **Migrating means passing
+  `WithKey` at every publish that needs an ordering key**: a publish without it
+  is keyless, and a keyless message is placed wherever the transport likes -
+  round-robined across Kafka's partitions rather than ordered per entity.
+
+  Why: the decorator reached one emitter, `craftgo check` could not see it (so
+  dropping it reported "contracts unchanged" while silently changing delivery),
+  and only one of the three shipped adapters ordered on it. The generated
+  publisher's signature grew a variadic parameter, which is source-compatible -
+  an existing call site keeps compiling, and starts publishing keyless.
+
+- **`Bus.Publish` takes options instead of a positional key.** It was
+  `Publish(ctx, event, key string, payload any)` and is now
+  `Publish(ctx, event string, payload any, opts ...PublishOption)`. With `@key`
+  gone nothing filled that parameter in, and a single publish and a batch entry
+  now take the same option set rather than two different shapes. The advice that
+  a one-message batch is how you attach metadata goes with it: `WithHeader` is
+  on the ordinary call.
+
+- **`events.Message` and `events.Envelope` carry a deduplication ID and adapter
+  options.** `DedupID` rides the NATS `Nats-Msg-Id` header; `AdapterOptions` is
+  what `WithAdapterOption` fills in, read with `Message.AdapterOption(adapter,
+  key)`. The Kafka adapter reads one of its own, `kafka.OptionTimestamp`, which
+  sets the record timestamp a replayed message would otherwise lose.
+
+- **`lang: typescript` is rejected by name.** The TypeScript event target has
+  been taken out of the tree. A manifest still carrying the row is told the
+  target was removed rather than handed the generic "not supported" list, which
+  reads as a typo and sends you looking for one; drop the row and the Go output
+  is byte-for-byte what it was. The DSL is unchanged - no keyword, decorator or
+  event construct depended on the target - and so is everything `craftgo gen`
+  writes for Go, including the AsyncAPI document.
+
+- **A consumer's broker group is its own identity, no longer the `consume`
+  name.** `events.Subscription` gained a `Group` field, and it is what Kafka
+  uses as its `GroupID`, NATS as its queue group, and the in-process transport
+  as half its routing key; `Consumer` now only names the handler. A consumer
+  that declares no `@consumerGroup` gets `<package>-<Service>-<Consumer>`, so
+  **every existing consumer's group name changes** - `SendReceipt` becomes
+  `notifications-NotificationService-SendReceipt`. On a broker that holds
+  offsets, the new name is a group the broker has never seen and has no
+  committed position for.
+
+  **On Kafka this means a full replay of whatever the topic still retains.**
+  Not "it depends on your broker config": craftgo never sets
+  `ReaderConfig.StartOffset`, kafka-go defaults it to `FirstOffset`, and
+  kafka-go never reads `auto.offset.reset` at all - so a `latest` setting on the
+  broker does not protect you. Measured on Kafka 3.8: 20 messages consumed, the
+  same group restarted receives 0, the regenerated group receives all 20 again.
+
+  To keep the position, pin the old name before upgrading:
+  `@consumerGroup("SendReceipt")`. A hand-written `Subscription` that leaves
+  `Group` empty still falls back to `Consumer`. Core NATS keeps no position, so
+  nothing there is affected.
+
+  Kafka additionally refuses a `Subscribe` that would make one group read two
+  different contracts on one topic: the readers would be two members splitting
+  that topic's partitions, each commit-and-skipping the other's contract, and
+  both would lose messages. Only a `WithTopic` mapping that collapses contracts
+  can reach it - under the default one-topic-per-contract mapping the check
+  never fires, and replicas of one subscription are unaffected. One reader per
+  group across several contracts is a later step.
+
+- **Kafka commits a message whose handler failed, instead of leaving it
+  uncommitted.** The adapter reports the error to `kafka.WithErrorHandler` and
+  then commits; the message is dropped rather than redelivered. The previous
+  code skipped the commit and its comment claimed "the group will see it again",
+  which was never true: a group offset is a per-partition high-water mark and
+  kafka-go commits `offset+1`, so the next message that succeeded on that
+  partition committed past the failure anyway. Measured: a handler failing on
+  message 1 of [1 2 3] and restarting redelivers nothing. Stopping the partition
+  instead is not available - `FetchMessage` reads one channel fed by every
+  partition the reader owns, so blocking would stall all of them.
+
+  The behaviour users had is unchanged; what changes is that the drop now
+  happens at a defined point rather than whenever an unrelated message happens
+  to succeed, and that the documentation says so. If you relied on the comment,
+  you were relying on redelivery that did not happen: install an error handler,
+  which is the only record that the message arrived.
+
+- **`main.go` attaches the design through one generated call.** It used to
+  reach into `internal/routes` and `internal/transport` directly, under
+  conditions frozen at the moment it was scaffolded: a design that later lost
+  its last consumer left `main.go` importing a package `craftgo gen` had just
+  deleted, and one that later gained its first consumer never subscribed
+  because nothing added the call. `craftgo gen` exited 0 either way.
+
+  Generation now writes `internal/wiring/wiring.go` (`output.wiring`) for
+  every project, including one that declares neither routes nor consumers.
+  Its body varies with the design; its surface does not:
+
+  ```go
+  func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error)
+  ```
+
+  `main.go` calls it once, unconditionally, and names no other generated
+  package. Consumers read the bus from `svcCtx.Events.Bus`; a design that
+  declares consumers and reaches `Register` with no bus fails at startup
+  naming what to add, rather than booting healthy and receiving nothing.
+  The returned shutdown stops delivery and runs beside `srv.Stop`, so the
+  event side has the same place to drain that the HTTP side has.
+
+  The `Events` container is emitted for every project too, so `NewEvents`
+  outlives the last event a design declares. A design that declares no event
+  gets a container that names no event type, so a project takes on no
+  dependency for a feature it does not use: `type Events struct{}` and a
+  `NewEvents(bus any)` that a main.go written while the design did have
+  events still satisfies.
+
+  **Migrating an existing `main.go`** - it is scaffolded once, so `craftgo gen`
+  does not rewrite it. Replace
+
+  ```go
+  routes.RegisterAll(srv, svc)
+  if err := transport.SubscribeAll(eventsCtx, bus, svc); err != nil { ... }
+  ```
+
+  with
+
+  ```go
+  shutdownWiring, err := wiring.Register(ctx, srv, svc)
+  if err != nil { ... }
+  // ... and beside srv.Stop:
+  _ = shutdownWiring(shutdownCtx)
+  ```
+
+  and swap the `internal/routes` / `internal/transport` imports for
+  `internal/wiring`. Calling `routes.RegisterAll` directly still compiles and
+  still serves - which is why a project that adds its first consumer without
+  migrating would otherwise boot healthy and subscribe nothing. `craftgo gen`
+  reports that case by name until the call is in place.
+
+- **`output.transport` may be named anything.** The consumer umbrella derived
+  its package clause from the output directory, so `output.transport:
+  ./internal/handlers` emitted `package handlers` while the caller said
+  `transport.SubscribeAll` - a fresh project that set the key did not build.
+  The clause is now fixed, like every sibling umbrella.
+
+- **Two output keys may not name one directory.** Each generated root file
+  opens with a package clause fixed by its role - `package routes`,
+  `package wiring`, `package transport`, `package svccontext` - so a shared
+  directory holds two of them and never compiles. `output.wiring:
+  ./internal/transport` was the sharp case: it built until the design
+  declared its first `consume`, then failed naming files rather than the
+  config line. Every pair is now checked against final values, so an
+  explicit key landing on another key's default is caught too.
+
+- **`-` is rejected on a key that has no disabled mode.** It turns off
+  `output.main`, `output.openapi` and the event targets; the rest name a
+  package other generated code imports. Containment checking waved it
+  through for every key, so it reached `filepath.Join` and produced a
+  directory literally named `-`.
+
+- **The routes umbrella is removed when the last route goes.** It used to be
+  skipped, leaving a generated `routes.go` calling into per-service
+  packages the run no longer emits - and because the emitter returned
+  before writing, `craftgo gen` could not repair it either.
+
+- **Go-to-definition works on the event name in `event pkg.Event`.** The walk
+  back from the cursor to the `event` keyword stepped one token at a time, so
+  a qualified reference stopped on the dot, where neither neighbour is the
+  keyword. Clicking the qualifier resolved; clicking the event name - which
+  is where a reader clicks - returned nothing.
+
+- **A design that loses its last event prunes its event output.** The
+  language targets were skipped entirely when a design declared no event, so
+  the publishers and consumers of an event it used to declare stayed on disk.
+  Each target now runs and prunes what it owns.
+
+- **Three new reserved words: `event`, `consume`, `payload`.** They stay
+  contextual wherever the grammar leaves no ambiguity - as a field name in a
+  type body, an enum value name, a path segment or path-parameter name - and a
+  reserved word in a decorator argument slot is now read as an identifier, so
+  `@requiresOneOf(payload, event)` parses.
+
+  The name-only slots that still reject them, and so need renaming: a package
+  name, a top-level declaration name (`type` / `enum` / `error` / `scalar` /
+  `middleware` / `service`), a method name, an import alias, and a generic type
+  argument - each in its lower-case spelling. A package named `event` also
+  breaks every `event.X` reference in its sibling packages.
+
+- **The `svccontext.go` and `main.go` scaffolds gained event wiring.** Both are
+  gen-once, so existing projects are untouched; a project adding events to an
+  existing design adds an `Events Events` field to its `ServiceContext` and
+  builds the bus in `main.go` by hand (the Events guide shows both).
+
+- **The JSON body shape is decided once, in `internal/wire`.** `wire.JSONShape`
+  reports a field's wire name and whether it is required, optional, nullable or
+  off the body entirely. The Go struct tag is emitted from it, so a
+  `@sensitive` or header-bound field carries `json:"-"` and `@nullable` stays in
+  `required` rather than becoming an optional property.
+
+- **Reserved words are accepted wherever an identifier is unambiguous.** A
+  keyword spelling is now read as a name in a decorator argument
+  (`@requiresOneOf(payload, event)`), an object-literal key, and an enum-value
+  reference - positions that previously took only a plain identifier. This
+  widens what parses; nothing that parsed before stops.
+
+- **A consumer's handler set is one file per service, at the transport root.**
+  Generated layout change. `consume` used to emit
+  `internal/transport/<seg>/<consumer>.go`, a free function whose body decoded
+  the payload, ran `Validate()` and dispatched - the prologue
+  `events/<svc>/consumers.go` already spelled, so the rule lived in two
+  templates. Those files are gone; `internal/transport/<svc>_consumers.go` now
+  declares a `<Svc>Consumers` satisfying the contract's `Consumers` interface,
+  and `SubscribeAll` builds its list from each service's own `Subscriptions`.
+  Decode-validate-dispatch is spelled once, in the contract.
+
+  `@group` on an `extend service` block still places that block's logic stubs
+  in its own folder, but no longer splits the handler set. It could not: a
+  service whose consumers span two groups lands in two Go packages while the
+  contract declares one interface covering all of them, which no single
+  grouped package can implement. Two consuming services whose names fold to
+  one file name are now rejected (`consumer/handler-collision`) rather than
+  silently losing one.
+
+  HTTP per-method transport files, the gen-once logic stubs and the path of
+  `internal/transport/events.go` do not move. Regenerating writes the new
+  files; delete the old `transport/<seg>/<consumer>.go` by hand, craftgo does
+  not prune them.
+
+### Removed
+
+- **`pkg/otel` and `pkg/metrics`.** Both were alias-only shims over
+  `pkg/telemetry`, kept for one release after 1.7.0 deprecated them. Import
+  `pkg/telemetry` instead: `otel.Config` is `telemetry.OTelConfig`,
+  `metrics.Config` is `telemetry.MetricsConfig`, and the exporter constants
+  keep their names.
+
+- **`events.Bus.SetCodec`.** A bus's codecs are set in `New` and never written
+  again, so swapping one after construction had no supported use. Removing it
+  takes `Bus`'s mutex off the publish path with it.
+
+- **`events.PartialPublishError.Remaining` and its `Envelopes` field.** No
+  adapter ever populated `Envelopes`, so `Remaining` always reported nothing.
+  `Sent` still names how many messages reached the transport.
+
+- **`kafka.WithDialer`.** It was never reachable - nothing set the dialer, so
+  TLS and SASL settings were dropped. A supported way to reach a secured
+  broker replaces it.
+
+
 ## [1.7.1] - 2026-09-08 [UTC+7]
 
 ### Changed
@@ -17,6 +617,35 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A keyless event no longer pins every message to one Kafka partition.**
+  The adapter built the record with `Key: []byte(msg.Key)`, which is
+  non-nil even when the key is empty, and kafka-go's hash balancer
+  round-robins only on a nil key - so every event without `@key` hashed
+  the empty slice to the same partition, capping throughput at one
+  consumer and leaving the rest idle.
+
+- **A claim is keyed to the event output, not to the project root.** Two
+  manifests sharing an output directory need not share a project root - a
+  deployable generating handlers under the repo root and the contract set
+  generating beside itself are rooted differently. Each recorded its design
+  path against its own root, so neither could resolve the other's, read it
+  as a design that had been deleted, and pruned the other's output away.
+- **Two designs writing one event file is an error.** Several manifests may
+  share an events output so a contract set has a single Go copy, but two
+  declaring the same service name wrote the same `publisher.go` -
+  last-writer-wins, with `make gen` ordering deciding which contract the
+  directory held and no diagnostic anywhere. The collision is reported
+  before anything is written, so the first design's output survives. The
+  rule now covers every file craftgo regenerates, not only the event ones -
+  see the claim records under Added.
+- **Two services consuming one contract under the same name is an error.**
+  The consumer name is the broker's consumer group, so `service Audit {
+  consume Process { event orders.Placed } }` and `service Metrics { consume
+  Process { event orders.Placed } }` joined one group and split the stream
+  half each instead of both receiving it - silently, and across design
+  packages, where neither team can see the other. The name only has to be
+  unique per contract, so two services may still share it on different
+  events.
 - **A decorator stranded after a mixin is an error.** `user string S
   @default("")` above `name string` parsed silently as field, mixin `S`,
   and a default on `name`, so formatting moved the decorator to the wrong
@@ -34,6 +663,37 @@ breaking change to the DSL or the generated layout bumps the major version.
   between decorator arguments, array elements, object fields, type
   parameters or type arguments (`@length(1 80)`) is an error rather than
   being inserted on format.
+- **A type whose fields all delegate to another package compiles.** A struct
+  built only from scalars or enums declared elsewhere - `orderId
+  money.OrderID`, `total money.Amount`, no constraint decorator of its own -
+  generated a `validate.go` that called `fmt.Errorf` without importing `fmt`.
+  Generation exited 0 and the package did not build. The import now comes
+  from the emitter that writes the call.
+- **A `@group` whose name ends in `time` no longer breaks its routes file.**
+  The routes file imported `time` when the rendered handler call contained
+  `time.`; `@group("uptime")` renders `transportUptime.Ping(svcCtx)`, so a
+  segment with no `@timeout` anywhere imported `time` and used nothing. The
+  decision now comes from the decorator that renders the duration.
+- **A service named `Craft` no longer collides with the event runtime
+  import.** Its publisher was imported as `craftevents`, the alias the event
+  templates bind to `pkg/events`, so `svccontext/events.go` declared the name
+  twice. Publisher and consumer aliases now go through the same reserved-name
+  escape that payload packages already use.
+- **A design package whose name ends in `types` no longer breaks the files
+  that reference it.** Three emitters - the handler, the service scaffold and
+  the event publisher - decided whether to import the canonical `types`
+  package by searching the rendered type for the substring `types.`. A
+  reference such as `genpkg.GBox<paytypes.PItem>` touches nothing local but
+  contains that substring, so the import was emitted and nothing used it:
+  `imported as types and not used`, and in the scaffold's case the user had
+  to delete it by hand. The renderer now reports what it reached.
+- **`@key` over an enum from another package uses that enum's own backing
+  type.** `@key(tier)` on a field typed `xshared.XTier` (an int-valued enum)
+  resolved the enum against the package that *uses* it, found nothing, and
+  fell back to the string default, so Go emitted `string(payload.Tier)` - one
+  rune, not the digits, which `go vet` reports. The backing primitive is now
+  read from the declaring package, so a cross-package key renders the same text
+  as a local one.
 
 ## [1.7.0] - 2026-09-07 [UTC+7]
 

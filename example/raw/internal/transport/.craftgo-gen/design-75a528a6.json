@@ -1,0 +1,15 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "stream_service/download.go",
+    "stream_service/events.go",
+    "stream_service/health.go",
+    "stream_service/ingest.go",
+    "stream_service/metrics.go",
+    "stream_service/snapshot.go",
+    "stream_service/tail_logs.go"
+  ]
+}

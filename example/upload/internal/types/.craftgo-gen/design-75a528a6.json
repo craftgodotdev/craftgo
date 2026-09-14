@@ -1,0 +1,12 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "media/enums.go",
+    "media/errors.go",
+    "media/types.go",
+    "media/validate.go"
+  ]
+}

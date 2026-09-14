@@ -373,14 +373,17 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	for _, member := range d.Members {
 		switch v := member.(type) {
 		case *ast.Method:
-			start := memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc))
-			p.serviceMemberGap(printedAny, prevEnd, start)
+			p.serviceMemberGap(printedAny, prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
 			p.Method(v)
-			printedAny = true
-			prevEnd = v.EndPos.Line
-			if prevEnd == 0 {
-				prevEnd = v.Pos.Line
-			}
+			printedAny, prevEnd = true, endOrStart(v.EndPos.Line, v.Pos.Line)
+		case *ast.EventDecl:
+			p.serviceMemberGap(printedAny, prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
+			p.EventDecl(v)
+			printedAny, prevEnd = true, endOrStart(v.EndPos.Line, v.Pos.Line)
+		case *ast.ConsumerDecl:
+			p.serviceMemberGap(printedAny, prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
+			p.ConsumerDecl(v)
+			printedAny, prevEnd = true, endOrStart(v.EndPos.Line, v.Pos.Line)
 		case *ast.FreeComment:
 			p.serviceMemberGap(printedAny, prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -410,6 +413,67 @@ func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
 	p.nl()
 }
 
+// endOrStart returns end, falling back to start for a hand-built AST that
+// carries no closing-brace position.
+func endOrStart(end, start int) int {
+	if end == 0 {
+		return start
+	}
+	return end
+}
+
+// memberClause is one `<keyword> <TypeRef>` line inside a service member
+// body. Keyword carries its own trailing padding so a method's request /
+// response pair stays column-aligned.
+type memberClause struct {
+	keyword string
+	line    int
+	ref     *ast.NamedTypeRef
+}
+
+// memberBody prints the `{ ... }` of a service member: the clause lines
+// with free-floating body comments interleaved by source position, then
+// the closing brace and its trailing note. A body with nothing in it
+// renders as `{}` - the grammar always writes the braces, so round-trip
+// parity needs the empty literal.
+func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, trailing []string) {
+	if len(clauses) == 0 && len(comments) == 0 {
+		p.write(" {}")
+		p.writeTrailing(trailing)
+		p.nl()
+		return
+	}
+	p.write(" {")
+	p.nl()
+	p.depth++
+	prevEnd := 0
+	flushBefore := func(line int) {
+		for len(comments) > 0 && (line == 0 || comments[0].Pos.Line < line) {
+			c := comments[0]
+			p.blankBetween(prevEnd, c.Pos.Line)
+			p.printFreeComment(c)
+			prevEnd = c.Pos.Line + len(c.Text) - 1
+			comments = comments[1:]
+		}
+	}
+	for _, cl := range clauses {
+		flushBefore(cl.line)
+		p.blankBetween(prevEnd, cl.line)
+		p.indent()
+		p.write(cl.keyword)
+		p.NamedTypeRef(cl.ref)
+		p.writeSourceTrailing(cl.line, false)
+		p.nl()
+		prevEnd = cl.line
+	}
+	flushBefore(0)
+	p.depth--
+	p.indent()
+	p.write("}")
+	p.writeTrailing(trailing)
+	p.nl()
+}
+
 func (p *Printer) Method(m *ast.Method) {
 	p.Doc(m.Doc)
 	p.declDecorators(m.Decorators, m.Pos.Line)
@@ -421,58 +485,40 @@ func (p *Printer) Method(m *ast.Method) {
 		p.write(" ")
 		p.Path(m.Path)
 	}
-	if m.Request == nil && m.Response == nil && len(m.BodyComments) == 0 {
-		// The grammar always wraps the method with `{ ... }` even
-		// when both sides are absent (e.g. a `@passthrough` method),
-		// so emit an empty body literal to keep round-trip parity.
-		p.write(" {}")
-		p.writeTrailing(m.TrailingDoc)
-		p.nl()
-		return
-	}
-	p.write(" {")
-	p.nl()
-	p.depth++
-	// Interleave free-floating body comments with the request/response
-	// lines by source position; the tail (comments above the closing
-	// brace) flushes after both lines.
-	comments := m.BodyComments
-	prevEnd := 0
-	flushBefore := func(line int) {
-		for len(comments) > 0 && (line == 0 || comments[0].Pos.Line < line) {
-			c := comments[0]
-			p.blankBetween(prevEnd, c.Pos.Line)
-			p.printFreeComment(c)
-			prevEnd = c.Pos.Line + len(c.Text) - 1
-			comments = comments[1:]
-		}
-	}
+	var clauses []memberClause
 	if m.Request != nil {
-		flushBefore(m.Request.Pos.Line)
-		p.blankBetween(prevEnd, m.Request.Pos.Line)
-		p.indent()
-		p.write("request  ")
-		p.NamedTypeRef(m.Request)
-		p.writeSourceTrailing(m.Request.Pos.Line, false)
-		p.nl()
-		prevEnd = m.Request.Pos.Line
+		clauses = append(clauses, memberClause{"request  ", m.Request.Pos.Line, m.Request})
 	}
 	if m.Response != nil {
-		flushBefore(m.Response.Pos.Line)
-		p.blankBetween(prevEnd, m.Response.Pos.Line)
-		p.indent()
-		p.write("response ")
-		p.NamedTypeRef(m.Response.Type)
-		p.writeSourceTrailing(m.Response.Pos.Line, false)
-		p.nl()
-		prevEnd = m.Response.Pos.Line
+		clauses = append(clauses, memberClause{"response ", m.Response.Pos.Line, m.Response.Type})
 	}
-	flushBefore(0)
-	p.depth--
+	p.memberBody(clauses, m.BodyComments, m.TrailingDoc)
+}
+
+func (p *Printer) EventDecl(e *ast.EventDecl) {
+	p.Doc(e.Doc)
+	p.declDecorators(e.Decorators, e.Pos.Line)
 	p.indent()
-	p.write("}")
-	p.writeTrailing(m.TrailingDoc)
-	p.nl()
+	p.write("event ")
+	p.write(e.Name)
+	var clauses []memberClause
+	if e.Payload != nil {
+		clauses = append(clauses, memberClause{"payload ", e.Payload.Pos.Line, e.Payload.Type})
+	}
+	p.memberBody(clauses, e.BodyComments, e.TrailingDoc)
+}
+
+func (p *Printer) ConsumerDecl(c *ast.ConsumerDecl) {
+	p.Doc(c.Doc)
+	p.declDecorators(c.Decorators, c.Pos.Line)
+	p.indent()
+	p.write("consume ")
+	p.write(c.Name)
+	var clauses []memberClause
+	if c.Event != nil {
+		clauses = append(clauses, memberClause{"event ", c.Event.Pos.Line, c.Event.Ref})
+	}
+	p.memberBody(clauses, c.BodyComments, c.TrailingDoc)
 }
 
 func (p *Printer) Path(path *ast.Path) {

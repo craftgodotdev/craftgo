@@ -38,6 +38,9 @@ func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 	if loc, ok := enumValueDefinition(v, view, params.Position, tok.Text, current); ok {
 		return reply(ctx, []protocol.Location{loc}, nil)
 	}
+	if loc, ok := eventDefinition(v, view, idx, current); ok {
+		return reply(ctx, []protocol.Location{loc}, nil)
+	}
 	d := v.lookup(qualifiedNameAt(view, idx), lookupKindAt(view, idx, params.Position))
 	if d == nil {
 		return reply(ctx, []protocol.Location{}, nil)
@@ -69,6 +72,58 @@ func enumValueDefinition(v projectView, view snapshotView, pos protocol.Position
 		}
 	}
 	return protocol.Location{}, false
+}
+
+// enclosingDeclKeyword returns the declaration keyword that opened the
+// block the token at idx sits in. Declarations never nest, so the
+// nearest preceding one is the enclosing declaration.
+func enclosingDeclKeyword(view snapshotView, idx int) lexer.Kind {
+	for i := idx - 1; i >= 0; i-- {
+		switch k := view.tokens[i].Kind; k {
+		case lexer.KwService, lexer.KwExtend, lexer.KwType, lexer.KwEnum,
+			lexer.KwError, lexer.KwScalar, lexer.KwMiddleware:
+			return k
+		}
+	}
+	return lexer.EOF
+}
+
+// inServiceBody reports whether the token at idx sits inside a `service`
+// or `extend service` block.
+func inServiceBody(view snapshotView, idx int) bool {
+	switch enclosingDeclKeyword(view, idx) {
+	case lexer.KwService, lexer.KwExtend:
+		return true
+	}
+	return false
+}
+
+// eventDefinition resolves a cursor sitting in a consumer's `event Ref`
+// clause to the event's declaration. Events have their own namespace, so
+// the generic decl lookup cannot find them.
+func eventDefinition(v projectView, view snapshotView, idx int, current protocol.DocumentURI) (protocol.Location, bool) {
+	if !isConsumerEventPosition(view, idx) {
+		return protocol.Location{}, false
+	}
+	ev, ok := v.proj.LookupEvent(v.currentPackage(), qualifiedNameAt(view, idx))
+	if !ok || ev.Decl == nil {
+		return protocol.Location{}, false
+	}
+	return v.locationOf(ev.Decl.Pos, len(ev.Decl.Name), current), true
+}
+
+// isConsumerEventPosition reports whether the token at idx is the
+// reference in a consumer's `event Ref` clause.
+//
+// A qualified reference is walked back to its first segment: a dot before
+// the cursor is always preceded by that segment's identifier, so the pair
+// is skipped together. Stepping one token at a time lands on the dot
+// itself, where neither neighbour is the keyword.
+func isConsumerEventPosition(view snapshotView, idx int) bool {
+	for idx > 1 && view.tokens[idx-1].Kind == lexer.Dot {
+		idx -= 2
+	}
+	return idx > 0 && view.tokens[idx-1].Kind == lexer.KwEvent
 }
 
 // lookupKindAt classifies the cursor's surrounding syntax into the
@@ -140,8 +195,13 @@ func isTypeShapePosition(view snapshotView, idx int) bool {
 		switch t.Kind {
 		case lexer.Colon, lexer.LAngle, lexer.LBracket, lexer.RBracket, lexer.Comma:
 			return true
-		case lexer.KwRequest, lexer.KwResponse, lexer.KwError, lexer.KwType, lexer.KwScalar, lexer.KwEnum:
+		case lexer.KwRequest, lexer.KwResponse, lexer.KwPayload, lexer.KwError, lexer.KwType, lexer.KwScalar, lexer.KwEnum:
 			return true
+		case lexer.KwEvent, lexer.KwConsume:
+			// Inside a service body these name an event or a consumer,
+			// neither of which is a type. Inside a type body the same
+			// word is a field name and the cursor is on its type.
+			return !inServiceBody(view, idx)
 		case lexer.KwService, lexer.KwExtend:
 			// A service name, not a type reference. Without this the walk
 			// runs past the header into the previous declaration and the

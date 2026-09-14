@@ -217,6 +217,17 @@ func (v XColor) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on XTier.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v XTier) Validate() error {
+	switch v {
+	case XTierBronze, XTierGold:
+	default:
+		return fmt.Errorf("invalid XTier value")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on XNotFoundBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XNotFoundBody) Validate() error {

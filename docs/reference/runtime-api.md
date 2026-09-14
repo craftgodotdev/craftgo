@@ -197,6 +197,221 @@ srv.SetCORS(server.CORSStrict("https://app")) // prod: one allowed origin
 
 Or build a `CORSOptions` value directly for fine control over methods, headers, credentials, and max-age.
 
+## Event runtime
+
+Generated event code runs on `github.com/craftgodotdev/craftgo/pkg/events`, the
+transport- and codec-neutral counterpart of `pkg/server`. It knows nothing about
+any broker and nothing about any serialisation format.
+
+```go
+type Message struct {
+	Event          string            // the contract name the design declared
+	Key            string            // the WithKey value, "" for a keyless message
+	DedupID        string            // the WithDedupID value; a transport without the notion ignores it
+	Payload        []byte            // already encoded
+	Metadata       map[string]string // side-band values a publisher sets; MetaCodec always present
+	AdapterOptions map[string]map[string]any // what WithAdapterOption filled in, per adapter
+}
+
+func (m *Message) AdapterOption(adapter, key string) (any, bool)
+
+type Codec interface {
+	Name() string
+	Marshal(v any) ([]byte, error)
+	Unmarshal(data []byte, v any) error
+}
+
+type Publisher interface {
+	Publish(ctx context.Context, msg *Message) error
+}
+
+type Subscriber interface {
+	Subscribe(ctx context.Context, sub Subscription) error
+}
+
+type Handler func(ctx context.Context, msg *Message) error
+
+type Subscription struct {
+	Event    string // the contract
+	Consumer string // the handler's design-declared name
+	Group    string // the broker identity; empty falls back to Consumer
+	Handle   Handler
+}
+
+func (s Subscription) GroupName() string // Group, else Consumer
+```
+
+`events.New(opts...)` builds a `*Bus` binding one transport to one codec;
+`WithPublisher` / `WithSubscriber` / `WithTransport` install the transport,
+`WithCodec` the codec, `WithCodecFor(contract, c)` overrides it for a single
+contract, and `WithMiddleware(mws...)` installs the [consumer
+chain](#consumer-middleware). There is no default codec - a bus built without one
+fails rather than picking an encoding.
+
+`Bus.SubscribeAll(ctx, subs)` registers a list of subscriptions in group,
+contract then consumer order. The generated `transport.SubscribeAll(ctx, bus, svcCtx)`
+builds that list and calls it. Delivery stops when `ctx` is cancelled.
+
+`Subscribe` registers and returns; it must not block. A push transport hands the
+handler its callback, a pull transport starts its own loop. A handler error means
+the message was not processed - retry, nack and dead-letter are the transport's
+policy.
+
+### Publishing
+
+```go
+type PublishOption func(*Envelope)
+
+func WithKey(key string) PublishOption
+func WithDedupID(id string) PublishOption
+func WithHeader(key, value string) PublishOption
+func WithAdapterOption(adapter, key string, value any) PublishOption
+
+func JoinOptions(defaults, opts []PublishOption) []PublishOption
+func (env *Envelope) Apply(opts ...PublishOption)
+
+type Envelope struct {
+	Event          string            // the contract
+	Key            string            // the WithKey value, "" for a keyless message
+	DedupID        string            // the WithDedupID value
+	Payload        any               // the value to encode
+	Metadata       map[string]string // optional side-band values; nil and empty behave alike
+	AdapterOptions map[string]map[string]any
+}
+
+func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error
+func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error
+```
+
+Options apply in order, so the last one setting a given value wins - which is
+what makes a publisher's defaults defaults. `JoinOptions` puts a publisher's
+defaults first and the per-call options after, without writing into either; the
+generated publishers call it.
+
+`PublishAll` encodes every envelope up front, then hands the batch to the
+transport in one call when it implements `BatchPublisher` and one message at a
+time otherwise; a failure partway through returns a `*PartialPublishError` whose
+`Sent` is how many reached the transport - everything after it did not.
+
+### Per-adapter options
+
+```go
+type OptionAware interface {
+	AdapterName() string   // the namespace WithAdapterOption addresses
+	KnownOptions() []string // every option key this adapter reads
+}
+
+type UnknownOptionError struct {
+	Adapter, Key, Event string
+	Known               []string
+}
+```
+
+A transport implementing `OptionAware` gets both halves of the rule, enforced
+by the bus before anything is encoded: an option under **another** adapter's
+name is ignored, and one under its **own** name that `KnownOptions` does not
+list fails the publish with an `*UnknownOptionError`. A transport that does not
+implement it gets neither - nothing can tell an option meant for it from one
+meant for somebody else. The three adapters craftgo ships implement it;
+`kafka.OptionTimestamp` (a `time.Time`) is the only option any of them reads.
+
+```go
+const MetaCodec  = "content-codec" // the codec that encoded the payload
+const MetaPrefix = "craftgo-"      // reserved for transport adapters
+
+func IsReservedMeta(key string) bool
+```
+
+`IsReservedMeta` names every key the caller does not own, case-insensitively:
+`MetaCodec`, and the adapter headers under `MetaPrefix` - Kafka's
+`craftgo-event` and `craftgo-key`, NATS's `Craftgo-Key`. An `Envelope.Metadata`
+entry under one of those is dropped silently and the runtime's or the adapter's
+own value takes its place; every other key is carried untouched. A generated
+consumer is handed the decoded payload, so metadata is read in a
+[middleware](#consumer-middleware) or a hand-written `Subscription`, both of
+which are handed the `Message`.
+
+### Recovery
+
+```go
+type PanicError struct {
+	Event    string // the contract being delivered
+	Consumer string // the handler that panicked
+	Group    string // its broker identity
+	Value    any    // what the handler passed to panic
+	Stack    []byte // the trace where the panic fired; not part of Error()
+}
+```
+
+`Bus.Subscribe` wraps every handler it registers in a recover before the
+subscription reaches the transport, so a panicking consumer cannot end the
+process - the same rule `Recovery` is for the HTTP chain, and every transport
+inherits it, including adapters written outside craftgo. With a chain installed
+the wrap goes on both sides of it, so the chain observes the panic and a panic in
+the chain is caught too. The recovered panic is
+returned as a `*PanicError`, which the transport sees as an ordinary handler
+error: it reaches the error handler installed on the transport, and delivery
+continues with the next message. Nothing is redelivered.
+
+`*PanicError` is a concrete type, so `errors.As` picks one out of a chain, and
+its `Unwrap` reaches the panic value when the handler panicked with an error.
+Nothing else is classified for you: a generated consumer returns a decode or
+`Validate()` failure as a plain error naming the contract, and what to do with a
+failure is a middleware's decision.
+
+### Consumer middleware
+
+```go
+type Middleware func(sub Subscription, next Handler) Handler
+type Chain []Middleware
+
+func WithMiddleware(mws ...Middleware) Option // install on the bus
+
+func NewChain(mws ...Middleware) Chain
+func (c Chain) Append(mws ...Middleware) Chain
+func (c Chain) Apply(subs []Subscription) []Subscription
+func Recover() Middleware
+```
+
+`WithMiddleware` installs the chain every subscription registered through the bus
+is wrapped in, outermost first. It is the only seam that covers all of them - a
+generated `SubscribeAll`, a hand-built `Subscriptions(bus, h)` slice, and one
+built against another design's contracts all reach the broker through
+`Bus.Subscribe`. Repeating the option appends. Nothing is generated for this.
+
+Each middleware is handed the `Subscription` it wraps, so one chain can read the
+contract, the consumer and the group it is running for.
+
+`Chain` is [`server.Chain`](#chain) for the consumer side and folds the same way:
+`NewChain(A, B, C)` makes A outermost, `Append` returns a new chain without
+mutating the receiver, and nil entries are skipped. The verb differs - `Apply`
+over a slice of subscriptions rather than `Then` over one handler - because each
+wrap is handed the subscription it wraps. Most projects never call `Apply`;
+it is for decorating a slice the bus will not see, or one slice differently from
+the rest.
+
+`Bus.Subscribe` recovers on *both* sides of the chain: the inner recover turns a
+panicking handler into a `*PanicError` your middleware observes as an ordinary
+error, the outer one catches a panic in the chain itself. Exactly one
+`PanicError` is built per panic. A bus with no middleware installs the inner one
+alone.
+
+`Recover()` is for a chain folded by `Apply` instead of installed on the bus -
+the bus wraps that from outside as one opaque handler, so place `Recover()` at
+its innermost end for the same visibility. A bus chain needs it nowhere. See
+[Events](/guide/events#consumer-middleware).
+
+### Shipped implementations
+
+- `pkg/events/memory` - an in-process transport for tests, local development and
+  single-binary deployments. Subscriptions sharing a group for one contract form
+  one competing-consumer group. `Drain()` waits for in-flight deliveries.
+- `pkg/events/codecjson` - a JSON codec.
+
+A broker integration (Kafka, NATS, RabbitMQ, SQS, Pub/Sub, Redis Streams, …) is
+an external package implementing `Publisher` and/or `Subscriber`. See
+[Events](/guide/events).
+
 ## Related packages
 
 - `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.

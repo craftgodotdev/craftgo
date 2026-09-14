@@ -149,6 +149,16 @@ func expectNoMsg(t *testing.T, substr string, sources ...string) {
 	}
 }
 
+// expectNoDiags fails the test when an already-collected diagnostic list
+// is non-empty. The [expectClean] form of the same assertion for callers
+// that ran the analysis themselves to inspect the project.
+func expectNoDiags(t *testing.T, diags []Diagnostic) {
+	t.Helper()
+	if len(diags) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+}
+
 // analyzeOneFile runs a single-package analysis and returns the diagnostics.
 func analyzeOneFile(t *testing.T, src string) []Diagnostic {
 	t.Helper()

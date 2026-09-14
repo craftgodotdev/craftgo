@@ -12,13 +12,53 @@
 # `package:`. Make sure `go mod init <module>` has been run before
 # `craftgo gen`.
 
+# A PROJECTION reads a design it does not sit beside. Uncomment when
+# several deployables generate from one design - each states the slice
+# it runs in `output.services` below, and this folder holds no
+# `.craftgo` file of its own. Without this block the design is the
+# `.craftgo` files in this folder, which is the usual case.
+# design:
+#   from: ../../contracts/design   # the folder holding the .craftgo files
+#   root: ../../contracts          # the `-c` THAT design is generated with,
+#                                  # not this deployable's root. Required:
+#                                  # it is a caller's argument, so there is
+#                                  # nothing on the folder to read it off.
+
 # Output paths are resolved against the project root. Per-service
 # buckets are created automatically under the directory paths below
 # at gen time.
 output:
+  # kind: contracts                # generate the contract half only -
+                                   # payload types and the event library
+                                   # other projects import. The application
+                                   # half (transport, routes, service stubs,
+                                   # wiring, main) is written by whoever
+                                   # imports it. Default: application.
+                                   #
+                                   # Move `types` OUT of internal/ when you
+                                   # set this - `./gen/types` below - or Go's
+                                   # internal rule stops the very projects
+                                   # this library exists for from importing
+                                   # it, and nothing here fails until they
+                                   # try. The application keys are unused in
+                                   # this mode; delete the ones you keep
+                                   # around only because this file shipped
+                                   # with them.
+  # services: [orders.Orders]      # generate the application half for these
+                                   # services only, as `<package>.<Service>`.
+                                   # Leave the key out and every service in
+                                   # the design is generated - which is what
+                                   # a deployable sharing a design does NOT
+                                   # want, since it would carry every other
+                                   # deployable's handlers.
   types:      ./internal/types
   transport:  ./internal/transport
   routes:     ./internal/routes
+  wiring:     ./internal/wiring      # the one Register call main.go makes:
+                                     # every HTTP route and every event
+                                     # consumer. Regenerated each run, so
+                                     # main.go survives a design that gains
+                                     # or loses either.
   service:    ./internal/service
   middleware: ./internal/middleware
   svccontext: ./svccontext/svccontext.go
@@ -39,6 +79,17 @@ output:
                                     # (create-user.go) / `camel` (createUser.go).
                                     # On-disk names only; URL routes and Go
                                     # package names are unchanged.
+
+# Event targets. Uncomment when your design declares `event` contracts
+# or `consume` declarations; a design with neither generates nothing
+# either way. Go is a row in the list rather than an implied default, so
+# `out: "-"` turns it off without deleting the block. Transport and codec
+# are NOT here - they are runtime wiring chosen in main.go.
+# events:
+#   targets:
+#     - lang: go
+#       out: ./internal/events
+#   asyncapi: ./docs/asyncapi.yaml   # "-" skips the projection
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.

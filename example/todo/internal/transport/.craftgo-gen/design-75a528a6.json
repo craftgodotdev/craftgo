@@ -1,0 +1,13 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "todo_service/create_todo.go",
+    "todo_service/delete_todo.go",
+    "todo_service/get_todo.go",
+    "todo_service/list_todos.go",
+    "todo_service/update_todo.go"
+  ]
+}

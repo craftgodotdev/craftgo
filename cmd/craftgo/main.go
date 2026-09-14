@@ -45,6 +45,8 @@ func main() {
 		err = runInit(os.Args[2:])
 	case "fmt":
 		err = runFmt(os.Args[2:])
+	case "check":
+		err = runCheck(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println(version)
 		return
@@ -88,6 +90,11 @@ Usage:
                           .craftgo files. Flags:
                             -f, --folder   path to the folder holding
                                            craftgo.design.yaml (skips walk-up)
+                            --target       generate only the named target
+                                           (go, docs); repeatable,
+                                           default all. A
+                                           narrowed run leaves the other
+                                           targets' output untouched.
                             -c, --context  project root the output: paths
                                            resolve against (defaults to cwd
                                            when -f is given, otherwise to
@@ -101,6 +108,13 @@ Usage:
 
   craftgo fmt [path] [-l] [-w]
                           Canonical-format .craftgo files (default: write back)
+
+  craftgo check -against <asyncapi.yaml> [-current <asyncapi.yaml>]
+                          Compare the event contracts against a previously
+                          published AsyncAPI document and report what would
+                          break its users. Exits non-zero on a breaking
+                          change, so it can gate a release in CI. -current
+                          defaults to the manifest's events.asyncapi output.
   craftgo version         Print the CLI version
   craftgo help            Show this message
 

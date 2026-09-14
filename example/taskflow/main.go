@@ -19,13 +19,16 @@ import (
 	"syscall"
 	"time"
 
+	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
+	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
+	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/config"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/middleware"
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/routes"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/wiring"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
@@ -81,6 +84,16 @@ func main() {
 
 	svc := svccontext.NewServiceContext(cfg)
 
+	// The event bus binds one transport to one codec. This build uses the
+	// in-process transport so publisher and consumers run in one binary;
+	// pointing it at Kafka, NATS, RabbitMQ or SQS is a change to these
+	// three lines and nothing else - no generated file mentions a broker.
+	bus := craftevents.New(
+		craftevents.WithTransport(memory.New()),
+		craftevents.WithCodec(codecjson.Codec{}),
+	)
+	svc.Events = svccontext.NewEvents(bus)
+
 	// Each design-declared middleware lives on the embedded
 	// Middlewares struct of ServiceContext. Wire each field once at
 	// startup with whatever params your impl needs.
@@ -102,7 +115,7 @@ func main() {
 	// Global per-request guards, resolved per route at registration: a
 	// per-method `@timeout` / `@maxBodySize` OVERRIDES the matching default
 	// (used as-is, longer/larger or shorter/smaller); routes without one
-	// inherit the default. Set both before RegisterAll so each route resolves
+	// inherit the default. Set both before wiring.Register so each route resolves
 	// its guards.
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
@@ -125,9 +138,16 @@ func main() {
 		}))
 	}
 
-	// One call wires every service. The umbrella RegisterAll is
-	// generated from the DSL service set on every `craftgo gen`.
-	routes.RegisterAll(srv, svc)
+	// One call attaches the whole design: every HTTP route, and every
+	// event consumer reading from svc.Events.Bus. The wiring package is
+	// regenerated on each `craftgo gen`, so this line stays put when the
+	// design gains or loses either. The returned shutdown stops delivery
+	// and runs beside srv.Stop below.
+	shutdownWiring, err := wiring.Register(ctx, srv, svc)
+	if err != nil {
+		log.Default().Error("wire services", log.Err(err))
+		os.Exit(1)
+	}
 
 	// Serve the API-reference docs (config.docs). The OpenAPI document is
 	// embedded above; the UI assets load from a CDN.
@@ -155,6 +175,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Stop(shutdownCtx)
+	// Consumers stop taking new messages and the in-flight ones finish
+	// within the same budget the HTTP drain uses.
+	_ = shutdownWiring(shutdownCtx)
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))

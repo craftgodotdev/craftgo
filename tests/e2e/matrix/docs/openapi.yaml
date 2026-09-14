@@ -1140,7 +1140,7 @@ components:
       - order
       type: object
     CreateOrderRespBody:
-      $ref: '#/components/schemas/EnvelopeOfScalarsOrder'
+      $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrder'
     CreateProfileReq:
       description: |-
         CreateProfileReq mirrors Profile minus the id (the server assigns it).
@@ -2397,21 +2397,6 @@ components:
       - actor
       - action
       type: object
-    EnvelopeOfScalarsOrder:
-      description: |-
-        Envelope<T> wraps a single value plus an optional meta string.
-        Exercises generic decl WITHOUT an array field - codegen still
-        emits a parametric Validate() receiver for it.
-      properties:
-        data:
-          $ref: '#/components/schemas/ScalarsOrder'
-        meta:
-          type:
-          - string
-          - "null"
-      required:
-      - data
-      type: object
     ExactReq:
       description: ExactReq wraps NumberExact (exact-match shapes).
       properties:
@@ -2623,6 +2608,20 @@ components:
       required:
       - errors
       type: object
+    InventoryHeader:
+      description: |-
+        InventoryHeader is promoted into ItemStocked through the mixin below,
+        so `sku` reaches a publisher through that promotion.
+      properties:
+        occurred:
+          type: string
+        sku:
+          minLength: 1
+          type: string
+      required:
+      - sku
+      - occurred
+      type: object
     InventoryListResp:
       description: |-
         InventoryListResp envelopes the slice + total count. Body-only
@@ -2640,6 +2639,8 @@ components:
       - items
       - total
       type: object
+    InventoryServiceHealthRespBody:
+      $ref: '#/components/schemas/ItemStocked'
     Item:
       description: |-
         Item is the canonical entity returned by every read / write that
@@ -2680,6 +2681,18 @@ components:
           - "null"
       required:
       - items
+      type: object
+    ItemStocked:
+      allOf:
+      - $ref: '#/components/schemas/InventoryHeader'
+      - properties:
+          quantity:
+            format: int32
+            minimum: 0
+            type: integer
+        required:
+        - quantity
+        type: object
       type: object
     KeywordFieldNames:
       description: |-
@@ -3750,26 +3763,6 @@ components:
       - items
       - total
       type: object
-    PageOfEnvelopeOfScalarsOrder:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/EnvelopeOfScalarsOrder'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
     PageOfPrimitiveHost:
       description: |-
         PageOfPrimitive exercises a non-component arg type: `Page<string>`
@@ -3857,6 +3850,26 @@ components:
         items:
           items:
             $ref: '#/components/schemas/ScalarsEmail'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    PageOfScalarsEnvelopeOfScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrder'
           type: array
         total:
           type: integer
@@ -4225,6 +4238,19 @@ components:
         field that auto-binds (or explicitly binds) to the `{id}` segment
         of `/items/{id}`.
       type: object
+    PaymentSettledPayload:
+      properties:
+        amount:
+          format: int64
+          minimum: 0
+          type: integer
+        invoiceId:
+          minLength: 1
+          type: string
+      required:
+      - invoiceId
+      - amount
+      type: object
     Percent:
       description: |-
         Percent is a 0-1 ratio. @gte/@lte on a float64 scalar exercises
@@ -4293,6 +4319,8 @@ components:
       - retry_after
       type: object
     PingInheritRespBody:
+      $ref: '#/components/schemas/VerResp'
+    PingUptimeRespBody:
       $ref: '#/components/schemas/VerResp'
     PingV1RespBody:
       $ref: '#/components/schemas/VerResp'
@@ -5937,6 +5965,21 @@ components:
       format: email
       maxLength: 254
       type: string
+    ScalarsEnvelopeOfScalarsOrder:
+      description: |-
+        Envelope<T> wraps a single value plus an optional meta string.
+        Exercises generic decl WITHOUT an array field - codegen still
+        emits a parametric Validate() receiver for it.
+      properties:
+        data:
+          $ref: '#/components/schemas/ScalarsOrder'
+        meta:
+          type:
+          - string
+          - "null"
+      required:
+      - data
+      type: object
     ScalarsOrder:
       description: |-
         Order is the marquee type: six scalar-typed fields, all of which
@@ -6090,6 +6133,20 @@ components:
       format: email
       maxLength: 254
       type: string
+    ShipmentDispatched:
+      properties:
+        carrier:
+          minLength: 1
+          type: string
+        shipmentId:
+          $ref: '#/components/schemas/ShipmentID'
+      required:
+      - shipmentId
+      - carrier
+      type: object
+    ShipmentID:
+      minLength: 1
+      type: string
     SignupRespBody:
       $ref: '#/components/schemas/ID'
     SnapshotRespBody:
@@ -6110,6 +6167,34 @@ components:
       - expected_version
       - actual_version
       type: object
+    StocktakeStarted:
+      description: An event may carry a payload of its own name - separate namespaces.
+      properties:
+        warehouse:
+          $ref: '#/components/schemas/Warehouse'
+      required:
+      - warehouse
+      type: object
+    StoreReqBody:
+      description: |-
+        XDelegatedScalars is the marquee case: three cross-package scalars,
+        nothing else. Each field wraps the scalar's subject-less message with
+        its own name, which is the only use of fmt in the package.
+      properties:
+        email:
+          $ref: '#/components/schemas/XEmail'
+        node:
+          $ref: '#/components/schemas/XNodeID'
+        seen:
+          anyOf:
+          - $ref: '#/components/schemas/XTimestamp'
+          - type: "null"
+      required:
+      - email
+      - node
+      type: object
+    StoreRespBody:
+      $ref: '#/components/schemas/XDelegatedShapes'
     Str_Combos:
       description: |-
         Str_Combos stacks length + pattern + format on a single field so
@@ -6447,6 +6532,21 @@ components:
           type: string
       required:
       - tenantID
+      type: object
+    TierPromoted:
+      description: |-
+        TierPromoted carries an enum declared in ANOTHER package. The backing
+        primitive lives with the declaration, so the field must be resolved
+        through xshared rather than through this package.
+      properties:
+        memberId:
+          minLength: 1
+          type: string
+        tier:
+          $ref: '#/components/schemas/XTier'
+      required:
+      - tier
+      - memberId
       type: object
     TreeOfScalarsOrder:
       description: |-
@@ -6859,6 +6959,25 @@ components:
       - version
       - ok
       type: object
+    Warehouse:
+      description: |-
+        Warehouse is an int-valued enum, carried as a payload field and used
+        as a publish key at the call site.
+      enum:
+      - 1
+      - 2
+      type: integer
+    WarehouseClosed:
+      properties:
+        reason:
+          type:
+          - string
+          - "null"
+        warehouse:
+          $ref: '#/components/schemas/Warehouse'
+      required:
+      - warehouse
+      type: object
     WipeRespBody:
       $ref: '#/components/schemas/HealthResp'
     WireRenameReq:
@@ -6870,6 +6989,10 @@ components:
         stay non-optional (the binder rejects `string? @header`); the query
         field is optional to also cover the optional-param wire-name path.
       type: object
+    WrapForeignReqBody:
+      $ref: '#/components/schemas/XWrapInBagOfXPayItem'
+    WrapForeignRespBody:
+      $ref: '#/components/schemas/XOwner'
     WrapLocalReqBody:
       $ref: '#/components/schemas/XWrapInBagOfXLocalItem'
     WrapLocalRespBody:
@@ -6881,7 +7004,7 @@ components:
         that is itself a generic instance.
       properties:
         results:
-          $ref: '#/components/schemas/PageOfEnvelopeOfScalarsOrder'
+          $ref: '#/components/schemas/PageOfScalarsEnvelopeOfScalarsOrder'
       required:
       - results
       type: object
@@ -6975,6 +7098,24 @@ components:
       - items
       - cap
       type: object
+    XBagOfXPayItem:
+      description: |-
+        XBag is a cross-package generic. xrefs instantiates it as
+        `xshared.XBag<X>` for various X - local types, primitives, and
+        xshared types - covering the qualified-generic codegen path.
+      properties:
+        cap:
+          maximum: 1000
+          minimum: 0
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/XPayItem'
+          type: array
+      required:
+      - items
+      - cap
+      type: object
     XBagPromoteReq:
       allOf:
       - $ref: '#/components/schemas/XWrapInBagOfXOwner'
@@ -7015,6 +7156,74 @@ components:
       - Green
       - Blue
       type: string
+    XDelegatedEnum:
+      description: |-
+        XDelegatedEnum covers the enum half of the same rule: an enum's
+        Validate() message is subject-less too, so an enum-typed field wraps
+        it exactly like a scalar.
+
+        The field is optional because a REQUIRED enum field also emits a
+        presence check, and that check registers fmt - which would hand the
+        whole package the import the fixture exists to withhold. xrefs covers
+        the required-enum shape.
+      properties:
+        color:
+          anyOf:
+          - $ref: '#/components/schemas/XColor'
+          - type: "null"
+      type: object
+    XDelegatedScalars:
+      description: |-
+        XDelegatedScalars is the marquee case: three cross-package scalars,
+        nothing else. Each field wraps the scalar's subject-less message with
+        its own name, which is the only use of fmt in the package.
+      properties:
+        email:
+          $ref: '#/components/schemas/XEmail'
+        node:
+          $ref: '#/components/schemas/XNodeID'
+        seen:
+          anyOf:
+          - $ref: '#/components/schemas/XTimestamp'
+          - type: "null"
+      required:
+      - email
+      - node
+      type: object
+    XDelegatedShapes:
+      description: |-
+        XDelegatedShapes puts the same delegation behind every container the
+        emitter walks separately - array, optional array, map key and map
+        value - so a registration that covers the flat field but not the loop
+        bodies still fails here.
+      properties:
+        byEmail:
+          additionalProperties:
+            $ref: '#/components/schemas/XSize'
+          propertyNames:
+            format: email
+            maxLength: 254
+            type: string
+          type: object
+        byLabel:
+          additionalProperties:
+            $ref: '#/components/schemas/XEmail'
+          type: object
+        many:
+          items:
+            $ref: '#/components/schemas/XNodeID'
+          type: array
+        maybe:
+          items:
+            $ref: '#/components/schemas/XNodeID'
+          type:
+          - array
+          - "null"
+      required:
+      - many
+      - byEmail
+      - byLabel
+      type: object
     XEmail:
       description: |-
         XEmail exercises cross-package scalar refs with inherited
@@ -7263,6 +7472,19 @@ components:
         sibling-package mixin, so the project-level path-param check owns the
         verdict - the same cross-package flattening the codegen binder does.
       type: object
+    XPayItem:
+      properties:
+        amount:
+          format: int64
+          minimum: 0
+          type: integer
+        payId:
+          minLength: 1
+          type: string
+      required:
+      - payId
+      - amount
+      type: object
     XPkgEnum:
       description: |-
         XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
@@ -7413,6 +7635,16 @@ components:
         qualified request through the project resolver and pull in `shared` - or
         the cast compiles to `undefined: shared`.
       type: object
+    XTier:
+      description: |-
+        XTier is an INT-valued enum carried cross-package by an event payload
+        (`events.TierPromoted`). Resolving the enum against the consuming
+        package instead of the declaring one finds nothing, falls back to the
+        string default, and emits a rune conversion in Go.
+      enum:
+      - 1
+      - 2
+      type: integer
     XTimestamp:
       description: |-
         XTimestamp is a string-backed scalar with no inherited validator,
@@ -7487,6 +7719,21 @@ components:
     XWrapInBagOfXOwner:
       allOf:
       - $ref: '#/components/schemas/XBagOfXOwner'
+      - properties:
+          wrapNote:
+            type:
+            - string
+            - "null"
+        type: object
+      description: |-
+        XParametric is a generic mixin host: `XWrapInBag` embeds `XBag<T>` and a
+        consumer instantiates it. The OpenAPI mixin branch must substitute the
+        host's type-param into the embedded generic's args, or it registers a
+        phantom `XBagOfT` whose element `$ref` dangles.
+      type: object
+    XWrapInBagOfXPayItem:
+      allOf:
+      - $ref: '#/components/schemas/XBagOfXPayItem'
       - properties:
           wrapNote:
             type:
@@ -7780,6 +8027,18 @@ paths:
           description: OK
       tags:
       - admin/v1
+  /adminapi/uptime/ping:
+    get:
+      operationId: PingUptime
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingUptimeRespBody'
+          description: OK
+      tags:
+      - admin/uptime
   /adminapi/v1/ping:
     get:
       operationId: PingV1
@@ -8533,6 +8792,20 @@ paths:
           description: Created
       tags:
       - combine
+  /events/health:
+    get:
+      description: Kept so the fixture exercises a service that both serves HTTP and
+        publishes.
+      operationId: InventoryServiceHealth
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryServiceHealthRespBody'
+          description: OK
+      tags:
+      - InventoryService
   /header-echo:
     get:
       description: List items with the total surfaced via response header and the
@@ -10751,6 +11024,25 @@ paths:
           description: OK
       tags:
       - ProfileService
+  /xdelegate/store:
+    post:
+      description: Round-trips the delegating types so the handler path compiles too.
+      operationId: Store
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreRespBody'
+          description: Created
+      tags:
+      - XDelegateService
   /xrefs/by-key/{key}:
     get:
       description: Pins cross-package mixin @path binding. The {key} segment binds
@@ -11085,6 +11377,29 @@ paths:
             X-Trace-Id:
               schema:
                 type: string
+      tags:
+      - XRefsService
+  /xrefs/wrap-foreign:
+    post:
+      description: Pins a QUALIFIED GENERIC request whose type-arg comes from a THIRD
+        package named paytypes, with a cross-package response too. Nothing on either
+        side is local, so the handler and the scaffold must both drop the canonical
+        `types` import - deciding that by searching the rendered text for `types.`
+        keeps it, and the file fails to build with `imported as types and not used`.
+      operationId: WrapForeign
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WrapForeignReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrapForeignRespBody'
+          description: Created
       tags:
       - XRefsService
   /xrefs/wrap-local:

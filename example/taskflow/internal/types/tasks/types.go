@@ -89,3 +89,24 @@ type Task struct {
 	SearchText string `json:"-"`
 	shared.Timestamps
 }
+
+// TaskCreated carries the identifiers a subscriber needs to react
+// without fetching the whole task, plus enough context to route or
+// filter on.
+type TaskCreated struct {
+	TaskID    shared.ID `json:"taskId"`
+	ProjectID shared.ID `json:"projectId"`
+	Title     string    `json:"title"`
+	Priority  Priority  `json:"priority"`
+	CreatedAt string    `json:"createdAt"`
+}
+
+// TaskStatusChanged reports a transition. Both ends of the move are
+// carried so a subscriber never has to keep prior state.
+type TaskStatusChanged struct {
+	TaskID    shared.ID  `json:"taskId"`
+	ProjectID shared.ID  `json:"projectId"`
+	From      TaskStatus `json:"from"`
+	To        TaskStatus `json:"to"`
+	ChangedAt string     `json:"changedAt"`
+}

@@ -1,0 +1,14 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "media_service/create_gallery.go",
+    "media_service/delete_media.go",
+    "media_service/get_media.go",
+    "media_service/upload_attachment.go",
+    "media_service/upload_avatar.go",
+    "media_service/upload_document.go"
+  ]
+}

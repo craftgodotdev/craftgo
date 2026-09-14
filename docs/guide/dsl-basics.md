@@ -55,7 +55,7 @@ Every craftgo file declares from this set:
 | `enum`      | Closed value set                              |
 | `scalar`    | Named primitive with bundled validators       |
 | `error`     | Typed error with HTTP status                  |
-| `service`   | Group of HTTP methods                         |
+| `service`   | Group of HTTP methods, events and consumers   |
 | `middleware`| Named middleware slot                         |
 
 ```craftgo
@@ -68,6 +68,10 @@ error NotFound  UserNotFound
 service UserService { ... }
 middleware Auth
 ```
+
+A service body holds three member kinds: HTTP methods, `event` contracts, and
+`consume` declarations. Methods are covered below; see
+[Events](/guide/events) for the other two.
 
 ## Types
 
@@ -312,6 +316,7 @@ type User { ... }
 
 ## Next
 
+- [Events](/guide/events) - event contracts, consumers, and the AsyncAPI projection
 - [Decorators](/guide/decorators) - the full decorator catalog
 - [Validators](/guide/validators) - validation runtime semantics
 - [Types and Scalars](/guide/types-and-scalars) - generics, mixins, advanced types

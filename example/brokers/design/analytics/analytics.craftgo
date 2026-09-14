@@ -1,0 +1,10 @@
+// analytics is a second consumer group on orders.Placed: it receives its
+// own copy of every order, independently of notifications.
+package analytics
+
+service AnalyticsService {
+	@doc("Counts orders for the dashboard.")
+	consume CountOrder {
+		event orders.Placed
+	}
+}

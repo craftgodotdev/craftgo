@@ -171,3 +171,12 @@ error NotFound XNotFound {
 	resource string  @length(1, 200)
 	id       string
 }
+
+// XTier is an INT-valued enum carried cross-package by an event payload
+// (`events.TierPromoted`). Resolving the enum against the consuming
+// package instead of the declaring one finds nothing, falls back to the
+// string default, and emits a rune conversion in Go.
+enum XTier {
+	Bronze = 1
+	Gold   = 2
+}

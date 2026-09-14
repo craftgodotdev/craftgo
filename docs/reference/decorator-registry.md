@@ -15,13 +15,15 @@ A decorator's **level** is where it may be written. Applying one at the wrong le
 | error / error-field | `error` declaration / a field in its body |
 | scalar | `scalar` declaration |
 | middleware | `middleware` declaration |
+| event | an `event` inside a `service` |
+| consumer | a `consume` inside a `service` |
 
 ## Documentation & lifecycle
 
 | Decorator | Levels | Args | Effect |
 |---|---|---|---|
-| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in OpenAPI `description` and IDE hover. |
-| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
+| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in the OpenAPI / AsyncAPI `description` and IDE hover. |
+| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, consumer, error-field | `(string?)` | Marks the construct deprecated; OpenAPI / AsyncAPI emit the `deprecated` flag. |
 | `@example(v)` | field | `(literal \| {k: v})` | Example value rendered in the field's OpenAPI schema. |
 | `@version("1.2.3")` | file | `(string)` | OpenAPI document version (overrides `openapi.version` in the manifest). |
 
@@ -130,6 +132,22 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 | `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method. |
 | `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service). |
 | `@ignoreTags` | - | Clear the inherited `@tags` list. |
+
+## Event level
+
+See the [Events guide](/guide/events) for the full picture.
+
+| Decorator | Args | Effect |
+|---|---|---|
+| `@contract("order.placed.v2")` | `(string)` | Override the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes. Two events resolving to one name raise `event/contract-collision`. |
+
+## Consumer level
+
+| Decorator | Levels | Args | Effect |
+|---|---|---|---|
+| `@consumerGroup("order-worker")` | service, consumer | `(string)` | The broker identity a consumer joins - the Kafka consumer group, the NATS queue group. Its members divide the stream between them, so a group is a unit of scaling and of failure isolation, **not of ordering** (no craftgo transport orders two contracts against each other). On Kafka and JetStream the name is also where those consumers resume, and one the broker has never seen has no position: the default `<package>-<Service>-<Consumer>` moves when you rename any of the three, so **if it has an offset, write the name down.** Core NATS keeps no position, so there a rename costs nothing. On a service it is the default for every `consume` in the body; on a consumer it overrides that. Consumers of different contracts may share one group inside a service; two consumers of one contract may not (`consumer/group-collision`) and two services may not (`consumer/group-cross-service`). A dot or whitespace in the value is rejected (`consumer/group-format`) - NATS JetStream refuses a durable name with either. `@group` never affects it. |
+
+`@doc` and `@deprecated` also apply at event and consumer level.
 
 ## Not supported
 

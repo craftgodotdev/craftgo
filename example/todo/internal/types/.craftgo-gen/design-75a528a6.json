@@ -1,0 +1,11 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "todos/enums.go",
+    "todos/types.go",
+    "todos/validate.go"
+  ]
+}

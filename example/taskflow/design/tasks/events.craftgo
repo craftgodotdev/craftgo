@@ -1,0 +1,38 @@
+// events.craftgo declares the contracts TaskService publishes. The
+// payloads are separate from the API types on purpose: an event is a
+// published contract with its own compatibility story, not a mirror of
+// whatever the REST response happens to return today.
+package tasks
+
+// TaskCreated carries the identifiers a subscriber needs to react
+// without fetching the whole task, plus enough context to route or
+// filter on.
+type TaskCreated {
+	taskId    shared.ID
+	projectId shared.ID
+	title     string @length(1, 200)
+	priority  Priority
+	createdAt string @format(datetime)
+}
+
+// TaskStatusChanged reports a transition. Both ends of the move are
+// carried so a subscriber never has to keep prior state.
+type TaskStatusChanged {
+	taskId    shared.ID
+	projectId shared.ID
+	from      TaskStatus
+	to        TaskStatus
+	changedAt string @format(datetime)
+}
+
+extend service TaskService {
+	@doc("A task was created.")
+	event TaskCreated {
+		payload TaskCreated
+	}
+
+	@doc("A task moved between statuses.")
+	event TaskStatusChanged {
+		payload TaskStatusChanged
+	}
+}

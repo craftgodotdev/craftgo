@@ -41,3 +41,36 @@ func TestRawSides(t *testing.T) {
 		})
 	}
 }
+
+// JSONShape splits presence four ways and every language target reads it,
+// so the split is pinned here rather than through a generator: Go's struct
+// tag renders JSONRequired and JSONNullable identically, and a target that
+// told them apart would be the only thing catching a regression.
+func TestJSONShapeSplitsPresenceFourWays(t *testing.T) {
+	field := func(name string, optional bool, dec ...string) *ast.Field {
+		return &ast.Field{
+			Name:       name,
+			Type:       &ast.TypeRef{Optional: optional},
+			Decorators: decs(dec...),
+		}
+	}
+	cases := []struct {
+		name  string
+		field *ast.Field
+		want  JSONPresence
+	}{
+		{"plain field", field("a", false), JSONRequired},
+		{"optional", field("a", true), JSONOptional},
+		{"nullable", field("a", false, DecoratorNullable), JSONNullable},
+		{"optional beats nullable", field("a", true, DecoratorNullable), JSONOptional},
+		{"sensitive leaves the body", field("a", false, DecoratorSensitive), JSONAbsent},
+		{"nil field", nil, JSONAbsent},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, got := JSONShape(c.field); got != c.want {
+				t.Errorf("presence = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

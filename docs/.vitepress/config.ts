@@ -133,6 +133,7 @@ export default defineConfig({
           text: "Application",
           items: [
             { text: "Middleware", link: "/guide/middleware" },
+            { text: "Events", link: "/guide/events" },
             { text: "Configuration", link: "/guide/configuration" },
             { text: "LSP / IDE", link: "/guide/lsp" },
           ],

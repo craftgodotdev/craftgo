@@ -28,6 +28,15 @@ const (
 	BindingSensitive = "sensitive"
 )
 
+// Field decorators that shape the JSON body without naming a binding.
+const (
+	// DecoratorSensitive keeps a field off the wire in both directions.
+	DecoratorSensitive = "sensitive"
+	// DecoratorNullable keeps a field always-emitted with a null value
+	// allowed.
+	DecoratorNullable = "nullable"
+)
+
 // CanonicalWireName folds a wire name to its collision key. HTTP header names
 // are case-insensitive (RFC 7230) and net/http canonicalises them, so two
 // fields bound to `X-Trace` and `x-trace` reach the same header - fold header
@@ -146,3 +155,160 @@ func RawSides(ds []*ast.Decorator) (rawRequest, rawResponse bool) {
 	}
 	return ast.HasDecorator(ds, DecoratorRawRequest), ast.HasDecorator(ds, DecoratorRawResponse)
 }
+
+// JSONPresence is how a field appears in the JSON body.
+type JSONPresence int
+
+const (
+	// JSONAbsent - the field never rides the JSON body: it is bound to
+	// the URL, a header or a cookie, or it is `@sensitive`.
+	JSONAbsent JSONPresence = iota
+	// JSONRequired - always emitted, never null.
+	JSONRequired
+	// JSONOptional - may be absent (`T?`).
+	JSONOptional
+	// JSONNullable - always emitted, may be null (`T @nullable`).
+	JSONNullable
+)
+
+// JSONShape reports the wire name a field carries in the JSON body and
+// whether it is present, optional, nullable, or off the body entirely.
+// The Go struct tag and every language target read it, so a generated
+// type in any language describes the same JSON.
+//
+// `?` dominates `@nullable`: the wire contract is "may be absent", so a
+// missing value is omitted rather than sent as an explicit null.
+// `@form` stays in the body - the multipart handler binds its own table.
+func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
+	if f == nil {
+		return "", JSONAbsent
+	}
+	if NonBodyBindingKind(f) != "" || ast.HasDecorator(f.Decorators, DecoratorSensitive) {
+		return f.Name, JSONAbsent
+	}
+	switch {
+	case f.Type != nil && f.Type.Optional:
+		return f.Name, JSONOptional
+	case ast.HasDecorator(f.Decorators, DecoratorNullable):
+		return f.Name, JSONNullable
+	}
+	return f.Name, JSONRequired
+}
+
+// NonBodyBindingKind returns the wire location an explicit binding
+// decorator places a field in - path / query / header / cookie, the
+// bindings served outside the JSON body - or "" for a body, form,
+// sensitive or undecorated field.
+func NonBodyBindingKind(f *ast.Field) string {
+	if f == nil {
+		return ""
+	}
+	switch kind := BindingKind(f.Decorators); kind {
+	case BindingPath, BindingQuery, BindingHeader, BindingCookie:
+		return kind
+	}
+	return ""
+}
+
+// StatusOverride returns the explicit `@status(N)` code on the method, if
+// any. The value is range-validated (100..599) by the semantic layer.
+func StatusOverride(m *ast.Method) (int, bool) {
+	for _, d := range m.Decorators {
+		if d == nil || d.Name != "status" || len(d.Args) == 0 {
+			continue
+		}
+		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
+			return int(i.Value), true
+		}
+	}
+	return 0, false
+}
+
+// SuccessStatus resolves the status a method's successful response carries.
+// `@status(N)` wins; otherwise the default is verb-aware:
+//
+//   - no response body          -> 204 No Content
+//   - POST returning a body     -> 201 Created
+//   - any other verb with a body -> 200 OK
+//
+// The "no body -> 204" rule takes precedence over the verb default: a POST
+// that returns nothing is 204, not 201.
+func SuccessStatus(m *ast.Method) int {
+	if code, ok := StatusOverride(m); ok {
+		return code
+	}
+	if m.Response == nil || m.Response.Type == nil {
+		return http.StatusNoContent
+	}
+	if strings.EqualFold(m.Verb, "post") {
+		return http.StatusCreated
+	}
+	return http.StatusOK
+}
+
+// Binding is where a field's value rides. It is the enum form of the
+// BindingKind strings, so a stage can switch on placement without
+// comparing text.
+type Binding int
+
+const (
+	BindBody Binding = iota // JSON request/response body (the default)
+	BindPath
+	BindQuery
+	BindHeader
+	BindCookie
+	BindForm
+	BindSensitive // @sensitive: server-only, json:"-", excluded everywhere
+)
+
+// String renders the OpenAPI `in` value; body and sensitive have no `in`.
+func (b Binding) String() string {
+	switch b {
+	case BindPath:
+		return BindingPath
+	case BindQuery:
+		return BindingQuery
+	case BindHeader:
+		return BindingHeader
+	case BindCookie:
+		return BindingCookie
+	case BindForm:
+		return BindingForm
+	case BindSensitive:
+		return BindingSensitive
+	default:
+		return BindingBody
+	}
+}
+
+// BindingFromKind maps a BindingKind string onto its enum form.
+func BindingFromKind(kind string) Binding {
+	switch kind {
+	case BindingPath:
+		return BindPath
+	case BindingQuery:
+		return BindQuery
+	case BindingHeader:
+		return BindHeader
+	case BindingCookie:
+		return BindCookie
+	case BindingForm:
+		return BindForm
+	case BindingSensitive:
+		return BindSensitive
+	default:
+		return BindBody
+	}
+}
+
+// ExplicitBinding is the placement a field's own decorators declare,
+// before any request auto-binding.
+func ExplicitBinding(f *ast.Field) Binding {
+	if HasSensitive(f.Decorators) {
+		return BindSensitive
+	}
+	return BindingFromKind(BindingKind(f.Decorators))
+}
+
+// HasSensitive reports whether `@sensitive` marks the field server-only.
+func HasSensitive(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, DecoratorSensitive) }

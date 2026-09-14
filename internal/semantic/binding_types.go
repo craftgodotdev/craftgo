@@ -23,7 +23,7 @@ const (
 // never has to produce uncompilable Go.
 //
 // Per-decorator rules (mirrors the wire-bind codegen in
-// `internal/codegen.renderWireBindLine`):
+// `internal/codegen/golang.renderWireBindLine`):
 //
 //   - `@path`              - the same wire-bindable shapes as @query
 //     (string / bool / int* / uint* / float*, or a scalar / enum over

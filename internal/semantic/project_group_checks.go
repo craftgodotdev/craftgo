@@ -1,7 +1,8 @@
 // Project-level `@group` checks. Sharing a group between services is
 // supported - that is what the decorator is for - so these passes police
 // only the two things a shared output directory cannot absorb: a Go
-// package declaration per directory, and one file per method name.
+// package declaration per directory, and one file per stub-producing
+// member name (a method or a consumer).
 package semantic
 
 import (
@@ -14,23 +15,26 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// segMethod is one method a service contributes to an output directory.
-type segMethod struct {
+// segMember is one stub-producing member - a method or a consumer - that a
+// service contributes to an output directory. Both scaffold `<name>.go` in
+// the service logic folder, so both compete for the same filename.
+type segMember struct {
 	name string
+	kind string
 	pos  lexer.Position
 }
 
 // segClaim is everything one service puts into one output directory: the
 // package it was declared in, the `@group` that took it there ("" = the
 // service's own directory), the token to anchor a diagnostic at, and the
-// methods it contributes. A service reaching one directory from several
-// blocks produces a single claim carrying all their methods.
+// members it contributes. A service reaching one directory from several
+// blocks produces a single claim carrying all their members.
 type segClaim struct {
 	pkg     string
 	svc     string
 	group   string
 	pos     lexer.Position
-	methods []segMethod
+	members []segMember
 }
 
 // checkProjectGroupChecks runs both shared-directory passes over the
@@ -44,8 +48,8 @@ type segClaim struct {
 //   - A directory is one Go package. Generated files take their `package`
 //     declaration from the DSL package that declared the service, so a
 //     folder fed by two DSL packages cannot compile.
-//   - A method owns a filename and an exported handler name inside that
-//     package, so two services in one folder cannot both declare it.
+//   - A method or a consumer owns a filename and an exported name inside
+//     that package, so two services in one folder cannot both declare it.
 func (r *refResolver) checkProjectGroupChecks() {
 	claims := map[string][]segClaim{}
 	for pkgName, pkg := range r.proj.Packages {
@@ -77,7 +81,7 @@ func (r *refResolver) checkProjectGroupChecks() {
 			continue
 		}
 		r.reportGroupPackageStraddle(seg, occs)
-		r.reportGroupMethodCollisions(seg, occs)
+		r.reportGroupMemberCollisions(seg, occs)
 	}
 }
 
@@ -119,22 +123,22 @@ func (r *refResolver) reportGroupPackageStraddle(seg string, occs []segClaim) {
 	}
 }
 
-// reportGroupMethodCollisions fires when two services sharing seg declare
-// the same method name. Anchored at the method, not the service, because
-// renaming the method is the fix.
-func (r *refResolver) reportGroupMethodCollisions(seg string, occs []segClaim) {
+// reportGroupMemberCollisions fires when two services sharing seg declare
+// the same method or consumer name. Anchored at the member, not the
+// service, because renaming it is the fix.
+func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 	type owner struct {
 		claim  segClaim
-		method segMethod
+		member segMember
 	}
 	byName := map[string][]owner{}
 	var order []string
 	for _, o := range occs {
-		for _, m := range o.methods {
+		for _, m := range o.members {
 			if _, seen := byName[m.name]; !seen {
 				order = append(order, m.name)
 			}
-			byName[m.name] = append(byName[m.name], owner{claim: o, method: m})
+			byName[m.name] = append(byName[m.name], owner{claim: o, member: m})
 		}
 	}
 	sort.Strings(order)
@@ -145,26 +149,44 @@ func (r *refResolver) reportGroupMethodCollisions(seg string, occs []segClaim) {
 		}
 		for i, o := range owners {
 			diag := Diagnostic{
-				Pos:      o.method.pos,
-				End:      o.method.pos,
+				Pos:      o.member.pos,
+				End:      o.member.pos,
 				Severity: lexer.SeverityError,
 				Code:     CodeGroupMethodCollision,
 				Msg: fmt.Sprintf(
-					"method %q of service %q collides with another service's method of the same name in shared output directory %q - handlers and stubs are one file per method and the handler function is named after it, so both would claim %s.go and declare the same function; rename one method or split the group",
-					name, o.claim.svc, seg, name),
+					"%s %q of service %q collides with another service's %s of the same name in shared output directory %q - stubs are one file per member and the generated function is named after it, so both would claim %s.go and declare the same function; rename one or split the group",
+					o.member.kind, name, o.claim.svc, o.member.kind, seg, name),
 			}
 			for j, other := range owners {
 				if j == i {
 					continue
 				}
 				diag.Related = append(diag.Related, lexer.Related{
-					Pos: other.method.pos,
+					Pos: other.member.pos,
 					Msg: fmt.Sprintf("also declared by service %q, which emits here (%s)", other.claim.svc, claimSource(other.claim.group)),
 				})
 			}
 			r.diags = append(r.diags, diag)
 		}
 	}
+}
+
+// blockStubMembers lists the members of one service block that scaffold a
+// file into the service logic folder, in source order.
+func blockStubMembers(block *ast.ServiceDecl) []segMember {
+	if block == nil {
+		return nil
+	}
+	var out []segMember
+	for _, m := range block.Members {
+		switch v := m.(type) {
+		case *ast.Method:
+			out = append(out, segMember{name: v.Name, kind: "method", pos: v.Pos})
+		case *ast.ConsumerDecl:
+			out = append(out, segMember{name: v.Name, kind: "consumer", pos: v.Pos})
+		}
+	}
+	return out
 }
 
 // claimSource renders how a service came to emit into a directory, for the
@@ -183,11 +205,11 @@ func claimSource(group string) string {
 // that repeats its @group - merges into a single claim, because those
 // methods share a routes file rather than competing for one.
 //
-// A block contributes only the methods it declares: codegen derives its
-// folder set from the merged method list, so a method-less block emits
-// nothing. The claim is anchored at the `@group` decorator when the block
-// carries one (the token an author edits to change the layout) and at the
-// service declaration otherwise.
+// A block contributes the methods and consumers it declares - the two
+// members that scaffold a file into the service logic folder - so a block
+// with neither emits nothing. The claim is anchored at the `@group`
+// decorator when the block carries one (the token an author edits to
+// change the layout) and at the service declaration otherwise.
 func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase string) map[string]segClaim {
 	out := map[string]segClaim{}
 	if si == nil {
@@ -195,7 +217,8 @@ func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase str
 	}
 	primaryGroup := route.ServiceGroup(si.Primary)
 	add := func(block *ast.ServiceDecl, group string) {
-		if block == nil || len(block.Methods()) == 0 {
+		members := blockStubMembers(block)
+		if len(members) == 0 {
 			return
 		}
 		seg := route.OutputSegment(svcName, group, fileCase)
@@ -203,9 +226,7 @@ func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase str
 		if !seen {
 			claim = segClaim{pkg: pkgName, svc: svcName, group: group, pos: groupAnchor(block)}
 		}
-		for _, m := range block.Methods() {
-			claim.methods = append(claim.methods, segMethod{name: m.Name, pos: m.Pos})
-		}
+		claim.members = append(claim.members, members...)
 		out[seg] = claim
 	}
 	add(si.Primary, primaryGroup)

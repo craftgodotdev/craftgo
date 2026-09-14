@@ -42,14 +42,16 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 		a.checkDecoratorScope("scalar "+dd.Name, dd.Decorators)
 	case *ast.MiddlewareDecl:
 		a.checkDecoratorScope("middleware "+dd.Name, dd.Decorators)
+	case *ast.EventDecl:
+		a.checkDecoratorScope("event "+dd.Name, dd.Decorators)
 	case *ast.ServiceDecl:
 		scope := "service " + dd.Name
 		if dd.Extend {
 			scope = "extend " + scope
 		}
 		a.checkDecoratorScope(scope, dd.Decorators)
-		for _, m := range dd.Methods() {
-			a.checkDecoratorScope("method "+dd.Name+"."+m.Name, m.Decorators)
+		for _, s := range serviceMemberSites(dd) {
+			a.checkDecoratorScope(s.Label(dd.Name), s.Decorators)
 		}
 	}
 }

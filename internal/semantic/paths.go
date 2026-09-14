@@ -186,7 +186,7 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 //   - orphan:  a `@path` / `@path("x")` field with no `{x}` in route.
 //
 // Two rules govern the matching, mirroring the codegen's auto-bind
-// logic in `internal/codegen.collectBindings`:
+// logic in `internal/codegen/golang.collectBindings`:
 //
 //  1. An explicit `@path` decorator binds the field. Custom name
 //     `@path("custom")` wins over the field's identifier.

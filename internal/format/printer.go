@@ -206,6 +206,8 @@ func declFirstSourceLine(d ast.Decl) int {
 		decs = v.Decorators
 	case *ast.ServiceDecl:
 		decs = v.Decorators
+	case *ast.EventDecl:
+		decs = v.Decorators
 	}
 	if len(decs) > 0 {
 		return decs[0].Pos.Line
@@ -242,6 +244,8 @@ func (p *Printer) Decl(d ast.Decl) {
 		p.MiddlewareDecl(v)
 	case *ast.ServiceDecl:
 		p.ServiceDecl(v)
+	case *ast.EventDecl:
+		p.EventDecl(v)
 	}
 }
 

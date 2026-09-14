@@ -10,6 +10,10 @@ const (
 	// CodeDecoratorUnknown fires when `@name` is not in the registry.
 	// Decorators are a closed set by design (no escape-hatch).
 	CodeDecoratorUnknown = "decorator/unknown"
+	// CodeDecoratorRemoved fires when `@name` is a decorator craftgo has
+	// since removed. Its own code, because the message names what took
+	// its place and an author migrating a design wants to find every one.
+	CodeDecoratorRemoved = "decorator/removed"
 	// CodeDecoratorPlacement fires when a known decorator appears at a
 	// site outside its declared [Spec.Levels].
 	CodeDecoratorPlacement = "decorator/placement"
@@ -346,6 +350,58 @@ const (
 	// knows how to validate; user-defined types in this slot would
 	// silently break inheritance and produce invalid Go.
 	CodeScalarBadPrimitive = "scalar/bad-primitive"
+	// CodeEventPayloadMissing fires when an `event` body has no
+	// `payload` clause - the contract would carry no shape.
+	CodeEventPayloadMissing = "event/payload-missing"
+	// CodeEventPayloadKind fires when an event's payload names
+	// something other than a `type` declaration.
+	CodeEventPayloadKind = "event/payload-kind"
+	// CodeEventContractCollision fires when two events resolve to the
+	// same contract name - publisher and consumer could not tell them
+	// apart on the wire.
+	CodeEventContractCollision = "event/contract-collision"
+	// CodeEventContractFormat fires when an `@contract` argument is
+	// empty or carries whitespace.
+	CodeEventContractFormat = "event/contract-format"
+	// CodeConsumerEventMissing fires when a `consume` body has no
+	// `event` clause.
+	CodeConsumerEventMissing = "consumer/event-missing"
+	// CodeConsumerEventUnknown fires when a consumer's `event` clause
+	// names an event no package declares.
+	CodeConsumerEventUnknown = "consumer/event-unknown"
+	// CodeConsumerDuplicate fires when one service consumes the same
+	// contract twice.
+	CodeConsumerDuplicate = "consumer/duplicate"
+	// CodeConsumerCollision fires when a consumer and a method of one
+	// service share a name - both scaffold the same logic file.
+	CodeConsumerCollision = "consumer/collision"
+	// CodeEventDuplicate fires when one package declares two events of
+	// the same name. Consumers reference an event by that identifier.
+	CodeEventDuplicate = "event/duplicate-name"
+	// CodeConsumerDuplicateName fires when one service declares two
+	// consumers of the same name.
+	CodeConsumerDuplicateName = "consumer/duplicate-name"
+	// CodeConsumerHandlerCollision fires when two consuming services
+	// produce the same handler file name under the configured file case
+	// (`UserAPI` and `UserApi` both fold to `user_api_consumers.go`). The
+	// handler set is one file per service at the root of the transport
+	// output, so the second write would replace the first and one
+	// service's consumers would silently stop being wired.
+	CodeConsumerHandlerCollision = "consumer/handler-collision"
+	// CodeConsumerGroupCollision fires when two consumers of one
+	// contract resolve to the same group. A group's members divide a
+	// contract between them, so the two would each get part of it
+	// instead of each receiving every message.
+	CodeConsumerGroupCollision = "consumer/group-collision"
+	// CodeConsumerGroupCrossService fires when two services use one
+	// consumer group. A shared group requires every process that joins it
+	// to register the same consumers, which two separately deployed
+	// services cannot do.
+	CodeConsumerGroupCrossService = "consumer/group-cross-service"
+	// CodeConsumerGroupFormat fires when an authored `@consumerGroup`
+	// value is empty or carries a dot or whitespace - none of which a
+	// broker accepts as a group name.
+	CodeConsumerGroupFormat = "consumer/group-format"
 )
 
 // related is a tiny helper that builds a single-element [lexer.Related]

@@ -1,0 +1,10 @@
+{
+  "design": "../design",
+  "manifests": [
+    "../design"
+  ],
+  "files": [
+    "events.go",
+    "middlewares.go"
+  ]
+}

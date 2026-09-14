@@ -1,0 +1,10 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "stream/types.go",
+    "stream/validate.go"
+  ]
+}

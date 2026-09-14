@@ -33,6 +33,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Output.Main != "./main.go" {
 		t.Error("default main")
 	}
+	if cfg.Output.Wiring != "./internal/wiring" {
+		t.Errorf("output.wiring default = %q", cfg.Output.Wiring)
+	}
 	if cfg.Output.Config != "./config" {
 		t.Error("default config")
 	}
@@ -305,5 +308,45 @@ func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
 	writeFile(t, path, "output:\n  fileCase: pascal\n")
 	if _, err := Load(path); err == nil {
 		t.Fatal("Load(fileCase=pascal) = nil error, want rejection")
+	}
+}
+
+// An output path outside the project has no import-path spelling, so it
+// must be rejected while the manifest is read - not left to fail as a
+// malformed import at `go build`.
+func TestOutputPathMustStayInsideProject(t *testing.T) {
+	escapes := []struct{ name, val string }{
+		{"parent", "../shared/types"},
+		{"deep parent", "./a/../../shared"},
+		{"bare parent", ".."},
+		{"absolute", "/tmp/shared"},
+	}
+	for _, c := range escapes {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := &Config{Output: Output{Types: c.val}}
+			if err := cfg.validate(); err == nil {
+				t.Errorf("output.types %q was accepted", c.val)
+			}
+		})
+	}
+	inside := []string{"", "-", "./internal/types", "contracts/types", "./a/../b"}
+	for _, val := range inside {
+		cfg := &Config{Output: Output{Types: val}}
+		if err := cfg.validate(); err != nil {
+			t.Errorf("output.types %q was rejected: %v", val, err)
+		}
+	}
+}
+
+// The same rule covers the event targets, which are the paths a
+// contract artifact would actually be published from.
+func TestEventTargetOutMustStayInsideProject(t *testing.T) {
+	cfg := &Config{Events: Events{Targets: []EventTarget{{Lang: LangGo, Out: "../contracts"}}}}
+	if err := cfg.validate(); err == nil {
+		t.Error("events.targets out escaping the project was accepted")
+	}
+	cfg = &Config{Events: Events{AsyncAPI: "../docs/asyncapi.yaml"}}
+	if err := cfg.validate(); err == nil {
+		t.Error("events.asyncapi escaping the project was accepted")
 	}
 }

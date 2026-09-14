@@ -1,0 +1,10 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "activity_service/consumers.go",
+    "task_service/publisher.go"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "design": "../design",
+  "manifests": [
+    "../design"
+  ],
+  "files": [
+    "asyncapi.yaml",
+    "openapi.yaml"
+  ]
+}

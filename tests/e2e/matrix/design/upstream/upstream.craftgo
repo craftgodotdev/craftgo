@@ -1,0 +1,26 @@
+// upstream.craftgo pins the file-level contract: an event declared outside
+// any service. This design describes the contract and consumes it, but does
+// not publish it - the producer is another system - so gen must emit no
+// publisher, no ServiceContext field, and no AsyncAPI `send` operation.
+package upstream
+
+type PaymentSettledPayload {
+	invoiceId string @minLength(1)
+	amount    int64  @gte(0)
+}
+
+// Published by the payments platform; the wire name is theirs.
+@doc("A payment cleared upstream.")
+// A comment between two decorators: the printer must keep it, and only
+// does so when the declaration contributes a chain span.
+@contract("payments.settled.v1")
+event PaymentSettled {
+	payload PaymentSettledPayload
+}
+
+service LedgerService {
+	@doc("Records the settlement against the invoice.")
+	consume RecordSettlement {
+		event upstream.PaymentSettled
+	}
+}

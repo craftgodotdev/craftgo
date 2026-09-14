@@ -1,6 +1,6 @@
 # Keywords
 
-The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
+The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifiers cannot use these names, with the contextual carve-outs noted below.
 
 ## Declaration keywords
 
@@ -15,13 +15,18 @@ The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
 | `service`    | top level   | Declare an HTTP service                                       |
 | `extend`     | top level   | Add methods to an existing service (`extend service Name`)    |
 | `middleware` | top level   | Declare a named middleware slot                               |
+| `event`      | top level   | Declare a contract this design does not publish               |
 
-## Method body keywords
+## Member body keywords
 
-| Keyword     | Where                | Purpose                          |
-| ----------- | -------------------- | -------------------------------- |
-| `request`   | inside method body   | Names the request type           |
-| `response`  | inside method body   | Names the response type          |
+| Keyword     | Where                 | Purpose                                  |
+| ----------- | --------------------- | ---------------------------------------- |
+| `request`   | inside method body    | Names the request type                   |
+| `response`  | inside method body    | Names the response type                  |
+| `payload`   | inside event body     | Names the type an event contract carries |
+| `event`     | inside service body   | Declare a contract this service publishes |
+| `event`     | inside consumer body  | Names the contract a consumer handles    |
+| `consume`   | inside service body   | Declare a consumer of a contract          |
 
 ## Type keywords
 
@@ -36,6 +41,13 @@ The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
 | `true`    | Boolean true literal                     |
 | `false`   | Boolean false literal                    |
 | `null`    | Null literal (used in some decorator args)|
+
+## Contextual use
+
+A reserved word is still legal wherever the grammar leaves no ambiguity: as a
+field name in a type body, as an enum value name, as a decorator argument naming
+a field, and as a path segment or path-parameter name. `type Msg { event string
+payload bytes }` and `@requiresOneOf(payload, event)` both parse.
 
 ## HTTP verbs
 

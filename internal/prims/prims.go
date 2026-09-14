@@ -1,6 +1,8 @@
 // Package prims is the catalogue of the DSL's built-in type spellings. One
 // row per name carries every fact the analyser, the code generators, and
-// the language server read about it, so a built-in is described once.
+// the language server read about it, so a built-in is described once. Each
+// output gets its own column (Go, the OpenAPI pair); adding a target
+// language adds a column here rather than a second mapping table.
 package prims
 
 // Kind classifies a built-in by the values it holds.

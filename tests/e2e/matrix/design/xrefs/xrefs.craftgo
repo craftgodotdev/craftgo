@@ -227,6 +227,17 @@ service XRefsService {
 		response xshared.XOwner
 	}
 
+	@doc("The service's ONLY event, and its payload reaches no local type: the publisher must carry no canonical `types` import, though the rendered payload spells `paytypes.XPayItem`. An event with a local payload elsewhere in the same service would supply the import and hide it.")
+	event PayBatched {
+		payload xshared.XBag<paytypes.XPayItem>
+	}
+
+	@doc("Pins a QUALIFIED GENERIC request whose type-arg comes from a THIRD package named paytypes, with a cross-package response too. Nothing on either side is local, so the handler and the scaffold must both drop the canonical `types` import - deciding that by searching the rendered text for `types.` keeps it, and the file fails to build with `imported as types and not used`.")
+	post WrapForeign /wrap-foreign {
+		request  xshared.XWrapInBag<paytypes.XPayItem>
+		response xshared.XOwner
+	}
+
 	@doc("Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp). The handler must write w.Header().Set / http.SetCookie even though the response type is cross-package - else the values silently drop (json:\"-\") while OpenAPI advertises them.")
 	get GetTraced /traced/{id} {
 		request  XGetReq

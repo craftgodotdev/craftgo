@@ -1,0 +1,29 @@
+{
+  "design": "../../design",
+  "manifests": [
+    "../../design"
+  ],
+  "files": [
+    "catalog_service/create_product.go",
+    "catalog_service/delete_product.go",
+    "catalog_service/get_product.go",
+    "catalog_service/list_categories.go",
+    "catalog_service/list_products.go",
+    "customer_service/create_customer.go",
+    "customer_service/delete_customer.go",
+    "customer_service/get_customer.go",
+    "customer_service/list_customers.go",
+    "customer_service/upload_avatar.go",
+    "order_service/bulk_export.go",
+    "order_service/cancel_order.go",
+    "order_service/create_order.go",
+    "order_service/defaults.go",
+    "order_service/filter_orders.go",
+    "order_service/force_ship.go",
+    "order_service/get_order.go",
+    "order_service/list_orders.go",
+    "order_service/public_health.go",
+    "order_service/replay.go",
+    "order_service/track_public.go"
+  ]
+}

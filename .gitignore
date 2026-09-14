@@ -33,7 +33,7 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
-# Node (only relevant if anything ships JS/TS tooling)
+# Node - the docs site (VitePress) installs here
 node_modules/
 
 # Local env

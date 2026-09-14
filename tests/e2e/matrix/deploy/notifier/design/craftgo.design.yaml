@@ -1,0 +1,13 @@
+# A projection of the matrix design: one deployable that runs only the
+# consuming services, generated from a design folder it does not contain.
+design:
+  from: ../../../design
+  root: ../../..
+output:
+  services:
+    - eventsubs.NotificationService
+    - eventsubs.AnalyticsService
+  main:    "-"
+  openapi: "-"
+events:
+  asyncapi: "-"

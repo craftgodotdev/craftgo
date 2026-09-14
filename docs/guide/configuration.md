@@ -38,6 +38,12 @@ output:
   config:     ./config
   main:       ./main.go
 
+events: # only meaningful when the design declares events
+  targets:
+    - lang: go
+      out: ./internal/events
+  asyncapi: ./docs/asyncapi.yaml
+
 openapi:
   title:    My API
   version:  1.0.0
@@ -66,6 +72,35 @@ All paths are relative to the **project root** (the parent of the design folder,
 | `main`       | `./main.go`                          | **file path**       | The project entry point (gen-once) |
 
 The four "file path" entries point at exact files. The rest are directories where craftgo writes one subfolder per package or service.
+
+### `events.*`
+
+Configures the event pipeline. `targets` lists the languages the event artefacts
+are generated for - Go is a row in the list, not a privileged default, so the
+manifest states where its artefacts land - and `asyncapi` names the projection
+file.
+
+| Key                | Default                   | Holds                                                       |
+| ------------------ | ------------------------- | ----------------------------------------------------------- |
+| `targets[].lang`   | -                         | `go` - the only language target                              |
+| `targets[].out`    | -                         | Destination directory, relative to the project root           |
+| `asyncapi`         | `./docs/asyncapi.yaml`    | **file path** - the AsyncAPI 3.0 projection                   |
+
+```yaml
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+  asyncapi: ./docs/asyncapi.yaml
+```
+
+Omit the block entirely and a design that declares events gets one Go target at
+`./internal/events`; a design that declares none generates nothing either way.
+Set a target's `out` to `"-"` to skip it, and `asyncapi: "-"` to skip the
+projection.
+
+Transport and codec are deliberately absent: they are runtime wiring chosen in
+`main.go`, not design-time facts. See [Events](/guide/events).
 
 ### File and directory naming (`output.fileCase`)
 
@@ -115,13 +150,78 @@ output:
   main: -          # do not generate main.go
 ```
 
-When `main: -` is set, craftgo also skips `config/`, `svccontext`, and `middleware` since those exist to support `main.go`. Useful for projects that import the generated types as a library and run their own server.
+When `main: -` is set, craftgo also skips `config/` and the `svccontext.go` scaffold, since those exist to support `main.go` - the container type is then yours to write, and `svccontext/events.go`, `svccontext/middlewares.go` and the middleware scaffolds are still generated against it. Useful for projects that import the generated types as a library and run their own server.
 
 ### Module path is auto-resolved
 
 The `craftgo.design.yaml` does **not** carry a Go module / package field. craftgo reads `module <path>` from `go.mod` (walking up from the project root) at gen time and uses that for every Go import in generated files.
 
 If `go.mod` is missing, `craftgo gen` fails with a clear error. Run `go mod init <module>` first.
+
+### One design, several deployables (`design.*`)
+
+A manifest normally sits in the design folder it generates from. A manifest that names a design source somewhere else is a **projection** of it: an API, a consumer and a cronjob generate from one design instead of each copying it.
+
+```yaml
+# services/notifier/design/craftgo.design.yaml
+design:
+  from: ../../../contracts/design # where the .craftgo files are
+  root: ../../../contracts        # the project root that design generates with
+output:
+  services:
+    - eventsubs.NotificationService
+    - eventsubs.AnalyticsService
+```
+
+Both paths are relative to the folder holding this manifest, and both are required. `root` is the project root the design source itself is generated with - the `-c` of its own `craftgo gen` - which craftgo cannot read off the folder: a design at `contracts/upstream/design` may be generated with `contracts` as its root as readily as with `contracts/upstream`, and a wrong guess produces an import path that does not exist. A projection holds no `.craftgo` files of its own; a manifest that both names a source and holds a design is rejected rather than merged.
+
+Generate it against the deployable's own project root:
+
+```sh
+craftgo gen -f services/notifier/design -c services/notifier
+```
+
+**What the design source decides.** The contract half - `output.types`, `events.targets` and `output.fileCase` - belongs to the design, so every deployable writes the same payload types and the same event library, to the same directory, imported under the module path that directory carries. A projection stating one of those keys is rejected instead of quietly writing a second copy. It also inherits any `openapi.*` metadata it does not state itself, `securitySchemes` included - the shared design's `@security(...)` references resolve against them.
+
+**What the deployable decides.** Everything else: `transport`, `routes`, `service`, `wiring`, `middleware`, `config`, `svccontext`, `main` and the documents, resolved against its own project root and defaulted as usual.
+
+### `output.services`
+
+Narrows the application half to the services this deployable runs, each named `<package>.<Service>`. Absent or empty it generates every service, which is what a project holding its own design gets. An entry naming a service the design does not declare fails at gen time, naming the near misses.
+
+The key selects what is **generated**, not what exists:
+
+| Follows `output.services`                             | Ignores it                                                          |
+| ----------------------------------------------------- | ------------------------------------------------------------------- |
+| handlers and consumer handler sets (`output.transport`) | payload types, enums, errors, validators (`output.types`)            |
+| logic stubs (`output.service`)                          | event contracts, publishers, consumer interfaces (`events.targets`)  |
+| routes and the `RegisterAll` umbrella                   | the OpenAPI and AsyncAPI documents, which describe the whole design  |
+| `wiring.Register` and `SubscribeAll`                    |                                                                      |
+| the publishers hanging off `svccontext.Events`          |                                                                      |
+
+Two deployables of one design therefore write byte-identical contract halves, which is why they may share that output directory: the claim craftgo files there is keyed to the design source, not to the manifest. Two **different** designs writing one file are still refused - see below.
+
+A deployable that serves no HTTP wants no OpenAPI document of its own - turn the documents off with `output.openapi: "-"` and `events.asyncapi: "-"`.
+
+### Who generated what (`.craftgo-gen/`)
+
+Every file craftgo REGENERATES - the ones carrying `DO NOT EDIT` - is claimed by the design it came from. Each output directory holds a `.craftgo-gen/` folder with one small JSON record per design writing into it: the design, the manifests that generate through it, and the files it produced.
+
+```json
+{
+  "design": "../../design",
+  "manifests": ["../../deploy/notifier/design", "../../design"],
+  "files": ["inventory_service/publisher.go", "notification_service/consumers.go"]
+}
+```
+
+Commit them. They are what lets several manifests write into one tree safely:
+
+- **Two designs writing one file is an error**, reported before anything is written and naming both designs and both manifests. Without it the second run silently overwrote the first, and the order of your build decided what the directory held - a deployable could subscribe half its consumers and say nothing.
+- **Two manifests reading ONE design file one claim**, so the deployables of a shared design keep writing the contract half they agree on. Both are listed under `manifests`.
+- **A prune deletes only what the same design produced last time**, so a design that drops a service clears its own stale output and leaves a sibling's alone.
+
+Gen-once scaffolds are outside this: they are written only when missing, so no second manifest can overwrite one.
 
 ### `openapi.*` block
 

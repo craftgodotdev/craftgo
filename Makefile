@@ -4,14 +4,17 @@
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
-EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow
+EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers
 
 GO           ?= go
 GOFLAGS      ?=
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
-SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix
+# pkg/events is its own module so a generated contract package can depend on
+# it without pulling in the rest of craftgo; it is therefore not covered by
+# GO_PKGS and is tested, vetted and linted here instead.
+SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -78,8 +81,11 @@ test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
 test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestrator, and each sub-module.
 
 .PHONY: vet
-vet: ## go vet over all root packages.
+vet: ## go vet over all root packages and the event runtime module.
 	$(GO) vet $(GO_PKGS)
+	@(cd pkg/events && $(GO) vet ./...)
+	@(cd pkg/events/nats && $(GO) vet ./...)
+	@(cd pkg/events/kafka && $(GO) vet ./...)
 
 .PHONY: fmt
 fmt: ## gofmt -w on the entire tree.
@@ -97,7 +103,12 @@ lint: vet fmt-check golangci ## vet + fmt-check + golangci-lint.
 
 .PHONY: golangci
 golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not installed.
-	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run $(GO_PKGS); else echo "golangci-lint not installed - skipping"; fi
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run $(GO_PKGS) || exit 1; \
+		(cd pkg/events && golangci-lint run ./...) || exit 1; \
+		(cd pkg/events/nats && golangci-lint run ./...) || exit 1; \
+		(cd pkg/events/kafka && golangci-lint run ./...) || exit 1; \
+	else echo "golangci-lint not installed - skipping"; fi
 
 # ---- codegen + example --------------------------------------------------
 # The single consolidated e2e fixture (matrix). Its design exercises every DSL
@@ -117,9 +128,12 @@ gen-go: ## Regenerate every example mini-project without rebuilding the CLI.
 	done
 
 .PHONY: gen-e2e
-gen-e2e: ## Regenerate the e2e matrix fixture from its design dir.
+gen-e2e: ## Regenerate every manifest in the e2e fixtures - the design's own, and each deployable that projects it.
 	@for d in $(E2E_DIRS); do \
-		echo "→ gen $$d"; $(GO) run ./cmd/craftgo gen "$$d/design" || exit 1; \
+		for m in $$(find "$$d" -name craftgo.design.yaml | sort); do \
+			mdir=$$(dirname "$$m"); \
+			echo "→ gen $$mdir"; $(GO) run ./cmd/craftgo gen -f "$$mdir" -c "$$(dirname "$$mdir")" || exit 1; \
+		done; \
 	done
 
 .PHONY: gen-all

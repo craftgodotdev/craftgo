@@ -8,6 +8,7 @@ import (
 	accountuserserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account_user_service"
 	adminserviceAdminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin"
 	adminserviceAdminLegacyroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/legacy"
+	adminapiAdminUptimeroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/uptime"
 	adminapiAdminV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v1"
 	adminapiAdminV2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v2"
 	adminapiAdminV3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v3"
@@ -17,6 +18,7 @@ import (
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/collections"
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/combine_service"
 	headerechoserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/header_echo_service"
+	inventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/inventory_service"
 	nestedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/nested_service"
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/numbers_service"
 	ordersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
@@ -37,6 +39,7 @@ import (
 	stringsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/strings_service"
 	tenantserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/tenant_service"
 	userserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/user_service"
+	xdelegateserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_delegate_service"
 	xrefsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_refs_service"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
@@ -47,6 +50,7 @@ import (
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	accountserviceroutes.RegisterRoutes(srv, svcCtx)
 	accountuserserviceroutes.RegisterRoutes(srv, svcCtx)
+	adminapiAdminUptimeroutes.RegisterRoutes(srv, svcCtx)
 	adminapiAdminV1routes.RegisterRoutes(srv, svcCtx)
 	adminapiAdminV2routes.RegisterRoutes(srv, svcCtx)
 	adminapiAdminV3routes.RegisterRoutes(srv, svcCtx)
@@ -58,6 +62,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)
 	headerechoserviceroutes.RegisterRoutes(srv, svcCtx)
+	inventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	nestedserviceroutes.RegisterRoutes(srv, svcCtx)
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	ordersserviceroutes.RegisterRoutes(srv, svcCtx)
@@ -78,5 +83,6 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	stringsserviceroutes.RegisterRoutes(srv, svcCtx)
 	tenantserviceroutes.RegisterRoutes(srv, svcCtx)
 	userserviceroutes.RegisterRoutes(srv, svcCtx)
+	xdelegateserviceroutes.RegisterRoutes(srv, svcCtx)
 	xrefsserviceroutes.RegisterRoutes(srv, svcCtx)
 }

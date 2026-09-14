@@ -6,13 +6,15 @@
 // clients, etc. as fields here and read them from the receiver in
 // generated logic stubs.
 //
-// The embedded `Middlewares` struct is regenerated on every
-// `craftgo gen` (see `middlewares.go` next to this file). Don't edit
-// it - declare middlewares in `.craftgo` files and re-run gen.
+// The embedded `Middlewares` and `Events` structs are regenerated on
+// every `craftgo gen` (see `middlewares.go` / `events.go` next to this
+// file). Don't edit them - declare middlewares and events in `.craftgo`
+// files and re-run gen.
 package svccontext
 
 import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/config"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/activity"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/store"
 )
 
@@ -35,6 +37,17 @@ type ServiceContext struct {
 	// through the embedding so handlers don't need to look them up
 	// by name.
 	Middlewares
+
+	// Events is the codegen-managed struct of typed publishers, one per
+	// service that declares an `event`. main.go binds them to the bus at
+	// startup; logic publishes through
+	// `svcCtx.Events.<Service>.Publish<Event>`.
+	Events Events
+
+	// Activity is the in-memory project activity feed the event
+	// consumers append to. A real deployment would write to the same
+	// store as everything else.
+	Activity *activity.Feed
 }
 
 // NewServiceContext returns a ServiceContext seeded with the supplied
@@ -42,5 +55,5 @@ type ServiceContext struct {
 // pools, redis clients, http.Clients with custom transport, ...)
 // here so every request handler reaches them through `svc.X`.
 func NewServiceContext(cfg *config.Config) *ServiceContext {
-	return &ServiceContext{Config: cfg, Store: store.New()}
+	return &ServiceContext{Config: cfg, Store: store.New(), Activity: activity.NewFeed()}
 }

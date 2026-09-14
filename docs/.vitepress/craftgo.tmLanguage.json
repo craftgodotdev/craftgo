@@ -86,7 +86,7 @@
       ]
     },
     "declHeaders": {
-      "comment": "Highlight the IDENTIFIER right after `type | enum | scalar | service | middleware` so user-chosen names get the type-name colour even when they break the PascalCase convention (e.g. `enum priority`, `type my_thing`). The `error <Category> <Name>` shape captures three groups: keyword, reserved category, then user identifier.",
+      "comment": "Highlight the IDENTIFIER right after `type | enum | scalar | service | middleware | event | consume` so user-chosen names get the type-name colour even when they break the PascalCase convention (e.g. `enum priority`, `type my_thing`). The `error <Category> <Name>` shape captures three groups: keyword, reserved category, then user identifier.",
       "patterns": [
         {
           "match": "\\b(error)\\s+([A-Z][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*)",
@@ -97,7 +97,7 @@
           }
         },
         {
-          "match": "\\b(type|enum|scalar|service|middleware)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(type|enum|scalar|service|middleware|event|consume)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.declaration.craftgo" },
             "2": { "name": "entity.name.type.craftgo" }
@@ -113,11 +113,11 @@
         },
         {
           "name": "keyword.declaration.craftgo",
-          "match": "\\b(type|enum|error|scalar|service|middleware)\\b"
+          "match": "\\b(type|enum|error|scalar|service|middleware|event|consume)\\b"
         },
         {
           "name": "keyword.other.craftgo",
-          "match": "\\b(request|response|map)\\b"
+          "match": "\\b(request|response|payload|map)\\b"
         }
       ]
     },

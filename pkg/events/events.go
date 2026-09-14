@@ -1,0 +1,576 @@
+// Package events is craftgo's event runtime: the transport- and
+// codec-neutral surface generated publishers and consumers are written
+// against. It knows nothing about any message broker and nothing about
+// any serialisation format.
+//
+//   - [Message] is the envelope a transport moves.
+//   - [PublishOption] fills in everything beside the payload - the
+//     ordering key, a deduplication ID, headers, one adapter's own
+//     options. Generated publishers take them.
+//   - [Codec] turns a payload value into bytes and back.
+//   - [Publisher] and [Subscriber] are the two halves a transport
+//     adapter implements.
+//   - [Bus] binds a transport to a codec.
+//   - [Chain] wraps a consumer's [Handler] in [Middleware]; install one
+//     on the bus with [WithMiddleware].
+//   - [Disposition] is what a chain asks for one delivery - take it,
+//     hand it back, give it up. [WithDispositionRequired] refuses to
+//     subscribe on a transport that cannot honour one.
+//
+// A broker integration is an external package implementing [Publisher]
+// and/or [Subscriber]. `pkg/events/memory` ships an in-process one.
+package events
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"runtime/debug"
+	"sort"
+	"strings"
+)
+
+// Message is the envelope a transport moves. Payload is already encoded -
+// the [Bus] runs the [Codec] on the way in and out.
+type Message struct {
+	// Event is the contract name the design declared. A transport maps it
+	// onto its own addressing (a topic, a subject, a queue).
+	Event string
+	// Key identifies the entity the event is about, set by [WithKey].
+	// Transports that preserve per-entity ordering use it; the rest
+	// ignore it.
+	Key string
+	// DedupID is the identity a broker that de-duplicates recognises a
+	// repeat by, set by [WithDedupID]. A transport without the notion
+	// ignores it.
+	DedupID string
+	// Payload is the encoded payload.
+	Payload []byte
+	// Metadata carries side-band values: a trace parent, a hop count, a
+	// dead-letter marker. A publisher sets them with [WithHeader];
+	// [MetaCodec] is the runtime's own and is always present.
+	//
+	// A transport may drop entries it has nowhere to put, so only
+	// [MetaCodec] is guaranteed to survive; the three adapters craftgo
+	// ships carry every entry both ways.
+	Metadata map[string]string
+	// AdapterOptions carries the values one named adapter reads, set by
+	// [WithAdapterOption]. Read them with [Message.AdapterOption].
+	AdapterOptions map[string]map[string]any
+
+	// Each delivery owns its Message, so these are the state of one
+	// attempt rather than of the message: what the chain asked for
+	// ([Message.Settle] and friends), whether the subscription's handler
+	// was entered, and the broker's delivery count. They are unexported
+	// because a decision about a delivery is not a value a transport
+	// carries from one side to the other.
+	disposition Disposition
+	reached     bool
+	deliveries  int
+}
+
+// MetaCodec is the [Message.Metadata] key naming the codec that encoded
+// the payload. The consuming side rejects a message whose codec differs
+// from the one it is configured for.
+const MetaCodec = "content-codec"
+
+// MetaPrefix is reserved for transport adapters, which use it for the
+// values they carry beside the payload - `craftgo-event` and
+// `craftgo-key` on Kafka, `Craftgo-Key` on NATS. An adapter naming its
+// own headers outside this prefix is on its own for collisions.
+const MetaPrefix = "craftgo-"
+
+// IsReservedMeta reports whether key belongs to the runtime or to a
+// transport adapter rather than to the caller: [MetaCodec], or anything
+// under [MetaPrefix]. The comparison ignores case, because a header name
+// is not case-sensitive on every broker.
+//
+// These are the only keys [Bus.PublishAll] refuses to carry. A publisher
+// need not call this - a reserved entry on [Envelope.Metadata] is simply
+// dropped - but a library building metadata for someone else can check
+// before it silently loses a value.
+func IsReservedMeta(key string) bool {
+	if strings.EqualFold(key, MetaCodec) {
+		return true
+	}
+	return len(key) >= len(MetaPrefix) && strings.EqualFold(key[:len(MetaPrefix)], MetaPrefix)
+}
+
+// Codec turns a payload value into bytes and back. Implementations must
+// be safe for concurrent use.
+type Codec interface {
+	// Name identifies the encoding on the wire (see [MetaCodec]).
+	Name() string
+	Marshal(v any) ([]byte, error)
+	Unmarshal(data []byte, v any) error
+}
+
+// Publisher sends a message. Implemented by transport adapters.
+//
+// A nil error means the adapter has taken responsibility for the message,
+// not necessarily that a broker has stored it: whether the call waits for
+// an acknowledgement is the adapter's policy, the same way retry and
+// dead-lettering are on the receive side. An adapter that reports delivery
+// failures after the fact takes its own error handler at construction.
+type Publisher interface {
+	Publish(ctx context.Context, msg *Message) error
+}
+
+// BatchPublisher is the optional upgrade for a transport that can take
+// several messages in one call. [Bus.PublishAll] uses it when the
+// configured transport implements it and falls back to one [Publisher.Publish]
+// per message otherwise.
+//
+// One call is all it promises. A broker may still split the batch - Kafka
+// groups by topic-partition, SQS caps a batch at one queue - and nothing
+// here makes the batch atomic; a transport that can do better says so in
+// its own documentation.
+type BatchPublisher interface {
+	PublishBatch(ctx context.Context, msgs []*Message) error
+}
+
+// Subscriber delivers messages for one contract to a handler.
+//
+// Subscribe registers the subscription and returns; it must not block.
+// Delivery runs until ctx is cancelled - a push transport registers the
+// callback, a pull transport starts its own loop. A handler error means
+// the message was not processed; retry / nack / dead-letter is the
+// transport's policy.
+type Subscriber interface {
+	Subscribe(ctx context.Context, sub Subscription) error
+}
+
+// Handler processes one message. It is the signature every generated
+// consumer is built to, and the one a [Middleware] wraps.
+type Handler func(ctx context.Context, msg *Message) error
+
+// Subscription is one consumer's interest in one contract.
+type Subscription struct {
+	// Event is the contract name, matching [Message.Event].
+	Event string
+	// Consumer is the design-declared consumer name. It identifies the
+	// handler - in diagnostics and in a transport's own bookkeeping - and
+	// nothing on the broker depends on it.
+	Consumer string
+	// Group is the broker identity: the Kafka consumer group, the NATS
+	// queue group. Subscriptions sharing a group divide the stream
+	// between them, so a group is the unit of scaling and of failure
+	// isolation - not of ordering, which no transport here gives across
+	// contracts.
+	//
+	// On a transport that remembers a position per group - Kafka, and
+	// JetStream - the name is also where those consumers resume, and one
+	// the broker has never seen has no position at all: if it has an
+	// offset, write the name down. Core NATS keeps no position, so there
+	// the name only decides who competes for a message.
+	//
+	// Empty falls back to Consumer, so a hand-written Subscription keeps
+	// the behaviour it had.
+	Group string
+	// Handle processes one message. [Bus.Subscribe] wraps it so a panic
+	// becomes a [*PanicError] the transport sees as an ordinary handler
+	// error, instead of ending the process.
+	Handle Handler
+}
+
+// GroupName returns the broker identity every transport keys on: Group,
+// or Consumer when a hand-written Subscription leaves Group empty.
+func (s Subscription) GroupName() string {
+	if s.Group != "" {
+		return s.Group
+	}
+	return s.Consumer
+}
+
+// Bus binds a transport to a codec. Generated publishers and consumer
+// registrations take a *Bus and nothing else.
+//
+// A Bus is safe for concurrent use once constructed: every field is set
+// in [New] and never written again.
+type Bus struct {
+	pub Publisher
+	sub Subscriber
+
+	chain    Chain
+	required []Disposition
+
+	codec    Codec
+	perEvent map[string]Codec
+}
+
+// Option configures a Bus at construction time.
+type Option func(*Bus)
+
+// WithPublisher installs the publish half of the transport.
+func WithPublisher(p Publisher) Option { return func(b *Bus) { b.pub = p } }
+
+// WithSubscriber installs the subscribe half of the transport.
+func WithSubscriber(s Subscriber) Option { return func(b *Bus) { b.sub = s } }
+
+// WithTransport installs a value that is both halves.
+func WithTransport(t interface {
+	Publisher
+	Subscriber
+}) Option {
+	return func(b *Bus) { b.pub, b.sub = t, t }
+}
+
+// WithCodec sets the codec every contract uses unless [WithCodecFor]
+// overrides it. There is no default - a Bus built without one fails
+// rather than picking an encoding.
+func WithCodec(c Codec) Option { return func(b *Bus) { b.codec = c } }
+
+// WithMiddleware installs the chain every subscription registered through
+// this bus is wrapped in, outermost first. This does not give the Bus a
+// new concern: [Bus.Subscribe] already applies exactly one middleware, the
+// panic recover, and this generalises that into a configurable list.
+//
+// The bus is the seam because it is the only thing every subscription
+// passes through - a generated SubscribeAll, a hand-built
+// `Subscriptions(bus, h)` slice, and one built against another design's
+// contracts all reach the broker through [Bus.Subscribe]. A chain applied
+// anywhere narrower would silently miss the ones it cannot see.
+//
+// Each middleware is handed the [Subscription] it wraps, so one chain can
+// read the contract, the consumer and the group it is running for. A
+// project wanting two different chains builds two buses.
+func WithMiddleware(mws ...Middleware) Option {
+	return func(b *Bus) { b.chain = b.chain.Append(mws...) }
+}
+
+// WithCodecFor overrides the codec for one contract.
+func WithCodecFor(event string, c Codec) Option {
+	return func(b *Bus) {
+		if b.perEvent == nil {
+			b.perEvent = map[string]Codec{}
+		}
+		b.perEvent[event] = c
+	}
+}
+
+// New returns a Bus configured by opts.
+func New(opts ...Option) *Bus {
+	b := &Bus{}
+	for _, o := range opts {
+		o(b)
+	}
+	return b
+}
+
+// ErrNoCodec is returned when no codec is configured for a contract.
+var ErrNoCodec = errors.New("events: no codec configured")
+
+// ErrNoPublisher is returned by Publish on a Bus with no publish half.
+var ErrNoPublisher = errors.New("events: no publisher configured")
+
+// ErrNoSubscriber is returned by Subscribe on a Bus with no subscribe half.
+var ErrNoSubscriber = errors.New("events: no subscriber configured")
+
+// CodecFor returns the codec in effect for event.
+func (b *Bus) CodecFor(event string) (Codec, error) {
+	if c, ok := b.perEvent[event]; ok && c != nil {
+		return c, nil
+	}
+	if b.codec == nil {
+		return nil, fmt.Errorf("%w for %q", ErrNoCodec, event)
+	}
+	return b.codec, nil
+}
+
+// Publish encodes payload with the contract's codec and hands the
+// envelope to the transport. Application code calls the generated typed
+// publisher instead; this is the path for a contract the design declares
+// but does not publish, which has no generated publisher.
+//
+// opts fill in everything beside the payload - the ordering key, a
+// deduplication ID, headers, one adapter's own options:
+//
+//	bus.Publish(ctx, orders.PlacedContract, payload,
+//	    events.WithKey(string(payload.OrderID)),
+//	    events.WithHeader("trace-parent", tp))
+func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error {
+	if b == nil || b.pub == nil {
+		return ErrNoPublisher
+	}
+	env := Envelope{Event: event, Payload: payload}
+	env.Apply(opts...)
+	msg, err := b.encode(env)
+	if err != nil {
+		return err
+	}
+	return b.pub.Publish(ctx, msg)
+}
+
+// PartialPublishError reports a batch that stopped partway. Sent counts
+// the messages already on the wire, so a caller retrying the rest sends
+// its own batch from that offset rather than replaying what was
+// delivered.
+type PartialPublishError struct {
+	// Sent is how many envelopes were published before the failure.
+	Sent int
+	// Event is the contract whose publish failed.
+	Event string
+	Err   error
+}
+
+func (e *PartialPublishError) Error() string {
+	return fmt.Sprintf("events: publish %s (%d already sent): %v", e.Event, e.Sent, e.Err)
+}
+
+func (e *PartialPublishError) Unwrap() error { return e.Err }
+
+// PublishAll encodes every envelope and hands the batch to the transport
+// in one call when it implements [BatchPublisher], otherwise one message
+// at a time in order. Encoding is done up front, so a payload that cannot
+// be encoded fails before anything is sent.
+//
+// It is not atomic: with a transport that publishes one at a time, an
+// error partway through leaves the earlier messages sent and returns a
+// [*PartialPublishError] naming how many, so a caller can retry the tail
+// instead of replaying the batch.
+func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
+	if len(envs) == 0 {
+		return nil
+	}
+	if b == nil || b.pub == nil {
+		return ErrNoPublisher
+	}
+	msgs := make([]*Message, 0, len(envs))
+	for i, env := range envs {
+		if env.Event == "" {
+			return fmt.Errorf("events: envelope %d has no contract name", i)
+		}
+		msg, err := b.encode(env)
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, msg)
+	}
+	if batch, ok := b.pub.(BatchPublisher); ok {
+		return batch.PublishBatch(ctx, msgs)
+	}
+	for i, msg := range msgs {
+		if err := b.pub.Publish(ctx, msg); err != nil {
+			return &PartialPublishError{Sent: i, Event: msg.Event, Err: err}
+		}
+	}
+	return nil
+}
+
+// encode resolves the contract's codec and builds the wire envelope,
+// merging the caller's metadata under the codec stamp. A reserved key
+// belongs to the runtime or to a transport, so a caller's entry under one
+// is dropped rather than carried - see [IsReservedMeta].
+//
+// The adapter options are checked here so a bad one fails before any
+// message is on the wire, the same way an unencodable payload does.
+func (b *Bus) encode(env Envelope) (*Message, error) {
+	if err := b.checkAdapterOptions(env); err != nil {
+		return nil, err
+	}
+	codec, err := b.CodecFor(env.Event)
+	if err != nil {
+		return nil, err
+	}
+	data, err := codec.Marshal(env.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("events: encode %s: %w", env.Event, err)
+	}
+	meta := make(map[string]string, len(env.Metadata)+1)
+	for k, v := range env.Metadata {
+		if IsReservedMeta(k) {
+			continue
+		}
+		meta[k] = v
+	}
+	meta[MetaCodec] = codec.Name()
+	return &Message{
+		Event:          env.Event,
+		Key:            env.Key,
+		DedupID:        env.DedupID,
+		Payload:        data,
+		Metadata:       meta,
+		AdapterOptions: env.AdapterOptions,
+	}, nil
+}
+
+// PanicError is what a handler that panicked returns to the transport.
+// The same message runs the same code and panics again, so a chain that
+// decides what to do with a failure can treat one as its own case:
+// `errors.As(err, &panicked)`.
+type PanicError struct {
+	// Event is the contract being delivered, Consumer the handler that
+	// panicked and Group its broker identity - together they name the
+	// subscription an operator has to find.
+	Event    string
+	Consumer string
+	Group    string
+	// Value is what the handler passed to panic.
+	Value any
+	// Stack is the trace captured where the panic fired, as
+	// [runtime/debug.Stack] renders it. Error() does not carry it: log it
+	// as its own field, the way pkg/server's Recovery middleware logs the
+	// HTTP side's.
+	Stack []byte
+}
+
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("events: panic in consumer %q (group %q, contract %q): %v",
+		e.Consumer, e.Group, e.Event, e.Value)
+}
+
+// Unwrap returns the panic value when the handler panicked with an error,
+// so errors.Is and errors.As reach it. A panic with anything else unwraps
+// to nil.
+func (e *PanicError) Unwrap() error {
+	err, _ := e.Value.(error)
+	return err
+}
+
+// decorated is the handler the transport receives: the subscription's own,
+// wrapped in a recover, the configured middleware, and a second recover.
+// The deferred recover only works on the goroutine that runs the handler,
+// which is one a transport spawns - so the wrappers go on the handler
+// itself and not around any Subscribe call.
+//
+// Recovery sits on BOTH sides of the chain, and the order is the point.
+// The inner one turns a panicking handler into a [*PanicError] the chain
+// observes as an ordinary error, so a project's logging middleware sees
+// the failure it most needs to. The outer one catches a panic in the chain
+// itself, which the inner one sits beneath and can never see.
+//
+// Only one [*PanicError] is ever built per panic: once the inner recover
+// catches, no panic is in flight, so the outer recover returns nil and
+// passes the error through untouched. A bus with no middleware installs
+// the inner one alone, which is the wrap this function has always applied.
+func (b *Bus) decorated(sub Subscription) Handler {
+	if sub.Handle == nil {
+		return nil
+	}
+	h := recoverHandler(sub, reachHandler(sub.Handle))
+	if len(b.chain) == 0 {
+		return h
+	}
+	return recoverHandler(sub, b.chain.wrap(sub, h))
+}
+
+// reachHandler marks the delivery as having entered the subscription's own
+// handler, so a middleware can tell a message that failed from a chain
+// that broke before reaching it.
+//
+// The mark goes on before the call, so a handler that panics still counts
+// as reached. Nothing here forms a verdict from it: a middleware writes
+// the policy.
+func reachHandler(h Handler) Handler {
+	return func(ctx context.Context, msg *Message) error {
+		if msg != nil {
+			msg.reached = true
+		}
+		return h(ctx, msg)
+	}
+}
+
+// recoverHandler wraps h so a panic becomes a [*PanicError] naming sub.
+// It is the only place one is built.
+//
+// A middleware cannot see a panic raised by a middleware BELOW it: that
+// panic unwinds its own frame and only a recover outside it catches. Put
+// [Recover] between two middlewares to change that. A panicking handler is
+// not affected - the wrap below the chain already turns one into an error.
+func recoverHandler(sub Subscription, h Handler) Handler {
+	event, consumer, group := sub.Event, sub.Consumer, sub.GroupName()
+	return func(ctx context.Context, msg *Message) (err error) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			err = &PanicError{
+				Event:    event,
+				Consumer: consumer,
+				Group:    group,
+				Value:    r,
+				Stack:    debug.Stack(),
+			}
+			// A frame that panicked did not finish deciding, so what it
+			// asked for is void. Unset rather than settle: a middleware
+			// above it still decides.
+			if msg != nil {
+				msg.disposition = DispositionUnset
+			}
+		}()
+		return h(ctx, msg)
+	}
+}
+
+// Subscribe registers sub with the transport, its handler wrapped in a
+// recover and in any middleware [WithMiddleware] installed. Every
+// transport inherits both, craftgo's three and any adapter written
+// elsewhere, because the wrap happens before the subscription is handed
+// over.
+//
+// A recovered panic is returned as a [*PanicError], which is the error
+// the transport's own handler sees; delivery continues with the next
+// message.
+//
+// It also refuses here rather than at the first message when the
+// transport cannot honour a disposition [WithDispositionRequired] named -
+// see [ErrDispositionUnsupported].
+func (b *Bus) Subscribe(ctx context.Context, sub Subscription) error {
+	if b.sub == nil {
+		return ErrNoSubscriber
+	}
+	if _, err := b.CodecFor(sub.Event); err != nil {
+		return err
+	}
+	if err := b.requireDispositions(); err != nil {
+		return err
+	}
+	sub.Handle = b.decorated(sub)
+	return b.sub.Subscribe(ctx, sub)
+}
+
+// SubscribeAll registers every subscription, in group, contract then
+// consumer order. The first failure stops the run; subscriptions already
+// made stay live until ctx is cancelled.
+//
+// Group leads the key because it is the identity a transport can refuse a
+// second claim on, so it decides which of two colliding subscriptions
+// registers first. Contract and consumer complete the order: two services
+// may name a consumer alike, and an order that is not total would move
+// the refusal between runs.
+func (b *Bus) SubscribeAll(ctx context.Context, subs []Subscription) error {
+	ordered := make([]Subscription, len(subs))
+	copy(ordered, subs)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].GroupName() != ordered[j].GroupName() {
+			return ordered[i].GroupName() < ordered[j].GroupName()
+		}
+		if ordered[i].Event != ordered[j].Event {
+			return ordered[i].Event < ordered[j].Event
+		}
+		return ordered[i].Consumer < ordered[j].Consumer
+	})
+	for _, sub := range ordered {
+		if err := b.Subscribe(ctx, sub); err != nil {
+			return fmt.Errorf("events: subscribe %s/%s in group %s: %w", sub.Event, sub.Consumer, sub.GroupName(), err)
+		}
+	}
+	return nil
+}
+
+// Decode fills v from msg using the contract's codec. A message stamped
+// with a different codec is rejected rather than decoded.
+func (b *Bus) Decode(msg *Message, v any) error {
+	codec, err := b.CodecFor(msg.Event)
+	if err != nil {
+		return err
+	}
+	if got := msg.Metadata[MetaCodec]; got != "" && got != codec.Name() {
+		return fmt.Errorf("events: %s encoded with codec %q, consumer is configured for %q", msg.Event, got, codec.Name())
+	}
+	if err := codec.Unmarshal(msg.Payload, v); err != nil {
+		return fmt.Errorf("events: decode %s: %w", msg.Event, err)
+	}
+	return nil
+}

@@ -90,6 +90,12 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 				// type-compat pass tolerates unknown spellings on
 				// purpose so future primitive additions don't break
 				// projects that pulled them in via dependencies.
+			case *ast.EventDecl:
+				// A contract declared at file level still names a payload
+				// type, and it resolves exactly like one inside a service.
+				if v.Payload != nil && v.Payload.Type != nil {
+					a.checkLocalNamedRef(v.Payload.Type, nil, imports)
+				}
 			case *ast.ServiceDecl:
 				for _, m := range v.Methods() {
 					if m.Request != nil {
@@ -97,6 +103,14 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 					}
 					if m.Response != nil && m.Response.Type != nil {
 						a.checkLocalNamedRef(m.Response.Type, nil, imports)
+					}
+				}
+				// An event's payload is a type reference; a consumer's
+				// `event` clause names an event, which lives in its own
+				// namespace and resolves in checkEventRefs.
+				for _, e := range v.Events() {
+					if e.Payload != nil && e.Payload.Type != nil {
+						a.checkLocalNamedRef(e.Payload.Type, nil, imports)
 					}
 				}
 			}

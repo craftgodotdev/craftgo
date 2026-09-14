@@ -304,6 +304,57 @@ func (v *Task) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on TaskCreated.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *TaskCreated) Validate() error {
+	if err := v.TaskID.Validate(); err != nil {
+		return fmt.Errorf("taskId: %w", err)
+	}
+	if err := v.ProjectID.Validate(); err != nil {
+		return fmt.Errorf("projectId: %w", err)
+	}
+	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
+		return fmt.Errorf("title: length out of range [1, 200]")
+	}
+	if v.Priority == 0 {
+		return fmt.Errorf("priority: required")
+	}
+	if err := v.Priority.Validate(); err != nil {
+		return fmt.Errorf("priority: %w", err)
+	}
+	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
+		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on TaskStatusChanged.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *TaskStatusChanged) Validate() error {
+	if err := v.TaskID.Validate(); err != nil {
+		return fmt.Errorf("taskId: %w", err)
+	}
+	if err := v.ProjectID.Validate(); err != nil {
+		return fmt.Errorf("projectId: %w", err)
+	}
+	if v.From == "" {
+		return fmt.Errorf("from: required")
+	}
+	if err := v.From.Validate(); err != nil {
+		return fmt.Errorf("from: %w", err)
+	}
+	if v.To == "" {
+		return fmt.Errorf("to: required")
+	}
+	if err := v.To.Validate(); err != nil {
+		return fmt.Errorf("to: %w", err)
+	}
+	if _, _err := time.Parse(time.RFC3339, v.ChangedAt); _err != nil {
+		return fmt.Errorf("changedAt: not a valid RFC 3339 datetime")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Priority.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v Priority) Validate() error {

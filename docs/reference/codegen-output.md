@@ -23,9 +23,14 @@ internal/
 │   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
-│   └── <method>.go              http.HandlerFunc per method
+│   ├── <method>.go              http.HandlerFunc per method
+│   └── <consumer>.go            events.Subscription per consumer
 ├── service/<svc>/               GEN-ONCE - your business logic
-│   └── <method>.go              the stub you fill in
+│   ├── <method>.go              the stub you fill in
+│   └── <consumer>.go            the consumer stub you fill in
+├── events/                      REGEN - only when the design declares events
+│   ├── events.go                umbrella RegisterAll over every consumer
+│   └── <svc>/publisher.go       typed publisher per publishing service
 ├── routes/
 │   ├── routes.go                REGEN - umbrella RegisterRoutes
 │   └── <svc>/routes.go          REGEN - per-service registration
@@ -34,7 +39,8 @@ internal/
 
 svccontext/
 ├── svccontext.go                GEN-ONCE - your dependency container
-└── middlewares.go               REGEN - typed middleware fields
+├── middlewares.go               REGEN - typed middleware fields
+└── events.go                    REGEN - typed publishers (events only)
 
 config/                          GEN-ONCE - runtime config loader
 ├── config.go
@@ -42,6 +48,7 @@ config/                          GEN-ONCE - runtime config loader
 └── example.config.yaml
 
 docs/openapi.yaml                REGEN - OpenAPI 3.1 spec
+docs/asyncapi.yaml               REGEN - AsyncAPI 3.0 projection (events only)
 main.go                          GEN-ONCE - wired entry point
 ```
 
@@ -117,6 +124,40 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 ### `main.go` (gen-once)
 
 Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. Yours to customize - add a flag, change the listen address, register an extra middleware.
+
+### `events/<svc>/publisher.go` (regen)
+
+One `Publisher` per service that declares an `event`, with a
+`Publish<Event>(ctx, payload)` method per contract and a `<Event>Contract`
+constant holding its wire identity. `svccontext/events.go` binds them all to a
+bus. See the [Events guide](/guide/events).
+
+### `events/<svc>/consumers.go` (regen)
+
+The `Consumers` interface a consuming service asks for - one method per
+`consume` declaration - and `Subscriptions(bus, h)`, which builds one
+`events.Subscription` per contract. The subscription decodes the payload with
+the bus codec and runs its `Validate()` before calling a handler, the
+event-side counterpart of the HTTP handler's bind-then-validate. It imports
+only the event runtime and the payload types, so the contract output stays
+importable on its own.
+
+### `transport/<svc>_consumers.go` (regen)
+
+One `<Svc>Consumers` per consuming service, at the ROOT of the transport
+output, with a `New<Svc>Consumers(svcCtx)` constructor and one method per
+`consume` forwarding the payload to the logic stub. It is what satisfies the
+interface above, so decode-and-validate is spelled once, in the contract.
+
+It sits at the root rather than under the service's `@group` because `@group`
+may be declared per `extend service` block: one service's consumers can land
+in two logic packages while the contract declares a single interface for all
+of them.
+
+### `service/<svc>/<consumer>.go` (gen-once)
+
+The consumer logic stub, next to the method stubs because it is service logic:
+`func (l *<Consumer>Consumer) <Consumer>(payload *types.X) error`.
 
 ## Drift safety
 
