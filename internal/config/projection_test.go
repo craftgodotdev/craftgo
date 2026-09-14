@@ -278,3 +278,28 @@ func TestProjectionRejectsAMissingProjectRoot(t *testing.T) {
 		t.Errorf("want a design.root rejection, got: %v", err)
 	}
 }
+
+// A manifest written by a tool, or one pointing at a design outside its
+// own tree, gives the paths absolute. They name the folder itself; only
+// a relative path is read from the manifest's own folder.
+func TestProjectionAcceptsAbsoluteDesignPaths(t *testing.T) {
+	dir := t.TempDir()
+	source(t, dir, "contracts/design", "")
+	relative, err := Load(manifestAt(t, dir, "services/relative/design",
+		"design:\n  from: ../../../contracts/design\n  root: ../../../contracts\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute, err := Load(manifestAt(t, dir, "services/absolute/design",
+		"design:\n  from: "+filepath.ToSlash(filepath.Join(dir, "contracts", "design"))+
+			"\n  root: "+filepath.ToSlash(filepath.Join(dir, "contracts"))+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absolute.SourceDesign != relative.SourceDesign {
+		t.Errorf("design source = %q, want %q", absolute.SourceDesign, relative.SourceDesign)
+	}
+	if absolute.Library.Root != relative.Library.Root {
+		t.Errorf("library root = %q, want %q", absolute.Library.Root, relative.Library.Root)
+	}
+}

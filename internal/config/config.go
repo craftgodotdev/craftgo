@@ -75,7 +75,8 @@ type Config struct {
 // manifest that names one is a PROJECTION of a design it does not
 // contain, and several projections may share a single source.
 //
-// Both paths are relative to the folder holding the manifest.
+// Both paths are relative to the folder holding the manifest, or
+// absolute.
 type Design struct {
 	// From is the folder holding the `.craftgo` files.
 	From string `yaml:"from"`

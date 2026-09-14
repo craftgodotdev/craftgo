@@ -174,7 +174,7 @@ output:
     - eventsubs.AnalyticsService
 ```
 
-Both paths are relative to the folder holding this manifest, and both are required. `root` is the project root the design source itself is generated with - the `-c` of its own `craftgo gen` - which craftgo cannot read off the folder: a design at `contracts/upstream/design` may be generated with `contracts` as its root as readily as with `contracts/upstream`, and a wrong guess produces an import path that does not exist. A projection holds no `.craftgo` files of its own; a manifest that both names a source and holds a design is rejected rather than merged.
+Both paths are relative to the folder holding this manifest, or absolute, and both are required. `root` is the project root the design source itself is generated with - the `-c` of its own `craftgo gen` - which craftgo cannot read off the folder: a design at `contracts/upstream/design` may be generated with `contracts` as its root as readily as with `contracts/upstream`, and a wrong guess produces an import path that does not exist. A projection holds no `.craftgo` files of its own; a manifest that both names a source and holds a design is rejected rather than merged.
 
 Generate it against the deployable's own project root:
 

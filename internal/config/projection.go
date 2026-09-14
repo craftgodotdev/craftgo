@@ -26,7 +26,8 @@ var sourceOwnedKeys = []struct {
 // resolveDesignSource turns `design.from` / `design.root` into the
 // absolute paths the rest of craftgo reads, and folds the source
 // manifest's contract half into this one. manifestDir is the folder
-// holding the manifest being loaded, which both paths are relative to.
+// holding the manifest being loaded, which both paths are relative to
+// unless they are absolute.
 //
 // A manifest with no `design.from` is left untouched: its design sits
 // beside it, and it owns every key itself.
@@ -37,7 +38,7 @@ func (c *Config) resolveDesignSource(manifestDir string, loading []string) error
 		}
 		return nil
 	}
-	source, err := filepath.Abs(filepath.Join(manifestDir, filepath.FromSlash(c.Design.From)))
+	source, err := underManifest(manifestDir, c.Design.From)
 	if err != nil {
 		return err
 	}
@@ -56,7 +57,7 @@ func (c *Config) resolveDesignSource(manifestDir string, loading []string) error
 	if c.Design.Root == "" {
 		return fmt.Errorf("design.root is required beside design.from - it is the project root the design source is generated with (`craftgo gen -c <root>`), which craftgo cannot read off the folder")
 	}
-	root, err := filepath.Abs(filepath.Join(manifestDir, filepath.FromSlash(c.Design.Root)))
+	root, err := underManifest(manifestDir, c.Design.Root)
 	if err != nil {
 		return err
 	}
@@ -84,6 +85,16 @@ func (c *Config) resolveDesignSource(manifestDir string, loading []string) error
 	c.Library.Root = root
 	c.inherit(src)
 	return nil
+}
+
+// underManifest resolves a `design.*` path: one written absolute names
+// the folder itself, one written relative names it from the folder
+// holding the manifest.
+func underManifest(manifestDir, p string) (string, error) {
+	if p = filepath.FromSlash(p); !filepath.IsAbs(p) {
+		p = filepath.Join(manifestDir, p)
+	}
+	return filepath.Abs(p)
 }
 
 // inherit takes the contract half from the design source: where the

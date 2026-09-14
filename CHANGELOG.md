@@ -989,6 +989,9 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`@security` scheme names are listed in a stable order** in the
   `decorator/ref` message.
 
+- **An absolute `design.from` or `design.root` is read as the path it is**,
+  instead of being appended to the folder holding the manifest.
+
 
 ### Removed
 

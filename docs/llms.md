@@ -572,7 +572,7 @@ The Go module path is **not** in this file. craftgo reads it from `go.mod` at ge
 A manifest naming `design.from` is a **projection**: it generates from a design folder it does not contain, so an API, a consumer and a cronjob build from one design instead of each copying it. Generate it with the deployable's own root: `craftgo gen -f services/notifier/design -c services/notifier`.
 
 - The projection holds no `.craftgo` files; a manifest that both names a source and holds a design is rejected.
-- `design.root` is required beside `design.from`. It is the source design's own `-c`, which craftgo cannot infer: `contracts/upstream/design` may be generated with `contracts` as its root as readily as with `contracts/upstream`, and guessing produces an import that does not exist.
+- `design.root` is required beside `design.from`. It is the source design's own `-c`, which craftgo cannot infer: `contracts/upstream/design` may be generated with `contracts` as its root as readily as with `contracts/upstream`, and guessing produces an import that does not exist. Both paths are relative to the folder holding the manifest, or absolute.
 - `output.types`, `events.targets` and `output.fileCase` come from the source manifest and resolve against `design.root`, so every deployable writes one shared contract half, imported under that root's module path. Stating them in a projection is rejected.
 - `openapi.*` keys the projection does not state are inherited, `securitySchemes` included - the shared design's `@security(...)` references resolve against them.
 - Everything else (`transport`, `routes`, `service`, `wiring`, `middleware`, `config`, `svccontext`, `main`, documents) is the deployable's, against its own project root.
