@@ -692,6 +692,37 @@ delivery whatever its outcome, so it would give up on a message three crashed
 consumers merely handed on, and it lives on the durable - where the last
 subscriber to start would set it for every other member of the group.
 
+`PublishAll` on JetStream publishes the whole batch, then waits for every
+acknowledgement. The context decides whether the batch is **published**, not
+what its outcome is: one already cancelled refuses the call and puts nothing on
+the wire, and one cancelled after that does not cut the wait short. It cannot -
+by then every message is on the wire, and giving up would name messages the
+stream has stored as unsent, which the caller retries and so publishes twice.
+
+`nats.WithPublishAckTimeout` bounds that wait instead, and an acknowledgement
+that never arrives fails its own message. The default is 30s, and the same
+number bounds a synchronous `Publish` that arrives without a deadline of its
+own.
+
+```go
+nats.NewJetStream(conn, nats.WithPublishAckTimeout(30*time.Second))
+```
+
+Choosing it is a trade in one direction only. Too short and it fires on a
+message the stream *did* store, reporting it unsent so you republish it - the
+duplicate the rest of this is about. `DedupID` travels as `Nats-Msg-Id`, so a
+stream with a duplicate window discards that retry; the server's default window
+is 2 minutes and the 30s default sits well inside it. Too long and the retry
+falls outside the window, where nothing deduplicates it - so keep this shorter
+than the duplicate window of the streams you publish to. Zero means the wait
+never ends by itself, and a negative value is refused.
+
+`Close` is the other way out. It ends every publish still waiting, reporting
+their messages unsent and wrapping `nats.ErrClosed`, and refuses one that starts
+afterwards. Those messages may well be on the stream - the transport simply
+cannot learn it any more. It does not drain in-flight acknowledgements first, so
+publish before you close.
+
 ::: warning You provision the stream; craftgo never does
 craftgo does not create streams and could not correctly: one stream covering
 `orders.>` spans contracts any single subscription knows nothing about, and

@@ -763,6 +763,51 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A JetStream batch is no longer reported unsent because the caller's context
+  ended.** `PublishBatch` raced every acknowledgement against `ctx.Done()`, and
+  the client's `PublishMsgAsync` takes no context - so a context that ended once
+  the batch was on the wire left every message stored on the stream and every
+  one of them named in `Unsent`. A caller following the retry loop this guide
+  documents published the whole batch a second time: three envelopes in, six
+  messages on the stream. A cancellation could also overtake an acknowledgement
+  already in hand, because `select` picks at random among ready cases - two
+  identical 3000-message calls, against a stream holding all 3000 both times,
+  reported 1082 and 633 unsent. The context now decides whether the batch is
+  published, and never what its outcome is: one already cancelled refuses the
+  call and puts nothing on the wire, the way `Publish` already did, and one
+  cancelled after that does not cut the wait short. `nats.WithPublishAckTimeout`
+  bounds that wait instead, default 30s, resolving an unanswered publish as that
+  message's own error. It is deliberately far longer than a healthy ack: a
+  timeout that fires on a message the stream did store reports it unsent, which
+  is the duplicate the whole fix is about.
+
+  A publish the client refuses now stops the batch without claiming the messages
+  ahead of it landed. Those are still in flight and still owed an
+  acknowledgement, and calling them sent lost exactly the ones that never
+  arrived - the understated `Unsent` nothing downstream can detect. They are
+  waited for, and the report names every message that did not reach the stream.
+
+  **`JetStream.Close` now ends publishes as well as subscriptions**, which
+  widens what the method means. A publish still waiting returns a
+  `*events.PartialPublishError` naming its messages unsent and wrapping
+  `nats.ErrClosed`, and one that starts after `Close` is refused before anything
+  reaches the broker. Without the second half a batch entered during shutdown
+  would be handed over in full and then named entirely unsent on the first turn
+  of the wait. `Close` does **not** drain acknowledgements already in flight
+  first: publish, then close. A drain would be a separate method, not a mode of
+  this one.
+
+  `nats.WithPublishAckTimeout` bounds the synchronous `Publish` as well, through
+  the client's default timeout. The two were 5s and 30s for the same message to
+  the same broker, and nothing craftgo exposed moved the 5s. Zero now means the
+  wait never ends by itself - `Close` is the only way out of it - and a negative
+  value is refused at construction rather than behaving as zero. On choosing a
+  value: `DedupID` travels as `Nats-Msg-Id`, so a timeout that fires on a
+  message the stream did store is deduplicated on retry by a stream with a
+  duplicate window - the server's default is 2 minutes, and the 30s default sits
+  inside it. Longer than that window and the retry lands outside it, where
+  nothing deduplicates it.
+
 - **`memory.Transport.Drain()` is safe to call while another goroutine
   publishes.** It joined on a `sync.WaitGroup` that `Publish` counted into from
   the CALLER's goroutine, which is the one thing a WaitGroup forbids - so a

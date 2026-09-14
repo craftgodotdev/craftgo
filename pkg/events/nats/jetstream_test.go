@@ -637,3 +637,328 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 		t.Errorf("the report does not carry the message it is about: %v", keys)
 	}
 }
+
+// storedIn is how many messages a stream actually holds.
+func storedIn(t *testing.T, conn *natsclient.Conn, name string) uint64 {
+	t.Helper()
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	st, err := js.Stream(ctx, name)
+	if err != nil {
+		t.Fatalf("stream %s: %v", name, err)
+	}
+	info, err := st.Info(ctx)
+	if err != nil {
+		t.Fatalf("stream info: %v", err)
+	}
+	return info.State.Msgs
+}
+
+// A context already cancelled sends nothing, and says so as a plain error
+// rather than a partial report.
+//
+// The async publish takes no context, so a batch that got as far as the
+// publish loop would be stored in full and then reported unsent - and a
+// caller retrying what it was told never went out publishes the whole
+// batch a second time.
+func TestPublishBatchRefusesAnAlreadyCancelledContext(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{}`)},
+		{Event: "orders.Paid", Payload: []byte(`{}`)},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := tr.PublishBatch(ctx, msgs)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	var partial *events.PartialPublishError
+	if errors.As(err, &partial) {
+		t.Errorf("err is a partial report (%v), but nothing was published", partial)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+		t.Errorf("stream holds %d messages, want 0 - a refused batch must not reach the wire", n)
+	}
+}
+
+// A cancellation arriving once the batch is on the wire does not cut the
+// wait short: every message is still waited for and reported by its own
+// acknowledgement.
+//
+// The subject mapping cancels while the publish loop runs, so the context
+// is certainly done before the first wait begins.
+func TestACancellationAfterThePublishDoesNotAbandonTheAcks(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tr := jsTransport(t, conn, craftnats.WithJetStreamSubject(func(c string) string {
+		if c == "orders.Last" {
+			cancel()
+		}
+		return c
+	}))
+
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{}`)},
+		{Event: "orders.Paid", Payload: []byte(`{}`)},
+		{Event: "orders.Last", Payload: []byte(`{}`)},
+	}
+	if err := tr.PublishBatch(ctx, msgs); err != nil {
+		t.Fatalf("publish batch: %v - the stream stored these, so reporting them unsent duplicates them on retry", err)
+	}
+	if n := storedIn(t, conn, "ORDERS"); n != 3 {
+		t.Errorf("stream holds %d messages, want 3", n)
+	}
+}
+
+// A message the client refuses to publish stops the batch, and the ones
+// already in flight are still waited for rather than claimed as sent.
+//
+// Their acknowledgements are the only evidence they landed. Reporting
+// them sent without it loses exactly the ones that did not, and nothing
+// downstream can tell that happened.
+func TestPublishBatchDoesNotClaimAnUnwaitedMessageWasSent(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+
+	// The empty subject is one the client rejects outright, so the batch
+	// stops at index 1 while index 0 is still in flight - to a subject no
+	// stream carries, so it is never stored.
+	tr := jsTransport(t, conn, craftnats.WithJetStreamSubject(func(c string) string {
+		if c == "orders.Unroutable" {
+			return ""
+		}
+		return c
+	}))
+
+	msgs := []*events.Message{
+		{Event: "billing.One", Payload: []byte(`{}`)},
+		{Event: "orders.Unroutable", Payload: []byte(`{}`)},
+		{Event: "orders.Placed", Payload: []byte(`{}`)},
+	}
+	err := tr.PublishBatch(context.Background(), msgs)
+
+	var partial *events.PartialPublishError
+	if !errors.As(err, &partial) {
+		t.Fatalf("err = %T %v, want *PartialPublishError", err, err)
+	}
+	if len(partial.Unsent) != 3 {
+		t.Errorf("Unsent = %v, want all three - none of them is stored", partial.Unsent)
+	}
+	if partial.Sent != 0 {
+		t.Errorf("Sent = %d, want 0", partial.Sent)
+	}
+	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+		t.Errorf("stream holds %d messages, want 0", n)
+	}
+}
+
+// A batch fails only the messages no stream carries, and the ones around
+// them still land.
+//
+// This is why the report is built from a set of indices: a batch spans
+// contracts, contracts map to different subjects, and a failure in the
+// middle of one is not a tail.
+func TestAJetStreamBatchFailsOnlyTheMessagesNoStreamCarries(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{}`)},
+		{Event: "billing.One", Payload: []byte(`{}`)},
+		{Event: "orders.Paid", Payload: []byte(`{}`)},
+	}
+	err := tr.PublishBatch(context.Background(), msgs)
+
+	var partial *events.PartialPublishError
+	if !errors.As(err, &partial) {
+		t.Fatalf("err = %T %v, want *PartialPublishError", err, err)
+	}
+	if len(partial.Unsent) != 1 || partial.Unsent[0] != 1 {
+		t.Errorf("Unsent = %v, want [1] - the messages either side of it are stored", partial.Unsent)
+	}
+	if partial.Sent != 1 {
+		t.Errorf("Sent = %d, want 1", partial.Sent)
+	}
+	if n := storedIn(t, conn, "ORDERS"); n != 2 {
+		t.Errorf("stream holds %d messages, want 2", n)
+	}
+}
+
+// An acknowledgement that never arrives resolves as that message's own
+// error, so a stream that does not answer fails the batch instead of
+// holding the caller for ever. The caller's context is not the bound.
+//
+// The stream is configured not to acknowledge, which stores the message
+// and replies to nobody. The report calls it unsent even though it
+// landed: an outcome the adapter could not learn counts as unsent, and
+// this is what that costs.
+func TestPublishBatchGivesUpOnAnAcknowledgementThatNeverComes(t *testing.T) {
+	conn := runJetStreamServer(t)
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := js.CreateStream(ctx, jetstream.StreamConfig{
+		Name: "QUIET", Subjects: []string{"orders.>"}, NoAck: true,
+	}); err != nil {
+		t.Fatalf("create stream: %v", err)
+	}
+	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(500*time.Millisecond))
+
+	msgs := []*events.Message{{Event: "orders.Placed", Payload: []byte(`{}`)}}
+	done := make(chan error, 1)
+	go func() { done <- tr.PublishBatch(context.Background(), msgs) }()
+
+	select {
+	case err := <-done:
+		var partial *events.PartialPublishError
+		if !errors.As(err, &partial) {
+			t.Fatalf("err = %T %v, want *PartialPublishError", err, err)
+		}
+		if len(partial.Unsent) != 1 {
+			t.Errorf("Unsent = %v, want [0]", partial.Unsent)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("PublishBatch never returned - the ack timeout is the only bound on the wait")
+	}
+}
+
+// quietStream provisions a stream that stores messages and acknowledges
+// none of them, so a publish waits for a verdict that never comes.
+func quietStream(t *testing.T, conn *natsclient.Conn, name string, subjects ...string) {
+	t.Helper()
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := js.CreateStream(ctx, jetstream.StreamConfig{
+		Name: name, Subjects: subjects, NoAck: true,
+	}); err != nil {
+		t.Fatalf("create stream: %v", err)
+	}
+}
+
+// Close ends a publish that is waiting, rather than leaving it to run out
+// the ack timeout.
+//
+// Without this the only bound is [craftnats.WithPublishAckTimeout], so a
+// shutdown waits out a timeout chosen to be far longer than any healthy
+// ack - the caller is held long after the transport it is publishing
+// through has gone.
+func TestCloseEndsAPublishThatIsWaiting(t *testing.T) {
+	conn := runJetStreamServer(t)
+	quietStream(t, conn, "QUIET", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(60*time.Second))
+
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{}`)},
+		{Event: "orders.Paid", Payload: []byte(`{}`)},
+	}
+	done := make(chan error, 1)
+	started := time.Now()
+	go func() { done <- tr.PublishBatch(context.Background(), msgs) }()
+
+	time.Sleep(300 * time.Millisecond)
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if elapsed := time.Since(started); elapsed > 10*time.Second {
+			t.Errorf("the publish took %s to return - it waited out the ack timeout instead of the close", elapsed)
+		}
+		if !errors.Is(err, craftnats.ErrClosed) {
+			t.Fatalf("err = %v, want ErrClosed", err)
+		}
+		var partial *events.PartialPublishError
+		if !errors.As(err, &partial) {
+			t.Fatalf("err = %T %v, want *PartialPublishError", err, err)
+		}
+		if len(partial.Unsent) != 2 {
+			t.Errorf("Unsent = %v, want both - their verdicts can no longer arrive", partial.Unsent)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Close did not end the publish")
+	}
+}
+
+// A batch that starts after Close is refused, and reaches the broker not
+// at all.
+//
+// The wait alone would not be enough: every message would be handed over
+// first and then named unsent on the first turn of the loop, which is a
+// batch genuinely sent and entirely reported for retry.
+func TestPublishBatchAfterCloseSendsNothing(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{}`)},
+		{Event: "orders.Paid", Payload: []byte(`{}`)},
+	}
+	err := tr.PublishBatch(context.Background(), msgs)
+	if !errors.Is(err, craftnats.ErrClosed) {
+		t.Fatalf("err = %v, want ErrClosed", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+		t.Errorf("stream holds %d messages, want 0 - a refused batch must not reach the wire", n)
+	}
+}
+
+// A negative ack timeout is refused at construction. The client takes it
+// the way it takes zero - no timer at all - so it would wait for ever.
+func TestANegativePublishAckTimeoutIsRefused(t *testing.T) {
+	conn := runJetStreamServer(t)
+	_, err := craftnats.NewJetStream(conn, craftnats.WithPublishAckTimeout(-time.Second))
+	if err == nil {
+		t.Fatal("a negative ack timeout must be refused")
+	}
+	for _, want := range []string{"negative", "wait for ever"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// One number bounds both publish paths: the synchronous publish takes the
+// same deadline as the batch wait when the caller brings none of its own.
+func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
+	conn := runJetStreamServer(t)
+	quietStream(t, conn, "QUIET", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(700*time.Millisecond))
+
+	started := time.Now()
+	err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)})
+	elapsed := time.Since(started)
+	if err == nil {
+		t.Fatal("a publish nobody acknowledged must fail")
+	}
+	// The client's own default is 5s; this has to be the adapter's number.
+	if elapsed > 3*time.Second {
+		t.Errorf("publish took %s - it is bounded by the client's default, not WithPublishAckTimeout", elapsed)
+	}
+}

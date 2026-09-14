@@ -53,9 +53,16 @@ type JetStream struct {
 
 	probeTimeout  time.Duration
 	ackWait       time.Duration
+	ackTimeout    time.Duration
 	maxInFlight   int
 	maxDeliveries int
 	heartbeat     time.Duration
+
+	// closeCtx ends every wait this transport is running. It is a context
+	// rather than a channel so one publish can hand it to the client
+	// without a goroutine watching it.
+	closeCtx  context.Context
+	closeStop context.CancelFunc
 
 	mu        sync.Mutex
 	consuming []jetstream.ConsumeContext
@@ -92,6 +99,35 @@ func WithJetStreamErrorHandler(fn func(sub events.Subscription, msg *events.Mess
 // waiting.
 func WithProbeTimeout(d time.Duration) JetStreamOption {
 	return func(j *JetStream) { j.probeTimeout = d }
+}
+
+// WithPublishAckTimeout bounds how long this transport waits for the
+// stream's verdict on one message. Default 30s. A negative value is
+// refused by [NewJetStream].
+//
+// It is what makes the wait safe to run without the caller's context, and
+// it is load-bearing rather than a backstop: the client arms a per-message
+// timer only when this is above zero, and on a CLOSED connection it
+// resolves nothing by itself, so at zero a publish waiting for a broker
+// that will never answer waits for ever. Zero therefore means exactly
+// that, and [JetStream.Close] is the only way out of it.
+//
+// # Choosing a value
+//
+// Low enough and it fires on a message the stream DID store, which reports
+// it unsent and has the caller publish it a second time - the duplicate
+// this whole path exists to avoid. That is survivable for a message
+// carrying [events.Message.DedupID]: it travels as `Nats-Msg-Id`, and a
+// stream with a duplicate window discards the retry. The server's default
+// window is 2 minutes, so the 30s default sits inside it with room to
+// spare.
+//
+// High enough to pass that window and the retry lands outside it, where
+// nothing deduplicates it. Keep this shorter than the duplicate window of
+// the streams you publish to. It cannot be checked here - the window is
+// the stream's configuration, and this transport does not read it.
+func WithPublishAckTimeout(d time.Duration) JetStreamOption {
+	return func(j *JetStream) { j.ackTimeout = d }
 }
 
 // WithAckWait is how long the server waits for an answer before it
@@ -136,15 +172,11 @@ func WithMaxDeliveries(n int) JetStreamOption {
 // owns the connection's lifetime; [JetStream.Close] stops only this
 // transport's subscriptions.
 func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) {
-	js, err := jetstream.New(conn)
-	if err != nil {
-		return nil, fmt.Errorf("nats: jetstream: %w", err)
-	}
 	j := &JetStream{
-		js:            js,
 		subject:       func(c string) string { return c },
 		probeTimeout:  5 * time.Second,
 		ackWait:       30 * time.Second,
+		ackTimeout:    30 * time.Second,
 		maxInFlight:   64,
 		maxDeliveries: 5,
 		heartbeat:     0, // derived from ackWait at subscribe time
@@ -153,8 +185,33 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 	for _, o := range opts {
 		o(j)
 	}
+	if j.ackTimeout < 0 {
+		// The client takes a negative the way it takes zero - no timer at
+		// all - so a typed minus sign would wait for ever.
+		return nil, fmt.Errorf("nats: WithPublishAckTimeout(%s) is negative; use a positive duration, or zero to wait for ever", j.ackTimeout)
+	}
+
+	// The options are read before the client is built, because the ack
+	// timeout is the client's own. One number bounds both publish paths:
+	// the async timer the batch waits on, and the deadline the client
+	// applies to a synchronous publish that arrives without one.
+	clientOpts := []jetstream.JetStreamOpt{jetstream.WithPublishAsyncTimeout(j.ackTimeout)}
+	if j.ackTimeout > 0 {
+		clientOpts = append(clientOpts, jetstream.WithDefaultTimeout(j.ackTimeout))
+	}
+	js, err := jetstream.New(conn, clientOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("nats: jetstream: %w", err)
+	}
+	j.js = js
+	j.closeCtx, j.closeStop = context.WithCancel(context.Background())
 	return j, nil
 }
+
+// ErrClosed is what a publish reports when [JetStream.Close] has been
+// called: this transport is not waiting for a verdict it can no longer
+// receive.
+var ErrClosed = errors.New("transport closed")
 
 // AdapterName implements [events.OptionAware]. It is the same name the
 // core transport answers to: they are one adapter's two halves, and an
@@ -197,21 +254,59 @@ func (j *JetStream) Publish(ctx context.Context, msg *events.Message) error {
 // PublishBatch publishes the whole batch without waiting on each, then
 // waits for every acknowledgement. A failure names exactly which messages
 // the stream did not store.
+//
+// # What ctx controls
+//
+// Whether the batch is published, and not what its outcome is. A context
+// already cancelled refuses the whole call and puts nothing on the wire,
+// the way [JetStream.Publish] does. One cancelled AFTER that does not cut
+// the wait short.
+//
+// The refusal is this transport's own answer, not a duplicate of one: a
+// transport is exported, and published through directly as often as it is
+// reached through an [events.Bus].
+//
+// It cannot: the client's PublishMsgAsync takes no context, so by the
+// time there is anything to wait for, every message is already on the
+// wire and giving up saves no work. All that is left to do is learn each
+// outcome, and abandoning that reports messages the stream HAS stored as
+// unsent - which the caller retries, publishing every one of them twice.
+// The wait is bounded by [WithPublishAckTimeout] instead, which resolves
+// an unanswered publish as that message's own error, and it is ended by
+// [JetStream.Close], which is the transport saying it will not be
+// receiving verdicts at all.
 func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), err)
+	}
+	// Checked here and not only in the wait: a batch that starts after
+	// Close would be handed to the broker in full and then reported
+	// entirely unsent on the first turn of the wait, which is every
+	// message sent and every one of them named for retry.
+	if j.closeCtx.Err() != nil {
+		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), ErrClosed)
+	}
+
 	futures := make([]jetstream.PubAckFuture, 0, len(msgs))
-	for _, msg := range msgs {
+	var unsent []int
+	var firstErr error
+	for i, msg := range msgs {
 		f, err := j.js.PublishMsgAsync(encodeTo(j.subject(msg.Event), msg))
 		if err != nil {
-			// Nothing was handed over for this one and the ones before it
-			// are still in flight, so the honest report is that this and
-			// everything after it are unsent.
-			return events.UnsentFrom(len(futures), msgs, err)
+			// Nothing was handed over for this one, so it and everything
+			// after it are unsent. The ones before it are in flight and
+			// still owed an answer, which the wait below collects: their
+			// outcome is not known here and claiming they landed would
+			// lose exactly the ones that did not.
+			firstErr = err
+			for k := i; k < len(msgs); k++ {
+				unsent = append(unsent, k)
+			}
+			break
 		}
 		futures = append(futures, f)
 	}
 
-	var unsent []int
-	var firstErr error
 	for i, f := range futures {
 		select {
 		case <-f.Ok():
@@ -220,9 +315,13 @@ func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) er
 				firstErr = err
 			}
 			unsent = append(unsent, i)
-		case <-ctx.Done():
+		case <-j.closeCtx.Done():
+			// Not the caller's context by another name. A cancelled
+			// context says this CALLER stopped waiting, which says
+			// nothing about the message; Close says this TRANSPORT is
+			// gone, so no verdict can arrive here again.
 			if firstErr == nil {
-				firstErr = ctx.Err()
+				firstErr = ErrClosed
 			}
 			unsent = append(unsent, i)
 		}
@@ -481,9 +580,18 @@ func deliveryCount(m jetstream.Msg) int {
 	return int(meta.NumDelivered)
 }
 
-// Close stops every subscription this transport started. The connection
-// is left open.
+// Close stops every subscription this transport started, and ends every
+// publish waiting on a stream's verdict. The connection is left open.
+//
+// A publish still waiting returns a [*events.PartialPublishError] naming
+// its messages unsent and wrapping [ErrClosed], and one that starts after
+// Close is refused. Those messages may well have been stored - the
+// adapter simply cannot learn it any more, which is the same not-knowing
+// the ack timeout reports, answered the same way. In-flight
+// acknowledgements are not drained first: publish, then close.
 func (j *JetStream) Close() error {
+	j.closeStop()
+
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	for _, cc := range j.consuming {
