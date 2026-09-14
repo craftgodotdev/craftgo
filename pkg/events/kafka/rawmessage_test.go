@@ -75,7 +75,7 @@ func TestAKafkaMiddlewareOnAnotherTransportFailsLoudlyAtOnce(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
+	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {
 			mu.Lock()
@@ -84,7 +84,10 @@ func TestAKafkaMiddlewareOnAnotherTransportFailsLoudlyAtOnce(t *testing.T) {
 			return nil
 		},
 	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
 		Event: "orders.Placed", Payload: []byte(`{}`),

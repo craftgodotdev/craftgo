@@ -67,11 +67,14 @@ func deliver(t *testing.T, h slog.Handler, handler events.Handler, opts ...loggi
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
+	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "SendReceipt", Group: "receipts",
 		Handle: handler,
 	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
 		Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`),
@@ -142,10 +145,13 @@ func TestTheHandlersErrorIsPassedThrough(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
+	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return boom },
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bus.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	_ = tr.Publish(context.Background(), &events.Message{
@@ -182,10 +188,13 @@ func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
+	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bus.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	_ = tr.Publish(context.Background(), &events.Message{

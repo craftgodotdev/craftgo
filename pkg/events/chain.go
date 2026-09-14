@@ -51,9 +51,10 @@ func (c Chain) Append(mws ...Middleware) Chain {
 // The caller's slice is left alone, so the undecorated subscriptions stay
 // usable. An empty chain returns subs unchanged.
 //
-// A subscription carrying no handler is left alone too, the way
-// [Bus.Subscribe] leaves one unwrapped: wrapping it would turn an absent
-// handler into a live one that fails on every message.
+// A subscription carrying no handler is left alone: wrapping it would
+// turn an absent handler into a live one that fails on every message.
+// [Bus.Register] refuses one outright, so this only arises for a slice
+// the bus is not going to see.
 //
 // Most projects never call this - [WithMiddleware] puts a chain on the
 // bus, which covers every subscription registered through it rather than
@@ -88,7 +89,7 @@ func (c Chain) wrap(sub Subscription, h Handler) Handler {
 }
 
 // Recover turns a panic below it into a [*PanicError], the same error
-// [Bus.Subscribe]'s own recover produces.
+// [Bus.Start]'s own recover produces.
 //
 // A chain installed with [WithMiddleware] needs this nowhere: the bus
 // already recovers on both sides of it, so a panicking handler arrives at

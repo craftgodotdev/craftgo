@@ -84,14 +84,14 @@ func (m *Message) SetDeliveries(n int) { m.deliveries = n }
 // nothing else, so an adapter with no such mode needs no code here and
 // has no answer that can go stale.
 //
-// The answer must not change after construction. [Bus.Subscribe] reads it
+// The answer must not change after construction. [Bus.Register] reads it
 // once per subscription, so one that moved would make Redeliver work on
 // one message and not the next with nothing to notice it.
 type Dispositioner interface {
 	CanDisposition(d Disposition) bool
 }
 
-// ErrDispositionUnsupported is returned by [Bus.Subscribe] when the
+// ErrDispositionUnsupported is returned by [Bus.Register] when the
 // transport cannot honour a disposition [WithDispositionRequired] named.
 var ErrDispositionUnsupported = errors.New("events: transport cannot honour a required disposition")
 
@@ -101,14 +101,14 @@ var ErrDispositionUnsupported = errors.New("events: transport cannot honour a re
 // It is the difference between a delivery guarantee the design states and
 // one it hopes for: a chain that calls Redeliver on a transport that
 // settles instead loses every message it meant to retry, silently. The
-// refusal reaches a boot failure through the generated SubscribeAll.
+// refusal reaches a boot failure through [Bus.Register].
 func WithDispositionRequired(d Disposition) Option {
 	return func(b *Bus) { b.required = append(b.required, d) }
 }
 
 // requireDispositions applies [WithDispositionRequired] to the subscribe
-// half. The capability is read here rather than per message, so it is
-// fixed for the life of the subscription.
+// half. The capability is read at registration rather than per message,
+// so it is fixed for the life of the subscription.
 func (b *Bus) requireDispositions() error {
 	for _, d := range b.required {
 		if !canDisposition(b.sub, d) {

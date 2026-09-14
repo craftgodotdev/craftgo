@@ -60,10 +60,10 @@ func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			for _, c := range []string{contract, "orders.Cancelled", "catalog.PriceChanged"} {
-				if err := tr.Subscribe(ctx, events.Subscription{
-					Event: c, Consumer: "C", Group: "g-" + c,
+				if err := tr.Subscribe(ctx, []events.Subscription{{
+					Event: c, Consumer: "C", Group: events.Group("g-" + c),
 					Handle: func(context.Context, *events.Message) error { return nil },
-				}); err != nil {
+				}}); err != nil {
 					t.Fatalf("subscribe %s: %v", c, err)
 				}
 			}
@@ -102,10 +102,10 @@ func TestASubscriptionCancelledOnItsOwnClosesItsClient(t *testing.T) {
 	defer func() { _ = tr.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	time.Sleep(300 * time.Millisecond)

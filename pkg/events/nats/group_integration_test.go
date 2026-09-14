@@ -91,12 +91,16 @@ func TestOneGroupOverTwoContractsSharesOneDurableInStreamOrder(t *testing.T) {
 	got := &deliveries{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := bus.SubscribeAll(ctx, []events.Subscription{
+	for _, sub := range []events.Subscription{
 		{Event: "orders.Shipped", Consumer: "Dispatch", Group: "orders-worker", Handle: recording(got)},
 		{Event: "orders.Placed", Consumer: "Receipt", Group: "orders-worker", Handle: recording(got)},
-	})
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
+	} {
+		if err := bus.Register(sub); err != nil {
+			t.Fatalf("register: %v", err)
+		}
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 
 	cfg := consumerConfig(t, conn, "ORDERS", "orders-worker")
@@ -138,7 +142,7 @@ func TestAnExistingDurableKeepsItsPositionAndPolicy(t *testing.T) {
 	got := &deliveries{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := tr.SubscribeBatch(ctx, []events.Subscription{
+	err := tr.Subscribe(ctx, []events.Subscription{
 		{Event: "orders.Placed", Consumer: "A", Group: "late", Handle: recording(got)},
 		{Event: "orders.Shipped", Consumer: "B", Group: "late", Handle: recording(got)},
 	})
@@ -173,10 +177,10 @@ func TestADurableThatDoesNotAcknowledgeExplicitlyIsRefused(t *testing.T) {
 	})
 	tr := jsTransport(t, conn)
 
-	err := tr.Subscribe(context.Background(), events.Subscription{
+	err := tr.Subscribe(context.Background(), []events.Subscription{{
 		Event: "orders.Placed", Consumer: "A", Group: "fire-and-forget",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	})
+	}})
 	if err == nil {
 		t.Fatal("a durable with AckNone must be refused - Redeliver would silently do nothing")
 	}
@@ -191,7 +195,7 @@ func TestAGroupSpanningTwoStreamsIsRefused(t *testing.T) {
 	provision(t, conn, "BILLING", "billing.>")
 	tr := jsTransport(t, conn)
 
-	err := tr.SubscribeBatch(context.Background(), []events.Subscription{
+	err := tr.Subscribe(context.Background(), []events.Subscription{
 		{Event: "orders.Placed", Consumer: "A", Group: "mixed", Handle: recording(&deliveries{})},
 		{Event: "billing.Invoiced", Consumer: "B", Group: "mixed", Handle: recording(&deliveries{})},
 	})
@@ -212,14 +216,14 @@ func TestAGroupSubscribedTwiceOnOneTransportIsRefused(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := tr.Subscribe(ctx, events.Subscription{Event: "orders.Placed", Consumer: "A", Group: "g", Handle: recording(&deliveries{})}); err != nil {
+	if err := tr.Subscribe(ctx, []events.Subscription{{Event: "orders.Placed", Consumer: "A", Group: "g", Handle: recording(&deliveries{})}}); err != nil {
 		t.Fatal(err)
 	}
-	err := tr.Subscribe(ctx, events.Subscription{Event: "orders.Shipped", Consumer: "B", Group: "g", Handle: recording(&deliveries{})})
+	err := tr.Subscribe(ctx, []events.Subscription{{Event: "orders.Shipped", Consumer: "B", Group: "g", Handle: recording(&deliveries{})}})
 	if err == nil {
-		t.Fatal("the second contract of a group must arrive in the same SubscribeAll")
+		t.Fatal("the second contract of a group must arrive in the same Subscribe")
 	}
-	for _, want := range []string{"already subscribed", "SubscribeAll"} {
+	for _, want := range []string{"already subscribed", "one Subscribe"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal does not mention %q: %v", want, err)
 		}
@@ -231,7 +235,7 @@ func TestAGroupSubscribingOneSubjectTwiceIsRefused(t *testing.T) {
 	provision(t, conn, "ORDERS", "orders.>")
 	tr := jsTransport(t, conn)
 
-	err := tr.SubscribeBatch(context.Background(), []events.Subscription{
+	err := tr.Subscribe(context.Background(), []events.Subscription{
 		{Event: "orders.Placed", Consumer: "A", Group: "g", Handle: recording(&deliveries{})},
 		{Event: "orders.Placed", Consumer: "B", Group: "g", Handle: recording(&deliveries{})},
 	})
@@ -242,7 +246,7 @@ func TestAGroupSubscribingOneSubjectTwiceIsRefused(t *testing.T) {
 
 // redeliveryGap runs one message through a handler that asks for it back
 // once and reports how long the server took to hand it back.
-func redeliveryGap(t *testing.T, group string, opts ...craftnats.JetStreamOption) time.Duration {
+func redeliveryGap(t *testing.T, group events.Group, opts ...craftnats.JetStreamOption) time.Duration {
 	t.Helper()
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -255,7 +259,7 @@ func redeliveryGap(t *testing.T, group string, opts ...craftnats.JetStreamOption
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: group,
 		Handle: func(_ context.Context, m *events.Message) error {
 			mu.Lock()
@@ -269,7 +273,7 @@ func redeliveryGap(t *testing.T, group string, opts ...craftnats.JetStreamOption
 			close(done)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
@@ -322,14 +326,14 @@ func TestABufferedMessageIsNotRedeliveredBehindASlowSibling(t *testing.T) {
 		got := &deliveries{}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		if err := tr.Subscribe(ctx, events.Subscription{
+		if err := tr.Subscribe(ctx, []events.Subscription{{
 			Event: "orders.Placed", Consumer: "C", Group: "queue",
 			Handle: func(_ context.Context, m *events.Message) error {
 				got.add(m.Key)
 				time.Sleep(handler)
 				return nil
 			},
-		}); err != nil {
+		}}); err != nil {
 			t.Fatal(err)
 		}
 		got.waitFor(t, 3, 30*time.Second)
@@ -363,7 +367,7 @@ func TestASubjectNothingHereHandlesIsHandedBack(t *testing.T) {
 	old := jsTransport(t, conn, craftnats.WithAckWait(time.Second),
 		craftnats.WithJetStreamErrorHandler(func(sub events.Subscription, _ *events.Message, err error) {
 			mu.Lock()
-			reported = append(reported, sub.Group+": "+err.Error())
+			reported = append(reported, string(sub.Group)+": "+err.Error())
 			mu.Unlock()
 		}))
 	current := jsTransport(t, conn, craftnats.WithAckWait(time.Second))
@@ -371,10 +375,10 @@ func TestASubjectNothingHereHandlesIsHandedBack(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	oldGot, currentGot := &deliveries{}, &deliveries{}
-	if err := old.Subscribe(ctx, events.Subscription{Event: "orders.Placed", Consumer: "A", Group: "rolling", Handle: recording(oldGot)}); err != nil {
+	if err := old.Subscribe(ctx, []events.Subscription{{Event: "orders.Placed", Consumer: "A", Group: "rolling", Handle: recording(oldGot)}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := current.SubscribeBatch(ctx, []events.Subscription{
+	if err := current.Subscribe(ctx, []events.Subscription{
 		{Event: "orders.Placed", Consumer: "A", Group: "rolling", Handle: recording(currentGot)},
 		{Event: "orders.Shipped", Consumer: "B", Group: "rolling", Handle: recording(currentGot)},
 	}); err != nil {
@@ -394,6 +398,11 @@ func TestASubjectNothingHereHandlesIsHandedBack(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	// Every hand-back is reported: the error handler is the only layer
+	// that can see a subject this process consumes nothing for.
+	if len(reported) == 0 {
+		t.Error("the hand-back was not reported to the error handler")
+	}
 	for _, r := range reported {
 		if !strings.HasPrefix(r, "rolling: ") || !strings.Contains(r, "orders.Shipped") {
 			t.Errorf("unexpected report %q", r)
@@ -410,7 +419,7 @@ func TestCloseLetsTheHandlerInFlightFinish(t *testing.T) {
 	var finished atomic.Bool
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "draining",
 		Handle: func(context.Context, *events.Message) error {
 			close(started)
@@ -418,7 +427,7 @@ func TestCloseLetsTheHandlerInFlightFinish(t *testing.T) {
 			finished.Store(true)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
@@ -448,14 +457,14 @@ func TestCloseGivesUpOnAHungHandler(t *testing.T) {
 	defer close(release)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "hung",
 		Handle: func(context.Context, *events.Message) error {
 			close(started)
 			<-release
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {

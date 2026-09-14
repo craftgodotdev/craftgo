@@ -43,13 +43,13 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			msg.Redeliver() // never gives up
 			return nil      // and never fails, so nothing else reports
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 

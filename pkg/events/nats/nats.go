@@ -163,11 +163,23 @@ const HeaderKey = "Craftgo-Key"
 // whoever is listening without acting on it.
 const HeaderDedupID = "Nats-Msg-Id"
 
-// Subscribe registers sub as a queue subscriber under its group.
-// Delivery runs until ctx is cancelled.
-func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) error {
+// Subscribe registers every subscription as a queue subscriber under its
+// group. Delivery runs until ctx is cancelled. A queue subscription
+// establishes nothing on the server that a whole batch is needed for, so
+// the batch is a loop; the first failure stops it, and the subscriptions
+// already made stay live.
+func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
+	for _, sub := range subs {
+		if err := t.subscribeOne(ctx, sub); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) error {
 	subject := t.subject(sub.Event)
-	s, err := t.conn.QueueSubscribe(subject, sub.GroupName(), func(m *nats.Msg) {
+	s, err := t.conn.QueueSubscribe(subject, string(sub.Group), func(m *nats.Msg) {
 		msg := decode(sub.Event, m)
 		if err := sub.Handle(withMsg(ctx, m), msg); err != nil && t.onError != nil {
 			t.onError(sub, msg, err)

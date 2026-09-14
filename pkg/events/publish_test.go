@@ -223,3 +223,78 @@ func TestABadOptionFailsTheBatchBeforeAnythingIsSent(t *testing.T) {
 		t.Errorf("%d messages went out before the batch failed", len(tr.sent))
 	}
 }
+
+// A bus-wide default rides every publish, which is how a deployment adds
+// a header nobody writing a publisher should have to remember.
+func TestAPublishDefaultRidesEveryPublish(t *testing.T) {
+	tr := &recordingTransport{}
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
+		events.WithPublishDefaults(events.WithHeader("tenant", "acme")))
+
+	if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: "o-1"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := bus.PublishAll(context.Background(), []events.Envelope{
+		{Event: "orders.OrderPlaced", Payload: payload{ID: "o-2"}},
+	}); err != nil {
+		t.Fatalf("publish all: %v", err)
+	}
+	for i, msg := range tr.sent {
+		if msg.Metadata["tenant"] != "acme" {
+			t.Errorf("message %d carries %v, want the default header", i, msg.Metadata)
+		}
+	}
+}
+
+// The defaults are defaults: the caller's own value wins, on both paths.
+func TestAPerCallValueBeatsTheDefault(t *testing.T) {
+	tr := &recordingTransport{}
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
+		events.WithPublishDefaults(events.WithKey("default"), events.WithHeader("tenant", "acme")))
+
+	if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: "o-1"},
+		events.WithKey("per-call")); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := bus.PublishAll(context.Background(), []events.Envelope{{
+		Event:    "orders.OrderPlaced",
+		Key:      "per-envelope",
+		Payload:  payload{ID: "o-2"},
+		Metadata: map[string]string{"tenant": "other"},
+	}}); err != nil {
+		t.Fatalf("publish all: %v", err)
+	}
+
+	if got := tr.sent[0].Key; got != "per-call" {
+		t.Errorf("key = %q, want the per-call option to win", got)
+	}
+	if got := tr.sent[0].Metadata["tenant"]; got != "acme" {
+		t.Errorf("a default with no per-call counterpart was lost: %q", got)
+	}
+	if got := tr.sent[1].Key; got != "per-envelope" {
+		t.Errorf("key = %q, want the envelope's own", got)
+	}
+	if got := tr.sent[1].Metadata["tenant"]; got != "other" {
+		t.Errorf("tenant = %q, want the envelope's own", got)
+	}
+}
+
+// Applying the defaults must not write into the caller's envelope: the
+// same slice is often published more than once.
+func TestThePublishDefaultsDoNotTouchTheCallersEnvelope(t *testing.T) {
+	tr := &recordingTransport{}
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
+		events.WithPublishDefaults(events.WithHeader("tenant", "acme")))
+
+	meta := map[string]string{"hops": "1"}
+	envs := []events.Envelope{{Event: "orders.OrderPlaced", Payload: payload{ID: "o-1"}, Metadata: meta}}
+	if err := bus.PublishAll(context.Background(), envs); err != nil {
+		t.Fatalf("publish all: %v", err)
+	}
+	if _, leaked := meta["tenant"]; leaked {
+		t.Errorf("the default was written into the caller's metadata: %v", meta)
+	}
+	if got := tr.sent[0].Metadata; got["tenant"] != "acme" || got["hops"] != "1" {
+		t.Errorf("message metadata = %v, want both", got)
+	}
+}

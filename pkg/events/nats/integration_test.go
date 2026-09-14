@@ -41,6 +41,20 @@ type payload struct {
 	OrderID string `json:"orderId"`
 }
 
+// start registers subs on bus and hands them to the transport, which is
+// the two steps every consumer registration takes.
+func start(t *testing.T, ctx context.Context, bus *events.Bus, subs ...events.Subscription) {
+	t.Helper()
+	for _, sub := range subs {
+		if err := bus.Register(sub); err != nil {
+			t.Fatalf("register %s/%s: %v", sub.Event, sub.Consumer, err)
+		}
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+}
+
 // A published contract reaches a consumer with its key and payload intact.
 func TestRoundTripOverNATS(t *testing.T) {
 	conn := runServer(t)
@@ -51,12 +65,10 @@ func TestRoundTripOverNATS(t *testing.T) {
 	got := make(chan *events.Message, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
-		Event: "orders.OrderPlaced", Consumer: "SendReceipt",
+	start(t, ctx, bus, events.Subscription{
+		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error { got <- m; return nil },
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +100,8 @@ func TestRoundTripOverNATS(t *testing.T) {
 // subscriptions sharing a name are one group and split the work.
 func TestConsumerGroupsOverNATS(t *testing.T) {
 	conn := runServer(t)
-	bus := events.New(events.WithTransport(craftnats.New(conn)), events.WithCodec(codecjson.Codec{}))
+	tr := craftnats.New(conn)
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -102,19 +115,19 @@ func TestConsumerGroupsOverNATS(t *testing.T) {
 			return nil
 		}
 	}
-	for _, group := range []string{"SendReceipt", "MirrorStock"} {
-		if err := bus.Subscribe(ctx, events.Subscription{
-			Event: "orders.OrderPlaced", Consumer: group, Handle: add(group),
-		}); err != nil {
-			t.Fatalf("subscribe %s: %v", group, err)
-		}
+	for _, group := range []events.Group{"SendReceipt", "MirrorStock"} {
+		start(t, ctx, events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{})),
+			events.Subscription{
+				Event: "orders.OrderPlaced", Consumer: string(group), Group: group, Handle: add(string(group)),
+			})
 	}
-	// A second replica of one group shares its work rather than duplicating.
-	if err := bus.Subscribe(ctx, events.Subscription{
-		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Handle: add("SendReceipt"),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	// A second replica of one group shares its work rather than
+	// duplicating. A replica is a second process, so it is a second bus
+	// over the one connection.
+	start(t, ctx, events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{})),
+		events.Subscription{
+			Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "SendReceipt", Handle: add("SendReceipt"),
+		})
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -154,14 +167,14 @@ func TestBatchOverNATS(t *testing.T) {
 	defer cancel()
 
 	seen := make(chan string, 4)
+	var subs []events.Subscription
 	for _, contract := range []string{"orders.OrderPlaced", "inventory.Reserved"} {
-		if err := bus.Subscribe(ctx, events.Subscription{
-			Event: contract, Consumer: "Probe",
+		subs = append(subs, events.Subscription{
+			Event: contract, Consumer: "Probe", Group: "probe",
 			Handle: func(_ context.Context, m *events.Message) error { seen <- m.Event; return nil },
-		}); err != nil {
-			t.Fatal(err)
-		}
+		})
 	}
+	start(t, ctx, bus, subs...)
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +212,7 @@ func TestHandlerPanicOverNATS(t *testing.T) {
 	delivered := make(chan string, 2)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
+	start(t, ctx, bus, events.Subscription{
 		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error {
 			var p payload
@@ -212,9 +225,7 @@ func TestHandlerPanicOverNATS(t *testing.T) {
 			delivered <- p.OrderID
 			return nil
 		},
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -259,12 +270,10 @@ func TestCallerMetadataOverNATS(t *testing.T) {
 	got := make(chan *events.Message, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := bus.Subscribe(ctx, events.Subscription{
-		Event: "orders.OrderPlaced", Consumer: "SendReceipt",
+	start(t, ctx, bus, events.Subscription{
+		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error { got <- m; return nil },
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +324,7 @@ func TestTheRawMessageIsReachableOverNATS(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.OrderPlaced", Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {
 			mu.Lock()
@@ -331,7 +340,7 @@ func TestTheRawMessageIsReachableOverNATS(t *testing.T) {
 			close(done)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 

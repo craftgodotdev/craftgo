@@ -520,7 +520,25 @@ func (t *Transport) producerClient() (*kgo.Client, error) {
 	return cl, nil
 }
 
-// Subscribe joins the group named by sub.Group and reads until ctx is
+// Subscribe registers every subscription in the batch and returns, each
+// reading on its own loop until ctx is cancelled. A Kafka group is joined
+// one topic at a time, so the batch has no identity to establish as a
+// whole and this is a loop over it.
+//
+// The first failure stops the run and is what Subscribe returns. The
+// subscriptions registered before it stay live until ctx is cancelled,
+// and the ones after it are never registered - a caller that cannot run
+// without the whole batch cancels ctx.
+func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
+	for _, sub := range subs {
+		if err := t.subscribeOne(ctx, sub); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// subscribeOne joins the group named by sub.Group and reads until ctx is
 // cancelled.
 //
 // One group may read several contracts, but not two of them on one topic:
@@ -541,8 +559,8 @@ func (t *Transport) producerClient() (*kgo.Client, error) {
 // serves HTTP, passes readiness and consumes nothing: franz-go reports
 // the lack on the first poll, which happens on a goroutine nobody is
 // waiting on.
-func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) error {
-	group, topic := sub.GroupName(), t.topic(sub.Event)
+func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) error {
+	group, topic := string(sub.Group), t.topic(sub.Event)
 	if err := t.claim(group, topic, sub.Event); err != nil {
 		return err
 	}

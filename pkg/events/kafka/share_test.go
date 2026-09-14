@@ -149,10 +149,10 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			err := tr.Subscribe(ctx, events.Subscription{
-				Event: contract, Consumer: "C", Group: "g-" + c.release,
+			err := tr.Subscribe(ctx, []events.Subscription{{
+				Event: contract, Consumer: "C", Group: events.Group("g-" + c.release),
 				Handle: func(context.Context, *events.Message) error { return nil },
-			})
+			}})
 
 			if c.serves {
 				// 4.1 serves every share key; what it cannot do is renew a
@@ -185,7 +185,7 @@ func TestARefusedSubscriptionReleasesItsClaim(t *testing.T) {
 		Event: contract, Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
 	}
-	if err := tr.Subscribe(context.Background(), sub); err == nil {
+	if err := tr.Subscribe(context.Background(), []events.Subscription{sub}); err == nil {
 		t.Fatal("expected a refusal")
 	}
 	if err := tr.claim("g", contract, "orders.Cancelled"); err != nil {
@@ -210,7 +210,7 @@ func TestReleaseRedeliversAndRejectGivesUp(t *testing.T) {
 	got := newDeliveries()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
@@ -223,7 +223,7 @@ func TestReleaseRedeliversAndRejectGivesUp(t *testing.T) {
 			}
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 
@@ -261,14 +261,14 @@ func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	got := newDeliveries()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
 			msg.Redeliver() // never gives up
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 
@@ -308,14 +308,17 @@ func TestAPanicAfterAskingForRedeliveryDoesNotLoop(t *testing.T) {
 			}
 		}),
 	)
-	if err := bus.Subscribe(ctx, events.Subscription{
+	if err := bus.Register(events.Subscription{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
 			panic("handler exploded")
 		},
 	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 
 	got.waitFor(t, 1)
@@ -323,7 +326,8 @@ func TestAPanicAfterAskingForRedeliveryDoesNotLoop(t *testing.T) {
 }
 
 // A chain that needs redelivery must not be wired onto a classic group,
-// where Redeliver silently settles. The refusal is at subscribe.
+// where Redeliver silently settles. The refusal is at registration,
+// before anything is handed to the broker.
 func TestARequiredDispositionFailsOnAClassicGroup(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_2_0())
@@ -335,12 +339,12 @@ func TestARequiredDispositionFailsOnAClassicGroup(t *testing.T) {
 		events.WithCodec(rawCodec{}),
 		events.WithDispositionRequired(events.DispositionRedeliver),
 	)
-	err := bus.Subscribe(context.Background(), events.Subscription{
+	err := bus.Register(events.Subscription{
 		Event: contract, Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
 	})
 	if !errors.Is(err, events.ErrDispositionUnsupported) {
-		t.Fatalf("subscribe = %v, want ErrDispositionUnsupported - a classic group cannot redeliver", err)
+		t.Fatalf("register = %v, want ErrDispositionUnsupported - a classic group cannot redeliver", err)
 	}
 }
 
@@ -374,13 +378,13 @@ func TestAClassicGroupDelivers(t *testing.T) {
 	got := newDeliveries()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	publish(t, tr, contract, "o-1", []byte(`{"id":1}`))
@@ -394,6 +398,41 @@ func TestAClassicGroupDelivers(t *testing.T) {
 	// A classic group has no per-record delivery count to report.
 	if n := got.got[0].Deliveries(); n != 0 {
 		t.Errorf("deliveries = %d, want 0 - a classic group does not count", n)
+	}
+}
+
+// A batch is registered whole. One Subscribe call carrying two
+// subscriptions leaves both reading - each joins its own group, so the
+// record reaches both rather than being divided between them.
+func TestOneSubscribeCallRegistersEverySubscriptionInTheBatch(t *testing.T) {
+	const contract = "orders.Placed"
+	tr := New(cluster(t, contract, kversion.V4_2_0()))
+	defer func() { _ = tr.Close() }()
+
+	reader := map[events.Group]*deliveries{"batch-a": newDeliveries(), "batch-b": newDeliveries()}
+	handle := func(got *deliveries) events.Handler {
+		return func(_ context.Context, msg *events.Message) error {
+			got.add(msg)
+			return nil
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, []events.Subscription{
+		{Event: contract, Consumer: "A", Group: "batch-a", Handle: handle(reader["batch-a"])},
+		{Event: contract, Consumer: "B", Group: "batch-b", Handle: handle(reader["batch-b"])},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	publish(t, tr, contract, "o-1", []byte(`{"id":1}`))
+
+	for group, got := range reader {
+		got.waitFor(t, 1)
+		got.mu.Lock()
+		if got.got[0].Key != "o-1" || got.got[0].Event != contract {
+			t.Errorf("group %q was handed %+v", group, got.got[0])
+		}
+		got.mu.Unlock()
 	}
 }
 
@@ -425,13 +464,13 @@ func TestAForeignContractOnTheTopicIsReported(t *testing.T) {
 	got := newDeliveries()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: mine, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 
@@ -479,7 +518,7 @@ func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {
 			mu.Lock()
@@ -490,7 +529,7 @@ func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 			close(done)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	publish(t, tr, contract, "o-1", []byte(`{"id":1}`))
@@ -551,10 +590,10 @@ func TestAGroupOptionFromAClientOptionIsRefusedAtEverySite(t *testing.T) {
 			defer func() { _ = share.Close() }()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			if err := share.Subscribe(ctx, events.Subscription{
+			if err := share.Subscribe(ctx, []events.Subscription{{
 				Event: contract, Consumer: "C", Group: "real",
 				Handle: func(context.Context, *events.Message) error { return nil },
-			}); err == nil {
+			}}); err == nil {
 				t.Error("the probe was opened with a consuming identity")
 			}
 		})
@@ -571,10 +610,10 @@ func TestTheRealConsumerPassesTheSameGuard(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "real",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("a consumer joining its own group must be allowed: %v", err)
 	}
 }
@@ -605,10 +644,10 @@ func TestSubscribeRefusesABrokerThatCannotRenewTheLock(t *testing.T) {
 
 	tr := New(addrs, WithShareGroup())
 	defer func() { _ = tr.Close() }()
-	err := tr.Subscribe(context.Background(), events.Subscription{
+	err := tr.Subscribe(context.Background(), []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	})
+	}})
 	if err == nil {
 		t.Fatal("subscribed to a broker that cannot renew a lock")
 	}
@@ -634,14 +673,14 @@ func TestABrokerWithoutRenewalStillServesShareModeWithoutIt(t *testing.T) {
 	got := newDeliveries()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "no-renew",
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
 			msg.Redeliver()
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	// Release is a v1 ack type, so the record comes back on 4.1.

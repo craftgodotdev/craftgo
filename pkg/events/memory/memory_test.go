@@ -39,13 +39,13 @@ func deliver(t *testing.T, msg *events.Message) *events.Message {
 	got := &delivered{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: msg.Event, Consumer: "C",
 		Handle: func(_ context.Context, m *events.Message) error {
 			got.add(m)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), msg); err != nil {
@@ -89,13 +89,13 @@ func TestTwoPublishesSharingADedupIDAreBothDelivered(t *testing.T) {
 	got := &delivered{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C",
 		Handle: func(_ context.Context, m *events.Message) error {
 			got.add(m)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	for i := 0; i < 2; i++ {
@@ -128,8 +128,8 @@ func TestEachSubscriberGetsItsOwnCopy(t *testing.T) {
 		// across iterations: bind it per subscription or both closures
 		// see the last value.
 		group := group
-		if err := tr.Subscribe(ctx, events.Subscription{
-			Event: "orders.Placed", Consumer: group, Group: group,
+		if err := tr.Subscribe(ctx, []events.Subscription{{
+			Event: "orders.Placed", Consumer: group, Group: events.Group(group),
 			Handle: func(_ context.Context, m *events.Message) error {
 				m.Metadata["touched-by"] = group
 				mu.Lock()
@@ -137,7 +137,7 @@ func TestEachSubscriberGetsItsOwnCopy(t *testing.T) {
 				mu.Unlock()
 				return nil
 			},
-		}); err != nil {
+		}}); err != nil {
 			t.Fatalf("subscribe %s: %v", group, err)
 		}
 	}
@@ -189,10 +189,10 @@ func TestDrainIsSafeWhileAnotherGoroutinePublishes(t *testing.T) {
 	tr := memory.New()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 
@@ -224,23 +224,23 @@ func TestDrainWaitsForADeliveryAHandlerStarted(t *testing.T) {
 
 	var nested sync.WaitGroup
 	parked := make(chan struct{}, 1)
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.consumer.dlq", Consumer: "Sink",
 		Handle: func(context.Context, *events.Message) error {
 			parked <- struct{}{}
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe sink: %v", err)
 	}
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C",
 		Handle: func(context.Context, *events.Message) error {
 			nested.Add(1)
 			defer nested.Done()
 			return tr.Publish(ctx, &events.Message{Event: "orders.consumer.dlq"})
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 

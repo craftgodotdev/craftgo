@@ -46,7 +46,10 @@ type Transport struct {
 	onError func(sub events.Subscription, msg *events.Message, err error)
 }
 
-type groupKey struct{ event, group string }
+type groupKey struct {
+	event string
+	group events.Group
+}
 
 // group is one competing-consumer set.
 type group struct {
@@ -87,9 +90,21 @@ func New(opts ...Option) *Transport {
 	return t
 }
 
-// Subscribe registers sub until ctx is cancelled.
-func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) error {
-	key := groupKey{sub.Event, sub.GroupName()}
+// Subscribe registers every subscription in the batch until ctx is
+// cancelled. There is no broker identity to establish here, so the batch
+// is a loop.
+func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
+	for _, sub := range subs {
+		t.register(ctx, sub)
+	}
+	return nil
+}
+
+// register adds one subscription to its competing-consumer group. It
+// takes sub as a parameter because this module's Go floor shares a loop
+// variable across iterations.
+func (t *Transport) register(ctx context.Context, sub events.Subscription) {
+	key := groupKey{sub.Event, sub.Group}
 	t.mu.Lock()
 	g := t.groups[key]
 	if g == nil {
@@ -110,7 +125,6 @@ func (t *Transport) Subscribe(ctx context.Context, sub events.Subscription) erro
 			}
 		}()
 	}
-	return nil
 }
 
 // Publish fans msg out to one member of every group subscribed to the

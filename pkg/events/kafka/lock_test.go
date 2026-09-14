@@ -50,8 +50,8 @@ func deliveriesOfOneSlowMessage(t *testing.T, group string, work time.Duration, 
 	var counts []int
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
-		Event: contract, Consumer: "C", Group: group,
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: contract, Consumer: "C", Group: events.Group(group),
 		Handle: func(_ context.Context, msg *events.Message) error {
 			mu.Lock()
 			counts = append(counts, msg.Deliveries())
@@ -59,7 +59,7 @@ func deliveriesOfOneSlowMessage(t *testing.T, group string, work time.Duration, 
 			time.Sleep(work)
 			return nil // succeeds, and asks for nothing
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 

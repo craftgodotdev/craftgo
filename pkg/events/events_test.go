@@ -24,9 +24,11 @@ type payload struct {
 // in the Bus, the generated call shape, or the codec knows which one is
 // installed.
 type recordingTransport struct {
-	mu   sync.Mutex
-	sent []*events.Message
-	subs []events.Subscription
+	mu      sync.Mutex
+	sent    []*events.Message
+	subs    []events.Subscription
+	batches int
+	err     error
 }
 
 func (r *recordingTransport) Publish(_ context.Context, msg *events.Message) error {
@@ -36,11 +38,26 @@ func (r *recordingTransport) Publish(_ context.Context, msg *events.Message) err
 	return nil
 }
 
-func (r *recordingTransport) Subscribe(_ context.Context, sub events.Subscription) error {
+func (r *recordingTransport) Subscribe(_ context.Context, subs []events.Subscription) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.subs = append(r.subs, sub)
-	return nil
+	r.batches++
+	r.subs = append(r.subs, subs...)
+	return r.err
+}
+
+// start registers subs on bus and starts it, which is the two-step every
+// consumer registration takes now.
+func start(t *testing.T, ctx context.Context, bus *events.Bus, subs ...events.Subscription) {
+	t.Helper()
+	for _, sub := range subs {
+		if err := bus.Register(sub); err != nil {
+			t.Fatalf("register %s/%s: %v", sub.Event, sub.Consumer, err)
+		}
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
 }
 
 func TestBusPublishEncodesWithCodec(t *testing.T) {
@@ -78,7 +95,13 @@ func TestBusPublishWithoutPublisher(t *testing.T) {
 	if err := bus.Publish(context.Background(), "x.Y", payload{}); !errors.Is(err, events.ErrNoPublisher) {
 		t.Fatalf("want ErrNoPublisher, got %v", err)
 	}
-	if err := bus.Subscribe(context.Background(), events.Subscription{Event: "x.Y"}); !errors.Is(err, events.ErrNoSubscriber) {
+	if err := bus.Register(events.Subscription{
+		Event: "x.Y", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); !errors.Is(err, events.ErrNoSubscriber) {
 		t.Fatalf("want ErrNoSubscriber, got %v", err)
 	}
 }
@@ -124,9 +147,10 @@ func TestMemoryTransportRoundTrip(t *testing.T) {
 
 	var mu sync.Mutex
 	var got []payload
-	sub := events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event:    "orders.OrderPlaced",
 		Consumer: "SendReceipt",
+		Group:    "receipts",
 		Handle: func(_ context.Context, msg *events.Message) error {
 			var p payload
 			if err := bus.Decode(msg, &p); err != nil {
@@ -137,10 +161,7 @@ func TestMemoryTransportRoundTrip(t *testing.T) {
 			mu.Unlock()
 			return nil
 		},
-	}
-	if err := bus.Subscribe(context.Background(), sub); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: "o-1", Count: 7}, events.WithKey("o-1")); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -153,6 +174,10 @@ func TestMemoryTransportRoundTrip(t *testing.T) {
 	}
 }
 
+// Two replicas of one group divide the messages between them; a second
+// group gets its own copy. A replica is a second process, so it is a
+// second bus over the one transport - one bus refuses the same contract
+// under the same group twice.
 func TestMemoryTransportCompetingConsumers(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -163,33 +188,31 @@ func TestMemoryTransportCompetingConsumers(t *testing.T) {
 		// Shadowed so each handler captures its own index regardless of
 		// the module's loop-variable semantics.
 		i := i
-		if err := bus.Subscribe(context.Background(), events.Subscription{
+		replica := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
+		start(t, context.Background(), replica, events.Subscription{
 			Event:    "orders.OrderPlaced",
 			Consumer: "SendReceipt",
+			Group:    "receipts",
 			Handle: func(context.Context, *events.Message) error {
 				mu.Lock()
 				hits[i]++
 				mu.Unlock()
 				return nil
 			},
-		}); err != nil {
-			t.Fatalf("subscribe: %v", err)
-		}
+		})
 	}
-	// A second consumer name is a separate group and gets its own copy.
 	var otherGroup int
-	if err := bus.Subscribe(context.Background(), events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event:    "orders.OrderPlaced",
 		Consumer: "UpdateSearchIndex",
+		Group:    "search",
 		Handle: func(context.Context, *events.Message) error {
 			mu.Lock()
 			otherGroup++
 			mu.Unlock()
 			return nil
 		},
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 
 	for i := 0; i < 4; i++ {
 		if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{}); err != nil {
@@ -201,10 +224,10 @@ func TestMemoryTransportCompetingConsumers(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if total := hits[0] + hits[1]; total != 4 {
-		t.Fatalf("group SendReceipt handled %d of 4 messages (%v)", total, hits)
+		t.Fatalf("group receipts handled %d of 4 messages (%v)", total, hits)
 	}
 	if otherGroup != 4 {
-		t.Fatalf("group UpdateSearchIndex handled %d of 4 messages", otherGroup)
+		t.Fatalf("group search handled %d of 4 messages", otherGroup)
 	}
 }
 
@@ -218,13 +241,12 @@ func TestMemoryTransportErrorHandler(t *testing.T) {
 	}))
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 	boom := errors.New("boom")
-	if err := bus.Subscribe(context.Background(), events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event:    "x.Y",
 		Consumer: "C",
+		Group:    "g",
 		Handle:   func(context.Context, *events.Message) error { return boom },
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := bus.Publish(context.Background(), "x.Y", payload{}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -243,18 +265,17 @@ func TestMemoryTransportStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var mu sync.Mutex
 	delivered := 0
-	if err := bus.Subscribe(ctx, events.Subscription{
+	start(t, ctx, bus, events.Subscription{
 		Event:    "x.Y",
 		Consumer: "C",
+		Group:    "g",
 		Handle: func(context.Context, *events.Message) error {
 			mu.Lock()
 			delivered++
 			mu.Unlock()
 			return nil
 		},
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := bus.Publish(ctx, "x.Y", payload{}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -278,29 +299,6 @@ func TestMemoryTransportStopsOnContextCancel(t *testing.T) {
 	defer mu.Unlock()
 	if delivered < 1 {
 		t.Fatalf("expected the pre-cancel delivery, got %d", delivered)
-	}
-}
-
-func TestSubscribeAllUsesAStableOrder(t *testing.T) {
-	tr := &recordingTransport{}
-	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	subs := []events.Subscription{
-		{Event: "b.Two", Consumer: "Z"},
-		{Event: "a.One", Consumer: "B"},
-		{Event: "a.One", Consumer: "A"},
-	}
-	if err := bus.SubscribeAll(context.Background(), subs); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	var order []string
-	for _, s := range tr.subs {
-		order = append(order, s.Event+"/"+s.Consumer)
-	}
-	want := []string{"a.One/A", "a.One/B", "b.Two/Z"}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Fatalf("subscription order = %v, want %v", order, want)
-		}
 	}
 }
 
@@ -436,18 +434,6 @@ func TestPublishAllReportsProgressOnPartialFailure(t *testing.T) {
 	}
 }
 
-// The broker identity is the group; Consumer only names the handler.
-func TestGroupNameFallsBackToConsumer(t *testing.T) {
-	withGroup := events.Subscription{Consumer: "SendReceipt", Group: "order-worker"}
-	if got := withGroup.GroupName(); got != "order-worker" {
-		t.Errorf("GroupName() = %q, want the group", got)
-	}
-	handWritten := events.Subscription{Consumer: "SendReceipt"}
-	if got := handWritten.GroupName(); got != "SendReceipt" {
-		t.Errorf("GroupName() = %q, want the consumer name", got)
-	}
-}
-
 // The memory transport keys its competing-consumer sets on the group, so
 // two differently named consumers sharing one group split the stream.
 func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
@@ -458,7 +444,10 @@ func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
 	hits := map[string]int{}
 	for _, consumer := range []string{"SendReceipt", "RecordReceipt"} {
 		consumer := consumer
-		if err := bus.Subscribe(context.Background(), events.Subscription{
+		// One contract under one group is one registration per bus, so the
+		// two differently named consumers are two of them.
+		replica := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
+		start(t, context.Background(), replica, events.Subscription{
 			Event:    "orders.OrderPlaced",
 			Consumer: consumer,
 			Group:    "order-worker",
@@ -468,9 +457,7 @@ func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
 				mu.Unlock()
 				return nil
 			},
-		}); err != nil {
-			t.Fatalf("subscribe: %v", err)
-		}
+		})
 	}
 	for i := 0; i < 4; i++ {
 		if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{}); err != nil {
@@ -486,68 +473,6 @@ func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
 	}
 }
 
-// Two services may name a consumer alike on one contract, so the group
-// completes the registration key.
-func TestSubscribeAllOrdersTiedConsumersByGroup(t *testing.T) {
-	tr := &recordingTransport{}
-	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	subs := []events.Subscription{
-		{Event: "a.One", Consumer: "Process", Group: "b-Metrics-Process"},
-		{Event: "a.One", Consumer: "Process", Group: "a-Audit-Process"},
-	}
-	if err := bus.SubscribeAll(context.Background(), subs); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	want := []string{"a-Audit-Process", "b-Metrics-Process"}
-	for i, s := range tr.subs {
-		if s.Group != want[i] {
-			t.Fatalf("registration order = %v, want %v", tr.subs, want)
-		}
-	}
-}
-
-// Group leads the key, so it decides the order even when the contract
-// would sort the other way.
-func TestSubscribeAllOrdersByGroupFirst(t *testing.T) {
-	tr := &recordingTransport{}
-	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	subs := []events.Subscription{
-		{Event: "a.One", Consumer: "Y", Group: "beta"},
-		{Event: "b.Two", Consumer: "X", Group: "alpha"},
-	}
-	if err := bus.SubscribeAll(context.Background(), subs); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	want := []string{"alpha", "beta"}
-	for i, s := range tr.subs {
-		if s.Group != want[i] {
-			t.Fatalf("registration order = %v, want %v", tr.subs, want)
-		}
-	}
-}
-
-// The error names the group, because the group is what a transport
-// refuses a second claim on.
-func TestSubscribeAllErrorNamesTheGroup(t *testing.T) {
-	bus := events.New(events.WithSubscriber(refusingSubscriber{}), events.WithCodec(codecjson.Codec{}))
-	err := bus.SubscribeAll(context.Background(), []events.Subscription{
-		{Event: "a.One", Consumer: "Y", Group: "order-worker"},
-	})
-	if err == nil {
-		t.Fatal("want the refusal surfaced")
-	}
-	if !strings.Contains(err.Error(), "in group order-worker") {
-		t.Errorf("err = %v", err)
-	}
-}
-
-// refusingSubscriber stands in for a transport that refuses a claim.
-type refusingSubscriber struct{}
-
-func (refusingSubscriber) Subscribe(context.Context, events.Subscription) error {
-	return errors.New("group already reads this destination")
-}
-
 // deliverOne runs one message through handle on the in-process transport
 // and returns what the transport's error handler saw.
 func deliverOne(t *testing.T, handle func(context.Context, *events.Message) error) error {
@@ -560,11 +485,9 @@ func deliverOne(t *testing.T, handle func(context.Context, *events.Message) erro
 		mu.Unlock()
 	}))
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	if err := bus.Subscribe(context.Background(), events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event: "x.Y", Consumer: "C", Group: "g", Handle: handle,
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	if err := bus.Publish(context.Background(), "x.Y", payload{}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -588,7 +511,7 @@ func TestPanicInAHandlerReachesTheErrorHandler(t *testing.T) {
 	}))
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 
-	if err := bus.Subscribe(context.Background(), events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event:    "orders.OrderPlaced",
 		Consumer: "SendReceipt",
 		Group:    "receipts",
@@ -605,9 +528,7 @@ func TestPanicInAHandlerReachesTheErrorHandler(t *testing.T) {
 			mu.Unlock()
 			return nil
 		},
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	for _, id := range []string{"boom", "o-2"} {
 		if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: id}, events.WithKey(id)); err != nil {
 			t.Fatalf("publish %s: %v", id, err)
@@ -678,31 +599,16 @@ func TestAPanicErrorUnwrapsToThePanicValueWhenItIsAnError(t *testing.T) {
 	}
 }
 
-// The in-process transport marks a cancelled member by nilling its
-// handler, so a subscription that carries none must not come back wrapped.
-func TestSubscribeLeavesAnAbsentHandlerNil(t *testing.T) {
-	tr := &recordingTransport{}
-	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	if err := bus.Subscribe(context.Background(), events.Subscription{Event: "x.Y", Consumer: "C"}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	if tr.subs[0].Handle != nil {
-		t.Error("an absent handler was replaced by a wrapper")
-	}
-}
-
 // The wrapper is installed before the subscription reaches the transport,
 // so every adapter inherits it - the ones craftgo ships and any written
 // elsewhere, whose delivery goroutine nothing here can see.
 func TestTheTransportIsHandedAGuardedHandler(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	if err := bus.Subscribe(context.Background(), events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event: "x.Y", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { panic("handler exploded") },
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 	err := tr.subs[0].Handle(context.Background(), &events.Message{Event: "x.Y"})
 	var pe *events.PanicError
 	if !errors.As(err, &pe) {
@@ -720,18 +626,17 @@ func TestCallerMetadataReachesTheConsumer(t *testing.T) {
 
 	var mu sync.Mutex
 	var got *events.Message
-	if err := bus.Subscribe(context.Background(), events.Subscription{
+	start(t, context.Background(), bus, events.Subscription{
 		Event:    "orders.OrderPlaced",
 		Consumer: "SendReceipt",
+		Group:    "receipts",
 		Handle: func(_ context.Context, msg *events.Message) error {
 			mu.Lock()
 			got = msg
 			mu.Unlock()
 			return nil
 		},
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	})
 
 	// A single message with metadata is a one-envelope batch; there is no
 	// second way to attach it.
@@ -1208,13 +1113,13 @@ func TestPublishAllStillPublishesOnALiveContext(t *testing.T) {
 func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 	tr := memory.New()
 	var delivered atomic.Int64
-	if err := tr.Subscribe(context.Background(), events.Subscription{
+	if err := tr.Subscribe(context.Background(), []events.Subscription{{
 		Event: "orders.OrderPlaced", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {
 			delivered.Add(1)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -1237,13 +1142,13 @@ func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 func TestPublishStillPublishesOnALiveContext(t *testing.T) {
 	tr := memory.New()
 	var delivered atomic.Int64
-	if err := tr.Subscribe(context.Background(), events.Subscription{
+	if err := tr.Subscribe(context.Background(), []events.Subscription{{
 		Event: "orders.OrderPlaced", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {
 			delivered.Add(1)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))

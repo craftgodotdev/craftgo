@@ -163,13 +163,13 @@ func TestJetStreamRoundTrip(t *testing.T) {
 	got := make(chan *events.Message, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error {
 			got <- m
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
@@ -202,10 +202,10 @@ func TestSubscribeRefusesASubjectNoStreamCarries(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := tr.Subscribe(ctx, events.Subscription{
+	err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "billing.Invoiced", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	})
+	}})
 	if err == nil {
 		t.Fatal("a subject no stream carries must be refused, not consumed silently")
 	}
@@ -224,10 +224,10 @@ func TestSubscribeRefusesAServerWithoutJetStream(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := tr.Subscribe(ctx, events.Subscription{
+	err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	})
+	}})
 	if err == nil {
 		t.Fatal("a server without JetStream must be refused")
 	}
@@ -255,7 +255,7 @@ func TestJetStreamRedeliversAndRejects(t *testing.T) {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "redeliver",
 		Handle: func(_ context.Context, m *events.Message) error {
 			mu.Lock()
@@ -270,7 +270,7 @@ func TestJetStreamRedeliversAndRejects(t *testing.T) {
 			close(done)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
@@ -335,7 +335,7 @@ func TestMaxDeliveriesZeroIsUnbounded(t *testing.T) {
 // redeliverForever runs one message through a handler that always fails
 // and a middleware that always asks for it back, and reports every
 // delivery the server made.
-func redeliverForever(t *testing.T, group string, opts ...craftnats.JetStreamOption) *attempts {
+func redeliverForever(t *testing.T, group events.Group, opts ...craftnats.JetStreamOption) *attempts {
 	t.Helper()
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -344,14 +344,14 @@ func redeliverForever(t *testing.T, group string, opts ...craftnats.JetStreamOpt
 	seen := &attempts{}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: group,
 		Handle: func(_ context.Context, m *events.Message) error {
 			seen.add(m.Deliveries())
 			m.Redeliver() // never gives up
 			return errors.New("nothing can handle this")
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
@@ -406,14 +406,14 @@ func TestASlowHandlerIsNotRedeliveredBehindItself(t *testing.T) {
 	var deliveries atomic.Int64
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "slow",
 		Handle: func(context.Context, *events.Message) error {
 			deliveries.Add(1)
 			time.Sleep(4 * time.Second) // four times AckWait
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
@@ -465,7 +465,7 @@ func TestTheJetStreamMessageIsReachableAndIsNotACoreMessage(t *testing.T) {
 	got := make(chan seen, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {
 			var s seen
@@ -479,7 +479,7 @@ func TestTheJetStreamMessageIsReachableAndIsNotACoreMessage(t *testing.T) {
 			got <- s
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{
@@ -514,13 +514,13 @@ func TestJetStreamPublishBatch(t *testing.T) {
 	var got atomic.Int64
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "batch",
 		Handle: func(context.Context, *events.Message) error {
 			got.Add(1)
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	msgs := []*events.Message{
@@ -593,13 +593,13 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := tr.Subscribe(ctx, events.Subscription{
+	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "capped-report",
 		Handle: func(_ context.Context, m *events.Message) error {
 			m.Redeliver() // never gives up
 			return nil    // and never fails, so nothing else reports
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err := tr.Publish(context.Background(), &events.Message{

@@ -10,12 +10,15 @@
 //   - [Codec] turns a payload value into bytes and back.
 //   - [Publisher] and [Subscriber] are the two halves a transport
 //     adapter implements.
-//   - [Bus] binds a transport to a codec.
+//   - [Bus] binds a transport to a codec. [Bus.Register] records a
+//     [Subscription], [Bus.Start] hands the whole batch to the transport
+//     and [Bus.Plan] says what was registered.
 //   - [Chain] wraps a consumer's [Handler] in [Middleware]; install one
-//     on the bus with [WithMiddleware].
+//     on the bus with [WithMiddleware], or on one subscription through
+//     [Subscription.Chain].
 //   - [Disposition] is what a chain asks for one delivery - take it,
 //     hand it back, give it up. [WithDispositionRequired] refuses to
-//     subscribe on a transport that cannot honour one.
+//     register on a transport that cannot honour one.
 //
 // A broker integration is an external package implementing [Publisher]
 // and/or [Subscriber]. `pkg/events/memory` ships an in-process one.
@@ -29,6 +32,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Message is the envelope a transport moves. Payload is already encoded -
@@ -165,86 +169,95 @@ type BatchPublisher interface {
 	PublishBatch(ctx context.Context, msgs []*Message) error
 }
 
-// Subscriber delivers messages for one contract to a handler.
+// Subscriber delivers messages to the handlers of a batch of
+// subscriptions.
 //
-// Subscribe registers the subscription and returns; it must not block.
-// Delivery runs until ctx is cancelled - a push transport registers the
-// callback, a pull transport starts its own loop. A handler error means
-// the message was not processed; retry / nack / dead-letter is the
-// transport's policy.
+// Subscribe registers them and returns; it must not block. Delivery runs
+// until ctx is cancelled - a push transport registers the callbacks, a
+// pull transport starts its own loops. A handler error means the message
+// was not processed; retry / nack / dead-letter is the transport's
+// policy.
+//
+// The batch arrives whole, sorted by group, contract then consumer, every
+// handler already wrapped: a broker that binds one identity to several
+// contracts - a JetStream durable filtering every subject its group
+// consumes - cannot register a group one contract at a time.
 type Subscriber interface {
-	Subscribe(ctx context.Context, sub Subscription) error
-}
-
-// BatchSubscriber is the optional upgrade for a transport that needs a
-// whole [Bus.SubscribeAll] slice before it registers anything - a broker
-// that binds one identity to several contracts, such as a JetStream
-// durable filtering every subject its group consumes, cannot register
-// the group one contract at a time. The slice arrives sorted by group,
-// contract then consumer, every handler already wrapped. [Bus.Subscribe]
-// never uses it.
-type BatchSubscriber interface {
-	SubscribeBatch(ctx context.Context, subs []Subscription) error
+	Subscribe(ctx context.Context, subs []Subscription) error
 }
 
 // Handler processes one message. It is the signature every generated
 // consumer is built to, and the one a [Middleware] wraps.
 type Handler func(ctx context.Context, msg *Message) error
 
+// Group is the broker identity a subscription consumes under: the Kafka
+// consumer group, the NATS queue group, the JetStream durable.
+// Subscriptions sharing a group divide the stream between them, so a
+// group is the unit of scaling and of failure isolation - not of
+// ordering, which no transport here gives across contracts.
+//
+// On a transport that remembers a position per group - Kafka, and
+// JetStream - the name is also where those consumers resume, and one the
+// broker has never seen has no position at all: if it has an offset,
+// write the name down. Core NATS keeps no position, so there the name
+// only decides who competes for a message.
+//
+// It is a named type so an application declares its groups once, in one
+// file, and hands them around as values rather than as loose strings.
+type Group string
+
 // Subscription is one consumer's interest in one contract.
 type Subscription struct {
 	// Event is the contract name, matching [Message.Event].
 	Event string
-	// Consumer is the design-declared consumer name, used in diagnostics
-	// and in a transport's own bookkeeping; nothing on the broker depends
-	// on it. It does not name a subscription on its own - two services may
-	// declare the same consumer for the same contract, so Event and Group
-	// are the pair that does.
+	// Consumer is the design-declared consumer name. Nothing on the broker
+	// depends on it: it names the handler in diagnostics and in [Bus.Plan],
+	// and two services may declare the same one for the same contract, so
+	// Event and Group are the pair that identifies a registration.
 	Consumer string
-	// Group is the broker identity: the Kafka consumer group, the NATS
-	// queue group. Subscriptions sharing a group divide the stream
-	// between them, so a group is the unit of scaling and of failure
-	// isolation - not of ordering, which no transport here gives across
-	// contracts.
-	//
-	// On a transport that remembers a position per group - Kafka, and
-	// JetStream - the name is also where those consumers resume, and one
-	// the broker has never seen has no position at all: if it has an
-	// offset, write the name down. Core NATS keeps no position, so there
-	// the name only decides who competes for a message.
-	//
-	// Empty falls back to Consumer, so a hand-written Subscription keeps
-	// the behaviour it had.
-	Group string
-	// Handle processes one message. [Bus.Subscribe] wraps it so a panic
-	// becomes a [*PanicError] the transport sees as an ordinary handler
-	// error, instead of ending the process.
+	// Group is the broker identity. [Bus.Register] refuses an empty one -
+	// the name is where a consumer resumes, so it is the application's to
+	// choose rather than something to fall back into.
+	Group Group
+	// Chain is this subscription's own middleware, applied inside the
+	// bus-wide chain [WithMiddleware] installs.
+	Chain Chain
+	// Handle processes one message. [Bus.Start] wraps it so a panic becomes
+	// a [*PanicError] the transport sees as an ordinary handler error,
+	// instead of ending the process.
 	Handle Handler
-}
-
-// GroupName returns the broker identity every transport keys on: Group,
-// or Consumer when a hand-written Subscription leaves Group empty.
-func (s Subscription) GroupName() string {
-	if s.Group != "" {
-		return s.Group
-	}
-	return s.Consumer
 }
 
 // Bus binds a transport to a codec. Generated publishers and consumer
 // registrations take a *Bus and nothing else.
 //
-// A Bus is safe for concurrent use once constructed: every field is set
-// in [New] and never written again.
+// Everything an [Option] sets is written in [New] and never again. The
+// registry is the one part that moves: [Bus.Register] adds to it until
+// [Bus.Start] hands it over, after which the Bus is immutable again. It
+// is guarded, so registering from several goroutines and reading
+// [Bus.Plan] at any time are both safe.
 type Bus struct {
 	pub Publisher
 	sub Subscriber
 
 	chain    Chain
 	required []Disposition
+	defaults []PublishOption
 
 	codec    Codec
 	perEvent map[string]Codec
+
+	mu      sync.Mutex
+	subs    []Subscription
+	claimed map[registration]bool
+	started bool
+}
+
+// registration is what makes two subscriptions the same one: a contract
+// consumed under a group.
+type registration struct {
+	event string
+	group Group
 }
 
 // Option configures a Bus at construction time.
@@ -271,14 +284,13 @@ func WithCodec(c Codec) Option { return func(b *Bus) { b.codec = c } }
 
 // WithMiddleware installs the chain every subscription registered through
 // this bus is wrapped in, outermost first. This does not give the Bus a
-// new concern: [Bus.Subscribe] already applies exactly one middleware, the
+// new concern: [Bus.Start] already applies exactly one middleware, the
 // panic recover, and this generalises that into a configurable list.
 //
 // The bus is the seam because it is the only thing every subscription
-// passes through - a generated SubscribeAll, a hand-built
-// `Subscriptions(bus, h)` slice, and one built against another design's
-// contracts all reach the broker through [Bus.Subscribe]. A chain applied
-// anywhere narrower would silently miss the ones it cannot see.
+// passes through, whichever design or package built it. A subscription's
+// own [Subscription.Chain] is applied INSIDE this one, so a bus-wide
+// concern - logging, tracing - still sees what a per-consumer chain did.
 //
 // Each middleware is handed the [Subscription] it wraps, so one chain can
 // read the contract, the consumer and the group it is running for. A
@@ -295,6 +307,18 @@ func WithCodecFor(event string, c Codec) Option {
 		}
 		b.perEvent[event] = c
 	}
+}
+
+// WithPublishDefaults sets options every publish through this bus starts
+// from - a header each message carries, an adapter option a deployment
+// needs. Repeated calls accumulate.
+//
+// They apply BEFORE the per-call options of [Bus.Publish], so a caller
+// naming the same thing wins; on [Bus.PublishAll], where there are no
+// per-call options, a value the [Envelope] already carries wins for the
+// same reason.
+func WithPublishDefaults(opts ...PublishOption) Option {
+	return func(b *Bus) { b.defaults = append(b.defaults, opts...) }
 }
 
 // New returns a Bus configured by opts.
@@ -317,6 +341,9 @@ var ErrNoSubscriber = errors.New("events: no subscriber configured")
 
 // CodecFor returns the codec in effect for event.
 func (b *Bus) CodecFor(event string) (Codec, error) {
+	if b == nil {
+		return nil, fmt.Errorf("%w for %q", ErrNoCodec, event)
+	}
 	if c, ok := b.perEvent[event]; ok && c != nil {
 		return c, nil
 	}
@@ -354,7 +381,7 @@ func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...Pu
 		return err
 	}
 	env := Envelope{Event: event, Payload: payload}
-	env.Apply(opts...)
+	env.Apply(JoinOptions(b.defaults, opts)...)
 	msg, err := b.encode(env)
 	if err != nil {
 		return err
@@ -453,6 +480,9 @@ func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError {
 // it has just sent as unsent, and a caller retrying those publishes every
 // one of them a second time.
 //
+// A bus-wide [WithPublishDefaults] applies to each envelope, losing to
+// anything the envelope already carries.
+//
 // The adapter's report is checked against the batch before it is
 // returned. An adapter that names an index outside the batch, or one out
 // of order, has its report replaced with "none of it was sent" and the
@@ -477,7 +507,7 @@ func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 		if env.Event == "" {
 			return fmt.Errorf("events: envelope %d has no contract name", i)
 		}
-		msg, err := b.encode(env)
+		msg, err := b.encode(b.withDefaults(env))
 		if err != nil {
 			return err
 		}
@@ -559,6 +589,45 @@ func adapterLabel(p Publisher) string {
 	return fmt.Sprintf("%T", p)
 }
 
+// withDefaults layers one envelope over [WithPublishDefaults]. A value the
+// envelope carries wins: on [Bus.Publish] the per-call options run after
+// the defaults and overwrite them, and an envelope handed to
+// [Bus.PublishAll] is that same caller's word.
+//
+// The merge is onto a fresh envelope rather than into the caller's, whose
+// metadata map is its own and must not gain entries from a publish.
+func (b *Bus) withDefaults(env Envelope) Envelope {
+	if len(b.defaults) == 0 {
+		return env
+	}
+	out := Envelope{Event: env.Event, Payload: env.Payload}
+	out.Apply(b.defaults...)
+	if env.Key != "" {
+		out.Key = env.Key
+	}
+	if env.DedupID != "" {
+		out.DedupID = env.DedupID
+	}
+	for k, v := range env.Metadata {
+		if out.Metadata == nil {
+			out.Metadata = make(map[string]string, len(env.Metadata))
+		}
+		out.Metadata[k] = v
+	}
+	for adapter, opts := range env.AdapterOptions {
+		for k, v := range opts {
+			if out.AdapterOptions == nil {
+				out.AdapterOptions = map[string]map[string]any{}
+			}
+			if out.AdapterOptions[adapter] == nil {
+				out.AdapterOptions[adapter] = map[string]any{}
+			}
+			out.AdapterOptions[adapter][k] = v
+		}
+	}
+	return out
+}
+
 // encode resolves the contract's codec and builds the wire envelope,
 // merging the caller's metadata under the codec stamp. A reserved key
 // belongs to the runtime or to a transport, so a caller's entry under one
@@ -606,7 +675,7 @@ type PanicError struct {
 	// subscription an operator has to find.
 	Event    string
 	Consumer string
-	Group    string
+	Group    Group
 	// Value is what the handler passed to panic.
 	Value any
 	// Stack is the trace captured where the panic fired, as
@@ -630,10 +699,10 @@ func (e *PanicError) Unwrap() error {
 }
 
 // decorated is the handler the transport receives: the subscription's own,
-// wrapped in a recover, the configured middleware, and a second recover.
-// The deferred recover only works on the goroutine that runs the handler,
-// which is one a transport spawns - so the wrappers go on the handler
-// itself and not around any Subscribe call.
+// wrapped in a recover, the bus chain with the subscription's own chain
+// inside it, and a second recover. The deferred recover only works on the
+// goroutine that runs the handler, which is one a transport spawns - so
+// the wrappers go on the handler itself and not around any Subscribe call.
 //
 // Recovery sits on BOTH sides of the chain, and the order is the point.
 // The inner one turns a panicking handler into a [*PanicError] the chain
@@ -643,17 +712,18 @@ func (e *PanicError) Unwrap() error {
 //
 // Only one [*PanicError] is ever built per panic: once the inner recover
 // catches, no panic is in flight, so the outer recover returns nil and
-// passes the error through untouched. A bus with no middleware installs
-// the inner one alone, which is the wrap this function has always applied.
+// passes the error through untouched. A bus with no middleware and a
+// subscription with no chain install the inner one alone.
 func (b *Bus) decorated(sub Subscription) Handler {
 	if sub.Handle == nil {
 		return nil
 	}
 	h := recoverHandler(sub, sub.Handle)
-	if len(b.chain) == 0 {
+	chain := b.chain.Append(sub.Chain...)
+	if len(chain) == 0 {
 		return h
 	}
-	return recoverHandler(sub, b.chain.wrap(sub, h))
+	return recoverHandler(sub, chain.wrap(sub, h))
 }
 
 // recoverHandler wraps h so a panic becomes a [*PanicError] naming sub.
@@ -664,7 +734,7 @@ func (b *Bus) decorated(sub Subscription) Handler {
 // [Recover] between two middlewares to change that. A panicking handler is
 // not affected - the wrap below the chain already turns one into an error.
 func recoverHandler(sub Subscription, h Handler) Handler {
-	event, consumer, group := sub.Event, sub.Consumer, sub.GroupName()
+	event, consumer, group := sub.Event, sub.Consumer, sub.Group
 	return func(ctx context.Context, msg *Message) (err error) {
 		defer func() {
 			r := recover()
@@ -689,88 +759,135 @@ func recoverHandler(sub Subscription, h Handler) Handler {
 	}
 }
 
-// Subscribe registers sub with the transport, its handler wrapped in a
-// recover and in any middleware [WithMiddleware] installed. Every
-// transport inherits both, because the wrap happens before the
-// subscription is handed over. A recovered panic is returned as a
-// [*PanicError], which the transport sees as an ordinary handler error.
-//
-// It refuses here rather than at the first message when the transport
-// cannot honour a disposition [WithDispositionRequired] named.
-func (b *Bus) Subscribe(ctx context.Context, sub Subscription) error {
-	prepared, err := b.prepare(sub)
-	if err != nil {
-		return err
-	}
-	return b.sub.Subscribe(ctx, prepared)
+// ErrStarted is returned by a second [Bus.Start], and by a [Bus.Register]
+// after one: the batch has gone to the transport, so nothing can join it.
+var ErrStarted = errors.New("events: the bus has already started")
+
+// ErrNoGroup is returned by [Bus.Register] for a subscription with no
+// group.
+var ErrNoGroup = errors.New("events: a subscription needs a group")
+
+// ErrNoHandler is returned by [Bus.Register] for a subscription with no
+// handler.
+var ErrNoHandler = errors.New("events: a subscription needs a handler")
+
+// ErrDuplicateSubscription is returned by [Bus.Register] for a contract
+// already registered under the same group. The two would be two members
+// of one group each skipping the other's work on the transports that
+// divide a group, so the pair is refused rather than resolved.
+var ErrDuplicateSubscription = errors.New("events: this contract is already registered under this group")
+
+// RegisterError is what [Bus.Register] refuses with: the sentinel, and
+// the subscription it refused. errors.Is reaches the sentinel.
+type RegisterError struct {
+	Event    string
+	Consumer string
+	Group    Group
+	Err      error
 }
 
-// prepare runs the checks every registration passes and wraps the handler.
-func (b *Bus) prepare(sub Subscription) (Subscription, error) {
-	if b.sub == nil {
-		return sub, ErrNoSubscriber
+func (e *RegisterError) Error() string {
+	return fmt.Sprintf("events: register %s/%s in group %q: %v", e.Event, e.Consumer, e.Group, e.Err)
+}
+
+func (e *RegisterError) Unwrap() error { return e.Err }
+
+// Register records sub, to be handed to the transport by [Bus.Start].
+//
+// The checks here are the ones the bus can make on its own - a handler, a
+// group, a codec for the contract, the dispositions
+// [WithDispositionRequired] named, and no earlier subscription for the
+// same contract and group. Whether the BROKER accepts the set is the
+// transport's answer, and it comes from Start.
+func (b *Bus) Register(sub Subscription) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.started {
+		return registerError(sub, ErrStarted)
+	}
+	if sub.Handle == nil {
+		return registerError(sub, ErrNoHandler)
+	}
+	if sub.Group == "" {
+		return registerError(sub, ErrNoGroup)
 	}
 	if _, err := b.CodecFor(sub.Event); err != nil {
-		return sub, err
+		return registerError(sub, err)
 	}
 	if err := b.requireDispositions(); err != nil {
-		return sub, err
+		return registerError(sub, err)
 	}
-	sub.Handle = b.decorated(sub)
-	return sub, nil
+	if b.claimed == nil {
+		b.claimed = map[registration]bool{}
+	}
+	key := registration{event: sub.Event, group: sub.Group}
+	if b.claimed[key] {
+		return registerError(sub, ErrDuplicateSubscription)
+	}
+	b.claimed[key] = true
+	b.subs = append(b.subs, sub)
+	return nil
 }
 
-// SubscribeAll registers every subscription, in group, contract then
-// consumer order. A transport that implements [BatchSubscriber] receives
-// the whole slice in one call, after every entry passed the checks
-// [Bus.Subscribe] makes; any other transport gets one Subscribe per
-// entry, where the first failure stops the run and subscriptions already
-// made stay live until ctx is cancelled.
+func registerError(sub Subscription, err error) error {
+	return &RegisterError{Event: sub.Event, Consumer: sub.Consumer, Group: sub.Group, Err: err}
+}
+
+// Start hands every registered subscription to the transport in one call,
+// each handler wrapped in a recover, the bus chain, and the
+// subscription's own chain innermost. A second Start, or a [Bus.Register]
+// after one, is [ErrStarted] - including after a Start that failed, since
+// the transport may have registered part of the batch before it did.
 //
-// Group leads the key because it is the identity a transport can refuse a
-// second claim on, so it decides which of two colliding subscriptions
-// registers first. Contract and consumer complete the order: two services
-// may name a consumer alike, and an order that is not total would move
-// the refusal between runs.
-func (b *Bus) SubscribeAll(ctx context.Context, subs []Subscription) error {
-	ordered := make([]Subscription, len(subs))
-	copy(ordered, subs)
-	sort.Slice(ordered, func(i, j int) bool {
-		if ordered[i].GroupName() != ordered[j].GroupName() {
-			return ordered[i].GroupName() < ordered[j].GroupName()
-		}
-		if ordered[i].Event != ordered[j].Event {
-			return ordered[i].Event < ordered[j].Event
-		}
-		return ordered[i].Consumer < ordered[j].Consumer
-	})
-	batch, batched := b.sub.(BatchSubscriber)
-	if !batched {
-		for _, sub := range ordered {
-			if err := b.Subscribe(ctx, sub); err != nil {
-				return subscribeError(sub, err)
-			}
-		}
+// The batch is sorted by group, contract then consumer. Group leads
+// because it is the identity a transport can refuse a second claim on, so
+// it decides which of two colliding subscriptions registers first;
+// contract and consumer complete the order, since two services may name a
+// consumer alike and an order that is not total would move the refusal
+// between runs.
+//
+// A bus with nothing registered starts successfully and hands the
+// transport nothing.
+func (b *Bus) Start(ctx context.Context) error {
+	b.mu.Lock()
+	if b.started {
+		b.mu.Unlock()
+		return ErrStarted
+	}
+	b.started = true
+	subs := sortedSubscriptions(b.subs)
+	b.mu.Unlock()
+
+	if len(subs) == 0 {
 		return nil
 	}
-	for i, sub := range ordered {
-		prepared, err := b.prepare(sub)
-		if err != nil {
-			return subscribeError(sub, err)
-		}
-		ordered[i] = prepared
+	if b.sub == nil {
+		return ErrNoSubscriber
 	}
-	if len(ordered) == 0 {
-		return nil
+	for i := range subs {
+		subs[i].Handle = b.decorated(subs[i])
 	}
-	if err := batch.SubscribeBatch(ctx, ordered); err != nil {
-		return fmt.Errorf("events: subscribe %d subscription(s): %w", len(ordered), err)
+	if err := b.sub.Subscribe(ctx, subs); err != nil {
+		return fmt.Errorf("events: start %d subscription(s): %w", len(subs), err)
 	}
 	return nil
 }
 
-func subscribeError(sub Subscription, err error) error {
-	return fmt.Errorf("events: subscribe %s/%s in group %s: %w", sub.Event, sub.Consumer, sub.GroupName(), err)
+// sortedSubscriptions is a copy of subs in the order the transport
+// receives them.
+func sortedSubscriptions(subs []Subscription) []Subscription {
+	out := make([]Subscription, len(subs))
+	copy(out, subs)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Group != out[j].Group {
+			return out[i].Group < out[j].Group
+		}
+		if out[i].Event != out[j].Event {
+			return out[i].Event < out[j].Event
+		}
+		return out[i].Consumer < out[j].Consumer
+	})
+	return out
 }
 
 // ErrCodecMismatch is returned by [Bus.Decode] for a message stamped

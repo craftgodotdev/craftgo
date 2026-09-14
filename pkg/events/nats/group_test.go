@@ -5,16 +5,18 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go/jetstream"
+
+	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
 func TestAGroupWithARejectedCharacterIsRefused(t *testing.T) {
-	for _, group := range []string{"my.group", "my group", "my>group", "my*group", "my/group"} {
+	for _, group := range []events.Group{"my.group", "my group", "my>group", "my*group", "my/group"} {
 		err := checkGroup(group)
 		if err == nil {
 			t.Errorf("group %q must be refused", group)
 			continue
 		}
-		if !strings.Contains(err.Error(), group) {
+		if !strings.Contains(err.Error(), string(group)) {
 			t.Errorf("refusal does not quote what the user wrote: %v", err)
 		}
 		if !strings.Contains(err.Error(), "yours to rename") {
@@ -30,7 +32,7 @@ func TestAnEmptyGroupIsRefused(t *testing.T) {
 }
 
 func TestAnOverlongGroupIsRefusedLocally(t *testing.T) {
-	err := checkGroup(strings.Repeat("g", 256))
+	err := checkGroup(events.Group(strings.Repeat("g", 256)))
 	if err == nil {
 		t.Fatal("a group over 255 characters must be refused")
 	}
@@ -40,7 +42,7 @@ func TestAnOverlongGroupIsRefusedLocally(t *testing.T) {
 }
 
 func TestAPlainGroupIsADurableName(t *testing.T) {
-	for _, group := range []string{"store-front-store", "notifications-NotificationService-SendReceipt", "g_1"} {
+	for _, group := range []events.Group{"store-front-store", "notifications-NotificationService-SendReceipt", "g_1"} {
 		if err := checkGroup(group); err != nil {
 			t.Errorf("group %q refused: %v", group, err)
 		}
@@ -70,5 +72,46 @@ func TestTheFilterSetIsReadFromEitherField(t *testing.T) {
 	}
 	if got := filterOf(jetstream.ConsumerConfig{}); got != nil {
 		t.Errorf("filterOf(none) = %v, want nil", got)
+	}
+}
+
+func TestAdoptingComparesTheFilterSets(t *testing.T) {
+	both := []string{"orders.Placed", "orders.Shipped"}
+	cases := []struct {
+		name        string
+		carried     []string
+		planned     []string
+		allowNarrow bool
+		want        adoption
+	}{
+		{"equal", both, both, false, adoptAsIs},
+		{"a consumer was added", []string{"orders.Placed"}, both, false, repoint},
+		{"a consumer was removed", both, []string{"orders.Placed"}, false, refuse},
+		{"only partly overlapping", both, []string{"orders.Placed", "orders.Paid"}, false, refuse},
+		{"no filter at all is every subject", nil, both, false, refuse},
+		{"a removal the group allows", both, []string{"orders.Placed"}, true, repoint},
+		{"an overlap the group allows", both, []string{"orders.Paid"}, true, repoint},
+		{"equal wins over allowNarrow", both, both, true, adoptAsIs},
+	}
+	for _, c := range cases {
+		if got := adopting(c.carried, c.planned, c.allowNarrow); got != c.want {
+			t.Errorf("%s: adopting(%v, %v, %v) = %v, want %v", c.name, c.carried, c.planned, c.allowNarrow, got, c.want)
+		}
+	}
+}
+
+func TestSubsetIsEveryElementOfTheFirst(t *testing.T) {
+	both := []string{"orders.Placed", "orders.Shipped"}
+	if !subset([]string{"orders.Placed"}, both) {
+		t.Error("a smaller set is a subset")
+	}
+	if !subset(nil, both) {
+		t.Error("the empty set is a subset")
+	}
+	if subset(both, []string{"orders.Placed"}) {
+		t.Error("a larger set is not a subset")
+	}
+	if subset([]string{"orders.Paid"}, both) {
+		t.Error("a disjoint set is not a subset")
 	}
 }

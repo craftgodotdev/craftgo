@@ -23,7 +23,7 @@ func tagMW(trace *string, tag string) events.Middleware {
 }
 
 // tracingSub builds one subscription whose handler marks the trace.
-func tracingSub(trace *string, event, consumer, group string) events.Subscription {
+func tracingSub(trace *string, event, consumer string, group events.Group) events.Subscription {
 	return events.Subscription{
 		Event: event, Consumer: consumer, Group: group,
 		Handle: func(context.Context, *events.Message) error {
@@ -91,14 +91,14 @@ func TestMiddlewareSeesItsOwnSubscription(t *testing.T) {
 	var seen []string
 	record := func(sub events.Subscription, next events.Handler) events.Handler {
 		return func(ctx context.Context, msg *events.Message) error {
-			seen = append(seen, sub.Event+"/"+sub.Consumer+"/"+sub.GroupName())
+			seen = append(seen, sub.Event+"/"+sub.Consumer+"/"+string(sub.Group))
 			return next(ctx, msg)
 		}
 	}
 	var trace string
 	subs := []events.Subscription{
 		tracingSub(&trace, "orders.Placed", "SendReceipt", "receipts"),
-		tracingSub(&trace, "orders.Placed", "Audit", ""),
+		tracingSub(&trace, "orders.Placed", "Audit", "audit"),
 		tracingSub(&trace, "stock.Low", "Reorder", "warehouse"),
 	}
 	for _, sub := range events.NewChain(record).Apply(subs) {
@@ -109,8 +109,7 @@ func TestMiddlewareSeesItsOwnSubscription(t *testing.T) {
 
 	want := []string{
 		"orders.Placed/SendReceipt/receipts",
-		// Group empty falls back to Consumer, the same rule the bus keys on.
-		"orders.Placed/Audit/Audit",
+		"orders.Placed/Audit/audit",
 		"stock.Low/Reorder/warehouse",
 	}
 	if strings.Join(seen, ",") != strings.Join(want, ",") {

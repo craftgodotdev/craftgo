@@ -17,8 +17,8 @@ type directTransport struct {
 	subs []events.Subscription
 }
 
-func (d *directTransport) Subscribe(_ context.Context, sub events.Subscription) error {
-	d.subs = append(d.subs, sub)
+func (d *directTransport) Subscribe(_ context.Context, subs []events.Subscription) error {
+	d.subs = append(d.subs, subs...)
 	return nil
 }
 
@@ -47,11 +47,9 @@ func deliverThrough(t *testing.T, chain events.Chain, h events.Handler) *events.
 	tr := &directTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
 		events.WithMiddleware(chain...))
-	if err := bus.Subscribe(context.Background(), events.Subscription{
-		Event: "x.Y", Consumer: "C", Handle: h,
-	}); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	start(t, context.Background(), bus, events.Subscription{
+		Event: "x.Y", Consumer: "C", Group: "g", Handle: h,
+	})
 	msg := &events.Message{Event: "x.Y", Payload: []byte("{}")}
 	if err := tr.Publish(context.Background(), msg); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -59,17 +57,22 @@ func deliverThrough(t *testing.T, chain events.Chain, h events.Handler) *events.
 	return msg
 }
 
-// subscribeWith builds a bus from opts and subscribes one handler,
-// returning what Subscribe answered.
+// subscribeWith builds a bus from opts and registers one handler,
+// returning what the registration answered - or, when it passed, what
+// starting the bus did.
 func subscribeWith(tr interface {
 	events.Publisher
 	events.Subscriber
 }, opts ...events.Option) error {
 	opts = append([]events.Option{events.WithTransport(tr), events.WithCodec(codecjson.Codec{})}, opts...)
-	return events.New(opts...).Subscribe(context.Background(), events.Subscription{
-		Event: "x.Y", Consumer: "C",
+	bus := events.New(opts...)
+	if err := bus.Register(events.Subscription{
+		Event: "x.Y", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
-	})
+	}); err != nil {
+		return err
+	}
+	return bus.Start(context.Background())
 }
 
 func TestTheZeroDispositionIsUnset(t *testing.T) {
@@ -164,10 +167,10 @@ func TestATransportWithNoCapabilityHonoursSettleAlone(t *testing.T) {
 	}
 }
 
-// The refusal is at subscribe, not at the first message: a chain that
+// The refusal is at registration, not at the first message: a chain that
 // calls Redeliver on a transport that settles instead loses every message
 // it meant to retry, and nothing reports it.
-func TestARequiredDispositionTheTransportLacksFailsAtSubscribe(t *testing.T) {
+func TestARequiredDispositionTheTransportLacksFailsAtRegister(t *testing.T) {
 	tr := &dispositionTransport{can: map[events.Disposition]bool{events.DispositionSettle: true}}
 
 	err := subscribeWith(tr, events.WithDispositionRequired(events.DispositionRedeliver))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -16,12 +17,11 @@ import (
 )
 
 var (
-	_ events.Publisher       = (*JetStream)(nil)
-	_ events.Subscriber      = (*JetStream)(nil)
-	_ events.BatchSubscriber = (*JetStream)(nil)
-	_ events.BatchPublisher  = (*JetStream)(nil)
-	_ events.OptionAware     = (*JetStream)(nil)
-	_ events.Dispositioner   = (*JetStream)(nil)
+	_ events.Publisher      = (*JetStream)(nil)
+	_ events.Subscriber     = (*JetStream)(nil)
+	_ events.BatchPublisher = (*JetStream)(nil)
+	_ events.OptionAware    = (*JetStream)(nil)
+	_ events.Dispositioner  = (*JetStream)(nil)
 )
 
 // JetStream publishes into, and consumes from, NATS JetStream streams.
@@ -33,6 +33,11 @@ var (
 // carrying the group's subjects - craftgo never creates one, and a group
 // whose subjects sit on two streams is refused.
 //
+// A durable that already exists is adopted rather than reshaped: its
+// filter set is compared with the plan, widened where this version added
+// a consumer, and refused where the plan would narrow it - see
+// [WithGroupConfig] and [AllowNarrow].
+//
 // Within one process a durable's messages are handled one at a time, in
 // stream order, on one goroutine ([WithMaxInFlight] raises the prefetch).
 // That is an observation, not a promise: a second replica pulls from the
@@ -43,11 +48,11 @@ var (
 // not a [nats.Msg]. The wire format is shared, so a message published
 // through either arrives identically.
 type JetStream struct {
-	js        jetstream.JetStream
-	subject   func(contract string) string
-	onError   func(sub events.Subscription, msg *events.Message, err error)
-	configure func(group string, cfg *jetstream.ConsumerConfig)
-	backoff   func(deliveries int) time.Duration
+	js      jetstream.JetStream
+	subject func(contract string) string
+	onError func(sub events.Subscription, msg *events.Message, err error)
+	backoff func(deliveries int) time.Duration
+	log     *slog.Logger
 
 	probeTimeout  time.Duration
 	ackWait       time.Duration
@@ -55,6 +60,7 @@ type JetStream struct {
 	drainTimeout  time.Duration
 	maxInFlight   int
 	maxDeliveries int
+	perGroup      map[events.Group]*groupConfig
 
 	closeCtx  context.Context
 	closeStop context.CancelFunc
@@ -63,7 +69,7 @@ type JetStream struct {
 
 	mu        sync.Mutex
 	consuming []jetstream.ConsumeContext
-	groups    map[string]bool
+	groups    map[events.Group]bool
 	accountOK bool
 	streamFor map[string]string
 }
@@ -108,14 +114,16 @@ func WithPublishAckTimeout(d time.Duration) JetStreamOption {
 }
 
 // WithAckWait is how long the server waits for an answer before it
-// redelivers, set when a durable is created. Default 30s. A durable that
-// already exists keeps its own.
+// redelivers, set when a durable is created. Default 30s, for every group
+// [WithGroupConfig] does not give one of its own. A durable that already
+// exists keeps its own.
 func WithAckWait(d time.Duration) JetStreamOption {
 	return func(j *JetStream) { j.ackWait = d }
 }
 
 // WithMaxInFlight is how many messages one durable's pull keeps buffered
-// in this process. Default 1.
+// in this process. Default 1, for every group [WithGroupConfig] does not
+// give one of its own.
 //
 // Messages are handled one at a time, so a buffered message waits for
 // every handler ahead of it with the server's AckWait clock already
@@ -152,14 +160,95 @@ func WithDrainTimeout(d time.Duration) JetStreamOption {
 	return func(j *JetStream) { j.drainTimeout = d }
 }
 
-// WithConsumerConfig adjusts the configuration a durable is CREATED with
-// - a deliver policy, a start sequence, replicas, an inactive threshold.
-// It runs once, when the durable does not exist yet; an existing durable
-// keeps the configuration it has, and only its filter subjects follow the
-// design. The name, the filter subjects and the explicit ack policy are
-// craftgo's and are re-asserted after fn returns.
-func WithConsumerConfig(fn func(group string, cfg *jetstream.ConsumerConfig)) JetStreamOption {
-	return func(j *JetStream) { j.configure = fn }
+// WithJetStreamLogger installs the logger the transport reports what it
+// did to the broker on: a durable it created, a durable it re-pointed.
+// The default is [slog.Default]; a nil logger is ignored.
+func WithJetStreamLogger(l *slog.Logger) JetStreamOption {
+	return func(j *JetStream) {
+		if l != nil {
+			j.log = l
+		}
+	}
+}
+
+// groupConfig is one group's settings. A zero field falls back to the
+// transport-wide default, so a group named for one setting keeps the
+// others.
+type groupConfig struct {
+	maxInFlight int
+	ackWait     time.Duration
+	deliver     jetstream.DeliverPolicy
+	deliverSet  bool
+	configure   func(cfg *jetstream.ConsumerConfig)
+	allowNarrow bool
+}
+
+// GroupOption is one setting of one consumer group's durable.
+type GroupOption func(*groupConfig)
+
+// WithGroupConfig settles how ONE group's durable is created and
+// consumed. Delivery settings belong to the group rather than to the
+// transport because a group is what the server keeps them on: a durable
+// consuming a slow contract wants a different AckWait from one consuming
+// a fast one, and both may run in the same process.
+//
+// Repeated calls for a group accumulate, so each setting can be named
+// where it is decided.
+func WithGroupConfig(group events.Group, opts ...GroupOption) JetStreamOption {
+	return func(j *JetStream) {
+		cfg := j.perGroup[group]
+		if cfg == nil {
+			cfg = &groupConfig{}
+			j.perGroup[group] = cfg
+		}
+		for _, o := range opts {
+			if o != nil {
+				o(cfg)
+			}
+		}
+	}
+}
+
+// MaxInFlight is this group's prefetch, overriding [WithMaxInFlight].
+// Zero leaves the transport-wide value in place.
+func MaxInFlight(n int) GroupOption {
+	return func(c *groupConfig) { c.maxInFlight = n }
+}
+
+// AckWait is this group's redelivery timer, overriding [WithAckWait].
+// Zero leaves the transport-wide value in place. It is set when the
+// durable is created; one that already exists keeps its own, and the
+// heartbeat then follows what the server reports.
+func AckWait(d time.Duration) GroupOption {
+	return func(c *groupConfig) { c.ackWait = d }
+}
+
+// DeliverPolicy is where this group's durable starts reading, applied
+// when it is CREATED. A durable that already exists keeps its own - where
+// a consumer resumes is not something a redeploy may move.
+func DeliverPolicy(p jetstream.DeliverPolicy) GroupOption {
+	return func(c *groupConfig) { c.deliver, c.deliverSet = p, true }
+}
+
+// ConsumerConfig adjusts everything else this group's durable is CREATED
+// with - a start sequence, replicas, an inactive threshold. It runs once,
+// when the durable does not exist yet. The name, the filter subjects and
+// the explicit ack policy are craftgo's and are re-asserted after fn
+// returns.
+func ConsumerConfig(fn func(cfg *jetstream.ConsumerConfig)) GroupOption {
+	return func(c *groupConfig) { c.configure = fn }
+}
+
+// AllowNarrow lets this group's durable be pointed at a filter set
+// smaller than the one it carries.
+//
+// Without it a durable filtering subjects this process does not plan is
+// refused rather than re-pointed: narrowing it stops those subjects being
+// consumed by anyone, which is a deployment losing messages with nothing
+// to show for it. With it, the plan wins - which is what a deliberate
+// removal of a consumer looks like.
+func AllowNarrow() GroupOption {
+	return func(c *groupConfig) { c.allowNarrow = true }
 }
 
 // NewJetStream binds a transport to an existing connection. The caller
@@ -168,13 +257,15 @@ func WithConsumerConfig(fn func(group string, cfg *jetstream.ConsumerConfig)) Je
 func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) {
 	j := &JetStream{
 		subject:       func(c string) string { return c },
+		log:           slog.Default(),
 		probeTimeout:  5 * time.Second,
 		ackWait:       30 * time.Second,
 		ackTimeout:    30 * time.Second,
 		drainTimeout:  30 * time.Second,
 		maxInFlight:   1,
 		maxDeliveries: 5,
-		groups:        map[string]bool{},
+		perGroup:      map[events.Group]*groupConfig{},
+		groups:        map[events.Group]bool{},
 		streamFor:     map[string]string{},
 		closing:       make(chan struct{}),
 	}
@@ -186,6 +277,11 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 	}
 	if j.maxInFlight < 1 {
 		return nil, fmt.Errorf("nats: WithMaxInFlight(%d) must be at least 1", j.maxInFlight)
+	}
+	for _, group := range sortedGroups(j.perGroup) {
+		if n := j.perGroup[group].maxInFlight; n < 0 {
+			return nil, fmt.Errorf("nats: WithGroupConfig(%q, MaxInFlight(%d)) must be at least 1", group, n)
+		}
 	}
 
 	clientOpts := []jetstream.JetStreamOpt{jetstream.WithPublishAsyncTimeout(j.ackTimeout)}
@@ -302,21 +398,18 @@ func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) er
 	return events.UnsentAt(unsent, msgs, firstErr)
 }
 
-// Subscribe registers one subscription as a group of its own. A group
-// with several contracts has to arrive together, through
-// [JetStream.SubscribeBatch] - which is what [events.Bus.SubscribeAll]
-// does - because its durable filters every subject at once.
-func (j *JetStream) Subscribe(ctx context.Context, sub events.Subscription) error {
-	return j.SubscribeBatch(ctx, []events.Subscription{sub})
-}
-
-// SubscribeBatch binds every subscription to the durable of its group,
-// one durable per group, and refuses rather than proceeding when
-// anything about that cannot be established: JetStream off, a subject no
-// stream carries, a group spanning two streams, a group already
-// subscribed on this transport, or a durable that does not acknowledge
-// explicitly. Groups already started when a later one fails stay live.
-func (j *JetStream) SubscribeBatch(ctx context.Context, subs []events.Subscription) error {
+// Subscribe binds every subscription to the durable of its group, one
+// durable per group, and refuses rather than proceeding when anything
+// about that cannot be established: JetStream off, a subject no stream
+// carries, a group spanning two streams, a group already subscribed on
+// this transport, a durable that does not acknowledge explicitly, or one
+// whose filter this process would have to narrow. Groups already started
+// when a later one fails stay live.
+//
+// A group's contracts have to arrive in one call, which is what
+// [events.Bus.Start] does: the durable filters every subject at once, so
+// there is no registering one contract of a group at a time.
+func (j *JetStream) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	if err := j.checkAccount(ctx); err != nil {
 		return err
 	}
@@ -332,25 +425,26 @@ func (j *JetStream) SubscribeBatch(ctx context.Context, subs []events.Subscripti
 	return nil
 }
 
-// groupPlan is one durable: its stream, its filter subjects and the
-// consumer behind each subject.
+// groupPlan is one durable: its stream, its settings, its filter subjects
+// and the consumer behind each subject.
 type groupPlan struct {
-	name     string
+	name     events.Group
 	stream   string
+	config   groupConfig
 	subjects []string
 	handlers map[string]events.Subscription
 }
 
 func (j *JetStream) plan(ctx context.Context, subs []events.Subscription) ([]*groupPlan, error) {
-	byName := map[string]*groupPlan{}
+	byName := map[events.Group]*groupPlan{}
 	var order []*groupPlan
 	for _, sub := range subs {
-		group := sub.GroupName()
+		group := sub.Group
 		if err := checkGroup(group); err != nil {
 			return nil, err
 		}
 		if j.subscribed(group) {
-			return nil, fmt.Errorf("nats: consumer group %q is already subscribed on this transport - hand every consumer of a group to one SubscribeAll", group)
+			return nil, fmt.Errorf("nats: consumer group %q is already subscribed on this transport - hand every consumer of a group to one Subscribe", group)
 		}
 		subject := j.subject(sub.Event)
 		stream, err := j.streamCovering(ctx, subject)
@@ -359,7 +453,7 @@ func (j *JetStream) plan(ctx context.Context, subs []events.Subscription) ([]*gr
 		}
 		g := byName[group]
 		if g == nil {
-			g = &groupPlan{name: group, stream: stream, handlers: map[string]events.Subscription{}}
+			g = &groupPlan{name: group, stream: stream, config: j.configFor(group), handlers: map[string]events.Subscription{}}
 			byName[group] = g
 			order = append(order, g)
 		}
@@ -379,7 +473,37 @@ func (j *JetStream) plan(ctx context.Context, subs []events.Subscription) ([]*gr
 	return order, nil
 }
 
-func (j *JetStream) subscribed(group string) bool {
+// configFor is one group's settings, filled in from the transport-wide
+// defaults.
+func (j *JetStream) configFor(group events.Group) groupConfig {
+	cfg := groupConfig{maxInFlight: j.maxInFlight, ackWait: j.ackWait}
+	g := j.perGroup[group]
+	if g == nil {
+		return cfg
+	}
+	if g.maxInFlight > 0 {
+		cfg.maxInFlight = g.maxInFlight
+	}
+	if g.ackWait > 0 {
+		cfg.ackWait = g.ackWait
+	}
+	cfg.deliver, cfg.deliverSet = g.deliver, g.deliverSet
+	cfg.configure, cfg.allowNarrow = g.configure, g.allowNarrow
+	return cfg
+}
+
+// sortedGroups is the groups of m, in name order, so a diagnostic built
+// from several of them reads the same on every run.
+func sortedGroups(m map[events.Group]*groupConfig) []events.Group {
+	out := make([]events.Group, 0, len(m))
+	for group := range m {
+		out = append(out, group)
+	}
+	sort.Slice(out, func(i, k int) bool { return out[i] < out[k] })
+	return out
+}
+
+func (j *JetStream) subscribed(group events.Group) bool {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return j.groups[group]
@@ -393,7 +517,7 @@ func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 	whole := events.Subscription{Group: g.name}
 	cc, err := consumer.Consume(
 		func(m jetstream.Msg) { j.dispatch(ctx, g, ackWait, m) },
-		jetstream.PullMaxMessages(j.maxInFlight),
+		jetstream.PullMaxMessages(g.config.maxInFlight),
 		jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
 			if ctx.Err() == nil {
 				j.report(whole, nil, fmt.Errorf("nats: consume group %q: %w", g.name, err))
@@ -438,30 +562,20 @@ func (j *JetStream) isClosing() bool {
 // durable adopts the group's durable when it exists and creates it
 // otherwise, and reports the AckWait it runs with.
 //
-// An existing durable is patched only where the design is the authority
-// - its filter subjects - so an operator's DeliverPolicy, replicas or
-// start sequence survive a redeploy. The server refuses to change several
-// of those anyway, and a full config sent at every boot was rejected for
-// any durable created with DeliverNew.
+// An existing durable is verified rather than patched into shape. Only
+// its filter subjects are ever written, so an operator's DeliverPolicy,
+// replicas or start sequence survive a redeploy - the server refuses to
+// change several of those anyway, and a full config sent at every boot
+// was rejected for any durable created with DeliverNew.
 func (j *JetStream) durable(ctx context.Context, g *groupPlan) (jetstream.Consumer, time.Duration, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, j.probeTimeout)
 	defer cancel()
 
-	existing, err := j.js.Consumer(probeCtx, g.stream, g.name)
+	name := string(g.name)
+	existing, err := j.js.Consumer(probeCtx, g.stream, name)
 	switch {
 	case errors.Is(err, jetstream.ErrConsumerNotFound):
-		cfg := jetstream.ConsumerConfig{Durable: g.name, Name: g.name, AckWait: j.ackWait}
-		if j.configure != nil {
-			j.configure(g.name, &cfg)
-		}
-		cfg.Durable, cfg.Name = g.name, g.name
-		cfg.AckPolicy = jetstream.AckExplicitPolicy
-		setFilter(&cfg, g.subjects)
-		created, err := j.js.CreateConsumer(probeCtx, g.stream, cfg)
-		if err != nil {
-			return nil, 0, fmt.Errorf("nats: create consumer %q on stream %q: %w", g.name, g.stream, err)
-		}
-		return created, effectiveAckWait(created, j.ackWait), nil
+		return j.createDurable(probeCtx, g)
 	case err != nil:
 		return nil, 0, fmt.Errorf("nats: look up consumer %q on stream %q: %w", g.name, g.stream, err)
 	}
@@ -470,15 +584,118 @@ func (j *JetStream) durable(ctx context.Context, g *groupPlan) (jetstream.Consum
 	if cfg.AckPolicy != jetstream.AckExplicitPolicy {
 		return nil, 0, fmt.Errorf("nats: consumer %q on stream %q does not acknowledge explicitly, so Redeliver and Reject would do nothing - recreate it with AckExplicit", g.name, g.stream)
 	}
-	if equalSets(filterOf(cfg), g.subjects) {
-		return existing, effectiveAckWait(existing, j.ackWait), nil
+	carried := filterOf(cfg)
+	switch adopting(carried, g.subjects, g.config.allowNarrow) {
+	case adoptAsIs:
+		return existing, effectiveAckWait(existing, g.config.ackWait), nil
+	case repoint:
+		setFilter(&cfg, g.subjects)
+		updated, err := j.js.UpdateConsumer(probeCtx, g.stream, cfg)
+		if err != nil {
+			return nil, 0, fmt.Errorf("nats: point consumer %q on stream %q at %v: %w", g.name, g.stream, g.subjects, err)
+		}
+		j.log.InfoContext(probeCtx, "nats: repointed jetstream consumer",
+			slog.String("group", name),
+			slog.String("stream", g.stream),
+			slog.Any("was", carried),
+			slog.Any("subjects", g.subjects))
+		return updated, effectiveAckWait(updated, g.config.ackWait), nil
 	}
+	return nil, 0, narrowed(g, carried)
+}
+
+// createDurable creates the group's durable. The name, the filter
+// subjects and the explicit ack policy are craftgo's and are written
+// after the caller's own configuration, which can set everything else.
+func (j *JetStream) createDurable(ctx context.Context, g *groupPlan) (jetstream.Consumer, time.Duration, error) {
+	name := string(g.name)
+	cfg := jetstream.ConsumerConfig{Durable: name, Name: name, AckWait: g.config.ackWait}
+	if g.config.deliverSet {
+		cfg.DeliverPolicy = g.config.deliver
+	}
+	if g.config.configure != nil {
+		g.config.configure(&cfg)
+	}
+	cfg.Durable, cfg.Name = name, name
+	cfg.AckPolicy = jetstream.AckExplicitPolicy
 	setFilter(&cfg, g.subjects)
-	updated, err := j.js.UpdateConsumer(probeCtx, g.stream, cfg)
+
+	created, err := j.js.CreateConsumer(ctx, g.stream, cfg)
 	if err != nil {
-		return nil, 0, fmt.Errorf("nats: point consumer %q on stream %q at %v: %w", g.name, g.stream, g.subjects, err)
+		return nil, 0, fmt.Errorf("nats: create consumer %q on stream %q: %w", g.name, g.stream, err)
 	}
-	return updated, effectiveAckWait(updated, j.ackWait), nil
+	// A durable is where a group resumes, so the one boot that creates it
+	// is the one an operator has to be able to find afterwards.
+	j.log.InfoContext(ctx, "nats: created jetstream consumer",
+		slog.String("group", name),
+		slog.String("stream", g.stream),
+		slog.Any("subjects", g.subjects),
+		slog.String("deliver_policy", cfg.DeliverPolicy.String()),
+		slog.Duration("ack_wait", cfg.AckWait),
+		slog.Int("max_in_flight", g.config.maxInFlight))
+	return created, effectiveAckWait(created, g.config.ackWait), nil
+}
+
+// adoption is what to do with a durable that already exists.
+type adoption int
+
+const (
+	// adoptAsIs is a durable already filtering exactly the plan.
+	adoptAsIs adoption = iota
+	// repoint is a durable to be pointed at the plan.
+	repoint
+	// refuse is a durable this process would have to narrow.
+	refuse
+)
+
+// adopting compares the filter set a durable carries with the one this
+// process plans.
+//
+// Equal is the ordinary redeploy. A strict subset is a consumer this
+// version added, which is a widening: nothing stops being consumed, so it
+// is written without asking. Anything else - a plan that drops subjects,
+// one that only partly overlaps, or a durable with no filter at all,
+// which takes every subject on its stream - would stop those subjects
+// reaching anyone, so it is refused unless the group says otherwise.
+func adopting(carried, planned []string, allowNarrow bool) adoption {
+	switch {
+	case equalSets(carried, planned):
+		return adoptAsIs
+	case allowNarrow:
+		return repoint
+	case len(carried) > 0 && subset(carried, planned):
+		return repoint
+	}
+	return refuse
+}
+
+// subset reports whether every subject of a is in b.
+func subset(a, b []string) bool {
+	in := make(map[string]bool, len(b))
+	for _, s := range b {
+		in[s] = true
+	}
+	for _, s := range a {
+		if !in[s] {
+			return false
+		}
+	}
+	return true
+}
+
+// narrowed is the refusal to point a durable at less than it has.
+func narrowed(g *groupPlan, carried []string) error {
+	return fmt.Errorf("nats: consumer group %q on stream %q filters %s, and this process plans %v - pointing it at the plan would stop delivering the subjects it loses, which no replica would pick up; add craftnats.WithGroupConfig(%q, craftnats.AllowNarrow()) if that is the intention, or give this deployable a group of its own",
+		g.name, g.stream, describeFilter(carried), g.subjects, g.name)
+}
+
+// describeFilter names a durable's filter set, including the empty one,
+// which is not "no subjects" but every subject on the stream.
+func describeFilter(subjects []string) string {
+	if len(subjects) == 0 {
+		return "every subject on its stream (it carries no filter)"
+	}
+	return fmt.Sprintf("%v", subjects)
 }
 
 func effectiveAckWait(c jetstream.Consumer, fallback time.Duration) time.Duration {
@@ -711,7 +928,7 @@ const groupRejected = ". > * / \\ \t\r\n"
 // checkGroup refuses a group the server would reject as a durable name,
 // quoting what the user wrote: the group is theirs to rename, and a
 // silent rename would move where its consumers resume.
-func checkGroup(group string) error {
+func checkGroup(group events.Group) error {
 	if group == "" {
 		return errors.New("nats: a subscription needs a consumer group - it is the durable name")
 	}
@@ -724,7 +941,7 @@ func checkGroup(group string) error {
 	return nil
 }
 
-func firstRejected(s string) string {
+func firstRejected(s events.Group) string {
 	for _, r := range s {
 		if strings.ContainsRune(groupRejected, r) || r == ' ' {
 			return string(r)

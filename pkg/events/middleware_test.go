@@ -22,14 +22,13 @@ func busWith(mws ...events.Middleware) (*events.Bus, *recordingTransport) {
 	), tr
 }
 
-// registered subscribes sub and returns the handler the transport was
-// handed - the one a delivery goroutine calls.
-func registered(t *testing.T, bus *events.Bus, tr *recordingTransport, sub events.Subscription) events.Handler {
+// wrapped registers sub on a bus carrying mws and returns the handler the
+// transport was handed - the one a delivery goroutine calls.
+func wrapped(t *testing.T, sub events.Subscription, mws ...events.Middleware) events.Handler {
 	t.Helper()
-	if err := bus.Subscribe(context.Background(), sub); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	return tr.subs[len(tr.subs)-1].Handle
+	bus, tr := busWith(mws...)
+	start(t, context.Background(), bus, sub)
+	return tr.subs[0].Handle
 }
 
 // panickingSub is a subscription whose handler panics.
@@ -44,8 +43,8 @@ func panickingSub(value any) events.Subscription {
 // transport, outermost first.
 func TestBusMiddlewareWrapsEverySubscription(t *testing.T) {
 	var trace string
-	bus, tr := busWith(tagMW(&trace, "A"), tagMW(&trace, "B"), tagMW(&trace, "C"))
-	h := registered(t, bus, tr, tracingSub(&trace, "x.Y", "C1", "g"))
+	h := wrapped(t, tracingSub(&trace, "x.Y", "C1", "g"),
+		tagMW(&trace, "A"), tagMW(&trace, "B"), tagMW(&trace, "C"))
 	if err := h(context.Background(), &events.Message{Event: "x.Y"}); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
@@ -55,10 +54,51 @@ func TestBusMiddlewareWrapsEverySubscription(t *testing.T) {
 	}
 }
 
-// WithMiddleware is what a hand-built slice inherits too: the demo's
-// cross-design consumer is appended to a generated slice and never passes
-// through any SubscribeAll, so the bus is the only seam that sees it.
-func TestBusMiddlewareCoversAHandBuiltSubscription(t *testing.T) {
+// A subscription's own chain runs INSIDE the bus-wide one, so a bus
+// concern - logging, tracing - still sees what a per-consumer chain did.
+func TestASubscriptionsChainRunsInsideTheBusChain(t *testing.T) {
+	var trace string
+	sub := tracingSub(&trace, "x.Y", "C1", "g")
+	sub.Chain = events.NewChain(tagMW(&trace, "S1"), tagMW(&trace, "S2"))
+	h := wrapped(t, sub, tagMW(&trace, "B1"), tagMW(&trace, "B2"))
+	if err := h(context.Background(), &events.Message{Event: "x.Y"}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+
+	if want := ">B1>B2>S1>S2|H|<S2<S1<B2<B1"; trace != want {
+		t.Errorf("chain order = %q, want %q", trace, want)
+	}
+}
+
+// The recover is outside both chains and inside neither: a subscription's
+// own chain sees a panicking handler as an error, exactly as the bus
+// chain does, and a panic in either chain still ends as an error.
+func TestRecoverySurroundsBothChains(t *testing.T) {
+	var seen error
+	observe := func(_ events.Subscription, next events.Handler) events.Handler {
+		return func(ctx context.Context, msg *events.Message) error {
+			err := next(ctx, msg)
+			seen = err
+			return err
+		}
+	}
+	sub := panickingSub("boom")
+	sub.Chain = events.NewChain(observe)
+	err := wrapped(t, sub, passthrough())(context.Background(), &events.Message{Event: "x.Y"})
+
+	var panicked *events.PanicError
+	if !errors.As(seen, &panicked) {
+		t.Fatalf("the subscription's own chain saw %v, want a *PanicError", seen)
+	}
+	if !errors.As(err, &panicked) {
+		t.Fatalf("the transport saw %v, want a *PanicError", err)
+	}
+}
+
+// WithMiddleware covers a hand-built subscription too: one written
+// against another design's contracts reaches the broker through the same
+// bus, which is the only seam that sees every registration.
+func TestBusMiddlewareCoversEverySubscription(t *testing.T) {
 	var mu sync.Mutex
 	var seen []string
 	record := func(sub events.Subscription, next events.Handler) events.Handler {
@@ -71,13 +111,10 @@ func TestBusMiddlewareCoversAHandBuiltSubscription(t *testing.T) {
 	}
 	var trace string
 	bus, tr := busWith(record)
-	subs := []events.Subscription{
+	start(t, context.Background(), bus,
 		tracingSub(&trace, "x.Y", "Generated", "g1"),
 		tracingSub(&trace, "other.Z", "HandWritten", "g2"),
-	}
-	if err := bus.SubscribeAll(context.Background(), subs); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	)
 	for _, sub := range tr.subs {
 		if err := sub.Handle(context.Background(), &events.Message{Event: sub.Event}); err != nil {
 			t.Fatalf("deliver %s: %v", sub.Consumer, err)
@@ -92,10 +129,8 @@ func TestBusMiddlewareCoversAHandBuiltSubscription(t *testing.T) {
 // A bus with no middleware is the wrap it has always applied: one recover
 // around the handler, nothing else.
 func TestBusWithoutMiddlewareIsUnchanged(t *testing.T) {
-	tr := &recordingTransport{}
-	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 	var trace string
-	h := registered(t, bus, tr, tracingSub(&trace, "x.Y", "C1", "g"))
+	h := wrapped(t, tracingSub(&trace, "x.Y", "C1", "g"))
 	if err := h(context.Background(), &events.Message{Event: "x.Y"}); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
@@ -103,7 +138,7 @@ func TestBusWithoutMiddlewareIsUnchanged(t *testing.T) {
 		t.Errorf("trace = %q, want %q", trace, "|H|")
 	}
 
-	err := registered(t, bus, tr, panickingSub("boom"))(context.Background(), &events.Message{Event: "x.Y"})
+	err := wrapped(t, panickingSub("boom"))(context.Background(), &events.Message{Event: "x.Y"})
 	var panicked *events.PanicError
 	if !errors.As(err, &panicked) {
 		t.Fatalf("got %v, want a *PanicError", err)
@@ -124,8 +159,7 @@ func TestPanickingHandlerReachesTheProjectsMiddleware(t *testing.T) {
 			return err
 		}
 	}
-	bus, tr := busWith(observe)
-	err := registered(t, bus, tr, panickingSub("boom"))(context.Background(), &events.Message{Event: "x.Y"})
+	err := wrapped(t, panickingSub("boom"), observe)(context.Background(), &events.Message{Event: "x.Y"})
 
 	// The middleware ran either side of the panic rather than unwinding.
 	if trace != ">M<M" {
@@ -155,8 +189,7 @@ func TestPanickingMiddlewareDoesNotEndTheProcess(t *testing.T) {
 		return func(context.Context, *events.Message) error { panic("middleware blew up") }
 	}
 	var trace string
-	bus, tr := busWith(blowUp)
-	err := registered(t, bus, tr, tracingSub(&trace, "x.Y", "C1", "g"))(context.Background(), &events.Message{Event: "x.Y"})
+	err := wrapped(t, tracingSub(&trace, "x.Y", "C1", "g"), blowUp)(context.Background(), &events.Message{Event: "x.Y"})
 
 	var panicked *events.PanicError
 	if !errors.As(err, &panicked) {
@@ -185,8 +218,7 @@ func TestExactlyOnePanicErrorPerPanic(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			bus, tr := busWith(c.chain...)
-			err := registered(t, bus, tr, c.sub)(context.Background(), &events.Message{Event: "x.Y"})
+			err := wrapped(t, c.sub, c.chain...)(context.Background(), &events.Message{Event: "x.Y"})
 
 			var panicked *events.PanicError
 			if !errors.As(err, &panicked) {
@@ -234,9 +266,7 @@ func TestDeliveryGoroutineSurvivesBothPanics(t *testing.T) {
 		events.WithCodec(codecjson.Codec{}),
 		events.WithMiddleware(passthrough(), panicking("from the chain")),
 	)
-	if err := bus.Subscribe(context.Background(), panickingSub("from the handler")); err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	start(t, context.Background(), bus, panickingSub("from the handler"))
 	if err := bus.Publish(context.Background(), "x.Y", map[string]string{}, events.WithKey("k")); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -282,9 +312,7 @@ func TestRecoverGivesAHandAppliedChainWhatABusChainGetsFree(t *testing.T) {
 			tr := &recordingTransport{}
 			bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 			subs := events.NewChain(observe).Append(c.chain...).Apply([]events.Subscription{panickingSub("boom")})
-			if err := bus.SubscribeAll(context.Background(), subs); err != nil {
-				t.Fatalf("subscribe: %v", err)
-			}
+			start(t, context.Background(), bus, subs...)
 
 			err := tr.subs[0].Handle(context.Background(), &events.Message{Event: "x.Y"})
 			var panicked *events.PanicError

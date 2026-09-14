@@ -25,7 +25,7 @@ func TestAClassicGroupCommitsPastAFailedRecord(t *testing.T) {
 	first := New(addrs)
 	got := newDeliveries()
 	ctx, cancel := context.WithCancel(context.Background())
-	if err := first.Subscribe(ctx, events.Subscription{
+	if err := first.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
@@ -34,7 +34,7 @@ func TestAClassicGroupCommitsPastAFailedRecord(t *testing.T) {
 			}
 			return nil
 		},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	for _, body := range []string{`{"id":1}`, `{"id":2}`, `{"id":3}`} {
@@ -52,10 +52,10 @@ func TestAClassicGroupCommitsPastAFailedRecord(t *testing.T) {
 	back := newDeliveries()
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
-	if err := second.Subscribe(ctx2, events.Subscription{
+	if err := second.Subscribe(ctx2, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error { back.add(msg); return nil },
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("resubscribe: %v", err)
 	}
 	back.quiet(t, 3*time.Second, 0)

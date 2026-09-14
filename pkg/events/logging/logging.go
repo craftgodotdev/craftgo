@@ -52,7 +52,7 @@ func AccessLog(l *slog.Logger, opts ...AccessLogOption) events.Middleware {
 		if l == nil || cfg.skip[sub.Event] {
 			return next
 		}
-		event, consumer, group := sub.Event, sub.Consumer, sub.GroupName()
+		event, consumer, group := sub.Event, sub.Consumer, string(sub.Group)
 		return func(ctx context.Context, msg *events.Message) error {
 			start := time.Now()
 			err := next(ctx, msg)
