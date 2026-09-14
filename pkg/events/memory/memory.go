@@ -177,14 +177,10 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 		if err == nil {
 			continue
 		}
-		// A bare error here would read as "nothing arrived" while the
-		// messages before this one have already been delivered. Name the
-		// tail instead, which is what [events.BatchPublisher] asks for.
-		unsent := make([]int, 0, len(msgs)-i)
-		for j := i; j < len(msgs); j++ {
-			unsent = append(unsent, j)
-		}
-		return &events.PartialPublishError{Sent: i, Unsent: unsent, Event: msg.Event, Err: err}
+		// Unreachable while Publish cannot fail; the report is right for
+		// when it can. A bare error would read as "nothing arrived" while
+		// the messages before this one have already been delivered.
+		return events.UnsentFrom(i, msgs, err)
 	}
 	return nil
 }

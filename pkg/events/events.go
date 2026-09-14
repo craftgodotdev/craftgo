@@ -131,7 +131,9 @@ type Publisher interface {
 //
 //   - nil means every message was handed over;
 //   - a partial failure means a [*PartialPublishError] whose Unsent holds
-//     the indices, ascending, into the slice it was GIVEN;
+//     the indices, ascending, into the slice it was GIVEN - build it with
+//     [UnsentFrom] when the transport stopped at one message, [UnsentAt]
+//     when the failures are scattered;
 //   - a failure before anything went out means a plain error;
 //   - never a bare error after a partial send. The caller reads one as
 //     "nothing arrived" and republishes what did.
@@ -353,14 +355,42 @@ func (e *PartialPublishError) Error() string {
 
 func (e *PartialPublishError) Unwrap() error { return e.Err }
 
-// partialFrom builds the error for a batch that failed from index i
-// onward, which is what a one-at-a-time loop produces.
-func partialFrom(i int, msgs []*Message, err error) *PartialPublishError {
-	unsent := make([]int, 0, len(msgs)-i)
+// UnsentFrom reports a batch that STOPPED at index i: every message from
+// i onward did not go out. It is the shape a transport that publishes one
+// message at a time produces, because it stops at the first failure.
+//
+// A transport whose failures are scattered must use [UnsentAt] instead.
+// It cannot reach for this one by mistake - a set of indices does not fit
+// an int - and that is deliberate: reporting a contiguous tail for a
+// scattered failure claims messages went out that did not.
+func UnsentFrom(i int, msgs []*Message, err error) *PartialPublishError {
+	indices := make([]int, 0, max(len(msgs)-i, 0))
 	for j := i; j < len(msgs); j++ {
-		unsent = append(unsent, j)
+		indices = append(indices, j)
 	}
-	return &PartialPublishError{Sent: i, Unsent: unsent, Event: msgs[i].Event, Err: err}
+	return UnsentAt(indices, msgs, err)
+}
+
+// UnsentAt reports a batch whose failures are SCATTERED: indices names
+// exactly the messages that did not go out, in any order. It is the shape
+// a transport publishing to several partitions or topics at once
+// produces, because the ones that landed need not be the first.
+//
+// The indices are sorted here, and Sent and Event are derived from the
+// first of them, so the contract's invariants hold by construction for
+// every adapter that builds its report through these two.
+func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError {
+	sorted := append([]int(nil), indices...)
+	sort.Ints(sorted)
+	out := &PartialPublishError{Unsent: sorted, Err: err}
+	if len(sorted) == 0 {
+		return out
+	}
+	out.Sent = sorted[0]
+	if i := sorted[0]; i >= 0 && i < len(msgs) {
+		out.Event = msgs[i].Event
+	}
+	return out
 }
 
 // PublishAll encodes every envelope and hands the batch to the transport
@@ -402,7 +432,7 @@ func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 	}
 	for i, msg := range msgs {
 		if err := b.pub.Publish(ctx, msg); err != nil {
-			return partialFrom(i, msgs, err)
+			return UnsentFrom(i, msgs, err)
 		}
 	}
 	return nil

@@ -1023,3 +1023,88 @@ func TestABareBatchErrorIsNotTreatedAsPartial(t *testing.T) {
 		t.Error("a bare error must not be dressed up as a partial publish")
 	}
 }
+
+// The two constructors carry the SHAPE of the failure, and an adapter
+// cannot reach for the wrong one by accident: a scattered set of indices
+// does not fit UnsentFrom's int.
+func TestUnsentFromReportsTheContiguousTail(t *testing.T) {
+	msgs := []*events.Message{
+		{Event: "a.One"}, {Event: "b.Two"}, {Event: "a.Three"}, {Event: "b.Four"},
+	}
+	got := events.UnsentFrom(2, msgs, errors.New("broker rejected"))
+	if want := []int{2, 3}; !reflect.DeepEqual(got.Unsent, want) {
+		t.Errorf("Unsent = %v, want %v", got.Unsent, want)
+	}
+	if got.Sent != 2 {
+		t.Errorf("Sent = %d, want 2 - the leading published run", got.Sent)
+	}
+	if got.Event != "a.Three" {
+		t.Errorf("Event = %q, want the first unsent envelope's contract", got.Event)
+	}
+}
+
+// The scattered shape, which is what a transport publishing to several
+// partitions at once produces. Reporting this as a tail would claim the
+// messages in the gaps went out.
+func TestUnsentAtReportsScatteredIndicesAndSortsThem(t *testing.T) {
+	msgs := []*events.Message{
+		{Event: "a.One"}, {Event: "b.Two"}, {Event: "a.Three"}, {Event: "b.Four"},
+	}
+	got := events.UnsentAt([]int{3, 1}, msgs, errors.New("topic b unavailable"))
+	if want := []int{1, 3}; !reflect.DeepEqual(got.Unsent, want) {
+		t.Errorf("Unsent = %v, want %v sorted ascending", got.Unsent, want)
+	}
+	if got.Sent != 1 || got.Event != "b.Two" {
+		t.Errorf("Sent/Event = %d/%q, want 1/b.Two - both derived from the first unsent", got.Sent, got.Event)
+	}
+}
+
+// The caller's slice is not written to: an adapter that keeps its own
+// index list must not find it reordered underneath.
+func TestUnsentAtLeavesTheCallersSliceAlone(t *testing.T) {
+	msgs := []*events.Message{{Event: "a"}, {Event: "b"}, {Event: "c"}, {Event: "d"}}
+	mine := []int{3, 1}
+	events.UnsentAt(mine, msgs, errors.New("boom"))
+	if !reflect.DeepEqual(mine, []int{3, 1}) {
+		t.Errorf("caller's slice = %v, want [3 1] untouched", mine)
+	}
+}
+
+// Both constructors satisfy the contract's invariants by construction,
+// which is the reason for an adapter to use them rather than build the
+// struct: Sent == Unsent[0], and Event is that envelope's contract.
+func TestTheConstructorsSatisfyTheInvariants(t *testing.T) {
+	msgs := []*events.Message{{Event: "a"}, {Event: "b"}, {Event: "c"}, {Event: "d"}}
+	for name, got := range map[string]*events.PartialPublishError{
+		"UnsentFrom": events.UnsentFrom(1, msgs, errors.New("x")),
+		"UnsentAt":   events.UnsentAt([]int{2, 1}, msgs, errors.New("x")),
+	} {
+		if len(got.Unsent) == 0 {
+			t.Fatalf("%s: no unsent indices", name)
+		}
+		if got.Sent != got.Unsent[0] {
+			t.Errorf("%s: Sent = %d, want Unsent[0] = %d", name, got.Sent, got.Unsent[0])
+		}
+		if got.Event != msgs[got.Unsent[0]].Event {
+			t.Errorf("%s: Event = %q, want %q", name, got.Event, msgs[got.Unsent[0]].Event)
+		}
+		for i := 1; i < len(got.Unsent); i++ {
+			if got.Unsent[i] <= got.Unsent[i-1] {
+				t.Errorf("%s: Unsent = %v is not ascending", name, got.Unsent)
+			}
+		}
+	}
+}
+
+// An index outside the batch does not panic the constructor - a panic
+// while building an error report is worse than an imperfect report, and
+// PublishAll's validation catches the report itself.
+func TestAConstructorWithAnOutOfRangeIndexDoesNotPanic(t *testing.T) {
+	msgs := []*events.Message{{Event: "a"}}
+	if got := events.UnsentAt([]int{9}, msgs, errors.New("x")); got.Event != "" {
+		t.Errorf("Event = %q, want empty for an index outside the batch", got.Event)
+	}
+	if got := events.UnsentFrom(5, msgs, errors.New("x")); len(got.Unsent) != 0 {
+		t.Errorf("Unsent = %v, want empty when the batch ends before i", got.Unsent)
+	}
+}

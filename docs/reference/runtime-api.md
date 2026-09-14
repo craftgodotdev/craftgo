@@ -297,6 +297,21 @@ because a transport publishing to several partitions at once does not fail in
 batch order - the ones that landed need not be the first. `Sent` is the length
 of the leading published run, which is `Unsent[0]`.
 
+An adapter builds its report through one of two constructors, whose shapes say
+which kind of failure it had - and whose signatures make the wrong one a
+compile error rather than a wrong report:
+
+```go
+func UnsentFrom(i int, msgs []*Message, err error) *PartialPublishError
+func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError
+```
+
+`UnsentFrom` is for a transport that STOPPED at i, so everything from i onward
+is unsent - the shape a one-at-a-time loop produces. `UnsentAt` is for one whose
+failures are SCATTERED, which is what publishing to several partitions at once
+produces. Both sort the indices and derive `Sent` and `Event` from the first, so
+the invariants hold by construction.
+
 `PublishAll` checks the adapter's report against the batch before returning it.
 One that names an index outside the batch, or out of order, is replaced with
 "none of it was sent" and the error names the adapter: an understated `Unsent`

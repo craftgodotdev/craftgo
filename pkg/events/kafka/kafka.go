@@ -51,7 +51,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -332,13 +331,8 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 		// have landed, so say so rather than claiming a partial send.
 		return firstErr
 	}
-	sort.Ints(unsent)
-	return &events.PartialPublishError{
-		Sent:   unsent[0],
-		Unsent: unsent,
-		Event:  msgs[unsent[0]].Event,
-		Err:    firstErr,
-	}
+	// UnsentAt and not UnsentFrom: these indices have gaps in them.
+	return events.UnsentAt(unsent, msgs, firstErr)
 }
 
 // encode maps a craftgo message onto a Kafka record. Metadata becomes
