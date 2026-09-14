@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/pkg/events"
@@ -1194,5 +1195,64 @@ func TestPublishAllStillPublishesOnALiveContext(t *testing.T) {
 	}
 	if p.batched != 1 {
 		t.Errorf("the transport took %d messages, want 1", p.batched)
+	}
+}
+
+// A context already cancelled publishes nothing through the single
+// Publish either, which is the bus's answer and not the transport's.
+//
+// The in-process transport is the one that would otherwise deliver: its
+// Publish takes ctx as `_` and hands the message to every matching
+// subscriber regardless. A rule left to each adapter is not one a caller
+// can rely on, so it is enforced here and the same on both methods.
+func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
+	tr := memory.New()
+	var delivered atomic.Int64
+	if err := tr.Subscribe(context.Background(), events.Subscription{
+		Event: "orders.OrderPlaced", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error {
+			delivered.Add(1)
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := bus.Publish(ctx, "orders.OrderPlaced", payload{ID: "o-1"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	tr.Drain()
+	if n := delivered.Load(); n != 0 {
+		t.Errorf("the handler ran %d times, want 0", n)
+	}
+}
+
+// A live context still reaches the transport - the check refuses a
+// cancelled one, it does not stand between the bus and every publish.
+func TestPublishStillPublishesOnALiveContext(t *testing.T) {
+	tr := memory.New()
+	var delivered atomic.Int64
+	if err := tr.Subscribe(context.Background(), events.Subscription{
+		Event: "orders.OrderPlaced", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error {
+			delivered.Add(1)
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
+
+	if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: "o-1"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	tr.Drain()
+	if n := delivered.Load(); n != 1 {
+		t.Errorf("the handler ran %d times, want 1", n)
 	}
 }

@@ -156,11 +156,13 @@ queue, and whether anything arrives atomically is the transport's business.
 Encoding happens before anything is sent, so a payload that cannot be
 encoded fails the whole batch without a partial publish.
 
-A context already cancelled publishes nothing and returns its error. That is
-decided once, by the bus, rather than by each transport: a transport is free
-to ignore the context, and one that publishes the batch anyway then reports
-messages it has just sent as unsent - which you retry, publishing all of them
-a second time.
+A context already cancelled publishes nothing and returns its error. That holds
+for every publish through the bus, single or batch, and it is decided once by
+the bus rather than by each transport: a transport is free to ignore the
+context - the in-process one does - so a rule left to the adapters is not one
+you can rely on. It matters most for a batch, where a transport that published
+anyway would report messages it has just sent as unsent, and retrying those
+publishes all of them a second time.
 
 On a transport without the batch upgrade, a failure partway leaves the
 earlier messages **already sent**. The error is a `*events.PartialPublishError`

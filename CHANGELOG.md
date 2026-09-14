@@ -875,6 +875,21 @@ breaking change to the DSL or the generated layout bumps the major version.
   nothing went out, and a batch where nothing went out may be reported either
   way, because a report naming every index says the same thing.
 
+- **`Bus.Publish` refuses a cancelled context too.** Putting the rule on
+  `PublishAll` left the two publish methods on one type disagreeing: the same
+  bus, handed the same cancelled context, refused a batch and delivered a single
+  message. The in-process transport was where that showed, since its `Publish`
+  takes the context as `_` and hands the message to every matching subscriber
+  regardless - so the guarantee depended on which method you called and which
+  adapter was underneath. `Publish` now makes the same check, in the same place,
+  before encoding.
+
+  The rule is written down once, on `Bus.Publish`, and the three places that
+  used to state or imply it - `PublishAll`, the `BatchPublisher` contract and
+  the `Publisher` contract - point at it instead of restating it. `Publisher`
+  says nothing about honouring a context and now says why: an adapter may
+  honour or ignore it, and the guarantee a caller reads belongs to the bus.
+
 - **A Kafka share-group handler keeps its record while it runs.** The broker
   holds each record under an acquisition lock -
   `group.share.record.lock.duration.ms`, 30s by default - and a handler slower

@@ -111,6 +111,11 @@ type Codec interface {
 // an acknowledgement is the adapter's policy, the same way retry and
 // dead-lettering are on the receive side. An adapter that reports delivery
 // failures after the fact takes its own error handler at construction.
+//
+// Nothing is said here about ctx on purpose. An adapter may honour it or
+// ignore it, and a [Bus] refuses an already-cancelled one before any
+// adapter is reached - see [Bus.Publish] - so the guarantee a caller
+// reads is the bus's rather than each transport's.
 type Publisher interface {
 	Publish(ctx context.Context, msg *Message) error
 }
@@ -148,8 +153,8 @@ type Publisher interface {
 // publishes it twice and can see that it did, while one told a lost
 // message arrived drops it with nothing downstream able to tell.
 //
-// A context already cancelled when the call starts is refused by
-// [Bus.PublishAll] before any adapter is reached, so every transport
+// A context already cancelled when the call starts is refused by the bus
+// before any adapter is reached - see [Bus.Publish] - so every transport
 // answers that the same way. An adapter reached directly - they are
 // exported, and usable without a bus - answers for it itself.
 //
@@ -319,9 +324,21 @@ func (b *Bus) CodecFor(event string) (Codec, error) {
 //	bus.Publish(ctx, orders.PlacedContract, payload,
 //	    events.WithKey(string(payload.OrderID)),
 //	    events.WithHeader("trace-parent", tp))
+//
+// # The cancelled-context rule
+//
+// A context already cancelled publishes nothing and returns its error.
+// The bus decides this, not the transport: an adapter is free to ignore
+// ctx - the in-process one takes it as `_` and always has - so a rule
+// left to each of them is not one a caller can rely on. Every publish
+// through a [Bus] answers the same way, whatever it is publishing
+// through.
 func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error {
 	if b == nil || b.pub == nil {
 		return ErrNoPublisher
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	env := Envelope{Event: event, Payload: payload}
 	env.Apply(opts...)
@@ -418,11 +435,10 @@ func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError {
 // which envelopes did not go out - on both paths, so a caller does not
 // have to know which one ran to retry correctly.
 //
-// A context already cancelled publishes nothing and returns its error.
-// The rule lives here rather than in each transport because a transport
-// is free to ignore ctx, and one that publishes a batch anyway then
-// reports messages it has just sent as unsent - which the caller retries,
-// publishing every one of them a second time.
+// The cancelled-context rule is [Bus.Publish]'s, and it bites hardest
+// here: a transport that published the batch anyway would report messages
+// it has just sent as unsent, and a caller retrying those publishes every
+// one of them a second time.
 //
 // The adapter's report is checked against the batch before it is
 // returned. An adapter that names an index outside the batch, or one out
