@@ -184,9 +184,11 @@ type Handler func(ctx context.Context, msg *Message) error
 type Subscription struct {
 	// Event is the contract name, matching [Message.Event].
 	Event string
-	// Consumer is the design-declared consumer name. It identifies the
-	// handler - in diagnostics and in a transport's own bookkeeping - and
-	// nothing on the broker depends on it.
+	// Consumer is the design-declared consumer name, used in diagnostics
+	// and in a transport's own bookkeeping; nothing on the broker depends
+	// on it. It does not name a subscription on its own - two services may
+	// declare the same consumer for the same contract, so Event and Group
+	// are the pair that does.
 	Consumer string
 	// Group is the broker identity: the Kafka consumer group, the NATS
 	// queue group. Subscriptions sharing a group divide the stream
