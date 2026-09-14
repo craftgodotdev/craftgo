@@ -32,6 +32,9 @@ const (
 const (
 	// DecoratorSensitive keeps a field off the wire in both directions.
 	DecoratorSensitive = "sensitive"
+	// DecoratorJSON names a body field on the wire when the JSON key is
+	// not the field name - a contract another system owns.
+	DecoratorJSON = "json"
 	// DecoratorNullable keeps a field always-emitted with a null value
 	// allowed.
 	DecoratorNullable = "nullable"
@@ -183,16 +186,34 @@ func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
 	if f == nil {
 		return "", JSONAbsent
 	}
+	name = JSONName(f)
 	if NonBodyBindingKind(f) != "" || ast.HasDecorator(f.Decorators, DecoratorSensitive) {
-		return f.Name, JSONAbsent
+		return name, JSONAbsent
 	}
 	switch {
 	case f.Type != nil && f.Type.Optional:
-		return f.Name, JSONOptional
+		return name, JSONOptional
 	case ast.HasDecorator(f.Decorators, DecoratorNullable):
-		return f.Name, JSONNullable
+		return name, JSONNullable
 	}
-	return f.Name, JSONRequired
+	return name, JSONRequired
+}
+
+// JSONName is the key a body field carries in JSON: the `@json` argument
+// when the field has one, else the field's own name.
+func JSONName(f *ast.Field) string {
+	if f == nil {
+		return ""
+	}
+	for _, d := range f.Decorators {
+		if d == nil || d.Name != DecoratorJSON || len(d.Args) == 0 {
+			continue
+		}
+		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
+			return s.Value
+		}
+	}
+	return f.Name
 }
 
 // NonBodyBindingKind returns the wire location an explicit binding

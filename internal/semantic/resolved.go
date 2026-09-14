@@ -170,7 +170,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		case prims.File:
 			rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""
 			return rf
-		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float:
+		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
 			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatPrimitive, name, ""
 			return rf
 		}

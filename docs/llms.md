@@ -58,6 +58,7 @@ Field syntax: `name TypeRef [@decorator(...) ...]`.
 | `uint8/16/32/64` | matching Go             |                                            |
 | `float32/64`     | matching Go             |                                            |
 | `bool`           | `bool`                  |                                            |
+| `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
 | `any`            | `any`                   | arbitrary JSON value (`object` is rejected as a field type) |
 | `file`           | `*multipart.FileHeader` | only with `@form`                          |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
@@ -460,6 +461,7 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@nullable`       | field, errorField | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)            |
 | `@default(value)` | field, errorField | Pre-fill before JSON decode. Works on primitive, scalar, enum, optional / array of those.        |
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`. |
+| `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
 `@default` requires the field be optional (`?`). The formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you do. For enum fields, the value is the bare ident (`@default(Active)`).
 

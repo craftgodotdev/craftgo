@@ -219,6 +219,9 @@ const (
 	PrimArray
 	// PrimFile covers the `file` primitive (multipart upload).
 	PrimFile
+	// PrimDateTime covers the `datetime` primitive, which no validator
+	// targets: a timestamp has no length, bound or format to check.
+	PrimDateTime
 	// PrimAny matches any field type - used by validator-style
 	// decorators that don't care about primitive (e.g. `@example`).
 	PrimAny Prims = 0
@@ -245,6 +248,9 @@ func (p Prims) String() string {
 	}
 	if p&PrimFile != 0 {
 		parts = append(parts, "file")
+	}
+	if p&PrimDateTime != 0 {
+		parts = append(parts, "datetime")
 	}
 	return strings.Join(parts, ", ")
 }
@@ -532,6 +538,11 @@ var Registry = map[string]Spec{
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
 	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null.", Flag: true},
+	"json": {
+		Name: "json", Levels: LvlField | LvlErrorField,
+		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
+		Doc:  "Sets the JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser reads as a mixin (`OrderItem Item[]`). The Go struct tag, the documents and validation messages all use it. Not for a field bound off the body (@path / @query / @header / @cookie / @form), which names its own wire location.",
+	},
 	"sensitive": {
 		Name: "sensitive", Levels: LvlField | LvlErrorField, Flag: true,
 		Doc: "Server-only field: tagged `json:\"-\"` so neither the request decoder nor the response encoder touches it, and skipped entirely from OpenAPI. Cannot combine with any wire-shaping decorator: validators (@length / @gt / @gte / @lt / @lte / @range / @pattern / @format / @minItems / @maxItems / @multipleOf / @positive / @negative / @uniqueItems / @requiresOneOf / @mutuallyExclusive), nullability / defaults (@nullable / @default), or any binding (@body / @path / @query / @header / @cookie / @form). The field stays as a Go struct member that server logic populates / reads internally.",

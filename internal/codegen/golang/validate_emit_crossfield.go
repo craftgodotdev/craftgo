@@ -151,6 +151,8 @@ func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 			return access + " != 0"
 		case prims.Bool:
 			return access
+		case prims.DateTime:
+			return "!" + access + ".IsZero()"
 		}
 	}
 	return "true"
@@ -203,6 +205,8 @@ func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 			return access + " == 0"
 		case prims.Bool:
 			return "!" + access
+		case prims.DateTime:
+			return access + ".IsZero()"
 		}
 	}
 	return "false"

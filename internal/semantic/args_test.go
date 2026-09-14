@@ -486,6 +486,15 @@ service S { get M /u/{id} { request R  response Resp } }`
 }
 
 // @default on a file field is rejected (no literal default form).
+func TestDefaultOnDateTimeRejected(t *testing.T) {
+	expectError(t, `type Req { at datetime? @default("2026-01-01T00:00:00Z") }`, CodeDecoratorConflict)
+}
+
+func TestDateTimeTakesNoValidator(t *testing.T) {
+	expectError(t, `type Req { at datetime @minLength(1) }`, CodeDecoratorTypeMismatch)
+	expectError(t, `type Req { at datetime @gte(1) }`, CodeDecoratorTypeMismatch)
+}
+
 func TestDefaultOnFileRejected(t *testing.T) {
 	diags := analyzeOneFile(t, "package p\ntype U { blob file @form @default(\"x\") }\nservice S { post Up /up { request U  response U } }")
 	if !hasDiagContaining(diags, "@default is not supported on a `file`") {

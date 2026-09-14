@@ -176,7 +176,7 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	// fields round-trips.
 	if len(bins.body) > 0 {
 		s := schemaFromFields(substituteGenericFields(bins.body, td, m.Request.Args), pkg, registry)
-		if frags := crossFieldSchemaFragments(td.Decorators); len(frags) > 0 {
+		if frags := crossFieldSchemaFragments(td.Decorators, td.Body); len(frags) > 0 {
 			s = &openapi3.Schema{
 				AllOf: append(openapi3.SchemaRefs{{Value: s}}, frags...),
 			}

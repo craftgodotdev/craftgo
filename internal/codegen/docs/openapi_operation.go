@@ -527,7 +527,9 @@ func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.De
 	// enforces them, so the spec has to advertise them or a generated client
 	// believes the form fields are independent. Wrap the object in an allOf
 	// with the same fragments the JSON body schema uses.
-	if frags := crossFieldSchemaFragments(crossDecs); len(frags) > 0 {
+	// Multipart parts are named by their form wire names, not JSON keys, so
+	// the fragments carry the field names as written.
+	if frags := crossFieldSchemaFragments(crossDecs, nil); len(frags) > 0 {
 		schema = &openapi3.Schema{
 			Type:  &openapi3.Types{"object"},
 			AllOf: append(openapi3.SchemaRefs{{Value: schema}}, frags...),

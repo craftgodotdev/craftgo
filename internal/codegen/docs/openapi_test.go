@@ -2063,3 +2063,22 @@ service S { get Do /do { request Req  response Resp } }`,
 		t.Error("expected cross-pkg merge name collision (shared.User vs api.SharedUser)")
 	}
 }
+
+func TestGenerateOpenAPIJSONKeyOverride(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Item { id string }
+type Req { items Item[] @json("OrderItem")  storeId string @json("store_id") }
+service S {
+    post Make /m { request Req }
+}`)
+	for _, want := range []string{"OrderItem:", "store_id:", "- OrderItem", "- store_id"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the document does not carry the @json key %s:\n%s", want, body)
+		}
+	}
+	for _, stale := range []string{"storeId:", "- storeId", "- items"} {
+		if strings.Contains(body, stale) {
+			t.Errorf("the document still names the field %s instead of its @json key:\n%s", stale, body)
+		}
+	}
+}

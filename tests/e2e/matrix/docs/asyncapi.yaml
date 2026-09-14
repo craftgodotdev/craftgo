@@ -226,6 +226,11 @@ components:
       type: integer
     WarehouseClosed:
       properties:
+        closedAt:
+          format: date-time
+          type:
+          - string
+          - "null"
         reason:
           type:
           - string

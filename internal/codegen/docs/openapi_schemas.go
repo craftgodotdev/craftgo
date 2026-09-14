@@ -10,6 +10,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
@@ -60,13 +61,13 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 				// every field as a bare, unconstrained, non-null value.
 				ref := schemaForTypeRef(v.Type, pkg, registry)
 				applyFieldMetadata(v, ref, pkg)
-				s.Properties[v.Name] = ref
+				s.Properties[wire.JSONName(v)] = ref
 				// Non-optional error fields belong in required[] - same
 				// model as type schemas. Without this a generated client
 				// types every error field as optional even though the
 				// runtime always emits it.
 				if rf.SpecRequired {
-					s.Required = append(s.Required, v.Name)
+					s.Required = append(s.Required, wire.JSONName(v))
 				}
 			case *ast.Mixin:
 				// Embedded mixin: same `allOf: [$ref]` shape that
@@ -227,9 +228,9 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 			}
 			ref := schemaForTypeRef(ft, pkg, registry)
 			applyFieldMetadata(v, ref, pkg)
-			s.Properties[v.Name] = ref
+			s.Properties[wire.JSONName(v)] = ref
 			if rf.SpecRequired {
-				s.Required = append(s.Required, v.Name)
+				s.Required = append(s.Required, wire.JSONName(v))
 			}
 		case *ast.Mixin:
 			// Embedded mixin: OpenAPI 3.0 expresses Go's field-
@@ -269,7 +270,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	// fuzzers. Without this emit, the API doc claims every listed
 	// field is independent but the server quietly rejects "all-absent"
 	// or "both-present" payloads.
-	crossFragments := crossFieldSchemaFragments(td.Decorators)
+	crossFragments := crossFieldSchemaFragments(td.Decorators, td.Body)
 
 	// Apply allOf with the mixin refs PLUS the host's own properties
 	// when at least one mixin contributed. Without mixins we keep the
@@ -318,7 +319,8 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 // Both decorators may appear together on the same type (e.g. "at
 // least one of these AND no two of these"); each fragment lands
 // independently in the allOf chain so the constraints compose.
-func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
+func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) openapi3.SchemaRefs {
+	keys := jsonKeys(members)
 	var out openapi3.SchemaRefs
 	for _, d := range decs {
 		if d == nil {
@@ -326,7 +328,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 		}
 		switch d.Name {
 		case "requiresOneOf":
-			names := dedupeStrings(semantic.StringArrayDecoratorArg(d))
+			names := keys(dedupeStrings(semantic.StringArrayDecoratorArg(d)))
 			if len(names) == 0 {
 				continue
 			}
@@ -338,7 +340,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 				AnyOf: branches,
 			}})
 		case "mutuallyExclusive":
-			names := dedupeStrings(semantic.StringArrayDecoratorArg(d))
+			names := keys(dedupeStrings(semantic.StringArrayDecoratorArg(d)))
 			if len(names) < 2 {
 				continue
 			}
@@ -348,6 +350,27 @@ func crossFieldSchemaFragments(decs []*ast.Decorator) openapi3.SchemaRefs {
 		}
 	}
 	return out
+}
+
+// jsonKeys maps the DSL field names a cross-field decorator lists onto
+// the JSON keys the document carries, which differ under @json.
+func jsonKeys(members []ast.TypeMember) func([]string) []string {
+	byField := map[string]string{}
+	for _, m := range members {
+		if f, ok := m.(*ast.Field); ok && f.Name != "" {
+			byField[f.Name] = wire.JSONName(f)
+		}
+	}
+	return func(names []string) []string {
+		out := make([]string, len(names))
+		for i, n := range names {
+			if key, ok := byField[n]; ok {
+				n = key
+			}
+			out[i] = n
+		}
+		return out
+	}
 }
 
 // presentNonNull builds a schema that matches a body where every named

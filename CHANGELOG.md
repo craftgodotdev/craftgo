@@ -9,6 +9,19 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Added
 
+- **`datetime` primitive.** A field typed `datetime` is a `time.Time` in Go
+  and an RFC 3339 string in JSON (`format: date-time` in the documents), so a
+  payload with a timestamp no longer has to carry it as a `string` and parse
+  it in every handler. It is a body field: a query, header, cookie or form
+  binding is refused, as is `@default`, and no validator targets it.
+
+- **`@json("key")` on a field.** Sets the JSON key of a body field when it
+  is not the field name - a contract another system owns, or a key such as
+  `OrderItem` that the parser would otherwise read as a mixin reference. The
+  Go struct tag, the OpenAPI and AsyncAPI documents and validation messages
+  all use it; two fields of one type may not resolve to one key, and a field
+  bound off the body names its location in its own binding instead.
+
 - **Events on a service.** A `service` body now holds `event` contracts and
   `consume` declarations alongside its HTTP methods. One declaration serves
   both sides - the typed publisher is derived from the contract, so producer

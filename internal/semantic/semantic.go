@@ -192,6 +192,7 @@ func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
 	a.checkDecoratorConflicts(files)
+	a.checkJSONNames(files)
 	a.checkLocalDecoratorRefs(files)
 	a.checkDecoratorRefs(files)
 }

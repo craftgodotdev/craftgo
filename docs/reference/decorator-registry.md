@@ -94,6 +94,7 @@ Field level (a few also apply at error-field level for response writing).
 |---|---|---|
 | `@default(v)` | `(literal)` | Value applied when the field is absent on the wire. Field must be optional (`?`). |
 | `@nullable` | - | The field accepts an explicit JSON `null` (flag form). |
+| `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. |
 | `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@default`, or `@nullable`. |
 | `@path` / `@path("name")` | `(string?)` | Bind from a URL path parameter. |
 | `@query` / `@query("name")` | `(string?)` | Bind from the URL query string. |

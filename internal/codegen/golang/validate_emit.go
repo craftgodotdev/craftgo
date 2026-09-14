@@ -104,7 +104,7 @@ func indentBlock(s string) string {
 // as a raw string, so escaping once here keeps all message sites safe.
 func fieldWireName(f *ast.Field) string {
 	kind := wire.BindingKind(f.Decorators)
-	name := f.Name
+	name := wire.JSONName(f)
 	switch kind {
 	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
 		name = wire.WireName(f, kind)

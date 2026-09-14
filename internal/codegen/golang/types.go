@@ -173,8 +173,11 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 		return
 	}
 	if t.Named != nil {
-		if t.Named.Name.String() == "file" {
+		switch t.Named.Name.String() {
+		case "file":
 			set["mime/multipart"] = true
+		case "datetime":
+			set["time"] = true
 		}
 		for _, a := range t.Named.Args {
 			collectFieldImports(a, set)

@@ -4,6 +4,7 @@ package events
 
 import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"time"
 )
 
 // ShipmentID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
@@ -48,6 +49,7 @@ type TierPromoted struct {
 }
 
 type WarehouseClosed struct {
-	Warehouse Warehouse `json:"warehouse"`
-	Reason    *string   `json:"reason,omitempty"`
+	Warehouse Warehouse  `json:"warehouse"`
+	Reason    *string    `json:"reason,omitempty"`
+	ClosedAt  *time.Time `json:"closedAt,omitempty"`
 }

@@ -295,9 +295,26 @@ type X { tags string[]  meta map<string, string> }`)
 	}
 }
 
+func TestGenerateTypesJSONKeyOverride(t *testing.T) {
+	pkg := analyze(t, `package design
+type Item { id string }
+type Order { items Item[] @json("OrderItem")  storeId string? @json("store_id") }`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, src,
+		"Items   []Item  `json:\"OrderItem\"`",
+		"StoreID *string `json:\"store_id,omitempty\"`",
+	)
+}
+
 func TestGenerateTypesBuiltins(t *testing.T) {
 	pkg := analyze(t, `package design
-type X { blob bytes  raw any  upload file }`)
+type X { blob bytes  raw any  upload file  at datetime  seen datetime? }`)
 	dir := t.TempDir()
 	if err := generateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
@@ -308,6 +325,9 @@ type X { blob bytes  raw any  upload file }`)
 	mustContainAll(t, src,
 		"[]byte",
 		`"mime/multipart"`,
+		`"time"`,
+		"time.Time             `json:\"at\"`",
+		"*time.Time            `json:\"seen,omitempty\"`",
 	)
 }
 

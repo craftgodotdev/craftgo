@@ -48,6 +48,7 @@ type ShipmentDispatched {
 type WarehouseClosed {
 	warehouse Warehouse
 	reason    string?
+	closedAt  datetime?
 }
 
 // An event may carry a payload of its own name - separate namespaces.

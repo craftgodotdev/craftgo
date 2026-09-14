@@ -178,7 +178,7 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, homePkg string, seen map[st
 		switch sp.Kind {
 		case prims.Any, prims.Bytes, prims.File:
 			return false
-		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float:
+		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
 			return true
 		}
 	}

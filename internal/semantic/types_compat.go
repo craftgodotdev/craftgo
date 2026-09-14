@@ -158,6 +158,8 @@ func PrimFromName(name string) Prims {
 		return PrimBool
 	case prims.File:
 		return PrimFile
+	case prims.DateTime:
+		return PrimDateTime
 	}
 	return 0
 }
