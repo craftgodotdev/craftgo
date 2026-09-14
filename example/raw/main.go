@@ -82,15 +82,13 @@ func main() {
 	}
 	srv.Use(tel.HTTPMiddleware())
 	srv.Use(server.AccessLog(srv.Logger()))
-	// Global per-request guards. Per-method `@timeout` / `@maxBodySize`
-	// decorators wrap inner so they can tighten (never loosen) these
-	// defaults. Zero values from config skip the wrap entirely.
-	if cfg.Server.HandlerTimeout > 0 {
-		srv.Use(server.Timeout(cfg.Server.HandlerTimeout))
-	}
-	if cfg.Server.MaxBodySize > 0 {
-		srv.Use(server.BodyLimit(cfg.Server.MaxBodySize))
-	}
+	// Global per-request guards, resolved per route at registration: a
+	// per-method `@timeout` / `@maxBodySize` OVERRIDES the matching default
+	// (used as-is, longer/larger or shorter/smaller); routes without one
+	// inherit the default. Set both before wiring.Register so each route resolves
+	// its guards.
+	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
+	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
 	if cfg.Server.Compression.Enabled {
 		srv.Use(server.Compress(server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,
