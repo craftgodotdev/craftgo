@@ -807,6 +807,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **`craftgo-lsp` exits on `exit`.** The server used to keep running after the
+  client's `exit` notification until the client closed its stdin; it now
+  terminates at once, with status 1 when no `shutdown` preceded it, as the
+  protocol requires.
+
 - **A JetStream batch is no longer reported unsent because the caller's context
   ended.** `PublishBatch` raced every acknowledgement against `ctx.Done()`, and
   the client's `PublishMsgAsync` takes no context - so a context that ended once
@@ -1021,7 +1026,6 @@ breaking change to the DSL or the generated layout bumps the major version.
   place and cleared in another. If the signal is wanted later, `Subscription`
   can carry the phase boundary the runtime is missing and the mark can be made
   once, for both kinds.
-
 
 ## [1.7.1] - 2026-09-08 [UTC+7]
 

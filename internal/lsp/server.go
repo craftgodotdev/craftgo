@@ -46,30 +46,64 @@ import (
 // must be a var - `-X` cannot write a const.
 var Version = "1.7.1"
 
-// Serve runs the LSP loop on the supplied stdio streams. It blocks until
-// the peer closes the connection or context is cancelled, and returns the
-// terminating error (nil on a clean shutdown).
+// ErrExitWithoutShutdown reports an `exit` notification that arrived before
+// `shutdown`. LSP requires the server process to terminate with a non-zero
+// status in that case.
+var ErrExitWithoutShutdown = errors.New("exit notification without prior shutdown")
+
+// Serve runs the LSP loop on the supplied stdio streams. It blocks until the
+// client sends `exit`, the peer closes the connection, or the context is
+// cancelled, and returns the terminating error (nil on a clean shutdown,
+// [ErrExitWithoutShutdown] when `exit` arrived without a preceding
+// `shutdown`).
 func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	stream := jsonrpc2.NewStream(&stdioRWC{in: in, out: out})
 	conn := jsonrpc2.NewConn(stream)
 	srv := &Server{
 		conn: conn,
 		docs: make(map[uri.URI]*document),
+		exit: make(chan struct{}),
 	}
 	conn.Go(ctx, srv.handler)
-	<-conn.Done()
-	if err := conn.Err(); err != nil && !errors.Is(err, io.EOF) {
-		return err
+	select {
+	case <-srv.exit:
+		if srv.shutdownRequested() {
+			return nil
+		}
+		return ErrExitWithoutShutdown
+	case <-conn.Done():
+		if err := conn.Err(); err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		return nil
 	}
-	return nil
 }
 
 // Server holds the server-side state. The zero value is not useful - call
 // [Serve] which constructs and wires one for the duration of the session.
 type Server struct {
-	conn jsonrpc2.Conn
-	mu   sync.Mutex
-	docs map[uri.URI]*document
+	conn     jsonrpc2.Conn
+	mu       sync.Mutex
+	docs     map[uri.URI]*document
+	exit     chan struct{}
+	exitOnce sync.Once
+	shutdown bool
+}
+
+func (s *Server) signalExit() {
+	s.exitOnce.Do(func() { close(s.exit) })
+}
+
+func (s *Server) requestShutdown() {
+	s.mu.Lock()
+	s.shutdown = true
+	s.mu.Unlock()
+}
+
+func (s *Server) shutdownRequested() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.shutdown
 }
 
 // document caches the latest content of an open file. The version is the
@@ -103,10 +137,12 @@ func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 	case protocol.MethodInitialized:
 		return s.onInitialized(ctx, reply, req)
 	case protocol.MethodShutdown:
+		s.requestShutdown()
 		return reply(ctx, nil, nil)
 	case protocol.MethodExit:
-		_ = s.conn.Close()
-		return reply(ctx, nil, nil)
+		err := reply(ctx, nil, nil)
+		s.signalExit()
+		return err
 	case protocol.MethodTextDocumentDidOpen:
 		return s.onDidOpen(ctx, reply, req)
 	case protocol.MethodTextDocumentDidChange:
