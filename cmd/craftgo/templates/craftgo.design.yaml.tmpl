@@ -12,18 +12,6 @@
 # `package:`. Make sure `go mod init <module>` has been run before
 # `craftgo gen`.
 
-# A PROJECTION reads a design it does not sit beside. Uncomment when
-# several deployables generate from one design - each states the slice
-# it runs in `output.services` below, and this folder holds no
-# `.craftgo` file of its own. Without this block the design is the
-# `.craftgo` files in this folder, which is the usual case.
-# design:
-#   from: ../../contracts/design   # the folder holding the .craftgo files
-#   root: ../../contracts          # the `-c` THAT design is generated with,
-#                                  # not this deployable's root. Required:
-#                                  # it is a caller's argument, so there is
-#                                  # nothing on the folder to read it off.
-
 # Output paths are resolved against the project root. Per-service
 # buckets are created automatically under the directory paths below
 # at gen time.
@@ -44,24 +32,16 @@ output:
                                    # this mode; delete the ones you keep
                                    # around only because this file shipped
                                    # with them.
-  # services: [orders.Orders]      # generate the application half for these
-                                   # services only, as `<package>.<Service>`.
-                                   # Leave the key out and every service in
-                                   # the design is generated - which is what
-                                   # a deployable sharing a design does NOT
-                                   # want, since it would carry every other
-                                   # deployable's handlers.
   types:      ./internal/types
   transport:  ./internal/transport
   routes:     ./internal/routes
   wiring:     ./internal/wiring      # the one Register call main.go makes:
-                                     # every HTTP route and every event
-                                     # consumer. Regenerated each run, so
-                                     # main.go survives a design that gains
-                                     # or loses either.
+                                     # every HTTP route the design declares.
+                                     # Regenerated each run, so main.go
+                                     # survives a design that gains or loses
+                                     # one.
   service:    ./internal/service
   middleware: ./internal/middleware
-  consumeMiddleware: ./internal/consume
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
   config:     ./config              # runtime config package (config.go +
@@ -90,7 +70,6 @@ output:
 #   targets:
 #     - lang: go
 #       out: ./internal/events
-#   asyncapi: ./docs/asyncapi.yaml   # "-" skips the projection
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.

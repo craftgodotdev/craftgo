@@ -319,8 +319,6 @@ func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.
 		kind = "scalar"
 	case pkg.Middlewares[name] != nil:
 		kind = "middleware"
-	case pkg.ConsumeMiddlewares[name] != nil:
-		kind = "consume middleware"
 	}
 	if kind != "" {
 		a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinNonType,

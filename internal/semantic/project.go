@@ -58,9 +58,6 @@ type Project struct {
 	Root string
 	// Packages maps `package X` name → analysed [Package].
 	Packages map[string]*Package
-	// design is the whole design this project was projected from, nil
-	// when it IS that design. See [Project.Projection].
-	design *Project
 }
 
 // AnalyzeProject groups files into packages by their `package X`
@@ -100,13 +97,11 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	for _, f := range files {
 		r.processFile(f, opts.DesignRoot)
 	}
-	r.checkProjectServiceUniqueness()
 	r.checkProjectGroupChecks()
 	r.checkProjectMiddlewareUniqueness()
 	r.checkProjectPathCollision()
 	r.checkProjectOperationIDUniqueness()
 	r.checkProjectEvents()
-	r.checkConsumerHandlerCollisions()
 	return proj, r.diags
 }
 

@@ -37,7 +37,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 	case *ast.ScalarDecl:
 		a.checkPlacement(LvlScalar, "scalar "+dd.Name, dd.Decorators)
 	case *ast.MiddlewareDecl:
-		a.checkPlacement(LvlMiddleware, dd.Keyword()+" "+dd.Name, dd.Decorators)
+		a.checkPlacement(LvlMiddleware, "middleware "+dd.Name, dd.Decorators)
 	case *ast.EventDecl:
 		a.checkPlacement(LvlEvent, "event "+dd.Name, dd.Decorators)
 	case *ast.ServiceDecl:

@@ -1,7 +1,6 @@
-// Package docs emits the document projections of a design: the OpenAPI
-// description of the HTTP surface and the AsyncAPI description of the
-// event contracts. Both read the analysed project and the layer-agnostic
-// field IR, so neither depends on the language a service is generated in.
+// Package docs emits the OpenAPI description of a design's HTTP surface.
+// It reads the analysed project and the layer-agnostic field IR, so it
+// does not depend on the language a service is generated in.
 package docs
 
 import (

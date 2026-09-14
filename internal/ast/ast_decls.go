@@ -180,30 +180,15 @@ func (*ScalarDecl) declNode()          { astMarker() }
 func (d *ScalarDecl) DeclName() string { return d.Name }
 func (d *ScalarDecl) DeclPos() Pos     { return d.Pos }
 
-// MiddlewareDecl is `middleware Name` or `consume middleware Name`. The
-// DSL captures only the name - configuration (parameter shape, defaults,
-// behaviour) lives in the hand-written Go impl file the scaffolder
-// produces. Doc preserves the leading `//` block.
+// MiddlewareDecl is `middleware Name`. The DSL captures only the name -
+// configuration (parameter shape, defaults, behaviour) lives in the
+// hand-written Go impl file the scaffolder produces. Doc preserves the
+// leading `//` block.
 type MiddlewareDecl struct {
 	Pos        Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
-	// Consume marks `consume middleware Name`. Its impl wraps a
-	// consumer's handler rather than an http.Handler, so it is scaffolded
-	// from a different template into a different package and carried on a
-	// different field.
-	Consume bool
-}
-
-// Keyword is how the declaration is written: `consume middleware` or
-// `middleware`. Diagnostics name the site with it so the message spells
-// the form the author has to change.
-func (d *MiddlewareDecl) Keyword() string {
-	if d.Consume {
-		return "consume middleware"
-	}
-	return "middleware"
 }
 
 func (*MiddlewareDecl) declNode()          { astMarker() }

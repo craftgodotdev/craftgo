@@ -96,9 +96,9 @@ func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot str
 	if proj == nil {
 		return nil
 	}
-	// `-` disables the document, the way it does for the AsyncAPI one and
-	// for main.go. Without the check the path is joined literally and the
-	// document lands in a file named `-`.
+	// `-` disables the document, the way it does for main.go. Without the
+	// check the path is joined literally and the document lands in a file
+	// named `-`.
 	if dest := cfg.Output.OpenAPI; dest == "" || dest == "-" {
 		return nil
 	}

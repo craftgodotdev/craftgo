@@ -18,9 +18,6 @@ import (
 // Special-cased decorators:
 //
 //   - `@middlewares(...)` → declared middleware names.
-//   - `@consumeMiddlewares(...)` → declared consume middleware names.
-//     The two lists are disjoint, so neither offers a name the resolver
-//     would reject at that site.
 //   - `@security(A, B, ...)` → keys declared in the project's
 //     `openapi.securitySchemes` (any slot, since the decorator is a
 //     variadic ident list).
@@ -33,9 +30,6 @@ import (
 func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
-	}
-	if name == "consumeMiddlewares" {
-		return s.consumeMiddlewareNameCompletions(currentURI, currentSrc)
 	}
 	if name == "errors" {
 		return s.errorNameCompletions(currentURI, currentSrc)

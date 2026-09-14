@@ -29,7 +29,7 @@ service OrderService {
 
 func TestHoverOnMemberKeywords(t *testing.T) {
 	cases := map[string]string{
-		"event":   "the contract this service publishes",
+		"event":   "a contract this design declares",
 		"consume": "this service handles",
 		"payload": "the type an event contract carries",
 	}
@@ -121,8 +121,8 @@ service OrderService {
 	}
 }
 
-// `@consumerGroup` is consumer-level as well as service-level, so a
-// consumer's decorator zone offers it.
+// Delivery is the application's, so a consumer's decorator zone offers
+// documentation and nothing that names a group or a chain.
 func TestConsumerDecoratorCompletions(t *testing.T) {
 	src := `package orders
 
@@ -146,8 +146,13 @@ service OrderService {
 	for _, item := range decoratorCompletions(view, pos, "") {
 		have[item.Label] = true
 	}
-	if !have["consumerGroup"] {
-		t.Errorf("consumer completions missing @consumerGroup: %v", have)
+	if !have["doc"] {
+		t.Errorf("consumer completions missing @doc: %v", have)
+	}
+	for _, gone := range []string{"consumerGroup", "consumeMiddlewares", "ignoreMiddleware"} {
+		if have[gone] {
+			t.Errorf("consumer completions still offer @%s", gone)
+		}
 	}
 	if have["contract"] {
 		t.Error("consumer completions must not offer the event-only @contract")

@@ -103,7 +103,6 @@ func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
 	a.checkExampleArg(d)
 	a.checkPatternArg(d)
 	a.checkGroupArg(d)
-	a.checkConsumerGroupArg(d)
 	a.checkPositionalArgs(d, spec)
 }
 
@@ -131,32 +130,6 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 	if _, err := regexp.Compile(s.Value); err != nil {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
 			"@pattern is not a valid regular expression: %v - the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)
-	}
-}
-
-// checkConsumerGroupArg verifies an authored @consumerGroup value can be
-// used as a broker group name. NATS JetStream rejects a durable name
-// holding a dot or whitespace, so a value carrying either could never be
-// created; an empty one names nothing at all. The derived default is
-// built from identifiers joined with "-" for the same reason.
-func (a *analyzer) checkConsumerGroupArg(d *ast.Decorator) {
-	if d == nil || d.Name != DecoratorConsumerGroup || len(d.Args) == 0 {
-		return
-	}
-	s, ok := d.Args[0].Value.(*ast.StringLit)
-	if !ok {
-		return // a non-string arg is already reported by checkPositionalArgs
-	}
-	if s.Value == "" {
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeConsumerGroupFormat,
-			"@consumerGroup needs a non-empty name - it is the identity the broker remembers this consumer's position under")
-		return
-	}
-	// The set JetStream's checkConsumerName refuses, not a subset of it:
-	// a name it rejects fails at the broker, after the design compiles.
-	if strings.ContainsAny(s.Value, ". \t\n\r>*/\\") {
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeConsumerGroupFormat,
-			"@consumerGroup value %q may not contain whitespace or any of . > * / \\ - NATS JetStream refuses a durable name carrying one, so the group could not be created", s.Value)
 	}
 }
 

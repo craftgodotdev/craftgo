@@ -50,64 +50,7 @@ func generateProjectMiddlewares(proj *semantic.Project, cfg *config.Config, proj
 	if err := writeMiddlewareFields(cfg, projectRoot, names); err != nil {
 		return err
 	}
-	if err := writeProjectMiddlewareImpls(cfg, projectRoot, proj, names); err != nil {
-		return err
-	}
-	return writeProjectConsumeMiddlewareImpls(cfg, projectRoot, proj)
-}
-
-// writeProjectConsumeMiddlewareImpls emits the scaffold for every
-// `consume middleware Name`. It is the consume-side twin of
-// [writeProjectMiddlewareImpls] and shares nothing with it but the
-// gen-once rule: a different template, a different package, a different
-// directory, because the two wrap different things.
-//
-// The runtime values land on `Events.Consume` rather than the svccontext
-// Middlewares struct, so there is no field list to emit here - the events
-// target writes it beside the publishers.
-func writeProjectConsumeMiddlewareImpls(cfg *config.Config, projectRoot string, proj *semantic.Project) error {
-	names := projectSortedConsumeMiddlewareNames(proj)
-	if len(names) == 0 {
-		return nil
-	}
-	dir := filepath.Join(projectRoot, cfg.Output.ConsumeMiddleware)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tpl := tmpl("consume-middleware.tmpl")
-	for _, name := range names {
-		filename := idents.FileNameWords(cfg.Output.FileCase, append(idents.SplitFieldName(name), "middleware")) + ".go"
-		dest := filepath.Join(dir, filename)
-		if _, err := os.Stat(dest); err == nil {
-			continue
-		}
-		formatted, err := renderGo(tpl, middlewareData{Name: name})
-		if err != nil {
-			return fmt.Errorf("render consume middleware %s: %w", name, err)
-		}
-		if err := os.WriteFile(dest, formatted, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// projectSortedConsumeMiddlewareNames is
-// [projectSortedMiddlewareNames] over the consume table.
-func projectSortedConsumeMiddlewareNames(proj *semantic.Project) []string {
-	seen := map[string]struct{}{}
-	if proj == nil {
-		return nil
-	}
-	for _, pkg := range proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		for name := range pkg.ConsumeMiddlewares {
-			seen[name] = struct{}{}
-		}
-	}
-	return sortedKeys(seen)
+	return writeProjectMiddlewareImpls(cfg, projectRoot, proj, names)
 }
 
 // projectSortedMiddlewareNames collects middleware decl names from every

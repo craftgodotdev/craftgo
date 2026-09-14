@@ -14,14 +14,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// memberChain returns the chain of middleware identifiers for one service
-// member. decorator names the chain the member reads: `middlewares` for a
-// method, `consumeMiddlewares` for a consumer. The two chains are
-// assembled by this one function so the layering rule is stated once and
-// cannot drift between the HTTP and the consume side.
-//
-// The chain is assembled outermost-first so codegen wraps the handler in
-// the same order a reader sees the decorators:
+// memberChain returns the chain of middleware identifiers one method
+// runs, assembled outermost-first so codegen wraps the handler in the
+// same order a reader sees the decorators:
 //
 //  1. Primary service-level `@<decorator>(...)`
 //  2. Extend-block-level (decorators marked Propagated=true that the
@@ -81,15 +76,6 @@ func memberChain(decorator string, own []*ast.Decorator, svc *ast.ServiceDecl) [
 // middlewareNames is [memberChain] for a method's `@middlewares` chain.
 func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 	return memberChain("middlewares", m.Decorators, svc)
-}
-
-// consumeMiddlewareNames is [memberChain] for a consumer's
-// `@consumeMiddlewares` chain.
-func consumeMiddlewareNames(c *ast.ConsumerDecl, svc *ast.ServiceDecl) []string {
-	if c == nil {
-		return nil
-	}
-	return memberChain("consumeMiddlewares", c.Decorators, svc)
 }
 
 // buildHandlerCall produces the Go expression that lands as the SECOND

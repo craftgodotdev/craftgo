@@ -144,14 +144,19 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 			sd.Name = resolve[symbolKey{pkg: pkgName, name: k}]
 			out.Scalars[sd.Name] = &sd
 		}
-		// Service and middleware names are globally unique across packages -
-		// the semantic layer (CodeServiceCollision / CodeMiddlewareCollision in
-		// project_decl_checks) rejects any cross-package clash before codegen
-		// runs. So, unlike the type/enum/error/scalar namespace above, there is
-		// nothing to disambiguate here and no owner-of-record ambiguity: keep the
-		// name as-is. (A merge-time rename would silently overwrite the real
-		// clash the semantic pass already owns.)
+		// A service contributes to the document only through its methods,
+		// so one that declares none is left out: its name is unique only
+		// within its package, and merging it would overwrite an HTTP
+		// service of the same name declared elsewhere. Two services that
+		// DO declare methods cannot share a name across packages - their
+		// output directories collide, which the semantic layer rejects
+		// (CodeGroupPackageStraddle) before codegen runs - so the merged
+		// name needs no disambiguation. Middleware names are global for
+		// the same reason (CodeMiddlewareCollision).
 		for name, si := range p.Services {
+			if len(si.Methods) == 0 {
+				continue
+			}
 			out.Services[name] = cloneServiceInfo(si, pkgName, rewriteRef)
 		}
 		for name, md := range p.Middlewares {

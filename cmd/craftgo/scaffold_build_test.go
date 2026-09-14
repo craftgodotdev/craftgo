@@ -13,12 +13,11 @@ import (
 
 // fullDesign reaches every gen-once template at once: a service with a
 // route (service.tmpl), a declared middleware (middleware.tmpl), a
-// published contract, and a second service consuming it (consumer.tmpl).
+// published contract, and a second service consuming it - which is what
+// puts the generated event library in front of the compiler.
 const fullDesign = `package gate
 
 middleware Guard
-
-consume middleware Settle
 
 type Thing {
 	id string
@@ -44,7 +43,6 @@ service ThingService {
 	}
 }
 
-@consumeMiddlewares(Settle)
 service AuditService {
 	consume RecordThing {
 		event ThingCreated
@@ -94,7 +92,42 @@ events:
   targets:
     - lang: go
       out: ./internal/events
-  asyncapi: "-"
+`
+
+// eventsOnlyDesign declares contracts and a consumer and no route at all,
+// the shape a consumer deployable generates from.
+const eventsOnlyDesign = `package gate
+
+type ThingCreated {
+	id string
+}
+
+service ThingService {
+	event ThingCreated {
+		payload ThingCreated
+	}
+}
+
+service AuditService {
+	consume RecordThing {
+		event ThingCreated
+	}
+}
+`
+
+const eventsOnlyManifest = `output:
+  types:      ./internal/types
+  transport:  ./internal/transport
+  routes:     ./internal/routes
+  service:    ./internal/service
+  svccontext: ./svccontext/svccontext.go
+  main:       ./main.go
+  config:     ./config
+  openapi:    "-"
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
 `
 
 // routesOnlyManifest turns off the documents as well, so main.go renders
@@ -137,10 +170,8 @@ var scaffoldShapes = []scaffoldShape{
 			"main.go":                  "main.tmpl",
 			"config/config.go":         "config.go.tmpl",
 			"svccontext/svccontext.go": "svccontext.go.tmpl",
-			"internal/service/thing_service/get_thing.go":    "service.tmpl",
-			"internal/service/audit_service/record_thing.go": "consumer.tmpl",
-			"internal/middleware/guard_middleware.go":        "middleware.tmpl",
-			"internal/consume/settle_middleware.go":          "consume-middleware.tmpl",
+			"internal/service/thing_service/get_thing.go": "service.tmpl",
+			"internal/middleware/guard_middleware.go":     "middleware.tmpl",
 		},
 		yamlScaffolds: map[string]string{
 			"config/config.yaml":         "config.yaml.tmpl",
@@ -158,6 +189,21 @@ var scaffoldShapes = []scaffoldShape{
 			"svccontext/svccontext.go": "svccontext.go.tmpl",
 			"internal/service/thing_service/get_thing.go": "service.tmpl",
 		},
+	},
+	{
+		// A design with no HTTP method has no server to boot, so no
+		// main.go is scaffolded - the deployable builds its own bus and
+		// calls the generated Register. What IS written still has to
+		// compile on its own.
+		name:     "events only",
+		manifest: eventsOnlyManifest,
+		design:   eventsOnlyDesign,
+		goScaffolds: map[string]string{
+			"internal/events/gate/events.go":   "events.tmpl",
+			"internal/events/gate/handlers.go": "handlers.tmpl",
+			"internal/wiring/wiring.go":        "wiring.tmpl",
+		},
+		link: true,
 	},
 }
 

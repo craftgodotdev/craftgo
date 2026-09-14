@@ -4,7 +4,7 @@
 // The emitters live one level down, one package per target:
 //
 //	codegen/golang   Go source
-//	codegen/docs     the OpenAPI and AsyncAPI projections
+//	codegen/docs     the OpenAPI projection
 //
 // A target reads the analysed [semantic.Project] and writes its own
 // artefacts; no target reads another's code, and nothing here is shared
@@ -18,7 +18,7 @@
 // are asserted to match, so a missing half fails a test rather than
 // silently generating nothing.
 //
-// Go is the only language target; the document projections are the other
+// Go is the only language target; the OpenAPI projection is the other
 // reader of the shared model.
 package codegen
 
@@ -39,13 +39,8 @@ type LangTarget struct {
 	// Generate writes the target's artefacts. outDir is the target's
 	// configured destination, relative to projectRoot.
 	Generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
-	// WiringNotes reports what the target leaves for the user to wire by
-	// hand, for targets that scaffold gen-once files. Nil when a target
-	// generates nothing the user has to connect.
-	WiringNotes func(proj *semantic.Project, cfg *config.Config, projectRoot string) []string
 	// OutputNotes reports what the target found in its output and could
-	// not account for. Unlike [WiringNotes] it is not gated on the runtime
-	// scaffolds, which a project sharing an output directory turns off.
+	// not account for.
 	OutputNotes func(proj *semantic.Project, cfg *config.Config, projectRoot string) []string
 }
 
@@ -54,7 +49,7 @@ type LangTarget struct {
 var LangTargets = []LangTarget{
 	// The Go target places its artefacts through the project-wide
 	// `output:` block, so it reads no per-target layout.
-	{Lang: config.LangGo, Generate: golang.GenerateEventTarget, WiringNotes: golang.EventWiringNotes, OutputNotes: golang.EventOutputNotes},
+	{Lang: config.LangGo, Generate: golang.GenerateEventTarget, OutputNotes: golang.EventOutputNotes},
 }
 
 // TargetDocs selects the document projections. The language targets are
@@ -68,7 +63,7 @@ func SelectableTargets() []string {
 
 // Generate runs a whole generation pass for proj under projectRoot: the
 // Go pipeline, then every configured event language target, then the
-// document projections.
+// OpenAPI projection.
 //
 // targets narrows the run to the named ones; empty runs everything. A
 // target that does not run also does not prune, so a narrowed pass never
@@ -83,33 +78,22 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string, ta
 	if err := validate(proj, cfg); err != nil {
 		return err
 	}
-	// One decision point for what this project deploys. Every target
-	// reads the projection for the application half and
-	// [semantic.Project.Design] for the contract half, so a narrowed
-	// deployable still emits the whole design's shared vocabulary.
-	deployed, err := proj.Projection(cfg.Output.Services)
-	if err != nil {
-		return err
-	}
 	// Nothing is written until every file this run regenerates is known
 	// to be this design's to write.
-	outs := plannedOutputs(deployed, cfg, projectRoot, sel)
+	outs := plannedOutputs(proj, cfg, projectRoot, sel)
 	if err := checkClaims(outs, cfg, proj.Root, projectRoot); err != nil {
 		return err
 	}
 	if sel[config.LangGo] {
-		if err := golang.Generate(deployed, cfg, projectRoot); err != nil {
+		if err := golang.Generate(proj, cfg, projectRoot); err != nil {
 			return err
 		}
 	}
-	if err := generateEventTargets(deployed, cfg, projectRoot, sel); err != nil {
+	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
 		return err
 	}
 	if sel[TargetDocs] {
-		// The documents describe the design, not one deployable's slice
-		// of it: `output.services` selects what is GENERATED, and a
-		// projection that wants no documents turns them off with `-`.
-		if err := GenerateDocuments(deployed.Design(), cfg, projectRoot); err != nil {
+		if err := GenerateDocuments(proj, cfg, projectRoot); err != nil {
 			return err
 		}
 	}
@@ -154,14 +138,11 @@ func validate(proj *semantic.Project, cfg *config.Config) error {
 	return docs.ValidateOpenAPI(proj, cfg)
 }
 
-// GenerateDocuments writes the OpenAPI and AsyncAPI projections. Both are
-// pure functions of the design and read no generated file.
+// GenerateDocuments writes the OpenAPI projection, a pure function of the
+// design that reads no generated file.
 func GenerateDocuments(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	if err := docs.GenerateOpenAPI(proj, cfg, projectRoot); err != nil {
 		return fmt.Errorf("openapi: %w", err)
-	}
-	if err := docs.GenerateAsyncAPI(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("asyncapi: %w", err)
 	}
 	return nil
 }
@@ -170,15 +151,11 @@ func GenerateDocuments(proj *semantic.Project, cfg *config.Config, projectRoot s
 // A project whose design declares no event generates nothing.
 func GenerateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	sel, _ := selection(nil)
-	deployed, err := proj.Projection(cfg.Output.Services)
-	if err != nil {
-		return err
-	}
-	outs := plannedEventOutputs(deployed, cfg, projectRoot, sel)
+	outs := plannedEventOutputs(proj, cfg, projectRoot, sel)
 	if err := checkClaims(outs, cfg, proj.Root, projectRoot); err != nil {
 		return err
 	}
-	if err := generateEventTargets(deployed, cfg, projectRoot, sel); err != nil {
+	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
 		return err
 	}
 	if err := pruneClaims(outs, proj.Root); err != nil {
@@ -192,7 +169,7 @@ func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoo
 	// A design with no event still runs every target: the artefacts of an
 	// event the design used to declare are exactly what has to go, and a
 	// target that does not run also claims nothing - so nothing would
-	// prune the publisher left on disk for a contract nobody declares.
+	// prune the descriptor left on disk for a contract nobody declares.
 	for _, target := range LangTargets {
 		if !sel[target.Lang] {
 			continue
@@ -217,19 +194,6 @@ func OutputNotes(proj *semantic.Project, cfg *config.Config, projectRoot string)
 			continue
 		}
 		out = append(out, target.OutputNotes(proj, cfg, projectRoot)...)
-	}
-	return out
-}
-
-// EventWiringNotes reports what every enabled target still leaves for the
-// user to wire by hand after a project gains its first event.
-func EventWiringNotes(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
-	var out []string
-	for _, target := range LangTargets {
-		if target.WiringNotes == nil {
-			continue
-		}
-		out = append(out, target.WiringNotes(proj, cfg, projectRoot)...)
 	}
 	return out
 }

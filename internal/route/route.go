@@ -192,17 +192,6 @@ func OutputSegment(svcName, group, fileCase string) string {
 	return idents.FileName(svcName, fileCase)
 }
 
-// ConsumersFileName is the file, at the ROOT of the transport output, that
-// holds one service's consumer handler set. Consumers sit at the root rather
-// than under [OutputSegment] because a service may declare them across
-// several blocks carrying different @groups while the contract declares one
-// handler interface covering all of them - no single group directory could
-// implement it. The analyser compares this name, so the collision the editor
-// reports is the file codegen would overwrite.
-func ConsumersFileName(svcName, fileCase string) string {
-	return idents.FileNameWords(fileCase, append(idents.SplitFieldName(svcName), "consumers"))
-}
-
 // PatternsConflict reports whether two same-verb mux patterns overlap with
 // neither strictly more specific - the exact condition net/http rejects. It
 // models craftgo's single-segment wildcards (`{name}`): patterns of different

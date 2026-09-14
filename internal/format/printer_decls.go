@@ -347,9 +347,6 @@ func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 	p.Doc(d.Doc)
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.indent()
-	if d.Consume {
-		p.write("consume ")
-	}
 	p.write("middleware ")
 	p.write(d.Name)
 	p.nl()

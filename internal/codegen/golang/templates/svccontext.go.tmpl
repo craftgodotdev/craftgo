@@ -6,10 +6,9 @@
 // clients, etc. as fields here and read them from the receiver in
 // generated logic stubs.
 //
-// The `Middlewares` and `Events` structs are regenerated on every
-// `craftgo gen` (see `middlewares.go` / `events.go` next to this file).
-// Don't edit them - declare middlewares and events in `.craftgo` files
-// and re-run gen.
+// The `Middlewares` struct is regenerated on every `craftgo gen` (see
+// `middlewares.go` next to this file). Don't edit it - declare
+// middlewares in `.craftgo` files and re-run gen.
 package svccontext
 
 import (
@@ -31,13 +30,6 @@ type ServiceContext struct {
 	// through the embedding so handlers don't need to look them up
 	// by name.
 	Middlewares
-
-	// Events carries the event bus and one typed publisher per service
-	// that declares an `event`. main.go binds them at startup; logic
-	// publishes through `svcCtx.Events.<Service>.Publish<Event>`. The
-	// field is declared even for a design with no event, so adding the
-	// first one needs no edit here.
-	Events Events
 }
 
 // NewServiceContext returns a ServiceContext seeded with the supplied

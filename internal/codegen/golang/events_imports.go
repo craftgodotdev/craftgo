@@ -17,23 +17,18 @@ import (
 var reservedAliases = map[string]bool{
 	// package-level imports
 	"craftevents": true,
-	"service":     true,
-	"svccontext":  true,
 	"context":     true,
-	"strconv":     true,
-	"log":         true,
-	// parameters, receivers and closure variables the templates bind
+	"errors":      true,
+	"fmt":         true,
+	// parameters, receivers and locals the templates bind
 	"bus":     true,
-	"svcCtx":  true,
-	"ctx":     true,
-	"msg":     true,
-	"payload": true,
-	"subs":    true,
-	"mw":      true,
-	"wrap":    true,
-	"p":       true,
-	"l":       true,
 	"h":       true,
+	"chain":   true,
+	"groups":  true,
+	"g":       true,
+	"own":     true,
+	"ctx":     true,
+	"payload": true,
 	"err":     true,
 }
 

@@ -35,7 +35,6 @@ import (
 // Config is the in-memory shape of `craftgo.design.yaml`. Field tags match
 // the camelCase keys documented in the project README.
 type Config struct {
-	Design  Design  `yaml:"design"`
 	Output  Output  `yaml:"output"`
 	OpenAPI OpenAPI `yaml:"openapi"`
 	Events  Events  `yaml:"events"`
@@ -49,74 +48,11 @@ type Config struct {
 	// line is the sole source of truth.
 	Package string `yaml:"-"`
 
-	// SourceDesign is the absolute folder holding the `.craftgo` files
-	// this manifest generates from. Not loaded from YAML: resolved from
-	// `design.from` when the manifest loads, and empty for a manifest
-	// whose design sits beside it.
-	SourceDesign string `yaml:"-"`
-
 	// ManifestDir is the absolute folder this manifest was loaded from.
 	// Not loaded from YAML. It is what a diagnostic names when two
 	// manifests generate the same file - the design they read may be one
 	// and the same, but the file the user edits is this.
 	ManifestDir string `yaml:"-"`
-
-	// Library locates the contract half - the payload types and the
-	// event artefacts every deployable of one design shares. Not loaded
-	// from YAML: Root resolves from `design.root` when the manifest
-	// loads, Package at gen time the way [Config.Package] does. Both are
-	// empty for a manifest that holds its own design, where the contract
-	// half belongs to this project.
-	Library Library `yaml:"-"`
-}
-
-// Design names the design source a manifest generates from. A manifest
-// that omits the block holds its own `.craftgo` files, the 1:1 layout; a
-// manifest that names one is a PROJECTION of a design it does not
-// contain, and several projections may share a single source.
-//
-// Both paths are relative to the folder holding the manifest, or
-// absolute.
-type Design struct {
-	// From is the folder holding the `.craftgo` files.
-	From string `yaml:"from"`
-	// Root is the project root the source design's own output paths
-	// resolve against - the `craftgo gen -c` it is generated with.
-	// Required beside From: it is a caller's argument, so there is
-	// nothing on the folder to read it off.
-	Root string `yaml:"root"`
-}
-
-// Library is where the contract half of a design lands: the project root
-// its manifest's `output.types` and event targets resolve against, and
-// the Go import prefix that root carries.
-type Library struct {
-	Root    string
-	Package string
-}
-
-// IsProjection reports whether this manifest generates from a design
-// source it does not contain.
-func (c *Config) IsProjection() bool { return c.SourceDesign != "" }
-
-// LibraryRoot returns the filesystem root the contract half resolves
-// against: the design source's project root for a projection, this
-// project's own root otherwise.
-func (c *Config) LibraryRoot(projectRoot string) string {
-	if c.Library.Root != "" {
-		return c.Library.Root
-	}
-	return projectRoot
-}
-
-// LibraryPackage returns the Go import prefix the contract half is
-// generated under - [Config.Package] for a project holding its own
-// design.
-func (c *Config) LibraryPackage() string {
-	if c.Library.Package != "" {
-		return c.Library.Package
-	}
-	return c.Package
 }
 
 // Output groups every generated-artefact destination. Directory paths
@@ -139,31 +75,18 @@ const (
 type Output struct {
 	// Kind selects how much of the design this project generates.
 	// Defaults to [KindApplication].
-	Kind string `yaml:"kind"`
-	// Services narrows the application half to the named services,
-	// each written `<package>.<Service>`. Empty generates every service
-	// the design declares. It selects what this deployable RUNS - its
-	// handlers, logic stubs, routes, wiring and container members - and
-	// never the contract half, which is the whole design's shared
-	// vocabulary and must read the same from every deployable.
-	Services   []string `yaml:"services"`
-	Types      string   `yaml:"types"`
-	Transport  string   `yaml:"transport"`
-	Routes     string   `yaml:"routes"`
-	Service    string   `yaml:"service"`
-	Main       string   `yaml:"main"`
-	Svccontext string   `yaml:"svccontext"`
-	OpenAPI    string   `yaml:"openapi"`
+	Kind       string `yaml:"kind"`
+	Types      string `yaml:"types"`
+	Transport  string `yaml:"transport"`
+	Routes     string `yaml:"routes"`
+	Service    string `yaml:"service"`
+	Main       string `yaml:"main"`
+	Svccontext string `yaml:"svccontext"`
+	OpenAPI    string `yaml:"openapi"`
 	// Middleware is the scaffold-once output dir for middleware
 	// implementation files. The corresponding type declarations live
 	// next to svccontext.go (see GenerateProjectMiddlewares).
 	Middleware string `yaml:"middleware"`
-	// ConsumeMiddleware is the scaffold-once output dir for
-	// `consume middleware Name` implementations. It is a peer of
-	// Middleware rather than a folder inside it: the two wrap different
-	// things - an http.Handler against a subscription handler - and share
-	// no code. Defaults to `./internal/consume`.
-	ConsumeMiddleware string `yaml:"consumeMiddleware"`
 	// Wiring is the directory holding the generated wiring package: the
 	// one `Register` call main.go makes, whose surface does not change
 	// with the design. Defaults to `./internal/wiring`.
@@ -199,14 +122,13 @@ const (
 )
 
 // Events configures the event pipeline: Targets lists the languages the
-// event artefacts are generated for, AsyncAPI names the projection file.
-// A manifest omitting the block gets [DefaultEventTargets].
+// event artefacts are generated for. A manifest omitting the block gets
+// [DefaultEventTargets].
 //
 // Transport and codec are runtime wiring, chosen where the application
 // starts up, and are not part of this.
 type Events struct {
-	Targets  []EventTarget `yaml:"targets"`
-	AsyncAPI string        `yaml:"asyncapi"`
+	Targets []EventTarget `yaml:"targets"`
 }
 
 // EventTarget is one language the event artefacts are generated for.
@@ -480,23 +402,10 @@ func fileExists(path string) bool {
 
 // Load parses the manifest at `path`, validates required fields, applies
 // defaults to optional ones, and returns the resulting [*Config].
-//
-// A manifest naming a design source (`design.from`) is a projection: the
-// source manifest is loaded first and supplies the contract half, so the
-// deployables of one design cannot drift apart on where their shared
-// vocabulary lives. See [Config.resolveDesignSource].
-func Load(path string) (*Config, error) { return load(path, nil) }
-
-// load is [Load] carrying the manifests already being loaded, so a
-// `design.from` naming its way back is reported instead of recursing
-// until the stack runs out.
-func load(path string, loading []string) (*Config, error) {
+func Load(path string) (*Config, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
-	}
-	if slices.Contains(loading, abs) {
-		return nil, fmt.Errorf("design.from forms a cycle: %s", strings.Join(append(loading, abs), " -> "))
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -506,10 +415,10 @@ func load(path string, loading []string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	cfg.ManifestDir = filepath.Dir(abs)
-	if err := cfg.resolveDesignSource(cfg.ManifestDir, append(loading, abs)); err != nil {
+	if err := checkRemovedKeys(data); err != nil {
 		return nil, err
 	}
+	cfg.ManifestDir = filepath.Dir(abs)
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -526,6 +435,45 @@ func load(path string, loading []string) (*Config, error) {
 	return &cfg, nil
 }
 
+// removedKeys are the manifest keys craftgo used to read, and what became
+// of each. A key the manifest shape does not declare is ignored in
+// silence, so a manifest still naming one of these would generate
+// something other than what it says.
+var removedKeys = []struct{ key, note string }{
+	{"design", "a manifest holds its own design folder - generate each deployable from the design beside it"},
+	{"output.services", "a project generates every service its design declares"},
+	{"output.consumeMiddleware", "a subscription's middleware is an events.Chain the application builds and passes to the generated Register function"},
+	{"events.asyncapi", "craftgo writes no asyncapi document"},
+}
+
+// checkRemovedKeys rejects a manifest still naming a key craftgo has
+// removed.
+func checkRemovedKeys(data []byte) error {
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil
+	}
+	for _, removed := range removedKeys {
+		if hasKey(doc, strings.Split(removed.key, ".")) {
+			return fmt.Errorf("%s is no longer a manifest key - %s; drop it", removed.key, removed.note)
+		}
+	}
+	return nil
+}
+
+// hasKey reports whether the decoded manifest holds the nested key path.
+func hasKey(node any, path []string) bool {
+	m, ok := node.(map[string]any)
+	if !ok {
+		return false
+	}
+	v, ok := m[path[0]]
+	if !ok {
+		return false
+	}
+	return len(path) == 1 || hasKey(v, path[1:])
+}
+
 // validate checks required manifest fields. Every required field has
 // either a default or is populated post-Load (Package via go.mod), so
 // there is nothing to reject; it stays as a hook for future required
@@ -540,10 +488,8 @@ func (c *Config) validate() error {
 		{"output.svccontext", c.Output.Svccontext},
 		{"output.openapi", c.Output.OpenAPI},
 		{"output.middleware", c.Output.Middleware},
-		{"output.consumeMiddleware", c.Output.ConsumeMiddleware},
 		{"output.config", c.Output.Config},
 		{"output.wiring", c.Output.Wiring},
-		{"events.asyncapi", c.Events.AsyncAPI},
 	} {
 		if err := checkWithinProject(out.key, out.val); err != nil {
 			return err
@@ -563,9 +509,6 @@ func (c *Config) validate() error {
 	default:
 		return fmt.Errorf("output.fileCase %q is not supported - use %q, %q, or %q",
 			c.Output.FileCase, FileCaseKebab, FileCaseSnake, FileCaseCamel)
-	}
-	if err := c.checkServiceSelection(); err != nil {
-		return err
 	}
 	seen := map[string]bool{}
 	for _, t := range c.Events.Targets {
@@ -627,9 +570,6 @@ func (c *Config) applyDefaults() {
 	if c.Output.Middleware == "" {
 		c.Output.Middleware = "./internal/middleware"
 	}
-	if c.Output.ConsumeMiddleware == "" {
-		c.Output.ConsumeMiddleware = "./internal/consume"
-	}
 	if c.Output.Config == "" {
 		c.Output.Config = "./config"
 	}
@@ -641,9 +581,6 @@ func (c *Config) applyDefaults() {
 	}
 	if len(c.Events.Targets) == 0 {
 		c.Events.Targets = DefaultEventTargets(c.Output.Kind)
-	}
-	if c.Events.AsyncAPI == "" {
-		c.Events.AsyncAPI = "./docs/asyncapi.yaml"
 	}
 }
 
@@ -759,7 +696,6 @@ func (c *Config) checkOutputUsable() error {
 		{"output.service", c.Output.Service},
 		{"output.svccontext", c.Output.Svccontext},
 		{"output.middleware", c.Output.Middleware},
-		{"output.consumeMiddleware", c.Output.ConsumeMiddleware},
 		{"output.config", c.Output.Config},
 	} {
 		if out.val == "-" {
@@ -777,13 +713,12 @@ func (c *Config) checkOutputUsable() error {
 // where any package collides with `package main`.
 func (c *Config) checkOutputCollisions() error {
 	dirs := []struct{ key, dir string }{
-		{"output.types", outputDir(c.typesDirForCollision())},
+		{"output.types", outputDir(c.Output.Types)},
 		{"output.transport", outputDir(c.Output.Transport)},
 		{"output.routes", outputDir(c.Output.Routes)},
 		{"output.wiring", outputDir(c.Output.Wiring)},
 		{"output.service", outputDir(c.Output.Service)},
 		{"output.middleware", outputDir(c.Output.Middleware)},
-		{"output.consumeMiddleware", outputDir(c.Output.ConsumeMiddleware)},
 		{"output.config", outputDir(c.Output.Config)},
 		{"output.svccontext", outputFileDir(c.Output.Svccontext)},
 		{"output.main", outputFileDir(c.Output.Main)},
@@ -799,17 +734,6 @@ func (c *Config) checkOutputCollisions() error {
 		seen[d.dir] = d.key
 	}
 	return nil
-}
-
-// typesDirForCollision returns the types output as far as the collision
-// check is concerned. A projection's types land under the design
-// source's root, so they share no directory with this project's own
-// output whatever the two paths spell.
-func (c *Config) typesDirForCollision() string {
-	if c.IsProjection() {
-		return ""
-	}
-	return c.Output.Types
 }
 
 // outputDir normalises an output path for comparison. A disabled key ("-")

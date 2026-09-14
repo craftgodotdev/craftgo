@@ -32,24 +32,24 @@ type Unused { id string }`
 			name:    "routes only",
 			sources: []string{httpSrc},
 			body:    []string{"routes.RegisterAll(srv, svcCtx)", "return func(context.Context) error { return nil }, nil"},
-			absent:  []string{"transport.SubscribeAll", "svcCtx.Events.Bus"}, // no event, so no bus to check
 		},
 		{
-			name:    "consumers only",
+			name:    "events only",
 			sources: []string{ordersSrc, notifySrc},
-			body:    []string{"transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx)", "deliver, stop := context.WithCancel(ctx)"},
-			absent:  []string{"routes.RegisterAll", "internal/routes"},
+			body:    []string{"return func(context.Context) error { return nil }, nil"},
+			absent:  []string{"routes.RegisterAll", "internal/routes", "internal/events", "Bus"},
 		},
 		{
 			name:    "both",
 			sources: []string{httpSrc, ordersSrc, notifySrc},
-			body:    []string{"routes.RegisterAll(srv, svcCtx)", "transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx)"},
+			body:    []string{"routes.RegisterAll(srv, svcCtx)"},
+			absent:  []string{"internal/events", "Bus"},
 		},
 		{
 			name:    "neither",
 			sources: []string{emptySrc},
 			body:    []string{"return func(context.Context) error { return nil }, nil"},
-			absent:  []string{"routes.RegisterAll", "transport.SubscribeAll", "internal/routes", "internal/transport"},
+			absent:  []string{"routes.RegisterAll", "internal/routes", "internal/transport"},
 		},
 	}
 	for _, c := range cases {
@@ -90,7 +90,7 @@ service WebService {
 		sources []string
 	}{
 		{"routes only", []string{httpSrc}},
-		{"consumers", []string{ordersSrc, notifySrc}},
+		{"events only", []string{ordersSrc, notifySrc}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			proj := analyzeProject(t, c.sources...)
@@ -103,68 +103,6 @@ service WebService {
 			mustContainAll(t, got, "(func(context.Context) error, error) {")
 		})
 	}
-}
-
-// A design that declares events and reaches Register with no bus gets a
-// named error at startup. Consuming on a nil bus would mean a service that
-// boots healthy and silently receives nothing; publishing would panic on
-// the nil *Publisher the zero Events hands back, before the runtime's own
-// nil guard is reached. Both halves need the bus, so both are covered.
-func TestWiringRejectsAMissingBus(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		sources []string
-		want    string
-	}{
-		{"consumers", []string{ordersSrc, notifySrc}, "the design declares 1 event(s) and 1 consumer(s) but svcCtx.Events carries no bus"},
-		{"publisher only", []string{ordersSrc}, "the design declares 1 event(s) but svcCtx.Events carries no bus"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			proj := analyzeProject(t, c.sources...)
-			dir := t.TempDir()
-			if err := generateWiring(proj, eventsConfig(), dir); err != nil {
-				t.Fatalf("generate wiring: %v", err)
-			}
-			got := readGen(t, dir, "internal/wiring/wiring.go")
-			mustParseGo(t, got)
-			mustContainAll(t, got,
-				"if svcCtx.Events.Bus == nil {",
-				c.want,
-				"svc.Events = svccontext.NewEvents(bus)",
-				"return nil, errors.New(",
-			)
-		})
-	}
-
-	proj := analyzeProject(t, ordersSrc, notifySrc)
-	dir := t.TempDir()
-	if err := generateWiring(proj, eventsConfig(), dir); err != nil {
-		t.Fatalf("generate wiring: %v", err)
-	}
-	got := readGen(t, dir, "internal/wiring/wiring.go")
-	// The guard runs before SubscribeAll, or the nil deref beats it.
-	guard := strings.Index(got, "svcCtx.Events.Bus == nil")
-	call := strings.Index(got, "transport.SubscribeAll")
-	if guard < 0 || call < 0 || guard > call {
-		t.Errorf("the nil-bus guard must precede SubscribeAll:\n%s", got)
-	}
-}
-
-// Nothing generated may name the transport or routes packages at a path
-// main.go also has to know: that is the coupling the wiring package exists
-// to absorb. The umbrella's own package clause is fixed for the same
-// reason - `output.transport: ./internal/handlers` must not rename it.
-func TestTransportUmbrellaPackageIsFixed(t *testing.T) {
-	proj := analyzeProject(t, ordersSrc, notifySrc)
-	cfg := eventsConfig()
-	cfg.Output.Transport = "./internal/handlers"
-	dir := t.TempDir()
-	if err := generateProjectEvents(proj, cfg, dir, goEventsOut); err != nil {
-		t.Fatalf("generate events: %v", err)
-	}
-	got := readGen(t, dir, "internal/handlers/events.go")
-	mustParseGo(t, got)
-	mustContainAll(t, got, "package transport")
 }
 
 // The routes umbrella is removed when the design stops declaring routes.
@@ -221,13 +159,13 @@ func TestWiringNoteWhenMainImportsAnotherWiringPackage(t *testing.T) {
 				t.Fatal(err)
 			}
 			var got bool
-			for _, note := range EventWiringNotes(proj, cfg, dir) {
+			for _, note := range EventOutputNotes(proj, cfg, dir) {
 				if strings.Contains(note, "imports a wiring package other than") {
 					got = true
 				}
 			}
 			if got != c.want {
-				t.Errorf("stale-wiring note = %v, want %v (notes: %v)", got, c.want, EventWiringNotes(proj, cfg, dir))
+				t.Errorf("stale-wiring note = %v, want %v (notes: %v)", got, c.want, EventOutputNotes(proj, cfg, dir))
 			}
 		})
 	}

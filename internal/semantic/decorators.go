@@ -356,14 +356,14 @@ var Registry = map[string]Spec{
 	"doc": {
 		Name:     "doc",
 		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlEvent | LvlConsumer | LvlErrorField,
-		Doc:      "Free-form documentation surfaced in OpenAPI / AsyncAPI and IDE hover.",
+		Doc:      "Free-form documentation surfaced in OpenAPI and IDE hover.",
 		Args:     ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
 	},
 	"deprecated": {
 		Name:     "deprecated",
 		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlEvent | LvlConsumer | LvlErrorField,
-		Doc:      "Marks the construct as deprecated; OpenAPI / AsyncAPI emit the deprecated flag.",
+		Doc:      "Marks the construct as deprecated; OpenAPI emits the deprecated flag.",
 		Args:     ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
 	},
@@ -569,13 +569,6 @@ var Registry = map[string]Spec{
 		Doc:    "Overrides the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes.",
 		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 	},
-	"consumerGroup": {
-		Name:   DecoratorConsumerGroup,
-		Levels: LvlService | LvlConsumer,
-		Doc:    "The broker identity a consumer joins - the Kafka consumer group, the NATS queue group. Consumers sharing a group divide the stream between them, which makes a group a unit of scaling and of failure isolation (not of ordering - no transport orders across contracts). On a transport that remembers a position per group, Kafka and JetStream, the name is also where those consumers resume: the default `<package>-<Service>-<Consumer>` moves when you rename any of the three, and a name the broker has never seen has no position at all, so if it has an offset, write the name down. On a service the decorator is the default for every `consume` in the body; on a consumer it overrides that. Consumers of different contracts may share one group inside a service; two services may not share one.",
-		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
-	},
-
 	"group": {
 		Name: "group", Levels: LvlService,
 		Doc:  "Nests the service's generated handlers and service stubs under <service>/<group>/ on disk and adds its value as an OpenAPI tag on every method; does not affect the route or OpenAPI path. Accepts a nested path like \"admin/ops\".",
@@ -585,16 +578,6 @@ var Registry = map[string]Spec{
 		Name:       "middlewares",
 		Levels:     LvlService | LvlMethod,
 		Doc:        "Apply named middlewares; method-level appends to service-level chain. Args: variadic idents or a single array literal.",
-		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
-		Repeatable: true,
-	},
-	"consumeMiddlewares": {
-		Name:   "consumeMiddlewares",
-		Levels: LvlService | LvlConsumer,
-		Doc: "Apply named consume middlewares to a service's consumers; consumer-level appends to the service-level chain. " +
-			"Names come from `consume middleware Name` declarations, never from `middleware Name` - the two wrap different things. " +
-			"The first name is OUTERMOST: it sees the message first on the way in and returns last, so it is the one that decides " +
-			"what the transport is told. A middleware that swallows an error goes first and one that retries goes last.",
 		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
 		Repeatable: true,
 	},
@@ -614,8 +597,8 @@ var Registry = map[string]Spec{
 	},
 	"ignoreMiddleware": {
 		Name:   "ignoreMiddleware",
-		Levels: LvlMethod | LvlConsumer,
-		Doc:    "Clear the inherited middleware chain on this member. The site picks the chain: on a method the inherited @middlewares, on a consumer the inherited @consumeMiddlewares. The member's own decorator then starts from empty instead of appending to the service-level chain.",
+		Levels: LvlMethod,
+		Doc:    "Clear the inherited @middlewares chain on this method. The method's own decorator then starts from empty instead of appending to the service-level chain.",
 		Args:   ArgsRule{Min: 0, Max: 0},
 	},
 	"ignoreSecurity": {
@@ -683,8 +666,11 @@ func Lookup(name string) (Spec, bool) {
 // the argument-shape pass - has to learn to skip it.
 var removed = map[string]string{
 	"key": "@key was removed: which entity a message belongs to is decided when it is published, not by the contract. " +
-		"Pass the key to the generated publisher instead - `PublishOrderPlaced(ctx, payload, craftevents.WithKey(string(payload.OrderID)))`, " +
-		"or `craftevents.WithKey(...)` on a batch entry.",
+		"Pass the key to the publish call instead - `orders.OrderPlaced.Publish(ctx, bus, payload, craftevents.WithKey(string(payload.OrderID)))`.",
+	"consumerGroup": "@consumerGroup was removed: a group is where a consumer resumes on the broker, so it belongs to the deployable rather than to the shared design. " +
+		"Name it where the bus is built and pass it to the generated Register call - `RegisterOrdersHandler(bus, h, chain, orders.OrdersGroups{Default: ordersGroup})`.",
+	"consumeMiddlewares": "@consumeMiddlewares was removed, along with the `consume middleware Name` declaration: a subscription's chain is ordinary Go, built where the bus is. " +
+		"Pass one to the generated Register call - `RegisterOrdersHandler(bus, h, craftevents.Chain{retry, timeout}, groups)`.",
 }
 
 // RemovedDecorator returns the migration note for a decorator craftgo has

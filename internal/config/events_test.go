@@ -32,9 +32,6 @@ func TestEventsDefaultToASingleGoTarget(t *testing.T) {
 	if target.Lang != LangGo || target.Out != "./internal/events" {
 		t.Errorf("default target = %+v", target)
 	}
-	if cfg.Events.AsyncAPI != "./docs/asyncapi.yaml" {
-		t.Errorf("asyncapi default = %q", cfg.Events.AsyncAPI)
-	}
 }
 
 // Go is a row in the target list, not a privileged default: a manifest
@@ -44,7 +41,6 @@ func TestEventTargetsAreConfigured(t *testing.T) {
   targets:
     - lang: go
       out: ./gen/events
-  asyncapi: "-"
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -56,8 +52,32 @@ func TestEventTargetsAreConfigured(t *testing.T) {
 	if _, ok := cfg.Events.TargetFor("rust"); ok {
 		t.Error("TargetFor must miss an unconfigured language")
 	}
-	if cfg.Events.AsyncAPI != "-" {
-		t.Errorf("asyncapi = %q, want the disabled marker", cfg.Events.AsyncAPI)
+}
+
+// A manifest naming a key craftgo has removed is told what happened: an
+// unknown key is otherwise ignored, so the project would generate
+// something other than what the manifest says.
+func TestRemovedKeysAreRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		key  string
+	}{
+		{"design source", "design:\n  from: ../contracts\n  root: ..\n", "design"},
+		{"service selection", "output:\n  services: [shop.Orders]\n", "output.services"},
+		{"consume middleware", "output:\n  consumeMiddleware: ./internal/consume\n", "output.consumeMiddleware"},
+		{"asyncapi", "events:\n  asyncapi: ./docs/asyncapi.yaml\n", "events.asyncapi"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Load(writeManifest(t, c.body))
+			if err == nil {
+				t.Fatalf("%s was accepted", c.key)
+			}
+			if !strings.Contains(err.Error(), c.key) {
+				t.Errorf("error does not name the key: %v", err)
+			}
+		})
 	}
 }
 

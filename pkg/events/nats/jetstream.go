@@ -458,7 +458,7 @@ func (j *JetStream) plan(ctx context.Context, subs []events.Subscription) ([]*gr
 			order = append(order, g)
 		}
 		if g.stream != stream {
-			return nil, fmt.Errorf("nats: consumer group %q reads %s from stream %q and %s from stream %q - a JetStream durable reads one stream, so give each stream's consumers their own @consumerGroup",
+			return nil, fmt.Errorf("nats: consumer group %q reads %s from stream %q and %s from stream %q - a JetStream durable reads one stream, so give each stream's consumers a group of their own",
 				group, g.subjects[0], g.stream, subject, stream)
 		}
 		if _, dup := g.handlers[subject]; dup {

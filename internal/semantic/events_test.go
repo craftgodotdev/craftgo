@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -85,18 +84,6 @@ func TestEventRules(t *testing.T) {
 			src:  "package p\nservice S {\n\tconsume C {}\n}",
 			code: CodeConsumerEventMissing,
 			msg:  "has no event",
-		},
-		{
-			name: "duplicate consumer of one contract",
-			src: `package p
-type P { id string }
-service S {
-	event E { payload P }
-	consume A { event E }
-	consume B { event E }
-}`,
-			code: CodeConsumerDuplicate,
-			msg:  "already consumes",
 		},
 		{
 			name: "duplicate event name in a package",
@@ -267,80 +254,18 @@ service S {
 	}
 }
 
-// A consumer and a method of one service both scaffold `<name>.go` into
-// the service logic folder, so sharing a name is rejected rather than
-// silently dropping the second stub.
-func TestConsumerCannotShareAMethodName(t *testing.T) {
-	d := expectDiag(t, `package p
+// A consume scaffolds no file: it is a method on the handler interface
+// the application implements where it likes, so it competes with nothing
+// in the service logic folder - not a method of its own service, and not
+// a method another service puts in a shared @group.
+func TestConsumerNameCompetesWithNoFile(t *testing.T) {
+	expectClean(t, `package p
 type P { id string }
 service S {
 	get Foo /foo { response P }
 	event E { payload P }
 	consume Foo { event E }
-}`, CodeConsumerCollision)
-	if !strings.Contains(d.Msg, "foo.go") {
-		t.Errorf("msg should name the file both would claim, got %q", d.Msg)
-	}
-}
-
-// The consumer handler set is one file per service at the root of the
-// transport output, so two service names that fold to one file name under
-// the configured file case are rejected rather than losing one service's
-// consumers to the other's write.
-func TestConsumerHandlerFileCollision(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"a/a.craftgo": `package a
-type P { id string }
-service Producer {
-	event E { payload P }
-	event F { payload P }
-}
-service UserAPI {
-	consume One { event E }
-}
-service UserApi {
-	consume Two { event F }
-}`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	d := findCode(diags, CodeConsumerHandlerCollision)
-	if d == nil {
-		t.Fatalf("want %s, got %v", CodeConsumerHandlerCollision, codes(diags))
-	}
-	if !strings.Contains(d.Msg, "user_api_consumers.go") {
-		t.Errorf("msg should name the file both claim, got %q", d.Msg)
-	}
-	if len(d.Related) == 0 {
-		t.Errorf("diagnostic should point at the other claimant")
-	}
-}
-
-// A service whose name does not fold onto another's is left alone, and a
-// service with no consumers claims no handler file at all.
-func TestConsumerHandlerFileCollisionNeedsConsumersOnBoth(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"a/a.craftgo": `package a
-type P { id string }
-service Producer {
-	event E { payload P }
-}
-service UserAPI {
-	consume One { event E }
-}
-service UserApi {
-	get Ping /ping { response P }
-}`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if d := findCode(diags, CodeConsumerHandlerCollision); d != nil {
-		t.Fatalf("unexpected %s: %s", CodeConsumerHandlerCollision, d.Msg)
-	}
-}
-
-// Two services sharing a @group share one logic folder, so a consumer
-// name colliding with another service's member is the same error a
-// colliding method name already was.
-func TestGroupedConsumerCollidesAcrossServices(t *testing.T) {
+}`)
 	root, files := projectFixture(t, map[string]string{
 		"a/a.craftgo": `package a
 type P { id string }
@@ -355,8 +280,8 @@ service B {
 }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if findCode(diags, CodeGroupMethodCollision) == nil {
-		t.Fatalf("want %s, got %v", CodeGroupMethodCollision, codes(diags))
+	if d := findCode(diags, CodeGroupMethodCollision); d != nil {
+		t.Fatalf("unexpected %s: %s", CodeGroupMethodCollision, d.Msg)
 	}
 }
 
@@ -428,43 +353,8 @@ service S {
 	}
 }
 
-// A group holds one position in the stream, so two consumers of one
-// contract that resolve to the same group split it instead of each
-// receiving every message.
-func TestConsumerGroupCollisionOnOneContract(t *testing.T) {
-	d := expectDiag(t, `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-@consumerGroup("shared")
-service Audit { consume Process { event Placed } }
-@consumerGroup("shared")
-service Metrics { consume Record { event Placed } }`, CodeConsumerGroupCollision)
-	if !strings.Contains(d.Msg, `consumer group "shared" reads contract "p.Placed" more than once`) {
-		t.Errorf("msg = %q", d.Msg)
-	}
-	if len(d.Related) != 1 {
-		t.Fatalf("want the other claimant linked, got %v", d.Related)
-	}
-}
-
-func TestConsumerGroupCollisionAcrossPackages(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"orders/orders.craftgo": `package orders
-type P { id string }
-service OrderService { event Placed { payload P } }`,
-		"audit/audit.craftgo": `package audit
-service Audit { @consumerGroup("shared") consume Process { event orders.Placed } }`,
-		"metrics/metrics.craftgo": `package metrics
-service Metrics { @consumerGroup("shared") consume Record { event orders.Placed } }`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if findCode(diags, CodeConsumerGroupCollision) == nil {
-		t.Fatalf("want %s, got %v", CodeConsumerGroupCollision, codes(diags))
-	}
-}
-
-// The derived default qualifies the consumer name with its package and
-// service, so two services reusing one consumer name no longer collide.
+// Consumer names are scoped to their service, so two services may reuse
+// one.
 func TestConsumerNameReusedAcrossServices(t *testing.T) {
 	expectClean(t, `package p
 type P { id string }
@@ -473,7 +363,9 @@ service Audit { consume Process { event Placed } }
 service Metrics { consume Process { event Placed } }`)
 }
 
-// One name may be reused on different contracts: the group is the pair.
+// One name may be reused on different contracts, and one service may
+// consume a contract twice: which group each subscription joins is
+// decided by the application, not here.
 func TestConsumerNameReusedOnAnotherContract(t *testing.T) {
 	expectClean(t, `package p
 type P { id string }
@@ -483,106 +375,18 @@ service Orders {
 }
 service A { consume Process { event Placed } }
 service B { consume Process { event Cancelled } }`)
-}
-
-// The feature: one group spanning several contracts inside one service,
-// so the group is the unit of scaling and of failure isolation.
-func TestConsumerGroupSpansContractsInOneService(t *testing.T) {
 	expectClean(t, `package p
 type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-@consumerGroup("orders-worker")
+service Orders { event Placed { payload P } }
 service Worker {
-	consume OnPlaced { event Placed }
-	consume OnCancelled { event Cancelled }
+	consume Handle { event Placed }
+	consume Audit { event Placed }
 }`)
 }
 
-// A shared group requires every process joining it to register the same
-// consumers; two services deploy as separate binaries and cannot.
-func TestConsumerGroupAcrossServices(t *testing.T) {
-	d := expectDiag(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-@consumerGroup("shared")
-service A { consume OnPlaced { event Placed } }
-@consumerGroup("shared")
-service B { consume OnCancelled { event Cancelled } }`, CodeConsumerGroupCrossService)
-	if !strings.Contains(d.Msg, `consumer group "shared" is claimed by more than one service`) {
-		t.Errorf("msg = %q", d.Msg)
-	}
-	if len(d.Related) != 1 {
-		t.Fatalf("want the other claimant linked, got %v", d.Related)
-	}
-}
-
-// Precedence: the consumer's own decorator wins over its service's, and
-// both win over the derived default.
-func TestConsumerGroupPrecedence(t *testing.T) {
-	proj, diags := AnalyzeProject(parseFiles(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-@consumerGroup("service-level")
-service Worker {
-	@consumerGroup("consumer-level")
-	consume OnPlaced { event Placed }
-	consume OnCancelled { event Cancelled }
-}
-service Plain { consume Watch { event Placed } }`), Options{})
-	expectNoDiags(t, diags)
-	want := map[string]string{
-		"OnPlaced":    "consumer-level",
-		"OnCancelled": "service-level",
-		"Watch":       "p-Plain-Watch",
-	}
-	for _, c := range proj.Consumers() {
-		if got := c.Group; got != want[c.Name] {
-			t.Errorf("%s group = %q, want %q", c.Name, got, want[c.Name])
-		}
-	}
-}
-
-// `@group` decides where generated files land. It must not reach the
-// broker identity: the same service grouped and ungrouped derives one
-// group name.
-func TestOutputGroupDoesNotReachConsumerGroup(t *testing.T) {
-	const design = `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-%sservice Watchers { consume Watch { event Placed } }`
-	groupOf := func(t *testing.T, src string) string {
-		t.Helper()
-		proj, diags := AnalyzeProject(parseFiles(t, src), Options{})
-		expectNoDiags(t, diags)
-		cs := proj.Consumers()
-		if len(cs) != 1 {
-			t.Fatalf("want one consumer, got %d", len(cs))
-		}
-		return cs[0].Group
-	}
-	plain := groupOf(t, fmt.Sprintf(design, ""))
-	grouped := groupOf(t, fmt.Sprintf(design, "@group(\"ops\")\n"))
-	if plain != grouped {
-		t.Errorf("@group changed the consumer group: %q vs %q", plain, grouped)
-	}
-	if plain != "p-Watchers-Watch" {
-		t.Errorf("derived group = %q, want %q", plain, "p-Watchers-Watch")
-	}
-}
-
 // A consumer declared in an `extend service` block belongs to the owning
-// service, so it derives that service's name and the extend block's
-// @group contributes nothing.
-func TestExtendServiceConsumerGroup(t *testing.T) {
+// service, so it merges into that service's consumer set.
+func TestExtendServiceConsumerBelongsToItsService(t *testing.T) {
 	proj, diags := AnalyzeProject(parseFiles(t, `package p
 type P { id string }
 service Orders {
@@ -593,103 +397,49 @@ service Watchers { consume Watch { event Placed } }
 @group("ops")
 extend service Watchers { consume Trail { event Cancelled } }`), Options{})
 	expectNoDiags(t, diags)
-	want := map[string]string{"Watch": "p-Watchers-Watch", "Trail": "p-Watchers-Trail"}
 	for _, c := range proj.Consumers() {
-		if got := c.Group; got != want[c.Name] {
-			t.Errorf("%s group = %q, want %q", c.Name, got, want[c.Name])
+		if c.Service != "Watchers" {
+			t.Errorf("%s belongs to %q, want Watchers", c.Name, c.Service)
 		}
 	}
 }
 
-// The service-level default reaches a consumer declared in an extend
-// block: the decorator sits on the service that owns it.
-func TestExtendServiceConsumerInheritsServiceGroup(t *testing.T) {
-	proj, diags := AnalyzeProject(parseFiles(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-@consumerGroup("watch-worker")
-service Watchers { consume Watch { event Placed } }
-extend service Watchers { consume Trail { event Cancelled } }`), Options{})
-	expectNoDiags(t, diags)
-	for _, c := range proj.Consumers() {
-		if c.Group != "watch-worker" {
-			t.Errorf("%s group = %q, want the service default", c.Name, c.Group)
-		}
-	}
-}
-
-// An authored name that lands on another service's derived one is the
-// cross-service case, caught the same way.
-func TestAuthoredGroupCannotTakeAnotherServicesDerivedName(t *testing.T) {
-	d := expectDiag(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-service Watchers { consume Watch { event Placed } }
-@consumerGroup("p-Watchers-Watch")
-service Trailers { consume Trail { event Cancelled } }`, CodeConsumerGroupCrossService)
-	expectMessage(t, d, `consumer group "p-Watchers-Watch" is claimed by more than one service`)
-	if len(d.Related) != 1 {
-		t.Fatalf("want the other claimant linked, got %v", d.Related)
-	}
-}
-
-// `@consumerGroup` is a service-level decorator, so an extend block
-// carries the same rule `@prefix` does: it belongs on the primary
-// declaration, which is the one that owns the consumers.
-func TestConsumerGroupOnExtendBlockIsRejected(t *testing.T) {
-	d := expectDiag(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-service Watchers { consume Watch { event Placed } }
-@consumerGroup("ops")
-extend service Watchers { consume Trail { event Cancelled } }`, CodeExtendDecoratorNotMethod)
-	expectMessage(t, d, "@consumerGroup on extend service")
-}
-
-func TestConsumerGroupWithDotIsRejected(t *testing.T) {
-	d := expectDiag(t, `package p
+// The decorators that named a broker group and a consume chain are gone.
+// A design still carrying one is told what replaced it rather than that
+// the name was never a decorator.
+func TestRemovedEventDecoratorsAreRejectedWithTheirMigration(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "consumerGroup",
+			src: `package p
 type P { id string }
 service Orders { event Placed { payload P } }
-service Watchers { @consumerGroup("orders.watch") consume Watch { event Placed } }`, CodeConsumerGroupFormat)
-	if !strings.Contains(d.Msg, "JetStream") {
-		t.Errorf("msg = %q", d.Msg)
+@consumerGroup("shared")
+service Watchers { consume Watch { event Placed } }`,
+			want: "RegisterOrdersHandler",
+		},
+		{
+			name: "consumeMiddlewares",
+			src: `package p
+type P { id string }
+service Orders { event Placed { payload P } }
+service Watchers {
+	@consumeMiddlewares(Retry)
+	consume Watch { event Placed }
+}`,
+			want: "craftevents.Chain",
+		},
 	}
-}
-
-func TestConsumerGroupWithSpaceIsRejected(t *testing.T) {
-	expectDiag(t, `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-service Watchers { @consumerGroup("orders watch") consume Watch { event Placed } }`, CodeConsumerGroupFormat)
-}
-
-// JetStream's checkConsumerName refuses these too, so a design carrying
-// one compiles and then fails at the broker.
-func TestConsumerGroupWithASubjectWildcardIsRejected(t *testing.T) {
-	for _, name := range []string{"orders>watch", "orders*watch", "orders/watch", `orders\\watch`} {
-		t.Run(name, func(t *testing.T) {
-			expectDiag(t, `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-service Watchers { @consumerGroup("`+name+`") consume Watch { event Placed } }`, CodeConsumerGroupFormat)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := expectDiag(t, c.src, CodeDecoratorRemoved)
+			expectMessage(t, d, c.want)
 		})
 	}
-}
-
-func TestConsumerGroupEmptyIsRejected(t *testing.T) {
-	expectDiag(t, `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-service Watchers { @consumerGroup("") consume Watch { event Placed } }`, CodeConsumerGroupFormat)
 }
 
 // A design still carrying `@key` is told what replaced it. "Unknown

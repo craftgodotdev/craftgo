@@ -57,7 +57,7 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 			a.warnNameCase(s.Level.Name(), s.Name, s.Pos)
 		}
 	case *ast.MiddlewareDecl:
-		a.warnNameCase(dd.Keyword(), dd.Name, dd.Pos)
+		a.warnNameCase("middleware", dd.Name, dd.Pos)
 	case *ast.EventDecl:
 		a.warnNameCase("event", dd.Name, dd.Pos)
 	case *ast.ScalarDecl:

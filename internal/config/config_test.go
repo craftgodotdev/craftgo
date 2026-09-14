@@ -395,8 +395,4 @@ func TestEventTargetOutMustStayInsideProject(t *testing.T) {
 	if err := cfg.validate(); err == nil {
 		t.Error("events.targets out escaping the project was accepted")
 	}
-	cfg = &Config{Events: Events{AsyncAPI: "../docs/asyncapi.yaml"}}
-	if err := cfg.validate(); err == nil {
-		t.Error("events.asyncapi escaping the project was accepted")
-	}
 }

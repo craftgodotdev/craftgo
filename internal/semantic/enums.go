@@ -10,7 +10,7 @@ import (
 // independent of the language that renders them. Targets read these
 // instead of switching on [ast.EnumValueKind] themselves, so an
 // int-backed member cannot stringify one way in the generated Go and
-// another in the OpenAPI and AsyncAPI schemas.
+// another in the OpenAPI schemas.
 //
 // These read an enum that has passed analysis. [CodeEnumMixedTypes]
 // rejects a mixed-kind enum, which is what lets [EnumPrimitive] decide

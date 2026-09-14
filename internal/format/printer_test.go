@@ -115,19 +115,6 @@ middleware RateLimit
 `,
 		},
 		{
-			name: "consume middleware declarations",
-			src: `package x
-
-middleware AuthRequired
-
-// Retry hands the message back while attempts remain.
-@doc("retry")
-consume middleware Retry
-
-consume middleware DeadLetter
-`,
-		},
-		{
 			name: "service with extend",
 			src: `package x
 

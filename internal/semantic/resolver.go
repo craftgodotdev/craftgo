@@ -18,9 +18,6 @@ type Resolver struct {
 	Scalars     map[string]*ast.ScalarDecl
 	Errors      map[string]*ast.ErrorDecl
 	Middlewares map[string]*ast.MiddlewareDecl
-	// ConsumeMiddlewares is the `consume middleware Name` table, kept
-	// apart from Middlewares so a lookup names the shape it wants.
-	ConsumeMiddlewares map[string]*ast.MiddlewareDecl
 }
 
 // qualifiedTable collects one declaration kind from every package into a
@@ -55,9 +52,6 @@ func NewResolver(proj *Project, currentPkg string) *Resolver {
 		Scalars:     qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.ScalarDecl { return p.Scalars }),
 		Errors:      qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.ErrorDecl { return p.Errors }),
 		Middlewares: qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.MiddlewareDecl { return p.Middlewares }),
-		ConsumeMiddlewares: qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.MiddlewareDecl {
-			return p.ConsumeMiddlewares
-		}),
 	}
 }
 
@@ -117,12 +111,4 @@ func (r *Resolver) LookupMiddleware(name string) *ast.MiddlewareDecl {
 		return nil
 	}
 	return r.Middlewares[name]
-}
-
-// LookupConsumeMiddleware resolves a `consume middleware Name`.
-func (r *Resolver) LookupConsumeMiddleware(name string) *ast.MiddlewareDecl {
-	if r == nil {
-		return nil
-	}
-	return r.ConsumeMiddlewares[name]
 }

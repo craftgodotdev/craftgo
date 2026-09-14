@@ -222,14 +222,6 @@ const (
 	// can never populate. `file` is valid only as a top-level request field
 	// (directly or carried in via a mixin).
 	CodeFilePosition = "binding/file-position"
-	// CodeServiceCollision fires when two packages in the same
-	// project both declare a primary `service` of the same name.
-	// The generated codegen layout keys output directories by
-	// service name (`internal/routes/<svc>/`, `internal/handler/<svc>/`),
-	// so a collision would silently overwrite one package's
-	// scaffolds with the other's. Surface every conflicting
-	// declaration so the author can rename one.
-	CodeServiceCollision = "service/collision"
 	// CodeGroupPackageStraddle fires when services from DIFFERENT DSL
 	// packages resolve to the same output directory via `@group`.
 	// Sharing a group is the decorator's purpose - it lays out folders,
@@ -257,13 +249,6 @@ const (
 	// surfaces every conflicting declaration so the author can
 	// rename or consolidate.
 	CodeMiddlewareCollision = "middleware/collision"
-
-	// CodeMiddlewareKindMismatch fires when a middleware name resolves to
-	// the other kind: an HTTP `middleware` named on a consumer, or a
-	// `consume middleware` named on a method. The two wrap different
-	// things and are scaffolded into different packages, so the name is
-	// not a spelling mistake - the declaration is the wrong form.
-	CodeMiddlewareKindMismatch = "middleware/kind-mismatch"
 
 	// CodeQualifiedRef fires for a malformed qualified reference: more
 	// than one package segment (`a.b.Type`), or a type in its own package
@@ -376,39 +361,13 @@ const (
 	// CodeConsumerEventUnknown fires when a consumer's `event` clause
 	// names an event no package declares.
 	CodeConsumerEventUnknown = "consumer/event-unknown"
-	// CodeConsumerDuplicate fires when one service consumes the same
-	// contract twice.
-	CodeConsumerDuplicate = "consumer/duplicate"
-	// CodeConsumerCollision fires when a consumer and a method of one
-	// service share a name - both scaffold the same logic file.
-	CodeConsumerCollision = "consumer/collision"
 	// CodeEventDuplicate fires when one package declares two events of
 	// the same name. Consumers reference an event by that identifier.
 	CodeEventDuplicate = "event/duplicate-name"
 	// CodeConsumerDuplicateName fires when one service declares two
-	// consumers of the same name.
+	// consumers of the same name. Each is a method on that service's
+	// generated handler interface.
 	CodeConsumerDuplicateName = "consumer/duplicate-name"
-	// CodeConsumerHandlerCollision fires when two consuming services
-	// produce the same handler file name under the configured file case
-	// (`UserAPI` and `UserApi` both fold to `user_api_consumers.go`). The
-	// handler set is one file per service at the root of the transport
-	// output, so the second write would replace the first and one
-	// service's consumers would silently stop being wired.
-	CodeConsumerHandlerCollision = "consumer/handler-collision"
-	// CodeConsumerGroupCollision fires when two consumers of one
-	// contract resolve to the same group. A group's members divide a
-	// contract between them, so the two would each get part of it
-	// instead of each receiving every message.
-	CodeConsumerGroupCollision = "consumer/group-collision"
-	// CodeConsumerGroupCrossService fires when two services use one
-	// consumer group. A shared group requires every process that joins it
-	// to register the same consumers, which two separately deployed
-	// services cannot do.
-	CodeConsumerGroupCrossService = "consumer/group-cross-service"
-	// CodeConsumerGroupFormat fires when an authored `@consumerGroup`
-	// value is empty or carries whitespace or one of . > * / \\ - the
-	// set NATS JetStream refuses in a durable name.
-	CodeConsumerGroupFormat = "consumer/group-format"
 )
 
 // related is a tiny helper that builds a single-element [lexer.Related]

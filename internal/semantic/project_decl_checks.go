@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -16,25 +15,6 @@ type declSite struct {
 	pos lexer.Position
 }
 
-// checkProjectServiceUniqueness fires when two packages declare a
-// primary `service` of the same name. Codegen writes per-service
-// scaffolds under `internal/{routes,handler,logic}/<service>/`, so a
-// cross-package duplicate would silently overwrite one set of
-// scaffolds with the other.
-func (r *refResolver) checkProjectServiceUniqueness() {
-	sites := map[string][]declSite{}
-	for pkgName, pkg := range r.proj.Packages {
-		for name, si := range pkg.Services {
-			if si == nil || si.Primary == nil {
-				continue
-			}
-			sites[name] = append(sites[name], declSite{pkg: pkgName, pos: si.Primary.Pos})
-		}
-	}
-	r.reportCrossPackageDuplicates(sites, CodeServiceCollision,
-		"service %q is declared in multiple packages - codegen output directories collide; rename one")
-}
-
 // checkProjectMiddlewareUniqueness fires whenever the same middleware
 // name is declared in more than one package. Bare cross-package refs
 // (`@middlewares(AuthRequired)`) resolve through the global union, so a
@@ -42,16 +22,11 @@ func (r *refResolver) checkProjectServiceUniqueness() {
 func (r *refResolver) checkProjectMiddlewareUniqueness() {
 	sites := map[string][]declSite{}
 	for pkgName, pkg := range r.proj.Packages {
-		// Both tables feed one site set: a name is one middleware of one
-		// kind, so `middleware X` here and `consume middleware X` there
-		// collide the way two of a kind do.
-		for _, table := range []map[string]*ast.MiddlewareDecl{pkg.Middlewares, pkg.ConsumeMiddlewares} {
-			for name, m := range table {
-				if m == nil {
-					continue
-				}
-				sites[name] = append(sites[name], declSite{pkg: pkgName, pos: m.Pos})
+		for name, m := range pkg.Middlewares {
+			if m == nil {
+				continue
 			}
+			sites[name] = append(sites[name], declSite{pkg: pkgName, pos: m.Pos})
 		}
 	}
 	r.reportCrossPackageDuplicates(sites, CodeMiddlewareCollision,

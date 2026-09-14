@@ -31,7 +31,7 @@ func plannedOutputs(proj *semantic.Project, cfg *config.Config, projectRoot stri
 	}
 	outs = append(outs, plannedEventOutputs(proj, cfg, projectRoot, sel)...)
 	if sel[TargetDocs] {
-		outs = append(outs, docs.PlannedOutputs(proj.Design(), cfg, projectRoot)...)
+		outs = append(outs, docs.PlannedOutputs(proj, cfg, projectRoot)...)
 	}
 	return mergeByRoot(outs)
 }

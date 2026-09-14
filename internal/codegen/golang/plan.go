@@ -22,11 +22,10 @@ import (
 // PlannedOutputs names what [Generate] writes, grouped by the directory
 // each claim is filed in.
 func PlannedOutputs(proj *semantic.Project, cfg *config.Config, projectRoot string) []claim.Output {
-	design := proj.Design()
-	typesRoot := filepath.Join(cfg.LibraryRoot(projectRoot), cfg.Output.Types)
+	typesRoot := filepath.Join(projectRoot, cfg.Output.Types)
 	types := claim.Output{Root: typesRoot}
-	for _, name := range sortedPackageNames(design) {
-		pkg := design.Packages[name]
+	for _, name := range sortedPackageNames(proj) {
+		pkg := proj.Packages[name]
 		if pkg == nil {
 			continue
 		}
@@ -80,40 +79,16 @@ func PlannedOutputs(proj *semantic.Project, cfg *config.Config, projectRoot stri
 		}},
 		{Root: container, Files: []string{
 			filepath.Join(container, "middlewares.go"),
-			filepath.Join(container, "events.go"),
 		}},
 	}
 }
 
-// PlannedEventOutputs names what [GenerateEventTarget] writes: the
-// contract half under the root that half resolves against, and the
-// adapters that bind it to this deployable's container.
+// PlannedEventOutputs names what [GenerateEventTarget] writes: one
+// library per DSL package under the target's own directory.
 func PlannedEventOutputs(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) []claim.Output {
-	design, libraryRoot := proj.Design(), cfg.LibraryRoot(projectRoot)
-	contracts := claim.Output{Root: filepath.Join(libraryRoot, outDir)}
-	for path := range expectedEventFiles(design, cfg, libraryRoot, outDir) {
-		contracts.Files = append(contracts.Files, path)
+	events := claim.Output{Root: filepath.Join(projectRoot, outDir)}
+	for path := range expectedEventFiles(proj, events.Root) {
+		events.Files = append(events.Files, path)
 	}
-	if cfg.Output.ContractsOnly() {
-		return []claim.Output{contracts}
-	}
-	adapters := claim.Output{Root: filepath.Join(projectRoot, cfg.Output.Transport)}
-	for _, name := range sortedPackageNames(proj) {
-		pkg := proj.Packages[name]
-		if pkg == nil {
-			continue
-		}
-		for _, svcName := range sortedServices(pkg) {
-			if consumesAnything(proj, pkg, pkg.Services[svcName]) {
-				adapters.Files = append(adapters.Files,
-					filepath.Join(adapters.Root, consumersFileName(svcName, cfg.Output.FileCase)))
-			}
-		}
-	}
-	// SubscribeAll is written for as long as one consumer is; with none
-	// it is removed rather than written.
-	if len(adapters.Files) > 0 {
-		adapters.Files = append(adapters.Files, filepath.Join(adapters.Root, "events.go"))
-	}
-	return []claim.Output{contracts, adapters}
+	return []claim.Output{events}
 }

@@ -15,23 +15,17 @@ import (
 // artefacts (transport, service stubs, routes), and finally the
 // project-wide files (routes umbrella, runtime scaffolds, main.go).
 //
-// proj is what this project deploys; the type artefacts come from the
-// whole design it projects, under the root the contract half resolves
-// against. The two are the same project and the same root unless the
-// manifest names a design source.
-//
-// The design is validated, and the event targets and the document
-// projections run, around it; see [codegen.Generate].
+// The design is validated, and the event target and the OpenAPI
+// projection run, around it; see [codegen.Generate].
 func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	design := proj.Design()
-	designNames := sortedPackageNames(design)
-	resolvers := make(map[string]*projectResolver, len(designNames))
-	for _, name := range designNames {
-		resolvers[name] = buildProjectResolver(design, cfg, name)
+	names := sortedPackageNames(proj)
+	resolvers := make(map[string]*projectResolver, len(names))
+	for _, name := range names {
+		resolvers[name] = buildProjectResolver(proj, cfg, name)
 	}
-	typesDir := filepath.Join(cfg.LibraryRoot(projectRoot), cfg.Output.Types)
-	for _, name := range designNames {
-		p, r := design.Packages[name], resolvers[name]
+	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
+	for _, name := range names {
+		p, r := proj.Packages[name], resolvers[name]
 		if err := runSteps(name, []genStep{
 			{"types", func() error { return generateTypes(p, typesDir, r) }},
 			{"enums", func() error { return generateEnums(p, typesDir) }},
@@ -49,7 +43,7 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) er
 	if err := generateProjectMiddlewares(proj, cfg, projectRoot); err != nil {
 		return fmt.Errorf("middlewares: %w", err)
 	}
-	for _, name := range sortedPackageNames(proj) {
+	for _, name := range names {
 		p, r := proj.Packages[name], resolvers[name]
 		if len(p.Services) == 0 {
 			continue
@@ -67,7 +61,6 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) er
 		{"wiring", func() error { return generateWiring(proj, cfg, projectRoot) }},
 		{"config", func() error { return generateRuntimeConfig(cfg, projectRoot) }},
 		{"svccontext", func() error { return generateSvccontext(proj, cfg, projectRoot) }},
-		{"svccontext-events", func() error { return generateSvccontextEvents(proj, cfg, projectRoot) }},
 		{"main", func() error { return generateProjectMain(proj, cfg, projectRoot) }},
 	})
 }

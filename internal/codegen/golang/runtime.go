@@ -14,19 +14,15 @@ import (
 
 // runtimeData is the shared template input for the runtime-scaffold
 // templates (config.go, config.yaml, example.config.yaml,
-// svccontext.go). Every template that needs the project's import path,
-// operation name, or whether the design declares events reads from these
-// fields, so the build sites stay consistent.
+// svccontext.go). Every template that needs the project's import path or
+// operation name reads from these fields, so the build sites stay
+// consistent.
 type runtimeData struct {
 	Package       string
 	OperationName string
 	// ConfigImport is the generated config package, which follows
 	// `output.config` rather than sitting at a fixed path.
 	ConfigImport string
-	// HasEvents selects the event-aware shape of the scaffolds: the
-	// ServiceContext embeds the generated Events container and main.go
-	// builds a bus and starts the consumers.
-	HasEvents bool
 }
 
 // generateRuntimeConfig scaffolds the project's `config/` package
@@ -111,7 +107,6 @@ func generateSvccontext(proj *semantic.Project, cfg *config.Config, projectRoot 
 		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
 		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-		HasEvents:     eventsEnabled(proj, cfg),
 	}
 	body, err := renderRuntimeTemplate("svccontext.go.tmpl", data, true)
 	if err != nil {

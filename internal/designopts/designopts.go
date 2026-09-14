@@ -28,10 +28,6 @@ import (
 // For returns the analyser options cfg configures for the design rooted
 // at designRoot.
 //
-// designRoot is passed separately rather than read off the manifest: a
-// projection generates from the design folder its manifest NAMES, not the
-// one it sits in, so the two are different paths.
-//
 // A nil cfg is a design with no manifest - a single file open in an
 // editor, or a folder below no project. The options then carry a nil
 // SecuritySchemes, which is what tells the reference check to stay quiet

@@ -52,49 +52,34 @@ func planConfig() *config.Config { return eventsConfig() }
 // clobber the claim exists to stop - and one the plan names but nothing
 // writes protects a path nobody owns. Either way the two must match.
 func TestPlanMatchesWhatTheRunWrites(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		services []string
-	}{
-		{"whole design", nil},
-		{"one deployable", []string{"shop.Orders"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			cfg := planConfig()
-			cfg.Output.Services = tc.services
-			proj := analyzeProject(t, planSrc...)
-			if err := Generate(proj, cfg, dir); err != nil {
-				t.Fatalf("generate: %v", err)
-			}
-			deployed, err := proj.Projection(cfg.Output.Services)
-			if err != nil {
-				t.Fatal(err)
-			}
-			sel, _ := selection(nil)
-			planned := map[string]bool{}
-			for _, out := range plannedOutputs(deployed, cfg, dir, sel) {
-				for _, f := range out.Files {
-					planned[f] = true
-				}
-			}
-			written := regeneratedUnder(t, dir)
-			// An empty tree would compare nothing and pass.
-			if len(written) < 20 {
-				t.Fatalf("the fixture regenerated %d files, too few to pin the plan", len(written))
-			}
+	dir := t.TempDir()
+	cfg := planConfig()
+	proj := analyzeProject(t, planSrc...)
+	if err := Generate(proj, cfg, dir); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	sel, _ := selection(nil)
+	planned := map[string]bool{}
+	for _, out := range plannedOutputs(proj, cfg, dir, sel) {
+		for _, f := range out.Files {
+			planned[f] = true
+		}
+	}
+	written := regeneratedUnder(t, dir)
+	// An empty tree would compare nothing and pass.
+	if len(written) < 15 {
+		t.Fatalf("the fixture regenerated %d files, too few to pin the plan", len(written))
+	}
 
-			for _, f := range sortedPaths(written) {
-				if !planned[f] {
-					t.Errorf("%s is regenerated but unclaimed - add it to the plan", rel(dir, f))
-				}
-			}
-			for _, f := range sortedPaths(planned) {
-				if !written[f] {
-					t.Errorf("%s is claimed but nothing wrote it - drop it from the plan", rel(dir, f))
-				}
-			}
-		})
+	for _, f := range sortedPaths(written) {
+		if !planned[f] {
+			t.Errorf("%s is regenerated but unclaimed - add it to the plan", rel(dir, f))
+		}
+	}
+	for _, f := range sortedPaths(planned) {
+		if !written[f] {
+			t.Errorf("%s is claimed but nothing wrote it - drop it from the plan", rel(dir, f))
+		}
 	}
 }
 
@@ -144,11 +129,9 @@ func TestOneDesignTwoManifestsShareTheClaim(t *testing.T) {
 	if err := Generate(proj, planConfig(), dir); err != nil {
 		t.Fatalf("first manifest: %v", err)
 	}
-	// A second manifest over the same design and the same output: a
-	// different service selection, the same claim.
-	narrowed := planConfig()
-	narrowed.Output.Services = []string{"shop.Orders"}
-	if err := Generate(proj, narrowed, dir); err != nil {
+	// A second manifest over the same design and the same output files
+	// the same claim.
+	if err := Generate(proj, planConfig(), dir); err != nil {
 		t.Fatalf("second manifest over one design must be allowed: %v", err)
 	}
 }

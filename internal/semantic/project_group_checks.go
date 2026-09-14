@@ -2,7 +2,7 @@
 // supported - that is what the decorator is for - so these passes police
 // only the two things a shared output directory cannot absorb: a Go
 // package declaration per directory, and one file per stub-producing
-// member name (a method or a consumer).
+// member name.
 package semantic
 
 import (
@@ -15,9 +15,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// segMember is one stub-producing member - a method or a consumer - that a
-// service contributes to an output directory. Both scaffold `<name>.go` in
-// the service logic folder, so both compete for the same filename.
+// segMember is one stub-producing member - a method - that a service
+// contributes to an output directory. Each scaffolds `<name>.go` in the
+// service logic folder, so they compete for the same filename.
 type segMember struct {
 	name string
 	kind string
@@ -48,8 +48,8 @@ type segClaim struct {
 //   - A directory is one Go package. Generated files take their `package`
 //     declaration from the DSL package that declared the service, so a
 //     folder fed by two DSL packages cannot compile.
-//   - A method or a consumer owns a filename and an exported name inside
-//     that package, so two services in one folder cannot both declare it.
+//   - A method owns a filename and an exported name inside that package,
+//     so two services in one folder cannot both declare it.
 func (r *refResolver) checkProjectGroupChecks() {
 	claims := map[string][]segClaim{}
 	for pkgName, pkg := range r.proj.Packages {
@@ -124,8 +124,8 @@ func (r *refResolver) reportGroupPackageStraddle(seg string, occs []segClaim) {
 }
 
 // reportGroupMemberCollisions fires when two services sharing seg declare
-// the same method or consumer name. Anchored at the member, not the
-// service, because renaming it is the fix.
+// the same method name. Anchored at the member, not the service, because
+// renaming it is the fix.
 func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 	type owner struct {
 		claim  segClaim
@@ -172,19 +172,16 @@ func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 }
 
 // blockStubMembers lists the members of one service block that scaffold a
-// file into the service logic folder, in source order.
+// file into the service logic folder, in source order. A `consume` does
+// not: it is a method on a handler interface the application implements
+// where it likes, so it claims no directory.
 func blockStubMembers(block *ast.ServiceDecl) []segMember {
 	if block == nil {
 		return nil
 	}
 	var out []segMember
-	for _, m := range block.Members {
-		switch v := m.(type) {
-		case *ast.Method:
-			out = append(out, segMember{name: v.Name, kind: "method", pos: v.Pos})
-		case *ast.ConsumerDecl:
-			out = append(out, segMember{name: v.Name, kind: "consumer", pos: v.Pos})
-		}
+	for _, m := range block.Methods() {
+		out = append(out, segMember{name: m.Name, kind: "method", pos: m.Pos})
 	}
 	return out
 }
@@ -205,11 +202,11 @@ func claimSource(group string) string {
 // that repeats its @group - merges into a single claim, because those
 // methods share a routes file rather than competing for one.
 //
-// A block contributes the methods and consumers it declares - the two
-// members that scaffold a file into the service logic folder - so a block
-// with neither emits nothing. The claim is anchored at the `@group`
-// decorator when the block carries one (the token an author edits to
-// change the layout) and at the service declaration otherwise.
+// A block contributes the methods it declares - the members that scaffold
+// a file into the service logic folder - so a block with none emits
+// nothing. The claim is anchored at the `@group` decorator when the block
+// carries one (the token an author edits to change the layout) and at the
+// service declaration otherwise.
 func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase string) map[string]segClaim {
 	out := map[string]segClaim{}
 	if si == nil {

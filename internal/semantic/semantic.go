@@ -55,10 +55,6 @@ type Package struct {
 	Scalars map[string]*ast.ScalarDecl
 	// Middlewares maps `middleware Name` declarations by name.
 	Middlewares map[string]*ast.MiddlewareDecl
-	// ConsumeMiddlewares maps `consume middleware Name` declarations by
-	// name. The two tables are separate so a name resolves to the shape
-	// its site needs; one name may appear in only one of them.
-	ConsumeMiddlewares map[string]*ast.MiddlewareDecl
 	// Services maps service names to the merged primary + extends bundle.
 	Services map[string]*ServiceInfo
 	// Events maps `event Name { ... }` declarations by name. Events have
@@ -145,15 +141,14 @@ func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 func newAnalyzer(proj *Project, opts Options) *analyzer {
 	return &analyzer{
 		pkg: &Package{
-			Types:              map[string]*ast.TypeDecl{},
-			Enums:              map[string]*ast.EnumDecl{},
-			Errors:             map[string]*ast.ErrorDecl{},
-			Scalars:            map[string]*ast.ScalarDecl{},
-			Middlewares:        map[string]*ast.MiddlewareDecl{},
-			ConsumeMiddlewares: map[string]*ast.MiddlewareDecl{},
-			Services:           map[string]*ServiceInfo{},
-			Events:             map[string]*EventInfo{},
-			Consumers:          map[string]*ConsumerInfo{},
+			Types:       map[string]*ast.TypeDecl{},
+			Enums:       map[string]*ast.EnumDecl{},
+			Errors:      map[string]*ast.ErrorDecl{},
+			Scalars:     map[string]*ast.ScalarDecl{},
+			Middlewares: map[string]*ast.MiddlewareDecl{},
+			Services:    map[string]*ServiceInfo{},
+			Events:      map[string]*EventInfo{},
+			Consumers:   map[string]*ConsumerInfo{},
 		},
 		proj: proj,
 		opts: opts,

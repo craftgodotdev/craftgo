@@ -97,26 +97,26 @@ service BetaService {
 	get List /list { response Shipped }
 }`, out)
 	got = eventDirs(t, root, out)
-	if len(got) != 1 || got[0] != "alpha_service" {
+	if len(got) != 1 || got[0] != "x" {
 		t.Errorf("dropping b's last event must clear only b, got %v", got)
 	}
 }
 
-// A run still removes its own stale output - a renamed service, say. The
+// A run still removes its own stale output - a renamed package, say. The
 // inventory records what the last run wrote, so the file it no longer
 // produces is the one that goes.
 func TestPruneStillClearsItsOwnStaleOutput(t *testing.T) {
 	const out = "./internal/events"
 	root := t.TempDir()
 	genInto(t, root, "design", alphaSrc, out)
-	genInto(t, root, "design", `package x
+	genInto(t, root, "design", `package renamed
 type Placed { id string @minLength(1) }
-service RenamedService {
+service AlphaService {
 	event Placed { payload Placed }
 }`, out)
 	got := eventDirs(t, root, out)
-	if len(got) != 1 || got[0] != "renamed_service" {
-		t.Errorf("the renamed service's old directory must go, got %v", got)
+	if len(got) != 1 || got[0] != "renamed" {
+		t.Errorf("the renamed package's old directory must go, got %v", got)
 	}
 }
 
@@ -153,7 +153,7 @@ func TestFirstRunWithoutAnInventoryDeletesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	genInto(t, root, "design", alphaSrc, out)
-	if got := eventDirs(t, root, out); len(got) != 1 || got[0] != "alpha_service" {
+	if got := eventDirs(t, root, out); len(got) != 1 || got[0] != "x" {
 		t.Errorf("an upgrade must not disturb existing output, got %v", got)
 	}
 }
@@ -164,7 +164,7 @@ func TestUnclaimedOutputIsReportedNotDeleted(t *testing.T) {
 	const out = "./internal/events"
 	root := t.TempDir()
 	genInto(t, root, "design", alphaSrc, out)
-	orphan := filepath.Join(root, filepath.FromSlash(out), "ghost_service", "publisher.go")
+	orphan := filepath.Join(root, filepath.FromSlash(out), "ghost", "events.go")
 	if err := os.MkdirAll(filepath.Dir(orphan), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestUnclaimedOutputIsReportedNotDeleted(t *testing.T) {
 	proj := analyzeProject(t, alphaSrc)
 	proj.Root = filepath.Join(root, "design")
 
-	notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "ghost_service")
+	notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "ghost")
 	if len(notes) != 1 {
 		t.Errorf("an unclaimed file must be named: %v", golang.EventOutputNotes(proj, cfg, root))
 	}
@@ -191,7 +191,7 @@ func TestOutputNotesSurviveRuntimeDisabled(t *testing.T) {
 	const out = "./internal/events"
 	root := t.TempDir()
 	genInto(t, root, "design", alphaSrc, out)
-	orphan := filepath.Join(root, filepath.FromSlash(out), "ghost_service", "publisher.go")
+	orphan := filepath.Join(root, filepath.FromSlash(out), "ghost", "events.go")
 	_ = os.MkdirAll(filepath.Dir(orphan), 0o755)
 	_ = os.WriteFile(orphan, []byte(generatedHeader+"\n\npackage ghost\n"), 0o644)
 
@@ -201,10 +201,7 @@ func TestOutputNotesSurviveRuntimeDisabled(t *testing.T) {
 	proj := analyzeProject(t, alphaSrc)
 	proj.Root = filepath.Join(root, "design")
 
-	if len(EventWiringNotes(proj, cfg, root)) != 0 {
-		t.Error("wiring notes are for a project with a generated runtime")
-	}
-	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "ghost_service"); len(notes) != 1 {
+	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "ghost"); len(notes) != 1 {
 		t.Errorf("output notes must not be gated on the runtime: %v", golang.EventOutputNotes(proj, cfg, root))
 	}
 }
@@ -231,7 +228,7 @@ func TestInventoryRejectsPathsOutsideTheOutput(t *testing.T) {
 		t.Fatalf("expected one inventory, got %d", len(entries))
 	}
 	invPath := filepath.Join(invDir, entries[0].Name())
-	poisoned := `{"design":"design","files":["alpha_service/publisher.go","../../victim/important.go","/etc/hosts",".."]}`
+	poisoned := `{"design":"design","files":["x/events.go","../../victim/important.go","/etc/hosts",".."]}`
 	if err := os.WriteFile(invPath, []byte(poisoned), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +268,7 @@ func TestInventoryForAMissingDesignIsIgnored(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(root, "design")); err != nil {
 		t.Fatal(err)
 	}
-	genInto(t, root, "renamed", `package x
+	genInto(t, root, "renamed", `package z
 type Placed { id string @minLength(1) }
 service BetaService {
 	event Placed { payload Placed }
@@ -282,7 +279,7 @@ service BetaService {
 	proj := analyzeProject(t, alphaSrc)
 	proj.Root = filepath.Join(root, "renamed")
 
-	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "alpha_service"); len(notes) != 1 {
+	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "x/events.go"); len(notes) != 1 {
 		t.Errorf("the orphaned contract must be named: %v", golang.EventOutputNotes(proj, cfg, root))
 	}
 	if got := eventDirs(t, root, out); len(got) != 2 {
@@ -349,9 +346,9 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 func TestTwoDesignsCannotWriteOneFile(t *testing.T) {
 	const out = "./contracts/events"
 	root := t.TempDir()
-	const clash = `package y
+	const clash = `package x
 type Shipped { id string @minLength(1) }
-service AlphaService {
+service BetaService {
 	event Shipped { payload Shipped }
 }`
 	genInto(t, root, "a", alphaSrc, out)
@@ -367,17 +364,17 @@ service AlphaService {
 	if err == nil {
 		t.Fatal("want a collision error, got none")
 	}
-	if !strings.Contains(err.Error(), "alpha_service/publisher.go") {
+	if !strings.Contains(err.Error(), "x/events.go") {
 		t.Errorf("error must name the file, got %v", err)
 	}
 
 	// The first design's output is untouched: the check runs before any
 	// file is written.
-	body, readErr := os.ReadFile(filepath.Join(root, out, "alpha_service", "publisher.go"))
+	body, readErr := os.ReadFile(filepath.Join(root, out, "x", "events.go"))
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if !strings.Contains(string(body), "package x") {
+	if !strings.Contains(string(body), "PlacedContract") {
 		t.Errorf("the first design's file was overwritten: %s", firstLines(string(body)))
 	}
 }
@@ -419,14 +416,14 @@ service BetaService {
 	get List /list { response Shipped }
 }`, out)
 	got = eventDirs(t, inner, "./events")
-	if len(got) != 1 || got[0] != "alpha_service" {
+	if len(got) != 1 || got[0] != "x" {
 		t.Errorf("the other root's claim must still protect it, got %v", got)
 	}
 }
 
-// The events output is regenerated wholesale, so a publisher left behind by
-// a renamed service must not survive: in a published contract package it
-// would still export a contract the design no longer declares.
+// The events output is regenerated wholesale, so a descriptor left behind
+// by a renamed package must not survive: in a published contract package
+// it would still export a contract the design no longer declares.
 func TestStaleGeneratedEventFilesArePruned(t *testing.T) {
 	dir := t.TempDir()
 	cfg := eventsConfig()
@@ -439,32 +436,32 @@ service OrderService {
 	if err := GenerateEventTargets(before, cfg, dir); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	stale := filepath.Join(dir, "internal", "events", "order_service", "publisher.go")
+	stale := filepath.Join(dir, "internal", "events", "orders", "events.go")
 	if _, err := os.Stat(stale); err != nil {
-		t.Fatalf("first run wrote no publisher: %v", err)
+		t.Fatalf("first run wrote no descriptor: %v", err)
 	}
 	// A file the user put here is not ours to delete.
-	mine := filepath.Join(dir, "internal", "events", "order_service", "helper.go")
+	mine := filepath.Join(dir, "internal", "events", "orders", "helper.go")
 	if err := os.WriteFile(mine, []byte("package orders\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	after := analyzeProject(t, `package orders
+	after := analyzeProject(t, `package billing
 type P { id string }
-service BillingService {
+service OrderService {
 	event OrderPlaced { payload P }
 }`)
 	if err := GenerateEventTargets(after, cfg, dir); err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Errorf("the renamed service's old publisher survived (%v)", err)
+		t.Errorf("the renamed package's old descriptor survived (%v)", err)
 	}
 	if _, err := os.Stat(mine); err != nil {
 		t.Errorf("a hand-written file was deleted: %v", err)
 	}
-	fresh := filepath.Join(dir, "internal", "events", "billing_service", "publisher.go")
+	fresh := filepath.Join(dir, "internal", "events", "billing", "events.go")
 	if _, err := os.Stat(fresh); err != nil {
-		t.Errorf("the renamed service has no publisher: %v", err)
+		t.Errorf("the renamed package has no descriptor: %v", err)
 	}
 }

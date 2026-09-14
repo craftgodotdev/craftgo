@@ -98,7 +98,7 @@ func declKind(d ast.Decl) string {
 	case *ast.ErrorDecl:
 		return "error " + v.Category
 	case *ast.MiddlewareDecl:
-		return v.Keyword()
+		return "middleware"
 	case *ast.ServiceDecl:
 		return "service"
 	}
@@ -167,13 +167,6 @@ func (s *Server) securitySchemeCompletions(currentURI string) []protocol.Complet
 // icon editors have for "a function the runtime calls".
 func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	return s.projectDeclItems(currentURI, currentSrc, semantic.MiddlewareDecls, protocol.CompletionItemKindFunction)
-}
-
-// consumeMiddlewareNameCompletions is [Server.middlewareNameCompletions]
-// for `@consumeMiddlewares(...)`. It lists only the consume table, so a
-// name the consume site cannot take is never offered there.
-func (s *Server) consumeMiddlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	return s.projectDeclItems(currentURI, currentSrc, semantic.ConsumeMiddlewareDecls, protocol.CompletionItemKindFunction)
 }
 
 // errorNameCompletions lists every `error <Category> Name` declaration in

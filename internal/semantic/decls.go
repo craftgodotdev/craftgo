@@ -101,15 +101,8 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if dd == nil {
 					continue
 				}
-				// One seenMW table for both forms: a name is one
-				// middleware of one kind, so `middleware X` and
-				// `consume middleware X` collide the way two of a kind do.
 				if registerIn(seenMW, dd.Name, dd.Pos, false) {
-					if dd.Consume {
-						a.pkg.ConsumeMiddlewares[dd.Name] = dd
-					} else {
-						a.pkg.Middlewares[dd.Name] = dd
-					}
+					a.pkg.Middlewares[dd.Name] = dd
 				}
 			case *ast.EventDecl:
 				if dd == nil {
@@ -147,10 +140,9 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 					}
 				}
 				for _, c := range dd.Consumers() {
-					// Keyed per service because each service's stubs land
-					// in its own folder. The name also feeds the derived
-					// consumer group, which checkConsumerGroups checks
-					// across the project.
+					// Keyed per service: the name is a method on that
+					// service's generated handler interface, so it has to
+					// be unique there and nowhere wider.
 					key := dd.Name + "." + c.Name
 					if a.registerMember(seenCon, key, c.Pos, CodeConsumerDuplicateName,
 						"duplicate consumer %q in service %q") {
@@ -217,15 +209,6 @@ func (a *analyzer) mergeServices() {
 					// the args pass skips extend decorators, so validate it
 					// here.
 					a.checkGroupArg(d)
-					continue
-				}
-				if d.Name == DecoratorConsumerGroup {
-					// A consumer group is a broker identity the whole
-					// service claims - [checkConsumerGroupCrossService]
-					// reads it per service - so it stays on the primary
-					// declaration rather than varying per block.
-					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
-						"decorator @%s on extend service %q names a broker identity for the whole service; move it to the primary declaration", d.Name, name)
 					continue
 				}
 				if spec.Levels&(LvlMethod|LvlConsumer) == 0 {

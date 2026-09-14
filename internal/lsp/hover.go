@@ -50,8 +50,8 @@ var verbDocs = map[string]string{
 // their clause keywords, so a hover inside a service body explains the
 // construct the cursor sits on.
 var memberKeywordDocs = map[string]string{
-	"event":    "**`event Name { payload Type }`** - the contract this service publishes. The typed publisher and every consumer of it are generated from this one declaration; transport and codec are runtime wiring, not part of the contract.",
-	"consume":  "**`consume Name { event Ref }`** - this service handles Ref. Codegen emits the subscription and scaffolds one logic stub. Ref may be qualified (`orders.OrderPlaced`) to consume another package's contract.",
+	"event":    "**`event Name { payload Type }`** - a contract this design declares. Codegen emits one descriptor for it - publish and subscribe both go through that; transport and codec are runtime wiring, not part of the contract.",
+	"consume":  "**`consume Name { event Ref }`** - this service handles Ref. Codegen emits one method on the service's handler interface; which group it joins and what middleware it runs are the application's. Ref may be qualified (`orders.OrderPlaced`) to consume another package's contract.",
 	"payload":  "**`payload Type`** - the type an event contract carries. Must name a `type` declaration.",
 	"request":  "**`request Type`** - the type a method binds and validates from the request.",
 	"response": "**`response Type`** - the type a method returns; the framework encodes it.",

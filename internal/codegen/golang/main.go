@@ -21,16 +21,12 @@ type mainData struct {
 	// WiringImport is the generated wiring package holding Register, the
 	// one call main.go makes to attach the design. It is imported
 	// unconditionally: Register exists for every project, so a design
-	// that gains or loses routes or consumers leaves this file alone.
+	// that gains or loses routes leaves this file alone.
 	WiringImport     string
 	MiddlewareImport string
-	// ConsumeMiddlewareImport / ConsumeMiddlewares wire the consume-side
-	// scaffolds, which live in their own package.
-	ConsumeMiddlewareImport string
-	ConsumeMiddlewares      []string
-	SvccontextImport        string
-	Middlewares             []string
-	HasMiddlewares          bool
+	SvccontextImport string
+	Middlewares      []string
+	HasMiddlewares   bool
 	// HasDocs gates the in-process API-docs wiring: the `embed` import, the
 	// embedded spec var, and the cfg.Docs ServeDocs call. False when the
 	// OpenAPI document is disabled or lives outside the main package's tree
@@ -39,10 +35,6 @@ type mainData struct {
 	// OpenAPIEmbed is the forward-slash path of the generated OpenAPI document
 	// relative to main.go's directory, for the `//go:embed` directive.
 	OpenAPIEmbed string
-	// HasEvents gates the event wiring main.go still owns: building the
-	// bus and binding it onto the ServiceContext. Attaching consumers is
-	// the wiring package's job, so no consumer count reaches here.
-	HasEvents bool
 }
 
 // generateProjectMain scaffolds the project's main.go (`output.main`)
@@ -65,9 +57,10 @@ func generateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot
 	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
-	// Skip when nothing is wireable: no HTTP method to route and no event
-	// to publish or consume.
-	if !projectHasRoutes(proj) && !proj.HasEvents() {
+	// Skip when nothing is wireable: main.go boots an HTTP server, and a
+	// design with no route has none to boot. An events-only deployable
+	// builds its own bus and calls the generated Register itself.
+	if !projectHasRoutes(proj) {
 		return nil
 	}
 	dest := filepath.Join(projectRoot, cfg.Output.Main)
@@ -105,11 +98,10 @@ func projectHasRoutes(proj *semantic.Project) bool {
 // services so the template needs no further per-package wiring.
 func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 	d := mainData{
-		ConfigImport:            goImportFromRel(cfg.Package, cfg.Output.Config),
-		WiringImport:            goImportFromRel(cfg.Package, cfg.Output.Wiring),
-		MiddlewareImport:        goImportFromRel(cfg.Package, cfg.Output.Middleware),
-		ConsumeMiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.ConsumeMiddleware),
-		SvccontextImport:        goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
+		WiringImport:     goImportFromRel(cfg.Package, cfg.Output.Wiring),
+		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
+		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
 	seen := map[string]bool{}
 	for _, k := range slices.Sorted(maps.Keys(proj.Packages)) {
@@ -126,7 +118,6 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 		}
 	}
 	d.HasMiddlewares = len(d.Middlewares) > 0
-	d.ConsumeMiddlewares = projectSortedConsumeMiddlewareNames(proj)
 
 	// Wire the in-process API docs only when the OpenAPI document is emitted
 	// and lives under main.go's directory (go:embed cannot cross `..`).
@@ -140,7 +131,6 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 			}
 		}
 	}
-	d.HasEvents = eventsEnabled(proj, cfg)
 	return d
 }
 

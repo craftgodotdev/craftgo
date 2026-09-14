@@ -94,31 +94,12 @@ func serviceOutputDir(projectRoot, output, svcName, group, style string) string 
 	return filepath.Join(projectRoot, output, filepath.FromSlash(outputSegFor(svcName, group, style)))
 }
 
-// consumersFileName is the file, at the root of the transport output,
-// holding one service's consumer handler set - [route.ConsumersFileName]
-// under codegen's own name, so the analyser's collision check compares the
-// file the emitter writes.
-func consumersFileName(svcName, style string) string {
-	return route.ConsumersFileName(svcName, style) + ".go"
-}
-
-// eventsPkgImport is the Go import path of one service's event package -
-// its publisher and its Consumers interface, which share a directory.
-// outDir is the Go event target's output directory.
-func eventsPkgImport(cfg *config.Config, outDir, svcName string) string {
-	return goImportFromRel(cfg.LibraryPackage(), outDir) + "/" + outputSegFor(svcName, "", cfg.Output.FileCase)
-}
-
 // typesImportRoot is the Go import path the generated types tree sits at.
 // Every types import is this root plus the DSL package name, so the rule
 // is decided here once for the per-service import paths, the cross-package
 // table and the event payload imports.
-//
-// Both it and [eventsPkgImport] name the contract half, which a
-// projection shares with the design source rather than generating under
-// its own module path.
 func typesImportRoot(cfg *config.Config) string {
-	return goImportFromRel(cfg.LibraryPackage(), cfg.Output.Types)
+	return goImportFromRel(cfg.Package, cfg.Output.Types)
 }
 
 // importPathsForGroup computes the Go import paths for one service+group. A
@@ -154,20 +135,9 @@ func methodGroups(svc *semantic.ServiceInfo) map[string]string {
 	})
 }
 
-// consumerGroups is [methodGroups] for a service's consumers.
-func consumerGroups(svc *semantic.ServiceInfo) map[string]string {
-	return memberGroups(svc, func(d *ast.ServiceDecl) []string {
-		out := make([]string, 0, len(d.Members))
-		for _, c := range d.Consumers() {
-			out = append(out, c.Name)
-		}
-		return out
-	})
-}
-
 // memberGroups maps each member name one block declares to the @group
-// that applies to it. names extracts the member kind's names, so methods,
-// events and consumers all read the same group rule.
+// that applies to it. names extracts the member kind's names, so methods
+// and events read the same group rule.
 func memberGroups(svc *semantic.ServiceInfo, names func(*ast.ServiceDecl) []string) map[string]string {
 	out := map[string]string{}
 	if svc == nil {

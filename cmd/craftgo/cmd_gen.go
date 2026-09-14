@@ -53,21 +53,6 @@ func parseGenArgs(args []string) (manifest, ctxRoot, positional string, targets 
 	return manifest, ctxRoot, positional, targets, nil
 }
 
-// resolveGenPaths locates the manifest, the project root its output
-// paths resolve against, and the design folder holding the `.craftgo`
-// files. A manifest naming a design source generates from THAT folder,
-// so several deployables can project one design.
-func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
-	cfg, projectRoot, designDir, err := findManifest(manifestFolder, contextRoot, target)
-	if err != nil {
-		return nil, "", "", err
-	}
-	if cfg.IsProjection() {
-		designDir = cfg.SourceDesign
-	}
-	return cfg, projectRoot, designDir, nil
-}
-
 func findManifest(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
 	if manifestFolder != "" {
 		// An empty root leaves [config.FindAt] to use the parent of the
@@ -97,7 +82,7 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, projectRoot, designDir, err := resolveGenPaths(manifestFolder, contextRoot, target)
+	cfg, projectRoot, designDir, err := findManifest(manifestFolder, contextRoot, target)
 	if err != nil {
 		return err
 	}
@@ -113,16 +98,6 @@ func runGen(args []string) error {
 		return err
 	}
 	cfg.Package = modulePath
-	// A projection writes the contract half under the design source's
-	// own root, so that half is imported from the module path THAT root
-	// carries, not this project's.
-	if cfg.IsProjection() {
-		libraryPath, err := config.ResolveModulePath(cfg.Library.Root)
-		if err != nil {
-			return err
-		}
-		cfg.Library.Package = libraryPath
-	}
 
 	proj, err := analyzeDesign(designDir, cfg)
 	if err != nil {
@@ -133,9 +108,6 @@ func runGen(args []string) error {
 	}
 	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
 	for _, note := range codegen.OutputNotes(proj, cfg, projectRoot) {
-		fmt.Println("craftgo: " + note)
-	}
-	for _, note := range codegen.EventWiringNotes(proj, cfg, projectRoot) {
 		fmt.Println("craftgo: " + note)
 	}
 	return nil

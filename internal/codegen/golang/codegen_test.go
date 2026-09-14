@@ -7,7 +7,6 @@ import (
 	"os"
 	gopath "path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -153,14 +152,6 @@ func mustContainAll(t *testing.T, got string, wants ...string) {
 		t.Errorf("output missing %d expected substring(s):\n  - %s\n--- got ---\n%s",
 			len(missing), strings.Join(missing, "\n  - "), got)
 	}
-}
-
-// unaligned collapses runs of spaces and tabs to one, undoing gofmt's
-// column alignment. A struct-field or const-block assertion written
-// against it survives a longer sibling arriving in the same block, which
-// is otherwise a test that fails on a field it does not mention.
-func unaligned(src string) string {
-	return regexp.MustCompile(`[ \t]+`).ReplaceAllString(src, " ")
 }
 
 // mustContainNone is the inverse of mustContainAll: every needle MUST

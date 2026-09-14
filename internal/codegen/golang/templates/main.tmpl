@@ -24,20 +24,11 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
-{{- if .HasEvents}}
-	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
-	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
-	"github.com/craftgodotdev/craftgo/pkg/events/logging"
-	"github.com/craftgodotdev/craftgo/pkg/events/memory"
-{{- end}}
 
 	"{{.ConfigImport}}"
 	"{{.WiringImport}}"
 {{- if .HasMiddlewares}}
 	"{{.MiddlewareImport}}"
-{{- end}}
-{{- if .ConsumeMiddlewares}}
-	"{{.ConsumeMiddlewareImport}}"
 {{- end}}
 	"{{.SvccontextImport}}"
 )
@@ -83,40 +74,6 @@ func main() {
 	}
 
 	svc := svccontext.NewServiceContext(cfg)
-{{- if .HasEvents}}
-
-	// The event bus: pick the transport and the codec here. The
-	// in-process transport keeps publisher and consumer in one binary;
-	// swap it for a broker adapter (Kafka, NATS, RabbitMQ, SQS, ...) by
-	// replacing this one value - nothing generated changes.
-	bus := craftevents.New(
-		craftevents.WithTransport(memory.New(memory.WithErrorHandler(
-			func(sub craftevents.Subscription, _ *craftevents.Message, err error) {
-				log.Default().Error("consumer failed",
-					log.String("event", sub.Event),
-					log.String("consumer", sub.Consumer),
-					log.Err(err))
-			}))),
-		craftevents.WithCodec(codecjson.Codec{}),
-		// One line per delivery: the contract, the consumer, the key, how
-		// long it took, and the error when there was one. Add your own
-		// middleware to the same call - the chain wraps every
-		// subscription this bus registers, and the order of these options
-		// does not matter because they are applied before anything
-		// subscribes.
-		craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
-	)
-	svc.Events = svccontext.NewEvents(bus)
-{{- if .ConsumeMiddlewares}}
-
-	// Each `consume middleware` the design declares is one field here.
-	// Order is not decided at this line - it is decided by
-	// `@consumeMiddlewares(...)` in the design, per consumer.
-{{- range .ConsumeMiddlewares}}
-	svc.Events.Consume.{{.}} = consume.New{{.}}Middleware()
-{{- end}}
-{{- end}}
-{{- end}}
 {{- if .HasMiddlewares}}
 
 	// Each design-declared middleware lives on the embedded
@@ -155,11 +112,10 @@ func main() {
 	}
 
 
-	// One call attaches the whole design: every HTTP route, and every
-	// event consumer reading from svc.Events.Bus. The wiring package is
-	// regenerated on each `craftgo gen`, so this line stays put when the
-	// design gains or loses either. The returned shutdown stops delivery
-	// and runs beside srv.Stop below.
+	// One call attaches the whole design: every HTTP route it declares.
+	// The wiring package is regenerated on each `craftgo gen`, so this
+	// line stays put when the design gains or loses one. The returned
+	// shutdown runs beside srv.Stop below.
 	shutdownWiring, err := wiring.Register(ctx, srv, svc)
 	if err != nil {
 		log.Default().Error("wire services", log.Err(err))
@@ -194,8 +150,8 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Stop(shutdownCtx)
-	// Consumers stop taking new messages and the in-flight ones finish
-	// within the same budget the HTTP drain uses.
+	// Whatever Register attached is released within the same budget the
+	// HTTP drain uses.
 	_ = shutdownWiring(shutdownCtx)
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {

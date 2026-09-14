@@ -41,7 +41,7 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 	case *ast.ScalarDecl:
 		a.checkDecoratorScope("scalar "+dd.Name, dd.Decorators)
 	case *ast.MiddlewareDecl:
-		a.checkDecoratorScope(dd.Keyword()+" "+dd.Name, dd.Decorators)
+		a.checkDecoratorScope("middleware "+dd.Name, dd.Decorators)
 	case *ast.EventDecl:
 		a.checkDecoratorScope("event "+dd.Name, dd.Decorators)
 	case *ast.ServiceDecl:

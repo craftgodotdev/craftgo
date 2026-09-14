@@ -32,8 +32,7 @@ func eventsConfig() *config.Config {
 		},
 		OpenAPI: config.OpenAPI{Title: "Events", Version: "1.0.0"},
 		Events: config.Events{
-			Targets:  []config.EventTarget{{Lang: config.LangGo, Out: "./internal/events"}},
-			AsyncAPI: "./docs/asyncapi.yaml",
+			Targets: []config.EventTarget{{Lang: config.LangGo, Out: "./internal/events"}},
 		},
 	}
 }
@@ -130,9 +129,8 @@ func TestEveryEnabledTargetWritesItsOwnOutput(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 	for _, want := range []string{
-		filepath.Join("internal", "events", "order_service", "publisher.go"),
+		filepath.Join("internal", "events", "orders", "events.go"),
 		filepath.Join("docs", "openapi.yaml"),
-		filepath.Join("docs", "asyncapi.yaml"),
 	} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
 			t.Errorf("target output missing: %s (%v)", want, err)
@@ -150,8 +148,8 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 	if err := Generate(proj, cfg, dir); err != nil {
 		t.Fatalf("generate all: %v", err)
 	}
-	goFile := filepath.Join(dir, "internal", "events", "order_service", "publisher.go")
-	docFile := filepath.Join(dir, "docs", "asyncapi.yaml")
+	goFile := filepath.Join(dir, "internal", "events", "orders", "events.go")
+	docFile := filepath.Join(dir, "docs", "openapi.yaml")
 	for _, f := range []string{goFile, docFile} {
 		if _, err := os.Stat(f); err != nil {
 			t.Fatalf("first pass missing %s: %v", f, err)
