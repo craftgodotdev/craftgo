@@ -29,6 +29,9 @@ import (
 	analyticsevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/analytics_service"
 	craftsvcevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/craft"
 	inventoryevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/inventory_service"
+	ledgerevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/ledger_service"
+	notificationevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/notification_service"
+	opsevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/ops_service"
 	apptransport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
@@ -46,9 +49,43 @@ const (
 	forged          = craftsvcevents.ForgedContract
 )
 
-// trackTier is the one consumer of events.TierPromoted in this design, so
-// its delivery count is one goroutine's and its sequence is unambiguous.
+// trackTier is the consumer of events.TierPromoted whose deliveries the
+// disposition test reads.
 const trackTier = "TrackTier"
+
+// soleConsumerOf fails unless exactly one generated subscription consumes
+// contract. The disposition test reads a delivery SEQUENCE, which is only
+// unambiguous while one goroutine produces it - so the premise is checked
+// against the design rather than written down beside it, where a second
+// consumer would leave it stale and the test reading interleavings.
+func soleConsumerOf(t *testing.T, contract string) craftevents.Subscription {
+	t.Helper()
+	var found []craftevents.Subscription
+	for _, subs := range generatedSubscriptions() {
+		for _, sub := range subs {
+			if sub.Event == contract {
+				found = append(found, sub)
+			}
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d consumers of %s in this design, want exactly 1 - a delivery sequence read off several is not a sequence", len(found), contract)
+	}
+	return found[0]
+}
+
+// generatedSubscriptions is every subscription set the design generates,
+// built with no bus and no handler set: nothing here calls Handle, and
+// the identity of a subscription is decided before either is needed.
+func generatedSubscriptions() [][]craftevents.Subscription {
+	return [][]craftevents.Subscription{
+		inventoryevents.Subscriptions(nil, nil),
+		analyticsevents.Subscriptions(nil, nil),
+		notificationevents.Subscriptions(nil, nil),
+		opsevents.Subscriptions(nil, nil),
+		ledgerevents.Subscriptions(nil, nil),
+	}
+}
 
 // tierGroup is the group @consumerGroup put TrackTier in, read off the
 // generated subscription rather than retyped. A share group reads from
@@ -59,13 +96,11 @@ const trackTier = "TrackTier"
 // time at all, naming itself.
 func tierGroup(t *testing.T) string {
 	t.Helper()
-	for _, sub := range analyticsevents.Subscriptions(nil, nil) {
-		if sub.Consumer == trackTier {
-			return sub.GroupName()
-		}
+	sub := soleConsumerOf(t, tierPromoted)
+	if sub.Consumer != trackTier {
+		t.Fatalf("%s is consumed by %s, not %s", tierPromoted, sub.Consumer, trackTier)
 	}
-	t.Fatalf("the design no longer declares a %s consumer on AnalyticsService", trackTier)
-	return ""
+	return sub.GroupName()
 }
 
 // cluster starts an in-memory broker seeding exactly the topics named.
@@ -74,11 +109,12 @@ func cluster(t *testing.T, topics ...string) []string {
 	c, err := kfake.NewCluster(
 		kfake.NumBrokers(1),
 		kfake.SeedTopics(1, topics...),
-		// A capability floor, not an arbitrary version. The three share
-		// APIs appear at 4.1, but AckRenew is a ShareAcknowledge v2 field,
-		// so the adapter's probe refuses a 4.1 broker while lock renewal
-		// is on. Lowering this turns every share test here into a startup
-		// failure rather than a slower run.
+		// A capability floor, not an arbitrary version, and the only
+		// place this package states one. Serving the three share APIs is
+		// not enough: AckRenew is a ShareAcknowledge v2 field, so the
+		// adapter's probe refuses any broker below that while lock
+		// renewal is on. Lowering this turns every share test here into a
+		// startup failure rather than a slower run.
 		kfake.MaxVersions(kversion.V4_2_0()),
 	)
 	if err != nil {
@@ -182,8 +218,12 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 		craftkafka.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
 			said.add(err.Error())
 		}),
-		// Without this a record for a missing topic is retried for the
-		// whole delivery timeout before the batch reports.
+		// A record for a missing topic is retried before the batch
+		// reports. Against a real broker that runs to the delivery
+		// timeout; against kfake it costs about a second, which is worth
+		// not paying on every run. Nothing here asserts the option - the
+		// rule that a caller option reaches the client is the adapter's,
+		// and pkg/events/kafka pins it.
 		craftkafka.WithClientOptions(kgo.UnknownTopicRetries(0)),
 	}, tropts...)
 	tr := craftkafka.New(addrs, tropts...)

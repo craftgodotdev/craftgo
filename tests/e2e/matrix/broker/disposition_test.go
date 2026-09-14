@@ -55,8 +55,8 @@ func (a *attempts) of(consumer string) []attempt {
 // would lose the ask with nothing to see it: every message the chain
 // meant to retry would be taken as done.
 //
-// events.TierPromoted has exactly one consumer in this design, so the
-// delivery count is one goroutine's and the sequence is unambiguous.
+// The sequence below is one goroutine's, which soleConsumerOf checks
+// against the design rather than this comment asserting it.
 func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 	addrs := cluster(t, itemStocked, warehouseClosed, forged, tierPromoted)
 	shareFromEarliest(t, addrs, tierGroup(t))

@@ -85,10 +85,10 @@ func TestARequiredDispositionTheTransportLacksFailsStartup(t *testing.T) {
 // and one that runs with half its work silently undone, so the umbrella
 // names both halves of what the design declared.
 //
-// The counts are the halves, and they are counted rather than written, so
-// they are what a reader has to be able to trust: 10 events is the 9
-// contracts a generated publisher exposes plus payments.settled.v1, which
-// this design consumes and never publishes.
+// The counts are the halves, and the generator counts them rather than
+// being told them, so they are what a reader has to be able to trust. The
+// event count is not the number of publishers: a contract this design
+// consumes and never publishes is an event it declares too.
 func TestStartupRefusesAContainerWithNoBus(t *testing.T) {
 	svc := svccontext.NewServiceContext()
 	_, err := wiring.Register(context.Background(), server.New(svc), svc)
