@@ -28,6 +28,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/config"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/activity"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/middleware"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/wiring"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
@@ -86,7 +87,7 @@ func main() {
 	svc := svccontext.NewServiceContext(cfg)
 
 	// The event bus binds one transport to one codec. This build uses the
-	// in-process transport so publisher and consumers run in one binary;
+	// in-process transport so publishes and consumers run in one binary;
 	// pointing it at Kafka, NATS, RabbitMQ or SQS is a change to these
 	// three lines and nothing else - no generated file mentions a broker.
 	bus := craftevents.New(
@@ -96,7 +97,23 @@ func main() {
 		// long it took, and the error when there was one.
 		craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
 	)
-	svc.Events = svccontext.NewEvents(bus)
+	svc.Bus = bus
+
+	// The design declares which handler interfaces exist; this binary
+	// says which of them it runs and under what group. Registration
+	// records them; Start hands the whole batch to the transport at once,
+	// because a broker that binds one identity to several contracts
+	// cannot register a group one contract at a time.
+	if err := activity.Register(bus, svc.Activity); err != nil {
+		log.Default().Error("register consumers", log.Err(err))
+		os.Exit(1)
+	}
+	deliver, stopDelivery := context.WithCancel(ctx)
+	defer stopDelivery()
+	if err := bus.Start(deliver); err != nil {
+		log.Default().Error("start consumers", log.Err(err))
+		os.Exit(1)
+	}
 
 	// Each design-declared middleware lives on the embedded
 	// Middlewares struct of ServiceContext. Wire each field once at
@@ -142,11 +159,10 @@ func main() {
 		}))
 	}
 
-	// One call attaches the whole design: every HTTP route, and every
-	// event consumer reading from svc.Events.Bus. The wiring package is
-	// regenerated on each `craftgo gen`, so this line stays put when the
-	// design gains or loses either. The returned shutdown stops delivery
-	// and runs beside srv.Stop below.
+	// One call attaches every HTTP route the design declares. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays
+	// put when the design gains or loses a route. The returned shutdown
+	// runs beside srv.Stop below.
 	shutdownWiring, err := wiring.Register(ctx, srv, svc)
 	if err != nil {
 		log.Default().Error("wire services", log.Err(err))
@@ -179,8 +195,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Stop(shutdownCtx)
-	// Consumers stop taking new messages and the in-flight ones finish
-	// within the same budget the HTTP drain uses.
+	// Consumers stop taking new messages; the in-flight ones finish on
+	// the transport's own terms.
+	stopDelivery()
 	_ = shutdownWiring(shutdownCtx)
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {

@@ -2,10 +2,14 @@
 
 package svccontext
 
-// ServiceContext is what every consumer stub receives. This example keeps
-// it to the generated Events container; a real service adds its stores,
-// clients and configuration beside it.
+// ServiceContext is what every generated HTTP handler receives. This
+// example declares no HTTP method, so it carries nothing but the
+// generated Middlewares; a real service adds its stores, clients and
+// configuration beside it.
+//
+// The event side does not pass through here any more: a handler set is a
+// struct of the application's own (internal/consumers), and the bus is
+// handed to it at registration.
 type ServiceContext struct {
 	Middlewares
-	Events Events
 }

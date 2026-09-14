@@ -9,43 +9,42 @@ import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// A batch collects the contracts of several services into ONE list, in
-// the order the caller added them, whichever service's builder each entry
-// came from. The builders are values the caller may hold, so an entry
-// added through one after another service has added its own still lands
-// where it was written.
+// mixedBatch is one drain of an outbox: contracts from two services,
+// interleaved, each entry keyed by the entity it is about.
+func mixedBatch(keys ...string) []craftevents.Envelope {
+	stocked := &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1"}}
+	closed := &eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth}
+	envs := []craftevents.Envelope{
+		{Event: events.ItemStockedContract, Payload: stocked},
+		{Event: events.ForgedContract, Payload: stocked},
+		{Event: events.WarehouseClosedContract, Payload: closed},
+		{Event: events.ForgedContract, Payload: stocked},
+	}
+	for i := range keys {
+		envs[i].Key = keys[i]
+	}
+	return envs
+}
+
+// A batch reaches the transport in the order the caller assembled it,
+// whichever contract each entry carries.
 //
 // The order is not cosmetic: a partial failure names the entries that did
 // not go out BY INDEX, so an entry that moved is an entry the caller
 // retries in place of another - see TestAPartialBatchNamesTheEnvelopes-
 // TheBrokerDidNotTake, which reads those indices off a real broker.
-func TestABatchKeepsTheOrderEntriesWereAddedAcrossServices(t *testing.T) {
+func TestABatchKeepsTheOrderEntriesWereAddedAcrossContracts(t *testing.T) {
 	var seen []string
 	recorder := recordingTransport{onPublish: func(m *craftevents.Message) {
 		seen = append(seen, m.Event+"|"+m.Key)
 	}}
 	bus := craftevents.New(craftevents.WithPublisher(&recorder), craftevents.WithCodec(codecjson.Codec{}))
-	events := svccontext.NewEvents(bus)
 
-	stocked := &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1"}}
-	b := events.Batch()
-	// Both builders are taken up front and used alternately, which is the
-	// shape an outbox drain has: one pass over rows of mixed kinds.
-	inventory, craft := b.InventoryService(), b.Craft()
-	inventory.ItemStocked(stocked, craftevents.WithKey("k-0"))
-	craft.Forged(stocked, craftevents.WithKey("k-1"))
-	inventory.WarehouseClosed(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth},
-		craftevents.WithKey("k-2"))
-	craft.Forged(stocked, craftevents.WithKey("k-3"))
-
-	if b.Len() != 4 {
-		t.Fatalf("batch holds %d entries, want 4 - a held builder collected into a list of its own", b.Len())
-	}
-	if err := b.Publish(context.Background()); err != nil {
+	if err := bus.PublishAll(context.Background(), mixedBatch("k-0", "k-1", "k-2", "k-3")); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
@@ -55,13 +54,8 @@ func TestABatchKeepsTheOrderEntriesWereAddedAcrossServices(t *testing.T) {
 		"events.WarehouseClosed|k-2",
 		"events.Forged|k-3",
 	}
-	if len(seen) != len(want) {
-		t.Fatalf("published %v, want %v", seen, want)
-	}
-	for i := range want {
-		if seen[i] != want[i] {
-			t.Fatalf("published\n%v\nwant\n%v", seen, want)
-		}
+	if !reflect.DeepEqual(seen, want) {
+		t.Fatalf("published\n%v\nwant\n%v", seen, want)
 	}
 }
 
@@ -96,17 +90,10 @@ func (s *stoppingTransport) Publish(_ context.Context, msg *craftevents.Message)
 func TestABatchThatStopsPartwayNamesTheTailThatDidNotGoOut(t *testing.T) {
 	recorder := &stoppingTransport{failAt: 2}
 	bus := craftevents.New(craftevents.WithPublisher(recorder), craftevents.WithCodec(codecjson.Codec{}))
-	events := svccontext.NewEvents(bus)
 
-	stocked := &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1"}}
-	b := events.Batch()
-	b.InventoryService().ItemStocked(stocked)
-	b.Craft().Forged(stocked)
-	b.InventoryService().WarehouseClosed(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth})
-	b.Craft().Forged(stocked)
-
+	envs := mixedBatch()
 	var partial *craftevents.PartialPublishError
-	if err := b.Publish(context.Background()); !errors.As(err, &partial) {
+	if err := bus.PublishAll(context.Background(), envs); !errors.As(err, &partial) {
 		t.Fatalf("publish error = %v (%T), want a *PartialPublishError", err, err)
 	}
 	if want := []int{2, 3}; !reflect.DeepEqual(partial.Unsent, want) {
@@ -124,9 +111,9 @@ func TestABatchThatStopsPartwayNamesTheTailThatDidNotGoOut(t *testing.T) {
 	if want := []string{"events.ItemStocked", "events.Forged"}; !reflect.DeepEqual(recorder.sent, want) {
 		t.Errorf("the transport was handed %v, want %v", recorder.sent, want)
 	}
-	// A batch that failed is left intact, so nothing is lost by a caller
-	// who reads the error before deciding what to do.
-	if b.Len() != 4 {
-		t.Errorf("batch holds %d entries after a partial failure, want 4", b.Len())
+	// The caller's batch is left intact, so nothing is lost by one who
+	// reads the error before deciding what to do.
+	if len(envs) != 4 {
+		t.Errorf("batch holds %d entries after a partial failure, want 4", len(envs))
 	}
 }

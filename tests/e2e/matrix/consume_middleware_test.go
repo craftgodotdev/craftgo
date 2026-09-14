@@ -8,17 +8,18 @@ import (
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
-	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 
-	guardedevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/guarded_service"
-	apptransport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/eventsubs"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
 // redeliverTransport is a broker that can hand a message back: it
 // re-delivers while the chain asks for it, counting deliveries the way an
-// adapter does through SetDeliveries.
+// adapter does through SetDeliveries. Only the subscriptions of the
+// published contract are driven, so a handler set registered whole
+// produces one delivery sequence.
 type redeliverTransport struct {
 	msg *craftevents.Message
 	max int
@@ -32,16 +33,21 @@ func (t *redeliverTransport) Publish(_ context.Context, m *craftevents.Message) 
 }
 func (t *redeliverTransport) CanDisposition(craftevents.Disposition) bool { return true }
 
-func (t *redeliverTransport) Subscribe(ctx context.Context, sub craftevents.Subscription) error {
+func (t *redeliverTransport) Subscribe(ctx context.Context, subs []craftevents.Subscription) error {
 	if t.msg == nil {
 		return errors.New("nothing was published to deliver")
 	}
-	for n := 1; n <= t.max; n++ {
-		t.msg.SetDeliveries(n)
-		t.msg.Settle()
-		_ = sub.Handle(ctx, t.msg)
-		if t.msg.Disposition() != craftevents.DispositionRedeliver {
-			return nil
+	for _, sub := range subs {
+		if sub.Event != t.msg.Event {
+			continue
+		}
+		for n := 1; n <= t.max; n++ {
+			t.msg.SetDeliveries(n)
+			t.msg.Settle()
+			_ = sub.Handle(ctx, t.msg)
+			if t.msg.Disposition() != craftevents.DispositionRedeliver {
+				break
+			}
 		}
 	}
 	return nil
@@ -82,46 +88,55 @@ func attempt(budget int, asked *int) craftevents.Middleware {
 	}
 }
 
-// failingConsumers fails GuardedStock every time and counts the runs.
-type failingConsumers struct{ ran int }
+// failingGuarded fails GuardedStock every time and counts the runs.
+type failingGuarded struct{ ran int }
 
-func (c *failingConsumers) GuardedStock(context.Context, *eventtypes.ItemStocked) error {
+func (c *failingGuarded) GuardedStock(context.Context, *eventtypes.ItemStocked) error {
 	c.ran++
 	return errors.New("boom")
 }
-func (c *failingConsumers) BareStock(context.Context, *eventtypes.StocktakeStarted) error {
+func (c *failingGuarded) BareStock(context.Context, *eventtypes.StocktakeStarted) error {
 	return nil
 }
-func (c *failingConsumers) InheritedStock(context.Context, *eventtypes.WarehouseClosed) error {
+func (c *failingGuarded) InheritedStock(context.Context, *eventtypes.WarehouseClosed) error {
 	return nil
 }
 
-// The design writes `@consumeMiddlewares(Settle)` on the service and
-// appends `@consumeMiddlewares(Attempt)` on the consumer, so Settle is
-// outermost and Attempt sits nearest the handler. That is the ONLY order
-// in which the retry works: Settle answers nil, so an Attempt above it is
-// handed a success and never reaches its Redeliver call.
+// bootGuarded registers GuardedService behind chain on a transport that
+// can hand a message back, with one events.ItemStocked already published.
+func bootGuarded(t *testing.T, chain craftevents.Chain, h eventsubs.GuardedServiceHandler) {
+	t.Helper()
+	tr := &redeliverTransport{max: 10}
+	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
+	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
+		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
+		Quantity:        1,
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := eventsubs.RegisterGuardedServiceHandler(bus, h, chain,
+		eventsubs.GuardedServiceGroups{Default: consumers.GuardedGroup}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+}
+
+// The chain is the application's, handed to Register once for the whole
+// handler set: Settle is listed first so it is outermost, and Attempt
+// sits nearest the handler. That is the ONLY order in which the retry
+// works - Settle answers nil, so an Attempt above it is handed a success
+// and never reaches its Redeliver call.
 //
 // The assertion counts attempts rather than reading frames on purpose. A
 // reversed chain still ENTERS in the order it was written, so a
 // frame-order assertion passes on the broken one and this does not.
-func TestGeneratedConsumeChainRetriesBeforeItParks(t *testing.T) {
+func TestARegisteredChainRetriesBeforeItParks(t *testing.T) {
 	var asked, parked int
-	tr := &redeliverTransport{max: 10}
-	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
-	if err := bus.Publish(context.Background(), "events.ItemStocked", &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"}, Quantity: 1}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	h := &failingConsumers{}
-	mw := guardedevents.Middlewares{Settle: settle(&parked), Attempt: attempt(3, &asked)}
-	for _, sub := range guardedevents.Subscriptions(bus, h, mw) {
-		if sub.Consumer != "GuardedStock" {
-			continue
-		}
-		if err := bus.Subscribe(context.Background(), sub); err != nil {
-			t.Fatalf("subscribe: %v", err)
-		}
-	}
+	h := &failingGuarded{}
+	bootGuarded(t, craftevents.NewChain(settle(&parked), attempt(3, &asked)), h)
+
 	if h.ran != 3 {
 		t.Errorf("handler ran %d time(s), want 3 - the chain is not retrying before it parks", h.ran)
 	}
@@ -138,24 +153,11 @@ func TestGeneratedConsumeChainRetriesBeforeItParks(t *testing.T) {
 // ONCE with zero retries, while the frame order still reads exactly as
 // written and the message is still parked. Nothing about the shape of the
 // run says it is broken.
-func TestReversedConsumeChainSilentlyStopsRetrying(t *testing.T) {
+func TestAReversedChainSilentlyStopsRetrying(t *testing.T) {
 	var asked, parked int
-	tr := &redeliverTransport{max: 10}
-	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
-	if err := bus.Publish(context.Background(), "events.ItemStocked", &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"}, Quantity: 1}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	h := &failingConsumers{}
-	reversed := craftevents.NewChain(attempt(3, &asked), settle(&parked), craftevents.Recover())
-	core := guardedevents.Subscriptions(bus, h, guardedevents.Middlewares{})
-	for _, sub := range core {
-		if sub.Consumer != "GuardedStock" {
-			continue
-		}
-		if err := bus.Subscribe(context.Background(), reversed.Apply([]craftevents.Subscription{sub})[0]); err != nil {
-			t.Fatalf("subscribe: %v", err)
-		}
-	}
+	h := &failingGuarded{}
+	bootGuarded(t, craftevents.NewChain(attempt(3, &asked), settle(&parked)), h)
+
 	if h.ran != 1 || asked != 0 {
 		t.Errorf("reversed chain ran %d time(s) and asked %d retr(ies); want 1 and 0", h.ran, asked)
 	}
@@ -164,68 +166,68 @@ func TestReversedConsumeChainSilentlyStopsRetrying(t *testing.T) {
 	}
 }
 
-// @ignoreMiddleware clears the inherited chain, so BareStock is emitted
-// with no wrap at all - the service-level Settle does not reach it.
-func TestIgnoreMiddlewareLeavesTheConsumerBare(t *testing.T) {
-	var parked, asked int
-	bus := craftevents.New(craftevents.WithTransport(&redeliverTransport{max: 1}), craftevents.WithCodec(codecjson.Codec{}))
-	mw := guardedevents.Middlewares{Settle: settle(&parked), Attempt: attempt(3, &asked)}
-	for _, sub := range guardedevents.Subscriptions(bus, &failingConsumers{}, mw) {
-		if sub.Consumer != "BareStock" {
-			continue
-		}
-		msg := &craftevents.Message{Event: "events.StocktakeStarted", Payload: []byte(`{"warehouse":1}`)}
-		if err := sub.Handle(context.Background(), msg); err != nil {
-			t.Fatalf("handle: %v", err)
-		}
+// Registering with no chain leaves the handler bare: a failure is neither
+// retried nor parked, it just comes back to the transport. The chain is
+// the application's to supply, and supplying none is a choice the design
+// has no say in.
+func TestNoChainLeavesTheHandlerBare(t *testing.T) {
+	var asked, parked int
+	h := &failingGuarded{}
+	// The middlewares are built so the counters CAN move, and handed to
+	// nothing, so a chain that crept in from anywhere else would show.
+	_, _ = settle(&parked), attempt(3, &asked)
+	bootGuarded(t, nil, h)
+
+	if h.ran != 1 {
+		t.Errorf("an unchained handler ran %d time(s), want 1", h.ran)
 	}
 	if parked != 0 || asked != 0 {
-		t.Errorf("an @ignoreMiddleware consumer ran the inherited chain: parked=%d asked=%d", parked, asked)
+		t.Errorf("an unchained registration ran a chain: parked=%d asked=%d", parked, asked)
 	}
 }
 
-// SubscribeAll refuses a container missing a consume middleware the
-// design applies, and it is SubscribeAll rather than wiring.Register that
-// carries the check: a consumer deployable owns no *server.Server, so it
-// calls this directly and never reaches Register at all. Guarding only
-// Register would cover the deployables that serve HTTP and miss exactly
-// the ones this feature is for.
-func TestSubscribeAllRefusesAnUnwiredConsumeMiddleware(t *testing.T) {
+// A subscription's own chain runs INSIDE the bus-wide one, so a bus-level
+// concern still sees what a per-registration chain did. The two are
+// wired at different places and both reach one delivery.
+func TestTheRegisteredChainRunsInsideTheBusChain(t *testing.T) {
+	tr := &tracer{}
+	var ran int
 	bus := craftevents.New(
-		craftevents.WithTransport(memory.New()),
-		craftevents.WithCodec(codecjson.Codec{}))
-	svc := svccontext.NewServiceContext()
-	svc.Events = svccontext.NewEvents(bus)
-	// Settle is wired, Attempt is not - the shape of forgetting one line.
-	svc.Events.Consume.Settle = func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
-		return next
+		craftevents.WithTransport(&redeliverTransport{max: 1}),
+		craftevents.WithCodec(codecjson.Codec{}),
+		craftevents.WithMiddleware(tr.tag("bus")))
+	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
+		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
+		Quantity:        1,
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	h := &countingGuarded{ran: &ran}
+	if err := eventsubs.RegisterGuardedServiceHandler(bus, h, craftevents.NewChain(tr.tag("own")),
+		eventsubs.GuardedServiceGroups{Default: consumers.GuardedGroup}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 
-	err := apptransport.SubscribeAll(context.Background(), bus, svc)
-	if err == nil {
-		t.Fatal("subscribed with a declared consume middleware left nil")
+	if ran != 1 {
+		t.Fatalf("the handler ran %d time(s), want 1", ran)
 	}
-	for _, want := range []string{
-		"consume middleware Attempt",
-		"GuardedService.GuardedStock runs it",
-		"svcCtx.Events.Consume.Attempt is nil",
-		"svc.Events.Consume.Attempt = consume.NewAttemptMiddleware",
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not say %q:\n%v", want, err)
-		}
+	if got, want := strings.Join(tr.seen(), ""), ">bus>own<own<bus"; got != want {
+		t.Errorf("frames = %q, want %q - the registered chain must run inside the bus chain", got, want)
 	}
 }
 
-// The complement: a fully wired container subscribes.
-func TestSubscribeAllAcceptsAWiredContainer(t *testing.T) {
-	bus := craftevents.New(
-		craftevents.WithTransport(memory.New()),
-		craftevents.WithCodec(codecjson.Codec{}))
-	svc := svccontext.NewServiceContext()
-	svc.Events = svccontext.NewEvents(bus)
-	wireConsumeMiddleware(&svc.Events.Consume)
-	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
-		t.Fatalf("a wired container was refused: %v", err)
-	}
+// countingGuarded is a handler set that only counts, so the frame order
+// around it is the whole reading.
+type countingGuarded struct{ ran *int }
+
+func (c *countingGuarded) GuardedStock(context.Context, *eventtypes.ItemStocked) error {
+	*c.ran++
+	return nil
+}
+func (c *countingGuarded) BareStock(context.Context, *eventtypes.StocktakeStarted) error { return nil }
+func (c *countingGuarded) InheritedStock(context.Context, *eventtypes.WarehouseClosed) error {
+	return nil
 }

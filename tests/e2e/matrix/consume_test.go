@@ -13,9 +13,9 @@ import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
 // tracer collects one entry per middleware frame. The consumers of a
@@ -53,31 +53,31 @@ func (tr *tracer) tag(name string) craftevents.Middleware {
 
 // promoteTier publishes the one contract with a single consumer, so the
 // trace it produces is one goroutine's and ordering is unambiguous.
-func promoteTier(t *testing.T, svc *svccontext.ServiceContext) {
+func promoteTier(t *testing.T, bus *craftevents.Bus) {
 	t.Helper()
-	promoteMember(t, svc, "m-1")
+	promoteMember(t, bus, "m-1")
 }
 
 // promoteMember is promoteTier for a chosen member id. "panic-please" is
-// the one the TrackTier logic stub panics on.
-func promoteMember(t *testing.T, svc *svccontext.ServiceContext, member string) {
+// the one the TrackTier handler panics on.
+func promoteMember(t *testing.T, bus *craftevents.Bus, member string) {
 	t.Helper()
-	if err := svc.Events.InventoryService.PublishTierPromoted(context.Background(), &eventtypes.TierPromoted{
+	if err := events.TierPromoted.Publish(context.Background(), bus, &eventtypes.TierPromoted{
 		Tier: xshared.XTierGold, MemberID: member,
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 }
 
-// The chain wraps every subscription the generated SubscribeAll builds,
+// The chain wraps every subscription registered through the bus,
 // outermost first: the first middleware listed is the first frame a
 // message enters.
-func TestConsumerChainWrapsGeneratedSubscriptionsOutermostFirst(t *testing.T) {
+func TestConsumerChainWrapsEverySubscriptionOutermostFirst(t *testing.T) {
 	tr := &tracer{}
 	chain := craftevents.NewChain(tr.tag("A"), tr.tag("B"), tr.tag("C"))
-	svc, transport := bootEventsWith(t, chain, nil)
+	svc, bus, transport := bootEventsWith(t, chain, nil)
 
-	promoteTier(t, svc)
+	promoteTier(t, bus)
 	transport.Drain()
 
 	if got := svc.DeliveredTo("TrackTier"); len(got) != 1 {
@@ -94,9 +94,9 @@ func TestConsumerChainWrapsGeneratedSubscriptionsOutermostFirst(t *testing.T) {
 // so the orders are traced side by side rather than asserted apart.
 func TestConsumerChainFoldsLikeTheHTTPChain(t *testing.T) {
 	consumerTrace := &tracer{}
-	svc, transport := bootEventsWith(t,
+	_, bus, transport := bootEventsWith(t,
 		craftevents.NewChain(consumerTrace.tag("A"), consumerTrace.tag("B"), consumerTrace.tag("C")), nil)
-	promoteTier(t, svc)
+	promoteTier(t, bus)
 	transport.Drain()
 
 	httpTrace := &tracer{}
@@ -129,17 +129,16 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	record := func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
 		return func(ctx context.Context, msg *craftevents.Message) error {
 			mu.Lock()
-			seen = append(seen, sub.Event+" "+sub.Consumer+" "+sub.GroupName())
+			seen = append(seen, sub.Event+" "+sub.Consumer+" "+string(sub.Group))
 			mu.Unlock()
 			return next(ctx, msg)
 		}
 	}
-	svc, transport := bootEventsWith(t, craftevents.NewChain(record), nil)
+	_, bus, transport := bootEventsWith(t, craftevents.NewChain(record), nil)
 
-	// ItemStocked is consumed four times: by its declaring service, by a
-	// consumer in another package, by one that pins its own group, and by
-	// one carrying a declared consume-middleware chain.
-	if err := svc.Events.InventoryService.PublishItemStocked(context.Background(), &eventtypes.ItemStocked{
+	// ItemStocked is consumed four times: by its declaring service and by
+	// three services in another package, each under a group of its own.
+	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        3,
 	}); err != nil {
@@ -151,21 +150,20 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"events.ItemStocked CountStocked analytics-worker",
-		"events.ItemStocked GuardedStock eventsubs-GuardedService-GuardedStock",
-		"events.ItemStocked MirrorStock events-InventoryService-MirrorStock",
-		"events.ItemStocked SendStockAlert eventsubs-NotificationService-SendStockAlert",
+		"events.ItemStocked GuardedStock matrix-guarded",
+		"events.ItemStocked MirrorStock matrix-inventory",
+		"events.ItemStocked SendStockAlert matrix-notifications",
 	}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("middleware saw\n%v\nwant\n%v", got, want)
 	}
 }
 
-// A bus with no middleware registers exactly what the generated
-// SubscribeAll built - every other event test in this fixture boots that
-// way and still passes.
+// A bus with no middleware delivers exactly what was registered - every
+// other event test in this fixture boots that way and still passes.
 func TestNoMiddlewareLeavesDeliveryUnchanged(t *testing.T) {
-	svc, transport := bootEventsWith(t, nil, nil)
-	promoteTier(t, svc)
+	svc, bus, transport := bootEventsWith(t, nil, nil)
+	promoteTier(t, bus)
 	transport.Drain()
 
 	if got := svc.DeliveredTo("TrackTier"); len(got) != 1 {
@@ -173,10 +171,10 @@ func TestNoMiddlewareLeavesDeliveryUnchanged(t *testing.T) {
 	}
 }
 
-// A panicking consumer reaches the project's own middleware as an error
+// A panicking handler reaches the project's own middleware as an error
 // and the delivery goroutine survives - with nothing to add to the chain.
-// The panic fires inside the generated consumer on a goroutine the memory
-// transport spawned, which is the only honest place to observe this.
+// The panic fires inside the handler on a goroutine the memory transport
+// spawned, which is the only honest place to observe this.
 func TestPanicInLogicReachesTheProjectsMiddleware(t *testing.T) {
 	var mu sync.Mutex
 	var seenByMiddleware, reported error
@@ -189,13 +187,13 @@ func TestPanicInLogicReachesTheProjectsMiddleware(t *testing.T) {
 			return err
 		}
 	}
-	svc, transport := bootEventsWith(t, craftevents.NewChain(observe),
+	_, bus, transport := bootEventsWith(t, craftevents.NewChain(observe),
 		func(_ craftevents.Subscription, err error) {
 			mu.Lock()
 			reported = err
 			mu.Unlock()
 		})
-	promoteMember(t, svc, "panic-please")
+	promoteMember(t, bus, "panic-please")
 	transport.Drain()
 
 	mu.Lock()
@@ -230,13 +228,13 @@ func TestPanicInTheChainIsCaughtButNotObservable(t *testing.T) {
 	boom := func(craftevents.Subscription, craftevents.Handler) craftevents.Handler {
 		return func(context.Context, *craftevents.Message) error { panic("middleware blew up") }
 	}
-	svc, transport := bootEventsWith(t, craftevents.NewChain(observe, boom),
+	_, bus, transport := bootEventsWith(t, craftevents.NewChain(observe, boom),
 		func(_ craftevents.Subscription, err error) {
 			mu.Lock()
 			reported = err
 			mu.Unlock()
 		})
-	promoteTier(t, svc)
+	promoteTier(t, bus)
 	transport.Drain()
 
 	mu.Lock()

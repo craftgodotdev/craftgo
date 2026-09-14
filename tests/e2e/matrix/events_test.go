@@ -2,7 +2,10 @@ package matrix
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,40 +16,26 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 
-	inventoryevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/inventory_service"
-	notifyevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/notification_service"
-	opsevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/ops_service"
-	apptransport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/eventsubs"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// bootEvents wires the generated publishers and consumers onto an
-// in-process bus. The transport is the only thing a project swaps to
-// move onto a broker; nothing generated changes with it.
-func bootEvents(t *testing.T) (*svccontext.ServiceContext, *memory.Transport) {
+// bootEvents registers every handler set this fixture runs on an
+// in-process bus and starts it. The transport is the only thing a project
+// swaps to move onto a broker; nothing generated changes with it.
+func bootEvents(t *testing.T) (*svccontext.ServiceContext, *craftevents.Bus, *memory.Transport) {
 	t.Helper()
 	return bootEventsWith(t, nil, nil)
 }
 
-// wireConsumeMiddleware fills the consume-middleware fields the design
-// applies. SubscribeAll refuses a container missing any of them, so every
-// test that subscribes goes through here. The values are pass-throughs:
-// what these tests observe is delivery, not what a chain does to it -
-// consume_middleware_test.go is where the chain itself is exercised.
-func wireConsumeMiddleware(mw *svccontext.ConsumeMiddlewares) {
-	passthrough := func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
-		return next
-	}
-	mw.Settle = passthrough
-	mw.Attempt = passthrough
-}
-
-// bootEventsWith boots the same wiring behind a consumer middleware chain
+// bootEventsWith boots the same wiring behind a bus-wide middleware chain
 // and an error handler of the caller's choosing. The chain goes on the
 // bus, so nothing generated knows it is there.
-func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(craftevents.Subscription, error)) (*svccontext.ServiceContext, *memory.Transport) {
+func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(craftevents.Subscription, error)) (*svccontext.ServiceContext, *craftevents.Bus, *memory.Transport) {
 	t.Helper()
 	if onError == nil {
 		onError = func(sub craftevents.Subscription, err error) {
@@ -62,21 +51,22 @@ func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(crafteve
 		craftevents.WithMiddleware(chain...),
 	)
 	svc := svccontext.NewServiceContext()
-	svc.Events = svccontext.NewEvents(bus)
-	wireConsumeMiddleware(&svc.Events.Consume)
-	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
+	if err := consumers.RegisterAll(bus, svc, nil); err != nil {
+		t.Fatalf("register consumers: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
 		t.Fatalf("start consumers: %v", err)
 	}
-	return svc, transport
+	return svc, bus, transport
 }
 
 func TestEventReachesEveryConsumerOfTheContract(t *testing.T) {
-	svc, transport := bootEvents(t)
+	svc, bus, transport := bootEvents(t)
 	payload := &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        7,
 	}
-	if err := svc.Events.InventoryService.PublishItemStocked(context.Background(), payload); err != nil {
+	if err := events.ItemStocked.Publish(context.Background(), bus, payload); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	transport.Drain()
@@ -95,16 +85,17 @@ func TestEventReachesEveryConsumerOfTheContract(t *testing.T) {
 	}
 }
 
-// A consumer declared in an `extend service` block and one behind a
-// `@group` both register through the same umbrella.
-func TestExtendAndGroupedConsumersAreRegistered(t *testing.T) {
-	svc, transport := bootEvents(t)
-	if err := svc.Events.InventoryService.PublishShipmentDispatched(context.Background(), &eventtypes.ShipmentDispatched{
+// A consumer declared in an `extend service` block is another method on
+// the owning service's handler interface, and a service that consumes
+// nothing else registers through the same call as one that does.
+func TestExtendBlockConsumersAreRegistered(t *testing.T) {
+	svc, bus, transport := bootEvents(t)
+	if err := events.ShipmentDispatched.Publish(context.Background(), bus, &eventtypes.ShipmentDispatched{
 		ShipmentID: "shp-1", Carrier: "acme",
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := svc.Events.InventoryService.PublishWarehouseClosed(context.Background(), &eventtypes.WarehouseClosed{
+	if err := events.WarehouseClosed.Publish(context.Background(), bus, &eventtypes.WarehouseClosed{
 		Warehouse: eventtypes.WarehouseNorth,
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -115,22 +106,21 @@ func TestExtendAndGroupedConsumersAreRegistered(t *testing.T) {
 		t.Errorf("extend-block consumer received %d payloads, want 1", len(got))
 	}
 	if got := svc.DeliveredTo("RecordClosure"); len(got) != 1 {
-		t.Errorf("grouped consumer received %d payloads, want 1", len(got))
+		t.Errorf("second service's consumer received %d payloads, want 1", len(got))
 	}
 }
 
-// NotificationService declares consumers in three blocks, one of them
-// behind its own @group, so its logic is split across two packages. The
-// contract still declares one handler interface, and the single handler
-// set at the transport root satisfies it - every consumer receives.
-func TestConsumersSplitAcrossGroupsShareOneHandlerSet(t *testing.T) {
-	svc, transport := bootEvents(t)
-	if err := svc.Events.InventoryService.PublishStocktakeStarted(context.Background(), &eventtypes.StocktakeStarted{
+// NotificationService declares consumers in three blocks. They merge into
+// ONE handler interface, so a single handler set covers them and every
+// consumer receives.
+func TestConsumersSplitAcrossBlocksShareOneHandlerSet(t *testing.T) {
+	svc, bus, transport := bootEvents(t)
+	if err := events.StocktakeStarted.Publish(context.Background(), bus, &eventtypes.StocktakeStarted{
 		Warehouse: eventtypes.WarehouseNorth,
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := svc.Events.InventoryService.PublishShipmentDispatched(context.Background(), &eventtypes.ShipmentDispatched{
+	if err := events.ShipmentDispatched.Publish(context.Background(), bus, &eventtypes.ShipmentDispatched{
 		ShipmentID: "shp-2", Carrier: "acme",
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -138,7 +128,7 @@ func TestConsumersSplitAcrossGroupsShareOneHandlerSet(t *testing.T) {
 	transport.Drain()
 
 	if got := svc.DeliveredTo("TrackStocktake"); len(got) != 1 {
-		t.Errorf("consumer grouped into its own package received %d payloads, want 1", len(got))
+		t.Errorf("consumer declared in a second extend block received %d payloads, want 1", len(got))
 	}
 	if got := svc.DeliveredTo("NotifyDispatch"); len(got) != 1 {
 		t.Errorf("ungrouped sibling received %d payloads, want 1", len(got))
@@ -148,12 +138,15 @@ func TestConsumersSplitAcrossGroupsShareOneHandlerSet(t *testing.T) {
 // `@contract` fixes the wire identity; the consumer that names the event
 // by its DSL name still receives it.
 func TestContractOverrideIsTheWireIdentity(t *testing.T) {
-	svc, transport := bootEvents(t)
+	svc, bus, transport := bootEvents(t)
 	payload := &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-9", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        1,
 	}
-	if err := svc.Events.InventoryService.PublishReconciled(context.Background(), payload); err != nil {
+	if events.ReconciledContract != "legacy.inventory.reconciled.v2" {
+		t.Fatalf("the descriptor carries %q, want the @contract override", events.ReconciledContract)
+	}
+	if err := events.Reconciled.Publish(context.Background(), bus, payload); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	transport.Drain()
@@ -174,23 +167,22 @@ func TestPublishOptionsSetTheMessageKey(t *testing.T) {
 	var seen []*craftevents.Message
 	recorder := recordingTransport{onPublish: func(m *craftevents.Message) { seen = append(seen, m) }}
 	bus := craftevents.New(craftevents.WithPublisher(&recorder), craftevents.WithCodec(codecjson.Codec{}))
-	pub := svccontext.NewEvents(bus).InventoryService
 
 	ctx := context.Background()
 	stocked := &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1"}}
-	if err := pub.PublishItemStocked(ctx, stocked, craftevents.WithKey(string(stocked.Sku))); err != nil {
+	if err := events.ItemStocked.Publish(ctx, bus, stocked, craftevents.WithKey(string(stocked.Sku))); err != nil {
 		t.Fatal(err)
 	}
-	// An int-valued enum has no key form of its own any more - the caller
-	// renders it however its broker wants it.
+	// An int-valued enum has no key form of its own - the caller renders
+	// it however its broker wants it.
 	closed := &eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseSouth}
-	if err := pub.PublishWarehouseClosed(ctx, closed,
+	if err := events.WarehouseClosed.Publish(ctx, bus, closed,
 		craftevents.WithKey(strconv.FormatInt(int64(closed.Warehouse), 10)),
 		craftevents.WithDedupID("dedup-1"),
 		craftevents.WithHeader("tenant", "acme")); err != nil {
 		t.Fatal(err)
 	}
-	if err := pub.PublishStocktakeStarted(ctx, &eventtypes.StocktakeStarted{Warehouse: eventtypes.WarehouseNorth}); err != nil {
+	if err := events.StocktakeStarted.Publish(ctx, bus, &eventtypes.StocktakeStarted{Warehouse: eventtypes.WarehouseNorth}); err != nil {
 		t.Fatal(err)
 	}
 	want := []struct{ event, key string }{
@@ -217,32 +209,35 @@ func TestPublishOptionsSetTheMessageKey(t *testing.T) {
 	}
 }
 
-// A publisher's defaults are applied to every message it sends, and a
-// per-call option of the same kind replaces one. The batch builder
-// carries the same defaults, so the two ways to publish agree.
-func TestPublisherDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
+// A bus-wide publish default is applied to every message sent through it,
+// and a per-call option of the same kind replaces one. A batch carries
+// the same defaults, so the two ways to publish agree.
+func TestBusPublishDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 	var seen []*craftevents.Message
 	recorder := recordingTransport{onPublish: func(m *craftevents.Message) { seen = append(seen, m) }}
-	bus := craftevents.New(craftevents.WithPublisher(&recorder), craftevents.WithCodec(codecjson.Codec{}))
-	events := svccontext.NewEvents(bus,
-		craftevents.WithHeader("tenant", "acme"),
-		craftevents.WithKey("default-key"))
+	bus := craftevents.New(
+		craftevents.WithPublisher(&recorder),
+		craftevents.WithCodec(codecjson.Codec{}),
+		craftevents.WithPublishDefaults(
+			craftevents.WithHeader("tenant", "acme"),
+			craftevents.WithKey("default-key")))
 
 	ctx := context.Background()
 	stocked := &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-2"}}
-	if err := events.InventoryService.PublishItemStocked(ctx, stocked); err != nil {
+	if err := events.ItemStocked.Publish(ctx, bus, stocked); err != nil {
 		t.Fatal(err)
 	}
-	if err := events.InventoryService.PublishItemStocked(ctx, stocked, craftevents.WithKey("sku-2")); err != nil {
+	if err := events.ItemStocked.Publish(ctx, bus, stocked, craftevents.WithKey("sku-2")); err != nil {
 		t.Fatal(err)
 	}
-	b := events.Batch()
-	b.InventoryService().ItemStocked(stocked)
-	b.InventoryService().ItemStocked(stocked, craftevents.WithKey("sku-3"))
-	// A second service's builder, which the caller never handed the
-	// defaults to, carries them too.
-	b.Craft().Forged(stocked)
-	if err := b.Publish(ctx); err != nil {
+	// A batch the caller assembles by hand: the entry that names a key
+	// keeps it, the one that does not takes the bus default. The second
+	// contract comes from a service that was never handed the defaults.
+	if err := bus.PublishAll(ctx, []craftevents.Envelope{
+		{Event: events.ItemStockedContract, Payload: stocked},
+		{Event: events.ItemStockedContract, Key: "sku-3", Payload: stocked},
+		{Event: events.ForgedContract, Payload: stocked},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -266,10 +261,9 @@ func TestPublisherDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 func TestAnUnknownOptionInTheAdaptersOwnNamespaceFailsThePublish(t *testing.T) {
 	transport := memory.New()
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
-	pub := svccontext.NewEvents(bus).InventoryService
 	stocked := &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-4"}}
 
-	err := pub.PublishItemStocked(context.Background(), stocked,
+	err := events.ItemStocked.Publish(context.Background(), bus, stocked,
 		craftevents.WithAdapterOption(memory.Adapter, "partition", 3))
 	var unknown *craftevents.UnknownOptionError
 	if !errors.As(err, &unknown) {
@@ -281,7 +275,7 @@ func TestAnUnknownOptionInTheAdaptersOwnNamespaceFailsThePublish(t *testing.T) {
 
 	// The same option under another adapter's name is that adapter's
 	// business, so this transport lets it by.
-	if err := pub.PublishItemStocked(context.Background(), stocked,
+	if err := events.ItemStocked.Publish(context.Background(), bus, stocked,
 		craftevents.WithAdapterOption("kafka", "timestamp", "whenever")); err != nil {
 		t.Errorf("another adapter's option must be ignored, got %v", err)
 	}
@@ -292,23 +286,24 @@ func TestAnUnknownOptionInTheAdaptersOwnNamespaceFailsThePublish(t *testing.T) {
 func TestConsumerValidatesBeforeLogic(t *testing.T) {
 	var mu sync.Mutex
 	var failed error
-	transport := memory.New(memory.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
-		// The contract has consumers in two groups, so the handler runs
-		// on one delivery goroutine per group.
+	svc, _, transport := bootEventsWith(t, nil, func(_ craftevents.Subscription, err error) {
+		// The contract has consumers in several groups, so the handler
+		// runs on one delivery goroutine per group.
 		mu.Lock()
 		failed = err
 		mu.Unlock()
-	}))
-	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
-	svc := svccontext.NewServiceContext()
-	svc.Events = svccontext.NewEvents(bus)
-	wireConsumeMiddleware(&svc.Events.Consume)
-	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
-		t.Fatalf("start consumers: %v", err)
+	})
+	// carrier is @minLength(1); an empty one must not reach logic. The
+	// publisher validates too, so the message is put on the transport
+	// directly - the way another system's would arrive.
+	body, err := json.Marshal(&eventtypes.ShipmentDispatched{ShipmentID: "shp-2"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	// carrier is @minLength(1); an empty one must not reach logic.
-	if err := svc.Events.InventoryService.PublishShipmentDispatched(context.Background(), &eventtypes.ShipmentDispatched{
-		ShipmentID: "shp-2",
+	if err := transport.Publish(context.Background(), &craftevents.Message{
+		Event:    events.ShipmentDispatchedContract,
+		Payload:  body,
+		Metadata: map[string]string{craftevents.MetaCodec: "json"},
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -329,9 +324,30 @@ func TestConsumerValidatesBeforeLogic(t *testing.T) {
 	}
 }
 
+// The publisher validates too, so a payload that cannot satisfy its
+// contract is refused where it is broken rather than at every consumer.
+func TestPublisherValidatesBeforeAnythingIsSent(t *testing.T) {
+	var published int
+	recorder := recordingTransport{onPublish: func(*craftevents.Message) { published++ }}
+	bus := craftevents.New(craftevents.WithPublisher(&recorder), craftevents.WithCodec(codecjson.Codec{}))
+
+	err := events.ShipmentDispatched.Publish(context.Background(), bus,
+		&eventtypes.ShipmentDispatched{ShipmentID: "shp-3"})
+	var payload *craftevents.PayloadError
+	if !errors.As(err, &payload) {
+		t.Fatalf("publish error = %v (%T), want a *PayloadError", err, err)
+	}
+	if payload.Event != events.ShipmentDispatchedContract {
+		t.Errorf("the failure names %q, want the contract", payload.Event)
+	}
+	if published != 0 {
+		t.Errorf("an invalid payload reached the transport %d time(s)", published)
+	}
+}
+
 // recordingTransport is a publish-only transport, standing in for a
-// broker adapter: the generated publisher needs nothing but the two
-// interface methods.
+// broker adapter: a descriptor needs nothing but the one interface
+// method.
 type recordingTransport struct {
 	onPublish func(*craftevents.Message)
 }
@@ -350,9 +366,9 @@ func TestEventBatchMixesContracts(t *testing.T) {
 		t.Errorf("consumer failed: %v", err)
 	}))
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
-	for _, contract := range []string{"events.ItemStocked", "events.WarehouseClosed"} {
-		if err := bus.Subscribe(context.Background(), craftevents.Subscription{
-			Event: contract, Consumer: "Probe",
+	for _, contract := range []string{events.ItemStockedContract, events.WarehouseClosedContract} {
+		if err := bus.Register(craftevents.Subscription{
+			Event: contract, Consumer: "Probe", Group: "probe",
 			Handle: func(_ context.Context, msg *craftevents.Message) error {
 				mu.Lock()
 				got = append(got, msg.Event+"|"+msg.Key)
@@ -360,20 +376,23 @@ func TestEventBatchMixesContracts(t *testing.T) {
 				return nil
 			},
 		}); err != nil {
-			t.Fatalf("subscribe %s: %v", contract, err)
+			t.Fatalf("register %s: %v", contract, err)
 		}
 	}
-
-	evts := svccontext.NewEvents(bus)
-	b := evts.Batch()
-	b.InventoryService().ItemStocked(&eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "now"}, Quantity: 3},
-		craftevents.WithKey("sku-1"))
-	b.InventoryService().WarehouseClosed(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth},
-		craftevents.WithKey("1"))
-	if b.Len() != 2 {
-		t.Fatalf("batch holds %d events, want 2", b.Len())
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
 	}
-	if err := b.Publish(context.Background()); err != nil {
+
+	if err := bus.PublishAll(context.Background(), []craftevents.Envelope{
+		{
+			Event: events.ItemStockedContract, Key: "sku-1",
+			Payload: &eventtypes.ItemStocked{InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "now"}, Quantity: 3},
+		},
+		{
+			Event: events.WarehouseClosedContract, Key: "1",
+			Payload: &eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth},
+		},
+	}); err != nil {
 		t.Fatalf("publish batch: %v", err)
 	}
 	tr.Drain()
@@ -394,24 +413,24 @@ func TestEventBatchMixesContracts(t *testing.T) {
 	}
 }
 
-// One consumer group spanning several contracts: AnalyticsService's
-// service-level @consumerGroup puts CountStocked and CountDispatched in
-// one group, and each still receives the contract it declared - the
-// group is the unit of scaling, not a filter.
+// One group spanning several contracts: AnalyticsService's two other
+// consumes share a group, and each still receives the contract it
+// declared - the group is the unit of scaling, not a filter. TrackTier
+// takes the per-consume override, so it joins another.
 func TestOneGroupSpansSeveralContracts(t *testing.T) {
-	svc, transport := bootEvents(t)
-	if err := svc.Events.InventoryService.PublishItemStocked(context.Background(), &eventtypes.ItemStocked{
+	svc, bus, transport := bootEvents(t)
+	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-3", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        2,
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := svc.Events.InventoryService.PublishShipmentDispatched(context.Background(), &eventtypes.ShipmentDispatched{
+	if err := events.ShipmentDispatched.Publish(context.Background(), bus, &eventtypes.ShipmentDispatched{
 		ShipmentID: "shp-3", Carrier: "acme",
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := svc.Events.InventoryService.PublishTierPromoted(context.Background(), &eventtypes.TierPromoted{
+	if err := events.TierPromoted.Publish(context.Background(), bus, &eventtypes.TierPromoted{
 		Tier: xshared.XTierGold, MemberID: "mem-1",
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -425,44 +444,57 @@ func TestOneGroupSpansSeveralContracts(t *testing.T) {
 	}
 }
 
-// The group is resolved once, in the design, and emitted verbatim. The
-// derived form qualifies the consumer with its package and service;
-// @group (output layout) and the extend block that declared a consumer
-// contribute nothing to it.
-func TestSubscriptionGroupsAreTheDesignedOnes(t *testing.T) {
-	want := map[string]string{
-		"SendStockAlert":      "eventsubs-NotificationService-SendStockAlert",
-		"AuditReconciliation": "eventsubs-NotificationService-AuditReconciliation",
-		"NotifyDispatch":      "eventsubs-NotificationService-NotifyDispatch",
-		"TrackStocktake":      "eventsubs-NotificationService-TrackStocktake",
+// The groups are the APPLICATION's, and no generated file states what
+// this deployable consumes any more - so the deployable pins its own
+// shape with a golden plan. A consume that moved group, a handler set
+// that stopped being registered, or a contract renamed underneath one all
+// show up here as a diff.
+func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
+	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
+	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext(), nil); err != nil {
+		t.Fatalf("register consumers: %v", err)
 	}
-	bus := craftevents.New(craftevents.WithCodec(codecjson.Codec{}))
-	for _, sub := range notifyevents.Subscriptions(bus, apptransport.NewNotificationServiceConsumers(svccontext.NewServiceContext())) {
-		if got := sub.Group; got != want[sub.Consumer] {
-			t.Errorf("%s group = %q, want %q", sub.Consumer, got, want[sub.Consumer])
-		}
+	got, err := json.MarshalIndent(bus.Plan(), "", "  ")
+	if err != nil {
+		t.Fatal(err)
 	}
+	got = append(got, '\n')
 
-	// OpsService carries @group("ops"), which decides only where its files
-	// land; RecordClosure joins the same group it would without it.
-	for _, sub := range opsevents.Subscriptions(bus, apptransport.NewOpsServiceConsumers(svccontext.NewServiceContext())) {
-		if got, want := sub.Group, "eventsubs-OpsService-RecordClosure"; got != want {
-			t.Errorf("%s group = %q, want %q", sub.Consumer, got, want)
+	golden := filepath.Join("testdata", "plan.json")
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(golden, got, 0o644); err != nil {
+			t.Fatal(err)
 		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("bus.Plan() drifted from %s:\n%s", golden, got)
 	}
 }
 
-// panickingOps is an OpsService handler set that panics, standing in for
-// the bug an application ships by accident.
-type panickingOps struct{}
-
-func (panickingOps) RecordClosure(context.Context, *eventtypes.WarehouseClosed) error {
-	panic("consumer exploded")
+// A service left without a group is refused at registration, naming the
+// service: a group is where a consumer resumes, so it is the
+// application's to choose rather than something to fall back into.
+func TestRegisterRefusesAServiceWithNoGroup(t *testing.T) {
+	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
+	err := eventsubs.RegisterOpsServiceHandler(bus, consumers.Ops{}, nil, eventsubs.OpsServiceGroups{})
+	if err == nil {
+		t.Fatal("registered a handler set with no group")
+	}
+	if !strings.Contains(err.Error(), "OpsService") {
+		t.Errorf("the refusal does not name the service: %v", err)
+	}
+	if got := bus.Plan().Groups; len(got) != 0 {
+		t.Errorf("a refused registration left %d group(s) on the bus", len(got))
+	}
 }
 
 // A panicking consumer must not take the process down - the API and every
 // other consumer run in the same binary. The guard is on the subscription
-// the Bus registers, so the generated consumer inherits it.
+// the Bus registers, so every registered handler inherits it.
 func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
 	var mu sync.Mutex
 	var failed []error
@@ -472,14 +504,17 @@ func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
 		mu.Unlock()
 	}))
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
-	if err := bus.SubscribeAll(context.Background(), opsevents.Subscriptions(bus, panickingOps{})); err != nil {
-		t.Fatalf("subscribe: %v", err)
+	if err := eventsubs.RegisterOpsServiceHandler(bus, panickingOps{}, nil,
+		eventsubs.OpsServiceGroups{Default: consumers.OpsGroup}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 
-	publisher := inventoryevents.NewPublisher(bus)
 	closed := &eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth}
 	for i := 0; i < 2; i++ {
-		if err := publisher.PublishWarehouseClosed(context.Background(), closed); err != nil {
+		if err := events.WarehouseClosed.Publish(context.Background(), bus, closed); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 	}
@@ -496,9 +531,17 @@ func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
 	if !errors.As(failed[0], &pe) {
 		t.Fatalf("recovered panic is not a *PanicError: %#v", failed[0])
 	}
-	if pe.Consumer != "RecordClosure" || pe.Group != "eventsubs-OpsService-RecordClosure" {
-		t.Errorf("panic error does not name the designed subscription: %+v", pe)
+	if pe.Consumer != "RecordClosure" || pe.Group != consumers.OpsGroup {
+		t.Errorf("panic error does not name the registered subscription: %+v", pe)
 	}
+}
+
+// panickingOps is an OpsService handler set that panics, standing in for
+// the bug an application ships by accident.
+type panickingOps struct{}
+
+func (panickingOps) RecordClosure(context.Context, *eventtypes.WarehouseClosed) error {
+	panic("consumer exploded")
 }
 
 // A payload that does not decode never reaches logic, and the error says
@@ -506,22 +549,15 @@ func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
 func TestUndecodablePayloadNeverReachesLogic(t *testing.T) {
 	var mu sync.Mutex
 	var failed error
-	transport := memory.New(memory.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
+	svc, _, transport := bootEventsWith(t, nil, func(_ craftevents.Subscription, err error) {
 		mu.Lock()
 		failed = err
 		mu.Unlock()
-	}))
-	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
-	svc := svccontext.NewServiceContext()
-	svc.Events = svccontext.NewEvents(bus)
-	wireConsumeMiddleware(&svc.Events.Consume)
-	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
-		t.Fatalf("start consumers: %v", err)
-	}
+	})
 	// Published by something that is not this design - a truncated body
 	// under a contract craftgo consumes.
 	if err := transport.Publish(context.Background(), &craftevents.Message{
-		Event:    "events.WarehouseClosed",
+		Event:    events.WarehouseClosedContract,
 		Payload:  []byte("{"),
 		Metadata: map[string]string{craftevents.MetaCodec: "json"},
 	}); err != nil {

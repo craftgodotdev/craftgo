@@ -13,19 +13,16 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Register attaches the design to srv: every HTTP route it declares, and
-// every event consumer. The body varies with the design; this signature
-// does not, so main.go - written once - never needs editing.
+// Register attaches the design to srv: every HTTP route it declares. The
+// body varies with the design; this signature does not, so main.go -
+// written once - never needs editing.
 //
-// The returned shutdown stops delivery; call it beside srv.Stop. A design
-// with no consumer returns a no-op.
+// The returned shutdown runs beside srv.Stop.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	routes.RegisterAll(srv, svcCtx)
 	// An HTTP middleware the design applies but nothing wired is skipped
 	// by the chain rather than called, so the guarantee would be missing
 	// with nothing to notice. Fail here instead, naming the line to add.
-	// The consume half is checked in SubscribeAll below, which is the
-	// call a consumer deployable makes without reaching this one.
 	if svcCtx.AuthRequired == nil {
 		return nil, errors.New("wiring: the design declares `middleware AuthRequired` and CatalogService.CreateProduct runs it, but svcCtx.AuthRequired is nil - assign `svc.AuthRequired = middleware.NewAuthRequiredMiddleware(/* args */)` in main.go")
 	}

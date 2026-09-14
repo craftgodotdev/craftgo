@@ -10,29 +10,19 @@ import (
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes"
 
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport"
-
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Register attaches the design to srv: every HTTP route it declares, and
-// every event consumer. The body varies with the design; this signature
-// does not, so main.go - written once - never needs editing.
+// Register attaches the design to srv: every HTTP route it declares. The
+// body varies with the design; this signature does not, so main.go -
+// written once - never needs editing.
 //
-// The returned shutdown stops delivery; call it beside srv.Stop. A design
-// with no consumer returns a no-op.
+// The returned shutdown runs beside srv.Stop.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	routes.RegisterAll(srv, svcCtx)
-	// A publisher off the zero Events is a nil *Publisher, whose deref
-	// beats the runtime's own nil guard.
-	if svcCtx.Events.Bus == nil {
-		return nil, errors.New("wiring: the design declares 10 event(s) and 13 consumer(s) but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
-	}
 	// An HTTP middleware the design applies but nothing wired is skipped
 	// by the chain rather than called, so the guarantee would be missing
 	// with nothing to notice. Fail here instead, naming the line to add.
-	// The consume half is checked in SubscribeAll below, which is the
-	// call a consumer deployable makes without reaching this one.
 	if svcCtx.Audit == nil {
 		return nil, errors.New("wiring: the design declares `middleware Audit` and AccountService.Logout runs it, but svcCtx.Audit is nil - assign `svc.Audit = middleware.NewAuditMiddleware(/* args */)` where you build the ServiceContext")
 	}
@@ -54,13 +44,5 @@ func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.Servic
 	if svcCtx.Timing == nil {
 		return nil, errors.New("wiring: the design declares `middleware Timing` and RawModesService.PtPlain runs it, but svcCtx.Timing is nil - assign `svc.Timing = middleware.NewTimingMiddleware(/* args */)` where you build the ServiceContext")
 	}
-	deliver, stop := context.WithCancel(ctx)
-	if err := transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx); err != nil {
-		stop()
-		return nil, err
-	}
-	return func(context.Context) error {
-		stop()
-		return nil
-	}, nil
+	return func(context.Context) error { return nil }, nil
 }

@@ -1,0 +1,30 @@
+// guarded.craftgo is a second service in the eventsubs package, here for
+// what the application wraps around a handler: its three consumes are
+// registered behind an `events.Chain` the deployable builds, so the
+// fixture has a handler interface whose delivery is decorated without
+// anything in the design saying so.
+package eventsubs
+
+service GuardedService {
+	@doc("Registered behind the deployable's chain; the retry sits nearest the handler.")
+	consume GuardedStock {
+		event events.ItemStocked
+	}
+
+	@doc("A second consume of the same service, registered from the same call.")
+	consume BareStock {
+		event events.StocktakeStarted
+	}
+}
+
+// An extend block's decorators reach the members whose level they fit, so
+// this block's @doc and @deprecated have to be accepted on its CONSUMER
+// the way they already are on a block's methods. Nothing else in the
+// fixture set declares a consumer that way.
+@doc("Inherited from the extend block.")
+@deprecated
+extend service GuardedService {
+	consume InheritedStock {
+		event events.WarehouseClosed
+	}
+}

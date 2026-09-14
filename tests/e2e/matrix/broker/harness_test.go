@@ -26,81 +26,78 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	craftkafka "github.com/craftgodotdev/craftgo/pkg/events/kafka"
 
-	analyticsevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/analytics_service"
-	craftsvcevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/craft"
-	inventoryevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/inventory_service"
-	ledgerevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/ledger_service"
-	notificationevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/notification_service"
-	opsevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/ops_service"
-	apptransport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
 // The contracts this package addresses by topic, read off the generated
-// publishers rather than retyped. The default mapping is the contract
+// descriptors rather than retyped. The default mapping is the contract
 // name unchanged, so a contract with no topic cannot be published - which
 // is how a partial batch failure is produced without a transport written
 // to fail.
 const (
-	itemStocked     = inventoryevents.ItemStockedContract
-	warehouseClosed = inventoryevents.WarehouseClosedContract
-	tierPromoted    = inventoryevents.TierPromotedContract
-	forged          = craftsvcevents.ForgedContract
+	itemStocked     = events.ItemStockedContract
+	warehouseClosed = events.WarehouseClosedContract
+	tierPromoted    = events.TierPromotedContract
+	forged          = events.ForgedContract
 )
 
 // trackTier is the consumer of events.TierPromoted whose deliveries the
 // disposition test reads.
 const trackTier = "TrackTier"
 
-// soleConsumerOf fails unless exactly one generated subscription consumes
-// contract. The disposition test reads a delivery SEQUENCE, which is only
-// unambiguous while one goroutine produces it - so the premise is checked
-// against the design rather than written down beside it, where a second
-// consumer would leave it stale and the test reading interleavings.
-func soleConsumerOf(t *testing.T, contract string) craftevents.Subscription {
+// planned is what this deployable registers, read off a bus with no
+// transport: a subscription's identity is decided at registration, before
+// any broker is involved.
+func planned(t *testing.T) craftevents.Plan {
 	t.Helper()
-	var found []craftevents.Subscription
-	for _, subs := range generatedSubscriptions() {
-		for _, sub := range subs {
-			if sub.Event == contract {
-				found = append(found, sub)
+	bus := craftevents.New(craftevents.WithCodec(codecjson.Codec{}))
+	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext(), nil); err != nil {
+		t.Fatalf("register consumers: %v", err)
+	}
+	return bus.Plan()
+}
+
+// soleConsumerOf fails unless exactly one registered subscription consumes
+// contract, and returns its group. The disposition test reads a delivery
+// SEQUENCE, which is only unambiguous while one goroutine produces it -
+// so the premise is checked against the registration rather than written
+// down beside it, where a second consumer would leave it stale and the
+// test reading interleavings.
+//
+// A stale group name here would configure a group nobody joins - a share
+// group reads from the end of the topic unless its config says otherwise
+// - and the redelivery test would then time out after sixty seconds with
+// a message a genuine transport regression produces word for word.
+// Reading it fails in no time at all, naming itself.
+func soleConsumerOf(t *testing.T, contract string) (craftevents.Group, string) {
+	t.Helper()
+	var groups []craftevents.Group
+	var names []string
+	for _, g := range planned(t).Groups {
+		for _, c := range g.Consumers {
+			if c.Event == contract {
+				groups = append(groups, g.Name)
+				names = append(names, c.Consumer)
 			}
 		}
 	}
-	if len(found) != 1 {
-		t.Fatalf("%d consumers of %s in this design, want exactly 1 - a delivery sequence read off several is not a sequence", len(found), contract)
+	if len(groups) != 1 {
+		t.Fatalf("%d consumers of %s in this deployable, want exactly 1 - a delivery sequence read off several is not a sequence", len(groups), contract)
 	}
-	return found[0]
+	return groups[0], names[0]
 }
 
-// generatedSubscriptions is every subscription set the design generates,
-// built with no bus and no handler set: nothing here calls Handle, and
-// the identity of a subscription is decided before either is needed.
-func generatedSubscriptions() [][]craftevents.Subscription {
-	return [][]craftevents.Subscription{
-		inventoryevents.Subscriptions(nil, nil),
-		analyticsevents.Subscriptions(nil, nil),
-		notificationevents.Subscriptions(nil, nil),
-		opsevents.Subscriptions(nil, nil),
-		ledgerevents.Subscriptions(nil, nil),
-	}
-}
-
-// tierGroup is the group @consumerGroup put TrackTier in, read off the
-// generated subscription rather than retyped. A share group reads from
-// the end of the topic unless its config says otherwise, so a stale name
-// here would configure a group nobody joins - and the redelivery test
-// would then time out after sixty seconds with a message a genuine
-// transport regression produces word for word. Reading it fails in no
-// time at all, naming itself.
+// tierGroup is the group this deployable puts TrackTier in.
 func tierGroup(t *testing.T) string {
 	t.Helper()
-	sub := soleConsumerOf(t, tierPromoted)
-	if sub.Consumer != trackTier {
-		t.Fatalf("%s is consumed by %s, not %s", tierPromoted, sub.Consumer, trackTier)
+	group, consumer := soleConsumerOf(t, tierPromoted)
+	if consumer != trackTier {
+		t.Fatalf("%s is consumed by %s, not %s", tierPromoted, consumer, trackTier)
 	}
-	return sub.GroupName()
+	return string(group)
 }
 
 // cluster starts an in-memory broker seeding exactly the topics named.
@@ -203,10 +200,10 @@ func (r *reported) dump(t *testing.T) {
 	}
 }
 
-// boot wires the GENERATED publishers and consumers onto a Kafka
-// transport. subscribe is false for a publish-only test, so nothing
-// consumes a topic that is deliberately missing.
-func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Option, busopts []craftevents.Option) *svccontext.ServiceContext {
+// boot wires this deployable's handler sets onto a Kafka transport.
+// subscribe is false for a publish-only test, so nothing consumes a topic
+// that is deliberately missing.
+func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Option, busopts []craftevents.Option) (*svccontext.ServiceContext, *craftevents.Bus) {
 	t.Helper()
 	// Registered first, so it runs last: after the read loops are
 	// cancelled and the transport is closed, with everything they said
@@ -234,31 +231,25 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 		craftevents.WithCodec(codecjson.Codec{}),
 	}, busopts...)...)
 	svc := svccontext.NewServiceContext()
-	svc.Events = svccontext.NewEvents(bus)
-	// SubscribeAll refuses a container missing a consume middleware the
-	// design applies. These tests are about the broker adapters, not the
-	// chain, so the values are pass-throughs.
-	passthrough := func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
-		return next
-	}
-	svc.Events.Consume.Settle = passthrough
-	svc.Events.Consume.Attempt = passthrough
 	if subscribe {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
-		if err := apptransport.SubscribeAll(ctx, bus, svc); err != nil {
-			t.Fatalf("generated SubscribeAll: %v", err)
+		if err := consumers.RegisterAll(bus, svc, nil); err != nil {
+			t.Fatalf("register consumers: %v", err)
+		}
+		if err := bus.Start(ctx); err != nil {
+			t.Fatalf("start consumers: %v", err)
 		}
 	}
-	return svc
+	return svc, bus
 }
 
 // counts renders how many payloads each consumer has been handed, so a
 // test joins on a reading it can also print when the reading is wrong.
-func counts(svc *svccontext.ServiceContext, consumers ...string) func() string {
+func counts(svc *svccontext.ServiceContext, names ...string) func() string {
 	return func() string {
-		parts := make([]string, 0, len(consumers))
-		for _, c := range consumers {
+		parts := make([]string, 0, len(names))
+		for _, c := range names {
 			parts = append(parts, fmt.Sprintf("%s=%d", c, len(svc.DeliveredTo(c))))
 		}
 		return strings.Join(parts, " ")
@@ -269,9 +260,9 @@ func counts(svc *svccontext.ServiceContext, consumers ...string) func() string {
 // outcome rather than sleeping for one.
 //
 // A timeout names the last reading. Without it a redelivery that never
-// came, a consumer group that drifted out of the design, and a bus that
-// lost the ask all end the same sixty seconds of silence, and the message
-// is the only thing that could have told them apart.
+// came, a consumer group that drifted out of the deployable, and a bus
+// that lost the ask all end the same sixty seconds of silence, and the
+// message is the only thing that could have told them apart.
 func waitFor(t *testing.T, within time.Duration, what, want string, state func() string) {
 	t.Helper()
 	deadline := time.Now().Add(within)

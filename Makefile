@@ -116,7 +116,7 @@ golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not insta
 E2E_DIRS := tests/e2e/matrix
 
 .PHONY: gen
-gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce, taskflow).
+gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce, taskflow, brokers).
 	@for d in $(EXAMPLE_PROJECTS); do \
 		echo "→ gen $$d"; ./$(BIN) gen -f "$$d/design" -c "$$d" || exit 1; \
 	done
@@ -128,7 +128,7 @@ gen-go: ## Regenerate every example mini-project without rebuilding the CLI.
 	done
 
 .PHONY: gen-e2e
-gen-e2e: ## Regenerate every manifest in the e2e fixtures - the design's own, and each deployable that projects it.
+gen-e2e: ## Regenerate every manifest in the e2e fixtures.
 	@for d in $(E2E_DIRS); do \
 		for m in $$(find "$$d" -name craftgo.design.yaml | sort); do \
 			mdir=$$(dirname "$$m"); \
@@ -154,6 +154,14 @@ example-raw: ## Run the raw passthrough example server.
 .PHONY: example-ecommerce
 example-ecommerce: ## Run the ecommerce showcase server.
 	cd example/ecommerce && $(GO) run .
+
+.PHONY: example-taskflow
+example-taskflow: ## Run the taskflow reference application.
+	cd example/taskflow && $(GO) run .
+
+.PHONY: example-brokers
+example-brokers: ## Run the brokers event example over the in-process transport.
+	cd example/brokers && $(GO) run . -transport memory
 
 .PHONY: gen-diff
 gen-diff: gen-all ## Re-gen examples + e2e and fail if anything changed (drift guard for CI).
@@ -206,7 +214,7 @@ clean: ## Remove build artefacts and coverage files.
 clean-gen: ## Remove regenerable artefacts under every example mini-project + e2e fixture (transport, routes, types, docs).
 	@for d in $(EXAMPLE_PROJECTS) $(E2E_DIRS); do \
 		echo "→ clean $$d"; \
-		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/docs"; \
+		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/internal/events" "$$d/docs"; \
 	done
 
 # ---- one-shot CI surface -------------------------------------------------

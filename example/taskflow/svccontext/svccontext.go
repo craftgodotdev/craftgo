@@ -6,13 +6,14 @@
 // clients, etc. as fields here and read them from the receiver in
 // generated logic stubs.
 //
-// The embedded `Middlewares` and `Events` structs are regenerated on
-// every `craftgo gen` (see `middlewares.go` / `events.go` next to this
-// file). Don't edit them - declare middlewares and events in `.craftgo`
-// files and re-run gen.
+// The embedded `Middlewares` struct is regenerated on every `craftgo gen`
+// (see `middlewares.go` next to this file). Don't edit it - declare
+// middlewares in `.craftgo` files and re-run gen.
 package svccontext
 
 import (
+	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
+
 	"github.com/craftgodotdev/craftgo/example/taskflow/config"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/activity"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/store"
@@ -38,11 +39,12 @@ type ServiceContext struct {
 	// by name.
 	Middlewares
 
-	// Events is the codegen-managed struct of typed publishers, one per
-	// service that declares an `event`. main.go binds them to the bus at
-	// startup; logic publishes through
-	// `svcCtx.Events.<Service>.Publish<Event>`.
-	Events Events
+	// Bus is the event bus main.go built. Logic publishes through the
+	// generated contract descriptor, which takes the bus at the call:
+	// `tasks.TaskCreated.Publish(ctx, svcCtx.Bus, payload)`. A descriptor
+	// holds no bus of its own, so one contract library serves every
+	// deployable whatever each is wired to.
+	Bus *craftevents.Bus
 
 	// Activity is the in-memory project activity feed the event
 	// consumers append to. A real deployment would write to the same

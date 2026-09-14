@@ -4,14 +4,12 @@
     "../../design"
   ],
   "files": [
-    "activity_service_consumers.go",
     "admin/create_token.go",
     "admin/list_tokens.go",
     "admin/revoke_token.go",
     "admin/stats.go",
     "attachment_service/list_attachments.go",
     "attachment_service/upload_attachment.go",
-    "events.go",
     "project/v1/archive_project.go",
     "project/v1/create_project.go",
     "project/v1/get_project.go",

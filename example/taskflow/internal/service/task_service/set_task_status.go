@@ -5,6 +5,7 @@ package shared
 import (
 	"context"
 
+	taskevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
@@ -48,7 +49,7 @@ func (l *SetTaskStatusService) SetTaskStatus(req *types.SetTaskStatusReq) (*type
 	if from == task.Status {
 		return task, nil
 	}
-	if err := l.svcCtx.Events.TaskService.PublishTaskStatusChanged(l.ctx, &types.TaskStatusChanged{
+	if err := taskevents.TaskStatusChanged.Publish(l.ctx, l.svcCtx.Bus, &types.TaskStatusChanged{
 		TaskID:    task.ID,
 		ProjectID: task.ProjectID,
 		From:      from,

@@ -9,16 +9,17 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/config"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/activity"
 	taskservice "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/task_service"
-	apptransport "github.com/craftgodotdev/craftgo/example/taskflow/internal/transport"
 	project "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
 	tasks "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
 // bootEvents builds the wiring main.go builds: one bus over the
-// in-process transport, the generated publishers on the ServiceContext,
-// and every declared consumer subscribed.
+// in-process transport, the bus on the ServiceContext so logic can
+// publish through the generated descriptors, and the activity handler
+// set registered and started.
 func bootEvents(t *testing.T) (*svccontext.ServiceContext, *memory.Transport) {
 	t.Helper()
 	transport := memory.New(memory.WithErrorHandler(func(sub craftevents.Subscription, _ *craftevents.Message, err error) {
@@ -29,8 +30,11 @@ func bootEvents(t *testing.T) (*svccontext.ServiceContext, *memory.Transport) {
 		craftevents.WithCodec(codecjson.Codec{}),
 	)
 	svc := svccontext.NewServiceContext(&config.Config{})
-	svc.Events = svccontext.NewEvents(bus)
-	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
+	svc.Bus = bus
+	if err := activity.Register(bus, svc.Activity); err != nil {
+		t.Fatalf("register consumers: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
 		t.Fatalf("start consumers: %v", err)
 	}
 	return svc, transport

@@ -10,7 +10,6 @@ events:
   targets:
     - lang: go
       out: ./internal/events
-  asyncapi: ./docs/asyncapi.yaml
 openapi:
   title:    Cornercase API
   version:  1.0.0

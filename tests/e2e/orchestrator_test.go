@@ -64,8 +64,8 @@ func discoverScenarios(t *testing.T) []string {
 }
 
 // discoverManifests returns every manifest folder inside a scenario, in
-// walk order. A scenario holds its design's own manifest and one per
-// deployable that projects it, and each is generated in its own right.
+// walk order. A scenario may hold more than one - a deployable of its own
+// beside the design's - and each is generated in its own right.
 func discoverManifests(t *testing.T, fixture string) []string {
 	t.Helper()
 	var out []string

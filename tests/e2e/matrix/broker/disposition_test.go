@@ -10,11 +10,12 @@ import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	craftkafka "github.com/craftgodotdev/craftgo/pkg/events/kafka"
 
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
 // attempts records what each delivery looked like to a middleware
-// wrapping a generated consumer.
+// wrapping a registered handler.
 type attempts struct {
 	mu   sync.Mutex
 	rows []attempt
@@ -44,18 +45,19 @@ func (a *attempts) of(consumer string) []attempt {
 }
 
 // A middleware asking for a message back gets it back, and one giving a
-// message up is not asked again - through the GENERATED consumer, which
+// message up is not asked again - through the GENERATED descriptor, which
 // is the part a transport test cannot reach.
 //
 // The decision is written on the delivery, and between the writing and
-// the broker reading it sit the generated decode-validate-dispatch
+// the broker reading it sit the descriptor's decode-validate-dispatch
 // wrapper and both of the bus's recover frames. A wrapper that handed the
 // handler a different message, or a recover that cleared the decision,
 // would lose the ask with nothing to see it: every message the chain
 // meant to retry would be taken as done.
 //
 // The sequence below is one goroutine's, which soleConsumerOf checks
-// against the design rather than this comment asserting it.
+// against what this deployable registers rather than this comment
+// asserting it.
 func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 	addrs := cluster(t, itemStocked, warehouseClosed, forged, tierPromoted)
 	shareFromEarliest(t, addrs, tierGroup(t))
@@ -84,13 +86,13 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 
 	// Published through a transport of its own: the consuming one is in
 	// share mode, and a producer needs nothing from it.
-	publisher := boot(t, addrs, false, nil, nil)
-	if err := publisher.Events.InventoryService.PublishTierPromoted(context.Background(),
+	_, publisher := boot(t, addrs, false, nil, nil)
+	if err := events.TierPromoted.Publish(context.Background(), publisher,
 		&eventtypes.TierPromoted{Tier: 2, MemberID: "mem-1"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
-	svc := boot(t, addrs, true,
+	svc, _ := boot(t, addrs, true,
 		[]craftkafka.Option{craftkafka.WithShareGroup(), craftkafka.WithMaxDeliveries(0)},
 		[]craftevents.Option{craftevents.WithMiddleware(decide)})
 
@@ -110,7 +112,7 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 	}
 	got := svc.DeliveredTo(trackTier)
 	if len(got) != 2 {
-		t.Fatalf("the generated consumer ran %d times", len(got))
+		t.Fatalf("the handler ran %d times", len(got))
 	}
 	first, _ := got[0].(*eventtypes.TierPromoted)
 	second, _ := got[1].(*eventtypes.TierPromoted)

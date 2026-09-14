@@ -1,0 +1,91 @@
+{
+  "groups": [
+    {
+      "name": "analytics-tier-worker",
+      "consumers": [
+        {
+          "event": "events.TierPromoted",
+          "consumer": "TrackTier"
+        }
+      ]
+    },
+    {
+      "name": "analytics-worker",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "CountStocked"
+        },
+        {
+          "event": "events.ShipmentDispatched",
+          "consumer": "CountDispatched"
+        }
+      ]
+    },
+    {
+      "name": "matrix-guarded",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "GuardedStock"
+        },
+        {
+          "event": "events.StocktakeStarted",
+          "consumer": "BareStock"
+        },
+        {
+          "event": "events.WarehouseClosed",
+          "consumer": "InheritedStock"
+        }
+      ]
+    },
+    {
+      "name": "matrix-inventory",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "MirrorStock"
+        }
+      ]
+    },
+    {
+      "name": "matrix-ledger",
+      "consumers": [
+        {
+          "event": "payments.settled.v1",
+          "consumer": "RecordSettlement"
+        }
+      ]
+    },
+    {
+      "name": "matrix-notifications",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "SendStockAlert"
+        },
+        {
+          "event": "events.ShipmentDispatched",
+          "consumer": "NotifyDispatch"
+        },
+        {
+          "event": "events.StocktakeStarted",
+          "consumer": "TrackStocktake"
+        },
+        {
+          "event": "legacy.inventory.reconciled.v2",
+          "consumer": "AuditReconciliation"
+        }
+      ]
+    },
+    {
+      "name": "matrix-ops",
+      "consumers": [
+        {
+          "event": "events.WarehouseClosed",
+          "consumer": "RecordClosure"
+        }
+      ]
+    }
+  ]
+}

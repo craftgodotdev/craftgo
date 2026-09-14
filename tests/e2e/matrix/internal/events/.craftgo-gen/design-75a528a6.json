@@ -1,18 +1,14 @@
 {
   "design": "../../design",
   "manifests": [
-    "../../deploy/notifier/design",
     "../../design"
   ],
   "files": [
-    "analytics_service/consumers.go",
-    "craft/publisher.go",
-    "guarded_service/consumers.go",
-    "inventory_service/consumers.go",
-    "inventory_service/publisher.go",
-    "ledger_service/consumers.go",
-    "notification_service/consumers.go",
-    "ops_service/consumers.go",
-    "x_refs_service/publisher.go"
+    "events/events.go",
+    "events/handlers.go",
+    "eventsubs/handlers.go",
+    "upstream/events.go",
+    "upstream/handlers.go",
+    "xrefs/events.go"
   ]
 }

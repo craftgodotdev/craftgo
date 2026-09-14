@@ -16,4 +16,3 @@ events:
   targets:
     - lang: go
       out: ./internal/events
-  asyncapi: ./docs/asyncapi.yaml

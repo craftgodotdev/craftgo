@@ -1,7 +1,6 @@
 {
   "design": "../../design",
   "manifests": [
-    "../../deploy/notifier/design",
     "../../design"
   ],
   "files": [

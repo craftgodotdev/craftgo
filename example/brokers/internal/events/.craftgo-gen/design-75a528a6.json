@@ -4,9 +4,10 @@
     "../../design"
   ],
   "files": [
-    "analytics_service/consumers.go",
-    "ledger_service/consumers.go",
-    "notification_service/consumers.go",
-    "order_service/publisher.go"
+    "analytics/handlers.go",
+    "ledger/handlers.go",
+    "notifications/handlers.go",
+    "orders/events.go",
+    "payments/events.go"
   ]
 }

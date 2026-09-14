@@ -1,7 +1,8 @@
 // Command brokers wires the generated event code to a real broker.
 //
-// The design, the publisher and the consumer are identical whichever
-// broker runs underneath - only the transport line changes:
+// The design, the contract descriptors and the handler interfaces are
+// identical whichever broker runs underneath - only the transport line
+// changes:
 //
 //	go run . -transport memory
 //	go run . -transport nats  -addr nats://127.0.0.1:4222
@@ -30,10 +31,11 @@ import (
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
 	craftlog "github.com/craftgodotdev/craftgo/pkg/log"
 
+	"github.com/craftgodotdev/craftgo/example/brokers/internal/consumers"
+	ordersevents "github.com/craftgodotdev/craftgo/example/brokers/internal/events/orders"
+	paymentsevents "github.com/craftgodotdev/craftgo/example/brokers/internal/events/payments"
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/orders"
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/payments"
-	"github.com/craftgodotdev/craftgo/example/brokers/internal/wiring"
-	"github.com/craftgodotdev/craftgo/example/brokers/svccontext"
 )
 
 func main() {
@@ -61,17 +63,21 @@ func main() {
 		craftevents.WithMiddleware(logging.AccessLog(craftlog.Slog())),
 	)
 
-	svc := &svccontext.ServiceContext{Events: svccontext.NewEvents(bus)}
-	// One call attaches the design. This example declares no HTTP method,
-	// so there is no server to hand over - Register subscribes the
-	// consumers and hands back the shutdown.
-	shutdownWiring, err := wiring.Register(ctx, nil, svc)
-	if err != nil {
-		log.Fatalf("wire services: %v", err)
+	// The design says which handler interfaces exist; this binary says
+	// which of them it runs and under what group. Registration records
+	// them, Start hands the whole batch to the transport at once - a
+	// broker that binds one identity to several contracts cannot register
+	// a group one contract at a time.
+	if err := consumers.RegisterAll(bus, nil); err != nil {
+		log.Fatalf("register consumers: %v", err)
 	}
-	defer func() { _ = shutdownWiring(context.Background()) }()
+	deliver, stopDelivery := context.WithCancel(ctx)
+	defer stopDelivery()
+	if err := bus.Start(deliver); err != nil {
+		log.Fatalf("start consumers: %v", err)
+	}
 
-	// orders.Placed has three consumers in three services, so each of the
+	// orders.Placed has three consumers in three groups, so each of the
 	// two publishes below is delivered three times - once per group.
 	//
 	// WithKey is what puts one order's messages in one Kafka partition, so
@@ -79,22 +85,33 @@ func main() {
 	// It is passed here, at the publish, because which entity a message
 	// belongs to is a property of the message and not of the contract.
 	placed := &orders.OrderPlaced{OrderID: "order-1", Total: 4200}
-	if err := svc.Events.OrderService.PublishPlaced(ctx, placed,
+	if err := ordersevents.Placed.Publish(ctx, bus, placed,
 		craftevents.WithKey(string(placed.OrderID))); err != nil {
 		log.Fatalf("publish: %v", err)
 	}
-	b := svc.Events.Batch()
-	b.OrderService().Placed(&orders.OrderPlaced{OrderID: "order-2", Total: 900}, craftevents.WithKey("order-2"))
-	b.OrderService().Shipped(&orders.OrderShipped{OrderID: "order-2", Carrier: "dhl"}, craftevents.WithKey("order-2"))
-	if err := b.Publish(ctx); err != nil {
+	// A batch mixing contracts, which is the shape an outbox drains: it
+	// reaches the transport in one call, and a partial failure names the
+	// entries that did not go out by index.
+	if err := bus.PublishAll(ctx, []craftevents.Envelope{
+		{
+			Event:   ordersevents.PlacedContract,
+			Key:     "order-2",
+			Payload: &orders.OrderPlaced{OrderID: "order-2", Total: 900},
+		},
+		{
+			Event:   ordersevents.ShippedContract,
+			Key:     "order-2",
+			Payload: &orders.OrderShipped{OrderID: "order-2", Carrier: "dhl"},
+		},
+	}); err != nil {
 		log.Fatalf("publish batch: %v", err)
 	}
 
-	// payments.Settled is declared outside any service, so craftgo
-	// generated no publisher for it - this design only consumes it. To
-	// exercise the consumer without the upstream platform, publish it on
-	// the bus directly, which is what that platform would do.
-	if err := bus.Publish(ctx, "payments.settled.v1",
+	// payments.Settled is declared outside any service: this design
+	// consumes it and the payments platform publishes it. The descriptor
+	// is generated all the same - a contract is publishable by whoever
+	// holds it - so standing in for that platform is one call.
+	if err := paymentsevents.Settled.Publish(ctx, bus,
 		&payments.Settlement{OrderID: "order-1", Amount: 4200},
 		craftevents.WithKey("order-1")); err != nil {
 		log.Fatalf("publish upstream: %v", err)

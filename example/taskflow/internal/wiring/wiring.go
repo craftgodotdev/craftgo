@@ -10,29 +10,19 @@ import (
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/routes"
 
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/transport"
-
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// Register attaches the design to srv: every HTTP route it declares, and
-// every event consumer. The body varies with the design; this signature
-// does not, so main.go - written once - never needs editing.
+// Register attaches the design to srv: every HTTP route it declares. The
+// body varies with the design; this signature does not, so main.go -
+// written once - never needs editing.
 //
-// The returned shutdown stops delivery; call it beside srv.Stop. A design
-// with no consumer returns a no-op.
+// The returned shutdown runs beside srv.Stop.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	routes.RegisterAll(srv, svcCtx)
-	// A publisher off the zero Events is a nil *Publisher, whose deref
-	// beats the runtime's own nil guard.
-	if svcCtx.Events.Bus == nil {
-		return nil, errors.New("wiring: the design declares 2 event(s) and 2 consumer(s) but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
-	}
 	// An HTTP middleware the design applies but nothing wired is skipped
 	// by the chain rather than called, so the guarantee would be missing
 	// with nothing to notice. Fail here instead, naming the line to add.
-	// The consume half is checked in SubscribeAll below, which is the
-	// call a consumer deployable makes without reaching this one.
 	if svcCtx.AccessLog == nil {
 		return nil, errors.New("wiring: the design declares `middleware AccessLog` and AdminService.ListTokens runs it, but svcCtx.AccessLog is nil - assign `svc.AccessLog = middleware.NewAccessLogMiddleware(/* args */)` in main.go")
 	}
@@ -48,13 +38,5 @@ func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.Servic
 	if svcCtx.RequestID == nil {
 		return nil, errors.New("wiring: the design declares `middleware RequestID` and AdminService.ListTokens runs it, but svcCtx.RequestID is nil - assign `svc.RequestID = middleware.NewRequestIDMiddleware(/* args */)` in main.go")
 	}
-	deliver, stop := context.WithCancel(ctx)
-	if err := transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx); err != nil {
-		stop()
-		return nil, err
-	}
-	return func(context.Context) error {
-		stop()
-		return nil
-	}, nil
+	return func(context.Context) error { return nil }, nil
 }

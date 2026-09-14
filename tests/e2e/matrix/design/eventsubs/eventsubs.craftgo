@@ -1,9 +1,8 @@
 // eventsubs.craftgo holds the consumer side of the event fixture in a
-// SEPARATE package, so the generated consumer has to import the
-// publisher package's payload types rather than its own. It also splits
-// consumers across a primary block and an `extend service` block, and
-// puts one behind a `@group` so the grouped output path is exercised for
-// events as well as methods.
+// SEPARATE package, so the generated handler interface has to import the
+// declaring package's payload types rather than its own. It also splits
+// one service's consumers across a primary block and two `extend service`
+// blocks, all of which merge into a single handler interface.
 package eventsubs
 
 service NotificationService {
@@ -19,8 +18,8 @@ service NotificationService {
 }
 
 // A consumer declared in an extend block belongs to the OWNING service,
-// so it derives `eventsubs-NotificationService-NotifyDispatch` - the
-// extend block contributes nothing to the name.
+// so it becomes another method on NotificationServiceHandler - the extend
+// block contributes nothing of its own.
 extend service NotificationService {
 	@doc("Declared in an extend block; merges into the same service.")
 	consume NotifyDispatch {
@@ -28,48 +27,36 @@ extend service NotificationService {
 	}
 }
 
-// A @group on an extend block splits ONE service's consumers across two
-// logic folders while the contract still declares a single handler
-// interface covering both, so the handler set that satisfies it lives at
-// the root of the transport output rather than in either folder.
-@group("stocktake")
 extend service NotificationService {
-	@doc("Grouped away from its siblings; still part of NotificationService's handler set.")
+	@doc("A second extend block, merged into the same handler interface.")
 	consume TrackStocktake {
 		event events.StocktakeStarted
 	}
 }
 
-// @group decides where generated files land and must never reach the
-// broker identity: this consumer derives
-// `eventsubs-OpsService-RecordClosure`, with no trace of "ops" in it.
-@group("ops")
+// A second service in the same package: two handler interfaces land in
+// one handlers.go, and each deployable registers only the ones it runs.
 service OpsService {
-	@doc("A grouped service nests its generated event files under the group.")
+	@doc("The only consumer of events.WarehouseClosed.")
 	consume RecordClosure {
 		event events.WarehouseClosed
 	}
 }
 
-// AnalyticsService pins the consumer-group identity. The service-level
-// decorator is the default for every consumer in the body, so two
-// consumers of DIFFERENT contracts join one group - the group, not the
-// consumer, is the unit of scaling and of failure isolation. One of them
-// takes its own group to pin the consumer-level override.
-@doc("A second group on a contract another service already consumes: every group receives every message, so one event drives two different tasks.")
-@consumerGroup("analytics-worker")
+// AnalyticsService consumes two contracts another service already
+// consumes. Which broker identity each joins is the deployable's to
+// choose - the design says only that the handler exists.
+@doc("A second consumer of a contract another service already consumes: every group receives every message, so one event drives two different tasks.")
 service AnalyticsService {
 	consume CountStocked {
 		event events.ItemStocked
 	}
 
-	@doc("A different contract under the same group: the feature.")
+	@doc("A different contract in the same handler interface.")
 	consume CountDispatched {
 		event events.ShipmentDispatched
 	}
 
-	@doc("The consumer's own group wins over the service's.")
-	@consumerGroup("analytics-tier-worker")
 	consume TrackTier {
 		event events.TierPromoted
 	}

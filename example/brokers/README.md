@@ -1,7 +1,7 @@
 # brokers
 
-Six design packages, three transports. The generated publisher, consumer and
-subscriptions are identical whichever broker runs underneath — only the
+Six design packages, three transports. The generated contract descriptors and
+handler interfaces are identical whichever broker runs underneath — only the
 transport line in `main.go` changes.
 
 ```sh
@@ -17,8 +17,8 @@ Six packages, each one a unit that could belong to a different team:
 
 ```
 design/money/          scalars OrderID, Amount        no service, no event
-design/orders/         OrderPlaced, OrderShipped      service OrderService  → publishes
-design/payments/       Settlement                     file-level event      → no publisher
+design/orders/         OrderPlaced, OrderShipped      service OrderService  → declares two events
+design/payments/       Settlement                     file-level event      → owned upstream
 design/notifications/  NotificationService            → consumes orders.Placed, orders.Shipped
 design/analytics/      AnalyticsService               → consumes orders.Placed
 design/ledger/         LedgerService                  → consumes orders.Placed, payments.Settled
@@ -30,14 +30,13 @@ them are what the generated code has to get right:
 - **Three consumer groups on one contract, in three packages.**
   `NotificationService`, `AnalyticsService` and `LedgerService` all consume
   `orders.Placed`, so every publish is delivered three times — once per group.
-  Replicas sharing a consumer name split the work instead; separate services
-  each get their own copy.
+  Replicas sharing a group split the work instead; separate groups each get
+  their own copy.
 - **A contract declared outside any service.** `payments.Settled` is published
   by the payments platform, not here. Declaring the event at file level is how
-  you subscribe without pretending to be its producer: craftgo emits no
-  publisher for it, puts nothing on the `ServiceContext`, and the AsyncAPI
-  document carries a `receive` operation with no `send`. `main.go` publishes it
-  straight on the bus to stand in for the upstream system.
+  you subscribe without pretending to be its producer — the design says who
+  consumes it and nothing about who sends it. `main.go` publishes it through
+  the same descriptor to stand in for the upstream system.
 - **A shared vocabulary package.** `orders` and `payments` both build their
   payloads out of `money.OrderID` and `money.Amount`, so the two stay
   comparable without either importing the other. The generated Go follows:
@@ -47,6 +46,30 @@ them are what the generated code has to get right:
   `analytics` and `ledger` declare only consumers; their payload types come
   from `orders` and `payments`.
 - **A batch mixing contracts**, which is the shape an outbox drains.
+
+## What craftgo generates, and what this project writes
+
+`internal/types/` holds the payload types and their validators.
+`internal/events/<package>/` holds the event library: `events.go` with one
+descriptor per contract (`orders.Placed.Publish(ctx, bus, payload)`), and
+`handlers.go` with one interface, one `Groups` struct and one `Register…`
+function per consuming service.
+
+Everything about DELIVERY is this project's, and lives in
+`internal/consumers/`: the handler structs, the group names, and the one
+`RegisterAll` that binds them. That is the whole application half —
+
+```go
+notifications.RegisterNotificationServiceHandler(bus, Notifier{}, chain,
+    notifications.NotificationServiceGroups{Default: NotificationGroup})
+```
+
+— so a second deployable running only the ledger, under group names of its
+own, imports the same generated library and writes its own five lines.
+
+Group names are written down once, in `internal/consumers/groups.go`, because
+a group is where a consumer resumes: on Kafka and JetStream the name *is* the
+stored position, so it outlives any one process.
 
 ## What runs
 
@@ -93,9 +116,10 @@ still travels in the `craftgo-event` header, so each consumer picks out its
 own and skips the rest — run it both ways and the output is the same.
 
 The key is the other half of that. `main.go` passes
-`craftevents.WithKey(string(order.OrderID))` at every publish, which is what
-puts one order in one partition; a publish without it is keyless and Kafka
-round-robins it across them.
+`craftevents.WithKey(string(order.OrderID))` at every publish — and sets
+`Envelope.Key` on every batch entry — which is what puts one order in one
+partition; a publish without it is keyless and Kafka round-robins it across
+them.
 
 `WithAutoCreateTopics(true)` is on here for convenience. Leave it off in
 production: a real topic is provisioned with a partition count and

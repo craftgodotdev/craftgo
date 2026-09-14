@@ -3,11 +3,10 @@ package svccontext
 import "sync"
 
 // ServiceContext is the matrix fixture's dependency container: the generated
-// Middlewares and Events plus the runtime state the server-roundtrip services
-// need.
+// Middlewares plus the runtime state the server-roundtrip services and the
+// event handler sets need.
 type ServiceContext struct {
 	Middlewares
-	Events Events
 
 	mu sync.Mutex
 

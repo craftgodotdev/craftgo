@@ -5,6 +5,7 @@ package shared
 import (
 	"context"
 
+	taskevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
@@ -42,7 +43,7 @@ func (l *CreateTaskService) CreateTask(req *types.CreateTaskReq) (*types.Task, e
 	if err != nil {
 		return nil, err
 	}
-	if err := l.svcCtx.Events.TaskService.PublishTaskCreated(l.ctx, &types.TaskCreated{
+	if err := taskevents.TaskCreated.Publish(l.ctx, l.svcCtx.Bus, &types.TaskCreated{
 		TaskID:    task.ID,
 		ProjectID: task.ProjectID,
 		Title:     task.Title,

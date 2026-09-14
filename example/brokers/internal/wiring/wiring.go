@@ -4,34 +4,17 @@ package wiring
 
 import (
 	"context"
-	"errors"
 
 	"github.com/craftgodotdev/craftgo/pkg/server"
-
-	"github.com/craftgodotdev/craftgo/example/brokers/internal/transport"
 
 	"github.com/craftgodotdev/craftgo/example/brokers/svccontext"
 )
 
-// Register attaches the design to srv: every HTTP route it declares, and
-// every event consumer. The body varies with the design; this signature
-// does not, so main.go - written once - never needs editing.
+// Register attaches the design to srv: every HTTP route it declares. The
+// body varies with the design; this signature does not, so main.go -
+// written once - never needs editing.
 //
-// The returned shutdown stops delivery; call it beside srv.Stop. A design
-// with no consumer returns a no-op.
+// The returned shutdown runs beside srv.Stop.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
-	// A publisher off the zero Events is a nil *Publisher, whose deref
-	// beats the runtime's own nil guard.
-	if svcCtx.Events.Bus == nil {
-		return nil, errors.New("wiring: the design declares 3 event(s) and 5 consumer(s) but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
-	}
-	deliver, stop := context.WithCancel(ctx)
-	if err := transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx); err != nil {
-		stop()
-		return nil, err
-	}
-	return func(context.Context) error {
-		stop()
-		return nil
-	}, nil
+	return func(context.Context) error { return nil }, nil
 }

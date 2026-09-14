@@ -26,7 +26,7 @@ func TestAPartialBatchNamesTheEnvelopesTheBrokerDidNotTake(t *testing.T) {
 	// events.TierPromoted has no topic, so every TierPromoted entry fails
 	// while its neighbours land.
 	addrs := cluster(t, itemStocked, warehouseClosed, forged)
-	svc := boot(t, addrs, false, nil, nil)
+	_, bus := boot(t, addrs, false, nil, nil)
 
 	stocked := func(sku string) *eventtypes.ItemStocked {
 		return &eventtypes.ItemStocked{
@@ -36,16 +36,17 @@ func TestAPartialBatchNamesTheEnvelopesTheBrokerDidNotTake(t *testing.T) {
 	}
 	promoted := &eventtypes.TierPromoted{Tier: 2, MemberID: "mem-1"}
 
-	b := svc.Events.Batch()
-	b.InventoryService().ItemStocked(stocked("sku-0"))
-	b.InventoryService().TierPromoted(promoted)
-	b.Craft().Forged(stocked("sku-2")) // a second service in the same batch
-	b.InventoryService().TierPromoted(promoted)
-	b.InventoryService().ItemStocked(stocked("sku-4"))
+	envs := []craftevents.Envelope{
+		{Event: itemStocked, Payload: stocked("sku-0")},
+		{Event: tierPromoted, Payload: promoted},
+		{Event: forged, Payload: stocked("sku-2")}, // a second service's contract in the same batch
+		{Event: tierPromoted, Payload: promoted},
+		{Event: itemStocked, Payload: stocked("sku-4")},
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	err := b.Publish(ctx)
+	err := bus.PublishAll(ctx, envs)
 
 	var partial *craftevents.PartialPublishError
 	if !errors.As(err, &partial) {
@@ -62,17 +63,17 @@ func TestAPartialBatchNamesTheEnvelopesTheBrokerDidNotTake(t *testing.T) {
 	if partial.Event != tierPromoted {
 		t.Errorf("Event = %q, want the contract of the first unsent entry (%q)", partial.Event, tierPromoted)
 	}
-	// A batch that failed is left intact, so nothing is lost by a caller
-	// who reads the error before deciding what to do.
-	if b.Len() != 5 {
-		t.Errorf("batch holds %d entries after a partial failure, want 5", b.Len())
+	// The caller's batch is left intact, so nothing is lost by one who
+	// reads the error before deciding what to do.
+	if len(envs) != 5 {
+		t.Errorf("batch holds %d entries after a partial failure, want 5", len(envs))
 	}
 
 	// What the broker holds is the assertion the report cannot fake. The
 	// missing topic is created first, so its consumer subscribes to an
 	// empty topic rather than a missing one.
 	createTopic(t, addrs, tierPromoted)
-	consumer := boot(t, addrs, true, nil, nil)
+	consumer, _ := boot(t, addrs, true, nil, nil)
 
 	landed := counts(consumer, "MirrorStock", "SendStockAlert", "CountStocked")
 	waitFor(t, 60*time.Second, "the entries the report says landed",
