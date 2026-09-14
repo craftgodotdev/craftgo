@@ -229,6 +229,10 @@ type Subscriber interface {
 	Subscribe(ctx context.Context, sub Subscription) error
 }
 
+type BatchSubscriber interface { // optional: SubscribeAll hands over the whole sorted slice
+	SubscribeBatch(ctx context.Context, subs []Subscription) error
+}
+
 type Handler func(ctx context.Context, msg *Message) error
 
 type Subscription struct {
@@ -249,8 +253,13 @@ chain](#consumer-middleware). There is no default codec - a bus built without on
 fails rather than picking an encoding.
 
 `Bus.SubscribeAll(ctx, subs)` registers a list of subscriptions in group,
-contract then consumer order. The generated `transport.SubscribeAll(ctx, bus, svcCtx)`
-builds that list and calls it. Delivery stops when `ctx` is cancelled.
+contract then consumer order. A transport implementing `BatchSubscriber`
+receives the whole slice in one call, every handler already wrapped and every
+entry already checked - a JetStream durable filters every subject its group
+consumes, so it cannot register a group one contract at a time. Any other
+transport gets one `Subscribe` per entry. The generated
+`transport.SubscribeAll(ctx, bus, svcCtx)` builds that list and calls it.
+Delivery stops when `ctx` is cancelled.
 
 `Subscribe` registers and returns; it must not block. A push transport hands the
 handler its callback, a pull transport starts its own loop. A handler error means
@@ -419,8 +428,21 @@ continues with the next message. Nothing is redelivered.
 
 `*PanicError` is a concrete type, so `errors.As` picks one out of a chain, and
 its `Unwrap` reaches the panic value when the handler panicked with an error.
-Nothing else is classified for you: a generated consumer returns a decode or
-`Validate()` failure as a plain error naming the contract, and what to do with a
+
+```go
+type PayloadError struct {
+	Event string // the contract the payload arrived on
+	Err   error
+}
+
+var ErrCodecMismatch = errors.New(...)
+```
+
+A payload the generated wrapper could not decode or that failed its
+`Validate()` comes back as a `*PayloadError` - the same bytes fail the same way
+on every delivery. A message stamped with a codec the consumer is not
+configured for fails with `ErrCodecMismatch` instead, a configuration error
+rather than a poison payload. Nothing else is classified: what to do with a
 failure is a middleware's decision.
 
 ### Consumer middleware
@@ -436,6 +458,10 @@ func (c Chain) Append(mws ...Middleware) Chain
 func (c Chain) Apply(subs []Subscription) []Subscription
 func Recover() Middleware
 ```
+
+A generated `Middlewares` struct - one field per consume middleware a service's
+design applies - carries `Missing() []string`, naming the fields left nil, for
+a caller that wires `Subscriptions` by hand.
 
 `WithMiddleware` installs the chain every subscription registered through the bus
 is wrapped in, outermost first. It is the only seam that covers all of them - a

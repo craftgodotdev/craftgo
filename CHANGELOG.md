@@ -139,9 +139,22 @@ breaking change to the DSL or the generated layout bumps the major version.
 
   `msg.Deliveries()` is the broker's count, zero where the transport does not
   keep one. Whether another attempt can succeed is the chain's to decide from
-  the error the handler returned: nothing here separates a decode or
-  `Validate()` failure from a handler's own, so a chain that needs that
-  returns an error type of its own and reads it back with `errors.As`.
+  the error the handler returned. The runtime names the one failure it
+  produces itself: a payload the generated wrapper could not decode or that
+  failed its `Validate()` is a `*events.PayloadError`, so a chain can give it
+  up rather than retry bytes that fail the same way every time. A message
+  stamped with a codec the consumer is not configured for is
+  `events.ErrCodecMismatch` instead - a configuration error, not poison.
+
+- **`events.BatchSubscriber`.** The optional upgrade beside `BatchPublisher`:
+  `Bus.SubscribeAll` hands a transport implementing it the whole sorted slice
+  in one call, every entry already checked and every handler already wrapped.
+  A broker that binds one identity to several contracts cannot register a
+  group one contract at a time.
+
+  A generated `Middlewares` struct carries `Missing() []string`, naming the
+  consume middleware left unwired, for a codebase that calls `Subscriptions`
+  itself rather than through the generated `SubscribeAll`.
 
 - **A NATS JetStream transport, `nats.NewJetStream(conn, opts...)`.** A second
   type beside the core `nats.Transport`, sharing its wire format byte for byte,
@@ -162,8 +175,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   in the group.
 
   **`Subscribe` refuses at start-up rather than consuming nothing.** It checks
-  that JetStream is on, that a stream carries the subject, and that the durable
-  name is legal, in that order, registering nothing on failure. The subject
+  that JetStream is on, that a stream carries each subject, that a group's
+  subjects sit on one stream, and that the group is a legal durable name,
+  registering nothing on failure. The subject
   check is the one that earns the rest: a consumer whose filter subject no
   stream carries is created successfully, validates, consumes successfully - and
   receives nothing, for ever, with no error on any path at any time.
@@ -172,10 +186,25 @@ breaking change to the DSL or the generated layout bumps the major version.
   covering `orders.>` spans contracts a single subscription knows nothing about,
   and per-contract streams would overlap, which the server refuses. Provision one.
 
-  A durable is named from the group AND the contract. Group alone would let two
-  subscriptions in one group on different contracts collide, where the second
-  silently retargets the first and the first then receives the other contract's
-  messages - and craftgo actively encourages one group across several contracts.
+  **A durable is the group.** One durable per consumer group, filtering every
+  subject the group consumes, so replicas share it, a group keeps its position
+  under its name whatever its contracts are renamed to, and a durable an
+  earlier application or an operator created is adopted rather than
+  recreated: only its filter subjects follow the design. A group whose
+  subjects sit on two streams is refused, and so is a durable that does not
+  acknowledge explicitly. The transport implements `events.BatchSubscriber`
+  for it; a group with several contracts arrives through `SubscribeAll`.
+
+  `nats.WithConsumerConfig` adjusts what a durable is created with - a
+  deliver policy, a start sequence, replicas - and runs on creation only.
+  `nats.WithRedeliverBackoff` delays a redelivery the chain asked for, indexed
+  by the attempt; without it a transient failure burns `WithMaxDeliveries` in
+  milliseconds. `nats.WithMaxInFlight` is the pull prefetch and defaults to 1:
+  messages are handled one at a time, a buffered message waits with the
+  server's `AckWait` running, and only the message inside the handler is held
+  open, so a larger prefetch redelivers a message that still sits in the
+  buffer. A subject the process has no consumer for - a replica on another
+  version of the design shares the durable - is handed back, not acknowledged.
 
   A handler slower than `AckWait` is **not** redelivered behind itself: the
   adapter holds the message open while it runs. The trade is that a hung handler

@@ -362,10 +362,16 @@ and a panicking middleware still cannot end the process.
 
 `Bus.Subscribe` wraps every handler in a recover, so a panicking consumer does
 not end the process - it reaches the transport's error handler as a
-`*events.PanicError` and delivery continues with the next message. The runtime
-classifies nothing beyond that: a decode or `Validate()` failure is a plain
-error naming the contract, and what to do about a failure is a middleware's
-decision, not the runtime's.
+`*events.PanicError` and delivery continues with the next message. A payload the
+generated wrapper could not decode or that failed `Validate()` is a
+`*events.PayloadError` naming the contract; a message stamped with another codec
+is `events.ErrCodecMismatch`. The runtime classifies nothing beyond that: what
+to do about a failure is a middleware's decision, not the runtime's.
+
+On JetStream a consumer group is the durable name, filtering every subject the
+group consumes, so a group keeps its position under its name; an existing
+durable is adopted with only its filter subjects patched. `Bus.SubscribeAll`
+hands a transport implementing `events.BatchSubscriber` the whole slice at once.
 
 Publishing from logic:
 

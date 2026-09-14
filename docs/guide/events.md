@@ -359,19 +359,27 @@ if errors.As(err, &panicked) {
 }
 ```
 
-Everything else arrives as an ordinary error. A payload the generated wrapper
-could not decode or could not `Validate()` names the contract it arrived on in
-its text, but no type separates one of those from a failure in your own
-handler - so a chain that needs to tell "these bytes can never work" from "try
-again later" makes the distinction on its own side, by returning an error type
-of its own from the handler:
+The other failure the runtime produces itself is a payload the generated
+wrapper could not decode or could not `Validate()`. It arrives as a
+`*craftevents.PayloadError` naming the contract, and the same bytes fail the
+same way on every delivery:
 
 ```go
-var poison *myapp.PoisonPayload
+var poison *craftevents.PayloadError
 if errors.As(err, &poison) {
 	msg.Reject()
 }
 ```
+
+A message stamped with a codec the consumer is not configured for is not a
+`PayloadError`: it fails with `craftevents.ErrCodecMismatch`, a configuration
+error the same bytes survive once the two sides agree, so a chain that rejects
+poison should not reject it.
+
+Everything else arrives as an ordinary error. A chain that needs to tell "this
+handler failure can never succeed" from "try again later" makes that
+distinction on its own side, by returning an error type of its own from the
+handler and reading it back with `errors.As`.
 
 Delivery context and tracing are also the transport's: the in-process transport
 starts a fresh context per message, so a trace opened in the publishing request
@@ -646,7 +654,9 @@ svc.Events.Consume.Retry = consume.NewRetryMiddleware()
 
 Forget that line and **`SubscribeAll` refuses to subscribe**, naming the line to
 add. A nil middleware is skipped rather than called, so without the check the
-guarantee would simply be absent with nothing to notice.
+guarantee would simply be absent with nothing to notice. A codebase that calls
+`Subscriptions` itself gets the same check from `mw.Missing()`, which names the
+fields left nil.
 
 The check is in `SubscribeAll` rather than in `wiring.Register` because
 `SubscribeAll` is the call every consumer makes. A consumer-only deployable owns
@@ -735,7 +745,10 @@ func RetryOnce(_ craftevents.Subscription, next craftevents.Handler) craftevents
 `msg.Deliveries()` is the broker's count of how many times it has handed this
 message over. Whether another attempt can succeed is the chain's to decide from
 the error the handler returned - see
-[Telling one failure from another](#telling-one-failure-from-another).
+[Telling one failure from another](#telling-one-failure-from-another). How
+soon the message comes back is the transport's: a redelivery is immediate
+unless the adapter is given a backoff, which
+[JetStream](#nats-jetstream) takes as `nats.WithRedeliverBackoff`.
 
 **The last writer wins, and clearing is allowed.** The chain returns innermost
 first, so the outermost middleware decides last and can see what everything
@@ -885,6 +898,72 @@ through either arrives the same. It is a separate type because a JetStream
 delivery is **not** a `*nats.Msg` - reach it with `nats.JetStreamMsgFrom(ctx)`,
 which gives the stream and consumer sequences.
 
+#### One durable per group
+
+A subscription's group is the durable consumer's name, and one durable
+filters every subject the group consumes. `@consumerGroup("order-worker")` on
+a service consuming `orders.Placed` and `orders.Shipped` is one durable,
+`order-worker`, with two filter subjects; replicas sharing the group share the
+durable and divide its work, and the position a group has reached stays under
+its name across renames of a contract. That is what makes
+[writing the name down](#consumer-groups-if-it-has-an-offset-write-the-name-down)
+keep your position on JetStream.
+
+A durable reads one stream, so the group's subjects have to sit on one: a
+group spanning two streams is refused at start-up, naming both, and the fix is
+a group per stream.
+
+Within one process the durable's messages are handled one at a time on one
+goroutine, in stream order. Take that as an observation rather than a promise:
+a second replica pulls from the same durable, and a delayed redelivery
+re-enters behind newer messages.
+
+`Subscribe` cannot register a group one contract at a time - the durable has
+to filter every subject at once - so a group with several contracts goes
+through `SubscribeAll`, which hands the transport the whole slice. The
+generated `SubscribeAll` already does; a second registration of a group on the
+same transport is refused.
+
+#### A durable that already exists is adopted
+
+An existing durable keeps everything it has - deliver policy, replicas, start
+sequence, ack wait - and only its filter subjects follow the design, patched
+when they differ. A durable an earlier version of the application created, or
+an operator provisioned by hand, is picked up where it left off rather than
+recreated; one that does not acknowledge explicitly is refused, because
+`Redeliver` and `Reject` would then do nothing.
+
+A durable that does not exist is created with `AckWait` from `nats.WithAckWait`
+and, when given, whatever `nats.WithConsumerConfig` sets:
+
+```go
+nats.NewJetStream(conn, nats.WithConsumerConfig(func(group string, cfg *jetstream.ConsumerConfig) {
+	if group == "price-updates" {
+		cfg.DeliverPolicy = jetstream.DeliverNewPolicy
+	}
+}))
+```
+
+The hook runs on creation only. The name, the filter subjects and the explicit
+ack policy are re-asserted after it returns.
+
+During a rolling deploy two versions of the design share a durable. A subject
+the older replica has no consumer for is handed back rather than acknowledged
+away, so the replica that consumes it gets it; the transport's error handler
+is told, with only `sub.Group` set.
+
+#### Prefetch
+
+`nats.WithMaxInFlight(n)` is how many messages one durable's pull keeps
+buffered in the process. The default is 1, and it is deliberate: messages are
+handled one at a time, so a buffered message waits for every handler ahead of
+it with the server's `AckWait` clock already running, and only the message
+inside the handler is held open. Raise it only where `n ×` the slowest handler
+stays under `AckWait`, or a message is redelivered while it still sits in the
+buffer - a duplicate nothing reports.
+
+#### Redelivery
+
 `nats.WithMaxDeliveries` bounds a redelivery loop, exactly as the Kafka option
 of the same name does: a middleware that keeps asking for a message nothing can
 handle stops being obeyed once the server's count reaches it, and the message is
@@ -899,6 +978,19 @@ The cap is the adapter's, not the consumer's `MaxDeliver`. That one counts every
 delivery whatever its outcome, so it would give up on a message three crashed
 consumers merely handed on, and it lives on the durable - where the last
 subscriber to start would set it for every other member of the group.
+
+A redelivery the chain asked for is immediate unless the adapter is given a
+backoff, indexed by the attempt just made:
+
+```go
+nats.NewJetStream(conn, nats.WithRedeliverBackoff(func(deliveries int) time.Duration {
+	return min(time.Second<<(deliveries-1), 30*time.Second)
+}))
+```
+
+Without one a transient failure burns the whole cap in milliseconds.
+
+#### Publishing
 
 `PublishAll` on JetStream publishes the whole batch, then waits for every
 acknowledgement. The context decides whether the batch is **published**, not
@@ -941,11 +1033,12 @@ craftgo does not create streams and could not correctly: one stream covering
 `orders.>` spans contracts any single subscription knows nothing about, and
 per-contract streams would overlap on those subjects, which the server refuses.
 
-`Subscribe` **refuses** when JetStream is off, when no stream carries the
-subject, or when the durable name is illegal - each at start-up, before
-registering anything. The subject check is the one that matters: a consumer
-whose filter subject no stream carries is created successfully, validates, and
-then receives nothing for ever with no error on any path.
+`Subscribe` **refuses** when JetStream is off, when no stream carries a
+subject, when a group's subjects span two streams, or when the group is not a
+legal durable name - each at start-up, before registering anything. The subject
+check is the one that matters: a consumer whose filter subject no stream
+carries is created successfully, validates, and then receives nothing for ever
+with no error on any path.
 :::
 
 ::: tip A slow handler is not redelivered behind itself
@@ -953,7 +1046,7 @@ The adapter holds a message open while the handler runs, resetting the server's
 redelivery timer. Without that, a handler slower than `AckWait` gets a duplicate
 that is invisible and nondeterministic.
 
-The trade is that a **hung** handler stalls its subscription instead - a visible,
+The trade is that a **hung** handler stalls its durable instead - a visible,
 deterministic failure that shows as a stopped consumer and a climbing pending
 count. There is no option to bound it, because a bounded one would do nothing:
 measured, the server does not redeliver while a delivery is still outstanding.
