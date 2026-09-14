@@ -735,6 +735,11 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 		t.onError(sub, msg, err)
 	}
 	if t.share {
+		// A capped Redeliver is answered with a reject, which the chain
+		// that asked for it never sees.
+		if t.capped(msg) && t.onError != nil {
+			t.onError(sub, msg, fmt.Errorf("kafka: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), t.maxDeliveries))
+		}
 		rec.Ack(t.ackFor(msg))
 	}
 }
@@ -772,13 +777,21 @@ func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, rec *kgo.Recor
 	return func() { close(done); <-stopped }
 }
 
+// capped reports whether [WithMaxDeliveries] overrides a redelivery the
+// chain asked for. It is the one place the cap is read, so the answer the
+// broker gets and the report the subscriber gets cannot disagree.
+func (t *Transport) capped(msg *events.Message) bool {
+	return msg.Disposition() == events.DispositionRedeliver &&
+		t.maxDeliveries > 0 && msg.Deliveries() >= t.maxDeliveries
+}
+
 // ackFor turns what the chain asked for into the broker's answer. An
 // unset disposition settles: a middleware that decided nothing is not
 // asking for the record back.
 func (t *Transport) ackFor(msg *events.Message) kgo.AckStatus {
 	switch msg.Disposition() {
 	case events.DispositionRedeliver:
-		if t.maxDeliveries > 0 && msg.Deliveries() >= t.maxDeliveries {
+		if t.capped(msg) {
 			return kgo.AckReject
 		}
 		return kgo.AckRelease

@@ -565,3 +565,75 @@ func TestAJetStreamBatchToNoStreamIsAllUnsent(t *testing.T) {
 		t.Errorf("Unsent = %v, want both indices - nothing was stored", partial.Unsent)
 	}
 }
+
+// When the cap overrides a redelivery the chain asked for, the message is
+// terminated and the chain never hears about it: its dead-letter
+// middleware sees a message on its way back, not one given up, so it
+// writes no record. The transport's error handler is the only layer left
+// that can say the message is gone.
+func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
+	const cap = 2
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+
+	var (
+		mu   sync.Mutex
+		errs []error
+		keys []string
+	)
+	tr := jsTransport(t, conn, craftnats.WithMaxDeliveries(cap), craftnats.WithAckWait(2*time.Second),
+		craftnats.WithJetStreamErrorHandler(func(_ events.Subscription, msg *events.Message, err error) {
+			mu.Lock()
+			defer mu.Unlock()
+			errs = append(errs, err)
+			if msg != nil {
+				keys = append(keys, msg.Key)
+			}
+		}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "capped-report",
+		Handle: func(_ context.Context, m *events.Message) error {
+			m.Redeliver() // never gives up
+			return nil    // and never fails, so nothing else reports
+		},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		mu.Lock()
+		got := len(errs)
+		mu.Unlock()
+		if got > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the cap fired and nothing was reported")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if n := len(errs); n != 1 {
+		t.Fatalf("%d reports, want 1", n)
+	}
+	text := errs[0].Error()
+	for _, want := range []string{"orders.Placed", "2 deliveries", "WithMaxDeliveries is 2"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("report %q does not name %q", text, want)
+		}
+	}
+	if len(keys) != 1 || keys[0] != "o-1" {
+		t.Errorf("the report does not carry the message it is about: %v", keys)
+	}
+}

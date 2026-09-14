@@ -392,6 +392,11 @@ func (j *JetStream) deliver(ctx context.Context, sub events.Subscription, m jets
 	if err != nil && j.onError != nil {
 		j.onError(sub, msg, err)
 	}
+	// A capped Redeliver is answered with a term, which the chain that
+	// asked for it never sees.
+	if j.capped(msg) && j.onError != nil {
+		j.onError(sub, msg, fmt.Errorf("nats: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), j.maxDeliveries))
+	}
 	if ackErr := j.answer(m, msg); ackErr != nil && j.onError != nil {
 		j.onError(sub, msg, fmt.Errorf("nats: answering for %s: %w", sub.Event, ackErr))
 	}
@@ -447,7 +452,7 @@ func (j *JetStream) holdOpen(m jetstream.Msg) func() {
 func (j *JetStream) answer(m jetstream.Msg, msg *events.Message) error {
 	switch msg.Disposition() {
 	case events.DispositionRedeliver:
-		if j.maxDeliveries > 0 && msg.Deliveries() >= j.maxDeliveries {
+		if j.capped(msg) {
 			return m.Term()
 		}
 		return m.Nak()
@@ -455,6 +460,14 @@ func (j *JetStream) answer(m jetstream.Msg, msg *events.Message) error {
 		return m.Term()
 	}
 	return m.Ack()
+}
+
+// capped reports whether [WithMaxDeliveries] overrides a redelivery the
+// chain asked for. It is the one place the cap is read, so the answer the
+// server gets and the report the subscriber gets cannot disagree.
+func (j *JetStream) capped(msg *events.Message) bool {
+	return msg.Disposition() == events.DispositionRedeliver &&
+		j.maxDeliveries > 0 && msg.Deliveries() >= j.maxDeliveries
 }
 
 // deliveryCount reads the server's attempt number, 1 on the first

@@ -805,6 +805,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   would throw away work that had just succeeded without preventing any of the
   duplicate runs, which all happen before any ack.
 
+- **The delivery cap says when it fires, on both adapters that have one.** It
+  overrides what the chain asked for, so a dead-letter middleware above it has
+  already seen a message on its way back rather than one given up and has
+  written no record - and the message was then terminated with nothing
+  anywhere saying so. The transport's error handler is now told, with the
+  contract, the delivery count and the cap, so the line reads as the net
+  firing rather than as a handler failing.
+
 - **A Kafka consumer client is closed exactly once.** The read loop closed its
   own client and `Transport.Close` closed every client it held, so the generated
   shutdown - cancel the delivery context, then close the transport - closed each
