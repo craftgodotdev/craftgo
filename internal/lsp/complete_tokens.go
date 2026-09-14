@@ -28,9 +28,6 @@ func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
 	return prev.Text, true
 }
 
-var durationSuffixes = []string{"ns", "us", "µs", "ms", "s", "m", "h"}
-var sizeSuffixes = []string{"B", "KB", "MB", "GB"}
-
 // durationPresets / sizePresets are the values surfaced when the
 // cursor is inside an empty argument slot (just after `(`) so users
 // who don't have a number in mind get a sensible starter list.
@@ -43,12 +40,12 @@ var sizePresets = []string{"1KB", "10KB", "100KB", "1MB", "10MB", "100MB"}
 // and emitted as a TextEdit replacing the Int. Otherwise a curated
 // preset list is offered.
 func durationCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
-	return unitCompletions(prev, mid, "duration", durationSuffixes, durationPresets)
+	return unitCompletions(prev, mid, "duration", lexer.DurationUnits, durationPresets)
 }
 
 // sizeCompletions is the byte-size analogue of [durationCompletions].
 func sizeCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
-	return unitCompletions(prev, mid, "size", sizeSuffixes, sizePresets)
+	return unitCompletions(prev, mid, "size", lexer.SizeSuffixes(), sizePresets)
 }
 
 // unitCompletions builds the suffix / preset list for both duration

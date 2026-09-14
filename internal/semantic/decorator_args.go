@@ -4,9 +4,9 @@ package semantic
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // This file groups the decorator-argument extractors used by every emit
@@ -129,58 +129,21 @@ func StringArrayArg(a *ast.DecoratorArg) ([]string, bool) {
 // SizeArg extracts a byte count from a Size literal (`5MB`) or a bare
 // integer. Returns 0,false on any other expression kind.
 func SizeArg(a *ast.DecoratorArg) (int64, bool) {
-	if a == nil || a.Value == nil {
+	if a == nil {
 		return 0, false
 	}
-	switch v := a.Value.(type) {
+	return SizeBytes(a.Value)
+}
+
+// SizeBytes is [SizeArg] on a bare expression, for callers holding the
+// literal without its [ast.DecoratorArg] wrapper. The suffix vocabulary and
+// its multipliers live in [lexer.ParseSize].
+func SizeBytes(e ast.Expr) (int64, bool) {
+	switch v := e.(type) {
 	case *ast.IntLit:
 		return v.Value, true
 	case *ast.SizeLit:
-		return parseSizeText(v.Text)
-	}
-	return 0, false
-}
-
-// parseSizeText converts a `5MB` / `1024B` / `1.5GB` style literal into
-// bytes. Floats are rounded down via int64 truncation. Unrecognised
-// suffixes return 0,false so the validator skips the check rather than
-// emitting nonsense.
-func parseSizeText(text string) (int64, bool) {
-	t := strings.TrimSpace(text)
-	if t == "" {
-		return 0, false
-	}
-	type unit struct {
-		suffix string
-		mult   int64
-	}
-	// Order matters: longer suffixes first so "MB" matches before "B".
-	units := []unit{
-		{"GB", 1 << 30},
-		{"MB", 1 << 20},
-		{"KB", 1 << 10},
-		{"B", 1},
-	}
-	for _, u := range units {
-		if !strings.HasSuffix(t, u.suffix) {
-			continue
-		}
-		num := strings.TrimSpace(strings.TrimSuffix(t, u.suffix))
-		if num == "" {
-			return 0, false
-		}
-		// Try integer first to keep round numbers exact.
-		if n, err := strconv.ParseInt(num, 10, 64); err == nil {
-			return n * u.mult, true
-		}
-		if fl, err := strconv.ParseFloat(num, 64); err == nil {
-			return int64(fl * float64(u.mult)), true
-		}
-		return 0, false
-	}
-	// No suffix → assume bytes (matches DSL "bare number → bytes" rule).
-	if n, err := strconv.ParseInt(t, 10, 64); err == nil {
-		return n, true
+		return lexer.ParseSize(v.Text)
 	}
 	return 0, false
 }
