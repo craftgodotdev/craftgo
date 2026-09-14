@@ -294,7 +294,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   classic group. The check is synchronous and runs before the subscription is
   registered, because the client reports a missing API on its first poll - on a
   goroutine nobody is waiting on - so without it the deployable boots, serves
-  HTTP, passes readiness and consumes nothing. Share groups need **Kafka 4.2**.
+  HTTP, passes readiness and consumes nothing. Share groups need **Kafka 4.1**.
 
 - **`kafka.WithTLS`, `WithSASLPlain`, `WithSASLSCRAMSHA256` and
   `WithSASLSCRAMSHA512`.** The supported way to reach a secured broker, replacing
