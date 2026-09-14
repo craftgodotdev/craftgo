@@ -225,11 +225,14 @@ func TestPublisherDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 	b := events.Batch()
 	b.InventoryService().ItemStocked(stocked)
 	b.InventoryService().ItemStocked(stocked, craftevents.WithKey("sku-3"))
+	// A second service's builder, which the caller never handed the
+	// defaults to, carries them too.
+	b.Craft().Forged(stocked)
 	if err := b.Publish(ctx); err != nil {
 		t.Fatal(err)
 	}
 
-	wantKeys := []string{"default-key", "sku-2", "default-key", "sku-3"}
+	wantKeys := []string{"default-key", "sku-2", "default-key", "sku-3", "default-key"}
 	if len(seen) != len(wantKeys) {
 		t.Fatalf("published %d messages, want %d", len(seen), len(wantKeys))
 	}
