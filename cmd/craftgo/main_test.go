@@ -142,6 +142,37 @@ func TestRunGenContextOverridesProjectRoot(t *testing.T) {
 	}
 }
 
+// TestRunGenWithoutContextIgnoresWorkingDir pins the default root for
+// `-f` with no `-c`: the parent of the design folder, never the
+// directory the command runs from. Standing in an unrelated project and
+// generating a design that lives elsewhere must leave that project
+// untouched.
+func TestRunGenWithoutContextIgnoresWorkingDir(t *testing.T) {
+	dir := t.TempDir()
+	elsewhere := filepath.Join(dir, "elsewhere")
+	lib := filepath.Join(dir, "lib")
+	mustWrite(t, elsewhere, "go.mod", "module github.com/test/elsewhere\n\ngo 1.24\n")
+	mustWrite(t, lib, "go.mod", "module github.com/test/lib\n\ngo 1.24\n")
+	designFolder := filepath.Join(lib, "design")
+	if err := runInit([]string{designFolder}); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+	mustWrite(t, designFolder, "api.craftgo", minimalDesignDSL)
+
+	t.Chdir(elsewhere)
+	if err := runGen([]string{"-f", designFolder}); err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(lib, "internal", "types", "api", "types.go")); err != nil {
+		t.Errorf("expected types under the design's parent: %v", err)
+	}
+	for _, rel := range []string{"internal", "docs", "svccontext", "main.go"} {
+		if _, err := os.Stat(filepath.Join(elsewhere, rel)); err == nil {
+			t.Errorf("gen wrote %s into the working directory", rel)
+		}
+	}
+}
+
 // TestRunGenWalkUpKeepsLegacyProjectRoot pins the legacy positional
 // flow - `craftgo gen <path>` keeps using parent-of-manifest as the
 // project root so existing fixtures (example/, tests/e2e/*) keep

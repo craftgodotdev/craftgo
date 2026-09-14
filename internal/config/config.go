@@ -406,10 +406,10 @@ func Find(start string) (*Config, string, string, error) {
 
 // FindAt loads the manifest at `<designFolder>/craftgo.design.yaml` and
 // returns it alongside the resolved project root. When `projectRoot`
-// is empty the parent of `designFolder` is used;
-// pass an explicit value (typically the current working directory)
-// when the design folder lives outside the project tree - the
-// monorepo case where contracts/ and services/ are siblings.
+// is empty the parent of `designFolder` is used, the same root [Find]
+// resolves by walking up; pass an explicit value when the design folder
+// lives outside the project tree - the monorepo case where contracts/
+// and services/ are siblings.
 //
 // All paths in the returned tuple are absolute.
 func FindAt(designFolder, projectRoot string) (*Config, string, string, error) {

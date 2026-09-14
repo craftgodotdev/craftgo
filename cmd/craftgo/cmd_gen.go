@@ -4,7 +4,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -34,7 +33,7 @@ func parseGenArgs(args []string) (manifest, ctxRoot, positional string, targets 
 	fs.Var(&targets, "target", "generate only the named target ("+strings.Join(codegen.SelectableTargets(), ", ")+"); repeatable, default all")
 	fs.StringVar(&manifest, "f", "", "design folder holding craftgo.design.yaml (skips walk-up)")
 	fs.StringVar(&manifest, "folder", "", "alias for -f")
-	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to cwd when -f is given)")
+	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to the parent of the design folder)")
 	fs.StringVar(&ctxRoot, "context", "", "alias for -c")
 	if perr := fs.Parse(args); perr != nil {
 		// flag.ErrHelp is the explicit user request for `-h`/`--help`;
@@ -71,15 +70,11 @@ func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config
 
 func findManifest(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
 	if manifestFolder != "" {
-		root := contextRoot
-		if root == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return nil, "", "", err
-			}
-			root = cwd
-		}
-		return config.FindAt(manifestFolder, root)
+		// An empty root leaves [config.FindAt] to use the parent of the
+		// design folder, matching the walk-up flow. The working directory
+		// is not a root: it would resolve the outputs against whatever
+		// directory the command happens to run from.
+		return config.FindAt(manifestFolder, contextRoot)
 	}
 	cfg, projectRoot, designDir, err := config.Find(target)
 	if err != nil {

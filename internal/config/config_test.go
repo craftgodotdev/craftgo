@@ -144,6 +144,56 @@ func TestFindManifestAtRoot(t *testing.T) {
 	}
 }
 
+// TestFindAtEmptyRootUsesDesignParent pins the default root: with no
+// project root supplied, FindAt resolves the same one Find walks up to,
+// independent of the working directory.
+func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
+	root := t.TempDir()
+	designDir := filepath.Join(root, "design")
+	if err := os.MkdirAll(designDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(designDir, Filename), "")
+	t.Chdir(t.TempDir())
+
+	_, projectRoot, foundDesign, err := FindAt(designDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootAbs, _ := filepath.Abs(root)
+	if projectRoot != rootAbs {
+		t.Errorf("project root: got %q want %q", projectRoot, rootAbs)
+	}
+	designAbs, _ := filepath.Abs(designDir)
+	if foundDesign != designAbs {
+		t.Errorf("design dir: got %q want %q", foundDesign, designAbs)
+	}
+}
+
+// TestFindAtExplicitRootWins keeps `-c` authoritative: an explicit root
+// is used as given even when the design folder sits elsewhere.
+func TestFindAtExplicitRootWins(t *testing.T) {
+	dir := t.TempDir()
+	designDir := filepath.Join(dir, "contracts", "design")
+	codeRoot := filepath.Join(dir, "services", "api")
+	if err := os.MkdirAll(designDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(codeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(designDir, Filename), "")
+
+	_, projectRoot, _, err := FindAt(designDir, codeRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codeAbs, _ := filepath.Abs(codeRoot)
+	if projectRoot != codeAbs {
+		t.Errorf("project root: got %q want %q", projectRoot, codeAbs)
+	}
+}
+
 func TestFindNotFound(t *testing.T) {
 	dir := t.TempDir()
 	if _, _, _, err := Find(dir); err == nil {
