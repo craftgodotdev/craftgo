@@ -14,18 +14,23 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// middlewareNames returns the chain of middleware identifiers for one
-// method. The chain is assembled outermost-first so codegen wraps the
-// handler in the same order a reader sees the decorators:
+// memberChain returns the chain of middleware identifiers for one service
+// member. decorator names the chain the member reads: `middlewares` for a
+// method, `consumeMiddlewares` for a consumer. The two chains are
+// assembled by this one function so the layering rule is stated once and
+// cannot drift between the HTTP and the consume side.
 //
-//  1. Primary service-level `@middlewares(...)`
-//  2. Extend-block-level `@middlewares(...)` (decorators marked
-//     Propagated=true that the semantic merge copied onto the method)
-//  3. Method-level `@middlewares(...)` (decorators with
-//     Propagated=false that the user wrote directly above the method)
+// The chain is assembled outermost-first so codegen wraps the handler in
+// the same order a reader sees the decorators:
 //
-// `@ignoreMiddleware` on a method drops layers 1 + 2 - the inherited
-// chain - so the method starts fresh from layer 3. This implements the
+//  1. Primary service-level `@<decorator>(...)`
+//  2. Extend-block-level (decorators marked Propagated=true that the
+//     semantic merge copied onto the member)
+//  3. Member-level (decorators with Propagated=false that the user wrote
+//     directly above the method or the consumer)
+//
+// `@ignoreMiddleware` on the member drops layers 1 + 2 - the inherited
+// chain - so the member starts fresh from layer 3. This implements the
 // clear-then-append pattern documented in
 // docs/guide/decorators.md#service-level-decorators-and-inheritance.
 //
@@ -39,9 +44,9 @@ import (
 // position, which is the guarantee service-level decorators exist to give.
 // This mirrors the dedup the same inherited chains already get in the
 // OpenAPI emitters ([operationTags], [dedupSecurity]).
-func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
+func memberChain(decorator string, own []*ast.Decorator, svc *ast.ServiceDecl) []string {
 	ignore := false
-	for _, d := range m.Decorators {
+	for _, d := range own {
 		if d != nil && !d.Propagated && d.Name == "ignoreMiddleware" {
 			ignore = true
 			break
@@ -59,18 +64,32 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 		}
 	}
 	if svc != nil && !ignore {
-		appendNames(extractMiddlewareNames(svc.Decorators))
+		appendNames(extractMiddlewareNames(decorator, svc.Decorators))
 	}
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "middlewares" {
+	for _, d := range own {
+		if d == nil || d.Name != decorator {
 			continue
 		}
 		if d.Propagated && ignore {
 			continue
 		}
-		appendNames(extractMiddlewareNames([]*ast.Decorator{d}))
+		appendNames(extractMiddlewareNames(decorator, []*ast.Decorator{d}))
 	}
 	return names
+}
+
+// middlewareNames is [memberChain] for a method's `@middlewares` chain.
+func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
+	return memberChain("middlewares", m.Decorators, svc)
+}
+
+// consumeMiddlewareNames is [memberChain] for a consumer's
+// `@consumeMiddlewares` chain.
+func consumeMiddlewareNames(c *ast.ConsumerDecl, svc *ast.ServiceDecl) []string {
+	if c == nil {
+		return nil
+	}
+	return memberChain("consumeMiddlewares", c.Decorators, svc)
 }
 
 // buildHandlerCall produces the Go expression that lands as the SECOND
@@ -201,14 +220,14 @@ func formatDurationGo(d time.Duration) string {
 }
 
 // extractMiddlewareNames pulls the identifier arguments out of every
-// `@middlewares(...)` decorator in ds and returns the BARE name for
-// each - the package prefix in `pkg.Name` is dropped because every
-// middleware lands flat on svccontext (the project resolver already
-// guarantees names are unique across packages).
-func extractMiddlewareNames(ds []*ast.Decorator) []string {
+// `@<decorator>(...)` in ds and returns the BARE name for each - the
+// package prefix in `pkg.Name` is dropped because a middleware is
+// addressed by name alone on the struct that carries it, and the project
+// resolver already guarantees names are unique across packages.
+func extractMiddlewareNames(decorator string, ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
-		if d.Name != "middlewares" {
+		if d.Name != decorator {
 			continue
 		}
 		for _, a := range d.Args {

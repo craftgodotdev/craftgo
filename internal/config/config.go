@@ -157,6 +157,12 @@ type Output struct {
 	// implementation files. The corresponding type declarations live
 	// next to svccontext.go (see GenerateProjectMiddlewares).
 	Middleware string `yaml:"middleware"`
+	// ConsumeMiddleware is the scaffold-once output dir for
+	// `consume middleware Name` implementations. It is a peer of
+	// Middleware rather than a folder inside it: the two wrap different
+	// things - an http.Handler against a subscription handler - and share
+	// no code. Defaults to `./internal/consume`.
+	ConsumeMiddleware string `yaml:"consumeMiddleware"`
 	// Wiring is the directory holding the generated wiring package: the
 	// one `Register` call main.go makes, whose surface does not change
 	// with the design. Defaults to `./internal/wiring`.
@@ -618,6 +624,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Output.Middleware == "" {
 		c.Output.Middleware = "./internal/middleware"
+	}
+	if c.Output.ConsumeMiddleware == "" {
+		c.Output.ConsumeMiddleware = "./internal/consume"
 	}
 	if c.Output.Config == "" {
 		c.Output.Config = "./config"

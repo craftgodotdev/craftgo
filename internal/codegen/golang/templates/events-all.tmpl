@@ -4,6 +4,9 @@ package transport
 
 import (
 	"context"
+{{- if .Guards}}
+	"errors"
+{{- end}}
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 {{range .Imports}}
@@ -18,10 +21,26 @@ import (
 // by its own event package from the handler set in this package, so the
 // decode-validate-dispatch rule is spelled once, in the contract.
 // Delivery runs until ctx is cancelled.
+//
+// It refuses rather than subscribing when a consume middleware the design
+// applies has not been wired: a nil one is skipped, so the design's
+// guarantee would simply be absent.
 func SubscribeAll(ctx context.Context, bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
+{{- if .Guards}}
+	// A consume middleware the design applies but nothing wired is
+	// skipped by the chain rather than called, so the guarantee would be
+	// missing with nothing to notice. The check is here rather than in
+	// wiring.Register because this is the call every consumer deployable
+	// makes; one with no HTTP routes owns no server to hand Register.
+{{- range .Guards}}
+	if {{.Field}} == nil {
+		return errors.New({{.QuotedMsg}})
+	}
+{{- end}}
+{{- end}}
 	var subs []craftevents.Subscription
 {{- range .Services}}
-	subs = append(subs, {{.Alias}}.Subscriptions(bus, New{{.Type}}(svcCtx))...)
+	subs = append(subs, {{.Alias}}.Subscriptions(bus, New{{.Type}}(svcCtx){{if .MiddlewareArg}}, {{.MiddlewareArg}}{{end}})...)
 {{- end}}
 	return bus.SubscribeAll(ctx, subs)
 }

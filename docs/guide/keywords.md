@@ -15,6 +15,7 @@ The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifie
 | `service`    | top level   | Declare an HTTP service                                       |
 | `extend`     | top level   | Add methods to an existing service (`extend service Name`)    |
 | `middleware` | top level   | Declare a named middleware slot                               |
+| `consume middleware` | top level | Declare a named consume-middleware slot (wraps a consumer, not an HTTP handler) |
 | `event`      | top level   | Declare a contract this design does not publish               |
 
 ## Member body keywords

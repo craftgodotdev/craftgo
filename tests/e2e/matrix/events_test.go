@@ -30,6 +30,19 @@ func bootEvents(t *testing.T) (*svccontext.ServiceContext, *memory.Transport) {
 	return bootEventsWith(t, nil, nil)
 }
 
+// wireConsumeMiddleware fills the consume-middleware fields the design
+// applies. SubscribeAll refuses a container missing any of them, so every
+// test that subscribes goes through here. The values are pass-throughs:
+// what these tests observe is delivery, not what a chain does to it -
+// consume_middleware_test.go is where the chain itself is exercised.
+func wireConsumeMiddleware(mw *svccontext.ConsumeMiddlewares) {
+	passthrough := func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
+		return next
+	}
+	mw.Settle = passthrough
+	mw.Attempt = passthrough
+}
+
 // bootEventsWith boots the same wiring behind a consumer middleware chain
 // and an error handler of the caller's choosing. The chain goes on the
 // bus, so nothing generated knows it is there.
@@ -50,6 +63,7 @@ func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(crafteve
 	)
 	svc := svccontext.NewServiceContext()
 	svc.Events = svccontext.NewEvents(bus)
+	wireConsumeMiddleware(&svc.Events.Consume)
 	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
 		t.Fatalf("start consumers: %v", err)
 	}
@@ -288,6 +302,7 @@ func TestConsumerValidatesBeforeLogic(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
 	svc := svccontext.NewServiceContext()
 	svc.Events = svccontext.NewEvents(bus)
+	wireConsumeMiddleware(&svc.Events.Consume)
 	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
 		t.Fatalf("start consumers: %v", err)
 	}
@@ -499,6 +514,7 @@ func TestUndecodablePayloadNeverReachesLogic(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
 	svc := svccontext.NewServiceContext()
 	svc.Events = svccontext.NewEvents(bus)
+	wireConsumeMiddleware(&svc.Events.Consume)
 	if err := apptransport.SubscribeAll(context.Background(), bus, svc); err != nil {
 		t.Fatalf("start consumers: %v", err)
 	}

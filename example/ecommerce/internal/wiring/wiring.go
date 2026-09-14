@@ -4,6 +4,7 @@ package wiring
 
 import (
 	"context"
+	"errors"
 
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
@@ -20,5 +21,28 @@ import (
 // with no consumer returns a no-op.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	routes.RegisterAll(srv, svcCtx)
+	// An HTTP middleware the design applies but nothing wired is skipped
+	// by the chain rather than called, so the guarantee would be missing
+	// with nothing to notice. Fail here instead, naming the line to add.
+	// The consume half is checked in SubscribeAll below, which is the
+	// call a consumer deployable makes without reaching this one.
+	if svcCtx.AuthRequired == nil {
+		return nil, errors.New("wiring: the design declares `middleware AuthRequired` and CatalogService.CreateProduct runs it, but svcCtx.AuthRequired is nil - assign `svc.AuthRequired = middleware.NewAuthRequiredMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.BodyLimit == nil {
+		return nil, errors.New("wiring: the design declares `middleware BodyLimit` and CatalogService.CreateProduct runs it, but svcCtx.BodyLimit is nil - assign `svc.BodyLimit = middleware.NewBodyLimitMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.CORS == nil {
+		return nil, errors.New("wiring: the design declares `middleware CORS` and CatalogService.ListProducts runs it, but svcCtx.CORS is nil - assign `svc.CORS = middleware.NewCORSMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.RateLimit == nil {
+		return nil, errors.New("wiring: the design declares `middleware RateLimit` and CustomerService.ListCustomers runs it, but svcCtx.RateLimit is nil - assign `svc.RateLimit = middleware.NewRateLimitMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.RequestID == nil {
+		return nil, errors.New("wiring: the design declares `middleware RequestID` and CatalogService.ListProducts runs it, but svcCtx.RequestID is nil - assign `svc.RequestID = middleware.NewRequestIDMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.Timeout == nil {
+		return nil, errors.New("wiring: the design declares `middleware Timeout` and CustomerService.DeleteCustomer runs it, but svcCtx.Timeout is nil - assign `svc.Timeout = middleware.NewTimeoutMiddleware(/* args */)` in main.go")
+	}
 	return func(context.Context) error { return nil }, nil
 }

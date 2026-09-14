@@ -18,6 +18,8 @@ const fullDesign = `package gate
 
 middleware Guard
 
+consume middleware Settle
+
 type Thing {
 	id string
 }
@@ -42,6 +44,7 @@ service ThingService {
 	}
 }
 
+@consumeMiddlewares(Settle)
 service AuditService {
 	consume RecordThing {
 		event ThingCreated
@@ -137,6 +140,7 @@ var scaffoldShapes = []scaffoldShape{
 			"internal/service/thing_service/get_thing.go":    "service.tmpl",
 			"internal/service/audit_service/record_thing.go": "consumer.tmpl",
 			"internal/middleware/guard_middleware.go":        "middleware.tmpl",
+			"internal/consume/settle_middleware.go":          "consume-middleware.tmpl",
 		},
 		yamlScaffolds: map[string]string{
 			"config/config.yaml":         "config.yaml.tmpl",

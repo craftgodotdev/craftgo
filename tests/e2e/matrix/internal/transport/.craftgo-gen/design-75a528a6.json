@@ -58,6 +58,7 @@
     "combine_service/validate_num.go",
     "combine_service/validate_str.go",
     "events.go",
+    "guarded_service_consumers.go",
     "header_echo_service/list_items.go",
     "inventory_service/health.go",
     "inventory_service_consumers.go",

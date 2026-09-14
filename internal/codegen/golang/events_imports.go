@@ -29,6 +29,8 @@ var reservedAliases = map[string]bool{
 	"msg":     true,
 	"payload": true,
 	"subs":    true,
+	"mw":      true,
+	"wrap":    true,
 	"p":       true,
 	"l":       true,
 	"h":       true,

@@ -71,17 +71,21 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	case *ast.ServiceDecl:
 		if dd.Extend {
 			// An extend block's decorators are member decorators that
-			// [analyzer.mergeServices] copies onto the block's methods.
+			// [analyzer.mergeServices] copies onto the block's members.
 			// They resolve here, on the block that writes them, so a
 			// block carrying no method - one holding only consumers -
 			// still has its names checked, and a block carrying several
-			// reports one diagnostic rather than one per method.
-			a.checkMemberLevelRefs(dd.Decorators)
+			// reports one diagnostic rather than one per member. Either
+			// member kind may receive them, so both levels are in scope.
+			a.checkMemberLevelRefs(dd.Decorators, LvlMethod|LvlConsumer)
 		} else {
 			a.checkServiceLevelRefs(dd.Decorators)
 		}
 		for _, m := range dd.Methods() {
-			a.checkMemberLevelRefs(m.Decorators)
+			a.checkMemberLevelRefs(m.Decorators, LvlMethod)
+		}
+		for _, c := range dd.Consumers() {
+			a.checkMemberLevelRefs(c.Decorators, LvlConsumer)
 		}
 	}
 }
@@ -238,22 +242,31 @@ func (a *analyzer) checkServiceLevelRefs(decs []*ast.Decorator) {
 		switch d.Name {
 		case "middlewares":
 			a.checkMiddlewareRef(d)
+		case "consumeMiddlewares":
+			a.checkConsumeMiddlewareRef(d)
 		case "security":
 			a.checkSecurityRef(d)
 		}
 	}
 }
 
-// checkMemberLevelRefs validates `@errors`, `@middlewares`, and
-// `@security` on one member's decorator list. Member-level decorators
-// take precedence over service-level (per README) but resolution targets
-// are the same.
+// checkMemberLevelRefs validates `@errors`, `@middlewares`,
+// `@consumeMiddlewares` and `@security` on one member's decorator list.
+// Member-level decorators take precedence over service-level (per README)
+// but resolution targets are the same.
+//
+// lvl is the level the list is written at, so a decorator that does not
+// belong at this site is left to the placement pass: resolving it too
+// would report one mistake twice.
 //
 // Propagated decorators are skipped: they are copies of an extend
 // block's own list, which resolves at the block.
-func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator) {
+func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator, lvl Level) {
 	for _, d := range decs {
 		if d == nil || d.Propagated {
+			continue
+		}
+		if spec, ok := Lookup(d.Name); !ok || spec.Levels&lvl == 0 {
 			continue
 		}
 		switch d.Name {
@@ -261,6 +274,8 @@ func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator) {
 			a.checkErrorsRef(d)
 		case "middlewares":
 			a.checkMiddlewareRef(d)
+		case "consumeMiddlewares":
+			a.checkConsumeMiddlewareRef(d)
 		case "security":
 			a.checkSecurityRef(d)
 		}
@@ -285,14 +300,41 @@ func (a *analyzer) checkErrorsRef(d *ast.Decorator) {
 
 // checkMiddlewareRef resolves middleware names the same way
 // [checkErrorsRef] resolves errors: qualified against the named package,
-// bare against every package.
+// bare against every package. A name found in the consume table instead
+// is reported as the wrong kind rather than as unknown - the declaration
+// exists, in the form the other side needs.
 func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
 		if a.middlewareDeclared(arg.value) {
 			continue
 		}
+		if decl := a.proj.Lookup(a.pkg.Name, arg.value, ConsumeMiddlewareDecls); decl != nil {
+			a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeMiddlewareKindMismatch,
+				"@middlewares: %q is declared `consume middleware %s` at %s, which wraps a consumer's handler (events.Middleware, func(events.Subscription, events.Handler) events.Handler). "+
+					"An HTTP method needs `middleware %s`, whose impl returns server.Middleware (func(http.Handler) http.Handler) from the middleware package",
+				arg.value, arg.value, decl.DeclPos(), arg.value)
+			continue
+		}
 		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
 			"@middlewares: %q is not a declared middleware in any package", arg.value)
+	}
+}
+
+// checkConsumeMiddlewareRef is [checkMiddlewareRef] for the consume side.
+func (a *analyzer) checkConsumeMiddlewareRef(d *ast.Decorator) {
+	for _, arg := range collectIdentOrStringArgs(d) {
+		if a.consumeMiddlewareDeclared(arg.value) {
+			continue
+		}
+		if decl := a.proj.Lookup(a.pkg.Name, arg.value, MiddlewareDecls); decl != nil {
+			a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeMiddlewareKindMismatch,
+				"@consumeMiddlewares: %q is declared `middleware %s` at %s, which wraps an HTTP handler (server.Middleware, func(http.Handler) http.Handler). "+
+					"A consumer needs `consume middleware %s`, whose impl returns events.Middleware (func(events.Subscription, events.Handler) events.Handler) from the consume package",
+				arg.value, arg.value, decl.DeclPos(), arg.value)
+			continue
+		}
+		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
+			"@consumeMiddlewares: %q is not a declared consume middleware in any package", arg.value)
 	}
 }
 

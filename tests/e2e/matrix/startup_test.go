@@ -11,9 +11,35 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consume"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/middleware"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/wiring"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
+
+// wiredContext is a container with every middleware the design applies
+// assigned. Register refuses one that is missing any of them, so a test
+// reaching past that check builds its container through here.
+//
+// bus goes in rather than being assigned afterwards: NewEvents returns a
+// fresh Events, so a later `svc.Events = ...` would drop the consume
+// middleware this wires onto it.
+func wiredContext(bus *craftevents.Bus) *svccontext.ServiceContext {
+	svc := svccontext.NewServiceContext()
+	svc.Audit = middleware.NewAuditMiddleware()
+	svc.AuthRequired = middleware.NewAuthRequiredMiddleware()
+	svc.BasicAuth = middleware.NewBasicAuthMiddleware()
+	svc.ProfileAuth = middleware.NewProfileAuthMiddleware("")
+	svc.RateLimit = middleware.NewRateLimitMiddleware()
+	svc.RequestStamp = middleware.NewRequestStampMiddleware()
+	svc.Timing = middleware.NewTimingMiddleware()
+	if bus != nil {
+		svc.Events = svccontext.NewEvents(bus)
+		svc.Events.Consume.Settle = consume.NewSettleMiddleware()
+		svc.Events.Consume.Attempt = consume.NewAttemptMiddleware()
+	}
+	return svc
+}
 
 // capableTransport is an in-process transport that answers yes to every
 // disposition. It is not a broker that can honour one - it is what a
@@ -51,8 +77,7 @@ func TestARequiredDispositionTheTransportLacksFailsStartup(t *testing.T) {
 			bus := craftevents.New(tc.build(),
 				craftevents.WithCodec(codecjson.Codec{}),
 				craftevents.WithDispositionRequired(craftevents.DispositionRedeliver))
-			svc := svccontext.NewServiceContext()
-			svc.Events = svccontext.NewEvents(bus)
+			svc := wiredContext(bus)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -95,7 +120,7 @@ func TestStartupRefusesAContainerWithNoBus(t *testing.T) {
 	if err == nil {
 		t.Fatal("started with no bus on a design that declares consumers")
 	}
-	if want := "10 event(s) and 10 consumer(s)"; !strings.Contains(err.Error(), want) {
+	if want := "10 event(s) and 13 consumer(s)"; !strings.Contains(err.Error(), want) {
 		t.Errorf("the failure does not say what the design declares (%q): %v", want, err)
 	}
 	if !strings.Contains(err.Error(), "NewEvents") {

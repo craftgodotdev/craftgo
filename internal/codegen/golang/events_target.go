@@ -133,6 +133,7 @@ func appSideDirs(cfg *config.Config) []struct{ key, path string } {
 		{"output.service", cfg.Output.Service},
 		{"output.wiring", cfg.Output.Wiring},
 		{"output.middleware", cfg.Output.Middleware},
+		{"output.consumeMiddleware", cfg.Output.ConsumeMiddleware},
 		{"output.config", cfg.Output.Config},
 		{"output.svccontext", fileDirRel(cfg.Output.Svccontext)},
 	}

@@ -36,6 +36,9 @@ import (
 {{- if .HasMiddlewares}}
 	"{{.MiddlewareImport}}"
 {{- end}}
+{{- if .ConsumeMiddlewares}}
+	"{{.ConsumeMiddlewareImport}}"
+{{- end}}
 	"{{.SvccontextImport}}"
 )
 {{- if .HasDocs}}
@@ -104,6 +107,15 @@ func main() {
 		craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
 	)
 	svc.Events = svccontext.NewEvents(bus)
+{{- if .ConsumeMiddlewares}}
+
+	// Each `consume middleware` the design declares is one field here.
+	// Order is not decided at this line - it is decided by
+	// `@consumeMiddlewares(...)` in the design, per consumer.
+{{- range .ConsumeMiddlewares}}
+	svc.Events.Consume.{{.}} = consume.New{{.}}Middleware()
+{{- end}}
+{{- end}}
 {{- end}}
 {{- if .HasMiddlewares}}
 

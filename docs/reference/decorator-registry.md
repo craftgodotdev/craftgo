@@ -111,6 +111,7 @@ See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with f
 | `@prefix("/v1")` | `(string)` | Path prefix prepended to every method route. |
 | `@group("admin/ops")` | `(string)` | **Replaces** the service-name segment on disk, so handlers, service stubs and `routes.go` land under `<output>/<group>/` instead of `<output>/<service>/`, and adds its value as an OpenAPI tag. Does not affect the route or OpenAPI path. Services may share a group: they merge into one folder with a single `routes.go`. Contributors from different DSL packages raise `group/package-straddle`; two contributors declaring the same method name raise `group/method-collision`. |
 | `@middlewares(A, B)` | variadic idents / array | Apply named middlewares (also valid at method level - see below). |
+| `@consumeMiddlewares(A, B)` | variadic idents / array | Apply named consume middlewares to this service's consumers (also valid at consumer level). Names come from `consume middleware Name`, never from `middleware Name`. First name is outermost - which on the consume side means it runs LAST on the way out. |
 | `@tags(a, b)` | variadic idents/strings / array | OpenAPI tags (also method level). |
 | `@security(scheme)` | variadic idents / array | Security-scheme requirements (also method level). Within one decorator schemes AND-combine; multiple `@security(...)` OR-combine. |
 
@@ -129,7 +130,7 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 | `@rawResponse` | - | Logic writes the response to `http.ResponseWriter`; the request is still bound + validated. A `response` block is a docs-only contract. Stub: `(w, r, req *types.Req) error` (flag form). |
 | `@rawRequest` | - | Logic reads the raw `*http.Request`; the response is still JSON-encoded. A `request` block is a docs-only contract. Stub: `(r *http.Request) (*types.Resp, error)` (flag form). |
 | `@passthrough` | - | Both sides raw - exactly `@rawRequest @rawResponse`. Stub: `(w, r) error`. Optional blocks document the contract (flag form). |
-| `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method. |
+| `@ignoreMiddleware` | - | Clear the inherited middleware chain on this member. The site picks the chain: `@middlewares` on a method, `@consumeMiddlewares` on a consumer. |
 | `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service). |
 | `@ignoreTags` | - | Clear the inherited `@tags` list. |
 
@@ -156,6 +157,6 @@ See the [Events guide](/guide/events) for the full picture.
 ## Argument forms
 
 - **Flag** (`@positive`, `@uniqueItems`, `@nullable`, `@sensitive`, `@passthrough`, `@rawRequest`, `@rawResponse`, `@ignore*`) take no parentheses. Writing empty `()` raises `decorator/flag-empty-parens`.
-- **Variadic** decorators (`@middlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal `(["A", "B", "C"])`.
+- **Variadic** decorators (`@middlewares`, `@consumeMiddlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal `(["A", "B", "C"])`.
 - **Durations** (`@timeout`) take Go duration syntax: `3s`, `500ms`, `1h30m`.
 - **Sizes** (`@maxSize`, `@maxBodySize`) take `KB` / `MB` / `GB` suffixes or bare bytes.

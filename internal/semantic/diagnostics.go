@@ -258,6 +258,13 @@ const (
 	// rename or consolidate.
 	CodeMiddlewareCollision = "middleware/collision"
 
+	// CodeMiddlewareKindMismatch fires when a middleware name resolves to
+	// the other kind: an HTTP `middleware` named on a consumer, or a
+	// `consume middleware` named on a method. The two wrap different
+	// things and are scaffolded into different packages, so the name is
+	// not a spelling mistake - the declaration is the wrong form.
+	CodeMiddlewareKindMismatch = "middleware/kind-mismatch"
+
 	// CodeQualifiedRef fires for a malformed qualified reference: more
 	// than one package segment (`a.b.Type`), or a type in its own package
 	// referenced as `pkg.Type` instead of by its bare name.

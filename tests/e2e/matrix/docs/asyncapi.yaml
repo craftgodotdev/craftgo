@@ -283,6 +283,35 @@ operations:
     messages:
     - $ref: '#/channels/events.Forged/messages/events_Forged'
     title: Craft publishes Forged
+  GuardedService_BareStock_Receive:
+    action: receive
+    channel:
+      $ref: '#/channels/events.StocktakeStarted'
+    description: 'Clears the inherited chain: this one runs nothing.'
+    messages:
+    - $ref: '#/channels/events.StocktakeStarted/messages/events_StocktakeStarted'
+    title: GuardedService consumes StocktakeStarted
+    x-craftgo-group: eventsubs-GuardedService-BareStock
+  GuardedService_GuardedStock_Receive:
+    action: receive
+    channel:
+      $ref: '#/channels/events.ItemStocked'
+    description: 'Runs Settle then Attempt: the retry is nearest the handler, so a
+      failed delivery is asked back before Settle parks it.'
+    messages:
+    - $ref: '#/channels/events.ItemStocked/messages/events_ItemStocked'
+    title: GuardedService consumes ItemStocked
+    x-craftgo-group: eventsubs-GuardedService-GuardedStock
+  GuardedService_InheritedStock_Receive:
+    action: receive
+    channel:
+      $ref: '#/channels/events.WarehouseClosed'
+    deprecated: true
+    description: Inherited from the extend block.
+    messages:
+    - $ref: '#/channels/events.WarehouseClosed/messages/events_WarehouseClosed'
+    title: GuardedService consumes WarehouseClosed
+    x-craftgo-group: eventsubs-GuardedService-InheritedStock
   InventoryService_Enveloped_Send:
     action: send
     channel:

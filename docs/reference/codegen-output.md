@@ -34,13 +34,15 @@ internal/
 ├── routes/
 │   ├── routes.go                REGEN - umbrella RegisterRoutes
 │   └── <svc>/routes.go          REGEN - per-service registration
-└── middleware/
-    └── <name>_middleware.go     GEN-ONCE - one per declared middleware
+├── middleware/
+│   └── <name>_middleware.go     GEN-ONCE - one per declared middleware
+└── consume/
+    └── <name>_middleware.go     GEN-ONCE - one per declared consume middleware
 
 svccontext/
 ├── svccontext.go                GEN-ONCE - your dependency container
 ├── middlewares.go               REGEN - typed middleware fields
-└── events.go                    REGEN - typed publishers (events only)
+└── events.go                    REGEN - typed publishers + consume middleware fields
 
 config/                          GEN-ONCE - runtime config loader
 ├── config.go
@@ -115,7 +117,7 @@ This is the only place you write code. Everything above and below it is regenera
 
 ### `svccontext/` (gen-once + regen)
 
-`svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against.
+`svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against. Consume middleware lands on `events.go` instead, as `svcCtx.Events.Consume.<Name>` - a named field rather than an embedded struct, so adding one never edits the gen-once `svccontext.go`.
 
 ### `docs/openapi.yaml` (regen)
 

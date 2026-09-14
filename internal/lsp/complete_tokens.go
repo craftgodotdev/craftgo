@@ -148,6 +148,7 @@ func keywordCompletions() []protocol.CompletionItem {
 		{"service", "service ${1:Name} {\n\t$0\n}"},
 		{"extend", "extend service ${1:Name} {\n\t$0\n}"},
 		{"middleware", "middleware ${1:Name}"},
+		{"consume middleware", "consume middleware ${1:Name}"},
 		{"event", "event ${1:Name} {\n\tpayload ${2:Payload}\n}"},
 		{"consume", "consume ${1:Name} {\n\tevent ${2:Event}\n}"},
 		{"request", "request ${1:Type}"},

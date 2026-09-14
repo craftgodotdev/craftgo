@@ -398,12 +398,12 @@ Nothing generated changes, and there is nothing to declare in the design.
 type Middleware func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler
 ```
 
-There is no decorator to write. An `http.Handler` gives a middleware no handle
-on the route it wraps, so the HTTP side needs `@middlewares(...)` to name one; a
-consumer middleware is handed the `Subscription` as an argument, and it already
-carries the contract, the consumer and the group. What HTTP solves with a
-decorator, events solves with a parameter - so one chain can behave differently
-per consumer group without the design knowing it exists.
+A bus chain wraps **every** subscription the bus registers. That is what you
+want for logging, metrics and tracing, and it is the wrong shape for a delivery
+guarantee: three consumers of one contract do not tolerate a dropped delivery
+equally, and a chain on the bus gives them all the same one. For that, declare
+the middleware in the design and name it per consumer - see
+[Per-consumer middleware](#per-consumer-middleware) below.
 
 ```go
 func Logging(logger log.Logger) craftevents.Middleware {
@@ -450,6 +450,12 @@ configured once per container with no compiler help for the one you forget.
 One bus, one chain, every subscription. A project wanting two different chains
 builds two buses, which it already can.
 
+That reasoning is about the chain every subscription shares. A chain that
+belongs to *one consumer* is a different question with a different answer: it is
+folded into that consumer's own subscription, in the contract package, so it
+travels with the contract instead of with the process. See
+[Per-consumer middleware](#per-consumer-middleware).
+
 ### Panics
 
 **A panicking consumer reaches your own middleware as an ordinary error, and the
@@ -478,6 +484,190 @@ The one case that needs a line from you is a chain folded by `Chain.Apply` rathe
 than installed with `WithMiddleware`: the bus wraps that from outside, as one
 opaque handler, so put `craftevents.Recover()` at its innermost end to get the
 same visibility. A chain on the bus needs nothing.
+
+## Per-consumer middleware
+
+### Order is the whole contract
+
+Start here, because this compiles, it is silent, and it is one word away from
+the version that works:
+
+```craftgo
+consume middleware Retry
+consume middleware DeadLetter
+
+service InventoryService {
+	@consumeMiddlewares(Retry, DeadLetter)   // wrong
+	consume ReserveStock {
+		event orders.Placed
+	}
+}
+```
+
+```
+handler ran 1 time(s), retry asked 0 time(s), dead-lettered 1 time(s)
+```
+
+Zero retries. Note the third number: **the dead-letter store still gets its
+record**, so nothing looks missing. There is no gap in the store to notice, no
+error in the transport's error handler and no log line. The only trace is that
+the handler ran once instead of three times.
+
+`Retry` hands the message back by calling `msg.Redeliver()` and passing the
+error up. `DeadLetter` parks the failure and returns `nil`. Listed innermost,
+`DeadLetter` answers first - so `Retry` is handed a success, takes its
+`if err == nil` branch, and never reaches its `Redeliver()` call at all.
+
+Swap the two names:
+
+```craftgo
+	@consumeMiddlewares(DeadLetter, Retry)   // right
+```
+
+```
+handler ran 3 time(s), retry asked 2 time(s), dead-lettered 1 time(s)
+```
+
+**This is the asymmetry with HTTP middleware, and it is worth reading twice.**
+An HTTP middleware does its work on the way IN - authenticate, rate-limit, open
+a span - so "the first one listed runs first" reads the way it sounds. A consume
+middleware does its work on the way OUT, on the error coming back. The first one
+listed is still outermost, which on the way out means it runs **last**, sees what
+everything below it decided, and **wins**.
+
+Put the middleware that decides the message's fate first, and the one that
+retries last.
+
+Nothing catches this for you. craftgo cannot see what your middleware returns,
+so there is no diagnostic here - only this paragraph and a test of your own that
+counts attempts rather than reading frames. A reversed chain still *enters* in
+the order it was written, so a test asserting frame order passes on the broken
+one.
+
+### Declaring one
+
+A consume middleware is its own declaration. It wraps a subscription handler,
+not an `http.Handler`, so it is a different Go shape scaffolded into a different
+package - and naming an HTTP `middleware` on a consumer is refused in the design
+rather than in a `DO NOT EDIT` file:
+
+```craftgo
+middleware Auth              // HTTP: func(http.Handler) http.Handler
+consume middleware Retry     // events: func(Subscription, Handler) Handler
+```
+
+The kind is the first token, so a reader can tell what a name is without
+looking at where it is used. One name is one middleware of one kind: `Auth` and
+`consume middleware Auth` cannot both exist.
+
+`craftgo gen` writes the impl once, into `output.consumeMiddleware`
+(`./internal/consume` by default), and never overwrites it:
+
+```go
+func NewRetryMiddleware() craftevents.Middleware {
+	return func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
+		return func(ctx context.Context, msg *craftevents.Message) error {
+			// TODO: implement
+			return next(ctx, msg)
+		}
+	}
+}
+```
+
+Key any per-consumer state on `sub.Event` and `sub.GroupName()`. `sub.Consumer`
+does not identify a subscription on its own - two services may declare the same
+consumer name for the same contract.
+
+### Applying one
+
+`@consumeMiddlewares` sits on a service, on a consumer, or both. The service
+level is the default for every consumer in the body and the consumer level
+appends to it, innermost:
+
+```craftgo
+@consumeMiddlewares(DeadLetter, Logging)
+service InventoryService {
+	@consumeMiddlewares(Retry)        // runs innermost, nearest the handler
+	consume ReserveStock {
+		event orders.Placed
+	}
+
+	@ignoreMiddleware                 // clears the inherited chain
+	consume RecordPlaced {
+		event orders.Shipped
+	}
+}
+```
+
+`ReserveStock` runs `DeadLetter → Logging → Retry → handler`. `RecordPlaced`
+runs nothing. That is the point of the feature: **the guarantee belongs to the
+consumer, not to the process that happens to host it.** Two consumers of the
+same contract, in the same binary, can differ.
+
+`@middlewares` and `@consumeMiddlewares` are separate decorators because the
+target set is then part of the name. A single decorator distributing names by
+kind would let `@middlewares(Auth)` on a service holding both methods and
+consumers pass every check while its consumers silently got nothing.
+
+### What is generated
+
+The chain is folded in the contract package, in that consumer's own
+subscription:
+
+```go
+func Subscriptions(bus *craftevents.Bus, h Consumers, mw Middlewares) []craftevents.Subscription {
+	return []craftevents.Subscription{
+		wrap(craftevents.Subscription{
+			Event:    "orders.Placed",
+			Consumer: "ReserveStock",
+			Group:    "inventory-InventoryService-ReserveStock",
+			Handle:   func(ctx context.Context, msg *craftevents.Message) error { /* decode, validate, dispatch */ },
+		}, mw.DeadLetter, mw.Logging, mw.Retry),
+	}
+}
+```
+
+So the guarantee travels with the packaged contract: another codebase importing
+this package gets `ReserveStock`'s chain without reading your `main.go`. The
+third parameter appears only for a service that declares a chain, so a design
+without one keeps the two-argument signature it already published.
+
+`wrap` appends `craftevents.Recover()` at the innermost end, which is the rule
+from [Panics](#panics) applied here: this chain is folded and handed over
+pre-wrapped, so without it a panicking handler would unwind straight past the
+whole chain and a `Retry` would never see one.
+
+Runtime values go on the ServiceContext and are wired in `main.go`:
+
+```go
+svc.Events = svccontext.NewEvents(bus)
+svc.Events.Consume.Retry = consume.NewRetryMiddleware()
+```
+
+Forget that line and **`SubscribeAll` refuses to subscribe**, naming the line to
+add. A nil middleware is skipped rather than called, so without the check the
+guarantee would simply be absent with nothing to notice.
+
+The check is in `SubscribeAll` rather than in `wiring.Register` because
+`SubscribeAll` is the call every consumer makes. A consumer-only deployable owns
+no `*server.Server`, so it has nothing to hand `Register` and calls `SubscribeAll`
+directly - guarding only `Register` would cover the deployables that serve HTTP
+and miss exactly the ones a delivery guarantee is for. `Register` calls
+`SubscribeAll` itself, so an application doing both is still checked, once.
+
+### Bus chain or consumer chain?
+
+Both, and they nest: a bus chain is strictly outside every consumer chain.
+
+```
+bus middleware (WithMiddleware)      ← every subscription, application-wide
+  └─ @consumeMiddlewares             ← this consumer only
+      └─ decode → validate → handler
+```
+
+Put cross-cutting observability on the bus - it sees everything, including the
+retries. Put delivery guarantees in the design, where they belong to the
+consumer that needs them.
 
 ### Reaching the broker's own message
 

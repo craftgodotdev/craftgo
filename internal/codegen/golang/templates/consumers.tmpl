@@ -26,14 +26,63 @@ type Consumers interface {
 	{{$c.Name}}(ctx context.Context, payload *{{$c.PayloadType}}) error
 {{- end}}
 }
+{{- if .Middlewares}}
+
+// Middlewares carries the consume middleware {{.Service}}'s design
+// applies to its consumers, one field per `consume middleware Name`
+// named by a `@consumeMiddlewares(...)` on this service. Which consumer
+// runs which is decided here, in the contract, so a deployable hosting
+// this service cannot give its consumers a guarantee the design did not.
+//
+// A nil field is skipped rather than called, so a middleware the design
+// declares and the application never wires simply does not run.
+type Middlewares struct {
+{{- range .Middlewares}}
+	{{.}} craftevents.Middleware
+{{- end}}
+}
+
+// wrap folds one consumer's declared chain over sub, outermost first:
+// the first middleware listed sees the message first on the way in and
+// returns last on the way out.
+//
+// [craftevents.Recover] goes at the innermost end so a declared
+// middleware observes a panicking handler as an ordinary error - the same
+// thing a middleware installed on the bus observes. Without it the panic
+// unwinds past the whole chain to the bus's own recover, and a middleware
+// that retries on error would never see one.
+//
+// [craftevents.Chain.Apply] takes a slice, so the one subscription goes
+// in and comes back as one.
+func wrap(sub craftevents.Subscription, mws ...craftevents.Middleware) craftevents.Subscription {
+	return craftevents.NewChain(mws...).Append(craftevents.Recover()).Apply([]craftevents.Subscription{sub})[0]
+}
+{{- end}}
 
 // Subscriptions binds h to bus, one subscription per contract {{.Service}}
 // consumes. The payload is decoded with the bus codec and validated before
 // a handler sees it; a payload that fails either never reaches the
 // handler, and the error names the contract it arrived on.
-func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription {
+func Subscriptions(bus *craftevents.Bus, h Consumers{{if .Middlewares}}, mw Middlewares{{end}}) []craftevents.Subscription {
 	return []craftevents.Subscription{
 {{- range .Consumers}}
+{{- if .ChainArgs}}
+		wrap(craftevents.Subscription{
+			Event:    {{.QuotedContract}},
+			Consumer: {{.QuotedName}},
+			Group:    {{.QuotedGroup}},
+			Handle: func(ctx context.Context, msg *craftevents.Message) error {
+				var payload {{.PayloadType}}
+				if err := bus.Decode(msg, &payload); err != nil {
+					return err
+				}
+				if err := payload.Validate(); err != nil {
+					return fmt.Errorf("validate %s: %w", {{.QuotedContract}}, err)
+				}
+				return h.{{.Name}}(ctx, &payload)
+			},
+		}, {{.ChainArgs}}),
+{{- else}}
 		{
 			Event:    {{.QuotedContract}},
 			Consumer: {{.QuotedName}},
@@ -49,6 +98,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 				return h.{{.Name}}(ctx, &payload)
 			},
 		},
+{{- end}}
 {{- end}}
 	}
 }

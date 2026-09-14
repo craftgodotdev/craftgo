@@ -577,6 +577,16 @@ var Registry = map[string]Spec{
 		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
 		Repeatable: true,
 	},
+	"consumeMiddlewares": {
+		Name:   "consumeMiddlewares",
+		Levels: LvlService | LvlConsumer,
+		Doc: "Apply named consume middlewares to a service's consumers; consumer-level appends to the service-level chain. " +
+			"Names come from `consume middleware Name` declarations, never from `middleware Name` - the two wrap different things. " +
+			"The first name is OUTERMOST: it sees the message first on the way in and returns last, so it is the one that decides " +
+			"what the transport is told. A middleware that swallows an error goes first and one that retries goes last.",
+		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
+		Repeatable: true,
+	},
 	"tags": {
 		Name:       "tags",
 		Levels:     LvlService | LvlMethod,
@@ -593,8 +603,8 @@ var Registry = map[string]Spec{
 	},
 	"ignoreMiddleware": {
 		Name:   "ignoreMiddleware",
-		Levels: LvlMethod,
-		Doc:    "Clear the inherited @middlewares chain on this method. Method-level @middlewares(...) then start from empty instead of appending to the service-level chain.",
+		Levels: LvlMethod | LvlConsumer,
+		Doc:    "Clear the inherited middleware chain on this member. The site picks the chain: on a method the inherited @middlewares, on a consumer the inherited @consumeMiddlewares. The member's own decorator then starts from empty instead of appending to the service-level chain.",
 		Args:   ArgsRule{Min: 0, Max: 0},
 	},
 	"ignoreSecurity": {

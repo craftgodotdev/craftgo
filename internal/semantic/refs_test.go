@@ -266,7 +266,7 @@ func TestRefsNilDecoratorTolerated(t *testing.T) {
 	a.checkFieldGroupRefs("X", []*ast.Decorator{nil}, nil)
 	a.checkServiceLevelRefs([]*ast.Decorator{nil})
 	// Build a synthetic member decorator list with a nil entry.
-	a.checkMemberLevelRefs([]*ast.Decorator{nil})
+	a.checkMemberLevelRefs([]*ast.Decorator{nil}, LvlMethod)
 	if len(a.diags) != 0 {
 		t.Errorf("nil decorator entries should not diag, got %v", a.diags)
 	}

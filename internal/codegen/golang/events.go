@@ -72,10 +72,15 @@ type consumerAdapter struct {
 // consumersData is the template input for a service's library-side
 // consumer API: the handler interface plus its subscription builder.
 type consumersData struct {
-	Package   string
-	Service   string
-	Imports   []extraImport
-	Consumers []consumersEntry
+	Package string
+	Service string
+	Imports []extraImport
+	// Middlewares is every consume middleware this service's consumers
+	// name, sorted, one field on the generated Middlewares struct. Empty
+	// leaves both that struct and the third parameter out, so a service
+	// that declares no chain keeps the signature it already published.
+	Middlewares []string
+	Consumers   []consumersEntry
 }
 
 // consumersEntry is one contract a service consumes.
@@ -86,6 +91,11 @@ type consumersEntry struct {
 	QuotedGroup    string
 	PayloadType    string
 	Doc            []string
+	// ChainArgs is this consumer's declared chain rendered as the
+	// variadic tail of the wrap call (`mw.DeadLetter, mw.Retry`),
+	// outermost first. Empty means no chain, and the subscription is
+	// emitted bare.
+	ChainArgs string
 }
 
 // consumerStubData is the template input for a gen-once consumer stub.
@@ -106,6 +116,11 @@ type eventsAllData struct {
 	SvccontextImport string
 	Imports          []extraImport
 	Services         []consumerHandlerEntry
+	// Guards is one startup check per consume middleware the design
+	// applies. They live here rather than in wiring.Register because
+	// SubscribeAll is the call every consumer deployable makes - one that
+	// owns no HTTP server has no reason to call Register at all.
+	Guards []middlewareGuard
 }
 
 // consumerHandlerEntry is one consuming service in SubscribeAll: its event
@@ -113,12 +128,21 @@ type eventsAllData struct {
 type consumerHandlerEntry struct {
 	Alias string
 	Type  string
+	// MiddlewareArg is the third argument to that service's
+	// Subscriptions, a composite literal binding each declared field to
+	// its value on the ServiceContext. Empty when the service declares no
+	// chain, and the call stays two arguments wide.
+	MiddlewareArg string
 }
 
 // eventsFieldsData is the template input for svccontext/events.go.
 type eventsFieldsData struct {
 	Imports    []extraImport
 	Publishers []publisherEntry
+	// ConsumeMiddlewares is every `consume middleware Name` the design
+	// declares, sorted: one field on the generated ConsumeMiddlewares
+	// struct that main.go assigns at startup.
+	ConsumeMiddlewares []string
 }
 
 type publisherEntry struct {
@@ -391,6 +415,7 @@ func generateSvccontextEvents(proj *semantic.Project, cfg *config.Config, projec
 	if eventsEnabled(proj, cfg) {
 		tmplName = "events-fields.tmpl"
 	}
+	fields.ConsumeMiddlewares = projectSortedConsumeMiddlewareNames(proj)
 	fields.Imports = importsFrom(publisherImports)
 	return writeRendered(filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext)), "events.go", tmplName, fields)
 }
@@ -398,8 +423,10 @@ func generateSvccontextEvents(proj *semantic.Project, cfg *config.Config, projec
 // generateProjectEvents writes the project-wide SubscribeAll and clears the
 // handler set of any service that no longer consumes anything.
 func generateProjectEvents(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error {
+	_, consumeGuards := middlewareGuards(proj, cfg.Output.RuntimeDisabled())
 	all := eventsAllData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		Guards:           consumeGuards,
 	}
 	eventsImports := map[string]string{}
 	written := map[string]bool{}
@@ -418,7 +445,11 @@ func generateProjectEvents(proj *semantic.Project, cfg *config.Config, projectRo
 			written[file] = true
 			alias := eventsAlias(svcName)
 			eventsImports[alias] = eventsPkgImport(cfg, outDir, svcName)
-			all.Services = append(all.Services, consumerHandlerEntry{Alias: alias, Type: consumersTypeName(svcName)})
+			all.Services = append(all.Services, consumerHandlerEntry{
+				Alias:         alias,
+				Type:          consumersTypeName(svcName),
+				MiddlewareArg: consumeMiddlewareArg(alias, proj, pkg, svcName),
+			})
 		}
 	}
 	// Sweep after the whole project is known: two service names may fold to
@@ -487,6 +518,51 @@ func consumesAnything(proj *semantic.Project, pkg *semantic.Package, svc *semant
 	return false
 }
 
+// consumeMiddlewareArg renders the Middlewares literal SubscribeAll hands
+// a service, binding each field the service's consumers name to its value
+// on the ServiceContext. The field set is exactly the one
+// [writeConsumerAPI] emits, so the literal and the struct cannot drift.
+func consumeMiddlewareArg(alias string, proj *semantic.Project, pkg *semantic.Package, svcName string) string {
+	svc := pkg.Services[svcName]
+	if svc == nil {
+		return ""
+	}
+	used := map[string]struct{}{}
+	for _, cd := range svc.Consumers {
+		rc := proj.ResolveConsumer(pkg, svcName, cd)
+		if rc.Event.Contract == "" {
+			continue
+		}
+		for _, n := range consumeMiddlewareNames(cd, svc.Primary) {
+			used[n] = struct{}{}
+		}
+	}
+	names := sortedKeys(used)
+	if len(names) == 0 {
+		return ""
+	}
+	parts := make([]string, len(names))
+	for i, n := range names {
+		parts[i] = n + ": svcCtx.Events.Consume." + n
+	}
+	return alias + ".Middlewares{" + strings.Join(parts, ", ") + "}"
+}
+
+// chainArgs renders a consumer's chain as the variadic tail of the
+// generated wrap call, outermost first - the order the design writes and
+// the order the message flows through. Empty chain, empty string, and the
+// subscription is emitted without a wrap.
+func chainArgs(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	parts := make([]string, len(names))
+	for i, n := range names {
+		parts[i] = "mw." + n
+	}
+	return strings.Join(parts, ", ")
+}
+
 // escapeReserved renames an alias that collides with an identifier the
 // event templates already bind, the way [importSet.aliasFor] does for
 // payload packages. A service named `Craft` publishes through
@@ -510,10 +586,15 @@ func writeConsumerAPI(pkg *semantic.Package, svcName string, svc *semantic.Servi
 	imps := importPathsForGroup(cfg, pkg, svcName, "")
 	imports := newImportSet(r.CrossPkg)
 	data := consumersData{Package: servicePkgName(pkg.Name, svcName), Service: svcName}
+	used := map[string]struct{}{}
 	for _, cd := range svc.Consumers {
 		rc := r.Proj.ResolveConsumer(pkg, svcName, cd)
 		if rc.Event.Contract == "" {
 			continue
+		}
+		chain := consumeMiddlewareNames(cd, svc.Primary)
+		for _, n := range chain {
+			used[n] = struct{}{}
 		}
 		data.Consumers = append(data.Consumers, consumersEntry{
 			Name:           rc.Name,
@@ -522,8 +603,10 @@ func writeConsumerAPI(pkg *semantic.Package, svcName string, svc *semantic.Servi
 			QuotedGroup:    strconv.Quote(rc.Group),
 			PayloadType:    imports.payloadType(rc.Event, imps.Types, cfg),
 			Doc:            rc.Doc,
+			ChainArgs:      chainArgs(chain),
 		})
 	}
+	data.Middlewares = sortedKeys(used)
 	if len(data.Consumers) == 0 {
 		return nil
 	}

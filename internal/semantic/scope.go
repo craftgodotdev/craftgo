@@ -18,6 +18,12 @@ func (a *analyzer) middlewareDeclared(name string) bool {
 	return a.proj.Lookup(a.pkg.Name, name, MiddlewareDecls) != nil
 }
 
+// consumeMiddlewareDeclared reports whether name (bare or `pkg.Name`) is
+// a declared `consume middleware`.
+func (a *analyzer) consumeMiddlewareDeclared(name string) bool {
+	return a.proj.Lookup(a.pkg.Name, name, ConsumeMiddlewareDecls) != nil
+}
+
 // errorDeclared reports whether name (bare or `pkg.Name`) is a declared
 // error type.
 func (a *analyzer) errorDeclared(name string) bool {

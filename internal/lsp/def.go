@@ -129,7 +129,8 @@ func isConsumerEventPosition(view snapshotView, idx int) bool {
 // lookupKindAt classifies the cursor's surrounding syntax into the
 // declaration kinds a definition lookup may return:
 //
-//   - inside `@middlewares(...)` / `@errors(...)`: that decorator's kind
+//   - inside `@middlewares(...)` / `@consumeMiddlewares(...)` /
+//     `@errors(...)`: that decorator's kind
 //   - the name in a `service X` / `extend service X` header: the primary
 //     service, so a click on an extend's name lands on the block it
 //     continues
@@ -146,6 +147,8 @@ func lookupKindAt(view snapshotView, idx int, pos protocol.Position) semantic.De
 		switch decName {
 		case "middlewares":
 			return semantic.MiddlewareDecls
+		case "consumeMiddlewares":
+			return semantic.ConsumeMiddlewareDecls
 		case "errors":
 			return semantic.ErrorDecls
 		}

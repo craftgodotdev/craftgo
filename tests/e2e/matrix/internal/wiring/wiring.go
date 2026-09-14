@@ -26,7 +26,33 @@ func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.Servic
 	// A publisher off the zero Events is a nil *Publisher, whose deref
 	// beats the runtime's own nil guard.
 	if svcCtx.Events.Bus == nil {
-		return nil, errors.New("wiring: the design declares 10 event(s) and 10 consumer(s) but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
+		return nil, errors.New("wiring: the design declares 10 event(s) and 13 consumer(s) but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
+	}
+	// An HTTP middleware the design applies but nothing wired is skipped
+	// by the chain rather than called, so the guarantee would be missing
+	// with nothing to notice. Fail here instead, naming the line to add.
+	// The consume half is checked in SubscribeAll below, which is the
+	// call a consumer deployable makes without reaching this one.
+	if svcCtx.Audit == nil {
+		return nil, errors.New("wiring: the design declares `middleware Audit` and AccountService.Logout runs it, but svcCtx.Audit is nil - assign `svc.Audit = middleware.NewAuditMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.AuthRequired == nil {
+		return nil, errors.New("wiring: the design declares `middleware AuthRequired` and AccountService.Me runs it, but svcCtx.AuthRequired is nil - assign `svc.AuthRequired = middleware.NewAuthRequiredMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.BasicAuth == nil {
+		return nil, errors.New("wiring: the design declares `middleware BasicAuth` and AccountService.DeleteAccount runs it, but svcCtx.BasicAuth is nil - assign `svc.BasicAuth = middleware.NewBasicAuthMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.ProfileAuth == nil {
+		return nil, errors.New("wiring: the design declares `middleware ProfileAuth` and AdminService.DashboardStats runs it, but svcCtx.ProfileAuth is nil - assign `svc.ProfileAuth = middleware.NewProfileAuthMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.RateLimit == nil {
+		return nil, errors.New("wiring: the design declares `middleware RateLimit` and AccountService.Signup runs it, but svcCtx.RateLimit is nil - assign `svc.RateLimit = middleware.NewRateLimitMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.RequestStamp == nil {
+		return nil, errors.New("wiring: the design declares `middleware RequestStamp` and AdminService.Snapshot runs it, but svcCtx.RequestStamp is nil - assign `svc.RequestStamp = middleware.NewRequestStampMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.Timing == nil {
+		return nil, errors.New("wiring: the design declares `middleware Timing` and RawModesService.PtPlain runs it, but svcCtx.Timing is nil - assign `svc.Timing = middleware.NewTimingMiddleware(/* args */)` where you build the ServiceContext")
 	}
 	deliver, stop := context.WithCancel(ctx)
 	if err := transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx); err != nil {

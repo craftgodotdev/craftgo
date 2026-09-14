@@ -28,6 +28,26 @@ func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.Servic
 	if svcCtx.Events.Bus == nil {
 		return nil, errors.New("wiring: the design declares 2 event(s) and 2 consumer(s) but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
 	}
+	// An HTTP middleware the design applies but nothing wired is skipped
+	// by the chain rather than called, so the guarantee would be missing
+	// with nothing to notice. Fail here instead, naming the line to add.
+	// The consume half is checked in SubscribeAll below, which is the
+	// call a consumer deployable makes without reaching this one.
+	if svcCtx.AccessLog == nil {
+		return nil, errors.New("wiring: the design declares `middleware AccessLog` and AdminService.ListTokens runs it, but svcCtx.AccessLog is nil - assign `svc.AccessLog = middleware.NewAccessLogMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.AdminOnly == nil {
+		return nil, errors.New("wiring: the design declares `middleware AdminOnly` and AdminService.ListTokens runs it, but svcCtx.AdminOnly is nil - assign `svc.AdminOnly = middleware.NewAdminOnlyMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.AuthRequired == nil {
+		return nil, errors.New("wiring: the design declares `middleware AuthRequired` and AttachmentService.UploadAttachment runs it, but svcCtx.AuthRequired is nil - assign `svc.AuthRequired = middleware.NewAuthRequiredMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.RateLimit == nil {
+		return nil, errors.New("wiring: the design declares `middleware RateLimit` and ProjectService.ListProjects runs it, but svcCtx.RateLimit is nil - assign `svc.RateLimit = middleware.NewRateLimitMiddleware(/* args */)` in main.go")
+	}
+	if svcCtx.RequestID == nil {
+		return nil, errors.New("wiring: the design declares `middleware RequestID` and AdminService.ListTokens runs it, but svcCtx.RequestID is nil - assign `svc.RequestID = middleware.NewRequestIDMiddleware(/* args */)` in main.go")
+	}
 	deliver, stop := context.WithCancel(ctx)
 	if err := transport.SubscribeAll(deliver, svcCtx.Events.Bus, svcCtx); err != nil {
 		stop()

@@ -4,7 +4,7 @@ package wiring
 
 import (
 	"context"
-{{- if .HasEvents}}
+{{- if or .HasEvents .Guards}}
 	"errors"
 {{- end}}
 
@@ -38,6 +38,18 @@ func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.Servic
 	if svcCtx.Events.Bus == nil {
 		return nil, errors.New("wiring: the design declares {{.EventSummary}} but svcCtx.Events carries no bus - build one in main.go and assign `svc.Events = svccontext.NewEvents(bus)`")
 	}
+{{- end}}
+{{- if .Guards}}
+	// An HTTP middleware the design applies but nothing wired is skipped
+	// by the chain rather than called, so the guarantee would be missing
+	// with nothing to notice. Fail here instead, naming the line to add.
+	// The consume half is checked in SubscribeAll below, which is the
+	// call a consumer deployable makes without reaching this one.
+{{- range .Guards}}
+	if {{.Field}} == nil {
+		return nil, errors.New({{.QuotedMsg}})
+	}
+{{- end}}
 {{- end}}
 {{- if .HasConsumers}}
 	deliver, stop := context.WithCancel(ctx)

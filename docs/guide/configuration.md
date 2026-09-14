@@ -33,6 +33,7 @@ output:
   routes:     ./internal/routes
   service:    ./internal/service
   middleware: ./internal/middleware
+  consumeMiddleware: ./internal/consume
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
   config:     ./config

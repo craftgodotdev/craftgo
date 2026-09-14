@@ -67,6 +67,15 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		return p.parseScalarDecl(decs)
 	case lexer.KwMiddleware:
 		return p.parseMiddlewareDecl(decs)
+	case lexer.KwConsume:
+		// `consume middleware Name` at file level. A typed nil here would
+		// pass the caller's `d != nil` guard, so convert it the way the
+		// `extend` case does.
+		md := p.parseConsumeMiddlewareDecl(decs)
+		if md == nil {
+			return nil
+		}
+		return md
 	case lexer.KwEvent:
 		// A contract declared outside a service: this design describes it
 		// but does not publish it.
@@ -207,6 +216,26 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 		sd.Decorators = append(sd.Decorators, p.parseDecorator())
 	}
 	return sd
+}
+
+// parseConsumeMiddlewareDecl reads `consume middleware Name` at file
+// level: a middleware that wraps a consumer's handler. Anything other
+// than `middleware` after `consume` is an error - a `consume` block is a
+// service member, not a declaration.
+func (p *Parser) parseConsumeMiddlewareDecl(decs []*ast.Decorator) *ast.MiddlewareDecl {
+	pos := p.peek().Pos
+	if p.peekAt(1).Kind != lexer.KwMiddleware {
+		p.errorf(p.peekAt(1).Pos, "expected 'middleware' after 'consume' - a `consume` block belongs inside a service body")
+		return nil
+	}
+	p.advance()
+	md := p.parseMiddlewareDecl(decs)
+	if md == nil {
+		return nil
+	}
+	md.Pos = pos
+	md.Consume = true
+	return md
 }
 
 // parseMiddlewareDecl reads `middleware Name`. The DSL captures only the

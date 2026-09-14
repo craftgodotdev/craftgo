@@ -21,12 +21,16 @@ const (
 	// was written: inside a service or at file level. A consumer's
 	// `event` clause names one of these.
 	EventDecls
+	// ConsumeMiddlewareDecls covers `consume middleware Name`, which
+	// lives in its own table so a name resolves to the shape its site
+	// needs. This is the last bit [DeclKind] has room for.
+	ConsumeMiddlewareDecls
 
-	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls | EventDecls
+	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls | EventDecls | ConsumeMiddlewareDecls
 	// TypeShapeDecls is every kind a type-shape position (a field type, a
 	// mixin, a request or response, a generic argument) can name. An
 	// event is a contract, never a type shape.
-	TypeShapeDecls = AnyDecl &^ MiddlewareDecls &^ EventDecls
+	TypeShapeDecls = AnyDecl &^ MiddlewareDecls &^ ConsumeMiddlewareDecls &^ EventDecls
 )
 
 // Decl returns the declaration of name among the tables kinds selects, or
@@ -55,6 +59,11 @@ func (p *Package) Decl(name string, kinds DeclKind) ast.Decl {
 	}
 	if kinds&MiddlewareDecls != 0 {
 		if d, ok := p.Middlewares[name]; ok {
+			return d
+		}
+	}
+	if kinds&ConsumeMiddlewareDecls != 0 {
+		if d, ok := p.ConsumeMiddlewares[name]; ok {
 			return d
 		}
 	}
@@ -89,6 +98,9 @@ func (p *Package) Decls(kinds DeclKind) []ast.Decl {
 	}
 	if kinds&MiddlewareDecls != 0 {
 		out = appendDecls(out, p.Middlewares)
+	}
+	if kinds&ConsumeMiddlewareDecls != 0 {
+		out = appendDecls(out, p.ConsumeMiddlewares)
 	}
 	if kinds&EventDecls != 0 {
 		for _, name := range sortedNames(p.Events) {

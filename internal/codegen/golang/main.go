@@ -24,9 +24,13 @@ type mainData struct {
 	// that gains or loses routes or consumers leaves this file alone.
 	WiringImport     string
 	MiddlewareImport string
-	SvccontextImport string
-	Middlewares      []string
-	HasMiddlewares   bool
+	// ConsumeMiddlewareImport / ConsumeMiddlewares wire the consume-side
+	// scaffolds, which live in their own package.
+	ConsumeMiddlewareImport string
+	ConsumeMiddlewares      []string
+	SvccontextImport        string
+	Middlewares             []string
+	HasMiddlewares          bool
 	// HasDocs gates the in-process API-docs wiring: the `embed` import, the
 	// embedded spec var, and the cfg.Docs ServeDocs call. False when the
 	// OpenAPI document is disabled or lives outside the main package's tree
@@ -101,10 +105,11 @@ func projectHasRoutes(proj *semantic.Project) bool {
 // services so the template needs no further per-package wiring.
 func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 	d := mainData{
-		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
-		WiringImport:     goImportFromRel(cfg.Package, cfg.Output.Wiring),
-		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		ConfigImport:            goImportFromRel(cfg.Package, cfg.Output.Config),
+		WiringImport:            goImportFromRel(cfg.Package, cfg.Output.Wiring),
+		MiddlewareImport:        goImportFromRel(cfg.Package, cfg.Output.Middleware),
+		ConsumeMiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.ConsumeMiddleware),
+		SvccontextImport:        goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
 	seen := map[string]bool{}
 	for _, k := range slices.Sorted(maps.Keys(proj.Packages)) {
@@ -121,6 +126,7 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 		}
 	}
 	d.HasMiddlewares = len(d.Middlewares) > 0
+	d.ConsumeMiddlewares = projectSortedConsumeMiddlewareNames(proj)
 
 	// Wire the in-process API docs only when the OpenAPI document is emitted
 	// and lives under main.go's directory (go:embed cannot cross `..`).

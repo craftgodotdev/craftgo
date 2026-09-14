@@ -136,8 +136,9 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	}
 	svc, transport := bootEventsWith(t, craftevents.NewChain(record), nil)
 
-	// ItemStocked is consumed three times: by its declaring service, by a
-	// consumer in another package, and by one that pins its own group.
+	// ItemStocked is consumed four times: by its declaring service, by a
+	// consumer in another package, by one that pins its own group, and by
+	// one carrying a declared consume-middleware chain.
 	if err := svc.Events.InventoryService.PublishItemStocked(context.Background(), &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        3,
@@ -150,6 +151,7 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"events.ItemStocked CountStocked analytics-worker",
+		"events.ItemStocked GuardedStock eventsubs-GuardedService-GuardedStock",
 		"events.ItemStocked MirrorStock events-InventoryService-MirrorStock",
 		"events.ItemStocked SendStockAlert eventsubs-NotificationService-SendStockAlert",
 	}

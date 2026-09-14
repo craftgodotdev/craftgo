@@ -101,8 +101,15 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if dd == nil {
 					continue
 				}
+				// One seenMW table for both forms: a name is one
+				// middleware of one kind, so `middleware X` and
+				// `consume middleware X` collide the way two of a kind do.
 				if registerIn(seenMW, dd.Name, dd.Pos, false) {
-					a.pkg.Middlewares[dd.Name] = dd
+					if dd.Consume {
+						a.pkg.ConsumeMiddlewares[dd.Name] = dd
+					} else {
+						a.pkg.Middlewares[dd.Name] = dd
+					}
 				}
 			case *ast.EventDecl:
 				if dd == nil {
@@ -193,7 +200,7 @@ func (a *analyzer) mergeServices() {
 			// method-level get propagated. Service-only decorators like
 			// `@prefix` make no sense per-method - we emit a diagnostic
 			// instead so the user moves them to the primary service.
-			var propagate []*ast.Decorator
+			var propagate, propagateConsumer []*ast.Decorator
 			for _, d := range e.Decorators {
 				spec, ok := Lookup(d.Name)
 				if !ok {
@@ -212,22 +219,40 @@ func (a *analyzer) mergeServices() {
 					a.checkGroupArg(d)
 					continue
 				}
-				if spec.Levels&LvlMethod == 0 {
+				if d.Name == DecoratorConsumerGroup {
+					// A consumer group is a broker identity the whole
+					// service claims - [checkConsumerGroupCrossService]
+					// reads it per service - so it stays on the primary
+					// declaration rather than varying per block.
 					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
-						"decorator @%s on extend service %q is not valid at method level; move it to the primary service", d.Name, name)
+						"decorator @%s on extend service %q names a broker identity for the whole service; move it to the primary declaration", d.Name, name)
 					continue
 				}
-				propagate = append(propagate, d)
+				if spec.Levels&(LvlMethod|LvlConsumer) == 0 {
+					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
+						"decorator @%s on extend service %q is not valid on a method or a consumer; move it to the primary service", d.Name, name)
+					continue
+				}
+				if spec.Levels&LvlMethod != 0 {
+					propagate = append(propagate, d)
+				}
+				if spec.Levels&LvlConsumer != 0 {
+					propagateConsumer = append(propagateConsumer, d)
+				}
 			}
 			for _, m := range e.Methods() {
 				m.Decorators = prependPropagated(propagate, m.Decorators)
 				si.Methods = append(si.Methods, m)
 			}
-			// Method-level decorators mean nothing on an event or a
-			// consumer, so an extend block's chain is not propagated
-			// onto them; the members themselves still merge in.
+			// Each decorator reaches the members whose level it is valid
+			// at, so a block-level chain lands on this block's consumers
+			// the way it lands on its methods. An event carries no member
+			// decorator, so it merges in as written.
+			for _, c := range e.Consumers() {
+				c.Decorators = prependPropagated(propagateConsumer, c.Decorators)
+				si.Consumers = append(si.Consumers, c)
+			}
 			si.Events = append(si.Events, e.Events()...)
-			si.Consumers = append(si.Consumers, e.Consumers()...)
 		}
 	}
 }

@@ -4,10 +4,12 @@ package transport
 
 import (
 	"context"
+	"errors"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
 	analyticsserviceevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/analytics_service"
+	guardedserviceevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/guarded_service"
 	inventoryserviceevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/inventory_service"
 	ledgerserviceevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/ledger_service"
 	notificationserviceevents "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/notification_service"
@@ -21,10 +23,26 @@ import (
 // by its own event package from the handler set in this package, so the
 // decode-validate-dispatch rule is spelled once, in the contract.
 // Delivery runs until ctx is cancelled.
+//
+// It refuses rather than subscribing when a consume middleware the design
+// applies has not been wired: a nil one is skipped, so the design's
+// guarantee would simply be absent.
 func SubscribeAll(ctx context.Context, bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
+	// A consume middleware the design applies but nothing wired is
+	// skipped by the chain rather than called, so the guarantee would be
+	// missing with nothing to notice. The check is here rather than in
+	// wiring.Register because this is the call every consumer deployable
+	// makes; one with no HTTP routes owns no server to hand Register.
+	if svcCtx.Events.Consume.Attempt == nil {
+		return errors.New("subscribe: the design declares `consume middleware Attempt` and GuardedService.GuardedStock runs it, but svcCtx.Events.Consume.Attempt is nil - assign `svc.Events.Consume.Attempt = consume.NewAttemptMiddleware(/* args */)` where you build the ServiceContext")
+	}
+	if svcCtx.Events.Consume.Settle == nil {
+		return errors.New("subscribe: the design declares `consume middleware Settle` and GuardedService.GuardedStock runs it, but svcCtx.Events.Consume.Settle is nil - assign `svc.Events.Consume.Settle = consume.NewSettleMiddleware(/* args */)` where you build the ServiceContext")
+	}
 	var subs []craftevents.Subscription
 	subs = append(subs, inventoryserviceevents.Subscriptions(bus, NewInventoryServiceConsumers(svcCtx))...)
 	subs = append(subs, analyticsserviceevents.Subscriptions(bus, NewAnalyticsServiceConsumers(svcCtx))...)
+	subs = append(subs, guardedserviceevents.Subscriptions(bus, NewGuardedServiceConsumers(svcCtx), guardedserviceevents.Middlewares{Attempt: svcCtx.Events.Consume.Attempt, Settle: svcCtx.Events.Consume.Settle})...)
 	subs = append(subs, notificationserviceevents.Subscriptions(bus, NewNotificationServiceConsumers(svcCtx))...)
 	subs = append(subs, opsserviceevents.Subscriptions(bus, NewOpsServiceConsumers(svcCtx))...)
 	subs = append(subs, ledgerserviceevents.Subscriptions(bus, NewLedgerServiceConsumers(svcCtx))...)

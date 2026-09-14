@@ -30,9 +30,30 @@ type Events struct {
 	// than silently receiving nothing.
 	Bus *craftevents.Bus
 
+	// Consume carries the middleware the design's consumers run. main.go
+	// assigns each field after NewEvents; a field left nil is skipped
+	// rather than called, so the guarantee the design states is simply
+	// absent until it is wired.
+	Consume ConsumeMiddlewares
+
 	// opts are the defaults every publisher and every batch entry starts
 	// from; see [NewEvents].
 	opts []craftevents.PublishOption
+}
+
+// ConsumeMiddlewares is one field per `consume middleware Name` the
+// design declares. Which consumer runs which is decided in that
+// consumer's contract package, not here: this struct only carries the
+// values, the way the svccontext Middlewares struct carries the HTTP
+// ones.
+//
+// Order is the contract and it is written in the design, not here - see
+// `@consumeMiddlewares`. The first name listed is outermost, which on the
+// consume side means it runs LAST on the way out and decides what the
+// transport is told.
+type ConsumeMiddlewares struct {
+	Attempt craftevents.Middleware
+	Settle  craftevents.Middleware
 }
 
 // NewEvents binds every generated publisher to bus. opts are the

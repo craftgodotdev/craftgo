@@ -235,6 +235,14 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 	}, busopts...)...)
 	svc := svccontext.NewServiceContext()
 	svc.Events = svccontext.NewEvents(bus)
+	// SubscribeAll refuses a container missing a consume middleware the
+	// design applies. These tests are about the broker adapters, not the
+	// chain, so the values are pass-throughs.
+	passthrough := func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
+		return next
+	}
+	svc.Events.Consume.Settle = passthrough
+	svc.Events.Consume.Attempt = passthrough
 	if subscribe {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
