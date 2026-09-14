@@ -734,6 +734,24 @@ a record nothing can handle stops being obeyed once the count is reached, and
 the record is rejected. A delivery that *succeeds* on the last attempt is still
 taken as done. The default is 5; zero is unbounded and has to be chosen.
 
+::: warning A slow handler would otherwise lose its record
+The broker holds each record under an acquisition lock
+(`group.share.record.lock.duration.ms`, 30s by default). A handler slower than
+that loses the record mid-flight: the broker hands the same one to another
+member while this one is still working, and again every lock period after that.
+
+The adapter renews the lock while the handler runs.
+`kafka.WithLockRenewInterval(d)` tunes it - default 10s, zero stops renewing -
+and it has to be shorter than the broker's lock, which craftgo does not set and
+cannot read.
+
+`WithMaxDeliveries` does **not** cover this. It caps redelivery a middleware
+asked for, and a lapsed lock is not that: the chain decided nothing, so every
+delivery is accepted. Capping a success instead would discard work that had
+just succeeded without preventing one duplicate run - they all happen before
+any ack.
+:::
+
 ::: warning Share groups need Kafka 4.2, and the mode is never detected
 `Subscribe` asks the broker what it serves and **refuses** if the share APIs are
 missing, rather than quietly consuming as a classic group. A delivery guarantee

@@ -128,6 +128,7 @@ type Transport struct {
 	autoTopic     bool
 	share         bool
 	maxDeliveries int
+	lockRenew     time.Duration
 	// dial carries the connection settings every client this transport
 	// opens is built with - TLS, SASL.
 	dial []kgo.Opt
@@ -213,6 +214,23 @@ func WithMaxDeliveries(n int) Option {
 	return func(t *Transport) { t.maxDeliveries = n }
 }
 
+// WithLockRenewInterval is how often this adapter extends the broker's
+// acquisition lock on a record while its handler runs. Default 10s; zero
+// stops renewing.
+//
+// Without it a handler slower than the broker's lock loses the record
+// mid-flight: the broker hands the same record to another member while
+// this one is still working, and does it again every lock period, so one
+// message is processed several times and every copy of the work is
+// wasted. The lock is the broker's, not craftgo's - it is
+// `group.share.record.lock.duration.ms`, 30s by default - so this has to
+// be told rather than derived, and it has to be shorter than the lock.
+//
+// Share mode only; a classic group holds no per-record lock.
+func WithLockRenewInterval(d time.Duration) Option {
+	return func(t *Transport) { t.lockRenew = d }
+}
+
 // WithClientOptions passes options straight to every franz-go client this
 // transport opens - a compression codec, a client ID, a request timeout,
 // anything construction-time that craftgo does not wrap.
@@ -263,6 +281,7 @@ func New(brokers []string, opts ...Option) *Transport {
 		brokers:       brokers,
 		topic:         func(c string) string { return c },
 		maxDeliveries: 5,
+		lockRenew:     10 * time.Second,
 		held:          map[groupTopic]*topicClaim{},
 	}
 	for _, o := range opts {
@@ -664,7 +683,7 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 		var polled []*kgo.Record
 		fetches.EachRecord(func(rec *kgo.Record) {
 			polled = append(polled, rec)
-			t.deliver(ctx, sub, rec)
+			t.deliver(ctx, cl, sub, rec)
 		})
 		if !t.share && len(polled) > 0 {
 			if err := cl.CommitRecords(ctx, polled...); err != nil && t.onError != nil && ctx.Err() == nil {
@@ -675,7 +694,7 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 }
 
 // deliver hands one record to the subscription and answers for it.
-func (t *Transport) deliver(ctx context.Context, sub events.Subscription, rec *kgo.Record) {
+func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subscription, rec *kgo.Record) {
 	msg := decode(sub.Event, rec)
 	msg.SetDeliveries(int(rec.DeliveryCount()))
 
@@ -693,12 +712,49 @@ func (t *Transport) deliver(ctx context.Context, sub events.Subscription, rec *k
 		return
 	}
 
-	if err := sub.Handle(withRecord(ctx, rec), msg); err != nil && t.onError != nil {
+	stop := t.holdOpen(ctx, cl, rec)
+	err := sub.Handle(withRecord(ctx, rec), msg)
+	stop()
+
+	if err != nil && t.onError != nil {
 		t.onError(sub, msg, err)
 	}
 	if t.share {
 		rec.Ack(t.ackFor(msg))
 	}
+}
+
+// holdOpen extends the broker's acquisition lock on rec while the handler
+// runs, and returns the function that stops doing so.
+//
+// A renew is queued like any other ack, so it is flushed rather than left
+// for the background pass - a renewal that arrives after the lock it was
+// meant to extend is no renewal. Renewing while a renew is in flight is a
+// no-op in the client, so the ticker cannot outrun the broker.
+//
+// Only a share group has a lock to hold. A classic group's offset does
+// not expire, and a slow handler there stalls its partition instead.
+func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, rec *kgo.Record) func() {
+	if !t.share || t.lockRenew <= 0 {
+		return func() {}
+	}
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		tick := time.NewTicker(t.lockRenew)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				rec.Ack(kgo.AckRenew)
+				_ = cl.FlushAcks(ctx)
+			}
+		}
+	}()
+	return func() { close(done); <-stopped }
 }
 
 // ackFor turns what the chain asked for into the broker's answer. An

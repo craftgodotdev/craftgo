@@ -777,6 +777,23 @@ breaking change to the DSL or the generated layout bumps the major version.
   own mutex with a `sync.Cond`, and a nested publish from inside a handler is
   joined the way the dead-letter shape has always needed.
 
+- **A Kafka share-group handler keeps its record while it runs.** The broker
+  holds each record under an acquisition lock -
+  `group.share.record.lock.duration.ms`, 30s by default - and a handler slower
+  than that lost the record mid-flight: the broker handed the same one to
+  another member while this one was still working, and again every lock period
+  after that, so one message was processed several times and every copy of the
+  work but one was wasted. The adapter now renews the lock while the handler
+  runs, through `kgo.AckRenew`. `kafka.WithLockRenewInterval(d)` tunes it,
+  default 10s; zero stops renewing. Measured against a one-second lock with a
+  four-second handler: three deliveries of one record before, one after.
+
+  `WithMaxDeliveries` does not bound this and is not meant to: it caps
+  redelivery a middleware ASKED for, and a lapsed lock is not that - the chain
+  decides nothing and every delivery is accepted. Capping a success instead
+  would throw away work that had just succeeded without preventing any of the
+  duplicate runs, which all happen before any ack.
+
 - **A Kafka consumer client is closed exactly once.** The read loop closed its
   own client and `Transport.Close` closed every client it held, so the generated
   shutdown - cancel the delivery context, then close the transport - closed each
