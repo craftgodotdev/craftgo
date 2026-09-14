@@ -4,7 +4,6 @@ package eventsubs
 
 import (
 	"context"
-	"fmt"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
@@ -23,38 +22,39 @@ type Consumers interface {
 }
 
 // Middlewares carries the consume middleware GuardedService's design
-// applies to its consumers, one field per `consume middleware Name`
-// named by a `@consumeMiddlewares(...)` on this service. Which consumer
-// runs which is decided here, in the contract, so a deployable hosting
-// this service cannot give its consumers a guarantee the design did not.
-//
-// A nil field is skipped rather than called, so a middleware the design
-// declares and the application never wires simply does not run.
+// applies to its consumers, one field per `consume middleware Name` a
+// `@consumeMiddlewares(...)` on this service names. Which consumer runs
+// which is decided here, in the contract. A nil field is skipped rather
+// than called; [Middlewares.Missing] reports the ones left unwired.
 type Middlewares struct {
 	Attempt craftevents.Middleware
 	Settle  craftevents.Middleware
 }
 
-// wrap folds one consumer's declared chain over sub, outermost first:
-// the first middleware listed sees the message first on the way in and
-// returns last on the way out.
-//
-// [craftevents.Recover] goes at the innermost end so a declared
-// middleware observes a panicking handler as an ordinary error - the same
-// thing a middleware installed on the bus observes. Without it the panic
-// unwinds past the whole chain to the bus's own recover, and a middleware
-// that retries on error would never see one.
-//
-// [craftevents.Chain.Apply] takes a slice, so the one subscription goes
-// in and comes back as one.
+// Missing names the fields left nil, so a caller wiring [Subscriptions]
+// by hand can refuse to start the way the generated SubscribeAll does.
+func (m Middlewares) Missing() []string {
+	var missing []string
+	if m.Attempt == nil {
+		missing = append(missing, "Attempt")
+	}
+	if m.Settle == nil {
+		missing = append(missing, "Settle")
+	}
+	return missing
+}
+
+// wrap folds one consumer's declared chain over sub, outermost first.
+// [craftevents.Recover] goes innermost so the chain observes a panicking
+// handler as an ordinary error, the way a chain on the bus does.
 func wrap(sub craftevents.Subscription, mws ...craftevents.Middleware) craftevents.Subscription {
 	return craftevents.NewChain(mws...).Append(craftevents.Recover()).Apply([]craftevents.Subscription{sub})[0]
 }
 
 // Subscriptions binds h to bus, one subscription per contract GuardedService
 // consumes. The payload is decoded with the bus codec and validated before
-// a handler sees it; a payload that fails either never reaches the
-// handler, and the error names the contract it arrived on.
+// a handler sees it; one that fails either never reaches the handler and
+// comes back as a [craftevents.PayloadError] naming the contract.
 func Subscriptions(bus *craftevents.Bus, h Consumers, mw Middlewares) []craftevents.Subscription {
 	return []craftevents.Subscription{
 		wrap(craftevents.Subscription{
@@ -67,7 +67,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers, mw Middlewares) []crafteve
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "events.ItemStocked", err)
+					return &craftevents.PayloadError{Event: "events.ItemStocked", Err: err}
 				}
 				return h.GuardedStock(ctx, &payload)
 			},
@@ -82,7 +82,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers, mw Middlewares) []crafteve
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "events.StocktakeStarted", err)
+					return &craftevents.PayloadError{Event: "events.StocktakeStarted", Err: err}
 				}
 				return h.BareStock(ctx, &payload)
 			},
@@ -97,7 +97,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers, mw Middlewares) []crafteve
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "events.WarehouseClosed", err)
+					return &craftevents.PayloadError{Event: "events.WarehouseClosed", Err: err}
 				}
 				return h.InheritedStock(ctx, &payload)
 			},

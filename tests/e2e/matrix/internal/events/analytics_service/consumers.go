@@ -4,7 +4,6 @@ package eventsubs
 
 import (
 	"context"
-	"fmt"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
@@ -24,8 +23,8 @@ type Consumers interface {
 
 // Subscriptions binds h to bus, one subscription per contract AnalyticsService
 // consumes. The payload is decoded with the bus codec and validated before
-// a handler sees it; a payload that fails either never reaches the
-// handler, and the error names the contract it arrived on.
+// a handler sees it; one that fails either never reaches the handler and
+// comes back as a [craftevents.PayloadError] naming the contract.
 func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription {
 	return []craftevents.Subscription{
 		{
@@ -38,7 +37,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "events.ItemStocked", err)
+					return &craftevents.PayloadError{Event: "events.ItemStocked", Err: err}
 				}
 				return h.CountStocked(ctx, &payload)
 			},
@@ -53,7 +52,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "events.ShipmentDispatched", err)
+					return &craftevents.PayloadError{Event: "events.ShipmentDispatched", Err: err}
 				}
 				return h.CountDispatched(ctx, &payload)
 			},
@@ -68,7 +67,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "events.TierPromoted", err)
+					return &craftevents.PayloadError{Event: "events.TierPromoted", Err: err}
 				}
 				return h.TrackTier(ctx, &payload)
 			},

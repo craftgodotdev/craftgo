@@ -13,14 +13,9 @@ import (
 )
 
 // SubscribeAll registers every consumer the design declares, the way
-// RegisterAll wires every handler. Each service's subscriptions are built
-// by its own event package from the handler set in this package, so the
-// decode-validate-dispatch rule is spelled once, in the contract.
-// Delivery runs until ctx is cancelled.
-//
-// It refuses rather than subscribing when a consume middleware the design
-// applies has not been wired: a nil one is skipped, so the design's
-// guarantee would simply be absent.
+// RegisterAll wires every handler. Delivery runs until ctx is cancelled.
+// It refuses when a consume middleware the design applies is not wired:
+// a nil one would be skipped, and the guarantee silently absent.
 func SubscribeAll(ctx context.Context, bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
 	var subs []craftevents.Subscription
 	subs = append(subs, activityserviceevents.Subscriptions(bus, NewActivityServiceConsumers(svcCtx))...)

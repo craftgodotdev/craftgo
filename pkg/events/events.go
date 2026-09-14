@@ -176,6 +176,17 @@ type Subscriber interface {
 	Subscribe(ctx context.Context, sub Subscription) error
 }
 
+// BatchSubscriber is the optional upgrade for a transport that needs a
+// whole [Bus.SubscribeAll] slice before it registers anything - a broker
+// that binds one identity to several contracts, such as a JetStream
+// durable filtering every subject its group consumes, cannot register
+// the group one contract at a time. The slice arrives sorted by group,
+// contract then consumer, every handler already wrapped. [Bus.Subscribe]
+// never uses it.
+type BatchSubscriber interface {
+	SubscribeBatch(ctx context.Context, subs []Subscription) error
+}
+
 // Handler processes one message. It is the signature every generated
 // consumer is built to, and the one a [Middleware] wraps.
 type Handler func(ctx context.Context, msg *Message) error
@@ -680,33 +691,40 @@ func recoverHandler(sub Subscription, h Handler) Handler {
 
 // Subscribe registers sub with the transport, its handler wrapped in a
 // recover and in any middleware [WithMiddleware] installed. Every
-// transport inherits both, craftgo's three and any adapter written
-// elsewhere, because the wrap happens before the subscription is handed
-// over.
+// transport inherits both, because the wrap happens before the
+// subscription is handed over. A recovered panic is returned as a
+// [*PanicError], which the transport sees as an ordinary handler error.
 //
-// A recovered panic is returned as a [*PanicError], which is the error
-// the transport's own handler sees; delivery continues with the next
-// message.
-//
-// It also refuses here rather than at the first message when the
-// transport cannot honour a disposition [WithDispositionRequired] named -
-// see [ErrDispositionUnsupported].
+// It refuses here rather than at the first message when the transport
+// cannot honour a disposition [WithDispositionRequired] named.
 func (b *Bus) Subscribe(ctx context.Context, sub Subscription) error {
+	prepared, err := b.prepare(sub)
+	if err != nil {
+		return err
+	}
+	return b.sub.Subscribe(ctx, prepared)
+}
+
+// prepare runs the checks every registration passes and wraps the handler.
+func (b *Bus) prepare(sub Subscription) (Subscription, error) {
 	if b.sub == nil {
-		return ErrNoSubscriber
+		return sub, ErrNoSubscriber
 	}
 	if _, err := b.CodecFor(sub.Event); err != nil {
-		return err
+		return sub, err
 	}
 	if err := b.requireDispositions(); err != nil {
-		return err
+		return sub, err
 	}
 	sub.Handle = b.decorated(sub)
-	return b.sub.Subscribe(ctx, sub)
+	return sub, nil
 }
 
 // SubscribeAll registers every subscription, in group, contract then
-// consumer order. The first failure stops the run; subscriptions already
+// consumer order. A transport that implements [BatchSubscriber] receives
+// the whole slice in one call, after every entry passed the checks
+// [Bus.Subscribe] makes; any other transport gets one Subscribe per
+// entry, where the first failure stops the run and subscriptions already
 // made stay live until ctx is cancelled.
 //
 // Group leads the key because it is the identity a transport can refuse a
@@ -726,26 +744,70 @@ func (b *Bus) SubscribeAll(ctx context.Context, subs []Subscription) error {
 		}
 		return ordered[i].Consumer < ordered[j].Consumer
 	})
-	for _, sub := range ordered {
-		if err := b.Subscribe(ctx, sub); err != nil {
-			return fmt.Errorf("events: subscribe %s/%s in group %s: %w", sub.Event, sub.Consumer, sub.GroupName(), err)
+	batch, batched := b.sub.(BatchSubscriber)
+	if !batched {
+		for _, sub := range ordered {
+			if err := b.Subscribe(ctx, sub); err != nil {
+				return subscribeError(sub, err)
+			}
 		}
+		return nil
+	}
+	for i, sub := range ordered {
+		prepared, err := b.prepare(sub)
+		if err != nil {
+			return subscribeError(sub, err)
+		}
+		ordered[i] = prepared
+	}
+	if len(ordered) == 0 {
+		return nil
+	}
+	if err := batch.SubscribeBatch(ctx, ordered); err != nil {
+		return fmt.Errorf("events: subscribe %d subscription(s): %w", len(ordered), err)
 	}
 	return nil
 }
 
+func subscribeError(sub Subscription, err error) error {
+	return fmt.Errorf("events: subscribe %s/%s in group %s: %w", sub.Event, sub.Consumer, sub.GroupName(), err)
+}
+
+// ErrCodecMismatch is returned by [Bus.Decode] for a message stamped
+// with a codec the consumer is not configured for. It is a configuration
+// error rather than a bad payload: the same bytes decode once the two
+// sides agree, which is why it is not a [*PayloadError].
+var ErrCodecMismatch = errors.New("events: message encoded with a codec the consumer is not configured for")
+
+// PayloadError is a payload the generated wrapper could not decode, or
+// that failed its Validate(). The same bytes fail the same way on every
+// delivery, so a chain deciding what to do with a failure can pick this
+// one out with errors.As and give the message up rather than retry it.
+type PayloadError struct {
+	// Event is the contract the payload arrived on.
+	Event string
+	Err   error
+}
+
+func (e *PayloadError) Error() string {
+	return fmt.Sprintf("events: payload of %s: %v", e.Event, e.Err)
+}
+
+func (e *PayloadError) Unwrap() error { return e.Err }
+
 // Decode fills v from msg using the contract's codec. A message stamped
-// with a different codec is rejected rather than decoded.
+// with a different codec fails with [ErrCodecMismatch]; one the codec
+// cannot decode fails with a [*PayloadError].
 func (b *Bus) Decode(msg *Message, v any) error {
 	codec, err := b.CodecFor(msg.Event)
 	if err != nil {
 		return err
 	}
 	if got := msg.Metadata[MetaCodec]; got != "" && got != codec.Name() {
-		return fmt.Errorf("events: %s encoded with codec %q, consumer is configured for %q", msg.Event, got, codec.Name())
+		return fmt.Errorf("%w: %s carries %q, the consumer decodes %q", ErrCodecMismatch, msg.Event, got, codec.Name())
 	}
 	if err := codec.Unmarshal(msg.Payload, v); err != nil {
-		return fmt.Errorf("events: decode %s: %w", msg.Event, err)
+		return &PayloadError{Event: msg.Event, Err: err}
 	}
 	return nil
 }

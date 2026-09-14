@@ -4,7 +4,6 @@ package activity
 
 import (
 	"context"
-	"fmt"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
@@ -22,8 +21,8 @@ type Consumers interface {
 
 // Subscriptions binds h to bus, one subscription per contract ActivityService
 // consumes. The payload is decoded with the bus codec and validated before
-// a handler sees it; a payload that fails either never reaches the
-// handler, and the error names the contract it arrived on.
+// a handler sees it; one that fails either never reaches the handler and
+// comes back as a [craftevents.PayloadError] naming the contract.
 func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription {
 	return []craftevents.Subscription{
 		{
@@ -36,7 +35,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "tasks.TaskCreated", err)
+					return &craftevents.PayloadError{Event: "tasks.TaskCreated", Err: err}
 				}
 				return h.RecordTaskCreated(ctx, &payload)
 			},
@@ -51,7 +50,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "tasks.TaskStatusChanged", err)
+					return &craftevents.PayloadError{Event: "tasks.TaskStatusChanged", Err: err}
 				}
 				return h.RecordStatusChange(ctx, &payload)
 			},

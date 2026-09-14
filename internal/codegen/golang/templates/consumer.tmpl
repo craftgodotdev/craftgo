@@ -12,17 +12,14 @@ import (
 	"{{.SvccontextImport}}"
 )
 
-// {{.ConsumerType}} carries the per-message state for the {{.Name}}
-// consumer of {{.Service}}. The embedded log.Logger is bound to the
-// delivery context; whether that context carries a trace depends on the
-// transport - the in-process one starts a fresh context per message.
+// {{.ConsumerType}} is the per-message state of the {{.Name}} consumer of
+// {{.Service}}; the embedded log.Logger is bound to the delivery context.
 type {{.ConsumerType}} struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// New{{.ConsumerType}} constructs a fresh consumer instance bound to ctx.
 func New{{.ConsumerType}}(ctx context.Context, svcCtx *svccontext.ServiceContext) *{{.ConsumerType}} {
 	return &{{.ConsumerType}}{
 		Logger: log.Default().WithContext(ctx),

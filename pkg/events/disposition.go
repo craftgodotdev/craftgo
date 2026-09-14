@@ -50,16 +50,12 @@ func (m *Message) Settle() { m.disposition = DispositionSettle }
 
 // Redeliver asks for this message to come back. A transport that cannot
 // ([Dispositioner]) settles instead, so declare the need at the bus with
-// [WithDispositionRequired] and find out at startup. See [Message.Settle]
-// for when a decision may be written.
+// [WithDispositionRequired] and find out at startup. How soon it comes
+// back is the transport's; see the adapter's backoff option.
 //
-// Whether another attempt can ever succeed is the chain's to work out, and
-// the error the handler returned is all it has to work from. A payload the
-// generated wrapper could not decode or validate comes back as an error
-// naming the contract it arrived on, but no type separates one of those
-// from a failure in the handler's own logic - so a chain that needs the
-// distinction makes it on its own side, by returning an error type of its
-// own from the handler and reading it back with [errors.As].
+// Whether another attempt can succeed is the chain's to work out from the
+// error the handler returned. A [*PayloadError] fails the same way every
+// time; anything else the handler classifies itself.
 func (m *Message) Redeliver() { m.disposition = DispositionRedeliver }
 
 // Reject gives this message up. See [Message.Redeliver] for what a

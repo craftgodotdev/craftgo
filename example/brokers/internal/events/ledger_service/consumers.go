@@ -4,7 +4,6 @@ package ledger
 
 import (
 	"context"
-	"fmt"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
@@ -24,8 +23,8 @@ type Consumers interface {
 
 // Subscriptions binds h to bus, one subscription per contract LedgerService
 // consumes. The payload is decoded with the bus codec and validated before
-// a handler sees it; a payload that fails either never reaches the
-// handler, and the error names the contract it arrived on.
+// a handler sees it; one that fails either never reaches the handler and
+// comes back as a [craftevents.PayloadError] naming the contract.
 func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription {
 	return []craftevents.Subscription{
 		{
@@ -38,7 +37,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "orders.Placed", err)
+					return &craftevents.PayloadError{Event: "orders.Placed", Err: err}
 				}
 				return h.BookOrder(ctx, &payload)
 			},
@@ -53,7 +52,7 @@ func Subscriptions(bus *craftevents.Bus, h Consumers) []craftevents.Subscription
 					return err
 				}
 				if err := payload.Validate(); err != nil {
-					return fmt.Errorf("validate %s: %w", "payments.settled.v1", err)
+					return &craftevents.PayloadError{Event: "payments.settled.v1", Err: err}
 				}
 				return h.RecordSettlement(ctx, &payload)
 			},
