@@ -777,6 +777,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   own mutex with a `sync.Cond`, and a nested publish from inside a handler is
   joined the way the dead-letter shape has always needed.
 
+- **A Kafka consumer client is closed exactly once.** The read loop closed its
+  own client and `Transport.Close` closed every client it held, so the generated
+  shutdown - cancel the delivery context, then close the transport - closed each
+  consumer client twice, and `kgo.Client.Close` has no guard of its own. The
+  read loop now hands the client back under the transport's mutex and closes it
+  only if the transport still held it; whichever arrives second closes nothing.
+  Letting `Transport.Close` own every client instead would have leaked the one
+  whose subscription was cancelled on its own, which `Close` never reaches.
+
 - **The editor now reports what `craftgo gen` reports.** The language server
   analysed a design without its manifest, so `openapi.securitySchemes`,
   `openapi.basePath` and `output.fileCase` were invisible to it. An undeclared

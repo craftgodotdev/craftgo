@@ -648,7 +648,7 @@ func (t *Transport) release(group, topic string) {
 // for it, so what a middleware asked for through [events.Message] is what
 // the record gets.
 func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subscription) {
-	defer cl.Close()
+	defer t.releaseClient(cl)
 	for {
 		fetches := cl.PollFetches(ctx)
 		if fetches.IsClientClosed() || ctx.Err() != nil {
@@ -740,15 +740,37 @@ func decode(contract string, rec *kgo.Record) *events.Message {
 // Close shuts every client this transport opened.
 func (t *Transport) Close() error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.producer != nil {
-		t.producer.Close()
-		t.producer = nil
+	producer, clients := t.producer, t.clients
+	t.producer, t.clients = nil, nil
+	t.held = map[groupTopic]*topicClaim{}
+	t.mu.Unlock()
+
+	if producer != nil {
+		producer.Close()
 	}
-	for _, cl := range t.clients {
+	for _, cl := range clients {
 		cl.Close()
 	}
-	t.clients = nil
-	t.held = map[groupTopic]*topicClaim{}
 	return nil
+}
+
+// releaseClient closes cl if this transport still holds it, and does
+// nothing if [Transport.Close] has already taken it. A client reaches
+// here from two places - a read loop whose context was cancelled, and
+// Close itself - and kgo.Client.Close has no guard of its own, so which
+// one of them closes it has to be decided here.
+func (t *Transport) releaseClient(cl *kgo.Client) {
+	t.mu.Lock()
+	held := false
+	for i, c := range t.clients {
+		if c == cl {
+			t.clients = append(t.clients[:i], t.clients[i+1:]...)
+			held = true
+			break
+		}
+	}
+	t.mu.Unlock()
+	if held {
+		cl.Close()
+	}
 }
