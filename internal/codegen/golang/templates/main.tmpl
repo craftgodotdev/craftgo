@@ -27,6 +27,7 @@ import (
 {{- if .HasEvents}}
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
+	"github.com/craftgodotdev/craftgo/pkg/events/logging"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 {{- end}}
 
@@ -94,6 +95,13 @@ func main() {
 					log.Err(err))
 			}))),
 		craftevents.WithCodec(codecjson.Codec{}),
+		// One line per delivery: the contract, the consumer, the key, how
+		// long it took, and the error when there was one. Add your own
+		// middleware to the same call - the chain wraps every
+		// subscription this bus registers, and the order of these options
+		// does not matter because they are applied before anything
+		// subscribes.
+		craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
 	)
 	svc.Events = svccontext.NewEvents(bus)
 {{- end}}

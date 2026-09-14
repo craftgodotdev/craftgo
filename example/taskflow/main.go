@@ -21,6 +21,7 @@ import (
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
+	"github.com/craftgodotdev/craftgo/pkg/events/logging"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
@@ -91,6 +92,9 @@ func main() {
 	bus := craftevents.New(
 		craftevents.WithTransport(memory.New()),
 		craftevents.WithCodec(codecjson.Codec{}),
+		// One line per delivery: the contract, the consumer, the key, how
+		// long it took, and the error when there was one.
+		craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
 	)
 	svc.Events = svccontext.NewEvents(bus)
 

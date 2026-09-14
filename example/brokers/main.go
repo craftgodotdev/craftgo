@@ -25,8 +25,10 @@ import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	craftkafka "github.com/craftgodotdev/craftgo/pkg/events/kafka"
+	"github.com/craftgodotdev/craftgo/pkg/events/logging"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
+	craftlog "github.com/craftgodotdev/craftgo/pkg/log"
 
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/orders"
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/payments"
@@ -53,6 +55,10 @@ func main() {
 		craftevents.WithPublisher(tr),
 		craftevents.WithSubscriber(tr),
 		craftevents.WithCodec(codecjson.Codec{}),
+		// One line per delivery, whichever broker is underneath: the
+		// chain is on the BUS, so swapping the transport does not change
+		// what is logged.
+		craftevents.WithMiddleware(logging.AccessLog(craftlog.Slog())),
 	)
 
 	svc := &svccontext.ServiceContext{Events: svccontext.NewEvents(bus)}

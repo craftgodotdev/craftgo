@@ -141,6 +141,41 @@ breaking change to the DSL or the generated layout bumps the major version.
   broke before the handler ran; `msg.Deliveries()` is the broker's count, zero
   where the transport does not keep one.
 
+- **`pkg/events/logging` and a logging line in the scaffold.**
+  `logging.AccessLog(log.Slog())` writes one line per delivery - contract,
+  consumer, group, key, duration, and the error when there was one - and the
+  generated `main.go` now installs it. `AccessLogLevel`, `AccessLogSkipContracts`
+  and `AccessLogFields` tune it.
+
+  A failed delivery is logged at the SAME level as a success with an `error`
+  attribute, not at Error: the transport's error handler already logs failures
+  at Error, and a second line there is one failure reported twice. Do not delete
+  that handler - it sees what a middleware cannot, including a fetch that did
+  not return, a commit that did not land, and a record for a contract the
+  consumer does not handle.
+
+  It is a sub-package so `log/slog` stays out of the exported surface of
+  `pkg/events`, which every generated contract package imports.
+
+- **`log.Slog()`**, a `*slog.Logger` writing through craftgo's own logger. It
+  resolves the craftgo logger per line rather than capturing one, so a project
+  installing its own afterwards - `srv.SetLogger`, `log.SetDefault` - gets its
+  later lines. A captured logger would keep writing to the old sink, which
+  matters most when the new one carries its own level: `log.SetLevel` would
+  still move the HTTP lines and silently stop moving these.
+
+- **`kafka.WithClientOptions(...kgo.Opt)`**, the general form of `WithTLS` and
+  the SASL options: anything construction-time franz-go takes that craftgo does
+  not wrap. craftgo's own options are applied after it.
+
+  An option that would change what a client IS - the group it joins, the topics
+  it consumes - now **fails construction** rather than being quietly overridden,
+  at every site: the producer, the share-API probe, and the consumer, which
+  passes its own group and is checked against it rather than excused. A producer
+  that joined a consumer group behind the adapter's back would be a second
+  member splitting the stream, outside the guard that refuses exactly that, and
+  a probe joining for a moment rebalances the live group.
+
 - **A middleware can reach the broker's own message.** `kafka.RecordFrom(ctx)`
   returns the `*kgo.Record` a delivery came from and `nats.MsgFrom(ctx)` the
   `*nats.Msg` - for the partition, the offset, the record timestamp, a reply
