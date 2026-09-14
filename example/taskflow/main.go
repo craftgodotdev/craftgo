@@ -5,8 +5,8 @@
 // [telemetry.Init], which keeps the exporter selection (none / stdout /
 // otlp_grpc / otlp_http / prometheus) next to the SDK rather than inline
 // here, and gives both signals one `serviceName`, one HTTP wrapper and
-// one Shutdown. The only knob exposed to the deployer is
-// `config.yaml` (or the matching `CRAFTGO_*` environment variables).
+// one Shutdown. The only knob exposed to the deployer is `config.yaml`
+// (see config/example.config.yaml for the full field reference).
 
 package main
 
