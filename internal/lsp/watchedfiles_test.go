@@ -102,7 +102,9 @@ func (c *recordingConn) notifyCount() int {
 }
 
 // TestWatchedFilesRegistration pins the registration payload: it subscribes to
-// the design-file glob under the workspace-watcher capability.
+// the design-file glob AND to the manifest under the workspace-watcher
+// capability. The manifest is an analysis input, so a design that is wrong
+// only because the manifest is stale has to re-check when it is saved.
 func TestWatchedFilesRegistration(t *testing.T) {
 	reg := watchedFilesRegistration()
 	if len(reg.Registrations) != 1 {
@@ -113,13 +115,17 @@ func TestWatchedFilesRegistration(t *testing.T) {
 		t.Errorf("method = %q, want workspace/didChangeWatchedFiles", r.Method)
 	}
 	opts, ok := r.RegisterOptions.(protocol.DidChangeWatchedFilesRegistrationOptions)
-	if !ok || len(opts.Watchers) != 1 {
+	if !ok || len(opts.Watchers) != 2 {
 		t.Fatalf("register options malformed: %#v", r.RegisterOptions)
 	}
-	// The glob covers every accepted source extension via a brace group, so a
-	// `.cg` file change is watched alongside `.craftgo`.
-	if got := opts.Watchers[0].GlobPattern; got != "**/*.{craftgo,cg}" {
-		t.Errorf("glob = %q, want **/*.{craftgo,cg}", got)
+	globs := []string{opts.Watchers[0].GlobPattern, opts.Watchers[1].GlobPattern}
+	// The first glob covers every accepted source extension via a brace group,
+	// so a `.cg` file change is watched alongside `.craftgo`.
+	want := []string{"**/*.{craftgo,cg}", "**/craftgo.design.yaml"}
+	for i := range want {
+		if globs[i] != want[i] {
+			t.Errorf("glob %d = %q, want %q", i, globs[i], want[i])
+		}
 	}
 }
 

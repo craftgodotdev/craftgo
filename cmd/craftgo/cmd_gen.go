@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/codegen"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -170,7 +169,7 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 			cfg.OpenAPI.Description = d
 		}
 	}
-	proj, diags := semantic.AnalyzeProject(files, analysisOptions(designDir, cfg))
+	proj, diags := semantic.AnalyzeProject(files, designopts.For(designDir, cfg))
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)
 	}
@@ -202,25 +201,16 @@ func fileDecoratorString(files []*ast.File, name string) string {
 	return ""
 }
 
-func securitySchemeNames(cfg *config.Config) []string {
-	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(cfg.OpenAPI.SecuritySchemes))
-	for name := range cfg.OpenAPI.SecuritySchemes {
-		out = append(out, name)
-	}
-	return out
-}
-
 // parseDesign walks designDir for `.craftgo` files, parses each one, and
 // returns the collected AST. Parser diagnostics are aggregated and returned
 // as a single error so the caller doesn't see a half-parsed package.
 func parseDesign(designDir string) ([]*ast.File, error) {
-	files, diags, err := parseDesignFiles(designDir)
+	srcs, err := designopts.Load(designDir)
 	if err != nil {
 		return nil, err
 	}
+	parsed, diags := designopts.Parse(srcs)
+	files := designopts.ASTs(parsed)
 	var parseDiags []string
 	for _, e := range diags {
 		parseDiags = append(parseDiags, fmt.Sprintf("  %s: %s", e.Pos.String(), e.Msg))
@@ -232,43 +222,6 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 		return nil, fmt.Errorf("no .craftgo files found under %s", designDir)
 	}
 	return files, nil
-}
-
-// parseDesignFiles walks designDir for `.craftgo` files, parses each one
-// and returns every AST with the parser diagnostics in walk order.
-func parseDesignFiles(designDir string) ([]*ast.File, []lexer.Diagnostic, error) {
-	var files []*ast.File
-	var diags []lexer.Diagnostic
-	walkErr := filepath.Walk(designDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !config.IsDesignFile(path) {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		p := parser.New(path, string(data))
-		files = append(files, p.Parse())
-		diags = append(diags, p.Diagnostics()...)
-		return nil
-	})
-	if walkErr != nil {
-		return nil, nil, walkErr
-	}
-	return files, diags, nil
-}
-
-// analysisOptions returns the analyser options a manifest configures.
-func analysisOptions(designDir string, cfg *config.Config) semantic.Options {
-	return semantic.Options{
-		SecuritySchemes: securitySchemeNames(cfg),
-		BasePath:        cfg.OpenAPI.BasePath,
-		DesignRoot:      designDir,
-		FileCase:        cfg.Output.FileCase,
-	}
 }
 
 // formatSemanticErrors filters severity-error diagnostics out of

@@ -312,16 +312,30 @@ func watchedFilesGlob() string {
 	return "**/*.{" + strings.Join(bare, ",") + "}"
 }
 
+// manifestGlob watches craftgo.design.yaml. The manifest is an input to
+// the analysis - it supplies the security schemes, the base path and the
+// file case - so a design that is wrong only because the manifest is
+// stale has to re-check when the manifest is saved. Without it adding a
+// scheme leaves the squiggle on screen until the user happens to type in
+// a design file.
+func manifestGlob() string {
+	return "**/" + config.Filename
+}
+
 // watchedFilesRegistration is the `client/registerCapability` payload that
 // subscribes the server to create / change / delete events for every craftgo
-// source file (Kind omitted → the client watches all three).
+// source file and for the manifest (Kind omitted → the client watches all
+// three).
 func watchedFilesRegistration() protocol.RegistrationParams {
 	return protocol.RegistrationParams{
 		Registrations: []protocol.Registration{{
 			ID:     "craftgo-watch-design-files",
 			Method: protocol.MethodWorkspaceDidChangeWatchedFiles,
 			RegisterOptions: protocol.DidChangeWatchedFilesRegistrationOptions{
-				Watchers: []protocol.FileSystemWatcher{{GlobPattern: watchedFilesGlob()}},
+				Watchers: []protocol.FileSystemWatcher{
+					{GlobPattern: watchedFilesGlob()},
+					{GlobPattern: manifestGlob()},
+				},
 			},
 		}},
 	}
@@ -343,7 +357,7 @@ func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Rep
 		if src == "" {
 			continue
 		}
-		if root := designRootOf(uriToPath(string(u))); root != "" {
+		if _, root := designProjectOf(uriToPath(string(u))); root != "" {
 			if seenRoots[root] {
 				continue
 			}

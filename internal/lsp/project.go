@@ -15,8 +15,8 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -42,33 +42,36 @@ type projectView struct {
 }
 
 // loadProject builds the view for the buffer at fsPath holding src. In a
-// project every design file under the root is loaded, and a file without
-// a `package` declaration is assigned its folder's name so the analysis
-// can place it. fsPath is empty for an untitled buffer.
+// project every design file under the root is loaded. fsPath is empty for
+// an untitled buffer.
+//
+// The manifest is loaded with the root and its options are passed to the
+// analyser, so the editor applies the same rules `craftgo gen` does -
+// including the ones that only SILENCE a diagnostic, such as an
+// openapi.basePath that moves a route off a reserved path.
 func (s *Server) loadProject(fsPath, src string) projectView {
-	v := projectView{root: designRootOf(fsPath), current: fsPath}
+	cfg, root := designProjectOf(fsPath)
+	v := projectView{root: root, current: fsPath}
+
+	var srcs []designopts.Source
 	if v.root == "" {
 		v.files = []loadedFile{{path: fsPath, src: src}}
 	} else {
 		v.files = s.designFiles(v.root, fsPath, src)
 	}
-	asts := make([]*ast.File, 0, len(v.files))
-	for i := range v.files {
-		lf := &v.files[i]
-		p := parser.New(lf.path, lf.src)
-		lf.file = p.Parse()
-		lf.tokens = p.Tokens()
-		v.diags = append(v.diags, p.Diagnostics()...)
-		if v.root != "" {
-			if lf.file.Package == nil {
-				lf.file.Package = &ast.PackageDecl{Name: filepath.Base(filepath.Dir(lf.path))}
-			}
-			lf.file.Package.Pos.Filename = lf.path
-		}
-		asts = append(asts, lf.file)
+	for _, lf := range v.files {
+		srcs = append(srcs, designopts.Source{Path: lf.path, Text: lf.src})
 	}
+
+	parsed, parseDiags := designopts.Parse(srcs)
+	v.diags = append(v.diags, parseDiags...)
+	for i := range v.files {
+		v.files[i].file = parsed[i].File
+		v.files[i].tokens = parsed[i].Tokens
+	}
+
 	var diags []semantic.Diagnostic
-	v.proj, diags = semantic.AnalyzeProject(asts, semantic.Options{DesignRoot: v.root})
+	v.proj, diags = semantic.AnalyzeProject(designopts.ASTs(parsed), designopts.For(v.root, cfg))
 	v.diags = append(v.diags, diags...)
 	return v
 }
@@ -123,28 +126,30 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// designRootOf returns the design root of the project containing fsPath,
-// or "" when fsPath is empty or no manifest is found above it.
-func designRootOf(fsPath string) string {
+// designProjectOf returns the manifest and the design root of the project
+// containing fsPath. Both are zero when fsPath is empty or no manifest is
+// found above it: config.Find reports every failure as (nil, "", "", err),
+// so "no manifest" and "root unknown" are one state and a nil cfg always
+// travels with an empty root.
+//
+// The manifest is what the CLI reads and the editor used to throw away.
+func designProjectOf(fsPath string) (*config.Config, string) {
 	if fsPath == "" {
-		return ""
+		return nil, ""
 	}
-	_, _, root, err := config.Find(filepath.Dir(fsPath))
+	cfg, _, root, err := config.Find(filepath.Dir(fsPath))
 	if err != nil {
-		return ""
+		return nil, ""
 	}
-	return root
+	return cfg, root
 }
 
-// designFilePaths lists every design file under root in walk order.
+// designFilePaths lists every design file under root in walk order. A
+// directory the walk cannot read is skipped rather than failing the
+// request: an editor has to keep working on a tree it can only partly
+// see.
 func designFilePaths(root string) []string {
-	var out []string
-	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && config.IsDesignFile(p) {
-			out = append(out, p)
-		}
-		return nil
-	})
+	out, _ := designopts.Files(root)
 	return out
 }
 
