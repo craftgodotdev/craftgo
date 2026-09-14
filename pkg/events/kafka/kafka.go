@@ -51,6 +51,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"regexp"
 	"sync"
 	"time"
 
@@ -212,6 +213,23 @@ func WithMaxDeliveries(n int) Option {
 	return func(t *Transport) { t.maxDeliveries = n }
 }
 
+// WithClientOptions passes options straight to every franz-go client this
+// transport opens - a compression codec, a client ID, a request timeout,
+// anything construction-time that craftgo does not wrap.
+//
+// It is the same shape as [WithTLS] and the SASL options, which are each
+// one kgo.Opt appended to the same list; this is the general form of them.
+//
+// craftgo's own options are applied AFTER these, so an option that would
+// change what a client IS - the group it joins, the topics it consumes -
+// does not take effect and fails construction instead. Use the transport's
+// own options for those: the adapter refuses one group reading two
+// contracts on a topic, and a client that joined a group behind its back
+// would be outside that guard.
+func WithClientOptions(opts ...kgo.Opt) Option {
+	return func(t *Transport) { t.dial = append(t.dial, opts...) }
+}
+
 // WithTLS dials the brokers over TLS. A nil config uses the system roots.
 func WithTLS(cfg *tls.Config) Option {
 	return func(t *Transport) { t.dial = append(t.dial, kgo.DialTLSConfig(cfg)) }
@@ -273,6 +291,75 @@ func (t *Transport) CanDisposition(d events.Disposition) bool {
 		return t.share
 	}
 	return false
+}
+
+// newClient opens a client and refuses one whose consuming identity is not
+// what this transport meant it to be.
+//
+// wantGroup is the group the client is supposed to join, empty for a
+// client that must not consume at all - the producer and the share-API
+// probe. Caller options arrive through [WithClientOptions] and craftgo's
+// own are applied after them, so a group opt from a caller never takes
+// effect; this turns "did not take effect" into a construction failure,
+// because a producer that quietly joined a consumer group would be a
+// second member splitting the stream, outside the claim guard that exists
+// to prevent exactly that. Even the probe matters: joining a group for a
+// moment rebalances the live one.
+//
+// Every client goes through here, including the legitimate consumer - it
+// passes its own group and is checked against it rather than excused, so
+// a fourth construction site cannot inherit no check at all.
+func (t *Transport) newClient(wantGroup string, extra ...kgo.Opt) (*kgo.Client, error) {
+	cl, err := kgo.NewClient(t.clientOpts(extra...)...)
+	if err != nil {
+		return nil, err
+	}
+	if bad := unexpectedIdentity(cl, wantGroup); bad != "" {
+		cl.Close()
+		return nil, fmt.Errorf("kafka: client options set %s - a client's group and topics are the transport's to decide, not WithClientOptions'", bad)
+	}
+	return cl, nil
+}
+
+// unexpectedIdentity names how a client's consuming identity differs from
+// wantGroup, or "" when it matches. A client joins at most one kind of
+// group, so the one it joined is the one that must match.
+func unexpectedIdentity(cl *kgo.Client, wantGroup string) string {
+	consumer, _ := cl.OptValue(kgo.ConsumerGroup).(string)
+	share, _ := cl.OptValue(kgo.ShareGroup).(string)
+	if consumer != "" && share != "" {
+		return fmt.Sprintf("both a consumer group %q and a share group %q", consumer, share)
+	}
+	joined := consumer
+	if share != "" {
+		joined = share
+	}
+	if joined != wantGroup {
+		return fmt.Sprintf("group %q, want %q", joined, wantGroup)
+	}
+	if wantGroup == "" && consumesAnything(cl) {
+		return "topics to consume on a client that must not consume"
+	}
+	return ""
+}
+
+// consumesAnything reports whether the client was told to consume topics.
+//
+// An unrecognised shape counts as YES. franz-go's own OptValues doc says
+// this option reads back as a []string and the field behind it is a map,
+// so a type switch that fell through to "no" is how this check silently
+// passed the first time it was written.
+func consumesAnything(cl *kgo.Client) bool {
+	switch v := cl.OptValue(kgo.ConsumeTopics).(type) {
+	case nil:
+		return false
+	case map[string]*regexp.Regexp:
+		return len(v) > 0
+	case []string:
+		return len(v) > 0
+	default:
+		return true
+	}
 }
 
 // clientOpts returns the options every client this transport opens shares.
@@ -401,7 +488,7 @@ func (t *Transport) producerClient() (*kgo.Client, error) {
 	if t.producer != nil {
 		return t.producer, nil
 	}
-	cl, err := kgo.NewClient(t.clientOpts()...)
+	cl, err := t.newClient("")
 	if err != nil {
 		return nil, fmt.Errorf("kafka: open producer: %w", err)
 	}
@@ -457,7 +544,7 @@ func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo
 		}
 		mode = kgo.ShareGroup(group)
 	}
-	cl, err := kgo.NewClient(t.clientOpts(mode, kgo.ConsumeTopics(topic))...)
+	cl, err := t.newClient(group, mode, kgo.ConsumeTopics(topic))
 	if err != nil {
 		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, err)
 	}
@@ -478,7 +565,7 @@ func (t *Transport) probeShareAPIs(ctx context.Context) error {
 		return nil
 	}
 
-	cl, err := kgo.NewClient(t.clientOpts()...)
+	cl, err := t.newClient("")
 	if err != nil {
 		return fmt.Errorf("kafka: probe share support: %w", err)
 	}

@@ -509,3 +509,83 @@ func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 		t.Errorf("offset = %d - the record is not the delivered one", got.offset)
 	}
 }
+
+// A caller option that would change what a client IS must fail
+// construction, at EVERY site - not just the consumer. A producer or a
+// probe that quietly joined a consumer group would be a second member
+// splitting the stream, outside the claim guard that exists to stop
+// exactly that, and a probe joining for a moment rebalances the live
+// group.
+func TestAGroupOptionFromAClientOptionIsRefusedAtEverySite(t *testing.T) {
+	const contract = "orders.Placed"
+	addrs := cluster(t, contract, kversion.V4_2_0())
+
+	for _, c := range []struct {
+		name string
+		opt  kgo.Opt
+	}{
+		{"consumer group", kgo.ConsumerGroup("sneaky")},
+		{"share group", kgo.ShareGroup("sneaky")},
+		{"consume topics", kgo.ConsumeTopics("sneaky")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tr := New(addrs, WithClientOptions(c.opt))
+			defer func() { _ = tr.Close() }()
+
+			// The producer must not consume.
+			err := tr.Publish(context.Background(), &events.Message{
+				Event: contract, Payload: []byte(`{}`),
+			})
+			if err == nil {
+				t.Fatal("the producer was opened with a consuming identity")
+			}
+			if !strings.Contains(err.Error(), "the transport's to decide") {
+				t.Errorf("error does not say whose decision it is: %v", err)
+			}
+
+			// And neither must the share-API probe.
+			share := New(addrs, WithShareGroup(), WithClientOptions(c.opt))
+			defer func() { _ = share.Close() }()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if err := share.Subscribe(ctx, events.Subscription{
+				Event: contract, Consumer: "C", Group: "real",
+				Handle: func(context.Context, *events.Message) error { return nil },
+			}); err == nil {
+				t.Error("the probe was opened with a consuming identity")
+			}
+		})
+	}
+}
+
+// The legitimate consumer passes its OWN group and is checked against it
+// rather than excused from the check, which is what stops a fourth
+// construction site inheriting no check at all.
+func TestTheRealConsumerPassesTheSameGuard(t *testing.T) {
+	const contract = "orders.Placed"
+	tr := New(cluster(t, contract, kversion.V4_2_0()))
+	defer func() { _ = tr.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, events.Subscription{
+		Event: contract, Consumer: "C", Group: "real",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}); err != nil {
+		t.Fatalf("a consumer joining its own group must be allowed: %v", err)
+	}
+}
+
+// A client option that does NOT touch the consuming identity is passed
+// through, which is the point of the option.
+func TestAnOrdinaryClientOptionIsPassedThrough(t *testing.T) {
+	const contract = "orders.Placed"
+	tr := New(cluster(t, contract, kversion.V4_2_0()), WithClientOptions(kgo.ClientID("mine")))
+	defer func() { _ = tr.Close() }()
+
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: contract, Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatalf("an ordinary option must not fail construction: %v", err)
+	}
+}
