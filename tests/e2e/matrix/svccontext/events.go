@@ -96,7 +96,8 @@ func (b *EventBatch) Len() int { return len(b.envs) }
 // Publish sends everything collected and empties the batch, so calling it
 // again is a no-op rather than a replay. On a partial failure the batch is
 // left intact and the error is a [craftevents.PartialPublishError] naming
-// how many were sent, so the caller can retry the tail.
+// how many the transport took - a count, not an index, so it does not say
+// WHICH went out and the batch cannot be safely resent from it.
 func (b *EventBatch) Publish(ctx context.Context) error {
 	if err := b.bus.PublishAll(ctx, b.envs); err != nil {
 		return err

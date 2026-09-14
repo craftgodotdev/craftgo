@@ -302,11 +302,21 @@ func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...Pu
 }
 
 // PartialPublishError reports a batch that stopped partway. Sent counts
-// the messages already on the wire, so a caller retrying the rest sends
-// its own batch from that offset rather than replaying what was
-// delivered.
+// the messages the transport took.
+//
+// It is NOT an index to retry from. A transport that publishes to several
+// partitions or topics at once reports how many succeeded, and those need
+// not be the first Sent of the batch - so `envs[Sent:]` can resend one
+// that landed and skip one that did not. Only [Bus.PublishAll]'s own
+// one-at-a-time fallback stops at the first failure, and nothing at the
+// call site says which path ran.
+//
+// So there is no safe automatic retry for a partial batch: republish the
+// whole batch where the broker de-duplicates ([WithDedupID]), or keep the
+// envelopes and reconcile against what the consumer actually saw.
 type PartialPublishError struct {
-	// Sent is how many envelopes were published before the failure.
+	// Sent is how many envelopes the transport took before it reported the
+	// failure. A count, not an index - see the type doc.
 	Sent int
 	// Event is the contract whose publish failed.
 	Event string
