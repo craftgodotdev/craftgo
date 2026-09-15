@@ -7,7 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/orders"
 )
 
-// Counter implements analytics.AnalyticsServiceHandler: a second group on
+// Counter is the analytics group's logic: a second group on
 // orders.Placed, receiving its own copy of every order.
 type Counter struct{}
 

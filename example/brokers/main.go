@@ -1,8 +1,8 @@
 // Command brokers wires the generated event code to a real broker.
 //
-// The design, the contract descriptors and the handler interfaces are
-// identical whichever broker runs underneath - only the transport line
-// changes:
+// The design, the contract descriptors and the subscriptions this binary
+// registers are identical whichever broker runs underneath - only the
+// transport line changes:
 //
 //	go run . -transport memory
 //	go run . -transport nats  -addr nats://127.0.0.1:4222
@@ -57,18 +57,21 @@ func main() {
 		craftevents.WithPublisher(tr),
 		craftevents.WithSubscriber(tr),
 		craftevents.WithCodec(codecjson.Codec{}),
-		// One line per delivery, whichever broker is underneath: the
-		// chain is on the BUS, so swapping the transport does not change
-		// what is logged.
-		craftevents.WithMiddleware(logging.AccessLog(craftlog.Slog())),
 	)
+	// One line per delivery, whichever broker is underneath. The delivery
+	// chain goes on the BUS, where it covers every subscription registered
+	// through it: swapping the transport does not change what is logged,
+	// and no registration call has to be handed a chain. Use takes it
+	// after New, which is where a real deployable has its logger, its
+	// tracer and its configuration.
+	bus.Use(logging.AccessLog(craftlog.Slog()))
 
-	// The design says which handler interfaces exist; this binary says
-	// which of them it runs and under what group. Registration records
-	// them, Start hands the whole batch to the transport at once - a
-	// broker that binds one identity to several contracts cannot register
-	// a group one contract at a time.
-	if err := consumers.RegisterAll(bus, nil); err != nil {
+	// The design says which contracts exist; this binary says which of
+	// them it listens to and under what group. Registration records the
+	// subscriptions, Start hands the whole batch to the transport at once
+	// - a broker that binds one identity to several contracts cannot
+	// register a group one contract at a time.
+	if err := consumers.RegisterAll(bus); err != nil {
 		log.Fatalf("register consumers: %v", err)
 	}
 	deliver, stopDelivery := context.WithCancel(ctx)
@@ -77,7 +80,7 @@ func main() {
 		log.Fatalf("start consumers: %v", err)
 	}
 
-	// orders.Placed has three consumers in three groups, so each of the
+	// orders.Placed has three listeners in three groups, so each of the
 	// two publishes below is delivered three times - once per group.
 	//
 	// WithKey is what puts one order's messages in one Kafka partition, so
@@ -107,10 +110,10 @@ func main() {
 		log.Fatalf("publish batch: %v", err)
 	}
 
-	// payments.Settled is declared outside any service: this design
-	// consumes it and the payments platform publishes it. The descriptor
-	// is generated all the same - a contract is publishable by whoever
-	// holds it - so standing in for that platform is one call.
+	// payments.Settled is a contract this design describes but does not
+	// own: the payments platform publishes it and this binary listens.
+	// The descriptor is generated all the same - a contract is publishable
+	// by whoever holds it - so standing in for that platform is one call.
 	if err := paymentsevents.Settled.Publish(ctx, bus,
 		&payments.Settlement{OrderID: "order-1", Amount: 4200},
 		craftevents.WithKey("order-1")); err != nil {
@@ -138,7 +141,7 @@ type transportKind interface {
 // the same two interfaces, which is the whole seam.
 func openTransport(kind, addr, topic string) (transportKind, func(), error) {
 	onError := func(sub craftevents.Subscription, _ *craftevents.Message, err error) {
-		log.Printf("consumer %s failed: %v", sub.Consumer, err)
+		log.Printf("listener %s/%s failed: %v", sub.Event, sub.Group, err)
 	}
 	switch kind {
 	case "memory":

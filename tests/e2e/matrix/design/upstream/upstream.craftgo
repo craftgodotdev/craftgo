@@ -1,7 +1,8 @@
-// upstream.craftgo pins the file-level contract: an event declared outside
-// any service. This design describes the contract and consumes it, but does
-// not publish it - the producer is another system - so gen must emit no
-// publisher, no ServiceContext field, and no AsyncAPI `send` operation.
+// upstream.craftgo pins a package that is nothing but a contract: an
+// event, its payload, and no service at all. This design describes the
+// contract so a deployable can listen to it, but does not own it - the
+// producer is another system - and craftgo still emits the descriptor,
+// because a contract is publishable by whoever holds it.
 package upstream
 
 type PaymentSettledPayload {
@@ -16,11 +17,4 @@ type PaymentSettledPayload {
 @contract("payments.settled.v1")
 event PaymentSettled {
 	payload PaymentSettledPayload
-}
-
-service LedgerService {
-	@doc("Records the settlement against the invoice.")
-	consume RecordSettlement {
-		event upstream.PaymentSettled
-	}
 }

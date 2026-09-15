@@ -43,7 +43,7 @@ func (capableTransport) CanDisposition(craftevents.Disposition) bool { return tr
 // A delivery guarantee the deployment states is worth nothing if the
 // transport cannot keep it, so registration is refused rather than
 // running a chain whose Redeliver is silently settled. The refusal comes
-// out of the generated Register call: that is the only thing standing
+// out of the deployable's own RegisterAll: that is the only thing standing
 // between it and a binary that boots, serves HTTP, passes readiness and
 // quietly loses every message it meant to retry.
 func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
@@ -69,7 +69,7 @@ func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
 				craftevents.WithCodec(codecjson.Codec{}),
 				craftevents.WithDispositionRequired(craftevents.DispositionRedeliver))
 
-			err := consumers.RegisterAll(bus, svccontext.NewServiceContext(), nil)
+			err := consumers.RegisterAll(bus, svccontext.NewServiceContext())
 
 			if tc.registers {
 				if err != nil {
@@ -94,7 +94,7 @@ func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
 }
 
 // A design with events generates a wiring umbrella that knows nothing
-// about them: the bus, the groups and the handler sets are the
+// about them: the bus, the groups and the subscriptions are the
 // application's, so Register attaches HTTP and hands back a shutdown
 // without a container carrying anything event-shaped.
 func TestWiringRegisterIsHTTPOnly(t *testing.T) {

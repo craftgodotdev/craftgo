@@ -7,8 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/orders"
 )
 
-// Notifier implements notifications.NotificationServiceHandler: it
-// follows an order through both of its events.
+// Notifier is the notification group's logic: it follows an order
+// through both of its events.
 //
 // The payload arrives decoded and validated, whichever broker delivered
 // it; returning an error tells the transport the message was not

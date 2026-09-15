@@ -93,16 +93,18 @@ func main() {
 	bus := craftevents.New(
 		craftevents.WithTransport(memory.New()),
 		craftevents.WithCodec(codecjson.Codec{}),
-		// One line per delivery: the contract, the consumer, the key, how
-		// long it took, and the error when there was one.
-		craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
 	)
+	// One line per delivery: the contract, the listener, the key, how long
+	// it took, and the error when there was one. The chain goes on the BUS,
+	// so it covers every subscription registered through it and no module
+	// has to be handed one.
+	bus.Use(logging.AccessLog(log.Slog()))
 	svc.Bus = bus
 
-	// The design declares which handler interfaces exist; this binary
-	// says which of them it runs and under what group. Registration
-	// records them; Start hands the whole batch to the transport at once,
-	// because a broker that binds one identity to several contracts
+	// The design declares which contracts exist; this binary says which
+	// of them it listens to and under what group. Registration records
+	// the subscriptions; Start hands the whole batch to the transport at
+	// once, because a broker that binds one identity to several contracts
 	// cannot register a group one contract at a time.
 	if err := activity.Register(bus, svc.Activity); err != nil {
 		log.Default().Error("register consumers", log.Err(err))

@@ -1,8 +1,8 @@
 # brokers
 
-Six design packages, three transports. The generated contract descriptors and
-handler interfaces are identical whichever broker runs underneath — only the
-transport line in `main.go` changes.
+Three design packages, three transports. The generated contract descriptors
+and the subscriptions this binary registers are identical whichever broker
+runs underneath — only the transport line in `main.go` changes.
 
 ```sh
 go run . -transport memory
@@ -13,62 +13,68 @@ go run . -transport kafka -addr localhost:9092 -kafka-topic orders
 
 ## The design
 
-Six packages, each one a unit that could belong to a different team:
+Three packages, each one a unit that could belong to a different team:
 
 ```
-design/money/          scalars OrderID, Amount        no service, no event
-design/orders/         OrderPlaced, OrderShipped      service OrderService  → declares two events
-design/payments/       Settlement                     file-level event      → owned upstream
-design/notifications/  NotificationService            → consumes orders.Placed, orders.Shipped
-design/analytics/      AnalyticsService               → consumes orders.Placed
-design/ledger/         LedgerService                  → consumes orders.Placed, payments.Settled
+design/money/     scalars OrderID, Amount       no event
+design/orders/    OrderPlaced, OrderShipped     events Placed, Shipped
+design/payments/  Settlement                    event Settled  → owned upstream
 ```
 
-The split is the point. A package here owns one thing, and the edges between
-them are what the generated code has to get right:
+The design names contracts and nothing else. **Who listens is not in it** —
+that is the deployable's, and it lives in `internal/consumers/`. What is left
+here is the part every listener has to agree on:
 
-- **Three consumer groups on one contract, in three packages.**
-  `NotificationService`, `AnalyticsService` and `LedgerService` all consume
-  `orders.Placed`, so every publish is delivered three times — once per group.
-  Replicas sharing a group split the work instead; separate groups each get
-  their own copy.
-- **A contract declared outside any service.** `payments.Settled` is published
-  by the payments platform, not here. Declaring the event at file level is how
-  you subscribe without pretending to be its producer — the design says who
-  consumes it and nothing about who sends it. `main.go` publishes it through
-  the same descriptor to stand in for the upstream system.
+- **A contract several groups listen to.** `internal/consumers` puts
+  `orders.Placed` in three groups, so every publish is delivered three times —
+  once per group. Replicas sharing a group split the work instead; separate
+  groups each get their own copy. Nothing in the design had to say so, and a
+  second deployable is free to answer differently.
+- **A contract this system does not own.** `payments.Settled` is published by
+  the payments platform. Describing the event here is how you get a typed
+  descriptor for something you only listen to — and craftgo emits the same
+  descriptor either way, since a contract is publishable by whoever holds it.
+  `main.go` publishes one to stand in for the upstream system.
 - **A shared vocabulary package.** `orders` and `payments` both build their
   payloads out of `money.OrderID` and `money.Amount`, so the two stay
   comparable without either importing the other. The generated Go follows:
   `internal/types/orders` and `internal/types/payments` both import
   `internal/types/money`, and their validators delegate to the scalar's.
-- **Packages with a service and no types of their own.** `notifications`,
-  `analytics` and `ledger` declare only consumers; their payload types come
-  from `orders` and `payments`.
 - **A batch mixing contracts**, which is the shape an outbox drains.
 
 ## What craftgo generates, and what this project writes
 
 `internal/types/` holds the payload types and their validators.
-`internal/events/<package>/` holds the event library: `events.go` with one
-descriptor per contract (`orders.Placed.Publish(ctx, bus, payload)`), and
-`handlers.go` with one interface, one `Groups` struct and one `Register…`
-function per consuming service.
+`internal/events/<package>/events.go` holds the event library and nothing
+else: one descriptor per contract, carrying its wire name and its payload's
+validation.
 
 Everything about DELIVERY is this project's, and lives in
-`internal/consumers/`: the handler structs, the group names, and the one
-`RegisterAll` that binds them. That is the whole application half —
+`internal/consumers/`: the logic structs, the group names, and the one
+`RegisterAll` that lists every subscription —
 
 ```go
-notifications.RegisterNotificationServiceHandler(bus, Notifier{}, chain,
-    notifications.NotificationServiceGroups{Default: NotificationGroup})
+return bus.RegisterAll(
+    orders.Placed.Subscription(bus, NotificationGroup, notifier.SendReceipt),
+    orders.Shipped.Subscription(bus, NotificationGroup, notifier.SendDispatchNote),
+    orders.Placed.Subscription(bus, AnalyticsGroup, counter.CountOrder),
+    orders.Placed.Subscription(bus, LedgerGroup, ledger.BookOrder),
+    payments.Settled.Subscription(bus, LedgerGroup, ledger.RecordSettlement),
+)
 ```
 
-— so a second deployable running only the ledger, under group names of its
-own, imports the same generated library and writes its own five lines.
+One line per (contract, group), and the compiler checks each: a method whose
+payload does not match the contract does not compile at the `Subscription`
+call. A second deployable running only the ledger, under group names of its
+own, imports the same generated library and writes its own two lines.
+
+The delivery chain goes on the bus, not on a line: `main.go` calls
+`bus.Use(logging.AccessLog(...))` after `New`, where a real deployable has
+its logger and its configuration, and every subscription registered through
+that bus runs behind it.
 
 Group names are written down once, in `internal/consumers/groups.go`, because
-a group is where a consumer resumes: on Kafka and JetStream the name *is* the
+a group is where a listener resumes: on Kafka and JetStream the name *is* the
 stored position, so it outlives any one process.
 
 ## What runs
@@ -87,7 +93,7 @@ published 3 + 1 upstream over memory
 ```
 
 Two orders, each seen by all three groups; one shipment, seen only by the
-service that asked for it; one upstream payment. Delivery order across groups
+group that asked for it; one upstream payment. Delivery order across groups
 is the transport's business, so the lines interleave differently per run.
 
 ## Brokers, locally
@@ -112,7 +118,7 @@ docker run -d -p 9092:9092 \
 detail: Kafka orders within a partition, so `orders.Placed` and
 `orders.Shipped` on two topics have **no order between them** for the same
 order. One topic keyed by order gives you that order back. The contract
-still travels in the `craftgo-event` header, so each consumer picks out its
+still travels in the `craftgo-event` header, so each listener picks out its
 own and skips the rest — run it both ways and the output is the same.
 
 The key is the other half of that. `main.go` passes

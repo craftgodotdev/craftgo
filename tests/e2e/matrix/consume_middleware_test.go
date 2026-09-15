@@ -11,15 +11,14 @@ import (
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/eventsubs"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
 // redeliverTransport is a broker that can hand a message back: it
 // re-delivers while the chain asks for it, counting deliveries the way an
 // adapter does through SetDeliveries. Only the subscriptions of the
-// published contract are driven, so a handler set registered whole
-// produces one delivery sequence.
+// published contract are driven, so a module registered whole produces
+// one delivery sequence.
 type redeliverTransport struct {
 	msg *craftevents.Message
 	max int
@@ -102,20 +101,40 @@ func (c *failingGuarded) InheritedStock(context.Context, *eventtypes.WarehouseCl
 	return nil
 }
 
-// bootGuarded registers GuardedService behind chain on a transport that
-// can hand a message back, with one events.ItemStocked already published.
-func bootGuarded(t *testing.T, chain craftevents.Chain, h eventsubs.GuardedServiceHandler) {
+// guardedSubs is the guarded module's three lines, the shape one block of
+// a deployable's RegisterAll has.
+func guardedSubs(bus *craftevents.Bus, h guardedLogic) []craftevents.Subscription {
+	return []craftevents.Subscription{
+		events.ItemStocked.Subscription(bus, consumers.GuardedGroup, h.GuardedStock),
+		events.StocktakeStarted.Subscription(bus, consumers.GuardedGroup, h.BareStock),
+		events.WarehouseClosed.Subscription(bus, consumers.GuardedGroup, h.InheritedStock),
+	}
+}
+
+// guardedLogic is what those three lines dispatch to. It is the test's
+// own interface, not a generated one: the design declares no such thing.
+type guardedLogic interface {
+	GuardedStock(context.Context, *eventtypes.ItemStocked) error
+	BareStock(context.Context, *eventtypes.StocktakeStarted) error
+	InheritedStock(context.Context, *eventtypes.WarehouseClosed) error
+}
+
+// bootGuarded registers the guarded module behind chain on a transport
+// that can hand a message back, with one events.ItemStocked already
+// published. The chain goes on the BUS - the application installs it once
+// and every line it registers runs behind it.
+func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) {
 	t.Helper()
 	tr := &redeliverTransport{max: 10}
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
+	bus.Use(chain...)
 	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        1,
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := eventsubs.RegisterGuardedServiceHandler(bus, h, chain,
-		eventsubs.GuardedServiceGroups{Default: consumers.GuardedGroup}); err != nil {
+	if err := bus.RegisterAll(guardedSubs(bus, h)...); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
@@ -123,11 +142,11 @@ func bootGuarded(t *testing.T, chain craftevents.Chain, h eventsubs.GuardedServi
 	}
 }
 
-// The chain is the application's, handed to Register once for the whole
-// handler set: Settle is listed first so it is outermost, and Attempt
-// sits nearest the handler. That is the ONLY order in which the retry
-// works - Settle answers nil, so an Attempt above it is handed a success
-// and never reaches its Redeliver call.
+// The chain is the application's, installed on the bus once for every
+// line it registers: Settle is listed first so it is outermost, and
+// Attempt sits nearest the handler. That is the ONLY order in which the
+// retry works - Settle answers nil, so an Attempt above it is handed a
+// success and never reaches its Redeliver call.
 //
 // The assertion counts attempts rather than reading frames on purpose. A
 // reversed chain still ENTERS in the order it was written, so a
@@ -166,7 +185,7 @@ func TestAReversedChainSilentlyStopsRetrying(t *testing.T) {
 	}
 }
 
-// Registering with no chain leaves the handler bare: a failure is neither
+// A bus with no chain leaves the handler bare: a failure is neither
 // retried nor parked, it just comes back to the transport. The chain is
 // the application's to supply, and supplying none is a choice the design
 // has no say in.
@@ -182,14 +201,15 @@ func TestNoChainLeavesTheHandlerBare(t *testing.T) {
 		t.Errorf("an unchained handler ran %d time(s), want 1", h.ran)
 	}
 	if parked != 0 || asked != 0 {
-		t.Errorf("an unchained registration ran a chain: parked=%d asked=%d", parked, asked)
+		t.Errorf("an unchained bus ran a chain: parked=%d asked=%d", parked, asked)
 	}
 }
 
 // A subscription's own chain runs INSIDE the bus-wide one, so a bus-level
-// concern still sees what a per-registration chain did. The two are
-// wired at different places and both reach one delivery.
-func TestTheRegisteredChainRunsInsideTheBusChain(t *testing.T) {
+// concern still sees what one line's chain did. The two are wired at
+// different places - Bus.Use for the deployable's, Subscription.Chain on
+// the value before it is registered - and both reach one delivery.
+func TestASubscriptionsOwnChainRunsInsideTheBusChain(t *testing.T) {
 	tr := &tracer{}
 	var ran int
 	bus := craftevents.New(
@@ -203,8 +223,9 @@ func TestTheRegisteredChainRunsInsideTheBusChain(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 	h := &countingGuarded{ran: &ran}
-	if err := eventsubs.RegisterGuardedServiceHandler(bus, h, craftevents.NewChain(tr.tag("own")),
-		eventsubs.GuardedServiceGroups{Default: consumers.GuardedGroup}); err != nil {
+	sub := events.ItemStocked.Subscription(bus, consumers.GuardedGroup, h.GuardedStock)
+	sub.Chain = craftevents.NewChain(tr.tag("own"))
+	if err := bus.Register(sub); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
@@ -215,12 +236,12 @@ func TestTheRegisteredChainRunsInsideTheBusChain(t *testing.T) {
 		t.Fatalf("the handler ran %d time(s), want 1", ran)
 	}
 	if got, want := strings.Join(tr.seen(), ""), ">bus>own<own<bus"; got != want {
-		t.Errorf("frames = %q, want %q - the registered chain must run inside the bus chain", got, want)
+		t.Errorf("frames = %q, want %q - a subscription's own chain must run inside the bus chain", got, want)
 	}
 }
 
-// countingGuarded is a handler set that only counts, so the frame order
-// around it is the whole reading.
+// countingGuarded is logic that only counts, so the frame order around it
+// is the whole reading.
 type countingGuarded struct{ ran *int }
 
 func (c *countingGuarded) GuardedStock(context.Context, *eventtypes.ItemStocked) error {

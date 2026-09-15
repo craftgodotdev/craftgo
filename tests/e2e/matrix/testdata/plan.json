@@ -5,7 +5,7 @@
       "consumers": [
         {
           "event": "events.TierPromoted",
-          "consumer": "TrackTier"
+          "consumer": "events.TierPromoted"
         }
       ]
     },
@@ -14,11 +14,11 @@
       "consumers": [
         {
           "event": "events.ItemStocked",
-          "consumer": "CountStocked"
+          "consumer": "events.ItemStocked"
         },
         {
           "event": "events.ShipmentDispatched",
-          "consumer": "CountDispatched"
+          "consumer": "events.ShipmentDispatched"
         }
       ]
     },
@@ -27,15 +27,15 @@
       "consumers": [
         {
           "event": "events.ItemStocked",
-          "consumer": "GuardedStock"
+          "consumer": "events.ItemStocked"
         },
         {
           "event": "events.StocktakeStarted",
-          "consumer": "BareStock"
+          "consumer": "events.StocktakeStarted"
         },
         {
           "event": "events.WarehouseClosed",
-          "consumer": "InheritedStock"
+          "consumer": "events.WarehouseClosed"
         }
       ]
     },
@@ -44,7 +44,7 @@
       "consumers": [
         {
           "event": "events.ItemStocked",
-          "consumer": "MirrorStock"
+          "consumer": "events.ItemStocked"
         }
       ]
     },
@@ -53,7 +53,7 @@
       "consumers": [
         {
           "event": "payments.settled.v1",
-          "consumer": "RecordSettlement"
+          "consumer": "payments.settled.v1"
         }
       ]
     },
@@ -62,19 +62,19 @@
       "consumers": [
         {
           "event": "events.ItemStocked",
-          "consumer": "SendStockAlert"
+          "consumer": "events.ItemStocked"
         },
         {
           "event": "events.ShipmentDispatched",
-          "consumer": "NotifyDispatch"
+          "consumer": "events.ShipmentDispatched"
         },
         {
           "event": "events.StocktakeStarted",
-          "consumer": "TrackStocktake"
+          "consumer": "events.StocktakeStarted"
         },
         {
           "event": "legacy.inventory.reconciled.v2",
-          "consumer": "AuditReconciliation"
+          "consumer": "legacy.inventory.reconciled.v2"
         }
       ]
     },
@@ -83,7 +83,7 @@
       "consumers": [
         {
           "event": "events.WarehouseClosed",
-          "consumer": "RecordClosure"
+          "consumer": "events.WarehouseClosed"
         }
       ]
     }

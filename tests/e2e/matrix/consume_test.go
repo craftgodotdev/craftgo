@@ -18,7 +18,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
-// tracer collects one entry per middleware frame. The consumers of a
+// tracer collects one entry per middleware frame. The listeners of a
 // contract run on one goroutine per group, so the trace is shared state.
 type tracer struct {
 	mu    sync.Mutex
@@ -51,7 +51,7 @@ func (tr *tracer) tag(name string) craftevents.Middleware {
 	}
 }
 
-// promoteTier publishes the one contract with a single consumer, so the
+// promoteTier publishes the one contract with a single listener, so the
 // trace it produces is one goroutine's and ordering is unambiguous.
 func promoteTier(t *testing.T, bus *craftevents.Bus) {
 	t.Helper()
@@ -69,9 +69,9 @@ func promoteMember(t *testing.T, bus *craftevents.Bus, member string) {
 	}
 }
 
-// The chain wraps every subscription registered through the bus,
-// outermost first: the first middleware listed is the first frame a
-// message enters.
+// The chain [craftevents.Bus.Use] installs wraps every subscription
+// registered through the bus, outermost first: the first middleware
+// listed is the first frame a message enters.
 func TestConsumerChainWrapsEverySubscriptionOutermostFirst(t *testing.T) {
 	tr := &tracer{}
 	chain := craftevents.NewChain(tr.tag("A"), tr.tag("B"), tr.tag("C"))
@@ -123,6 +123,10 @@ func TestConsumerChainFoldsLikeTheHTTPChain(t *testing.T) {
 // reads a different contract, consumer and group per subscription. That
 // is why the event side needs no decorator to select a target: what HTTP
 // names in the DSL arrives here as an argument.
+//
+// Consumer is the contract, which is what [craftevents.Event.Subscription]
+// defaults it to; the group is what tells four listeners of one contract
+// apart in a process that runs them all.
 func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	var mu sync.Mutex
 	var seen []string
@@ -136,8 +140,8 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	}
 	_, bus, transport := bootEventsWith(t, craftevents.NewChain(record), nil)
 
-	// ItemStocked is consumed four times: by its declaring service and by
-	// three services in another package, each under a group of its own.
+	// ItemStocked has four listeners in this deployable, each in a group
+	// of its own.
 	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        3,
@@ -149,10 +153,10 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	got := seen
 	sort.Strings(got)
 	want := []string{
-		"events.ItemStocked CountStocked analytics-worker",
-		"events.ItemStocked GuardedStock matrix-guarded",
-		"events.ItemStocked MirrorStock matrix-inventory",
-		"events.ItemStocked SendStockAlert matrix-notifications",
+		"events.ItemStocked events.ItemStocked analytics-worker",
+		"events.ItemStocked events.ItemStocked matrix-guarded",
+		"events.ItemStocked events.ItemStocked matrix-inventory",
+		"events.ItemStocked events.ItemStocked matrix-notifications",
 	}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("middleware saw\n%v\nwant\n%v", got, want)
@@ -202,8 +206,8 @@ func TestPanicInLogicReachesTheProjectsMiddleware(t *testing.T) {
 	if !errors.As(seenByMiddleware, &panicked) {
 		t.Fatalf("middleware saw %v, want a *PanicError", seenByMiddleware)
 	}
-	if panicked.Consumer != "TrackTier" || panicked.Group != "analytics-tier-worker" {
-		t.Errorf("PanicError names %s/%s", panicked.Consumer, panicked.Group)
+	if panicked.Event != events.TierPromotedContract || panicked.Group != "analytics-tier-worker" {
+		t.Errorf("PanicError names %s/%s", panicked.Event, panicked.Group)
 	}
 	if !errors.As(reported, &panicked) {
 		t.Errorf("the transport was told %v, want the same *PanicError", reported)

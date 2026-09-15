@@ -37,9 +37,8 @@ func (h *handingTransport) Publish(_ context.Context, msg *craftevents.Message) 
 	return nil
 }
 
-// contextProbe is a handler set satisfying the generated interface,
-// standing in for the application's so the context a handler is called
-// with can be read.
+// contextProbe stands in for the application's logic so the context a
+// handler is called with can be read.
 type contextProbe struct{ got context.Context }
 
 func (p *contextProbe) MirrorStock(ctx context.Context, _ *eventtypes.ItemStocked) error {
@@ -58,13 +57,13 @@ func (p *contextProbe) MirrorStock(ctx context.Context, _ *eventtypes.ItemStocke
 // the context going through all three untouched. That a Kafka delivery
 // carries its record at all is the adapter's own business and is pinned
 // there, so nothing here needs a broker.
-func TestTheDeliveryContextReachesTheHandlerSet(t *testing.T) {
+func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	tr := &handingTransport{}
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
 
 	probe := &contextProbe{}
-	if err := events.RegisterInventoryServiceHandler(bus, probe, nil,
-		events.InventoryServiceGroups{Default: consumers.InventoryGroup}); err != nil {
+	if err := bus.Register(events.ItemStocked.Subscription(bus, consumers.InventoryGroup,
+		probe.MirrorStock)); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {

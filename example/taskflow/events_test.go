@@ -18,8 +18,8 @@ import (
 
 // bootEvents builds the wiring main.go builds: one bus over the
 // in-process transport, the bus on the ServiceContext so logic can
-// publish through the generated descriptors, and the activity handler
-// set registered and started.
+// publish through the generated descriptors, and the activity module's
+// subscriptions registered and started.
 func bootEvents(t *testing.T) (*svccontext.ServiceContext, *memory.Transport) {
 	t.Helper()
 	transport := memory.New(memory.WithErrorHandler(func(sub craftevents.Subscription, _ *craftevents.Message, err error) {

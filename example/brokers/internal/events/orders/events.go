@@ -9,19 +9,23 @@ import (
 )
 
 // PlacedContract is the wire identity of Placed.
-// Publisher and consumer both address the contract by this value.
+// Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
 
+// An order was accepted.
+//
 // Placed is the orders.Placed contract.
-// Placed.Publish(ctx, bus, payload) sends one; a consumer reaches it
-// through the handler interface of the service that declares the consume.
+// Placed.Publish(ctx, bus, payload) sends one; a listener registers
+// Placed.Subscription(bus, group, fn) on its own bus.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 
 // ShippedContract is the wire identity of Shipped.
-// Publisher and consumer both address the contract by this value.
+// Publisher and listener both address the contract by this value.
 const ShippedContract = "orders.Shipped"
 
+// The same order left the warehouse.
+//
 // Shipped is the orders.Shipped contract.
-// Shipped.Publish(ctx, bus, payload) sends one; a consumer reaches it
-// through the handler interface of the service that declares the consume.
+// Shipped.Publish(ctx, bus, payload) sends one; a listener registers
+// Shipped.Subscription(bus, group, fn) on its own bus.
 var Shipped = craftevents.NewEvent[types.OrderShipped](ShippedContract, (*types.OrderShipped).Validate)

@@ -55,7 +55,7 @@ func (a *attempts) of(consumer string) []attempt {
 // would lose the ask with nothing to see it: every message the chain
 // meant to retry would be taken as done.
 //
-// The sequence below is one goroutine's, which soleConsumerOf checks
+// The sequence below is one goroutine's, which soleListenerOf checks
 // against what this deployable registers rather than this comment
 // asserting it.
 func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
@@ -64,16 +64,19 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 
 	seen := &attempts{}
 	// A bus middleware wraps EVERY subscription, and the decision below
-	// is TrackTier's alone: asking for a message back is unbounded here,
-	// so left unscoped this would arm a redelivery loop on every other
-	// share consumer the moment one of them is sent anything.
+	// is the TierPromoted listener's alone: asking for a message back is
+	// unbounded here, so left unscoped this would arm a redelivery loop on
+	// every other share consumer the moment one of them is sent anything.
+	//
+	// The scope is the contract, which soleListenerOf has just checked
+	// exactly one subscription of this deployable carries.
 	decide := func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
-		if sub.Consumer != trackTier {
+		if sub.Event != tierPromoted {
 			return next
 		}
 		return func(ctx context.Context, msg *craftevents.Message) error {
 			err := next(ctx, msg)
-			seen.add(attempt{consumer: sub.Consumer, deliveries: msg.Deliveries()})
+			seen.add(attempt{consumer: trackTier, deliveries: msg.Deliveries()})
 			// Ask for it back once, then give it up.
 			if msg.Deliveries() <= 1 {
 				msg.Redeliver()

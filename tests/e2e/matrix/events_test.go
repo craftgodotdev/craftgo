@@ -18,13 +18,12 @@ import (
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/eventsubs"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// bootEvents registers every handler set this fixture runs on an
+// bootEvents registers every subscription this fixture runs on an
 // in-process bus and starts it. The transport is the only thing a project
 // swaps to move onto a broker; nothing generated changes with it.
 func bootEvents(t *testing.T) (*svccontext.ServiceContext, *craftevents.Bus, *memory.Transport) {
@@ -33,8 +32,11 @@ func bootEvents(t *testing.T) (*svccontext.ServiceContext, *craftevents.Bus, *me
 }
 
 // bootEventsWith boots the same wiring behind a bus-wide middleware chain
-// and an error handler of the caller's choosing. The chain goes on the
-// bus, so nothing generated knows it is there.
+// and an error handler of the caller's choosing. The chain is installed
+// with [craftevents.Bus.Use] after the bus exists, which is where a
+// deployable builds one out of its own service context - and it covers
+// every subscription registered through the bus, so no registration call
+// knows it is there.
 func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(craftevents.Subscription, error)) (*svccontext.ServiceContext, *craftevents.Bus, *memory.Transport) {
 	t.Helper()
 	if onError == nil {
@@ -48,10 +50,10 @@ func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(crafteve
 	bus := craftevents.New(
 		craftevents.WithTransport(transport),
 		craftevents.WithCodec(codecjson.Codec{}),
-		craftevents.WithMiddleware(chain...),
 	)
+	bus.Use(chain...)
 	svc := svccontext.NewServiceContext()
-	if err := consumers.RegisterAll(bus, svc, nil); err != nil {
+	if err := consumers.RegisterAll(bus, svc); err != nil {
 		t.Fatalf("register consumers: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
@@ -60,7 +62,7 @@ func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(crafteve
 	return svc, bus, transport
 }
 
-func TestEventReachesEveryConsumerOfTheContract(t *testing.T) {
+func TestEventReachesEveryListenerOfTheContract(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	payload := &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
@@ -71,8 +73,8 @@ func TestEventReachesEveryConsumerOfTheContract(t *testing.T) {
 	}
 	transport.Drain()
 
-	// The contract is consumed by the declaring service AND by a
-	// consumer in another package; both receive it.
+	// The contract has listeners in two modules of this deployable,
+	// under two groups; both receive it.
 	for _, consumer := range []string{"MirrorStock", "SendStockAlert"} {
 		got := svc.DeliveredTo(consumer)
 		if len(got) != 1 {
@@ -85,10 +87,10 @@ func TestEventReachesEveryConsumerOfTheContract(t *testing.T) {
 	}
 }
 
-// A consumer declared in an `extend service` block is another method on
-// the owning service's handler interface, and a service that consumes
-// nothing else registers through the same call as one that does.
-func TestExtendBlockConsumersAreRegistered(t *testing.T) {
+// Every module registered from the one RegisterAll call receives, so a
+// contract with a single listener and one with several are wired by the
+// same list of lines.
+func TestEveryRegisteredModuleReceives(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	if err := events.ShipmentDispatched.Publish(context.Background(), bus, &eventtypes.ShipmentDispatched{
 		ShipmentID: "shp-1", Carrier: "acme",
@@ -103,17 +105,18 @@ func TestExtendBlockConsumersAreRegistered(t *testing.T) {
 	transport.Drain()
 
 	if got := svc.DeliveredTo("NotifyDispatch"); len(got) != 1 {
-		t.Errorf("extend-block consumer received %d payloads, want 1", len(got))
+		t.Errorf("a listener sharing its group with three others received %d payloads, want 1", len(got))
 	}
 	if got := svc.DeliveredTo("RecordClosure"); len(got) != 1 {
-		t.Errorf("second service's consumer received %d payloads, want 1", len(got))
+		t.Errorf("a module with one subscription received %d payloads, want 1", len(got))
 	}
 }
 
-// NotificationService declares consumers in three blocks. They merge into
-// ONE handler interface, so a single handler set covers them and every
-// consumer receives.
-func TestConsumersSplitAcrossBlocksShareOneHandlerSet(t *testing.T) {
+// One module listens to four contracts under a single group, and each
+// line receives the contract it names: the group is the unit of scaling,
+// not a filter. Two of the four are published here; the other two are
+// the renamed contract and the one every module listens to.
+func TestOneModuleReceivesEveryContractItListensTo(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	if err := events.StocktakeStarted.Publish(context.Background(), bus, &eventtypes.StocktakeStarted{
 		Warehouse: eventtypes.WarehouseNorth,
@@ -128,15 +131,15 @@ func TestConsumersSplitAcrossBlocksShareOneHandlerSet(t *testing.T) {
 	transport.Drain()
 
 	if got := svc.DeliveredTo("TrackStocktake"); len(got) != 1 {
-		t.Errorf("consumer declared in a second extend block received %d payloads, want 1", len(got))
+		t.Errorf("the module's third subscription received %d payloads, want 1", len(got))
 	}
 	if got := svc.DeliveredTo("NotifyDispatch"); len(got) != 1 {
-		t.Errorf("ungrouped sibling received %d payloads, want 1", len(got))
+		t.Errorf("its sibling under the same group received %d payloads, want 1", len(got))
 	}
 }
 
-// `@contract` fixes the wire identity; the consumer that names the event
-// by its DSL name still receives it.
+// `@contract` fixes the wire identity; the listener that reaches the
+// event through its descriptor still receives it.
 func TestContractOverrideIsTheWireIdentity(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	payload := &eventtypes.ItemStocked{
@@ -153,10 +156,10 @@ func TestContractOverrideIsTheWireIdentity(t *testing.T) {
 	if got := svc.DeliveredTo("AuditReconciliation"); len(got) != 1 {
 		t.Fatalf("renamed contract delivered %d payloads, want 1", len(got))
 	}
-	// The contract the consumer subscribed to is the overridden name, not
+	// The contract the listener subscribed to is the overridden name, not
 	// the derived one.
 	if got := svc.DeliveredTo("SendStockAlert"); len(got) != 0 {
-		t.Errorf("the renamed contract must not reach ItemStocked consumers, got %d", len(got))
+		t.Errorf("the renamed contract must not reach ItemStocked listeners, got %d", len(got))
 	}
 }
 
@@ -231,8 +234,8 @@ func TestBusPublishDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A batch the caller assembles by hand: the entry that names a key
-	// keeps it, the one that does not takes the bus default. The second
-	// contract comes from a service that was never handed the defaults.
+	// keeps it, the one that does not takes the bus default. The third
+	// entry is a second contract of the same package.
 	if err := bus.PublishAll(ctx, []craftevents.Envelope{
 		{Event: events.ItemStockedContract, Payload: stocked},
 		{Event: events.ItemStockedContract, Key: "sku-3", Payload: stocked},
@@ -281,13 +284,13 @@ func TestAnUnknownOptionInTheAdaptersOwnNamespaceFailsThePublish(t *testing.T) {
 	}
 }
 
-// An invalid payload is rejected at the consumer, before logic sees it -
+// An invalid payload is rejected at the listener, before logic sees it -
 // the event-side counterpart of the HTTP handler's bind-then-validate.
-func TestConsumerValidatesBeforeLogic(t *testing.T) {
+func TestListenerValidatesBeforeLogic(t *testing.T) {
 	var mu sync.Mutex
 	var failed error
 	svc, _, transport := bootEventsWith(t, nil, func(_ craftevents.Subscription, err error) {
-		// The contract has consumers in several groups, so the handler
+		// The contract has listeners in several groups, so the handler
 		// runs on one delivery goroutine per group.
 		mu.Lock()
 		failed = err
@@ -311,7 +314,7 @@ func TestConsumerValidatesBeforeLogic(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if failed == nil {
-		t.Fatal("expected the consumer to reject the invalid payload")
+		t.Fatal("expected the listener to reject the invalid payload")
 	}
 	// The error names the contract it arrived on: a generated Validate
 	// reports field-scoped text, which on its own says nothing about
@@ -413,10 +416,10 @@ func TestEventBatchMixesContracts(t *testing.T) {
 	}
 }
 
-// One group spanning several contracts: AnalyticsService's two other
-// consumes share a group, and each still receives the contract it
-// declared - the group is the unit of scaling, not a filter. TrackTier
-// takes the per-consume override, so it joins another.
+// One group spanning several contracts: Analytics puts two of its lines
+// in one group, and the third in another because its delivery is read on
+// its own elsewhere. All three receive - which group a line joins is
+// written beside it, and nothing about it reaches the design.
 func TestOneGroupSpansSeveralContracts(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
@@ -445,13 +448,17 @@ func TestOneGroupSpansSeveralContracts(t *testing.T) {
 }
 
 // The groups are the APPLICATION's, and no generated file states what
-// this deployable consumes any more - so the deployable pins its own
-// shape with a golden plan. A consume that moved group, a handler set
-// that stopped being registered, or a contract renamed underneath one all
-// show up here as a diff.
+// this deployable listens to - so the deployable pins its own shape with
+// a golden plan. A subscription that moved group, a module that stopped
+// being registered, or a contract renamed underneath one all show up
+// here as a diff.
+//
+// Consumer is the contract on every line, because [craftevents.Event.Subscription]
+// defaults it there: what tells four listeners of events.ItemStocked
+// apart in this process is the group each joined.
 func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
-	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext(), nil); err != nil {
+	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext()); err != nil {
 		t.Fatalf("register consumers: %v", err)
 	}
 	got, err := json.MarshalIndent(bus.Plan(), "", "  ")
@@ -475,27 +482,42 @@ func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
 	}
 }
 
-// A service left without a group is refused at registration, naming the
-// service: a group is where a consumer resumes, so it is the
+// A line left without a group is refused at registration, naming the
+// contract it is on: a group is where a listener resumes, so it is the
 // application's to choose rather than something to fall back into.
-func TestRegisterRefusesAServiceWithNoGroup(t *testing.T) {
+//
+// RegisterAll stops at the refusal and returns it, so the line that broke
+// is the one named - and the lines after it were never offered.
+func TestRegisterRefusesASubscriptionWithNoGroup(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
-	err := eventsubs.RegisterOpsServiceHandler(bus, consumers.Ops{}, nil, eventsubs.OpsServiceGroups{})
+	guarded := consumers.Guarded{SvcCtx: svccontext.NewServiceContext()}
+	err := bus.RegisterAll(
+		events.ItemStocked.Subscription(bus, consumers.GuardedGroup, guarded.GuardedStock),
+		events.StocktakeStarted.Subscription(bus, "", guarded.BareStock),
+		events.WarehouseClosed.Subscription(bus, consumers.GuardedGroup, guarded.InheritedStock),
+	)
 	if err == nil {
-		t.Fatal("registered a handler set with no group")
+		t.Fatal("registered a subscription with no group")
 	}
-	if !strings.Contains(err.Error(), "OpsService") {
-		t.Errorf("the refusal does not name the service: %v", err)
+	if !errors.Is(err, craftevents.ErrNoGroup) {
+		t.Errorf("registration failed with %v, want ErrNoGroup", err)
 	}
-	if got := bus.Plan().Groups; len(got) != 0 {
-		t.Errorf("a refused registration left %d group(s) on the bus", len(got))
+	if !strings.Contains(err.Error(), events.StocktakeStartedContract) {
+		t.Errorf("the refusal does not name the contract of the line that broke: %v", err)
+	}
+	// The line before the refusal stayed, the one after it was never
+	// offered: a caller returning the error abandons the bus.
+	groups := bus.Plan().Groups
+	if len(groups) != 1 || len(groups[0].Consumers) != 1 ||
+		groups[0].Consumers[0].Event != events.ItemStockedContract {
+		t.Errorf("RegisterAll did not stop at the refusal: %+v", groups)
 	}
 }
 
-// A panicking consumer must not take the process down - the API and every
-// other consumer run in the same binary. The guard is on the subscription
+// A panicking listener must not take the process down - the API and every
+// other listener run in the same binary. The guard is on the subscription
 // the Bus registers, so every registered handler inherits it.
-func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
+func TestPanickingListenerDoesNotEndTheProcess(t *testing.T) {
 	var mu sync.Mutex
 	var failed []error
 	transport := memory.New(memory.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
@@ -504,8 +526,8 @@ func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
 		mu.Unlock()
 	}))
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
-	if err := eventsubs.RegisterOpsServiceHandler(bus, panickingOps{}, nil,
-		eventsubs.OpsServiceGroups{Default: consumers.OpsGroup}); err != nil {
+	if err := bus.Register(events.WarehouseClosed.Subscription(bus, consumers.OpsGroup,
+		panickingOps{}.RecordClosure)); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
@@ -531,13 +553,15 @@ func TestPanickingConsumerDoesNotEndTheProcess(t *testing.T) {
 	if !errors.As(failed[0], &pe) {
 		t.Fatalf("recovered panic is not a *PanicError: %#v", failed[0])
 	}
-	if pe.Consumer != "RecordClosure" || pe.Group != consumers.OpsGroup {
+	// Event and Group are the pair that identifies a registration -
+	// Consumer defaults to the contract, so it says the same thing.
+	if pe.Event != events.WarehouseClosedContract || pe.Group != consumers.OpsGroup {
 		t.Errorf("panic error does not name the registered subscription: %+v", pe)
 	}
 }
 
-// panickingOps is an OpsService handler set that panics, standing in for
-// the bug an application ships by accident.
+// panickingOps is a listener that panics, standing in for the bug an
+// application ships by accident.
 type panickingOps struct{}
 
 func (panickingOps) RecordClosure(context.Context, *eventtypes.WarehouseClosed) error {
@@ -568,7 +592,7 @@ func TestUndecodablePayloadNeverReachesLogic(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if failed == nil {
-		t.Fatal("expected the consumer to reject the malformed payload")
+		t.Fatal("expected the listener to reject the malformed payload")
 	}
 	if !strings.Contains(failed.Error(), "events.WarehouseClosed") {
 		t.Errorf("decode failure does not name the contract: %v", failed)

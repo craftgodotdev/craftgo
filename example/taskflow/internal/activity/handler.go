@@ -5,24 +5,24 @@ import (
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
-	activityevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/activity"
+	tasksevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
 	tasks "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 )
 
-// Group is the broker identity this deployable's activity consumers join.
-// It is written here rather than in the design because a group is where a
-// consumer resumes: on Kafka and JetStream the name IS the stored
+// Group is the broker identity this deployable's activity subscriptions
+// join. It is written here rather than in the design because a group is
+// where a listener resumes: on Kafka and JetStream the name IS the stored
 // position, so it belongs to the deployment and not to the contract.
 const Group craftevents.Group = "taskflow-activity"
 
-// Handler implements the generated ActivityServiceHandler: it builds the
-// feed from published contracts alone, never reading the task store.
+// Handler builds the feed from published contracts alone, never reading
+// the task store.
 //
 // A payload reaches a method decoded and validated; returning an error
 // tells the transport the message was not processed.
 type Handler struct{ feed *Feed }
 
-// NewHandler binds a handler set to the feed it appends to.
+// NewHandler binds the logic to the feed it appends to.
 func NewHandler(feed *Feed) Handler { return Handler{feed: feed} }
 
 func (h Handler) RecordTaskCreated(_ context.Context, payload *tasks.TaskCreated) error {
@@ -45,10 +45,16 @@ func (h Handler) RecordStatusChange(_ context.Context, payload *tasks.TaskStatus
 	return nil
 }
 
-// Register binds the handler set to bus under Group. It is the one line a
-// deployable writes per service it runs; nothing is delivered until
-// [craftevents.Bus.Start].
+// Register lists what this module listens to: one line per contract,
+// naming the group it joins and the method it dispatches to. The design
+// declares the contracts and nothing else, so this - and not a generated
+// file - is where a reader finds the answer.
+//
+// Nothing is delivered until [craftevents.Bus.Start].
 func Register(bus *craftevents.Bus, feed *Feed) error {
-	return activityevents.RegisterActivityServiceHandler(bus, NewHandler(feed), nil,
-		activityevents.ActivityServiceGroups{Default: Group})
+	h := NewHandler(feed)
+	return bus.RegisterAll(
+		tasksevents.TaskCreated.Subscription(bus, Group, h.RecordTaskCreated),
+		tasksevents.TaskStatusChanged.Subscription(bus, Group, h.RecordStatusChange),
+	)
 }

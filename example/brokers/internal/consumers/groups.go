@@ -1,18 +1,17 @@
-// Package consumers is the application side of the design: one struct per
-// generated handler interface, the broker identity each joins, and the
-// registration that binds them to a bus.
+// Package consumers is what this binary listens to: the broker identity
+// each subscription joins, and the one call that registers them all.
 //
-// Nothing here is generated. The design declares the contracts and the
-// handler interfaces; which group a consumer resumes under, and what it
-// does with a payload, are this deployable's.
+// Nothing here is generated. The design declares the contracts; which of
+// them a process listens to, under which group, and what runs on a
+// delivery are this deployable's - so they are Go, written where its bus
+// is built.
 package consumers
 
 import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
-	"github.com/craftgodotdev/craftgo/example/brokers/internal/events/analytics"
-	"github.com/craftgodotdev/craftgo/example/brokers/internal/events/ledger"
-	"github.com/craftgodotdev/craftgo/example/brokers/internal/events/notifications"
+	"github.com/craftgodotdev/craftgo/example/brokers/internal/events/orders"
+	"github.com/craftgodotdev/craftgo/example/brokers/internal/events/payments"
 )
 
 // The three groups this binary consumes under. Each is a separate broker
@@ -29,17 +28,23 @@ const (
 	LedgerGroup       craftevents.Group = "brokers-ledger"
 )
 
-// RegisterAll binds every handler set this binary runs to bus, each
-// behind chain. Nothing is delivered until [craftevents.Bus.Start].
-func RegisterAll(bus *craftevents.Bus, chain craftevents.Chain) error {
-	if err := notifications.RegisterNotificationServiceHandler(bus, Notifier{}, chain,
-		notifications.NotificationServiceGroups{Default: NotificationGroup}); err != nil {
-		return err
-	}
-	if err := analytics.RegisterAnalyticsServiceHandler(bus, Counter{}, chain,
-		analytics.AnalyticsServiceGroups{Default: AnalyticsGroup}); err != nil {
-		return err
-	}
-	return ledger.RegisterLedgerServiceHandler(bus, Ledger{}, chain,
-		ledger.LedgerServiceGroups{Default: LedgerGroup})
+// RegisterAll binds every subscription this binary runs to bus: one line
+// per (contract, group), each naming the method it dispatches to. The
+// compiler checks the pairing - a method whose payload does not match the
+// contract does not compile at the Subscription call.
+//
+// The whole set goes over in one [craftevents.Bus.RegisterAll], so a
+// refusal names the contract and group of the line that broke. Nothing is
+// delivered until [craftevents.Bus.Start].
+func RegisterAll(bus *craftevents.Bus) error {
+	notifier, counter, ledger := Notifier{}, Counter{}, Ledger{}
+	return bus.RegisterAll(
+		orders.Placed.Subscription(bus, NotificationGroup, notifier.SendReceipt),
+		orders.Shipped.Subscription(bus, NotificationGroup, notifier.SendDispatchNote),
+
+		orders.Placed.Subscription(bus, AnalyticsGroup, counter.CountOrder),
+
+		orders.Placed.Subscription(bus, LedgerGroup, ledger.BookOrder),
+		payments.Settled.Subscription(bus, LedgerGroup, ledger.RecordSettlement),
+	)
 }

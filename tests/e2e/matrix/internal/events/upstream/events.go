@@ -9,12 +9,12 @@ import (
 )
 
 // PaymentSettledContract is the wire identity of PaymentSettled.
-// Publisher and consumer both address the contract by this value.
+// Publisher and listener both address the contract by this value.
 const PaymentSettledContract = "payments.settled.v1"
 
 // A payment cleared upstream.
 //
 // PaymentSettled is the payments.settled.v1 contract.
-// PaymentSettled.Publish(ctx, bus, payload) sends one; a consumer reaches it
-// through the handler interface of the service that declares the consume.
+// PaymentSettled.Publish(ctx, bus, payload) sends one; a listener registers
+// PaymentSettled.Subscription(bus, group, fn) on its own bus.
 var PaymentSettled = craftevents.NewEvent[types.PaymentSettledPayload](PaymentSettledContract, (*types.PaymentSettledPayload).Validate)

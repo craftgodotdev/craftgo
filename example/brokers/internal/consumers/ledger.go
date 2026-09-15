@@ -8,9 +8,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/types/payments"
 )
 
-// Ledger implements ledger.LedgerServiceHandler: a third group on
-// orders.Placed, and the only consumer of the upstream payment contract -
-// so it is where the two meet.
+// Ledger is the ledger group's logic: a third group on orders.Placed,
+// and the only listener of the upstream payment contract - so it is where
+// the two meet.
 type Ledger struct{}
 
 func (Ledger) BookOrder(_ context.Context, payload *orders.OrderPlaced) error {

@@ -44,8 +44,8 @@ const (
 	forged          = events.ForgedContract
 )
 
-// trackTier is the consumer of events.TierPromoted whose deliveries the
-// disposition test reads.
+// trackTier is the label the events.TierPromoted listener records its
+// deliveries under, which is the reading the disposition test joins on.
 const trackTier = "TrackTier"
 
 // planned is what this deployable registers, read off a bus with no
@@ -54,50 +54,44 @@ const trackTier = "TrackTier"
 func planned(t *testing.T) craftevents.Plan {
 	t.Helper()
 	bus := craftevents.New(craftevents.WithCodec(codecjson.Codec{}))
-	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext(), nil); err != nil {
+	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext()); err != nil {
 		t.Fatalf("register consumers: %v", err)
 	}
 	return bus.Plan()
 }
 
-// soleConsumerOf fails unless exactly one registered subscription consumes
-// contract, and returns its group. The disposition test reads a delivery
-// SEQUENCE, which is only unambiguous while one goroutine produces it -
-// so the premise is checked against the registration rather than written
-// down beside it, where a second consumer would leave it stale and the
-// test reading interleavings.
+// soleListenerOf fails unless exactly one registered subscription listens
+// to contract, and returns its group. The disposition test reads a
+// delivery SEQUENCE, which is only unambiguous while one goroutine
+// produces it - so the premise is checked against the registration rather
+// than written down beside it, where a second listener would leave it
+// stale and the test reading interleavings.
 //
 // A stale group name here would configure a group nobody joins - a share
 // group reads from the end of the topic unless its config says otherwise
 // - and the redelivery test would then time out after sixty seconds with
 // a message a genuine transport regression produces word for word.
 // Reading it fails in no time at all, naming itself.
-func soleConsumerOf(t *testing.T, contract string) (craftevents.Group, string) {
+func soleListenerOf(t *testing.T, contract string) craftevents.Group {
 	t.Helper()
 	var groups []craftevents.Group
-	var names []string
 	for _, g := range planned(t).Groups {
 		for _, c := range g.Consumers {
 			if c.Event == contract {
 				groups = append(groups, g.Name)
-				names = append(names, c.Consumer)
 			}
 		}
 	}
 	if len(groups) != 1 {
-		t.Fatalf("%d consumers of %s in this deployable, want exactly 1 - a delivery sequence read off several is not a sequence", len(groups), contract)
+		t.Fatalf("%d listeners of %s in this deployable, want exactly 1 - a delivery sequence read off several is not a sequence", len(groups), contract)
 	}
-	return groups[0], names[0]
+	return groups[0]
 }
 
-// tierGroup is the group this deployable puts TrackTier in.
+// tierGroup is the group this deployable listens to events.TierPromoted in.
 func tierGroup(t *testing.T) string {
 	t.Helper()
-	group, consumer := soleConsumerOf(t, tierPromoted)
-	if consumer != trackTier {
-		t.Fatalf("%s is consumed by %s, not %s", tierPromoted, consumer, trackTier)
-	}
-	return string(group)
+	return string(soleListenerOf(t, tierPromoted))
 }
 
 // cluster starts an in-memory broker seeding exactly the topics named.
@@ -200,9 +194,9 @@ func (r *reported) dump(t *testing.T) {
 	}
 }
 
-// boot wires this deployable's handler sets onto a Kafka transport.
-// subscribe is false for a publish-only test, so nothing consumes a topic
-// that is deliberately missing.
+// boot wires this deployable's subscriptions onto a Kafka transport.
+// subscribe is false for a publish-only test, so nothing listens to a
+// topic that is deliberately missing.
 func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Option, busopts []craftevents.Option) (*svccontext.ServiceContext, *craftevents.Bus) {
 	t.Helper()
 	// Registered first, so it runs last: after the read loops are
@@ -234,7 +228,7 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 	if subscribe {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
-		if err := consumers.RegisterAll(bus, svc, nil); err != nil {
+		if err := consumers.RegisterAll(bus, svc); err != nil {
 			t.Fatalf("register consumers: %v", err)
 		}
 		if err := bus.Start(ctx); err != nil {
@@ -244,7 +238,7 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 	return svc, bus
 }
 
-// counts renders how many payloads each consumer has been handed, so a
+// counts renders how many payloads each listener has been handed, so a
 // test joins on a reading it can also print when the reading is wrong.
 func counts(svc *svccontext.ServiceContext, names ...string) func() string {
 	return func() string {
@@ -291,7 +285,7 @@ func stillTrue(t *testing.T, within time.Duration, complaint, want string, state
 	}
 }
 
-// skus renders what a consumer was handed, so a test names the entries
+// skus renders what a listener was handed, so a test names the entries
 // that reached a broker rather than counting them.
 func skus(payloads []any) []string {
 	out := make([]string, 0, len(payloads))

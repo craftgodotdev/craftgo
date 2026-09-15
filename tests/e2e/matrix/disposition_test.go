@@ -10,13 +10,12 @@ import (
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/eventsubs"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
-// dispositionProbe is a handler set that records whether its logic ran,
-// so a delivery the descriptor's wrapper turned back can be told from one
-// it dispatched.
+// dispositionProbe is a listener that records whether its logic ran, so a
+// delivery the descriptor's wrapper turned back can be told from one it
+// dispatched.
 type dispositionProbe struct{ ran int }
 
 func (p *dispositionProbe) MirrorStock(context.Context, *eventtypes.ItemStocked) error {
@@ -24,13 +23,10 @@ func (p *dispositionProbe) MirrorStock(context.Context, *eventtypes.ItemStocked)
 	return nil
 }
 
-// notifyProbe is the notification service's handler set. Only
-// NotifyDispatch is exercised; the rest satisfy the interface.
+// notifyProbe stands in for the notification module's logic on the one
+// contract this file exercises.
 type notifyProbe struct{ ran int }
 
-func (p *notifyProbe) SendStockAlert(context.Context, *eventtypes.ItemStocked) error      { return nil }
-func (p *notifyProbe) AuditReconciliation(context.Context, *eventtypes.ItemStocked) error { return nil }
-func (p *notifyProbe) TrackStocktake(context.Context, *eventtypes.StocktakeStarted) error { return nil }
 func (p *notifyProbe) NotifyDispatch(context.Context, *eventtypes.ShipmentDispatched) error {
 	p.ran++
 	return nil
@@ -42,7 +38,7 @@ func (p *notifyProbe) NotifyDispatch(context.Context, *eventtypes.ShipmentDispat
 // which is a frame short of what arrives: reaching the handler is marked
 // between the two, so a test that called the inner one would read false
 // on a delivery that dispatched.
-func deliver(t *testing.T, register func(*craftevents.Bus) error, consumer string, publish func(*craftevents.Bus) error) (*craftevents.Message, error) {
+func deliver(t *testing.T, sub func(*craftevents.Bus) craftevents.Subscription, publish func(*craftevents.Bus) error) (*craftevents.Message, error) {
 	t.Helper()
 	tr := &handingTransport{}
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
@@ -53,20 +49,16 @@ func deliver(t *testing.T, register func(*craftevents.Bus) error, consumer strin
 	if msg == nil {
 		t.Fatal("the transport was handed no message")
 	}
-	if err := register(bus); err != nil {
+	if err := bus.Register(sub(bus)); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	for _, sub := range tr.subs {
-		if sub.Consumer != consumer {
-			continue
-		}
-		return msg, sub.Handle(context.Background(), msg)
+	if len(tr.subs) != 1 {
+		t.Fatalf("the transport was handed %d subscription(s), want 1", len(tr.subs))
 	}
-	t.Fatalf("the design no longer declares a %s consumer", consumer)
-	return nil, nil
+	return msg, tr.subs[0].Handle(context.Background(), msg)
 }
 
 // The descriptor's wrapper decodes, validates, then dispatches - and
@@ -88,10 +80,9 @@ func TestTheDescriptorValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
 	t.Run("a valid payload dispatches once and is left undecided", func(t *testing.T) {
 		probe := &dispositionProbe{}
 		delivered, err := deliver(t,
-			func(bus *craftevents.Bus) error {
-				return events.RegisterInventoryServiceHandler(bus, probe, nil,
-					events.InventoryServiceGroups{Default: consumers.InventoryGroup})
-			}, "MirrorStock",
+			func(bus *craftevents.Bus) craftevents.Subscription {
+				return events.ItemStocked.Subscription(bus, consumers.InventoryGroup, probe.MirrorStock)
+			},
 			func(bus *craftevents.Bus) error {
 				return events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
 					InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
@@ -116,10 +107,9 @@ func TestTheDescriptorValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
 		// from another system arrives.
 		probe := &notifyProbe{}
 		delivered, err := deliver(t,
-			func(bus *craftevents.Bus) error {
-				return eventsubs.RegisterNotificationServiceHandler(bus, probe, nil,
-					eventsubs.NotificationServiceGroups{Default: consumers.NotificationGroup})
-			}, "NotifyDispatch",
+			func(bus *craftevents.Bus) craftevents.Subscription {
+				return events.ShipmentDispatched.Subscription(bus, consumers.NotificationGroup, probe.NotifyDispatch)
+			},
 			func(bus *craftevents.Bus) error {
 				return bus.Publish(context.Background(), events.ShipmentDispatchedContract,
 					&eventtypes.ShipmentDispatched{ShipmentID: "shp-2"})
