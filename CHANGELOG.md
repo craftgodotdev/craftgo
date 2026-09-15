@@ -5,6 +5,90 @@ All notable changes to craftgo are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) - from 1.0.0 on, a
 breaking change to the DSL or the generated layout bumps the major version.
 
+## [Unreleased]
+
+### Added
+
+- **Events in the DSL.** `event Name { payload T }` declares a contract at
+  file level; `@contract("subject")` sets its wire identity (default
+  `<package>.<Event>`). A payload may be an array of a declared type,
+  `payload T[]`, for a contract whose body is a JSON array: the descriptor
+  is typed on the slice and every element is validated in turn. A
+  `service` holds HTTP methods only. The design names no listener: which
+  events a deployable consumes, on which group, behind which middleware,
+  is Go code in that deployable. Two reserved words, `event` and
+  `payload`, still usable as identifiers where unambiguous.
+- **Event codegen, per DSL package under `events.targets[].out`.** One
+  file, `events.go`: a `<Name>Contract` constant and an `events.Event[T]`
+  descriptor per event, its `@doc` as the Go comment. `output.kind:
+  contracts` generates only payload types and this library, for a design
+  several deployables import. Nothing else is generated for events.
+- **Event runtime, `pkg/events`** (its own module). `Bus` is the events
+  server: `Use` installs bus-wide middleware, `Event[T].Subscribe` is the
+  listener's line and `Register` takes a subscription value (local checks,
+  `*RegisterError`, joined with `errors.Join` so every line is offered),
+  `Start` hands the whole batch to the transport once, handlers wrapped
+  with panic recovery, the bus chain and the subscription's own `Chain`;
+  `Plan()` with a stable JSON form for golden tests; typed `Group`;
+  `Event[T]` descriptors (`Publish`, `Handler`, `Subscribe(bus, group,
+  fn)`, and `Subscription` for the value a field is set on) that decode
+  and validate before a handler runs (`*PayloadError`,
+  `ErrCodecMismatch`); publish options (`WithKey`,
+  `WithDedupID`, `WithHeader`, `WithAdapterOption`, `WithPublishDefaults`);
+  batch publishing with `PartialPublishError`; dispositions (`Settle`,
+  `Redeliver`, `Reject`) a chain decides, `WithDispositionRequired` refusing
+  a transport that cannot honour one; JSON codec, in-process transport
+  (`pkg/events/memory`), access-log middleware (`pkg/events/logging`).
+- **NATS transports, `pkg/events/nats`.** Core NATS, and JetStream with
+  one durable per group carrying the group's filter subjects: an existing
+  durable is adopted only when its filter equals the plan or is a strict
+  subset of it (then widened); a narrower or partly overlapping plan is
+  refused unless the group carries `AllowNarrow()`. Per-group
+  `WithGroupConfig` (`MaxInFlight`, `AckWait`, `DeliverPolicy`,
+  `ConsumerConfig`), redelivery backoff through NAK delay, a delivery cap,
+  drain on `Close`, and NAK hand-back for a subject this process does not
+  handle during a rolling deploy.
+- **Kafka transport, `pkg/events/kafka`** (franz-go, Go 1.25): classic and
+  share groups, TLS and SASL options, `WithClientOptions`, `RecordFrom`.
+- **`datetime` primitive.** A `time.Time` in Go, an RFC 3339 string in JSON
+  (`format: date-time`); body fields only, no validators, no `@default`.
+- **`@json("key")` on a field.** Sets the JSON key when it is not the field
+  name; the Go tag, the OpenAPI document and validation messages follow it.
+- **Stale output is pruned.** Inside the output directories the manifest
+  names, every file carrying a generated header that the run did not write
+  is deleted, and emptied directories with it; an output directory belongs
+  to one design. Gen-once files carry no header and are never touched.
+- **`log.Slog()`**, a `*slog.Logger` writing through craftgo's own logger.
+
+### Changed
+
+- **`main.go` attaches the design through one generated call**,
+  `wiring.Register`, in a `wiring` package (`output.wiring`) whose surface
+  does not change with the design; the scaffold no longer lists routes.
+- **A design package that declares no type gets no types package**, and
+  `validate.go` is written only where a type has something to validate.
+- **Output keys are checked as a set.** `output.transport` may be named
+  anything; two keys may not name one directory; `-` is rejected on a key
+  that has no disabled mode; the routes umbrella is removed with the last
+  route.
+- **Reserved words are accepted wherever an identifier is unambiguous.**
+
+### Fixed
+
+- **`craftgo-lsp` exits on `exit`**, with status 1 when no `shutdown`
+  preceded it, instead of waiting for the client to close its stdin.
+- **The editor reports what `craftgo gen` reports**, and a design file
+  without a `package` declaration resolves the same way in both.
+- **A type whose fields all delegate to another package compiles.**
+- **A `@group` whose name ends in `time`, a service named `Craft`, a
+  package whose name ends in `types`**: none breaks its generated files.
+- **`@security` scheme names are listed in a stable order.**
+
+### Removed
+
+- **`pkg/otel` and `pkg/metrics`.** Alias-only shims over `pkg/telemetry`;
+  import `pkg/telemetry` directly.
+
 ## [1.7.1] - 2026-09-08 [UTC+7]
 
 ### Changed

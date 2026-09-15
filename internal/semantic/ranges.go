@@ -20,6 +20,7 @@ package semantic
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -45,6 +46,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBodyRanges(dd.Body, dd.TypeParams)
 	case *ast.ErrorDecl:
 		a.checkBodyRanges(dd.Body, nil)
+	case *ast.EventDecl:
+		a.checkDecoratorRanges(dd.Decorators)
 	case *ast.ScalarDecl:
 		a.checkDecoratorRanges(dd.Decorators)
 		// A scalar's bound decorators are inherited into the validator
@@ -233,12 +236,27 @@ func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 	}
 }
 
-// checkPositiveDuration rejects `@timeout(0)` etc. Bare-int form
-// (interpreted as seconds) is also checked. Negative values are
-// likewise rejected.
+// checkPositiveDuration rejects `@timeout(0)` and `@timeout(0s)`: a
+// non-positive deadline cancels nothing. The suffixed form is converted by
+// [lexer.ParseDuration] and the bare-int form (seconds) compared directly,
+// so both spellings answer to the same rule. A literal ParseDuration cannot
+// convert is reported too - the routes emitter turns one into no timeout.
 func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
+		return
+	}
+	if v, ok := pos[0].Value.(*ast.DurationLit); ok {
+		dur, parsed := lexer.ParseDuration(v.Text)
+		switch {
+		case !parsed:
+			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+				"@%s: %s is not a duration (suffix must be one of %s)",
+				d.Name, v.Text, strings.Join(lexer.DurationUnits, ", "))
+		case dur <= 0:
+			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+				"@%s: duration must be > 0 (got %s)", d.Name, v.Text)
+		}
 		return
 	}
 	if v, ok := pos[0].Value.(*ast.IntLit); ok && v.Value <= 0 {
@@ -247,16 +265,28 @@ func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	}
 }
 
-// checkPositiveSize rejects `@maxBodySize(0)` - accepts any request
-// silently. Negative sizes are nonsensical.
+// checkPositiveSize rejects `@maxBodySize(0)` and `@maxBodySize(0B)`:
+// @maxBodySize and @maxSize both read a byte count of zero or less as "no
+// cap" and emit no check, so the decorator would read as a limit and
+// enforce nothing. Both literal forms go through [SizeBytes] so the bare
+// count and the suffixed form answer to the same rule; a suffixed literal
+// whose count does not fit an int64 is reported rather than wrapped.
 func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
 		return
 	}
-	if v, ok := pos[0].Value.(*ast.IntLit); ok && v.Value <= 0 {
+	if v, ok := pos[0].Value.(*ast.SizeLit); ok {
+		if _, parsed := lexer.ParseSize(v.Text); !parsed {
+			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+				"@%s: %s is not a byte size (suffix must be one of %s, and the count must fit in an int64)",
+				d.Name, v.Text, strings.Join(lexer.SizeSuffixes(), ", "))
+			return
+		}
+	}
+	if n, ok := SizeBytes(pos[0].Value); ok && n <= 0 {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
-			"@%s: size must be > 0 (got %d)", d.Name, v.Value)
+			"@%s: size must be > 0 (got %d)", d.Name, n)
 	}
 }
 

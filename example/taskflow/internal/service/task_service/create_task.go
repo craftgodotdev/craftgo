@@ -5,9 +5,11 @@ package shared
 import (
 	"context"
 
+	taskevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
+	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
@@ -32,8 +34,25 @@ func NewCreateTaskService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// CreateTask is the service entry point. Replace the
-// TODO with the real implementation.
+// CreateTask stores the task and announces it. The publish runs after
+// the write succeeds, so a subscriber never learns about a task the
+// store does not hold. It keys the message on the project, so one
+// project's task events stay in order on a transport that keeps one.
 func (l *CreateTaskService) CreateTask(req *types.CreateTaskReq) (*types.Task, error) {
-	return l.svcCtx.Store.CreateTask(req)
+	task, err := l.svcCtx.Store.CreateTask(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := taskevents.TaskCreated.Publish(l.ctx, l.svcCtx.Bus, &types.TaskCreated{
+		TaskID:    task.ID,
+		ProjectID: task.ProjectID,
+		Title:     task.Title,
+		Priority:  task.Priority,
+		CreatedAt: task.CreatedAt,
+	}, craftevents.WithKey(string(task.ProjectID))); err != nil {
+		// The task exists; a failed announcement is worth a line in the
+		// log, not a 500 to the caller.
+		l.Error("publish TaskCreated", log.Err(err))
+	}
+	return task, nil
 }

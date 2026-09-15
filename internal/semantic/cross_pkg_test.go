@@ -80,7 +80,10 @@ type Catalog { page shared.Page<Product> }`,
 
 // ---------- service collision (cross-package duplicate primary) ----------
 
-func TestServiceCollisionAcrossPackages(t *testing.T) {
+// A service name is unique within its package, not across the project.
+// Two HTTP services of one name still collide, but on the output
+// directory their handlers share rather than on the name itself.
+func TestHTTPServiceOfOneNameInTwoPackagesCollidesOnItsDirectory(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package a
 type R { ok bool }
@@ -90,17 +93,17 @@ type R { ok bool }
 service Foo { get Y /y { response R } }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	d := findCode(diags, CodeServiceCollision)
+	d := findCode(diags, CodeGroupPackageStraddle)
 	if d == nil {
-		t.Fatalf("expected %s, got %v", CodeServiceCollision, diags)
+		t.Fatalf("expected %s, got %v", CodeGroupPackageStraddle, diags)
 	}
-	if !strings.Contains(d.Msg, "multiple packages") {
+	if !strings.Contains(d.Msg, "output directory") {
 		t.Errorf("message missing collision hint: %q", d.Msg)
 	}
 	// Both sites must fire so the IDE underlines each declaration.
 	hits := 0
 	for _, dd := range diags {
-		if dd.Code == CodeServiceCollision {
+		if dd.Code == CodeGroupPackageStraddle {
 			hits++
 		}
 	}
@@ -109,9 +112,28 @@ service Foo { get Y /y { response R } }`,
 	}
 }
 
+// A service with no method scaffolds no per-member file, so it claims no
+// output directory and two packages may each declare one of a name.
+func TestMethodlessServiceOfOneNameInTwoPackagesIsFine(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"a/svc.craftgo": `package a
+type P { ok bool }
+event Placed { payload P }
+service Store {}`,
+		"b/svc.craftgo": `package b
+type P { ok bool }
+event Shipped { payload P }
+service Store {}`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	for _, d := range diags {
+		if d.IsError() {
+			t.Fatalf("two packages declaring one method-less service diagnosed: %v", diags)
+		}
+	}
+}
+
 func TestServiceCollisionSinglePackageStillUsesDuplicateCode(t *testing.T) {
-	// In-package duplicates fire CodeServiceDuplicate, not the
-	// cross-package collision code.
 	root, files := projectFixture(t, map[string]string{
 		"svc.craftgo": `package x
 type R { ok bool }
@@ -121,9 +143,6 @@ service Foo { get B /b { response R } }`,
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	if findCode(diags, CodeServiceDuplicate) == nil {
 		t.Errorf("expected %s for in-package duplicate", CodeServiceDuplicate)
-	}
-	if findCode(diags, CodeServiceCollision) != nil {
-		t.Errorf("did not expect %s for in-package case", CodeServiceCollision)
 	}
 }
 

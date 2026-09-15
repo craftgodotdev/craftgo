@@ -1,0 +1,123 @@
+// events.craftgo is the event-model cornercase fixture. It pins, in one
+// package, every shape the contract → descriptor pipeline has to render:
+//
+//   - payload fields of every shape a publish option might be built from
+//     at the call site - a scalar over a string, a local int enum, an int
+//     enum declared in another package;
+//   - a `@contract(...)` override, for interoperating with a name a
+//     system outside the design already publishes;
+//   - a payload that pulls fields in through a mixin;
+//   - a generic payload, whose argument must survive into every target;
+//   - a same-name event and payload type, proving the two namespaces
+//     really are separate;
+//   - events beside an HTTP service in one package, so a design that
+//     serves and publishes renders both out of the same file.
+//
+// Who listens is not here and cannot be: a subscription is Go code in the
+// deployable that runs it, which internal/consumers/ writes and
+// testdata/plan.json pins. The ordering key is not here either - it is a
+// publish-time value, passed as `craftevents.WithKey(...)` where the
+// message is published. events_test.go pins that end.
+package events
+
+// InventoryHeader is promoted into ItemStocked through the mixin below,
+// so `sku` reaches a publisher through that promotion.
+type InventoryHeader {
+	sku      string @minLength(1)
+	occurred string
+}
+
+// Warehouse is an int-valued enum, carried as a payload field and used
+// as a publish key at the call site.
+enum Warehouse {
+	North = 1
+	South = 2
+}
+
+scalar ShipmentID string @minLength(1)
+
+type ItemStocked {
+	InventoryHeader
+	quantity int32 @gte(0)
+}
+
+type ShipmentDispatched {
+	shipmentId ShipmentID
+	carrier    string     @minLength(1)
+}
+
+type WarehouseClosed {
+	warehouse Warehouse
+	reason    string?
+	closedAt  datetime?
+}
+
+// An event may carry a payload of its own name - separate namespaces.
+type StocktakeStarted {
+	warehouse Warehouse
+}
+
+// TierPromoted carries an enum declared in ANOTHER package. The backing
+// primitive lives with the declaration, so the field must be resolved
+// through xshared rather than through this package.
+type TierPromoted {
+	tier     xshared.XTier
+	memberId string @minLength(1)
+}
+
+// Envelope is generic: an event payload that instantiates it must reach
+// every target with its argument intact - the Go type parameter, the TS
+// type argument, and the instantiated AsyncAPI component.
+type Envelope<T> {
+	traceId string @minLength(1)
+	body    T
+}
+
+@doc("A second contract over the payload ItemStocked already uses, so a batch can mix two contracts of one package.")
+event Forged {
+	payload ItemStocked
+}
+
+@doc("Stock arrived at a warehouse. Its sku rides in through the mixin.")
+event ItemStocked {
+	payload ItemStocked
+}
+
+@doc("A shipment left. Its id is a scalar over a string primitive.")
+event ShipmentDispatched {
+	payload ShipmentDispatched
+}
+
+@doc("Carries an int-valued enum declared in this package.")
+event WarehouseClosed {
+	payload WarehouseClosed
+}
+
+@doc("Published without a key, so the transport places it where it likes.")
+event StocktakeStarted {
+	payload StocktakeStarted
+}
+
+@doc("Carries an int-valued enum declared in another package.")
+event TierPromoted {
+	payload TierPromoted
+}
+
+@doc("The wire name is fixed by a system outside this design.")
+@contract("legacy.inventory.reconciled.v2")
+event Reconciled {
+	payload ItemStocked
+}
+
+@doc("Generic payload: the argument must survive into every target.")
+event Enveloped {
+	payload Envelope<ItemStocked>
+}
+
+@prefix("/events")
+service InventoryService {
+	@doc("Kept so the fixture exercises a package that both serves HTTP and declares events.")
+	get Health /health {
+		response ItemStocked
+	}
+}

@@ -88,6 +88,11 @@ Usage:
                           .craftgo files. Flags:
                             -f, --folder   path to the folder holding
                                            craftgo.design.yaml (skips walk-up)
+                            --target       generate only the named target
+                                           (go, docs); repeatable,
+                                           default all. A
+                                           narrowed run leaves the other
+                                           targets' output untouched.
                             -c, --context  project root the output: paths
                                            resolve against (defaults to cwd
                                            when -f is given, otherwise to
@@ -101,6 +106,7 @@ Usage:
 
   craftgo fmt [path] [-l] [-w]
                           Canonical-format .craftgo files (default: write back)
+
   craftgo version         Print the CLI version
   craftgo help            Show this message
 

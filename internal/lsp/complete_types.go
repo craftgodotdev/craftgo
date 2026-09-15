@@ -255,6 +255,8 @@ func declSymbolKindToCompletion(d ast.Decl) protocol.CompletionItemKind {
 		return protocol.CompletionItemKindUnit
 	case *ast.MiddlewareDecl:
 		return protocol.CompletionItemKindFunction
+	case *ast.EventDecl:
+		return protocol.CompletionItemKindEvent
 	case *ast.ServiceDecl:
 		return protocol.CompletionItemKindInterface
 	}

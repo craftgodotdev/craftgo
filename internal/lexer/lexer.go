@@ -358,10 +358,10 @@ func (l *Lexer) lexNumber(pos Position) Token {
 		}
 		return Token{Kind: Int, Text: numText, Pos: pos}
 	}
-	switch suffix {
-	case "ns", "us", "µs", "ms", "s", "m", "h":
+	if IsDurationSuffix(suffix) {
 		return Token{Kind: Duration, Text: text, Pos: pos}
-	case "B", "KB", "MB", "GB":
+	}
+	if _, ok := SizeMultiplier(suffix); ok {
 		return Token{Kind: Size, Text: text, Pos: pos}
 	}
 	return l.errorf(pos, "invalid number suffix %q", suffix)

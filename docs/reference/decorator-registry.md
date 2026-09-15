@@ -15,13 +15,14 @@ A decorator's **level** is where it may be written. Applying one at the wrong le
 | error / error-field | `error` declaration / a field in its body |
 | scalar | `scalar` declaration |
 | middleware | `middleware` declaration |
+| event | an `event` declaration (file level) |
 
 ## Documentation & lifecycle
 
 | Decorator | Levels | Args | Effect |
 |---|---|---|---|
-| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in OpenAPI `description` and IDE hover. |
-| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
+| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in the OpenAPI `description` and IDE hover. |
+| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
 | `@example(v)` | field | `(literal \| {k: v})` | Example value rendered in the field's OpenAPI schema. |
 | `@version("1.2.3")` | file | `(string)` | OpenAPI document version (overrides `openapi.version` in the manifest). |
 
@@ -92,6 +93,7 @@ Field level (a few also apply at error-field level for response writing).
 |---|---|---|
 | `@default(v)` | `(literal)` | Value applied when the field is absent on the wire. Field must be optional (`?`). |
 | `@nullable` | - | The field accepts an explicit JSON `null` (flag form). |
+| `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. |
 | `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@default`, or `@nullable`. |
 | `@path` / `@path("name")` | `(string?)` | Bind from a URL path parameter. |
 | `@query` / `@query("name")` | `(string?)` | Bind from the URL query string. |
@@ -127,9 +129,21 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 | `@rawResponse` | - | Logic writes the response to `http.ResponseWriter`; the request is still bound + validated. A `response` block is a docs-only contract. Stub: `(w, r, req *types.Req) error` (flag form). |
 | `@rawRequest` | - | Logic reads the raw `*http.Request`; the response is still JSON-encoded. A `request` block is a docs-only contract. Stub: `(r *http.Request) (*types.Resp, error)` (flag form). |
 | `@passthrough` | - | Both sides raw - exactly `@rawRequest @rawResponse`. Stub: `(w, r) error`. Optional blocks document the contract (flag form). |
-| `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method. |
+| `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method - the method's own decorator then starts from empty instead of appending to the service-level chain. |
 | `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service). |
 | `@ignoreTags` | - | Clear the inherited `@tags` list. |
+
+## Event level
+
+See the [Events guide](/guide/events) for the full picture.
+
+| Decorator | Args | Effect |
+|---|---|---|
+| `@contract("order.placed.v2")` | `(string)` | Override the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes. Two events resolving to one name raise `event/contract-collision`. |
+
+`@doc` and `@deprecated` also apply at event level; nothing else does.
+
+`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed - as has the listener declaration they sat on. All of it is the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), the group is an argument to `orders.Placed.Subscribe(bus, group, fn)`, and the chain is `bus.Use(...)` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
 
 ## Not supported
 

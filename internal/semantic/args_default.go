@@ -140,7 +140,7 @@ func primitiveArgKind(prim string) ArgKind {
 		return ArgAny
 	}
 	switch sp.Kind {
-	case prims.String, prims.Bytes:
+	case prims.String, prims.Bytes, prims.DateTime:
 		return ArgString
 	case prims.Int, prims.Uint:
 		return ArgInt
@@ -193,6 +193,12 @@ func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, pri
 		if prim == "file" {
 			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
 				"@default is not supported on a `file` field %q - a file upload has no literal default form",
+				fieldName)
+			return
+		}
+		if prim == "datetime" {
+			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
+				"@default is not supported on a `datetime` field %q - a fixed timestamp is rarely the default meant, and \"now\" is the handler's to decide",
 				fieldName)
 			return
 		}

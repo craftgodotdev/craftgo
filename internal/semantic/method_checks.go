@@ -10,6 +10,12 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// methodLabel renders the diagnostic phrase for one method, e.g.
+// "method Users.Create".
+func methodLabel(svc string, m *ast.Method) string {
+	return "method " + svc + "." + m.Name
+}
+
 // checkRequestBodyType rejects a request type that is a bare scalar or enum
 // (a fieldless named type). The request binder/decoder drives off the
 // type's FIELDS, so a fieldless type yields no decode and no parameters -

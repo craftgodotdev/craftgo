@@ -186,7 +186,7 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 //   - orphan:  a `@path` / `@path("x")` field with no `{x}` in route.
 //
 // Two rules govern the matching, mirroring the codegen's auto-bind
-// logic in `internal/codegen.collectBindings`:
+// logic in `internal/codegen/golang.collectBindings`:
 //
 //  1. An explicit `@path` decorator binds the field. Custom name
 //     `@path("custom")` wins over the field's identifier.
@@ -203,14 +203,9 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 // field the same way.
 func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt string) {
 	pathParams := route.Vars(rt)
-	// When the route declares `{param}` segments but the method has no
-	// request struct, the generated logic signature drops to bare
-	// `func() error` - path values land nowhere. Surface a warning so
-	// authors realise they need to declare a request struct (or accept
-	// that the path param is informational only). Downgraded from
-	// error because many test fixtures legitimately use the no-request
-	// pattern for routes that pass the param straight to a downstream
-	// passthrough; tightening to error would regress those builds.
+	// A method with no request struct generates a bare `func() error`
+	// logic signature, so any `{param}` the route declares has nowhere
+	// to land.
 	if m.Request == nil {
 		// A raw-request method (`@rawRequest` / `@passthrough`) reads
 		// path values straight off the *http.Request via `r.PathValue`,

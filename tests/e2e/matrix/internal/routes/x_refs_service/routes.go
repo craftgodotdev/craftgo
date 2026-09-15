@@ -26,6 +26,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/xrefs/defaults", transport.PostDefault(svcCtx))
 	srv.Handle("POST /api/xrefs/promote-holder/{id}", transport.PromoteHolder(svcCtx))
 	srv.Handle("POST /api/xrefs/wrap-local", transport.WrapLocal(svcCtx))
+	srv.Handle("POST /api/xrefs/wrap-foreign", transport.WrapForeign(svcCtx))
 	srv.Handle("GET /api/xrefs/traced/{id}", transport.GetTraced(svcCtx))
 	srv.Handle("GET /api/xrefs/third/{id}", transport.GetThird(svcCtx))
 }

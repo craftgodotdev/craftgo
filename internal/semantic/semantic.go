@@ -4,7 +4,8 @@
 // Responsibilities:
 //
 //   - Package-name consistency across files.
-//   - Symbol tables for types, enums, errors, scalars, middlewares.
+//   - Symbol tables for types, enums, errors, scalars, middlewares,
+//     events.
 //   - Primary / `extend service` merge.
 //   - Duplicate names (top-level, fields, methods, routes) and
 //     uniform enum value kinds.
@@ -52,10 +53,14 @@ type Package struct {
 	Errors map[string]*ast.ErrorDecl
 	// Scalars maps `scalar Name Primitive` declarations by name.
 	Scalars map[string]*ast.ScalarDecl
-	// Middlewares maps `middleware Name(...)` declarations by name.
+	// Middlewares maps `middleware Name` declarations by name.
 	Middlewares map[string]*ast.MiddlewareDecl
 	// Services maps service names to the merged primary + extends bundle.
 	Services map[string]*ServiceInfo
+	// Events maps `event Name { ... }` declarations by name. Events have
+	// their own namespace, so an event and its payload type may share a
+	// name.
+	Events map[string]*ast.EventDecl
 }
 
 // ServiceInfo bundles the primary `service` declaration with every `extend
@@ -137,6 +142,7 @@ func newAnalyzer(proj *Project, opts Options) *analyzer {
 			Scalars:     map[string]*ast.ScalarDecl{},
 			Middlewares: map[string]*ast.MiddlewareDecl{},
 			Services:    map[string]*ServiceInfo{},
+			Events:      map[string]*ast.EventDecl{},
 		},
 		proj: proj,
 		opts: opts,
@@ -175,6 +181,7 @@ func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorPlacement(files)
 	a.checkDecoratorArgs(files)
 	a.checkDecoratorConflicts(files)
+	a.checkJSONNames(files)
 	a.checkLocalDecoratorRefs(files)
 	a.checkDecoratorRefs(files)
 }
@@ -196,6 +203,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkPathResolution()
 	a.checkCombinationRules(files)
 	a.checkFilePosition()
+	a.checkEvents()
 }
 
 // runRefPhase validates file-local imports and resolves every

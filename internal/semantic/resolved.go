@@ -10,6 +10,7 @@ package semantic
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // NilableScalarPrimitive reports whether a scalar's underlying primitive
@@ -51,8 +52,10 @@ type ResolvedField struct {
 	Category FieldCategory // the resolved type category
 
 	// ResolvedPrim is the underlying DSL primitive: the primitive itself for
-	// a primitive/bytes/any field, or the `scalar`'s primitive for a scalar
-	// field. "" for enum / struct / array / map / file / unresolved.
+	// a primitive/bytes/any field, the `scalar`'s primitive for a scalar
+	// field, and the `enum`'s backing primitive for an enum field - resolved
+	// through the declaring package, so a `lib.Colour` ref reports what
+	// `lib` declared. "" for struct / array / map / file / unresolved.
 	ResolvedPrim string
 
 	// HomePkg is the package the field's named type lives in - the qualifier
@@ -67,6 +70,47 @@ type ResolvedField struct {
 	// fact codegen's `*T` decision and the cross-field presence check must
 	// agree on.
 	IsNilable bool
+
+	// Name is the identifier the target renders the field with, supplied by
+	// the target's own dedup rule during flattening so a promoted field
+	// keeps the name it has in its declaring struct.
+	Name string
+
+	// Binding is where the value rides, after request auto-binding.
+	Binding wire.Binding
+	// OnWireBody reports whether the field appears as a property of the
+	// JSON body.
+	OnWireBody bool
+	// AutoBound reports that request resolution promoted an un-decorated
+	// field to @path / @query rather than the field declaring it. Stages use
+	// it to tell an explicit binding that fails to lower (a hard error) from
+	// an auto-promoted field that merely cannot ride the wire (skipped
+	// silently). Always false for response and explicitly bound fields.
+	AutoBound bool
+
+	// NeedsNilGuard reports that a constraint check must guard before
+	// len()/deref: the field is optional or @nullable.
+	NeedsNilGuard bool
+
+	HasDefault  bool // carries @default
+	DefaultWire any  // the resolved default as a wire value (enum member -> wire)
+	HasDefValue bool // a default value resolved
+
+	// SpecRequired: the field belongs in the document's required[] (not
+	// optional, no @default). RuntimeEnforced: a presence check is emitted
+	// for it (not optional, not @sensitive). Stored side by side so each
+	// stage reads ONE answer and a test can assert their relationship as a
+	// visible invariant rather than an emergent property of separate
+	// predicates. They differ by design on @default (excluded from
+	// SpecRequired) and on @sensitive (excluded from RuntimeEnforced).
+	SpecRequired    bool
+	RuntimeEnforced bool
+}
+
+// FieldIsOptional reports whether f may be absent: declared `T?` or
+// carrying `@nullable`.
+func FieldIsOptional(f *ast.Field) bool {
+	return f != nil && f.Type != nil && (f.Type.Optional || ast.HasDecorator(f.Decorators, "nullable"))
 }
 
 // ResolveField computes the layer-agnostic facts for a single field. pkg is
@@ -78,6 +122,15 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	rf := ResolvedField{Field: f}
 	if f != nil {
 		rf.DSLName = f.Name
+		dv, hasDV := ResolveDefaultValue(f, pkg)
+		rf.Binding = wire.ExplicitBinding(f)
+		rf.OnWireBody = wire.NonBodyBindingKind(f) == "" && !wire.HasSensitive(f.Decorators)
+		rf.NeedsNilGuard = FieldIsOptional(f)
+		rf.HasDefault = ast.HasDecorator(f.Decorators, "default")
+		rf.DefaultWire = dv
+		rf.HasDefValue = hasDV
+		rf.SpecRequired = FieldIsRequired(f)
+		rf.RuntimeEnforced = f.Type != nil && !FieldIsOptional(f) && !wire.HasSensitive(f.Decorators)
 	}
 	if f == nil || f.Type == nil {
 		return rf
@@ -117,7 +170,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		case prims.File:
 			rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""
 			return rf
-		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float:
+		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
 			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatPrimitive, name, ""
 			return rf
 		}
@@ -128,8 +181,8 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 			rf.IsNilable = NilableScalarPrimitive(sd.Primitive)
 			return rf
 		}
-		if _, ok := homePkg.Enums[name]; ok {
-			rf.Category = CatEnum
+		if ed, ok := homePkg.Enums[name]; ok {
+			rf.Category, rf.ResolvedPrim = CatEnum, EnumPrimitive(ed)
 			return rf
 		}
 		if _, ok := homePkg.Types[name]; ok {

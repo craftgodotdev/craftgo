@@ -3,7 +3,8 @@ package svccontext
 import "sync"
 
 // ServiceContext is the matrix fixture's dependency container: the generated
-// Middlewares plus the runtime state the server-roundtrip services need.
+// Middlewares plus the runtime state the server-roundtrip services and the
+// event handler sets need.
 type ServiceContext struct {
 	Middlewares
 
@@ -21,6 +22,11 @@ type ServiceContext struct {
 	OrderTotal int
 	ItemSKU    string
 	ItemPrice  int
+
+	// Delivered records every payload the event consumers handled, keyed
+	// by consumer name, so the event round-trip test can assert on what
+	// each one saw.
+	Delivered map[string][]any
 }
 
 // NewServiceContext returns a ServiceContext seeded with deterministic demo
@@ -31,9 +37,26 @@ func NewServiceContext() *ServiceContext {
 		Profiles: map[string]any{},
 		OrderID:  "ord-1", OrderTotal: 9900,
 		ItemSKU: "sku-1", ItemPrice: 1990,
+		Delivered: map[string][]any{},
 	}
 }
 
 // Lock / Unlock expose the embedded mutex so handlers keep mutations atomic.
 func (s *ServiceContext) Lock()   { s.mu.Lock() }
 func (s *ServiceContext) Unlock() { s.mu.Unlock() }
+
+// Record stores one delivered event payload under its consumer name.
+func (s *ServiceContext) Record(consumer string, payload any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Delivered[consumer] = append(s.Delivered[consumer], payload)
+}
+
+// DeliveredTo returns the payloads one consumer handled.
+func (s *ServiceContext) DeliveredTo(consumer string) []any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]any, len(s.Delivered[consumer]))
+	copy(out, s.Delivered[consumer])
+	return out
+}

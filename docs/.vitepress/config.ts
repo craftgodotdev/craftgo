@@ -104,8 +104,10 @@ export default defineConfig({
           text: "Introduction",
           items: [
             { text: "Getting Started", link: "/guide/getting-started" },
+            { text: "Architecture", link: "/guide/architecture" },
             { text: "Installation", link: "/guide/installation" },
             { text: "Project Structure", link: "/guide/project-structure" },
+            { text: "What changed", link: "/guide/whats-changed" },
           ],
         },
         {
@@ -133,6 +135,7 @@ export default defineConfig({
           text: "Application",
           items: [
             { text: "Middleware", link: "/guide/middleware" },
+            { text: "Events", link: "/guide/events" },
             { text: "Configuration", link: "/guide/configuration" },
             { text: "LSP / IDE", link: "/guide/lsp" },
           ],

@@ -1,0 +1,91 @@
+{
+  "groups": [
+    {
+      "name": "analytics-tier-worker",
+      "consumers": [
+        {
+          "event": "events.TierPromoted",
+          "consumer": "events.TierPromoted"
+        }
+      ]
+    },
+    {
+      "name": "analytics-worker",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "events.ItemStocked"
+        },
+        {
+          "event": "events.ShipmentDispatched",
+          "consumer": "events.ShipmentDispatched"
+        }
+      ]
+    },
+    {
+      "name": "matrix-guarded",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "events.ItemStocked"
+        },
+        {
+          "event": "events.StocktakeStarted",
+          "consumer": "events.StocktakeStarted"
+        },
+        {
+          "event": "events.WarehouseClosed",
+          "consumer": "events.WarehouseClosed"
+        }
+      ]
+    },
+    {
+      "name": "matrix-inventory",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "events.ItemStocked"
+        }
+      ]
+    },
+    {
+      "name": "matrix-ledger",
+      "consumers": [
+        {
+          "event": "payments.settled.v1",
+          "consumer": "payments.settled.v1"
+        }
+      ]
+    },
+    {
+      "name": "matrix-notifications",
+      "consumers": [
+        {
+          "event": "events.ItemStocked",
+          "consumer": "events.ItemStocked"
+        },
+        {
+          "event": "events.ShipmentDispatched",
+          "consumer": "events.ShipmentDispatched"
+        },
+        {
+          "event": "events.StocktakeStarted",
+          "consumer": "events.StocktakeStarted"
+        },
+        {
+          "event": "legacy.inventory.reconciled.v2",
+          "consumer": "legacy.inventory.reconciled.v2"
+        }
+      ]
+    },
+    {
+      "name": "matrix-ops",
+      "consumers": [
+        {
+          "event": "events.WarehouseClosed",
+          "consumer": "events.WarehouseClosed"
+        }
+      ]
+    }
+  ]
+}

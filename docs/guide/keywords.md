@@ -1,6 +1,6 @@
 # Keywords
 
-The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
+The DSL has 17 keywords plus the seven HTTP verbs. They are reserved - identifiers cannot use these names, with the contextual carve-outs noted below.
 
 ## Declaration keywords
 
@@ -15,13 +15,19 @@ The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
 | `service`    | top level   | Declare an HTTP service                                       |
 | `extend`     | top level   | Add methods to an existing service (`extend service Name`)    |
 | `middleware` | top level   | Declare a named middleware slot                               |
+| `event`      | top level   | Declare an event contract this package owns                   |
 
-## Method body keywords
+A `service` body holds HTTP methods only. `event` is a file-level declaration
+and there is no consumer declaration at all - which events a deployable listens
+to is Go code, written where its bus is built. See [Events](/guide/events).
 
-| Keyword     | Where                | Purpose                          |
-| ----------- | -------------------- | -------------------------------- |
-| `request`   | inside method body   | Names the request type           |
-| `response`  | inside method body   | Names the response type          |
+## Member body keywords
+
+| Keyword     | Where                 | Purpose                                  |
+| ----------- | --------------------- | ---------------------------------------- |
+| `request`   | inside method body    | Names the request type                   |
+| `response`  | inside method body    | Names the response type                  |
+| `payload`   | inside event body     | Names the type an event contract carries (or an array of it: `Type[]`) |
 
 ## Type keywords
 
@@ -36,6 +42,13 @@ The DSL has 16 keywords. They are reserved - identifiers cannot use these names.
 | `true`    | Boolean true literal                     |
 | `false`   | Boolean false literal                    |
 | `null`    | Null literal (used in some decorator args)|
+
+## Contextual use
+
+A reserved word is still legal wherever the grammar leaves no ambiguity: as a
+field name in a type body, as an enum value name, as a decorator argument naming
+a field, and as a path segment or path-parameter name. `type Msg { event string
+payload bytes }` and `@requiresOneOf(payload, event)` both parse.
 
 ## HTTP verbs
 
@@ -198,6 +211,28 @@ Declared at file (package) level. Codegen produces a typed slot on `ServiceConte
 
 See [Middleware](/guide/middleware).
 
+## `event`
+
+Declare an event contract this package owns:
+
+```craftgo
+@doc("Emitted once an order is accepted.")
+@contract("order.placed.v2")
+event Placed {
+    payload OrderPlaced
+}
+```
+
+File level only - a `service` body holds HTTP methods. `payload` names a `type`
+declaration, so every contract has named fields and its own `Validate()`;
+`payload OrderPlaced[]` is a contract carrying a JSON array of that type. Events
+have their own namespace, so `type OrderPlaced` and `event OrderPlaced` coexist.
+The wire identity defaults to `<package>.<Event>` and `@contract("...")`
+overrides it. Codegen writes one constant and one descriptor per event; the
+listener side is ordinary Go against the bus.
+
+See [Events](/guide/events).
+
 ## `request` and `response`
 
 Used inside a method body to name the request and response types:
@@ -244,4 +279,5 @@ where <decl> is one of:
   [@decorator]* service Name { methods... }
   [@decorator]* extend service Name { methods... }
   [@decorator]* middleware Name
+  [@decorator]* event Name { payload Type }        // or `payload Type[]` for an array body
 ```

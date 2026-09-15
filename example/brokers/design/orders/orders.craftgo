@@ -1,0 +1,22 @@
+// orders owns the order lifecycle and publishes what happens to one.
+package orders
+
+type OrderPlaced {
+	orderId money.OrderID
+	total   money.Amount
+}
+
+type OrderShipped {
+	orderId money.OrderID
+	carrier string        @minLength(1)
+}
+
+@doc("An order was accepted.")
+event Placed {
+	payload OrderPlaced
+}
+
+@doc("The same order left the warehouse.")
+event Shipped {
+	payload OrderShipped
+}

@@ -16,9 +16,30 @@
 # buckets are created automatically under the directory paths below
 # at gen time.
 output:
+  # kind: contracts                # generate the contract half only -
+                                   # payload types and the event library
+                                   # other projects import. The application
+                                   # half (transport, routes, service stubs,
+                                   # wiring, main) is written by whoever
+                                   # imports it. Default: application.
+                                   #
+                                   # Move `types` OUT of internal/ when you
+                                   # set this - `./gen/types` below - or Go's
+                                   # internal rule stops the very projects
+                                   # this library exists for from importing
+                                   # it, and nothing here fails until they
+                                   # try. The application keys are unused in
+                                   # this mode; delete the ones you keep
+                                   # around only because this file shipped
+                                   # with them.
   types:      ./internal/types
   transport:  ./internal/transport
   routes:     ./internal/routes
+  wiring:     ./internal/wiring      # the one Register call main.go makes:
+                                     # every HTTP route the design declares.
+                                     # Regenerated each run, so main.go
+                                     # survives a design that gains or loses
+                                     # one.
   service:    ./internal/service
   middleware: ./internal/middleware
   svccontext: ./svccontext/svccontext.go
@@ -39,6 +60,16 @@ output:
                                     # (create-user.go) / `camel` (createUser.go).
                                     # On-disk names only; URL routes and Go
                                     # package names are unchanged.
+
+# Event targets. Uncomment when your design declares `event` contracts
+# or `consume` declarations; a design with neither generates nothing
+# either way. Go is a row in the list rather than an implied default, so
+# `out: "-"` turns it off without deleting the block. Transport and codec
+# are NOT here - they are runtime wiring chosen in main.go.
+# events:
+#   targets:
+#     - lang: go
+#       out: ./internal/events
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.

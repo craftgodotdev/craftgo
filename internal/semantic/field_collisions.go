@@ -19,7 +19,7 @@ import (
 //
 // Without intervention, codegen would emit two `UserID` fields and
 // the resulting Go file would not compile. The codegen pass in
-// [internal/codegen] disambiguates by appending `_2`, `_3`, ...
+// [internal/codegen/golang] disambiguates by appending `_2`, `_3`, ...
 // suffixes - but that's a silent fix that hides a schema-level
 // duplication: BOTH fields keep their DSL spelling on the JSON wire,
 // so the API contract carries two distinct keys for what the user

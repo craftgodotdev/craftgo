@@ -4,9 +4,9 @@ import "fmt"
 
 // Kind enumerates every token category emitted by the lexer.
 //
-// Kind values are stable and ordered: the keyword block (KwPackage..KwNull) and
-// the HTTP-verb block (VerbGet..VerbOptions) are contiguous so that callers can
-// detect "any keyword" via simple range checks. New kinds must be appended;
+// Kind values are stable and ordered: the keyword block (KwPackage..KwPayload)
+// and the HTTP-verb block (VerbGet..VerbOptions) are contiguous so that callers
+// can detect "any keyword" via simple range checks. New kinds must be appended;
 // reordering breaks parser code that relies on the keyword range.
 type Kind int
 
@@ -54,6 +54,8 @@ const (
 	KwTrue
 	KwFalse
 	KwNull
+	KwEvent
+	KwPayload
 
 	// --- HTTP verbs (also keyword-class). ---
 
@@ -98,6 +100,7 @@ var kindNames = map[Kind]string{
 	KwService: "service", KwExtend: "extend", KwMiddleware: "middleware",
 	KwRequest: "request", KwResponse: "response",
 	KwMap: "map", KwTrue: "true", KwFalse: "false", KwNull: "null",
+	KwEvent: "event", KwPayload: "payload",
 
 	VerbGet: "get", VerbPost: "post", VerbPut: "put", VerbPatch: "patch",
 	VerbDelete: "delete", VerbHead: "head", VerbOptions: "options",
@@ -137,6 +140,8 @@ var keywords = map[string]Kind{
 	"true":       KwTrue,
 	"false":      KwFalse,
 	"null":       KwNull,
+	"event":      KwEvent,
+	"payload":    KwPayload,
 
 	"get":     VerbGet,
 	"post":    VerbPost,

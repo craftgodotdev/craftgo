@@ -4,14 +4,17 @@
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
-EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow
+EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers
 
 GO           ?= go
 GOFLAGS      ?=
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
-SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix
+# pkg/events is its own module so a generated contract package can depend on
+# it without pulling in the rest of craftgo; it is therefore not covered by
+# GO_PKGS and is tested, vetted and linted here instead.
+SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -78,8 +81,11 @@ test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
 test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestrator, and each sub-module.
 
 .PHONY: vet
-vet: ## go vet over all root packages.
+vet: ## go vet over all root packages and the event runtime module.
 	$(GO) vet $(GO_PKGS)
+	@(cd pkg/events && $(GO) vet ./...)
+	@(cd pkg/events/nats && $(GO) vet ./...)
+	@(cd pkg/events/kafka && $(GO) vet ./...)
 
 .PHONY: fmt
 fmt: ## gofmt -w on the entire tree.
@@ -97,7 +103,12 @@ lint: vet fmt-check golangci ## vet + fmt-check + golangci-lint.
 
 .PHONY: golangci
 golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not installed.
-	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run $(GO_PKGS); else echo "golangci-lint not installed - skipping"; fi
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run $(GO_PKGS) || exit 1; \
+		(cd pkg/events && golangci-lint run ./...) || exit 1; \
+		(cd pkg/events/nats && golangci-lint run ./...) || exit 1; \
+		(cd pkg/events/kafka && golangci-lint run ./...) || exit 1; \
+	else echo "golangci-lint not installed - skipping"; fi
 
 # ---- codegen + example --------------------------------------------------
 # The single consolidated e2e fixture (matrix). Its design exercises every DSL
@@ -105,7 +116,7 @@ golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not insta
 E2E_DIRS := tests/e2e/matrix
 
 .PHONY: gen
-gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce, taskflow).
+gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce, taskflow, brokers).
 	@for d in $(EXAMPLE_PROJECTS); do \
 		echo "→ gen $$d"; ./$(BIN) gen -f "$$d/design" -c "$$d" || exit 1; \
 	done
@@ -117,9 +128,12 @@ gen-go: ## Regenerate every example mini-project without rebuilding the CLI.
 	done
 
 .PHONY: gen-e2e
-gen-e2e: ## Regenerate the e2e matrix fixture from its design dir.
+gen-e2e: ## Regenerate every manifest in the e2e fixtures.
 	@for d in $(E2E_DIRS); do \
-		echo "→ gen $$d"; $(GO) run ./cmd/craftgo gen "$$d/design" || exit 1; \
+		for m in $$(find "$$d" -name craftgo.design.yaml | sort); do \
+			mdir=$$(dirname "$$m"); \
+			echo "→ gen $$mdir"; $(GO) run ./cmd/craftgo gen -f "$$mdir" -c "$$(dirname "$$mdir")" || exit 1; \
+		done; \
 	done
 
 .PHONY: gen-all
@@ -140,6 +154,14 @@ example-raw: ## Run the raw passthrough example server.
 .PHONY: example-ecommerce
 example-ecommerce: ## Run the ecommerce showcase server.
 	cd example/ecommerce && $(GO) run .
+
+.PHONY: example-taskflow
+example-taskflow: ## Run the taskflow reference application.
+	cd example/taskflow && $(GO) run .
+
+.PHONY: example-brokers
+example-brokers: ## Run the brokers event example over the in-process transport.
+	cd example/brokers && $(GO) run . -transport memory
 
 .PHONY: gen-diff
 gen-diff: gen-all ## Re-gen examples + e2e and fail if anything changed (drift guard for CI).
@@ -192,9 +214,46 @@ clean: ## Remove build artefacts and coverage files.
 clean-gen: ## Remove regenerable artefacts under every example mini-project + e2e fixture (transport, routes, types, docs).
 	@for d in $(EXAMPLE_PROJECTS) $(E2E_DIRS); do \
 		echo "→ clean $$d"; \
-		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/docs"; \
+		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/internal/events" "$$d/docs"; \
 	done
+
+# ---- release -------------------------------------------------------------
+# Four modules are published from this repo and they share one version: the
+# root module, pkg/events, and the two adapters. Go's convention for a nested
+# module is the subdirectory as the tag prefix, so a release is four tags -
+# vX.Y.Z, pkg/events/vX.Y.Z, pkg/events/nats/vX.Y.Z, pkg/events/kafka/vX.Y.Z.
+#
+# `tag` is local-only: it never pushes. It writes the release commit and the
+# four tags, then prints the single `git push` for you to run. `tag-sync` is
+# the follow-up that needs the tags on origin. See RELEASING.md.
+VERSION ?=
+DRY_RUN ?=
+
+.PHONY: tag
+tag: ## Cut a release locally - VERSION=vX.Y.Z, DRY_RUN=1 to only print the plan. Never pushes.
+	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh tag "$(VERSION)"
+
+.PHONY: tag-sync
+tag-sync: ## After you push the tags: tidy the adapters against the published pkg/events. VERSION=vX.Y.Z.
+	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh sync "$(VERSION)"
+
+.PHONY: tag-list
+tag-list: ## Show the four latest tags of each published module.
+	@scripts/release.sh list
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
 ci: lint test-all build ## What CI runs: lint, every test suite (root + e2e + submodules), build.
+
+# ---- docs diagrams --------------------------------------------------------
+# Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with
+# the VS Code Excalidraw extension); the site embeds docs/public/diagrams/*.svg.
+# The export runs the real Excalidraw in a headless browser:
+#   npm i -g excalidraw-brute-export-cli && npx playwright install firefox
+.PHONY: docs-diagrams
+docs-diagrams: ## Re-export every docs/diagrams/*.excalidraw to docs/public/diagrams/*.svg.
+	@for f in docs/diagrams/*.excalidraw; do \
+		out=docs/public/diagrams/$$(basename $${f%.excalidraw}).svg; \
+		echo "→ $$out"; \
+		npx excalidraw-brute-export-cli -i "$$f" -o "$$out" -f svg -s 1 -b true -d false -e false --quiet || exit 1; \
+	done

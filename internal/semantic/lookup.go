@@ -17,11 +17,14 @@ const (
 	ErrorDecls
 	MiddlewareDecls
 	ServiceDecls // primary `service` declarations
+	// EventDecls covers every contract the package declares.
+	EventDecls
 
-	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls
+	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls | EventDecls
 	// TypeShapeDecls is every kind a type-shape position (a field type, a
-	// mixin, a request or response, a generic argument) can name.
-	TypeShapeDecls = AnyDecl &^ MiddlewareDecls
+	// mixin, a request or response, a generic argument) can name. An
+	// event is a contract, never a type shape.
+	TypeShapeDecls = AnyDecl &^ MiddlewareDecls &^ EventDecls
 )
 
 // Decl returns the declaration of name among the tables kinds selects, or
@@ -53,6 +56,11 @@ func (p *Package) Decl(name string, kinds DeclKind) ast.Decl {
 			return d
 		}
 	}
+	if kinds&EventDecls != 0 {
+		if d, ok := p.Events[name]; ok {
+			return d
+		}
+	}
 	if kinds&ServiceDecls != 0 {
 		if si := p.Services[name]; si != nil && si.Primary != nil {
 			return si.Primary
@@ -79,6 +87,9 @@ func (p *Package) Decls(kinds DeclKind) []ast.Decl {
 	}
 	if kinds&MiddlewareDecls != 0 {
 		out = appendDecls(out, p.Middlewares)
+	}
+	if kinds&EventDecls != 0 {
+		out = appendDecls(out, p.Events)
 	}
 	if kinds&ServiceDecls != 0 {
 		for _, name := range sortedNames(p.Services) {

@@ -4,29 +4,42 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/codegen"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func parseGenArgs(args []string) (manifest, ctxRoot, positional string, err error) {
+// targetList collects a repeatable `--target` flag.
+type targetList []string
+
+func (t *targetList) String() string { return strings.Join(*t, ",") }
+
+func (t *targetList) Set(v string) error {
+	for _, name := range strings.Split(v, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			*t = append(*t, name)
+		}
+	}
+	return nil
+}
+
+func parseGenArgs(args []string) (manifest, ctxRoot, positional string, targets targetList, err error) {
 	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
+	fs.Var(&targets, "target", "generate only the named target ("+strings.Join(codegen.SelectableTargets(), ", ")+"); repeatable, default all")
 	fs.StringVar(&manifest, "f", "", "design folder holding craftgo.design.yaml (skips walk-up)")
 	fs.StringVar(&manifest, "folder", "", "alias for -f")
-	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to cwd when -f is given)")
+	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to the parent of the design folder)")
 	fs.StringVar(&ctxRoot, "context", "", "alias for -c")
 	if perr := fs.Parse(args); perr != nil {
 		// flag.ErrHelp is the explicit user request for `-h`/`--help`;
 		// surface a sentinel error the caller recognises as
 		// "successful early exit, no usage error".
-		return "", "", "", parseFlagError("gen", perr)
+		return "", "", "", nil, parseFlagError("gen", perr)
 	}
 	rest := fs.Args()
 	switch len(rest) {
@@ -35,22 +48,18 @@ func parseGenArgs(args []string) (manifest, ctxRoot, positional string, err erro
 	case 1:
 		positional = rest[0]
 	default:
-		return "", "", "", fmt.Errorf("gen: too many positional arguments (got %d, want at most 1)", len(rest))
+		return "", "", "", nil, fmt.Errorf("gen: too many positional arguments (got %d, want at most 1)", len(rest))
 	}
-	return manifest, ctxRoot, positional, nil
+	return manifest, ctxRoot, positional, targets, nil
 }
 
-func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
+func findManifest(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
 	if manifestFolder != "" {
-		root := contextRoot
-		if root == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return nil, "", "", err
-			}
-			root = cwd
-		}
-		return config.FindAt(manifestFolder, root)
+		// An empty root leaves [config.FindAt] to use the parent of the
+		// design folder, matching the walk-up flow. The working directory
+		// is not a root: it would resolve the outputs against whatever
+		// directory the command happens to run from.
+		return config.FindAt(manifestFolder, contextRoot)
 	}
 	cfg, projectRoot, designDir, err := config.Find(target)
 	if err != nil {
@@ -69,11 +78,11 @@ func resolveGenPaths(manifestFolder, contextRoot, target string) (*config.Config
 // runGen resolves the manifest, analyses the design, and hands the
 // validated project to [codegen.Generate].
 func runGen(args []string) error {
-	manifestFolder, contextRoot, target, err := parseGenArgs(args)
+	manifestFolder, contextRoot, target, targets, err := parseGenArgs(args)
 	if err != nil {
 		return err
 	}
-	cfg, projectRoot, designDir, err := resolveGenPaths(manifestFolder, contextRoot, target)
+	cfg, projectRoot, designDir, err := findManifest(manifestFolder, contextRoot, target)
 	if err != nil {
 		return err
 	}
@@ -94,10 +103,13 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := codegen.Generate(proj, cfg, projectRoot); err != nil {
+	if err := codegen.Generate(proj, cfg, projectRoot, targets...); err != nil {
 		return err
 	}
 	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
+	for _, note := range codegen.OutputNotes(proj, cfg, projectRoot) {
+		fmt.Println("craftgo: " + note)
+	}
 	return nil
 }
 
@@ -124,7 +136,7 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 			cfg.OpenAPI.Description = d
 		}
 	}
-	proj, diags := semantic.AnalyzeProject(files, analysisOptions(designDir, cfg))
+	proj, diags := semantic.AnalyzeProject(files, designopts.For(designDir, cfg))
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)
 	}
@@ -156,25 +168,16 @@ func fileDecoratorString(files []*ast.File, name string) string {
 	return ""
 }
 
-func securitySchemeNames(cfg *config.Config) []string {
-	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(cfg.OpenAPI.SecuritySchemes))
-	for name := range cfg.OpenAPI.SecuritySchemes {
-		out = append(out, name)
-	}
-	return out
-}
-
 // parseDesign walks designDir for `.craftgo` files, parses each one, and
 // returns the collected AST. Parser diagnostics are aggregated and returned
 // as a single error so the caller doesn't see a half-parsed package.
 func parseDesign(designDir string) ([]*ast.File, error) {
-	files, diags, err := parseDesignFiles(designDir)
+	srcs, err := designopts.Load(designDir)
 	if err != nil {
 		return nil, err
 	}
+	parsed, diags := designopts.Parse(srcs)
+	files := designopts.ASTs(parsed)
 	var parseDiags []string
 	for _, e := range diags {
 		parseDiags = append(parseDiags, fmt.Sprintf("  %s: %s", e.Pos.String(), e.Msg))
@@ -186,43 +189,6 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 		return nil, fmt.Errorf("no .craftgo files found under %s", designDir)
 	}
 	return files, nil
-}
-
-// parseDesignFiles walks designDir for `.craftgo` files, parses each one
-// and returns every AST with the parser diagnostics in walk order.
-func parseDesignFiles(designDir string) ([]*ast.File, []lexer.Diagnostic, error) {
-	var files []*ast.File
-	var diags []lexer.Diagnostic
-	walkErr := filepath.Walk(designDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !config.IsDesignFile(path) {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		p := parser.New(path, string(data))
-		files = append(files, p.Parse())
-		diags = append(diags, p.Diagnostics()...)
-		return nil
-	})
-	if walkErr != nil {
-		return nil, nil, walkErr
-	}
-	return files, diags, nil
-}
-
-// analysisOptions returns the analyser options a manifest configures.
-func analysisOptions(designDir string, cfg *config.Config) semantic.Options {
-	return semantic.Options{
-		SecuritySchemes: securitySchemeNames(cfg),
-		BasePath:        cfg.OpenAPI.BasePath,
-		DesignRoot:      designDir,
-		FileCase:        cfg.Output.FileCase,
-	}
 }
 
 // formatSemanticErrors filters severity-error diagnostics out of

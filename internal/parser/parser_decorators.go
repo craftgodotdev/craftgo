@@ -103,10 +103,10 @@ func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 	var fields []*ast.ObjectField
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		fpos := p.peek().Pos
-		name, _ := p.expect(lexer.Ident)
+		name := p.expectFieldKey()
 		p.expect(lexer.Colon)
 		val := p.parseValueOrArray()
-		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name.Text, Value: val})
+		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name, Value: val})
 		switch p.peek().Kind {
 		case lexer.Comma:
 			p.advance()
@@ -117,6 +117,19 @@ func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 	}
 	p.expect(lexer.RBrace)
 	return fields
+}
+
+// expectFieldKey reads an object-literal key. A key names a field, and a
+// field may be spelled with a reserved word (see parseTypeMember), so a
+// keyword here is the key's text.
+func (p *Parser) expectFieldKey() string {
+	t := p.peek()
+	if t.Kind == lexer.Ident || isKeywordKind(t.Kind) {
+		p.advance()
+		return t.Text
+	}
+	p.errorf(t.Pos, "expected object field name, got %s", t.Kind)
+	return ""
 }
 
 // parseValueOrArray dispatches between scalar and array literal forms.
@@ -214,6 +227,14 @@ func (p *Parser) parseValue() ast.Expr {
 	case lexer.Ident:
 		qi := p.parseQualifiedIdent()
 		return &ast.IdentExpr{Pos: qi.Pos, Name: qi}
+	}
+	// A reserved word in an argument slot is an identifier argument: the
+	// literal keywords matched above, so the only reading left is a name.
+	// Field names may be spelled with a reserved word (see
+	// parseTypeMember), so `@requiresOneOf(payload, name)` must work.
+	if isKeywordKind(t.Kind) {
+		p.advance()
+		return &ast.IdentExpr{Pos: t.Pos, Name: &ast.QualifiedIdent{Pos: t.Pos, Parts: []string{t.Text}}}
 	}
 	p.errorf(t.Pos, "expected literal, got %s", t.Kind)
 	p.advance()

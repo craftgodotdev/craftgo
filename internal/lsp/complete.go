@@ -285,6 +285,8 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 				return semantic.LvlErrorField
 			}
 		case *ast.ServiceDecl:
+			// A service body holds HTTP methods and nothing else, so
+			// every decorator zone inside one is a method site.
 			return semantic.LvlMethod
 		}
 	}
@@ -344,7 +346,7 @@ func firstTopLevelDeclKeyword(view snapshotView, pos protocol.Position) lexer.Ki
 		}
 		switch t.Kind {
 		case lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar,
-			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware:
+			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware, lexer.KwEvent:
 			return t.Kind
 		}
 	}
@@ -363,6 +365,8 @@ func nextTopLevelDeclLevel(view snapshotView, pos protocol.Position) semantic.Le
 		return semantic.LvlError
 	case lexer.KwScalar:
 		return semantic.LvlScalar
+	case lexer.KwEvent:
+		return semantic.LvlEvent
 	case lexer.KwService, lexer.KwExtend:
 		return semantic.LvlService
 	case lexer.KwMiddleware:
@@ -422,6 +426,8 @@ func declSiteLevel(d ast.Decl) semantic.Level {
 		return semantic.LvlError
 	case *ast.ScalarDecl:
 		return semantic.LvlScalar
+	case *ast.EventDecl:
+		return semantic.LvlEvent
 	case *ast.MiddlewareDecl:
 		return semantic.LvlMiddleware
 	case *ast.ServiceDecl:

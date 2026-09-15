@@ -44,14 +44,8 @@ func Qualified(parts ...string) *TypeRef {
 }
 
 // MapOf builds a `map<K, V>` TypeRef from two single-segment names.
-// Use [MapOfTypes] when key or value need a more complex shape.
 func MapOf(key, value string) *TypeRef {
 	return &TypeRef{Map: &MapType{Key: Named(key), Value: Named(value)}}
-}
-
-// MapOfTypes is the general form taking already-built TypeRefs.
-func MapOfTypes(key, value *TypeRef) *TypeRef {
-	return &TypeRef{Map: &MapType{Key: key, Value: value}}
 }
 
 // Generic builds a generic-instantiation TypeRef

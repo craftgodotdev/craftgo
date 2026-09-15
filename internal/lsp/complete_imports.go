@@ -52,7 +52,7 @@ func isInsideImportString(view snapshotView, pos protocol.Position) bool {
 // users do not import themselves.
 func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem {
 	fsPath := uriToPath(currentURI)
-	root := designRootOf(fsPath)
+	_, root := designProjectOf(fsPath)
 	if root == "" {
 		return nil
 	}

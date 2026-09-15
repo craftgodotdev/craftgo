@@ -49,6 +49,8 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 		a.checkArgsScope(dd.Decorators)
 	case *ast.MiddlewareDecl:
 		a.checkArgsScope(dd.Decorators)
+	case *ast.EventDecl:
+		a.checkArgsScope(dd.Decorators)
 	case *ast.ServiceDecl:
 		if !dd.Extend {
 			a.checkArgsScope(dd.Decorators)

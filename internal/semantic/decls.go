@@ -2,6 +2,8 @@
 package semantic
 
 import (
+	"strings"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -32,9 +34,12 @@ func (a *analyzer) setPackageName(files []*ast.File) {
 //     `seenMW` map so `middleware Foo` and `type Foo` coexist.
 //   - service → handler / route packages, each namespaced per
 //     service; merge handled by mergeServices.
+//   - event → its own namespace, so `event OrderPlaced` may sit next to
+//     the `type OrderPlaced` it carries.
 func (a *analyzer) collectDecls(files []*ast.File) {
 	seen := map[string]lexer.Position{}   // type / enum / scalar / error namespace
 	seenMW := map[string]lexer.Position{} // middleware namespace
+	seenEv := map[string]lexer.Position{} // event namespace, package-wide
 	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position, rejectBuiltin bool) bool {
 		if rejectBuiltin && prims.Is(name) {
 			// A type / enum / scalar / error named after a built-in spelling
@@ -98,6 +103,14 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if registerIn(seenMW, dd.Name, dd.Pos, false) {
 					a.pkg.Middlewares[dd.Name] = dd
 				}
+			case *ast.EventDecl:
+				if dd == nil {
+					continue
+				}
+				if a.registerMember(seenEv, dd.Name, dd.Pos, CodeEventDuplicate,
+					"duplicate event %q in package %q - a listener names an event by this identifier, so it must be unique across the package") {
+					a.pkg.Events[dd.Name] = dd
+				}
 			case *ast.ServiceDecl:
 				if dd == nil {
 					continue
@@ -119,6 +132,23 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 			}
 		}
 	}
+}
+
+// registerMember records a service-body member in its namespace table,
+// reporting a duplicate against the first occurrence. format takes the
+// member name and the scope it must be unique within.
+func (a *analyzer) registerMember(table map[string]lexer.Position, key string, pos lexer.Position, code, format string) bool {
+	if prev, dup := table[key]; dup {
+		name, scope := key, a.pkg.Name
+		if dot := strings.LastIndexByte(key, '.'); dot >= 0 {
+			name, scope = key[dot+1:], key[:dot]
+		}
+		d := a.diag(pos, pos, lexer.SeverityError, code, format, name, scope)
+		d.Related = related(prev, "first declared here")
+		return false
+	}
+	table[key] = pos
+	return true
 }
 
 // mergeServices flattens each [ServiceInfo] into a single ordered method
@@ -161,29 +191,33 @@ func (a *analyzer) mergeServices() {
 				}
 				if spec.Levels&LvlMethod == 0 {
 					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
-						"decorator @%s on extend service %q is not valid at method level; move it to the primary service", d.Name, name)
+						"decorator @%s on extend service %q is not valid on a method; move it to the primary service", d.Name, name)
 					continue
 				}
 				propagate = append(propagate, d)
 			}
 			for _, m := range e.Methods() {
-				if len(propagate) > 0 {
-					merged := make([]*ast.Decorator, 0, len(propagate)+len(m.Decorators))
-					for _, src := range propagate {
-						// Clone so the Propagated flag does not leak
-						// into the original extend block's decorator
-						// list (which other passes still read).
-						cp := *src
-						cp.Propagated = true
-						merged = append(merged, &cp)
-					}
-					merged = append(merged, m.Decorators...)
-					m.Decorators = merged
-				}
+				m.Decorators = prependPropagated(propagate, m.Decorators)
 				si.Methods = append(si.Methods, m)
 			}
 		}
 	}
+}
+
+// prependPropagated puts an extend block's decorators in front of a
+// member's own chain. Each is cloned so the Propagated flag does not leak
+// into the block's list, which other passes still read.
+func prependPropagated(propagate, own []*ast.Decorator) []*ast.Decorator {
+	if len(propagate) == 0 {
+		return own
+	}
+	merged := make([]*ast.Decorator, 0, len(propagate)+len(own))
+	for _, src := range propagate {
+		cp := *src
+		cp.Propagated = true
+		merged = append(merged, &cp)
+	}
+	return append(merged, own...)
 }
 
 // checkExtendOrphans reports every `extend service` block whose service

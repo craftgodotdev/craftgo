@@ -71,6 +71,38 @@ func enumValueDefinition(v projectView, view snapshotView, pos protocol.Position
 	return protocol.Location{}, false
 }
 
+// enclosingDeclKeyword returns the declaration keyword that opened the
+// block the token at idx sits in, or [lexer.EOF] when idx is at file
+// level. Declarations never nest, so the last keyword seen at brace
+// depth 0 before idx is the enclosing one.
+//
+// The walk is forward rather than backward because every keyword
+// spelling is also a legal field name: `event` inside a type body is a
+// field, and only the brace depth it sits at tells the two apart.
+func enclosingDeclKeyword(view snapshotView, idx int) lexer.Kind {
+	last := lexer.EOF
+	depth := 0
+	for i := 0; i < idx && i < len(view.tokens); i++ {
+		switch k := view.tokens[i].Kind; k {
+		case lexer.LBrace:
+			depth++
+		case lexer.RBrace:
+			if depth > 0 {
+				depth--
+			}
+			if depth == 0 {
+				last = lexer.EOF
+			}
+		case lexer.KwService, lexer.KwExtend, lexer.KwType, lexer.KwEnum,
+			lexer.KwError, lexer.KwScalar, lexer.KwMiddleware, lexer.KwEvent:
+			if depth == 0 {
+				last = k
+			}
+		}
+	}
+	return last
+}
+
 // lookupKindAt classifies the cursor's surrounding syntax into the
 // declaration kinds a definition lookup may return:
 //
@@ -140,8 +172,13 @@ func isTypeShapePosition(view snapshotView, idx int) bool {
 		switch t.Kind {
 		case lexer.Colon, lexer.LAngle, lexer.LBracket, lexer.RBracket, lexer.Comma:
 			return true
-		case lexer.KwRequest, lexer.KwResponse, lexer.KwError, lexer.KwType, lexer.KwScalar, lexer.KwEnum:
+		case lexer.KwRequest, lexer.KwResponse, lexer.KwPayload, lexer.KwError, lexer.KwType, lexer.KwScalar, lexer.KwEnum:
 			return true
+		case lexer.KwEvent:
+			// At file level this names the contract being declared, not a
+			// type. Inside a type body the same word is a field name and
+			// the cursor is on its type.
+			return enclosingDeclKeyword(view, idx) != lexer.KwEvent
 		case lexer.KwService, lexer.KwExtend:
 			// A service name, not a type reference. Without this the walk
 			// runs past the header into the previous declaration and the

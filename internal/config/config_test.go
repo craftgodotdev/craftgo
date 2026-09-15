@@ -33,6 +33,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Output.Main != "./main.go" {
 		t.Error("default main")
 	}
+	if cfg.Output.Wiring != "./internal/wiring" {
+		t.Errorf("output.wiring default = %q", cfg.Output.Wiring)
+	}
 	if cfg.Output.Config != "./config" {
 		t.Error("default config")
 	}
@@ -138,6 +141,56 @@ func TestFindManifestAtRoot(t *testing.T) {
 	}
 	if projectRoot != filepath.Dir(rootAbs) {
 		t.Errorf("project root: got %q want %q", projectRoot, filepath.Dir(rootAbs))
+	}
+}
+
+// TestFindAtEmptyRootUsesDesignParent pins the default root: with no
+// project root supplied, FindAt resolves the same one Find walks up to,
+// independent of the working directory.
+func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
+	root := t.TempDir()
+	designDir := filepath.Join(root, "design")
+	if err := os.MkdirAll(designDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(designDir, Filename), "")
+	t.Chdir(t.TempDir())
+
+	_, projectRoot, foundDesign, err := FindAt(designDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootAbs, _ := filepath.Abs(root)
+	if projectRoot != rootAbs {
+		t.Errorf("project root: got %q want %q", projectRoot, rootAbs)
+	}
+	designAbs, _ := filepath.Abs(designDir)
+	if foundDesign != designAbs {
+		t.Errorf("design dir: got %q want %q", foundDesign, designAbs)
+	}
+}
+
+// TestFindAtExplicitRootWins keeps `-c` authoritative: an explicit root
+// is used as given even when the design folder sits elsewhere.
+func TestFindAtExplicitRootWins(t *testing.T) {
+	dir := t.TempDir()
+	designDir := filepath.Join(dir, "contracts", "design")
+	codeRoot := filepath.Join(dir, "services", "api")
+	if err := os.MkdirAll(designDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(codeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(designDir, Filename), "")
+
+	_, projectRoot, _, err := FindAt(designDir, codeRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codeAbs, _ := filepath.Abs(codeRoot)
+	if projectRoot != codeAbs {
+		t.Errorf("project root: got %q want %q", projectRoot, codeAbs)
 	}
 }
 
@@ -305,5 +358,41 @@ func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
 	writeFile(t, path, "output:\n  fileCase: pascal\n")
 	if _, err := Load(path); err == nil {
 		t.Fatal("Load(fileCase=pascal) = nil error, want rejection")
+	}
+}
+
+// An output path outside the project has no import-path spelling, so it
+// must be rejected while the manifest is read - not left to fail as a
+// malformed import at `go build`.
+func TestOutputPathMustStayInsideProject(t *testing.T) {
+	escapes := []struct{ name, val string }{
+		{"parent", "../shared/types"},
+		{"deep parent", "./a/../../shared"},
+		{"bare parent", ".."},
+		{"absolute", "/tmp/shared"},
+	}
+	for _, c := range escapes {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := &Config{Output: Output{Types: c.val}}
+			if err := cfg.validate(); err == nil {
+				t.Errorf("output.types %q was accepted", c.val)
+			}
+		})
+	}
+	inside := []string{"", "-", "./internal/types", "contracts/types", "./a/../b"}
+	for _, val := range inside {
+		cfg := &Config{Output: Output{Types: val}}
+		if err := cfg.validate(); err != nil {
+			t.Errorf("output.types %q was rejected: %v", val, err)
+		}
+	}
+}
+
+// The same rule covers the event targets, which are the paths a
+// contract artifact would actually be published from.
+func TestEventTargetOutMustStayInsideProject(t *testing.T) {
+	cfg := &Config{Events: Events{Targets: []EventTarget{{Lang: LangGo, Out: "../contracts"}}}}
+	if err := cfg.validate(); err == nil {
+		t.Error("events.targets out escaping the project was accepted")
 	}
 }

@@ -15,28 +15,25 @@ hero:
       link: https://github.com/craftgodotdev/craftgo
 
 features:
-  - icon: 🎯
-    title: Design-first
+  - title: Design-first
     details: Write your API once in a small DSL. Get types, validators, handlers, and an OpenAPI spec from the same source.
 
-  - icon: 🔌
-    title: net/http compatible
+  - title: net/http compatible
     details: Built on the standard library. Middleware is plain func(http.Handler) http.Handler. No custom router. No magic.
 
-  - icon: 📜
-    title: OpenAPI 3.1
+  - title: OpenAPI 3.1
     details: Emitted from the same source. Renders in Swagger UI and ReDoc, feeds openapi-generator for clients in any language.
 
-  - icon: ✅
-    title: Built-in validation
+  - title: Built-in validation
     details: Declarative validators in the DSL. Generated as plain Go if statements. No reflection, no struct tags at runtime.
 
-  - icon: ⚡
-    title: No overhead
+  - title: No overhead
     details: Generated code looks like what you would write by hand. Stdlib mux, stdlib JSON, stdlib middleware shape.
 
-  - icon: 🛠
-    title: First-class tooling
+  - title: Event contracts
+    details: Declare the contract in the DSL, get one typed descriptor. The group, the middleware and the broker stay in Go - NATS, JetStream, Kafka, or in-process.
+
+  - title: First-class tooling
     details: LSP server with completion, diagnostics, hover, and go-to-definition. VS Code extension included.
 ---
 

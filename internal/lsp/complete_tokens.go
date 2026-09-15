@@ -28,9 +28,6 @@ func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
 	return prev.Text, true
 }
 
-var durationSuffixes = []string{"ns", "us", "µs", "ms", "s", "m", "h"}
-var sizeSuffixes = []string{"B", "KB", "MB", "GB"}
-
 // durationPresets / sizePresets are the values surfaced when the
 // cursor is inside an empty argument slot (just after `(`) so users
 // who don't have a number in mind get a sensible starter list.
@@ -43,12 +40,12 @@ var sizePresets = []string{"1KB", "10KB", "100KB", "1MB", "10MB", "100MB"}
 // and emitted as a TextEdit replacing the Int. Otherwise a curated
 // preset list is offered.
 func durationCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
-	return unitCompletions(prev, mid, "duration", durationSuffixes, durationPresets)
+	return unitCompletions(prev, mid, "duration", lexer.DurationUnits, durationPresets)
 }
 
 // sizeCompletions is the byte-size analogue of [durationCompletions].
 func sizeCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
-	return unitCompletions(prev, mid, "size", sizeSuffixes, sizePresets)
+	return unitCompletions(prev, mid, "size", lexer.SizeSuffixes(), sizePresets)
 }
 
 // unitCompletions builds the suffix / preset list for both duration
@@ -151,8 +148,10 @@ func keywordCompletions() []protocol.CompletionItem {
 		{"service", "service ${1:Name} {\n\t$0\n}"},
 		{"extend", "extend service ${1:Name} {\n\t$0\n}"},
 		{"middleware", "middleware ${1:Name}"},
+		{"event", "event ${1:Name} {\n\tpayload ${2:Payload}\n}"},
 		{"request", "request ${1:Type}"},
 		{"response", "response ${1:Type}"},
+		{"payload", "payload ${1:Type}"},
 		{"map", "map<${1:string}, ${2:string}>"},
 		{"get", "get ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
 		{"post", "post ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},

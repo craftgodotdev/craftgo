@@ -1,6 +1,6 @@
 # Configuration
 
-A craftgo project has two configuration files. They live in different places and serve different stages.
+A craftgo project has two configuration files. They live in different places and serve different stages. [Architecture](/guide/architecture) shows what each stage produces.
 
 ## At a glance
 
@@ -28,15 +28,22 @@ myproject/
 
 ```yaml
 output:
+  kind:       application
   types:      ./internal/types
   transport:  ./internal/transport
   routes:     ./internal/routes
   service:    ./internal/service
   middleware: ./internal/middleware
+  wiring:     ./internal/wiring
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
   config:     ./config
   main:       ./main.go
+
+events: # only meaningful when the design declares events
+  targets:
+    - lang: go
+      out: ./internal/events
 
 openapi:
   title:    My API
@@ -55,17 +62,45 @@ All paths are relative to the **project root** (the parent of the design folder,
 
 | Key          | Default                              | Kind                | Holds                                                     |
 | ------------ | ------------------------------------ | ------------------- | --------------------------------------------------------- |
+| `kind`       | `application`                        | mode                | `application` (default) or `contracts` - see below |
 | `types`      | `./internal/types`                   | directory           | One subfolder per design package; `types.go`, `validate.go`, `enums.go`, `errors.go` |
 | `transport`  | `./internal/transport`               | directory           | One subfolder per service; `<method>.go` per method |
 | `routes`     | `./internal/routes`                  | directory           | Per-service `routes.go` plus an umbrella `routes.go` |
 | `service`    | `./internal/service`                 | directory           | One subfolder per service; `<method>.go` per method (gen-once) |
 | `middleware` | `./internal/middleware`              | directory           | One file per declared `middleware Name` (gen-once) |
+| `wiring`     | `./internal/wiring`                  | directory           | The generated `wiring.Register` package `main.go` calls |
 | `svccontext` | `./svccontext/svccontext.go`         | **file path**       | Single Go file with the dependency container (gen-once); `middlewares.go` lands beside it |
 | `openapi`    | `./docs/openapi.yaml`                | **file path**       | The generated OpenAPI 3.1 spec |
 | `config`     | `./config`                           | directory           | `config.go`, `config.yaml`, `example.config.yaml` (all gen-once) |
 | `main`       | `./main.go`                          | **file path**       | The project entry point (gen-once) |
 
-The four "file path" entries point at exact files. The rest are directories where craftgo writes one subfolder per package or service.
+The four "file path" entries point at exact files. The other path keys are directories where craftgo writes one subfolder per package or service. `kind` is not a path at all - it says how much of the design this project generates.
+
+### `events.*`
+
+Configures the event output. `targets` lists the languages the event artefacts
+are generated for - Go is a row in the list, not a privileged default, so the
+manifest states where its artefacts land.
+
+| Key                | Default                   | Holds                                                       |
+| ------------------ | ------------------------- | ----------------------------------------------------------- |
+| `targets[].lang`   | -                         | `go` - the only language target                              |
+| `targets[].out`    | -                         | Destination directory, relative to the project root           |
+
+```yaml
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+```
+
+Omit the block entirely and a design that declares events gets one Go target at
+`./internal/events` - `./gen/events` under `output.kind: contracts`, whose
+output is imported from other modules; a design that declares none generates
+nothing either way. Set a target's `out` to `"-"` to skip it.
+
+Transport and codec are deliberately absent: they are runtime wiring chosen in
+`main.go`, not design-time facts. See [Events](/guide/events).
 
 ### File and directory naming (`output.fileCase`)
 
@@ -115,13 +150,55 @@ output:
   main: -          # do not generate main.go
 ```
 
-When `main: -` is set, craftgo also skips `config/`, `svccontext`, and `middleware` since those exist to support `main.go`. Useful for projects that import the generated types as a library and run their own server.
+When `main: -` is set, craftgo also skips `config/` and the `svccontext.go` scaffold, since those exist to support `main.go` - the container type is then yours to write, and `svccontext/middlewares.go` and the middleware scaffolds are still generated against it. Useful for projects that import the generated types as a library and run their own server.
 
 ### Module path is auto-resolved
 
 The `craftgo.design.yaml` does **not** carry a Go module / package field. craftgo reads `module <path>` from `go.mod` (walking up from the project root) at gen time and uses that for every Go import in generated files.
 
 If `go.mod` is missing, `craftgo gen` fails with a clear error. Run `go mod init <module>` first.
+
+### A contract library or a whole application (`output.kind`)
+
+`application` - the default - generates both halves of the design: the contract half (payload types, the event library, the documents) and the application around it (transport handlers, routes, service stubs, middleware, wiring, config, `svccontext` and `main.go`).
+
+`contracts` generates only the half **other projects import** - the payload types, the event library and the documents - and stops there. Nothing under `output.transport`, `output.routes`, `output.service`, `output.middleware`, `output.wiring`, `output.config`, `output.svccontext` or `output.main` is written.
+
+Its two defaults move out of `internal/`, because Go forbids importing that path across modules and being imported is the whole point of the project:
+
+| Key                     | `application`        | `contracts`     |
+| ----------------------- | -------------------- | --------------- |
+| `output.types`          | `./internal/types`   | `./gen/types`   |
+| `events.targets[].out`  | `./internal/events`  | `./gen/events`  |
+
+```yaml
+# contracts/design/craftgo.design.yaml
+output:
+  kind:  contracts
+  types: ./gen/types
+
+events:
+  targets:
+    - lang: go
+      out: ./gen/events
+```
+
+Each deployable around it holds its own design folder and its own manifest, generates its own application half, and imports the contracts project for the payload types and the event descriptors - see [Events layout](/guide/project-structure#events-layout) for the shape on disk. A deployable that serves no HTTP wants no OpenAPI document of its own - turn it off with `output.openapi: "-"`.
+
+Switching an existing project to `kind: contracts` leaves whatever it generated as an application exactly where it was. A contracts project names no `output.transport`, `output.routes`, `output.service`, `output.wiring` or `output.middleware`, so nothing walks those directories any more. craftgo reports it - naming every path that still holds generated files - but deletes nothing: the directory may be one you now use for something else.
+
+### Stale output is pruned
+
+Every file craftgo REGENERATES opens with a generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents. That header is the whole record: at the end of a run, craftgo walks the output directories the manifest names and **deletes every file carrying it that this run did not write**, then removes the directories that leaves empty. Nothing is stored on the side and nothing extra is committed.
+
+It covers every output the run regenerates, not just the event contracts: the transport handlers, the routes, `wiring.go`, `svccontext/middlewares.go`, the event library, the `output.types` folder of a DSL package that is gone, the OpenAPI document. Rename a service and its old files go with its name; delete an `event` and its descriptor goes with it. Nothing else could know: the design that dropped them no longer says what they were called.
+
+Three rules follow, and all three are load-bearing:
+
+- **An output directory belongs to exactly one design.** Point a second design's manifest at a directory the first one writes into and the first run to finish deletes the other's output. Give each design its own `output.*` paths - or, when several deployables share contracts, generate those from one contracts project and import them (see [`output.kind`](#a-contract-library-or-a-whole-application-output-kind)). Two manifests generating the *same* design into one directory stay fine: they write the same files, so neither sweep finds anything to delete.
+- **Gen-once territory is never walked.** `output.service`, `output.middleware`, `output.config` and `main.go` are written only when missing, so the sweep never enters those directories and your own code in them is never a question it has to answer. The project root is never swept either, whatever else the repository keeps there.
+- **The header is the only thing the sweep reads.** Strip it from a generated file and the sweep stops seeing that file, so it survives a design that no longer produces it - but it is not protected: if the design still names that path, the next run rewrites the file, header and all.
+
 
 ### `openapi.*` block
 

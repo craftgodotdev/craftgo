@@ -1,0 +1,18 @@
+package: github.com/craftgodotdev/craftgo/example/brokers
+output:
+  types:      ./internal/types
+  transport:  ./internal/transport
+  routes:     ./internal/routes
+  service:    ./internal/service
+  svccontext: ./svccontext/svccontext.go
+  middleware: ./internal/middleware
+  config:     ./config
+  openapi:    ./docs/openapi.yaml
+  main:       "-"
+openapi:
+  title: Brokers
+  version: 1.0.0
+events:
+  targets:
+    - lang: go
+      out: ./internal/events

@@ -111,13 +111,20 @@ func TestNegativeDurationRejected(t *testing.T) {
 }`, CodeDecoratorRange)
 }
 
-func TestDurationLiteralAcceptedAlways(t *testing.T) {
-	// Duration literals are always OK - only the bare-int form is
-	// range-checked here.
+func TestPositiveDurationLiteralAccepted(t *testing.T) {
 	mustClean(t, `service S {
 	@timeout(5s)
 	get G /g {}
 }`)
+}
+
+// TestZeroDurationLiteralRejected pins the suffixed form to the same rule
+// as the bare int: `@timeout(0s)` cancels nothing either.
+func TestZeroDurationLiteralRejected(t *testing.T) {
+	expectDiag(t, `service S {
+	@timeout(0s)
+	get G /g {}
+}`, CodeDecoratorRange)
 }
 
 func TestZeroSizeRejected(t *testing.T) {
@@ -127,11 +134,36 @@ func TestZeroSizeRejected(t *testing.T) {
 }`, CodeDecoratorRange)
 }
 
-func TestSizeLiteralAcceptedAlways(t *testing.T) {
+func TestPositiveSizeLiteralAccepted(t *testing.T) {
 	mustClean(t, `service S {
 	@maxBodySize(1MB)
 	get G /g {}
 }`)
+}
+
+// TestZeroSizeLiteralRejected pins the suffixed form to the same rule as
+// the bare count: a 0-byte cap reads as "no cap" and emits no check.
+func TestZeroSizeLiteralRejected(t *testing.T) {
+	expectDiag(t, `service S {
+	@maxBodySize(0B)
+	get G /g {}
+}`, CodeDecoratorRange)
+}
+
+// TestOverflowingSizeLiteralRejected covers a count past int64: the
+// emitters would enforce a wrapped or saturated cap nobody wrote.
+func TestOverflowingSizeLiteralRejected(t *testing.T) {
+	d := expectDiag(t, `service S {
+	@maxBodySize(99999999999999999999GB)
+	get G /g {}
+}`, CodeDecoratorRange)
+	expectMessage(t, d, "is not a byte size")
+}
+
+// TestZeroMaxSizeRejected covers the field-level size decorator, which
+// shares checkPositiveSize with the method-level one.
+func TestZeroMaxSizeRejected(t *testing.T) {
+	expectDiag(t, `type Req { avatar file @maxSize(0MB) }`, CodeDecoratorRange)
 }
 
 // ---------- @minLength / @maxLength etc. negative ----------
@@ -347,10 +379,10 @@ func TestRangeHelpersTolerateBadShape(t *testing.T) {
 	a.checkNonNegativeInt(&ast.Decorator{Name: "minLength"})
 
 	// Non-numeric value: helpers also return early.
-	stringArg := []*ast.DecoratorArg{{Value: &ast.StringLit{}}}
-	a.checkPairArgs(&ast.Decorator{Name: "length", Args: append(stringArg, &ast.DecoratorArg{Value: &ast.StringLit{}})})
-	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf", Args: stringArg})
-	a.checkHTTPStatus(&ast.Decorator{Name: "status", Args: stringArg})
+	StringArg := []*ast.DecoratorArg{{Value: &ast.StringLit{}}}
+	a.checkPairArgs(&ast.Decorator{Name: "length", Args: append(StringArg, &ast.DecoratorArg{Value: &ast.StringLit{}})})
+	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf", Args: StringArg})
+	a.checkHTTPStatus(&ast.Decorator{Name: "status", Args: StringArg})
 
 	if len(a.diags) != 0 {
 		t.Errorf("defensive helpers should not diag on bad shape, got %v", a.diags)

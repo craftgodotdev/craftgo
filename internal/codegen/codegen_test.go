@@ -1,1008 +1,261 @@
 package codegen
 
 import (
-	"go/parser"
-	gotoken "go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
+	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func analyze(t *testing.T, src string) *semantic.Package {
-	t.Helper()
-	p := craftparser.New("test.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
+// eventsConfig is a manifest with the Go event target enabled.
+func eventsConfig() *config.Config {
+	return &config.Config{
+		Package: "example.com/app",
+		Output: config.Output{
+			Types:      "./internal/types",
+			Transport:  "./internal/transport",
+			Routes:     "./internal/routes",
+			Service:    "./internal/service",
+			Svccontext: "./svccontext/svccontext.go",
+			Wiring:     "./internal/wiring",
+			Middleware: "./internal/middleware",
+			Config:     "./config",
+			OpenAPI:    "./docs/openapi.yaml",
+			Main:       "-",
+			FileCase:   config.FileCaseSnake,
+		},
+		OpenAPI: config.OpenAPI{Title: "Events", Version: "1.0.0"},
+		Events: config.Events{
+			Targets: []config.EventTarget{{Lang: config.LangGo, Out: "./internal/events"}},
+		},
 	}
-	pkg, diags := semantic.Analyze([]*ast.File{f})
-	// Treat only error-severity diags as fatal - warnings (e.g. the
-	// @nullable-on-T? hint) shouldn't fail codegen tests because the
-	// generated code is still well-defined.
-	var fatal []semantic.Diagnostic
+}
+
+func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
+	t.Helper()
+	files := make([]*ast.File, 0, len(sources))
+	for i, src := range sources {
+		p := parser.New("test.craftgo", src)
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) > 0 {
+			t.Fatalf("parse errors in source %d: %v", i, d)
+		}
+		files = append(files, f)
+	}
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{})
 	for _, d := range diags {
 		if d.Severity == lexer.SeverityError {
-			fatal = append(fatal, d)
+			t.Fatalf("semantic errors: %v", diags)
 		}
 	}
-	if len(fatal) > 0 {
-		t.Fatalf("semantic errors: %v", fatal)
-	}
-	return pkg
+	return proj
 }
 
-// analyzeIgnoringErrors parses + analyses src and returns the package WITHOUT
-// failing on error-severity diagnostics. Backstop tests use it to feed codegen
-// an input the analyser would reject, proving codegen's own pre-flight guard
-// still fires for a direct, un-analysed caller.
-func analyzeIgnoringErrors(t *testing.T, src string) *semantic.Package {
-	t.Helper()
-	p := craftparser.New("test.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
-	}
-	pkg, _ := semantic.Analyze([]*ast.File{f})
-	return pkg
-}
+const ordersSrc = `package orders
+type OrderPlacedPayload { orderId string }
+event OrderPlaced { payload OrderPlacedPayload }`
 
-func mustParseGo(t *testing.T, src string) {
-	t.Helper()
-	if _, err := parser.ParseFile(gotoken.NewFileSet(), "out.go", src, parser.AllErrors); err != nil {
-		t.Fatalf("generated Go does not parse: %v\n--- source ---\n%s", err, src)
-	}
-}
-
-// mustContainAll asserts every want substring appears somewhere in got.
-// Reports ALL misses at once (not the first only) so a generator change
-// that drops 5 lines surfaces as one diagnostic instead of 5 sequential
-// edit-test-edit cycles. Use it instead of stacking N
-// if-Contains-Errorf blocks per test.
-func mustContainAll(t *testing.T, got string, wants ...string) {
-	t.Helper()
-	var missing []string
-	for _, w := range wants {
-		if !strings.Contains(got, w) {
-			missing = append(missing, w)
-		}
-	}
-	if len(missing) > 0 {
-		t.Errorf("output missing %d expected substring(s):\n  - %s\n--- got ---\n%s",
-			len(missing), strings.Join(missing, "\n  - "), got)
-	}
-}
-
-// mustContainNone is the inverse of mustContainAll: every needle MUST
-// NOT appear in got. Used by tests that pin "this line should have
-// been dropped" assertions where the regression risk is accidental
-// re-inclusion.
-func mustContainNone(t *testing.T, got string, unwanted ...string) {
-	t.Helper()
-	var present []string
-	for _, w := range unwanted {
-		if strings.Contains(got, w) {
-			present = append(present, w)
-		}
-	}
-	if len(present) > 0 {
-		t.Errorf("output unexpectedly contains %d forbidden substring(s):\n  - %s\n--- got ---\n%s",
-			len(present), strings.Join(present, "\n  - "), got)
-	}
-}
-
-// ---------- types ----------
-
-func TestGenerateTypesSensitiveJSONDash(t *testing.T) {
-	// `@sensitive` fields are server-internal: they get json:"-" so
-	// neither the request decoder nor the response encoder touches
-	// them. Logic populates the field directly via Go assignment.
-	pkg := analyze(t, `package design
-type User { id string  internal string @sensitive }`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, `Internal string `+"`"+`json:"-"`+"`") {
-		t.Errorf("expected Internal string `json:\"-\"`, got:\n%s", src)
-	}
-	if !strings.Contains(norm, `ID string `+"`"+`json:"id"`+"`") {
-		t.Errorf("non-sensitive field should keep its tag, got:\n%s", src)
-	}
-}
-
-// A field bound to @path / @query / @header / @cookie carries json:"-" (off
-// the JSON body) plus a binding key naming the wire location, so the
-// generated struct documents where the value rides. The key's value is the
-// decorator's wire-name override when present, else the field name.
-func TestGenerateTypesNonBodyBindingTag(t *testing.T) {
-	pkg := analyze(t, `package design
-type LookupReq {
-    id    string @path
-    page  int    @query("page_num")
-    trace string @header("X-Trace-Id")
-    token string @cookie("session")
-    name  string
-}
-service Lookups {
-    get Lookup /items/{id} {
-        request LookupReq
-    }
+// A project with no event generates nothing, so adding the feature costs
+// existing projects no output.
+func TestNoEventsGeneratesNothing(t *testing.T) {
+	proj := analyzeProject(t, `package p
+type P { id string }
+service S {
+	get Read /r { response P }
 }`)
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
+	if err := GenerateEventTargets(proj, eventsConfig(), dir); err != nil {
+		t.Fatalf("generate: %v", err)
 	}
-	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	if len(entries) != 0 {
+		t.Errorf("expected no output, got %v", entries)
+	}
+}
+
+// A disabled target is skipped without disabling the rest.
+func TestDisabledTargetIsSkipped(t *testing.T) {
+	proj := analyzeProject(t, ordersSrc)
+	cfg := eventsConfig()
+	cfg.Events.Targets = []config.EventTarget{{Lang: config.LangGo, Out: "-"}}
+	dir := t.TempDir()
+	if err := GenerateEventTargets(proj, cfg, dir); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "internal", "events")); !os.IsNotExist(err) {
+		t.Errorf("disabled Go target still produced output (%v)", err)
+	}
+}
+
+// The catalogue and the set of languages the manifest accepts must match
+// exactly. A language the manifest accepts with no row generates nothing;
+// a row for a language the manifest rejects can never run.
+func TestCatalogueMatchesSupportedLangs(t *testing.T) {
+	inCatalogue := map[string]bool{}
+	for _, target := range LangTargets {
+		if inCatalogue[target.Lang] {
+			t.Errorf("%q has two rows in the catalogue", target.Lang)
+		}
+		inCatalogue[target.Lang] = true
+	}
+	for _, lang := range config.SupportedLangs {
+		if !inCatalogue[lang] {
+			t.Errorf("config accepts %q but no target generates it", lang)
+		}
+		delete(inCatalogue, lang)
+	}
+	for lang := range inCatalogue {
+		t.Errorf("catalogue generates %q but config rejects it", lang)
+	}
+}
+
+// Every target writes into its own configured directory, so one run can
+// feed a Go service and the documents that describe it.
+func TestEveryEnabledTargetWritesItsOwnOutput(t *testing.T) {
+	proj := analyzeProject(t, ordersSrc)
+	dir := t.TempDir()
+	if err := Generate(proj, eventsConfig(), dir); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
 	for _, want := range []string{
-		`ID string ` + "`json:\"-\" path:\"id\"`",              // no override → field name
-		`Page int ` + "`json:\"-\" query:\"page_num\"`",        // override wins
-		`Trace string ` + "`json:\"-\" header:\"X-Trace-Id\"`", // header name kept verbatim
-		`Token string ` + "`json:\"-\" cookie:\"session\"`",    // override wins
-		`Name string ` + "`json:\"name\"`",                     // plain body field unchanged
+		filepath.Join("internal", "events", "orders", "events.go"),
+		filepath.Join("docs", "openapi.yaml"),
 	} {
-		if !strings.Contains(norm, want) {
-			t.Errorf("missing struct tag %q in:\n%s", want, src)
+		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
+			t.Errorf("target output missing: %s (%v)", want, err)
 		}
 	}
 }
 
-func TestGenerateTypesBasic(t *testing.T) {
-	pkg := analyze(t, `package design
-type User { id string  name string  age int? }`)
+// A narrowed run must not touch another target's output. Every target
+// prunes what it owns, so running one while another is selected out would
+// otherwise delete the unselected target's files.
+func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
+	proj := analyzeProject(t, ordersSrc)
+	cfg := eventsConfig()
 	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
+	if err := Generate(proj, cfg, dir); err != nil {
+		t.Fatalf("generate all: %v", err)
 	}
-	out, err := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	if err != nil {
-		t.Fatal(err)
+	goFile := filepath.Join(dir, "internal", "events", "orders", "events.go")
+	docFile := filepath.Join(dir, "docs", "openapi.yaml")
+	for _, f := range []string{goFile, docFile} {
+		if _, err := os.Stat(f); err != nil {
+			t.Fatalf("first pass missing %s: %v", f, err)
+		}
 	}
-	src := string(out)
-	mustParseGo(t, src)
-	// gofmt aligns struct fields/tags; collapse whitespace before matching.
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, "type User struct") {
-		t.Error("missing User")
+	// Regenerate only the documents; the Go output must survive.
+	if err := Generate(proj, cfg, dir, TargetDocs); err != nil {
+		t.Fatalf("generate docs: %v", err)
 	}
-	if !strings.Contains(norm, "ID string") {
-		t.Errorf("expected ID field with initialism rule:\n%s", src)
-	}
-	if !strings.Contains(norm, "Age *int") {
-		t.Error("expected pointer for optional age")
+	if _, err := os.Stat(goFile); err != nil {
+		t.Errorf("a docs-only run deleted the Go output: %v", err)
 	}
 }
 
-func TestGenerateTypesArrayMap(t *testing.T) {
-	pkg := analyze(t, `package design
-type X { tags string[]  meta map<string, string> }`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
+// An unknown target name fails rather than silently generating less.
+func TestUnknownTargetIsRejected(t *testing.T) {
+	proj := analyzeProject(t, ordersSrc)
+	err := Generate(proj, eventsConfig(), t.TempDir(), "rust")
+	if err == nil {
+		t.Fatal("expected an error for an unknown target")
 	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, "Tags []string") {
-		t.Errorf("missing Tags []string in:\n%s", src)
-	}
-	if !strings.Contains(norm, "Meta map[string]string") {
-		t.Errorf("missing Meta map[string]string in:\n%s", src)
-	}
-}
-
-func TestGenerateTypesBuiltins(t *testing.T) {
-	pkg := analyze(t, `package design
-type X { blob bytes  raw any  upload file }`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	mustContainAll(t, src,
-		"[]byte",
-		`"mime/multipart"`,
-	)
-}
-
-// TestGenerateTypesGenericInstance checks the Go-1.18-generics output
-// shape: a generic decl renders with type-parameter brackets, and
-// references to it use Go generic syntax `Name[Arg1, Arg2]`.
-func TestGenerateTypesGenericInstance(t *testing.T) {
-	pkg := analyze(t, `package design
-type User {}
-type Org {}
-type Pair<A, B> { left A  right B }
-type UserOrgPair { p Pair<User, Org> }`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	// Generic decl lands as a Go generic struct.
-	if !strings.Contains(src, "type Pair[A any, B any] struct") {
-		t.Errorf("expected `type Pair[A any, B any] struct` in:\n%s", src)
-	}
-	// Instance reference uses Go generic syntax.
-	if !strings.Contains(src, "Pair[User, Org]") {
-		t.Errorf("expected `Pair[User, Org]` instance reference in:\n%s", src)
-	}
-}
-
-func TestResolveTypeRefGenericArgs(t *testing.T) {
-	// Generic instantiation must propagate through resolveTypeRef so
-	// service / handler signatures land as `Page[types.User]` rather
-	// than bare `Page` (which Go rejects with "cannot use generic
-	// type without instantiation"). Coverage:
-	//
-	//   - local generic with local arg → both qualified via `types`
-	//   - local generic with cross-pkg arg → arg keeps its qualifier
-	//   - cross-pkg generic with local arg → arg picks up local alias
-	//   - nested generic (`Page<Envelope<User>>`)
-	//   - multi-arg generic
-	cross := CrossPkg{"shared": "github.com/x/internal/types/shared"}
-	cases := []struct {
-		name      string
-		ref       *ast.NamedTypeRef
-		wantAlias string
-		wantBare  string
-	}{
-		{
-			name:      "local generic local arg",
-			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}},
-			wantAlias: "types",
-			wantBare:  "Page[types.User]",
-		},
-		{
-			name:      "local generic cross-pkg arg",
-			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "User"}}}}}},
-			wantAlias: "types",
-			wantBare:  "Page[shared.User]",
-		},
-		{
-			name:      "cross-pkg generic local arg",
-			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}},
-			wantAlias: "shared",
-			wantBare:  "Page[types.User]",
-		},
-		{
-			name: "nested generic local",
-			ref: &ast.NamedTypeRef{
-				Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
-				Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{
-					Name: &ast.QualifiedIdent{Parts: []string{"Envelope"}},
-					Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}},
-				}}},
-			},
-			wantAlias: "types",
-			wantBare:  "Page[types.Envelope[types.User]]",
-		},
-		{
-			name: "multi-arg generic",
-			ref: &ast.NamedTypeRef{
-				Name: &ast.QualifiedIdent{Parts: []string{"Pair"}},
-				Args: []*ast.TypeRef{
-					{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}},
-					{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Email"}}}},
-				},
-			},
-			wantAlias: "types",
-			wantBare:  "Pair[types.User, shared.Email]",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			alias, bare, _ := resolveTypeRef(c.ref, cross)
-			if alias != c.wantAlias || bare != c.wantBare {
-				t.Errorf("got (alias=%q, bare=%q), want (alias=%q, bare=%q)", alias, bare, c.wantAlias, c.wantBare)
-			}
-		})
-	}
-}
-
-func TestRenderMixinQualifiedRef(t *testing.T) {
-	// Same-package mixin renders as bare ident (Go would refuse a
-	// qualified ref to itself). Cross-package mixin keeps the
-	// qualifier - Go requires `pkg.Type` for an embedded type
-	// declared elsewhere, and the consuming file already carries
-	// the matching import.
-	cases := []struct {
-		name  string
-		parts []string
-		want  string
-	}{
-		{name: "same-package", parts: []string{"Pagination"}, want: "\tPagination\n"},
-		{name: "cross-package", parts: []string{"shared", "Pagination"}, want: "\tshared.Pagination\n"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			m := &ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: c.parts}}}
-			if got := renderMixin(m); got != c.want {
-				t.Errorf("renderMixin(%v) = %q, want %q", c.parts, got, c.want)
-			}
-		})
-	}
-}
-
-func TestGenerateTypesMixin(t *testing.T) {
-	pkg := analyze(t, `package design
-type Profile { id string }
-type User { Profile  name string }`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, "type User struct { Profile Name") {
-		t.Errorf("mixin embed not emitted:\n%s", src)
-	}
-}
-
-// TestGenerateTypesDeprecated covers `@deprecated` on both type and
-// field. The Go-side emission must use the canonical `// Deprecated: …`
-// line so `go vet` and `staticcheck` flag callers; per-field
-// deprecation lives in the field's own doc block.
-func TestGenerateTypesDeprecated(t *testing.T) {
-	pkg := analyze(t, `package design
-@deprecated("use NewBook instead")
-type LegacyBook {
-    title    string
-    sku      string @deprecated
-    priceUsd int    @deprecated("use priceCents instead")
-}`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-
-	// Type-level deprecation message.
-	if !strings.Contains(src, "// Deprecated: use NewBook instead") {
-		t.Errorf("expected type-level Deprecated comment:\n%s", src)
-	}
-	// Field-level deprecation with explicit reason.
-	if !strings.Contains(src, "// Deprecated: use priceCents instead") {
-		t.Errorf("expected field-level Deprecated comment with reason:\n%s", src)
-	}
-	// Field-level deprecation without reason gets the generic fallback.
-	if !strings.Contains(src, "// Deprecated: this entity is deprecated") {
-		t.Errorf("expected fallback Deprecated comment for bare @deprecated:\n%s", src)
-	}
-}
-
-// TestGenerateTypesNullable pins the Go-side wiring for `@nullable`:
-//
-//   - value type (string) → `*T` field, no omitempty (null-emitting).
-//   - already-nilable ([]byte slice / `*FileHeader`) → no extra wrap,
-//     just drop omitempty.
-//   - combined `T? @nullable` → still `*T` (no double-wrap), omitempty
-//     applies because the `?` suffix takes precedence: a nil pointer
-//     must round-trip as absent on the wire, not as explicit JSON
-//     `null`. The combined form is also flagged redundant at semantic
-//     time so users converge on plain `T?`.
-//   - non-nullable required field → unchanged (`T` value, no omitempty).
-func TestGenerateTypesNullable(t *testing.T) {
-	pkg := analyze(t, `package design
-type T {
-    plain    string
-    nullStr  string @nullable
-    nullBlob bytes  @nullable
-    optNull  string? @nullable
-}`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-
-	want := []struct{ ident, typ, tag string }{
-		{"Plain", "string", `json:"plain"`},
-		{"NullStr", "*string", `json:"nullStr"`},           // @nullable only → no omitempty
-		{"NullBlob", "[]byte", `json:"nullBlob"`},          // already nilable + no omitempty
-		{"OptNull", "*string", `json:"optNull,omitempty"`}, // `?` dominates → omitempty
-	}
-	for _, w := range want {
-		if !lineHasField(src, w.ident, w.typ) || !lineHasField(src, w.ident, w.tag) {
-			t.Errorf("expected %s %s with tag %s in:\n%s", w.ident, w.typ, w.tag, src)
+	for _, want := range []string{"rust", "go", "docs"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, err)
 		}
 	}
 }
 
-func TestGenerateTypesNoPackageName(t *testing.T) {
-	pkg := &semantic.Package{Types: map[string]*ast.TypeDecl{}}
-	if err := GenerateTypes(pkg, t.TempDir(), nil); err == nil {
-		t.Error("expected error for missing pkg name")
-	}
-}
-
-// ---------- enums ----------
-
-// TestGenerateEnums covers all three enum kinds (bare / int /
-// string) via golden snapshot files. Each case generates the enum
-// and compares against the reference at testdata/golden/enums-<kind>.go;
-// run `go test -update` to refresh after an intentional emit
-// change. The snapshot beats hand-written `strings.Contains`
-// chains because a regression shows the entire offending hunk
-// inline, not a single missing substring.
-func TestGenerateEnums(t *testing.T) {
-	cases := []struct {
-		name   string
-		src    string
-		golden string
-	}{
-		{
-			name:   "bare",
-			src:    `package design` + "\n" + `enum Color { Red  Green  Blue }`,
-			golden: "enums-bare.go",
-		},
-		{
-			name:   "int",
-			src:    `package design` + "\n" + `enum Priority { Low = 1  High = 99 }`,
-			golden: "enums-int.go",
-		},
-		{
-			name:   "string",
-			src:    `package design` + "\n" + `enum Status { Active = "active"  Pending = "pending" }`,
-			golden: "enums-string.go",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			pkg := analyze(t, c.src)
-			dir := t.TempDir()
-			if err := GenerateEnums(pkg, dir); err != nil {
-				t.Fatal(err)
-			}
-			out, err := os.ReadFile(filepath.Join(dir, "design", "enums.go"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			mustParseGo(t, string(out))
-			expectGolden(t, c.golden, string(out))
-		})
-	}
-}
-
-func TestGenerateEnumsEmpty(t *testing.T) {
-	pkg := analyze(t, `package design
-type X {}`)
-	dir := t.TempDir()
-	if err := GenerateEnums(pkg, dir); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "design", "enums.go")); !os.IsNotExist(err) {
-		t.Error("expected no enums.go for empty enum set")
-	}
-}
-
-func TestGenerateEnumsNoPackageName(t *testing.T) {
-	pkg := &semantic.Package{Enums: map[string]*ast.EnumDecl{"X": {Name: "X"}}}
-	if err := GenerateEnums(pkg, t.TempDir()); err == nil {
-		t.Error("expected error")
-	}
-}
-
-// ---------- errors ----------
-
-func TestGenerateErrorsShort(t *testing.T) {
-	pkg := analyze(t, `package design
-error NotFound UserNotFound`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	// gofmt aligns struct-literal field assignments and tags with extra
-	// whitespace; collapse to single spaces before substring matching.
-	norm := strings.Join(strings.Fields(src), " ")
-	for _, want := range []string{
-		`const ErrCodeUserNotFound = "USER_NOT_FOUND"`,
-		"type UserNotFoundErr struct {",
-		"func NewUserNotFoundErr() *UserNotFoundErr",
-		"code: ErrCodeUserNotFound",
-		`message: "Not found"`,
-		"return e.message",
-		"return e.code", // ErrCode() accessor
-		"func (e *UserNotFoundErr) ErrCode() string",
-		"return 404",
-	} {
-		if !strings.Contains(norm, want) {
-			t.Errorf("missing %q in:\n%s", want, src)
-		}
-	}
-	// Internal-only contract: code/message live as unexported struct
-	// fields, never on the wire. No body struct should be emitted for
-	// a body-less error.
-	for _, forbidden := range []string{
-		`Code string`,    // would be exported
-		`Message string`, // would be exported
-		`json:"code"`,
-		`json:"message"`,
-		"WithMessage",
-		"WithCode",
-		"UserNotFoundBody", // no body struct without user fields
-	} {
-		if strings.Contains(norm, forbidden) {
-			t.Errorf("forbidden token %q present:\n%s", forbidden, src)
+// Every selectable name must be one the run actually understands.
+func TestSelectableTargetsAreKnown(t *testing.T) {
+	proj := analyzeProject(t, ordersSrc)
+	for _, name := range SelectableTargets() {
+		if err := Generate(proj, eventsConfig(), t.TempDir(), name); err != nil {
+			t.Errorf("target %q is offered but does not run: %v", name, err)
 		}
 	}
 }
 
-func TestGenerateErrorsCustomFields(t *testing.T) {
-	pkg := analyze(t, `package design
-error BadRequest Validation {
-    fields  string[]
-}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	// gofmt may align struct fields with extra spaces; collapse whitespace
-	// before substring matching.
-	norm := strings.Join(strings.Fields(src), " ")
-	// Body struct holds the user-declared field with its JSON tag.
-	if !strings.Contains(norm, "type ValidationBody struct") {
-		t.Errorf("missing body struct:\n%s", src)
-	}
-	if !strings.Contains(norm, `Fields []string `+"`json:\"fields\"`") {
-		t.Errorf("missing custom field on body struct:\n%s", src)
-	}
-	// Err type embeds the body struct (no per-field params on the ctor).
-	if !strings.Contains(src, "func NewValidationErr(body ValidationBody) *ValidationErr") {
-		t.Errorf("constructor must take a body struct:\n%s", src)
-	}
-}
+// generatedHeader opens every file craftgo rewrites on each run; the
+// scaffolds carry a different first line.
+const generatedHeader = "// Code generated by craftgo. DO NOT EDIT."
 
-func TestGenerateErrorsUserDeclaresCodeAndMessage(t *testing.T) {
-	// User declaring `code` / `message` in the DSL produces exported
-	// wire fields (Go `Code` / `Message`); they coexist with the
-	// framework's unexported metadata fields without conflict.
-	pkg := analyze(t, `package design
-error Internal Boom {
-    code string? @default("BOOM_500")
-    message string? @default("kaboom")
-}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+const alphaSrc = `package x
+type Placed { id string @minLength(1) }
+event Placed { payload Placed }`
 
-	// User wire fields surface on the body struct as exported Go names
-	// with the DSL JSON tag; an optional field carries omitempty (the same
-	// canonical jsonTag rule regular types use).
-	if !strings.Contains(norm, `Code *string `+"`json:\"code,omitempty\"`") {
-		t.Errorf("user `code?` field should appear on body struct as *Code:\n%s", src)
-	}
-	if !strings.Contains(norm, `Message *string `+"`json:\"message,omitempty\"`") {
-		t.Errorf("user `message?` field should appear on body struct as *Message:\n%s", src)
-	}
-	// Internal metadata stays present and unexported on the err type.
-	if !strings.Contains(norm, "code string message string") {
-		t.Errorf("err type must keep unexported code/message metadata:\n%s", src)
-	}
-	if !strings.Contains(src, "return 500") {
-		t.Errorf("status:\n%s", src)
-	}
-}
-
-func TestGenerateErrorsSmartSuffix(t *testing.T) {
-	pkg := analyze(t, `package design
-error NotFound UserNotFoundError
-error BadRequest ValidationErr`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	if strings.Contains(src, "UserNotFoundErrorErr") {
-		t.Error("smart suffix should keep ...Error name")
-	}
-	if strings.Contains(src, "ValidationErrErr") {
-		t.Error("smart suffix should keep ...Err name")
-	}
-}
-
-func TestGenerateErrorsResponseBindings(t *testing.T) {
-	pkg := analyze(t, `package design
-error TooManyRequests RateLimited {
-    retryAfter   string  @header
-    sessionToken string  @cookie
-    bucket       string?
-}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-
-	// Header / cookie fields carry json:"-" so they don't double up in the
-	// JSON body alongside the response-header / cookie write, plus a binding
-	// key naming the wire location (header:"retryAfter", cookie:"sessionToken").
-	if !strings.Contains(norm, `RetryAfter string `+"`json:\"-\" header:\"retryAfter\"`") {
-		t.Errorf("retryAfter should be json:\"-\" header:\"retryAfter\":\n%s", src)
-	}
-	if !strings.Contains(norm, `SessionToken string `+"`json:\"-\" cookie:\"sessionToken\"`") {
-		t.Errorf("sessionToken should be json:\"-\" cookie:\"sessionToken\":\n%s", src)
-	}
-	// Optional non-bound field keeps its real JSON tag, with omitempty (the
-	// canonical jsonTag rule - an optional error-body field is omittable).
-	if !strings.Contains(norm, `Bucket *string `+"`json:\"bucket,omitempty\"`") {
-		t.Errorf("bucket should keep its DSL JSON tag:\n%s", src)
-	}
-	// WriteResponseHeaders must be emitted with the expected wire writes.
-	mustContainAll(t, src,
-		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
-		`w.Header().Set("retryAfter", e.RetryAfter)`,
-		`http.SetCookie(w, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
-		`"net/http"`,
-	)
-}
-
-// A @sensitive field on an error body must be tagged json:"-" - the same
-// canonical jsonTag rule regular types follow - so a server-only secret
-// never rides the error response wire. (Regression: the error emitter once
-// re-derived the tag and leaked the value as json:"<name>".)
-func TestGenerateErrorsSensitiveFieldExcludedFromBody(t *testing.T) {
-	pkg := analyze(t, `package design
-error Forbidden Boom {
-    secret string @sensitive
-    note   string
-}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, `Secret string `+"`json:\"-\"`") {
-		t.Errorf("@sensitive error field must be json:\"-\" (server-only), not leaked:\n%s", src)
-	}
-	if strings.Contains(norm, `json:\"secret\"`) {
-		t.Errorf("@sensitive error field secret leaked onto the wire:\n%s", src)
-	}
-}
-
-// TestGenerateErrorsResponseBindingsNonString pins the non-string
-// @header / @cookie formatting on the error path: int / bool values are
-// rendered via strconv (and the strconv import is pulled in), mirroring
-// the success-response writer.
-func TestGenerateErrorsResponseBindingsNonString(t *testing.T) {
-	pkg := analyze(t, `package design
-scalar Cents int
-error TooManyRequests RateLimited {
-    retryAfter int   @header("Retry-After")
-    cost       Cents @header("X-Cost")
-    throttled  bool  @cookie("throttled")
-}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	mustContainAll(t, src,
-		`"net/http"`,
-		`"strconv"`,
-		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
-		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
-		// A numeric scalar resolves to its primitive (int) and formats
-		// the same as a plain int field - proving local scalar
-		// resolution works on the error path too.
-		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
-		`http.SetCookie(w, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
-	)
-}
-
-// TestGenerateErrorsCrossPkgScalarHeader pins the cross-package scalar
-// resolution on the error path. A non-string scalar imported from
-// another package (shared.Cents → int) must resolve through the
-// ProjectResolver and format via strconv.FormatInt - NOT the broken
-// string(int) conversion the local-only path would emit (wrong runtime
-// value + a go vet diagnostic). This exercises the resolver that
-// GenerateErrors threads through; the local-scalar test above
-// would pass even without it.
-func TestGenerateErrorsCrossPkgScalarHeader(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
-		"shared/types.craftgo": `package shared
-scalar Cents int @gte(0)`,
-		"app/errors.craftgo": `package app
-import "shared"
-error TooManyRequests RateLimited {
-    cost shared.Cents @header("X-Cost")
-}`,
-	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
-	appPkg := proj.Packages["app"]
-	if appPkg == nil {
-		t.Fatal("app package missing from project")
-	}
-	dir := t.TempDir()
-	r := BuildProjectResolver(proj, newFixtureConfig(), "app")
-	if err := GenerateErrors(appPkg, dir, r); err != nil {
-		t.Fatal(err)
-	}
-	out, err := os.ReadFile(filepath.Join(dir, "app", "errors.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := string(out)
-	mustParseGo(t, src)
-	if !strings.Contains(src, `w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`) {
-		t.Errorf("cross-pkg int scalar should format via strconv.FormatInt; got:\n%s", src)
-	}
-	if strings.Contains(src, `string(e.Cost)`) {
-		t.Errorf("cross-pkg int scalar must NOT use string(int) (wrong value + go vet flags it):\n%s", src)
-	}
-}
-
-func TestGenerateErrorsNoBindingsNoHTTPImport(t *testing.T) {
-	// Without @header / @cookie fields, errors.go must NOT carry a
-	// `net/http` import or a WriteResponseHeaders method.
-	pkg := analyze(t, `package design
-error NotFound UserNotFound`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	if strings.Contains(src, `"net/http"`) {
-		t.Errorf("unexpected net/http import for binding-free errors:\n%s", src)
-	}
-	if strings.Contains(src, "WriteResponseHeaders") {
-		t.Errorf("unexpected WriteResponseHeaders method:\n%s", src)
-	}
-}
-
-func TestGenerateErrorsEmpty(t *testing.T) {
-	pkg := analyze(t, `package design
-type X {}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "design", "errors.go")); !os.IsNotExist(err) {
-		t.Error("expected no errors.go")
-	}
-}
-
-func TestGenerateErrorsNoPackageName(t *testing.T) {
-	pkg := &semantic.Package{Errors: map[string]*ast.ErrorDecl{"X": {Name: "X", Category: "NotFound"}}}
-	if err := GenerateErrors(pkg, t.TempDir(), nil); err == nil {
-		t.Error("expected error")
-	}
-}
-
-// ---------- helpers ----------
-
-func TestGoFieldName(t *testing.T) {
-	cases := map[string]string{
-		"id":        "ID",
-		"userId":    "UserID",
-		"user_id":   "UserID",
-		"http_url":  "HTTPURL",
-		"firstName": "FirstName",
-		"":          "",
-	}
-	for in, want := range cases {
-		if got := GoFieldName(in); got != want {
-			t.Errorf("%q → %q want %q", in, got, want)
+// notesMatching picks the notes a test means out of the whole set, so
+// adding an unrelated note does not fail it.
+func notesMatching(notes []string, needle string) []string {
+	var out []string
+	for _, n := range notes {
+		if strings.Contains(n, needle) {
+			out = append(out, n)
 		}
 	}
+	return out
 }
 
-// TestGoTypeRefOptionalNilableBase pins the no-redundant-pointer rule:
-// optional fields whose base Go type is already nil-zeroable (slice,
-// map, pointer-shaped builtin, interface) must NOT receive an extra
-// `*`. Value-type optionals (string?, struct?) still get the pointer so
-// "absent" remains distinguishable from the zero value.
-func TestGoTypeRefOptionalNilableBase(t *testing.T) {
-	pkg := analyze(t, `package design
-type User { name string }
-type T {
-    bytesOpt    bytes?
-    fileOpt     file?
-    anyOpt      any?
-    arrayOpt    string[]?
-    mapOpt      map<string, int>?
-    stringOpt   string?
-    structOpt   User?
-}`)
-	dir := t.TempDir()
-	if err := GenerateTypes(pkg, dir, nil); err != nil {
+// A contracts project writes none of the application half, so it sweeps
+// none of those directories either. The leftovers of a project that used
+// to be an application ship with the library unless someone deletes them,
+// so they are named.
+func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
+	root := t.TempDir()
+	cfg := eventsConfig()
+	cfg.Output.Kind = config.KindContracts
+	cfg.Output.Main = "./main.go"
+
+	stale := filepath.Join(root, filepath.FromSlash(cfg.Output.Transport), "svc", "handler.go")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
-	src := string(out)
-	mustParseGo(t, src)
-
-	want := []struct {
-		ident, tag string
-	}{
-		{"BytesOpt", "[]byte"},
-		{"FileOpt", "*multipart.FileHeader"},
-		{"AnyOpt", "any"},
-		{"ArrayOpt", "[]string"},
-		{"MapOpt", "map[string]int"},
-		// Value-type optionals - pointer is still required.
-		{"StringOpt", "*string"},
-		{"StructOpt", "*User"},
-	}
-	for _, w := range want {
-		if !lineHasField(src, w.ident, w.tag) {
-			t.Errorf("expected field %s with type %q in:\n%s", w.ident, w.tag, src)
-		}
-	}
-	// Negative: no double-pointer or pointer-to-slice anywhere.
-	mustContainNone(t, src,
-		"**",
-	)
-}
-
-// lineHasField reports whether `src` has any line containing both the
-// identifier and the type expression. Whitespace between them is
-// arbitrary so gofmt's column alignment doesn't break the assertion.
-func lineHasField(src, ident, typ string) bool {
-	for _, line := range strings.Split(src, "\n") {
-		if strings.Contains(line, ident) && strings.Contains(line, typ) {
-			// Reject pointer-to-typ accidentally matching the substring.
-			// e.g. "*[]byte" contains "[]byte" - we want only the bare form.
-			if strings.Contains(line, "*"+typ) {
-				continue
-			}
-			return true
-		}
-	}
-	return false
-}
-
-func TestGoTypeRefNil(t *testing.T) {
-	if GoTypeRef(nil) != "" {
-		t.Error()
-	}
-}
-
-func TestScreamingSnake(t *testing.T) {
-	cases := map[string]string{
-		"UserNotFound": "USER_NOT_FOUND",
-		"DBError":      "DB_ERROR",
-	}
-	for in, want := range cases {
-		if got := screamingSnake(in); got != want {
-			t.Errorf("%q → %q want %q", in, got, want)
-		}
-	}
-}
-
-func TestErrSuffix(t *testing.T) {
-	cases := map[string]string{
-		"NotFound":  "NotFoundErr",
-		"BoomErr":   "BoomErr",
-		"BoomError": "BoomError",
-	}
-	for in, want := range cases {
-		if got := errSuffix(in); got != want {
-			t.Errorf("%q → %q want %q", in, got, want)
-		}
-	}
-}
-
-// TestGenerateErrorsEmbedsMixin checks that a mixin embedded in an error
-// body is embedded in the generated Go body struct, so the server can
-// populate the fields the OpenAPI allOf advertises and produce the
-// spec-conformant 4xx response.
-func TestGenerateErrorsEmbedsMixin(t *testing.T) {
-	pkg := analyze(t, `package design
-type Audit { actor string  at string @format(datetime) }
-error Forbidden Denied {
-    Audit
-    reason string
-}`)
-	dir := t.TempDir()
-	if err := GenerateErrors(pkg, dir, nil); err != nil {
+	if err := os.WriteFile(stale, []byte(generatedHeader+"\n\npackage svc\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
-	if !strings.Contains(norm, "type DeniedBody struct { Audit") {
-		t.Errorf("error body must embed the Audit mixin:\n%s", src)
+
+	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), cfg, root), "output.kind is contracts")
+	if len(notes) != 1 || !strings.Contains(notes[0], cfg.Output.Transport) {
+		t.Errorf("leftover application output must be named: %v", notes)
+	}
+	if _, err := os.Stat(stale); err != nil {
+		t.Errorf("it is named, not deleted: %v", err)
 	}
 }
 
-// A scalar over the nilable `bytes` primitive lowers to the bare named
-// slice, so an optional / @nullable field of it must NOT carry a
-// redundant pointer - it renders like a raw `bytes` field, and its
-// validator nil-guards before calling the scalar's own Validate().
-func TestScalarOverBytesNullableRendersWithoutPointer(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
-		"m/m.craftgo": `package m
-scalar Blob bytes @minLength(4)
-type Doc {
-  reqBlob Blob
-  nulBlob Blob @nullable
-  optBlob Blob?
-}`,
-	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
+// `output.main: "-"` skips the ServiceContext scaffold while the handlers,
+// logic stubs and wiring are all written against it. A project that has
+// not written its own is told so.
+func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
+	root := t.TempDir()
+	cfg := eventsConfig()
+	cfg.Output.Main = "-"
+	proj := analyzeProject(t, alphaSrc)
+
+	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "yours to write"); len(notes) != 1 {
+		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, cfg, root))
 	}
-	dir := t.TempDir()
-	mPkg := proj.Packages["m"]
-	if err := GenerateTypes(mPkg, dir, nil); err != nil {
+
+	// Once the project supplies one, the note goes.
+	dest := filepath.Join(root, filepath.FromSlash(cfg.Output.Svccontext))
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateValidators(mPkg, dir, &ProjectResolver{Scalars: BuildScalarTable(proj, "m"), Types: BuildTypeTable(proj, "m"), Enums: BuildEnumTable(proj, "m")}); err != nil {
+	if err := os.WriteFile(dest, []byte("package svccontext\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	types, _ := os.ReadFile(filepath.Join(dir, "m", "types.go"))
-	val, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
-	mustParseGo(t, string(types))
-	mustParseGo(t, string(val))
-	ts := string(types)
-	if strings.Contains(ts, "*Blob") {
-		t.Errorf("scalar-over-bytes field rendered with a redundant pointer (*Blob):\n%s", ts)
+	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "yours to write"); len(notes) != 0 {
+		t.Errorf("a hand-written container must silence it: %v", notes)
 	}
-	mustContainAll(t, ts,
-		"NulBlob Blob `json:\"nulBlob\"`",
-		"OptBlob Blob `json:\"optBlob,omitempty\"`",
-	)
-	// The nullable/optional scalar's Validate() stays nil-guarded so a
-	// null / absent value skips the scalar's own constraint.
-	mustContainAll(t, string(val),
-		"if v.NulBlob != nil {",
-		"if v.OptBlob != nil {",
-	)
 }

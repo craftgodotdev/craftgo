@@ -26,16 +26,22 @@ package <ident>
   [@decorator]* enum Name { values... }
   [@decorator]* error Category Name [{ fields... }]
   [@decorator]* scalar Name <Primitive> [@validators...]
-  [@decorator]* service Name { methods... }
-  [@decorator]* extend service Name { methods... }
+  [@decorator]* service Name { members... }
+  [@decorator]* extend service Name { members... }
   [@decorator]* middleware Name
+  [@decorator]* event Name { payload Type }      // or `payload Type[]`
+
+<service member> is one of:
+  [@decorator]* <verb> Name [path] { request Type?  response Type? }
 ```
 
 Files in the same directory share `package` and see each other's declarations. Cross-directory references qualify with the target package's name (`shared.Type`); no import statement is needed (an `import "<sibling-dir>"` line is still accepted but deprecated).
 
-## Keywords (15)
+## Keywords (17)
 
-`package`, `import`, `type`, `enum`, `error`, `scalar`, `service`, `extend`, `middleware`, `request`, `response`, `map`, `true`, `false`, `null`. Plus HTTP verbs (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`).
+`package`, `import`, `type`, `enum`, `error`, `scalar`, `service`, `extend`, `middleware`, `request`, `response`, `event`, `payload`, `map`, `true`, `false`, `null`. Plus HTTP verbs (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`).
+
+A reserved word is still legal where the grammar leaves no ambiguity: as a field name in a type body, as an enum value name, as a decorator argument naming a field, and as a path segment or path-parameter name.
 
 ## Types
 
@@ -51,6 +57,7 @@ Field syntax: `name TypeRef [@decorator(...) ...]`.
 | `uint8/16/32/64` | matching Go             |                                            |
 | `float32/64`     | matching Go             |                                            |
 | `bool`           | `bool`                  |                                            |
+| `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
 | `any`            | `any`                   | arbitrary JSON value (`object` is rejected as a field type) |
 | `file`           | `*multipart.FileHeader` | only with `@form`                          |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
@@ -245,6 +252,161 @@ Wire each field once at startup in `main.go`, then attach via `@middlewares(Name
 svc.AuthRequired = middleware.NewAuthRequiredMiddleware()
 ```
 
+## Events
+
+The design is a **contract catalogue** - what is on the wire, and nothing else. Which events a
+deployable listens to, on which group, behind which middleware, is that deployable's own Go: the
+design never names a listener, a broker, a group or a codec.
+
+```craftgo
+package orders
+
+type OrderPlaced  { orderId string @minLength(1)  total int64 @gte(0) }
+type OrderShipped { orderId string  carrier string }
+
+@doc("Emitted once an order is accepted.")
+event Placed { payload OrderPlaced }              // file level - a service body is HTTP only
+
+@contract("order.shipped.v2")
+event Shipped { payload OrderShipped }
+```
+
+- `event Name { payload Type }` at **file level**. `Type` must name a `type` declaration
+  (`event/payload-kind` otherwise); a missing `payload` is `event/payload-missing`, a duplicate
+  event name `event/duplicate-name`. An `event` inside a `service` body is a syntax error naming
+  the move.
+- `payload Type[]` is a contract whose body is a JSON array of that type: the descriptor is
+  typed on the slice (`NewEvent[[]types.Type]`) and the generated validator runs each element's
+  own `Validate`. One dimension only - a nested array, a `?`, a map or a primitive payload is
+  refused.
+- Wire identity is `<package>.<Event>`, overridden by `@contract("orders.placed.v2")`
+  (`event/contract-format` on a malformed one). Two events resolving to one identity:
+  `event/contract-collision`.
+- Events have their own namespace (`type OrderPlaced` and `event OrderPlaced` coexist) and take
+  `@contract`, `@doc` and `@deprecated` - nothing else. `@group` is HTTP-only.
+- Removed, each rejected with `decorator/removed` and a migration note: `@key`, the decorator that
+  named a consumer's broker group, the one that named its middleware, and the standalone
+  consumer-middleware declaration. The listener declaration they sat on went with them, and a
+  service body still holding one is a syntax error saying where the listener lives now.
+
+Generated per DSL package that declares an event, under an `events.targets[].out`, and nothing
+else - no handler interface, no `Groups`, no `Register<Svc>Handler`, no publisher, no consumer
+stub, no event field on `svccontext`, no `internal/transport/events.go`:
+
+```go
+// <out>/orders/events.go - GEN every run, the only event file
+// PlacedContract is the wire identity of Placed.
+// Publisher and listener both address the contract by this value.
+const PlacedContract = "orders.Placed"
+
+// Emitted once an order is accepted.       <- @doc replaces the generated comment
+//
+// Placed is the orders.Placed contract.
+// Placed.Publish(ctx, bus, payload) sends one; a listener registers
+// Placed.Subscribe(bus, group, fn) on its own bus.
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
+```
+
+A descriptor holds no bus - it is a parameter at every call, so one contract package serves every
+deployable, and `wiring.Register` / `svccontext` / `main.go` keep only their HTTP duties. The
+listener half is hand-written Go, one line per event:
+
+```go
+// internal/handler/orders/handler.go - groups as values beside the registrations
+var (
+	Group        = craftevents.Group("order-worker")
+	ReceiptGroup = craftevents.Group("order-receipts")
+)
+
+func Register(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
+	l := logic.New(svcCtx)
+	return errors.Join(                                     // every line offered, every refusal reported
+		orders.Placed.Subscribe(bus, Group, l.OrderPlaced), // fn: (ctx, *types.OrderPlaced) error
+		orders.Shipped.Subscribe(bus, Group, l.OrderShipped),
+		payments.Captured.Subscribe(bus, ReceiptGroup, l.PaymentCaptured),
+	)
+}
+
+// main.go
+bus := craftevents.New(
+	craftevents.WithTransport(memory.New()),      // or a broker adapter
+	craftevents.WithCodec(codecjson.Codec{}),     // or protobuf / msgpack / ...
+)
+bus.Use(logging.AccessLog(logger), retry, timeout)  // bus-wide chain; panics after Start
+err := handler.Register(bus, svcCtx)
+err = bus.Start(ctx)                                // the whole batch, in one call
+
+err = ordersevents.Placed.Publish(ctx, bus, payload, craftevents.WithKey(payload.OrderID))
+err = bus.Publish(ctx, ordersevents.PlacedContract, payload)  // the untyped path
+
+func (e Event[T]) Subscribe(bus *Bus, group Group,
+	fn func(ctx context.Context, payload *T) error) error         // the listener's line: build + register
+func (e Event[T]) Subscription(bus *Bus, group Group,
+	fn func(ctx context.Context, payload *T) error) Subscription  // no consumer, no chain param
+func (b *Bus) Use(mws ...Middleware)             // append to the bus chain; panics after Start
+func (b *Bus) Register(sub Subscription) error   // the value path; refused once started
+func (b *Bus) Start(ctx context.Context) error
+func (b *Bus) Plan() Plan                        // groups -> consumers, stable order
+func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error
+func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error
+
+type Subscription struct{ Event, Consumer string; Group Group; Chain Chain; Handle Handler }
+type Subscriber interface{ Subscribe(ctx context.Context, subs []Subscription) error } // batch only
+```
+
+`Group` is a named type with no fallback - declare the groups as values beside the registrations.
+`Consumer` defaults to the contract and names the handler in `Plan` and in a `*PanicError` only;
+when two subscriptions of one contract need telling apart, take the value from `Subscription`, set
+the field and hand it to `bus.Register` - the exception `Subscribe` leaves room for.
+`Subscription.Chain` is the same kind of exception, for one registration that needs a wrap the rest
+of the deployable does not; it is applied inside the bus chain.
+
+`Register` refuses a started bus, a nil `Handle`, an empty `Group` (`ErrNoGroup`), a contract with
+no codec, a disposition the transport cannot honour, and a duplicate `(Event, Group)`; whether the
+BROKER accepts the set is `Start`'s answer. A second `Start` or a later `Register` is `ErrStarted`,
+even after one that failed. `Plan()` works either side of `Start` and marshals in stable order -
+pin it in a golden file (`memory.New()` + the module's `Register` in a test) and it is the listener map no
+generated file states any more.
+
+The ordering key is a publish option, not a design decision; without one a publish is keyless.
+`WithDedupID`, `WithHeader(k, v)` and `WithAdapterOption(adapter, k, v)` are the rest;
+`WithPublishDefaults(opts...)` sets bus-wide defaults a call's own options win over. `pkg/events`
+knows no broker and no encoding: `pkg/events/memory` is an in-process transport, `codecjson` a JSON
+codec, `logging` the shipped consumer middleware, `kafka` and `nats` broker adapters (own modules).
+
+Metadata is the publisher's to set, on `Envelope.Metadata`, so a message carrying any is a
+one-envelope `Bus.PublishAll` (`Bus.Publish` takes none). `events.IsReservedMeta` names the keys
+that are not a caller's - `MetaCodec` (`content-codec`) and anything under `MetaPrefix` (`craftgo-`);
+an entry under one is dropped silently. A handler is given the decoded payload, so metadata is read
+in a middleware or a hand-written `Subscription`.
+
+Consumer middleware is ordinary Go, never declared in the DSL: `func(sub Subscription, next Handler)
+Handler`, folded outermost-first. `WithMiddleware(mws...)` installs it at construction, `bus.Use`
+appends to the same chain afterwards (for a chain built out of a service context); `Use` after
+`Start` panics. Order: recover outermost, then the bus chain, then `Subscription.Chain`, then the
+handler.
+
+`Bus.Start` wraps every handler in a recover, so a panicking consumer reaches the transport's error
+handler as a `*events.PanicError` and delivery continues. A payload that would not decode or failed
+`Validate()` is a `*events.PayloadError` naming the contract; another codec's stamp is
+`events.ErrCodecMismatch`. Beyond that the runtime classifies nothing: what to do is a middleware's.
+
+On JetStream a group is the durable name, carrying one filter subject per contract it consumes, so
+a group keeps its position under its name. An existing durable is adopted and verified: an equal
+filter set is adopted, a strict subset is widened to the plan, anything else - a narrower plan, a
+partial overlap, a durable with no filter - is refused naming both sets unless the group carries
+`AllowNarrow()`. Per-group settings come from `nats.WithGroupConfig(group, MaxInFlight(n),
+AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`. `AckWait`, `DeliverPolicy` and
+`ConsumerConfig` apply only when the durable is created; `MaxInFlight` is the prefetch, default 1 -
+raise it only where n x the slowest handler stays under `AckWait`.
+
+Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-events) -
+[generated](/guide/events#what-is-generated) - [publishing](/guide/events#publishing) -
+[consuming](/guide/events#consuming) - [groups](/guide/events#groups) -
+[middleware](/guide/events#middleware) - [dispositions](/guide/events#dispositions) -
+[plan](/guide/events#the-plan) -
+[JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory)
+
 ## Decorator registry
 
 Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`), `size` (`1MB` / `8KB`), `array literal`. All arguments are positional - named args are not accepted.
@@ -261,8 +423,8 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 | Decorator                    | Sites                                                        | Args                      |
 | ---------------------------- | ------------------------------------------------------------ | ------------------------- |
-| `@doc("...")`                | any level (file, type, field, service, method, enum, error, scalar, middleware, enumValue, errorField) | `(string)` |
-| `@deprecated`                | file, type, field, service, method, enumValue, middleware, errorField | `()` or `(string)`        |
+| `@doc("...")`                | any level (file, type, field, service, method, enum, error, scalar, middleware, event, enumValue, errorField) | `(string)` |
+| `@deprecated`                | file, type, field, service, method, enumValue, middleware, event, errorField | `()` or `(string)`        |
 | `@example(value)`            | field, errorField                                            | literal (string/int/float/bool/null) or array - **not** an object |
 | `@requiresOneOf(a, b, ...)`  | type                                                         | idents (or array literal) |
 | `@mutuallyExclusive(a, ...)` | type                                                         | idents (or array literal) |
@@ -320,6 +482,7 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@nullable`       | field, errorField | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)            |
 | `@default(value)` | field, errorField | Pre-fill before JSON decode. Works on primitive, scalar, enum, optional / array of those.        |
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`. |
+| `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
 `@default` requires the field be optional (`?`). The formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you do. For enum fields, the value is the bare ident (`@default(Active)`).
 
@@ -356,6 +519,13 @@ Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`. `@default` on a non-optional field fires `decorator/default-needs-optional` (warning; formatter auto-fixes on save).
 
+### Event level
+
+| Decorator          | Sites    | Args                  | Effect                                                                                     |
+| ------------------ | -------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| `@contract("...")` | event    | `(string)`            | Override the wire identity. Default `<package>.<Event>`.                                     |
+| `@doc` / `@deprecated` | event | see above         | `@doc` replaces the descriptor's generated comment. Nothing else applies at event level.     |
+
 ## CLI
 
 | Command                          | Description                                                                         |
@@ -380,16 +550,23 @@ Lives **inside** the design folder. The folder is the design root; its parent is
 
 ```yaml
 output:
+  kind: application # application (default) | contracts
   types: ./internal/types # directory
   transport: ./internal/transport # directory
   routes: ./internal/routes # directory
   service: ./internal/service # directory
   middleware: ./internal/middleware # directory
+  wiring: ./internal/wiring # directory; holds the one Register call main.go makes
   svccontext: ./svccontext/svccontext.go # FILE PATH (single file)
   openapi: ./docs/openapi.yaml # FILE PATH (single file)
   config: ./config # directory
   main: ./main.go # FILE PATH (single file)
   fileCase: snake # snake (default) | kebab | camel - generated file/dir names only; URL routes and Go identifiers unaffected
+
+events: # optional; a design with no event generates nothing either way
+  targets: # one row per language; Go is a row, not a privileged default
+    - lang: go
+      out: ./internal/events # "-" skips the target
 
 openapi:
   title: My API
@@ -406,6 +583,16 @@ openapi:
 All `output.*` paths resolve against the **project root** (the directory holding `go.mod`, the parent of the design folder). Override any of them to relocate the corresponding artifact. Set any path to `-` to skip generation. Setting `main: -` also skips `config/` and `svccontext` (middleware scaffolds are still generated).
 
 The Go module path is **not** in this file. craftgo reads it from `go.mod` at gen time.
+
+`output.kind: contracts` generates only what other projects import - payload types, the event library and the documents - and stops before the application half. Its defaults move out of `internal/`, which Go forbids importing across modules: `output.types: ./gen/types` and `events.targets[].out: ./gen/events`.
+
+### Stale output is pruned
+
+A generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents - is the whole record. At the end of a run craftgo walks the output directories the manifest names, deletes every file carrying that header the run did not write, and removes the directories that leaves empty. It covers transport, routes, wiring, `svccontext/middlewares.go`, the event packages, a removed DSL package's `output.types` folder and the OpenAPI document. Nothing is stored on the side.
+
+- An output directory belongs to **exactly one design**. Two different designs writing into one directory delete each other's output; share contracts through an `output.kind: contracts` project the deployables import. (Two manifests generating the *same* design into one directory is fine - they write the same files.)
+- Gen-once territory is never walked: `output.service`, `output.middleware`, `output.config` and `main.go` are written only when missing, and neither those directories nor the project root is swept.
+- Strip the header and the sweep stops seeing the file - it survives a design that no longer produces it, but the next run still overwrites it if the design names that path.
 
 ### `openapi.basePath`
 
@@ -488,11 +675,14 @@ project/
 │   │   ├── validate.go
 │   │   ├── enums.go
 │   │   └── errors.go
+│   ├── events/<pkg>/                             GEN every run (when the package declares an event)
+│   │   └── events.go
 │   ├── transport/<svc>/                          GEN every run
 │   │   └── <method>.go
 │   ├── service/<svc>/<method>.go           GEN ONCE
 │   ├── routes/routes.go                          GEN every run (umbrella)
 │   ├── routes/<svc>/routes.go                    GEN every run
+│   ├── wiring/wiring.go                          GEN every run
 │   └── middleware/<name>_middleware.go           GEN ONCE per declared middleware
 ├── svccontext/
 │   ├── svccontext.go                             GEN ONCE
@@ -584,7 +774,7 @@ tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in
 srv := server.New(svcCtx)
 srv.Use(tel.HTTPMiddleware()) // opens the span first, so AccessLog sees the trace ids
 srv.Use(server.AccessLog(logger))
-routes.RegisterAll(srv, svcCtx)
+wiring.Register(ctx, srv, svcCtx)
 srv.Start(":8080")
 ```
 
@@ -750,7 +940,8 @@ Both methods share `/users` prefix and `AuthRequired`. `PurgeUser` additionally 
 - Database model generation
 - gRPC code generation (yet)
 - Runtime middleware library (auth, ratelimit, breaker) - use any `func(http.Handler) http.Handler`
-- Multi-language client gen - emit OpenAPI and use openapi-generator
+- Multi-language client gen - emit OpenAPI and run a generator over it; Go is craftgo's only source-code target
+- Broker adapters in the core module - `pkg/events` defines the transport interfaces and depends on nothing; the Kafka and NATS adapters ship as their own modules under `pkg/events/`, and anything else (RabbitMQ, SQS) is an external `Publisher` / `Subscriber`
 - Custom routers - uses Go 1.22+ stdlib `*http.ServeMux`
 - Environment-variable config - YAML file is the single source of runtime values
 
@@ -762,3 +953,4 @@ Both methods share `/users` prefix and `AuthRequired`. `PurgeUser` additionally 
 - The generated OpenAPI is structurally valid OAS 3.1 and renders cleanly in Swagger UI, ReDoc, and openapi-generator (Spectral / Redocly may flag nullable-union representations under their default 3.1 rulesets)
 - The runtime is `net/http` only - no fork, no patch, no parallel runtime
 - The DSL is a closed set: unknown decorators fire `decorator/unknown` at gen time, never silently ignored
+- The event model carries no broker or codec concept: transports, codecs, groups and consumer middleware are the application's runtime wiring, never the design's

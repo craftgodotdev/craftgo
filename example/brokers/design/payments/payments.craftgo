@@ -1,0 +1,19 @@
+// payments describes a contract this system consumes but does not own.
+// The payments platform publishes it; declaring the event here at file
+// level - outside any service - is how you subscribe without pretending
+// to be its producer.
+//
+// craftgo emits no publisher for it, puts nothing on the ServiceContext,
+// and the AsyncAPI document carries a `receive` operation but no `send`.
+package payments
+
+type Settlement {
+	orderId money.OrderID
+	amount  money.Amount
+}
+
+@doc("A payment cleared upstream.")
+@contract("payments.settled.v1")
+event Settled {
+	payload Settlement
+}

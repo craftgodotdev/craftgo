@@ -1,6 +1,6 @@
 # Codegen Output
 
-What `craftgo gen` writes to disk, file by file. Output is **deterministic** - the same DSL always produces byte-identical files - and every Go file is run through `go/format`, so generated code is always gofmt-clean.
+What `craftgo gen` writes to disk, file by file. Output is **deterministic** - the same DSL always produces byte-identical files - and every Go file is run through `go/format`, so generated code is always gofmt-clean. [Architecture](/guide/architecture) is the one-page overview of how these files relate.
 
 ## Two kinds of file
 
@@ -26,11 +26,15 @@ internal/
 │   └── <method>.go              http.HandlerFunc per method
 ├── service/<svc>/               GEN-ONCE - your business logic
 │   └── <method>.go              the stub you fill in
+├── events/<pkg>/                REGEN - one folder per DSL package declaring an event
+│   └── events.go                contract constant + descriptor per event
 ├── routes/
-│   ├── routes.go                REGEN - umbrella RegisterRoutes
-│   └── <svc>/routes.go          REGEN - per-service registration
-└── middleware/
-    └── <name>_middleware.go     GEN-ONCE - one per declared middleware
+│   ├── routes.go                REGEN - umbrella registration
+│   └── <svc>/routes.go          REGEN - per-service RegisterRoutes
+├── middleware/
+│   └── <name>_middleware.go     GEN-ONCE - one per declared middleware
+└── wiring/
+    └── wiring.go                REGEN - the single Register call main.go makes
 
 svccontext/
 ├── svccontext.go                GEN-ONCE - your dependency container
@@ -106,6 +110,22 @@ This is the only place you write code. Everything above and below it is regenera
 
 `routes/<svc>/routes.go` registers each method on the mux via `srv.Handle("VERB /path", transport.X(svcCtx), mws...)`, applying declared middleware. `routes/routes.go` is the umbrella that calls every per-service `RegisterRoutes`.
 
+### `wiring/wiring.go` (regen)
+
+The one call `main.go` makes to attach the design:
+
+```go
+func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error)
+```
+
+It registers every service's routes and fails at startup for every middleware
+the design applies that `svcCtx` leaves nil, naming the line that would assign it -
+a nil middleware is skipped by the chain rather than called, so without the
+check the guarantee the design makes is silently missing. The returned shutdown
+runs beside `srv.Stop`. The body changes with the design; the signature does
+not, which is what lets `main.go` be written once and never edited again. It is
+emitted even for a design with no route.
+
 ### `svccontext/` (gen-once + regen)
 
 `svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against.
@@ -117,6 +137,41 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 ### `main.go` (gen-once)
 
 Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. Yours to customize - add a flag, change the listen address, register an extra middleware.
+
+### `events/<pkg>/events.go` (regen)
+
+Written per DSL **package**, not per service, and only when that package
+declares at least one `event`. Per event: a `<Name>Contract` constant holding
+the wire identity (`<package>.<Event>` unless `@contract("...")` names another),
+and one `events.Event[T]` descriptor bound to the payload type and its
+`Validate()`:
+
+```go
+// PlacedContract is the wire identity of Placed.
+// Publisher and listener both address the contract by this value.
+const PlacedContract = "orders.Placed"
+
+// An order was accepted.
+//
+// Placed is the orders.Placed contract.
+// Placed.Publish(ctx, bus, payload) sends one; a listener registers
+// Placed.Subscribe(bus, group, fn) on its own bus.
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
+```
+
+A `payload T[]` contract is typed on the slice -
+`craftevents.NewEvent[[]types.OrderPlaced](BatchPlacedContract, validateBatchPlaced)` -
+and the file declares `validateBatchPlaced`, which runs each element's own
+`Validate` and names the index that failed. That validator is the only reason
+the file ever imports `fmt`.
+
+The file imports the event runtime, the payload types and (for an array payload)
+`fmt`, and nothing else, which is what keeps it importable on its own. `@group`
+nests the HTTP handlers and service stubs; the event library is placed per DSL
+package and is unaffected by it. A package that declares no event leaves no
+folder behind.
+
+See [Events](/guide/events#what-is-generated) for the rest.
 
 ## Drift safety
 

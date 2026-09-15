@@ -818,6 +818,32 @@ components:
         - labels
         type: object
       type: object
+    TaskCreated:
+      description: |-
+        TaskCreated carries the identifiers a subscriber needs to react
+        without fetching the whole task, plus enough context to route or
+        filter on.
+      properties:
+        createdAt:
+          format: date-time
+          type: string
+        priority:
+          $ref: '#/components/schemas/Priority'
+        projectId:
+          $ref: '#/components/schemas/ID'
+        taskId:
+          $ref: '#/components/schemas/ID'
+        title:
+          maxLength: 200
+          minLength: 1
+          type: string
+      required:
+      - taskId
+      - projectId
+      - title
+      - priority
+      - createdAt
+      type: object
     TaskStatus:
       enum:
       - todo
@@ -825,6 +851,29 @@ components:
       - done
       - blocked
       type: string
+    TaskStatusChanged:
+      description: |-
+        TaskStatusChanged reports a transition. Both ends of the move are
+        carried so a subscriber never has to keep prior state.
+      properties:
+        changedAt:
+          format: date-time
+          type: string
+        from:
+          $ref: '#/components/schemas/TaskStatus'
+        projectId:
+          $ref: '#/components/schemas/ID'
+        taskId:
+          $ref: '#/components/schemas/ID'
+        to:
+          $ref: '#/components/schemas/TaskStatus'
+      required:
+      - taskId
+      - projectId
+      - from
+      - to
+      - changedAt
+      type: object
     Timestamps:
       description: |-
         Timestamps is embedded into every persisted resource so the created /

@@ -6,6 +6,10 @@ output:
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
   main:       "-"
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
 openapi:
   title:    Cornercase API
   version:  1.0.0

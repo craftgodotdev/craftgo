@@ -1,0 +1,9 @@
+// money is the vocabulary both sides of a contract agree on. It owns no
+// service and publishes nothing; orders and payments both build their
+// payloads out of it, so the two stay comparable without one importing
+// the other.
+package money
+
+scalar OrderID string @minLength(1) @maxLength(64) @pattern("^[A-Za-z0-9-]+$")
+
+scalar Amount int64 @gte(0)

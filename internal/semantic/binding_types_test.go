@@ -91,3 +91,9 @@ func TestAutoPathNonBindableRejected(t *testing.T) {
 		t.Errorf("expected auto-path non-bindable reject, got: %v", diags)
 	}
 }
+
+// A datetime travels only in a body: a wire binder has no parser for it.
+func TestDateTimeIsNotWireBindable(t *testing.T) {
+	expectError(t, `type SearchReq { since datetime @query }
+service S { post Do /do { request SearchReq } }`, CodeBindingType)
+}

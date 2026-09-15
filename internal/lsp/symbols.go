@@ -95,6 +95,8 @@ func workspaceSymbolKind(d ast.Decl) protocol.SymbolKind {
 		return protocol.SymbolKindInterface
 	case *ast.MiddlewareDecl:
 		return protocol.SymbolKindFunction
+	case *ast.EventDecl:
+		return protocol.SymbolKindEvent
 	}
 	return protocol.SymbolKindNull
 }
@@ -240,13 +242,14 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			Range:          r,
 			SelectionRange: r,
 		}
+	case *ast.EventDecl:
+		return eventSymbol(v)
 	case *ast.ServiceDecl:
-		children := make([]protocol.DocumentSymbol, 0, len(v.Methods()))
-		for _, m := range v.Methods() {
-			if m.Name == "" {
-				continue
+		children := make([]protocol.DocumentSymbol, 0, len(v.Members))
+		for _, member := range v.Members {
+			if m, ok := member.(*ast.Method); ok && m.Name != "" {
+				children = append(children, methodSymbol(m))
 			}
-			children = append(children, methodSymbol(m))
 		}
 		return protocol.DocumentSymbol{
 			Name:           v.Name,
@@ -270,6 +273,27 @@ func fieldSymbol(f *ast.Field) protocol.DocumentSymbol {
 	return protocol.DocumentSymbol{
 		Name:           f.Name,
 		Kind:           protocol.SymbolKindField,
+		Range:          r,
+		SelectionRange: r,
+	}
+}
+
+// eventSymbol builds the outline entry for a contract:
+// `event <Name> (<Payload>)`.
+func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
+	r := rangeOfPosLen(e.Pos, len("event")+1+len(e.Name))
+	detail := "event " + e.Name
+	if e.Payload != nil && e.Payload.Type != nil && e.Payload.Type.Name != nil {
+		payload := e.Payload.Type.Name.String()
+		if e.Payload.Array {
+			payload += "[]"
+		}
+		detail += " (" + payload + ")"
+	}
+	return protocol.DocumentSymbol{
+		Name:           e.Name,
+		Detail:         detail,
+		Kind:           protocol.SymbolKindEvent,
 		Range:          r,
 		SelectionRange: r,
 	}

@@ -17,31 +17,3 @@ func EachField(body []TypeMember, fn func(*Field) bool) {
 		}
 	}
 }
-
-// EachMember calls fn for every TypeMember in body. Used by walkers
-// that need to see both Fields AND Mixins (e.g. validate emission,
-// where the host's Validate() must call the embedded mixin's
-// Validate()). Fn returns false to stop.
-func EachMember(body []TypeMember, fn func(TypeMember) bool) {
-	for _, m := range body {
-		if !fn(m) {
-			return
-		}
-	}
-}
-
-// FindField returns the first Field in body whose Name matches, or
-// nil. Mixin members are not considered (a mixin's fields surface
-// via Go's struct embedding at runtime, not under a single name in
-// the host's body).
-func FindField(body []TypeMember, name string) *Field {
-	var out *Field
-	EachField(body, func(f *Field) bool {
-		if f.Name == name {
-			out = f
-			return false
-		}
-		return true
-	})
-	return out
-}

@@ -233,7 +233,7 @@ func (d *ServiceDecl) Methods() []*Method {
 }
 
 // ServiceMember is the interface implemented by anything that can appear inside
-// a `service` body: [*Method] for typed endpoints, [*FreeComment] for
+// a `service` body: [*Method] for typed endpoints and [*FreeComment] for
 // free-floating notes / section dividers.
 type ServiceMember interface {
 	serviceMember()
@@ -277,6 +277,36 @@ func (m *Method) MemberPos() Pos { return m.Pos }
 type MethodResponse struct {
 	Pos  Pos
 	Type *NamedTypeRef
+}
+
+// EventDecl is `event Name { payload Type }`: one contract the design
+// declares. It is file-level - which deployable publishes it, and which
+// listen, is the application's rather than the design's.
+//
+// TrailingDoc, BodyComments and EndPos mirror [Method].
+type EventDecl struct {
+	Pos          Pos
+	Decorators   []*Decorator
+	Doc          []string
+	Name         string
+	Payload      *EventPayload
+	TrailingDoc  []string
+	BodyComments []*FreeComment
+	EndPos       Pos
+}
+
+func (*EventDecl) declNode()          { astMarker() }
+func (e *EventDecl) DeclName() string { return e.Name }
+func (e *EventDecl) DeclPos() Pos     { return e.Pos }
+
+// EventPayload is the `payload Type` clause of an event body.
+type EventPayload struct {
+	Pos  Pos
+	Type *NamedTypeRef
+	// Array marks `payload Type[]`: the contract carries a JSON array of
+	// Type rather than one of it. Only one dimension is legal, so a bool
+	// says everything a depth would.
+	Array bool
 }
 
 // Path is the parsed representation of a route path. Each segment is either

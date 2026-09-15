@@ -1,0 +1,29 @@
+// upstream.craftgo pins a package that is nothing but a contract: an
+// event, its payload, and no service at all. This design describes the
+// contract so a deployable can listen to it, but does not own it - the
+// producer is another system - and craftgo still emits the descriptor,
+// because a contract is publishable by whoever holds it.
+package upstream
+
+type PaymentSettledPayload {
+	invoiceId string @minLength(1)
+	amount    int64  @gte(0)
+}
+
+// Published by the payments platform; the wire name is theirs.
+@doc("A payment cleared upstream.")
+// A comment between two decorators: the printer must keep it, and only
+// does so when the declaration contributes a chain span.
+@contract("payments.settled.v1")
+event PaymentSettled {
+	payload PaymentSettledPayload
+}
+
+// A settlement batch is the same payload, many at a time: the contract
+// carries an array of the type, so the descriptor is typed on the slice
+// and the generated validator runs each element's own Validate.
+@doc("A batch of payments cleared upstream.")
+@contract("payments.settled.batch.v1")
+event PaymentsSettledBatch {
+	payload PaymentSettledPayload[]
+}

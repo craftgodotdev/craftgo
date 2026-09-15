@@ -24,7 +24,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 
 	"github.com/craftgodotdev/craftgo/example/raw/config"
-	"github.com/craftgodotdev/craftgo/example/raw/internal/routes"
+	"github.com/craftgodotdev/craftgo/example/raw/internal/wiring"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
@@ -82,15 +82,13 @@ func main() {
 	}
 	srv.Use(tel.HTTPMiddleware())
 	srv.Use(server.AccessLog(srv.Logger()))
-	// Global per-request guards. Per-method `@timeout` / `@maxBodySize`
-	// decorators wrap inner so they can tighten (never loosen) these
-	// defaults. Zero values from config skip the wrap entirely.
-	if cfg.Server.HandlerTimeout > 0 {
-		srv.Use(server.Timeout(cfg.Server.HandlerTimeout))
-	}
-	if cfg.Server.MaxBodySize > 0 {
-		srv.Use(server.BodyLimit(cfg.Server.MaxBodySize))
-	}
+	// Global per-request guards, resolved per route at registration: a
+	// per-method `@timeout` / `@maxBodySize` OVERRIDES the matching default
+	// (used as-is, longer/larger or shorter/smaller); routes without one
+	// inherit the default. Set both before wiring.Register so each route resolves
+	// its guards.
+	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
+	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
 	if cfg.Server.Compression.Enabled {
 		srv.Use(server.Compress(server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,
@@ -98,9 +96,15 @@ func main() {
 		}))
 	}
 
-	// One call wires every service. The umbrella RegisterAll is
-	// generated from the DSL service set on every `craftgo gen`.
-	routes.RegisterAll(srv, svc)
+	// One call attaches every HTTP route the design declares. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays
+	// put when the design gains or loses a route. The returned shutdown
+	// runs beside srv.Stop below.
+	shutdownWiring, err := wiring.Register(ctx, srv, svc)
+	if err != nil {
+		log.Default().Error("wire services", log.Err(err))
+		os.Exit(1)
+	}
 
 	// Serve the API-reference docs (config.docs). The OpenAPI document is
 	// embedded above; the UI assets load from a CDN.
@@ -128,6 +132,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Stop(shutdownCtx)
+	// Consumers stop taking new messages and the in-flight ones finish
+	// within the same budget the HTTP drain uses.
+	_ = shutdownWiring(shutdownCtx)
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))

@@ -226,3 +226,38 @@ func LastSegment(p string) string {
 	}
 	return p
 }
+
+// PascalCase upper-cases the first letter of each `-`, `_` or `/`
+// separated word and drops the separators: `user_profile` → `UserProfile`.
+// Used wherever a DSL package or path segment has to prefix a generated
+// symbol - an OpenAPI component name, a Go import alias - so the same
+// input spells the same prefix in every target.
+func PascalCase(s string) string {
+	var b []byte
+	upNext := true
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '-' || c == '_' || c == '/' {
+			upNext = true
+			continue
+		}
+		if upNext {
+			if c >= 'a' && c <= 'z' {
+				c -= 'a' - 'A'
+			}
+			upNext = false
+		}
+		b = append(b, c)
+	}
+	return string(b)
+}
+
+// ErrorTypeName is the name an error's body type is known by: the DSL name
+// with `Err` appended, unless it already reads as an error. The Go type and
+// the OpenAPI component share it so both sides name the same shape alike.
+func ErrorTypeName(name string) string {
+	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
+		return name
+	}
+	return name + "Err"
+}

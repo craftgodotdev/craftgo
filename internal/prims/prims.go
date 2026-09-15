@@ -1,6 +1,8 @@
 // Package prims is the catalogue of the DSL's built-in type spellings. One
 // row per name carries every fact the analyser, the code generators, and
-// the language server read about it, so a built-in is described once.
+// the language server read about it, so a built-in is described once. Each
+// output gets its own column (Go, the OpenAPI pair); adding a target
+// language adds a column here rather than a second mapping table.
 package prims
 
 // Kind classifies a built-in by the values it holds.
@@ -12,10 +14,11 @@ const (
 	Int
 	Uint
 	Float
-	Bytes  // raw byte buffer
-	Any    // opaque JSON value
-	File   // multipart upload
-	Object // bag of fields, valid only inside `@example({...})`
+	Bytes    // raw byte buffer
+	Any      // opaque JSON value
+	File     // multipart upload
+	Object   // bag of fields, valid only inside `@example({...})`
+	DateTime // RFC 3339 timestamp
 )
 
 // Spec describes one built-in type.
@@ -57,6 +60,7 @@ var specs = []Spec{
 	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
 	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go."},
 	{Name: "any", Kind: Any, Go: "any", Doc: "**`any`** - opaque JSON value.\n\nGenerates `any` in Go."},
+	{Name: "datetime", Kind: DateTime, Go: "time.Time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
 	{Name: "file", Kind: File, Go: "*multipart.FileHeader", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},
 	{Name: "object", Kind: Object},
 }

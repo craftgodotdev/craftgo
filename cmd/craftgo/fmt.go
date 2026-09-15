@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/format"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
@@ -133,12 +134,11 @@ func blockingDiagnostics(files []string) map[string][]string {
 			continue
 		}
 		analysed[designDir] = true
-		asts, parseDiags, err := parseDesignFiles(designDir)
+		srcs, err := designopts.Load(designDir)
 		if err != nil {
 			continue
 		}
-		add(parseDiags, f)
-		_, diags := semantic.AnalyzeProject(asts, analysisOptions(designDir, cfg))
+		_, _, diags := designopts.Analyze(srcs, designDir, cfg)
 		add(diags, f)
 	}
 	return out

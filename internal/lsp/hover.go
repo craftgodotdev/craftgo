@@ -46,6 +46,46 @@ var verbDocs = map[string]string{
 	"options": "**`options`** - capability discovery (CORS preflight handler). The handler may return a custom Allow header set.",
 }
 
+// keywordDoc is one construct's hover text together with the declaration
+// keyword it is written under - `payload` inside an `event`, `request`
+// inside a `service`. The site is what keeps a field spelled `payload`
+// in a type body silent.
+type keywordDoc struct {
+	site lexer.Kind
+	doc  string
+}
+
+// memberKeywordDocs documents the `event` declaration, its `payload`
+// clause and the method clause keywords, so a hover explains the
+// construct the cursor sits on.
+var memberKeywordDocs = map[lexer.Kind]keywordDoc{
+	lexer.KwEvent:    {lexer.KwEvent, "**`event Name { payload Type }`** - a contract this design declares, at file level: a service publishes HTTP, never events. Codegen emits one descriptor for it - publish and subscribe both go through that; transport, codec and which deployable listens are runtime wiring, not part of the contract."},
+	lexer.KwPayload:  {lexer.KwEvent, "**`payload Type`** - the type an event contract carries. Must name a `type` declaration."},
+	lexer.KwRequest:  {lexer.KwService, "**`request Type`** - the type a method binds and validates from the request."},
+	lexer.KwResponse: {lexer.KwService, "**`response Type`** - the type a method returns; the framework encodes it."},
+}
+
+// memberKeywordHover renders a clause keyword's doc when the cursor sits
+// inside the declaration that keyword belongs to. An `extend service`
+// body counts as a service body.
+func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
+	kd, ok := memberKeywordDocs[tok.Kind]
+	if !ok {
+		return nil
+	}
+	site := enclosingDeclKeyword(view, idx+1)
+	if site == lexer.KwExtend {
+		site = lexer.KwService
+	}
+	if site != kd.site {
+		return nil
+	}
+	return &protocol.Hover{
+		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: kd.doc},
+		Range:    rangePtr(rangeOf(tok)),
+	}
+}
+
 // onHover answers `textDocument/hover`. It tokenises the buffer, finds
 // the token under the cursor, and dispatches to a kind-specific renderer
 // (decorator, builtin type, user type). Cursors that fall on whitespace,
@@ -93,6 +133,9 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
 			Range:    rangePtr(rangeOf(tok)),
 		}
+	}
+	if h := memberKeywordHover(view, idx, tok); h != nil {
+		return h
 	}
 	// Built-in types - only when the token spelling matches AND the
 	// surrounding context is a type position (right after `request`,
@@ -248,6 +291,15 @@ func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, c
 func decoratorHover(name string, r protocol.Range) *protocol.Hover {
 	spec, ok := semantic.Registry[name]
 	if !ok {
+		if note, gone := semantic.RemovedDecorator(name); gone {
+			return &protocol.Hover{
+				Contents: protocol.MarkupContent{
+					Kind:  protocol.Markdown,
+					Value: fmt.Sprintf("**`@%s`** - removed decorator.\n\n%s\n\nSemantic analysis reports `decorator/removed`.", name, note),
+				},
+				Range: rangePtr(r),
+			}
+		}
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{
 				Kind:  protocol.Markdown,

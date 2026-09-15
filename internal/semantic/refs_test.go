@@ -215,6 +215,37 @@ extend service S {
 }`, CodeDecoratorRef)
 }
 
+func TestExtendServiceDecoratorCheckedWithoutMethods(t *testing.T) {
+	// An extend block's decorators resolve at the block, so an empty block
+	// has its names checked too - there is no method for them to be copied
+	// onto.
+	expectDiag(t, `service S {}
+@middlewares(Bogus)
+extend service S {}`, CodeDecoratorRef)
+	expectDiag(t, `service S {}
+@errors(Bogus)
+extend service S {}`, CodeDecoratorRef)
+}
+
+func TestExtendServiceDecoratorDiagnosedOnce(t *testing.T) {
+	// The block's list resolves once, not once per method it reaches.
+	_, diags := Analyze(parseFiles(t, `service S {}
+@middlewares(Bogus)
+extend service S {
+	get A /a {}
+	get B /b {}
+}`))
+	n := 0
+	for _, d := range diags {
+		if d.Code == CodeDecoratorRef {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("expected 1 %s diagnostic, got %d: %v", CodeDecoratorRef, n, diags)
+	}
+}
+
 func TestRefsNilDecoratorTolerated(t *testing.T) {
 	// Defensive guard - parser doesn't emit nil entries today.
 	a := newTestAnalyzer(&Package{
@@ -224,8 +255,8 @@ func TestRefsNilDecoratorTolerated(t *testing.T) {
 	// Empty body decorators slice with a nil entry.
 	a.checkFieldGroupRefs("X", []*ast.Decorator{nil}, nil)
 	a.checkServiceLevelRefs([]*ast.Decorator{nil})
-	// Build a synthetic method with a nil decorator.
-	a.checkMethodLevelRefs(&ast.Method{Decorators: []*ast.Decorator{nil}})
+	// Build a synthetic member decorator list with a nil entry.
+	a.checkMemberLevelRefs([]*ast.Decorator{nil}, LvlMethod)
 	if len(a.diags) != 0 {
 		t.Errorf("nil decorator entries should not diag, got %v", a.diags)
 	}

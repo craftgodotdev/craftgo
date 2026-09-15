@@ -21,7 +21,6 @@ type Server struct {
 
 	mux     *http.ServeMux
 	chain   []Middleware
-	addr    string
 	httpSrv *http.Server
 
 	logger Logger
@@ -382,7 +381,6 @@ func (s *Server) Start(addr string) error {
 	// otherwise the same goroutine deadlocks on the sync.Mutex.
 	handler := s.Handler()
 	s.mu.Lock()
-	s.addr = addr
 	s.httpSrv = &http.Server{
 		Addr:    addr,
 		Handler: handler,

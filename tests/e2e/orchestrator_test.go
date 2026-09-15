@@ -18,6 +18,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
 // repoRoot returns the absolute path of the craftgo module root -
@@ -61,9 +63,34 @@ func discoverScenarios(t *testing.T) []string {
 	return out
 }
 
-// TestE2EFullPipeline runs `craftgo gen` against every scenario and then
-// invokes `go test ./...` inside it. Each scenario is an isolated Go
-// module so a regression in one does not mask failures in another.
+// discoverManifests returns every manifest folder inside a scenario, in
+// walk order. A scenario may hold more than one - a deployable of its own
+// beside the design's - and each is generated in its own right.
+func discoverManifests(t *testing.T, fixture string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(fixture, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && d.Name() == config.Filename {
+			out = append(out, filepath.Dir(path))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) == 0 {
+		t.Fatalf("no %s found under %s", config.Filename, fixture)
+	}
+	return out
+}
+
+// TestE2EFullPipeline runs `craftgo gen` against every manifest in every
+// scenario and then invokes `go test ./...` inside it. Each scenario is
+// an isolated Go module so a regression in one does not mask failures in
+// another.
 func TestE2EFullPipeline(t *testing.T) {
 	repo := repoRoot(t)
 	root := scenariosDir(t)
@@ -73,10 +100,12 @@ func TestE2EFullPipeline(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fixture := filepath.Join(root, name)
 
-			gen := exec.Command("go", "run", "./cmd/craftgo", "gen", fixture)
-			gen.Dir = repo
-			if out, err := gen.CombinedOutput(); err != nil {
-				t.Fatalf("craftgo gen failed: %v\n%s", err, out)
+			for _, manifest := range discoverManifests(t, fixture) {
+				gen := exec.Command("go", "run", "./cmd/craftgo", "gen", "-f", manifest, "-c", filepath.Dir(manifest))
+				gen.Dir = repo
+				if out, err := gen.CombinedOutput(); err != nil {
+					t.Fatalf("craftgo gen %s failed: %v\n%s", manifest, err, out)
+				}
 			}
 
 			test := exec.Command("go", "test", "./...")

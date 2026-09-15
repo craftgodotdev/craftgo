@@ -90,6 +90,12 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 				// type-compat pass tolerates unknown spellings on
 				// purpose so future primitive additions don't break
 				// projects that pulled them in via dependencies.
+			case *ast.EventDecl:
+				// A contract declared at file level still names a payload
+				// type, and it resolves exactly like one inside a service.
+				if v.Payload != nil && v.Payload.Type != nil {
+					a.checkLocalNamedRef(v.Payload.Type, nil, imports)
+				}
 			case *ast.ServiceDecl:
 				for _, m := range v.Methods() {
 					if m.Request != nil {

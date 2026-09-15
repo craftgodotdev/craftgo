@@ -38,6 +38,8 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 		a.checkPlacement(LvlScalar, "scalar "+dd.Name, dd.Decorators)
 	case *ast.MiddlewareDecl:
 		a.checkPlacement(LvlMiddleware, "middleware "+dd.Name, dd.Decorators)
+	case *ast.EventDecl:
+		a.checkPlacement(LvlEvent, "event "+dd.Name, dd.Decorators)
 	case *ast.ServiceDecl:
 		// `extend service` cannot carry service-level decorators (rejected
 		// by [mergeServices]); we still walk methods so placement on
@@ -46,7 +48,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 			a.checkPlacement(LvlService, "service "+dd.Name, dd.Decorators)
 		}
 		for _, m := range dd.Methods() {
-			a.checkPlacement(LvlMethod, "method "+dd.Name+"."+m.Name, m.Decorators)
+			a.checkPlacement(LvlMethod, methodLabel(dd.Name, m), m.Decorators)
 		}
 	}
 }
@@ -82,6 +84,11 @@ func (a *analyzer) checkPlacement(site Level, scopeLabel string, decs []*ast.Dec
 		}
 		spec, known := Lookup(d.Name)
 		if !known {
+			if note, gone := RemovedDecorator(d.Name); gone {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorRemoved,
+					"@%s on %s is no longer a craftgo decorator. %s", d.Name, scopeLabel, note)
+				continue
+			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorUnknown,
 				"unknown decorator @%s on %s (not in the framework registry)", d.Name, scopeLabel)
 			continue

@@ -1,14 +1,22 @@
 name: Release
 
-# Push a version tag to cut a release:
-#   git tag v1.4.3 && git push origin v1.4.3
-# GoReleaser then cross-compiles every binary, archives them, writes
-# checksums, and publishes a GitHub Release with generated notes.
-# Config lives in .goreleaser.yaml.
+# Push a root-module version tag to cut a release - `make tag VERSION=v1.4.3`
+# prepares it and prints the push. GoReleaser then cross-compiles every
+# binary, archives them, writes checksums, and publishes a GitHub Release
+# with generated notes. Config lives in .goreleaser.yaml.
+#
+# The same push also carries the nested-module tags (pkg/events/v1.4.3,
+# pkg/events/nats/v1.4.3, pkg/events/kafka/v1.4.3). Those must NOT build
+# binaries: they only publish module versions. They cannot match the filters
+# below - a filter pattern is anchored at the start of the tag name and its
+# `*` never crosses a `/`, so anything under pkg/ is out - and the explicit
+# shapes here keep it that way if someone adds a tag namespace later.
+# See RELEASING.md.
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]+.[0-9]+.[0-9]+" # v1.4.3
+      - "v[0-9]+.[0-9]+.[0-9]+-*" # v1.4.3-rc.1, published as a pre-release
 
 permissions:
   contents: write # create the release and upload archives

@@ -5,9 +5,11 @@ package shared
 import (
 	"context"
 
+	taskevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
+	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
@@ -32,8 +34,29 @@ func NewSetTaskStatusService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// SetTaskStatus is the service entry point. Replace the
-// TODO with the real implementation.
+// SetTaskStatus moves the task and announces the transition. The prior
+// status is read before the write so the event can carry both ends.
 func (l *SetTaskStatusService) SetTaskStatus(req *types.SetTaskStatusReq) (*types.Task, error) {
-	return l.svcCtx.Store.SetTaskStatus(req.ProjectID, req.ID, req.Status)
+	before, err := l.svcCtx.Store.GetTask(req.ProjectID, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	from := before.Status
+	task, err := l.svcCtx.Store.SetTaskStatus(req.ProjectID, req.ID, req.Status)
+	if err != nil {
+		return nil, err
+	}
+	if from == task.Status {
+		return task, nil
+	}
+	if err := taskevents.TaskStatusChanged.Publish(l.ctx, l.svcCtx.Bus, &types.TaskStatusChanged{
+		TaskID:    task.ID,
+		ProjectID: task.ProjectID,
+		From:      from,
+		To:        task.Status,
+		ChangedAt: task.UpdatedAt,
+	}, craftevents.WithKey(string(task.ProjectID))); err != nil {
+		l.Error("publish TaskStatusChanged", log.Err(err))
+	}
+	return task, nil
 }

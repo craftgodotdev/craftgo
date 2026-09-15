@@ -18,7 +18,8 @@ coverage.txt
 coverage.html
 
 # Go workspace / vendor (vendor mode disabled)
-go.work
+# go.work IS tracked: the published pkg/events adapters carry no `replace`,
+# so the workspace is what resolves pkg/events locally. See RELEASING.md.
 go.work.sum
 /vendor/
 
@@ -33,7 +34,7 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
-# Node (only relevant if anything ships JS/TS tooling)
+# Node - the docs site (VitePress) installs here
 node_modules/
 
 # Local env

@@ -9,3 +9,10 @@ const (
 	XColorGreen XColor = "Green"
 	XColorBlue  XColor = "Blue"
 )
+
+type XTier int
+
+const (
+	XTierBronze XTier = 1
+	XTierGold   XTier = 2
+)

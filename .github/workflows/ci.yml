@@ -27,7 +27,11 @@ jobs:
           cache: true
 
       - name: vet
-        run: go vet ./...
+        run: |
+          go vet ./...
+          (cd pkg/events && go vet ./...)
+          (cd pkg/events/nats && go vet ./...)
+          (cd pkg/events/kafka && go vet ./...)
 
       - name: fmt-check
         run: |
@@ -41,6 +45,24 @@ jobs:
         with:
           version: v2.12.2
 
+      # The event runtime and its adapters are their own modules, so the
+      # root run does not reach them.
+      - name: golangci-lint (event runtime module)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: pkg/events
+      - name: golangci-lint (nats adapter module)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: pkg/events/nats
+      - name: golangci-lint (kafka adapter module)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: pkg/events/kafka
+
       # Fails on a known vulnerability that the code actually reaches (call-graph
       # analysis); advisory-only findings in unused code do not break the build.
       - name: govulncheck
@@ -52,8 +74,8 @@ jobs:
       - name: build submodules
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow \
-                   tests/e2e/matrix; do
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
+                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka; do
             echo "→ build $d"
             (cd "$d" && go build ./...)
           done
@@ -67,9 +89,14 @@ jobs:
             echo "→ gen $d"
             go run ./cmd/craftgo gen -f "$d/design" -c "$d"
           done
+          # Every manifest in the fixture: the design's own, and each
+          # deployable that projects it.
           for d in tests/e2e/matrix; do
-            echo "→ gen $d"
-            go run ./cmd/craftgo gen "$d/design"
+            for m in $(find "$d" -name craftgo.design.yaml | sort); do
+              mdir=$(dirname "$m")
+              echo "→ gen $mdir"
+              go run ./cmd/craftgo gen -f "$mdir" -c "$(dirname "$mdir")"
+            done
           done
 
       - name: drift gate (gen output must match committed)
@@ -106,8 +133,8 @@ jobs:
         run: |
           set -e
           go build ./...
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow \
-                   tests/e2e/matrix; do
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
+                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka; do
             (cd "$d" && go build ./...)
           done
 
@@ -130,8 +157,8 @@ jobs:
       - name: test submodules
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow \
-                   tests/e2e/matrix; do
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
+                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka; do
             echo "→ test $d"
             (cd "$d" && go test ${{ matrix.race }} -count=1 ./...)
           done

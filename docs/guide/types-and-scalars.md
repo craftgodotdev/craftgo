@@ -27,6 +27,7 @@ Each field is `name type [decorators]`. Types compose from primitives, arrays, m
 | `float32`  | `float32`  |                                      |
 | `float64`  | `float64`  |                                      |
 | `bool`     | `bool`     |                                      |
+| `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
 | `file`     | `*multipart.FileHeader` | only valid with `@form` |
 
 ### Optional fields
@@ -160,6 +161,17 @@ The parser reads each line in a type body and decides whether the first identifi
 4. Otherwise -> mixin (PascalCase identifier alone, or followed by another PascalCase identifier that is the start of the next member).
 
 The "PascalCase + builtin -> field" carve-out lets you name a field with an exported JSON tag (`CreatedAt string`) without breaking the compact mixin form.
+
+When the wire key is not one you can spell as a field - a contract another system owns with `OrderItem` or `snake_case` keys - keep the field name yours and set the key with `@json`:
+
+```craftgo
+type OrderCaptured {
+    orderItems OrderItem[] @json("OrderItem")
+    storeId    string      @json("store_id")
+}
+```
+
+The Go tag, the OpenAPI document and validation messages all carry the `@json` key. It applies to body fields only; a field bound with `@path`, `@query`, `@header`, `@cookie` or `@form` names its wire location in that decorator.
 
 The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type - e.g. `CreatedAt MyTimestamp` on its own line - is read as a mixin reference to `CreatedAt` followed by a field named `MyTimestamp`. When in doubt, write the field on its own line with a builtin or scalar-backed type.
 

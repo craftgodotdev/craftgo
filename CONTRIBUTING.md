@@ -32,4 +32,8 @@ CI runs `make gen-diff` and fails if the committed output doesn't match what you
 - Commits in logical units with plain-English messages; put the "why" in the PR description.
 - One focused change per PR.
 
+## Cutting a release
+
+Maintainers only, and it is its own procedure: four modules are published from this repo at one version, and the two broker adapters have to swap a local `replace` for a real `pkg/events` version before they are tagged. [RELEASING.md](./RELEASING.md) walks through it; `make tag VERSION=vX.Y.Z DRY_RUN=1` prints the plan without touching anything.
+
 Not sure about an approach? Open an issue first - aligning early beats a big rework. Welcome aboard. 🛠

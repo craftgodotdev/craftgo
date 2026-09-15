@@ -10,6 +10,10 @@ const (
 	// CodeDecoratorUnknown fires when `@name` is not in the registry.
 	// Decorators are a closed set by design (no escape-hatch).
 	CodeDecoratorUnknown = "decorator/unknown"
+	// CodeDecoratorRemoved fires when `@name` is a decorator craftgo has
+	// since removed. Its own code, because the message names what took
+	// its place and an author migrating a design wants to find every one.
+	CodeDecoratorRemoved = "decorator/removed"
 	// CodeDecoratorPlacement fires when a known decorator appears at a
 	// site outside its declared [Spec.Levels].
 	CodeDecoratorPlacement = "decorator/placement"
@@ -218,14 +222,6 @@ const (
 	// can never populate. `file` is valid only as a top-level request field
 	// (directly or carried in via a mixin).
 	CodeFilePosition = "binding/file-position"
-	// CodeServiceCollision fires when two packages in the same
-	// project both declare a primary `service` of the same name.
-	// The generated codegen layout keys output directories by
-	// service name (`internal/routes/<svc>/`, `internal/handler/<svc>/`),
-	// so a collision would silently overwrite one package's
-	// scaffolds with the other's. Surface every conflicting
-	// declaration so the author can rename one.
-	CodeServiceCollision = "service/collision"
 	// CodeGroupPackageStraddle fires when services from DIFFERENT DSL
 	// packages resolve to the same output directory via `@group`.
 	// Sharing a group is the decorator's purpose - it lays out folders,
@@ -346,6 +342,22 @@ const (
 	// knows how to validate; user-defined types in this slot would
 	// silently break inheritance and produce invalid Go.
 	CodeScalarBadPrimitive = "scalar/bad-primitive"
+	// CodeEventPayloadMissing fires when an `event` body has no
+	// `payload` clause - the contract would carry no shape.
+	CodeEventPayloadMissing = "event/payload-missing"
+	// CodeEventPayloadKind fires when an event's payload names
+	// something other than a `type` declaration.
+	CodeEventPayloadKind = "event/payload-kind"
+	// CodeEventContractCollision fires when two events resolve to the
+	// same contract name - a listener could not tell them apart on the
+	// wire.
+	CodeEventContractCollision = "event/contract-collision"
+	// CodeEventContractFormat fires when an `@contract` argument is
+	// empty or carries whitespace.
+	CodeEventContractFormat = "event/contract-format"
+	// CodeEventDuplicate fires when one package declares two events of
+	// the same name.
+	CodeEventDuplicate = "event/duplicate-name"
 )
 
 // related is a tiny helper that builds a single-element [lexer.Related]

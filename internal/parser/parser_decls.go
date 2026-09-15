@@ -67,6 +67,10 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		return p.parseScalarDecl(decs)
 	case lexer.KwMiddleware:
 		return p.parseMiddlewareDecl(decs)
+	case lexer.KwEvent:
+		// A contract declared outside a service: this design describes it
+		// but does not publish it.
+		return p.parseEventDecl(decs)
 	case lexer.KwService:
 		return p.parseServiceDecl(decs, false)
 	case lexer.KwExtend:

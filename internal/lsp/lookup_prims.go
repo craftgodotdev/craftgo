@@ -150,6 +150,8 @@ func declSummary(d ast.Decl) string {
 		return "scalar " + v.Name + " " + v.Primitive
 	case *ast.MiddlewareDecl:
 		return "middleware " + v.Name
+	case *ast.EventDecl:
+		return "event " + v.Name
 	case *ast.ServiceDecl:
 		if v.Extend {
 			return "extend service " + v.Name
@@ -175,6 +177,8 @@ func declDoc(d ast.Decl) []string {
 	case *ast.ScalarDecl:
 		return v.Doc
 	case *ast.MiddlewareDecl:
+		return v.Doc
+	case *ast.EventDecl:
 		return v.Doc
 	}
 	return nil

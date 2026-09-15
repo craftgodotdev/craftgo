@@ -137,3 +137,27 @@ func TestFileNameWordsSuffix(t *testing.T) {
 		}
 	}
 }
+
+func TestPascalCase(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"orders", "Orders"},
+		{"user_profile", "UserProfile"},
+		{"order-service", "OrderService"},
+		{"admin/ops", "AdminOps"},
+		{"admin/legacy/v2", "AdminLegacyV2"},
+		{"admin//ops", "AdminOps"},
+		{"/admin", "Admin"},
+		{"trailing_", "Trailing"},
+		{"_leading", "Leading"},
+		{"_", ""},
+		{"Already", "Already"},
+		{"v2", "V2"},
+		{"a1_b2", "A1B2"},
+	}
+	for _, c := range cases {
+		if got := PascalCase(c.in); got != c.want {
+			t.Errorf("PascalCase(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

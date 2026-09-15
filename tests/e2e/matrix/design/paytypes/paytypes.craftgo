@@ -1,0 +1,16 @@
+// Package paytypes exists for its NAME. The Go emitters decide whether a
+// file still needs the canonical `types` import, and the rendered form of
+// a reference into this package - `paytypes.XPayItem` - contains the
+// literal substring `types.`. A file that reaches only this package needs
+// no canonical import; one that searches the rendered text for `types.`
+// concludes the opposite and emits an import nothing uses.
+//
+// xrefs instantiates a cross-package generic over it (both sides of the
+// method cross-package, so the scaffold and the handler must both drop
+// the import), and events carries an event payload over it.
+package paytypes
+
+type XPayItem {
+	payId  string @minLength(1)
+	amount int64  @gte(0)
+}

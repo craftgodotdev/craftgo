@@ -5,8 +5,8 @@
 // [telemetry.Init], which keeps the exporter selection (none / stdout /
 // otlp_grpc / otlp_http / prometheus) next to the SDK rather than inline
 // here, and gives both signals one `serviceName`, one HTTP wrapper and
-// one Shutdown. The only knob exposed to the deployer is
-// `config.yaml` (or the matching `CRAFTGO_*` environment variables).
+// one Shutdown. The only knob exposed to the deployer is `config.yaml`
+// (see config/example.config.yaml for the full field reference).
 
 package main
 
@@ -19,13 +19,18 @@ import (
 	"syscall"
 	"time"
 
+	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
+	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
+	"github.com/craftgodotdev/craftgo/pkg/events/logging"
+	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/config"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/activity"
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/middleware"
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/routes"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/wiring"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
@@ -81,6 +86,37 @@ func main() {
 
 	svc := svccontext.NewServiceContext(cfg)
 
+	// The event bus binds one transport to one codec. This build uses the
+	// in-process transport so publishes and consumers run in one binary;
+	// pointing it at Kafka, NATS, RabbitMQ or SQS is a change to these
+	// three lines and nothing else - no generated file mentions a broker.
+	bus := craftevents.New(
+		craftevents.WithTransport(memory.New()),
+		craftevents.WithCodec(codecjson.Codec{}),
+	)
+	// One line per delivery: the contract, the listener, the key, how long
+	// it took, and the error when there was one. The chain goes on the BUS,
+	// so it covers every subscription registered through it and no module
+	// has to be handed one.
+	bus.Use(logging.AccessLog(log.Slog()))
+	svc.Bus = bus
+
+	// The design declares which contracts exist; this binary says which
+	// of them it listens to and under what group. Registration records
+	// the subscriptions; Start hands the whole batch to the transport at
+	// once, because a broker that binds one identity to several contracts
+	// cannot register a group one contract at a time.
+	if err := activity.Register(bus, svc.Activity); err != nil {
+		log.Default().Error("register consumers", log.Err(err))
+		os.Exit(1)
+	}
+	deliver, stopDelivery := context.WithCancel(ctx)
+	defer stopDelivery()
+	if err := bus.Start(deliver); err != nil {
+		log.Default().Error("start consumers", log.Err(err))
+		os.Exit(1)
+	}
+
 	// Each design-declared middleware lives on the embedded
 	// Middlewares struct of ServiceContext. Wire each field once at
 	// startup with whatever params your impl needs.
@@ -102,7 +138,7 @@ func main() {
 	// Global per-request guards, resolved per route at registration: a
 	// per-method `@timeout` / `@maxBodySize` OVERRIDES the matching default
 	// (used as-is, longer/larger or shorter/smaller); routes without one
-	// inherit the default. Set both before RegisterAll so each route resolves
+	// inherit the default. Set both before wiring.Register so each route resolves
 	// its guards.
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
@@ -125,9 +161,15 @@ func main() {
 		}))
 	}
 
-	// One call wires every service. The umbrella RegisterAll is
-	// generated from the DSL service set on every `craftgo gen`.
-	routes.RegisterAll(srv, svc)
+	// One call attaches every HTTP route the design declares. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays
+	// put when the design gains or loses a route. The returned shutdown
+	// runs beside srv.Stop below.
+	shutdownWiring, err := wiring.Register(ctx, srv, svc)
+	if err != nil {
+		log.Default().Error("wire services", log.Err(err))
+		os.Exit(1)
+	}
 
 	// Serve the API-reference docs (config.docs). The OpenAPI document is
 	// embedded above; the UI assets load from a CDN.
@@ -155,6 +197,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Stop(shutdownCtx)
+	// Consumers stop taking new messages; the in-flight ones finish on
+	// the transport's own terms.
+	stopDelivery()
+	_ = shutdownWiring(shutdownCtx)
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))

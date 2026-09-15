@@ -159,6 +159,11 @@ type XBagPromoteReq {
 	xshared.XWrapInBag<xshared.XOwner>
 }
 
+@doc("The package's ONLY event, and its payload reaches no local type: the generated events.go must carry no canonical `types` import, though the rendered payload spells `paytypes.XPayItem`. An event with a local payload in the same package would supply the import and hide it.")
+event PayBatched {
+	payload xshared.XBag<paytypes.XPayItem>
+}
+
 @prefix("/xrefs")
 service XRefsService {
 	@doc("Pins cross-package @errors reference. xshared.XNotFound must register as a component schema AND appear in the operation's responses[404].body schema.")
@@ -224,6 +229,12 @@ service XRefsService {
 	@doc("Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>). The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it must keep the canonical `types` import for the local arg even though the outer type is cross-package - otherwise `undefined: types`.")
 	post WrapLocal /wrap-local {
 		request  xshared.XWrapInBag<XLocalItem>
+		response xshared.XOwner
+	}
+
+	@doc("Pins a QUALIFIED GENERIC request whose type-arg comes from a THIRD package named paytypes, with a cross-package response too. Nothing on either side is local, so the handler and the scaffold must both drop the canonical `types` import - deciding that by searching the rendered text for `types.` keeps it, and the file fails to build with `imported as types and not used`.")
+	post WrapForeign /wrap-foreign {
+		request  xshared.XWrapInBag<paytypes.XPayItem>
 		response xshared.XOwner
 	}
 

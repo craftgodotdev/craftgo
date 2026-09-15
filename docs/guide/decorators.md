@@ -425,7 +425,7 @@ service AdminService {
 
 With the above, the handler and service stub for `DashboardStats` are written to `internal/transport/admin/ops/dashboard-stats.go` and `internal/service/admin/ops/dashboard-stats.go` (the `admin-service` segment is gone - the group took its place), while the route stays `/v1/admin/dashboard`. The value is a relative path: a single segment (`admin`) or nested (`admin/ops`). The group moves everything keyed by service - transport handlers, service stubs, and the `routes.go` that registers them (`internal/routes/admin/ops/routes.go`). Types are unaffected: they stay under their DSL package, `internal/types/<package>/`.
 
-> **The group is a namespace, and services may share it.** Because it replaces the service name, two services that pick the *same* `@group` land in the same directory on purpose - that is how you gather a versioned or feature surface (`@group("shared/v1")` on both `Alpha` and `Beta`) into one folder. Their handlers and stubs are per-method files that sit side by side, and the directory gets **one** `routes.go` registering every contributor's methods, which the umbrella `RegisterAll` calls once. Sharing works the same way when a `@group` names an ungrouped service's own directory (`@group("beta")` alongside `service Beta`).
+> **The group is a namespace, and services may share it.** Because it replaces the service name, two services that pick the *same* `@group` land in the same directory on purpose - that is how you gather a versioned or feature surface (`@group("shared/v1")` on both `Alpha` and `Beta`) into one folder. Their handlers and stubs are per-method files that sit side by side, and the directory gets **one** `routes.go` registering every contributor's methods, which the umbrella `routes.go` calls once. Sharing works the same way when a `@group` names an ungrouped service's own directory (`@group("beta")` alongside `service Beta`).
 >
 > Two things a shared directory cannot absorb, both rejected at analysis time:
 >
@@ -436,7 +436,7 @@ The group value also rides along as an OpenAPI **tag**, appended to any explicit
 
 Because the move changes where the service stub is generated, set `@group` before you start filling in business logic: adding it later leaves your existing stub at the old path and scaffolds a fresh empty one under the group.
 
-**Per-block grouping.** Unlike `@prefix` (primary-only), `@group` is also accepted on an `extend service` block, where it groups **only that block's** methods. This splits one service's code across version/feature folders. Each group folder gets its own `routes.go` registering just the methods that landed there; the umbrella `RegisterAll` calls into every one of them, so the split stays invisible to `main.go`:
+**Per-block grouping.** Unlike `@prefix` (primary-only), `@group` is also accepted on an `extend service` block, where it groups **only that block's** methods. This splits one service's code across version/feature folders. Each group folder gets its own `routes.go` registering just the methods that landed there; the umbrella `routes.go` calls into every one of them, so the split stays invisible to `main.go`:
 
 ```craftgo
 @prefix("/checkout")
@@ -602,12 +602,12 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 
 | Setup                                                | Result | Notes                                                 |
 | ---------------------------------------------------- | ------ | ----------------------------------------------------- |
-| `@middlewares` / `@security` / `@tags` on extend     | ✅      | Method-level-applicable decorators on extend OK       |
-| `@prefix` on extend                                  | ❌      | `service/extend-decorator-not-method` - move to primary |
-| `@group` on extend                                   | ✅      | groups that block's methods under their own folder |
-| Extend in a different folder (different package)     | ❌      | `service/extend-orphan`                                |
-| Multiple extend blocks targeting the same service    | ✅      | Each block's decorators apply only to its own methods  |
-| `@ignoreMiddleware` on a method inside extend        | ✅      | Clears extend-block + primary middleware chain        |
+| `@middlewares` / `@security` / `@tags` on extend     | yes    | Method-level-applicable decorators on extend OK       |
+| `@prefix` on extend                                  | no     | `service/extend-decorator-not-method` - move to primary |
+| `@group` on extend                                   | yes    | groups that block's methods under their own folder |
+| Extend in a different folder (different package)     | no     | `service/extend-orphan`                                |
+| Multiple extend blocks targeting the same service    | yes    | Each block's decorators apply only to its own methods  |
+| `@ignoreMiddleware` on a method inside extend        | yes    | Clears extend-block + primary middleware chain        |
 
 ## Method decorators
 
