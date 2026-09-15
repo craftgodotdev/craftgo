@@ -404,9 +404,8 @@ Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-ev
 [generated](/guide/events#what-is-generated) - [publishing](/guide/events#publishing) -
 [consuming](/guide/events#consuming) - [groups](/guide/events#groups) -
 [middleware](/guide/events#middleware) - [dispositions](/guide/events#dispositions) -
-[bus](/guide/events#wiring-the-bus) - [plan](/guide/events#the-plan) -
-[JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory) -
-[config](/guide/events#configuration)
+[plan](/guide/events#the-plan) -
+[JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory)
 
 ## Decorator registry
 
@@ -775,7 +774,7 @@ tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in
 srv := server.New(svcCtx)
 srv.Use(tel.HTTPMiddleware()) // opens the span first, so AccessLog sees the trace ids
 srv.Use(server.AccessLog(logger))
-routes.RegisterAll(srv, svcCtx)
+wiring.Register(ctx, srv, svcCtx)
 srv.Start(":8080")
 ```
 

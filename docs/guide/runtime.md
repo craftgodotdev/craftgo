@@ -1,13 +1,13 @@
 # Runtime
 
-The craftgo runtime is a thin wrapper around `net/http`. There is no custom router, no custom middleware shape, no service container.
+The craftgo runtime is a thin wrapper around `net/http`. There is no custom router, no custom middleware shape, no service container. This page is the HTTP half; the event half is `pkg/events`, covered in [Events](/guide/events). [Architecture](/guide/architecture) shows where both sit.
 
 ## At a glance
 
 ```go
 srv := server.New(svcCtx)              // wraps *http.ServeMux
 srv.Use(loggingMiddleware)             // standard func(http.Handler) http.Handler
-routes.RegisterAll(srv, svcCtx)        // generated registration
+wiring.Register(ctx, srv, svcCtx)      // the one generated call that attaches the design
 srv.Start(":8080")                     // ListenAndServe
 ```
 

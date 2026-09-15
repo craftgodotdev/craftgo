@@ -5,32 +5,28 @@ description: Declare event contracts in the DSL, generate one descriptor per con
 
 # Events
 
-craftgo generates event code the way protoc generates message code: payload types
-and their validation, one **descriptor** per contract, and nothing else. Which
-events a deployable listens to, on which group, behind which middleware, is that
-deployable's own Go - the design never names a listener.
+craftgo generates event code the way protoc generates message code: payload types, their validation, one **descriptor** per contract, and nothing else. Which events a deployable listens to, on which group, behind which middleware, is that deployable's own Go.
 
 ## The model
 
-A contract is an `event` in the design. One producer publishes it; any number of
-listeners receive it, and the design does not know how many there are or where
-they run. craftgo turns each contract into a **descriptor** - publish, decode,
-validate, build a subscription - and stops there.
+![One producer publishes a contract declared in the design; each listener group receives its own copy, and replicas inside a group share the work.](/diagrams/events-model.svg)
 
-The other half lives in the application, on the **bus**. `events.Bus` is
-`server.Server` for the consumer side: the one thing every subscription passes
-through. `bus.Use(...)` installs the delivery chain the whole deployable runs
-behind, one `Subscribe` line per contract says what it listens to, `bus.Start(ctx)`
-hands the batch to the transport. The generated library imports the event runtime and the
-payload types and nothing else, so one contract package serves every deployable
-that imports it, each wired to its own bus, and the design never names a broker, a
-group, a codec or a process.
+The contract sits in the design, between one producer and any number of listeners.
+
+One producer publishes an `event`, and the design does not know how many listeners exist or where they run. Each listener joins under a **group**; every group receives every message once, and replicas inside a group divide that work. The runtime half is the **bus** - `events.Bus` is `server.Server` for the listener side, the one thing every subscription passes through.
 
 ## Declaring events
 
-An `event` is a **file-level** declaration, like `type` or `middleware`. A
-`service` holds HTTP methods only; an `event` written inside one is a syntax error
-saying where the declaration goes.
+An `event` is a **file-level** declaration, like `type`; a `service` holds HTTP methods only. Files group into packages by their `package` declaration, so the usual layout is one folder per version and one event per file, a new version published beside the old one until every listener has moved.
+
+```
+design/orders/
+├── v1/
+│   ├── placed.craftgo         package ordersv1
+│   └── shipped.craftgo        package ordersv1
+└── v2/
+    └── placed.craftgo         package ordersv2
+```
 
 ```craftgo
 package orders
@@ -40,18 +36,13 @@ type OrderPlaced {
     total   int64  @gte(0)
 }
 
-@doc("Emitted once an order is accepted.")
+@doc("An order was accepted.")
 event Placed {
     payload OrderPlaced
 }
 ```
 
-`payload` must name a `type` declaration, so every contract has named fields and
-its own `Validate()`. Events have their own namespace, so `type OrderPlaced` and
-`event OrderPlaced` coexist.
-
-A payload may also be an **array** of a declared type - a contract whose body on
-the wire is a JSON array, typed on the slice and validated element by element:
+`payload` must name a `type`, so every contract has named fields and its own `Validate()`. Events have their own namespace, so `type OrderPlaced` and `event OrderPlaced` coexist. A payload may also be an **array** of a declared type - a JSON array on the wire, typed on the slice and validated element by element:
 
 ```craftgo
 event BatchPlaced {
@@ -59,22 +50,11 @@ event BatchPlaced {
 }
 ```
 
-A contract's wire identity defaults to `<package>.<Event>` - `orders.Placed` above -
-and `@contract("order.placed.v2")` overrides it to interoperate with a name another
-system already publishes. Both sides address the contract by that string, and how a
-transport maps it onto a topic, subject or queue is the transport's business. Two
-events resolving to one identity are rejected at design time.
-
-The only event decorators are `@contract`, `@doc` and `@deprecated`. There is no
-consumer declaration at all: a group, a middleware chain or an ordering key in the
-design would tie the shared contract to one deployable's operations. A design still
-carrying the old listener declaration, or one of the decorators that named a
-consumer's group or chain, is told what replaces it rather than told it is unknown.
+The wire identity defaults to `<package>.<Event>` - `orders.Placed` above - and `@contract("payments.settled.v1")` overrides it to match a name another system already publishes. Two events resolving to one identity are rejected at design time. The only event decorators are `@contract`, `@doc` and `@deprecated`.
 
 ## What is generated
 
-One file per DSL package that declares an event, under the Go event target:
-`<events out>/<pkg>/events.go`, and nothing beside it.
+One file per design package that declares an event, and nothing beside it: `<events out>/<pkg>/events.go`.
 
 ```go
 // Code generated by craftgo. DO NOT EDIT.
@@ -91,7 +71,7 @@ import (
 // Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
 
-// Emitted once an order is accepted.
+// An order was accepted.
 //
 // Placed is the orders.Placed contract.
 // Placed.Publish(ctx, bus, payload) sends one; a listener registers
@@ -99,129 +79,77 @@ const PlacedContract = "orders.Placed"
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
-`@doc` replaces the descriptor's leading comment; without one the generated
-sentences stand alone. The validator argument is `nil` when the payload package
-emits no `validate.go`. A package declaring no event leaves no folder behind.
+`@doc` replaces the descriptor's leading comment; the validator argument is `nil` when the payload package emits no `validate.go`. A descriptor holds no bus - the bus is a parameter at the call - so one contract package serves every deployable that imports it.
 
-That is everything: payload types keep their own package under `output.types`, and
-there is no handler interface, no `Groups` struct, no `Register<Service>Handler`,
-no publisher type, no transport adapter, no logic stub and no event wiring -
-`wiring.Register`, `svccontext` and `main.go` keep only their HTTP duties.
+There is no handler interface, no registration function, no publisher type and no transport adapter. Where the file lands is `events.targets[].out`; see [Configuration](/guide/configuration#events).
 
 ## Publishing
 
-The descriptor publishes, and takes the bus at the call:
+![A publish runs validate, then encode with the JSON codec, then the bus, then a Publisher - JetStream, core NATS, Kafka, memory, or your own outbox.](/diagrams/publish-path.svg)
+
+The descriptor validates and encodes; the transport under the bus decides where the bytes go.
 
 ```go
 err := orders.Placed.Publish(ctx, bus, &types.OrderPlaced{OrderID: order.ID, Total: order.Total},
 	craftevents.WithKey(string(order.ID)))
 ```
 
-`Publish` validates first: a payload that does not validate is a `*PayloadError` and
-nothing goes on the wire - the contract is refused where it is broken rather than at
-every consumer. The trailing options fill in everything beside the payload - `WithKey`
-(the entity a message is about, used by a transport that orders per entity),
-`WithDedupID`, `WithHeader`, `WithAdapterOption`. `WithPublishDefaults` on the bus
-sets options every publish starts from, and per-call options are applied after, so
-they win. `bus.PublishAll(ctx, envs)` publishes a batch - the shape an outbox drains -
-reporting a partial failure as a `*PartialPublishError` whose `Unsent` holds the
-indices that did not go out; `bus.Publish(ctx, contract, payload, opts...)` is the
-untyped path for a contract with no descriptor to hand.
+`Publish` validates first: a payload that does not validate is a `*PayloadError` and nothing goes on the wire. The options fill in everything beside the payload - `WithKey` (the entity the message is about, used by a transport that orders per entity), `WithDedupID`, `WithHeader`, `WithAdapterOption`. `bus.PublishAll(ctx, envs)` publishes a batch and reports a partial failure as a `*PartialPublishError` naming the indices that did not go out.
+
+A transport adapter is anything implementing one method:
+
+```go
+type Publisher interface {
+	Publish(ctx context.Context, msg *Message) error
+}
+```
+
+An outbox is that method writing the encoded message to a table in the same transaction as the business write. A drainer then reads the table and calls `bus.PublishAll` against a bus wired to the real broker. Nothing generated changes, because nothing generated names a broker.
 
 ## Consuming
 
-A listener is one line: the descriptor, the group it consumes under, and the method
-that handles it.
+![A delivery travels broker, transport, panic recovery, the bus chain installed with bus.Use, the subscription chain, decode and validate, then your method; the returned error becomes the disposition the transport acks or naks on.](/diagrams/consume-path.svg)
+
+Everything between the broker and your method is the same for every subscription on the bus.
+
+A listener is one line: the descriptor, the group it joins, and the method that handles it.
 
 ```go
 // internal/handler/orders/handler.go
 var (
-	Group        = craftevents.Group("order-worker")
-	ReceiptGroup = craftevents.Group("order-receipts")
+	NotificationGroup = craftevents.Group("order-notifications")
+	LedgerGroup       = craftevents.Group("order-ledger")
 )
 
-func Register(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
-	l := logic.New(svcCtx)
+func Register(bus *craftevents.Bus) error {
+	notifier, ledger := Notifier{}, Ledger{}
 	return errors.Join(
-		orders.Placed.Subscribe(bus, Group, l.OrderPlaced),
-		orders.Shipped.Subscribe(bus, Group, l.OrderShipped),
-		orders.Placed.Subscribe(bus, ReceiptGroup, l.SendReceipt),
+		orders.Placed.Subscribe(bus, NotificationGroup, notifier.SendReceipt),
+		orders.Shipped.Subscribe(bus, NotificationGroup, notifier.SendDispatchNote),
+		orders.Placed.Subscribe(bus, LedgerGroup, ledger.BookOrder),
 	)
 }
 ```
 
-`Subscribe(bus, group, fn)` is typed against the contract: `fn` takes
-`(ctx, *types.OrderPlaced) error`, the payload already decoded and validated, and a
-method with the wrong signature does not compile at the call. There is no consumer
-parameter and no chain parameter - the middleware every handler runs behind belongs
-on the bus, and `Subscription.Consumer` defaults to the contract.
-
-`errors.Join` is what holds the lines together, and it is the reason to prefer it to
-a chain that stops: every line is offered to the bus, so a refusal in the middle
-neither hides the refusals beside it nor cancels the registrations after it, and each
-one is a `*RegisterError` already naming its contract and group. A deployable wired
-wrongly in two places hears about both at once.
-
-`Subscribe` is `bus.Register(descriptor.Subscription(bus, group, fn))` in one line.
-`bus.Register(sub)` takes the value itself, which is what the line that sets
-`Subscription.Consumer` or `Subscription.Chain` first needs; both check what the bus
-can check on its own: a handler, a group, a codec for the contract, the dispositions
-the bus requires, and no earlier subscription for the same contract and group.
+`Subscribe(bus, group, fn)` is typed against the contract: `fn` takes `(ctx, *types.OrderPlaced) error` with the payload already decoded and validated, so a method with the wrong signature does not compile at the call. `errors.Join` offers every line to the bus, so a refusal in the middle neither hides the refusals beside it nor cancels the registrations after it; each is a `*RegisterError` naming its contract and group.
 
 `main.go` is where the bus, its chain and the modules meet:
 
 ```go
-bus := craftevents.New(
-	craftevents.WithTransport(js),
-	craftevents.WithCodec(codecjson.Codec{}),
-)
-bus.Use(logging.AccessLog(logger), retry(svcCtx), timeout(30*time.Second))
+bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
+bus.Use(logging.AccessLog(craftlog.Slog()))
 
-if err := handler.Register(bus, svcCtx); err != nil {
+if err := handler.Register(bus); err != nil {
 	return err
 }
 return bus.Start(ctx)
 ```
 
-`Start` hands the whole batch to the transport in **one** call, sorted by group,
-contract then consumer, every handler wrapped; whether the broker accepts the set is
-answered there. A second `Start`, or a `Register` after one, is `ErrStarted`,
-including after a `Start` that failed - the transport may already have taken part of
-the batch.
+There is no default codec, and `WithPublisher` or `WithSubscriber` alone is enough for a binary that only publishes or only listens. `Start` hands the whole batch to the transport in **one** call, every handler wrapped; a second `Start`, or a `Register` after one, is `ErrStarted`.
 
 ### Groups
 
-A group is the broker identity a subscription consumes under: the Kafka consumer
-group, the NATS queue group, the JetStream durable. Subscriptions sharing one
-divide the stream between them, so a group is the unit of scaling and of failure
-isolation - not of ordering, which no transport here gives across contracts.
-
-`events.Group` is a named type so an application declares its groups **once, as
-values beside the registrations that use them** - the `var` block at the top of the
-module's `handler.go`, or a `groups.go` per deployable - and hands them around
-rather than repeating loose strings.
-
-There is no derived default and no fallback: `Register` refuses an empty group. On
-a transport that remembers a position per group - Kafka, JetStream - the name is
-where those consumers resume, and one the broker has never seen has no position at
-all: **if it has an offset, write the name down**. Core NATS keeps no position, so
-there the name only decides who competes for a message. Two deployables of one
-design need not agree on a group, which is why the name is not in the design.
-
-Two subscriptions of one contract in one process - `orders.Placed` above, under both
-groups - are already distinct by group, and `Consumer`, the name `Plan` and a
-`*PanicError` show, defaults to the contract for both. Set the field on the value
-where telling the two apart in a log line is worth the extra line:
-
-```go
-sub := orders.Placed.Subscription(bus, ReceiptGroup, l.SendReceipt)
-sub.Consumer = "SendReceipt"
-err := bus.Register(sub)
-```
-
-`Subscription` builds the value `Subscribe` would have registered, and `bus.Register`
-takes it - the two-line form for the registration that needs a field set, where
-`Subscribe` is the one-line form for every other.
+A group is the broker identity a subscription joins: the Kafka consumer group, the NATS queue group, the JetStream durable. Subscriptions sharing one divide the stream between them, so a group is the unit of scaling and of failure isolation - not of ordering. `events.Group` is a named type so an application declares its groups once, as **values beside the registrations that use them**, rather than as loose strings. `Register` refuses an empty group. On a transport that remembers a position per group - Kafka, JetStream - the name is where those consumers resume: if it has an offset, write the name down.
 
 ### Middleware
 
@@ -231,241 +159,79 @@ A consumer middleware is ordinary Go, never a declaration:
 type Middleware func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler
 ```
 
-`sub` carries the contract, the consumer and the group being wrapped, so one chain
-can behave differently per group. Chains compose **outermost first**:
-`Use(A, B, C)` wraps a handler as `A(B(C(h)))`, so a message flows A → B → C →
-handler and the return travels back in reverse.
+`sub` carries the contract, the consumer and the group being wrapped, so one chain can behave differently per group. Chains compose **outermost first**: `Use(A, B, C)` wraps a handler as `A(B(C(h)))`. The chain belongs to the bus, the only thing every subscription passes through - `WithMiddleware` installs it at construction, `bus.Use` appends afterwards, and `Use` after `Start` panics. One subscription that needs its own wrap sets `Subscription.Chain`, applied inside the bus chain. A failed decode or validation reaches the chain as `*PayloadError`, a message stamped with another codec as `ErrCodecMismatch`, a panicking handler as `*PanicError`.
 
-The chain belongs to the **bus**, because the bus is the only thing every
-subscription passes through. `events.WithMiddleware(mws...)` installs it at
-construction and `bus.Use(mws...)` appends to the same chain afterwards - for a
-middleware built out of a service context or out of configuration, which the `New`
-call does not have yet. `Use` after `Start` panics: the batch has gone to the
-transport with its handlers already wrapped, so a middleware arriving then would
-cover nothing and say nothing about it.
+### Dispositions
 
-A subscription's own `Chain` field is the exception, for one registration that needs
-a wrap the rest of the deployable does not:
-
-```go
-sub := orders.Placed.Subscription(bus, Group, l.OrderPlaced)
-sub.Chain = craftevents.NewChain(dedupe(store))
-err := bus.Register(sub)
-```
-
-It is applied **inside** the bus chain, so a bus-wide concern like logging still
-sees what a per-consumer chain did. `Start` recovers on both sides of the bus chain,
-so a panicking handler reaches your middleware as an ordinary `*PanicError` and a
-panic in the chain itself is caught too; `events.Recover()` is only for a chain you
-fold yourself with `Chain.Apply`, which the bus wraps from outside as one opaque
-handler - put it at that chain's innermost end. `pkg/events/logging.AccessLog(logger)`
-is the shipped middleware.
-
-Three failures arrive at a chain with a type of their own. The descriptor decodes and
-validates before your method runs, so a payload that fails either is a
-`*PayloadError`, which a chain picks out with `errors.As` and gives up on rather than
-retries - the same bytes fail the same way on every delivery. A message stamped with a
-codec the consumer is not configured for is `ErrCodecMismatch` instead: a
-configuration mistake, not a poison payload. A handler that panicked is a `*PanicError`
-carrying the contract, the consumer, the group and the stack. Nothing else is
-classified - what to do with a failure is the chain's decision.
-
-## Dispositions
-
-A middleware can ask for something other than "done", through the message, because
-a decision about one delivery is not a value the transport carries:
-
-| call | what it asks for |
-| --- | --- |
-| `msg.Settle()` | take this delivery as done |
-| `msg.Redeliver()` | hand it back; the same message returns |
-| `msg.Reject()` | give it up - no attempt will handle it |
-
-Asking for nothing leaves `DispositionUnset`, which settles. `msg.Deliveries()` is the
-broker's count of how many times it has handed this message over. The chain returns
-innermost first, so the outermost middleware decides last and can clear what
-everything below it asked for; decide from the handler's goroutine, before the chain
-returns.
+A middleware asks for something other than "done" through the message: `msg.Settle()` takes the delivery, `msg.Redeliver()` hands it back, `msg.Reject()` gives it up. Asking for nothing settles.
 
 ::: danger Only some transports can honour this
-Redeliver and reject need the broker to track each record. JetStream and a Kafka
-share group can; a classic Kafka consumer group, core NATS and the in-process
-transport cannot, and there **`Redeliver` settles instead** - losing every message
-the chain meant to retry, silently. Name the disposition you need at the bus with
-`WithDispositionRequired` and `Register` refuses on a transport that cannot honour
-it, which reaches you as a boot failure. An adapter says what it can do by
-implementing `events.Dispositioner`.
+JetStream and a Kafka share group track each record; a classic Kafka consumer group, core NATS and the in-process transport do not, and there `Redeliver` settles instead. Name what you need with `WithDispositionRequired` and `Register` refuses a transport that cannot honour it.
 :::
 
-## Wiring the bus
+### The plan
 
-Two runtime choices, made where the application starts: the transport that moves the
-messages, the codec that encodes them.
-
-```go
-bus := craftevents.New(
-	craftevents.WithTransport(js),
-	craftevents.WithCodec(codecjson.Codec{}),
-	craftevents.WithMiddleware(logging.AccessLog(logger)),
-	craftevents.WithDispositionRequired(craftevents.DispositionRedeliver),
-)
-```
-
-There is no default codec - a bus built without one fails rather than picking an
-encoding - and `WithCodecFor(contract, c)` overrides it for a single contract.
-`WithMiddleware` and `bus.Use` build the same chain, so a deployable assembling its
-chain from a service context can leave the option off and call `Use` once the
-context exists.
-
-A project publishing from one binary and consuming in another builds a bus on each
-side: `WithPublisher` alone is enough to publish, `WithSubscriber` alone to listen.
-
-## The plan
-
-No generated file states what a deployable consumes - the groups are the
-application's - so `bus.Plan()` reports it instead, before or after `Start`:
-
-```json
-{ "groups": [ { "name": "order-receipts", "consumers": [
-    { "event": "orders.Placed", "consumer": "orders.Placed" } ] },
-  { "name": "order-worker", "consumers": [
-    { "event": "orders.Placed", "consumer": "orders.Placed" },
-    { "event": "orders.Shipped", "consumer": "orders.Shipped" } ] } ] }
-```
-
-`consumer` repeats the contract here because nothing set `Subscription.Consumer`.
-Groups are ordered by name and consumers by contract then consumer, and
-`MarshalJSON` renders that order whatever order the plan was built in. That makes it
-a golden file - the listener map a deployable used to get from the design:
+No generated file states what a deployable listens to, so `bus.Plan()` reports it instead, before or after `Start`. It sorts groups by name and consumers by contract, and renders that order however the plan was built, which makes it a golden file:
 
 ```go
-func TestPlan(t *testing.T) {
-	bus := craftevents.New(
-		craftevents.WithTransport(memory.New()),
-		craftevents.WithCodec(codecjson.Codec{}),
-	)
-	if err := handler.Register(bus, svcCtx); err != nil {
-		t.Fatal(err)
-	}
-	got, err := json.MarshalIndent(bus.Plan(), "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// compare got against testdata/plan.json
+bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
+if err := handler.Register(bus); err != nil {
+	t.Fatal(err)
 }
+got, err := json.MarshalIndent(bus.Plan(), "", "  ")
+// compare got against testdata/plan.json
 ```
 
-A rename, a lost listener or a group that drifted between two deployables then fails
-a test rather than a deploy.
+A rename, a lost listener or a group that drifted between two deployables then fails a test rather than a deploy.
 
 ## NATS JetStream
 
-`nats.NewJetStream(conn, opts...)` consumes from a stream, and is what makes
-`Redeliver` and `Reject` mean something on NATS. Its wire format is the core
-transport's, so a message published through either arrives identically; it is a
-separate type because a JetStream delivery is not a `*nats.Msg` - reach it with
-`nats.JetStreamMsgFrom(ctx)`.
+![One durable per group carries that group's FilterSubjects; one process subscribes several groups, and an existing durable is adopted when its filter equals the plan, widened when it is a strict subset, and refused otherwise.](/diagrams/jetstream-groups.svg)
 
-### One durable per group
+A group is a durable name, and the durable's filter set is the plan this process registered.
 
-A group is the durable consumer's name, and one durable filters every subject the
-group consumes; a delivery is dispatched to its consumer by subject. Replicas sharing
-a group share the durable and divide its work, and the position the group reached
-stays under its name. A durable reads one stream, so a group's subjects have to sit
-on one: a group spanning two streams is refused at start-up, naming both, as are a
-group claimed twice in one process and a duplicate subject within a group.
-`Bus.Start` hands the whole batch over at once, which is what a durable filtering
-several subjects needs.
-
-### Adopting a durable that exists
-
-An existing durable is verified, not reshaped: its filter set is compared with the
-plan this process carries.
+`nats.NewJetStream(conn, opts...)` reads from a stream, and is what makes `Redeliver` and `Reject` mean something on NATS. A durable reads one stream, so a group whose subjects span two is refused at start-up. At `Start` an existing durable is verified, not reshaped:
 
 | carried filter vs plan | what happens |
 | --- | --- |
 | equal | adopted as is |
-| a strict subset of the plan | re-pointed and logged - this version added a consumer, nothing stops being consumed |
+| a strict subset of the plan | widened and logged - this version added a listener |
 | anything else | **refused**, naming both sets |
 
-"Anything else" is a plan that drops subjects, one that only partly overlaps, or a
-durable carrying no filter at all - every subject on its stream. Re-pointing any of
-those stops those subjects reaching anyone, so it is refused unless the group asks for
-it with `nats.AllowNarrow()`, which is what a deliberate removal of a consumer looks
-like. A durable that does not acknowledge explicitly is refused too; one that does not
-exist is created and logged at Info with its config.
+"Anything else" is a plan that drops subjects, one that only partly overlaps, or a durable with no filter at all. Re-pointing any of those stops those subjects reaching anyone, so it is refused unless the group carries `nats.AllowNarrow()` - a deliberate removal.
 
 ### Per-group settings
 
-Delivery settings belong to the group, because the group is what the server keeps
-them on: a durable consuming a slow contract wants a different `AckWait` from one
-consuming a fast one, and both may run in the same process.
+Delivery settings belong to the group, because the group is what the server keeps them on:
 
 ```go
 js, err := nats.NewJetStream(conn,
-	nats.WithGroupConfig(PriceVariants, nats.DeliverPolicy(jetstream.DeliverNewPolicy),
+	nats.WithGroupConfig(LedgerGroup, nats.DeliverPolicy(jetstream.DeliverNewPolicy),
 		nats.MaxInFlight(8), nats.AckWait(2*time.Minute)))
 ```
 
-`MaxInFlight`, `AckWait`, `DeliverPolicy`, `ConsumerConfig` and `AllowNarrow` are
-the group options, and repeated calls for one group accumulate. The last three
-apply when the durable is **created** - where a consumer resumes is not something a
-redeploy may move. `WithMaxInFlight` and `WithAckWait` stay as the transport-wide
-defaults for every group that does not name its own.
+`MaxInFlight`, `AckWait`, `DeliverPolicy`, `ConsumerConfig` and `AllowNarrow` are the group options, and repeated calls for one group accumulate. The last three apply when the durable is **created**; `WithMaxInFlight` and `WithAckWait` are the transport-wide defaults.
 
-### Prefetch, ack wait and redelivery
-
-`MaxInFlight` is how many messages one durable's pull keeps buffered in this
-process. The default is 1, deliberately: messages are handled one at a time, so a
-buffered message waits for every handler ahead of it with the server's `AckWait`
-clock already running. **Raise it only where `n` × the slowest handler stays under
-`AckWait`** - otherwise a message is redelivered while it still sits in the buffer,
-a duplicate nothing reports.
-
-`WithMaxDeliveries` (default 5, zero unbounded) caps a redelivery loop the chain keeps
-asking for; the message is terminated once the server's count reaches it, and a
-delivery that succeeds on the last attempt is still taken as done.
-`WithRedeliverBackoff(fn)` delays a redelivery by `fn(deliveries)` - without one a
-transient failure burns the whole cap in milliseconds.
+`MaxInFlight` is how many messages one durable's pull keeps buffered here, and the default is 1 deliberately: a buffered message waits for every handler ahead of it with the server's `AckWait` clock already running. **Raise it only where `n` × the slowest handler stays under `AckWait`**, or a message is redelivered while it still sits in the buffer. `WithMaxDeliveries` (default 5) caps a redelivery loop and `WithRedeliverBackoff(fn)` delays each redelivery by `fn(deliveries)`.
 
 ### Rolling deploys
 
-During a rolling deploy two versions of a deployable share a durable. A subject no
-consumer in this process handles is **handed back** - NAK'd with the group's `AckWait`
-as the delay - so the replica that does handle it gets it, and never terminated: the
-transport drops no message. Every hand-back is reported through
-`WithJetStreamErrorHandler` with only `sub.Group` set, the failure belonging to the
-group rather than to one consumer.
+During a rolling deploy two versions of a deployable share a durable. A subject no listener in this process handles is **handed back** - NAK'd with the group's `AckWait` as the delay - so the replica that does handle it gets it, and never terminated. Every hand-back is reported through `WithJetStreamErrorHandler` with only `sub.Group` set.
 
 ## Kafka, core NATS and memory
 
-- `pkg/events/kafka` maps one contract to one topic, with the ordering key as the
-  record key. The default is a classic consumer group, which can only take a delivery
-  as done; `WithShareGroup` asks for a KIP-932 share group, where `Redeliver` and
-  `Reject` mean something. The mode is never detected - a broker that cannot serve
-  one is refused rather than quietly consumed as a classic group.
-- `pkg/events/nats` (core) maps a contract to a subject and a group to a queue group.
-  It delivers at most once and has no nack, so install `nats.WithErrorHandler` or a
-  failed message is observed by nothing.
-- `pkg/events/memory` is the in-process transport for tests, single-binary
-  deployments and the plan golden test; `Drain()` waits for in-flight deliveries. All
-  three take the batch `Subscribe` and loop over it.
+- `pkg/events/kafka` - one contract per topic, ordering key as the record key; `WithShareGroup` asks for a KIP-932 share group instead of a classic consumer group.
+- `pkg/events/nats` (core) - contract to subject, group to queue group; at most once and no nack, so install `nats.WithErrorHandler` or a failed message is observed by nothing.
+- `pkg/events/memory` - in-process, for tests, single-binary deployments and the plan golden test; `Drain()` waits for in-flight deliveries.
 
-## Configuration
+Every option and error type is listed in [Runtime API](/reference/runtime-api#event-runtime).
 
-```yaml
-events:
-  targets:
-    - lang: go
-      out: ./internal/events
-```
+## Who owns what
 
-Go is a row in `targets`, not an implied default: the manifest states where the event
-artefacts land the same way it would for any other language, and the Go target places
-them through `output:`, so it rejects a per-target `layout:` rather than ignoring it.
-Omit the block and a design that declares events gets one Go target at
-`./internal/events` - or `./gen/events` under `output.kind: contracts`, since Go
-forbids importing `internal/` across modules. A design that declares none generates
-nothing either way, and `out: "-"` skips the target. Transport and codec are
-deliberately absent: they are runtime wiring, not design-time facts. See
-[Configuration](/guide/configuration) for the rest of the manifest.
+![The design owns the event declaration, the wire name, the payload types and one folder per version; the application owns which events it listens to, the group per subscription, the middleware and the folder layout.](/diagrams/responsibilities.svg)
+
+The design is the contract two deployables share; everything operational is the application's.
+
+The **design** holds the `event` declaration and its `@contract` name, the payload types and their validators, one folder per version, and the HTTP services beside them. The **application** holds which events this deployable listens to, the group per subscription, the middleware on `bus.Use`, and its own folder layout, retries and transport settings.
+
+Nothing in between is declarable: no listener declaration, no group decorator, no middleware declaration for listeners, no projection. A group or a chain in the design would tie a shared contract to one deployable's operations. See [What changed](/guide/whats-changed) if you are coming from an earlier layout.

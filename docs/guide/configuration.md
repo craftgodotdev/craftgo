@@ -1,6 +1,6 @@
 # Configuration
 
-A craftgo project has two configuration files. They live in different places and serve different stages.
+A craftgo project has two configuration files. They live in different places and serve different stages. [Architecture](/guide/architecture) shows what each stage produces.
 
 ## At a glance
 
@@ -183,7 +183,7 @@ events:
       out: ./gen/events
 ```
 
-Each deployable around it holds its own design folder and its own manifest, generates its own application half, and imports the contracts project for the payload types and the event descriptors. A deployable that serves no HTTP wants no OpenAPI document of its own - turn it off with `output.openapi: "-"`.
+Each deployable around it holds its own design folder and its own manifest, generates its own application half, and imports the contracts project for the payload types and the event descriptors - see [Events layout](/guide/project-structure#events-layout) for the shape on disk. A deployable that serves no HTTP wants no OpenAPI document of its own - turn it off with `output.openapi: "-"`.
 
 Switching an existing project to `kind: contracts` leaves whatever it generated as an application exactly where it was. A contracts project names no `output.transport`, `output.routes`, `output.service`, `output.wiring` or `output.middleware`, so nothing walks those directories any more. craftgo reports it - naming every path that still holds generated files - but deletes nothing: the directory may be one you now use for something else.
 

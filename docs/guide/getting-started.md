@@ -99,6 +99,7 @@ hello/
 │   ├── routes/                                 generated routing
 │   │   ├── routes.go
 │   │   └── user_service/routes.go
+│   ├── wiring/wiring.go                        the one call main.go makes
 │   └── middleware/                             gen-once middleware stubs
 ├── svccontext/svccontext.go                    gen-once dependency container
 ├── config/                                     gen-once runtime config
@@ -124,7 +125,7 @@ func (l *CreateUserService) CreateUser(req *types.CreateUserReq) (*types.User, e
 }
 ```
 
-This is the only file you edit. Everything in `internal/types/`, `internal/transport/`, `internal/routes/` is regenerated.
+This is the only file you edit. Everything else under `internal/` is regenerated - see [Architecture](/guide/architecture) for the split.
 
 ## Run
 
@@ -166,10 +167,7 @@ name: length out of range [1, 80]
 
 ## What just happened
 
-1. The DSL described one endpoint, two types, three validators.
-2. `craftgo gen` produced typed Go structs, an HTTP handler, a logic stub, route registration, and an OpenAPI spec.
-3. You filled the logic stub.
-4. The handler decoded JSON, ran `req.Validate()`, called your function, encoded the response.
+One DSL file became typed structs, an HTTP handler, a logic stub, route registration and an OpenAPI spec; you filled the stub, and the handler decoded, validated, dispatched and encoded around it.
 
 No reflection. No struct tags. No middleware boilerplate. The handler is a plain `http.HandlerFunc` registered on `*http.ServeMux`.
 
@@ -185,6 +183,7 @@ It is a single-page consolidated reference (every keyword, decorator, CLI flag, 
 
 ## Next steps
 
+- Read [Architecture](/guide/architecture) for how the design, the generated code and the runtime fit together.
 - Read [DSL Basics](/guide/dsl-basics) to learn the syntax in depth.
 - Browse [Decorators](/guide/decorators) to see every decorator with arguments and sites.
 - Install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=craftgo.craftgo) (search "craftgo" in the Extensions panel) - or set up the [LSP](/guide/lsp) for another editor - for completion, hover, and live diagnostics.

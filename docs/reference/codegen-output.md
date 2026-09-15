@@ -1,6 +1,6 @@
 # Codegen Output
 
-What `craftgo gen` writes to disk, file by file. Output is **deterministic** - the same DSL always produces byte-identical files - and every Go file is run through `go/format`, so generated code is always gofmt-clean.
+What `craftgo gen` writes to disk, file by file. Output is **deterministic** - the same DSL always produces byte-identical files - and every Go file is run through `go/format`, so generated code is always gofmt-clean. [Architecture](/guide/architecture) is the one-page overview of how these files relate.
 
 ## Two kinds of file
 
@@ -29,7 +29,7 @@ internal/
 ├── events/<pkg>/                REGEN - one folder per DSL package declaring an event
 │   └── events.go                contract constant + descriptor per event
 ├── routes/
-│   ├── routes.go                REGEN - umbrella RegisterAll
+│   ├── routes.go                REGEN - umbrella registration
 │   └── <svc>/routes.go          REGEN - per-service RegisterRoutes
 ├── middleware/
 │   └── <name>_middleware.go     GEN-ONCE - one per declared middleware
@@ -48,11 +48,6 @@ config/                          GEN-ONCE - runtime config loader
 docs/openapi.yaml                REGEN - OpenAPI 3.1 spec
 main.go                          GEN-ONCE - wired entry point
 ```
-
-`events/<pkg>/events.go` is written per DSL **package**, not per service, and
-only when that package declares an event. A package that declares none leaves no
-folder behind, and no second event file exists: which events a deployable
-listens to is its own Go.
 
 Here `<method>` / `<svc>` / `<name>` render in the case set by `output.fileCase`
 (**snake_case** by default, so `create_user.go` and `user_service/`; `kebab` and
@@ -123,8 +118,8 @@ The one call `main.go` makes to attach the design:
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error)
 ```
 
-It calls `routes.RegisterAll` and fails at startup for every middleware the
-design applies that `svcCtx` leaves nil, naming the line that would assign it -
+It registers every service's routes and fails at startup for every middleware
+the design applies that `svcCtx` leaves nil, naming the line that would assign it -
 a nil middleware is skipped by the chain rather than called, so without the
 check the guarantee the design makes is silently missing. The returned shutdown
 runs beside `srv.Stop`. The body changes with the design; the signature does
@@ -145,17 +140,18 @@ Wires the `ServiceContext`, the `server.Server`, route registration, middleware,
 
 ### `events/<pkg>/events.go` (regen)
 
-The contract descriptors of one DSL package, written when it declares at least
-one `event`. Per event: a `<Name>Contract` constant holding the wire identity
-(`<package>.<Event>` unless `@contract("...")` names another), and one
-`events.Event[T]` descriptor bound to the payload type and its `Validate()`:
+Written per DSL **package**, not per service, and only when that package
+declares at least one `event`. Per event: a `<Name>Contract` constant holding
+the wire identity (`<package>.<Event>` unless `@contract("...")` names another),
+and one `events.Event[T]` descriptor bound to the payload type and its
+`Validate()`:
 
 ```go
 // PlacedContract is the wire identity of Placed.
 // Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
 
-// Emitted once an order is accepted.
+// An order was accepted.
 //
 // Placed is the orders.Placed contract.
 // Placed.Publish(ctx, bus, payload) sends one; a listener registers
@@ -163,29 +159,19 @@ const PlacedContract = "orders.Placed"
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
-`@doc("...")` replaces the descriptor's leading comment. The validator argument
-is `nil` when the payload package emits no `validate.go`. A descriptor holds no
-bus - the bus is a parameter at `Placed.Publish(ctx, bus, payload)` - so one
-library serves every deployable.
-
 A `payload T[]` contract is typed on the slice -
 `craftevents.NewEvent[[]types.OrderPlaced](BatchPlacedContract, validateBatchPlaced)` -
 and the file declares `validateBatchPlaced`, which runs each element's own
-`Validate` and names the index that failed; the descriptor turns that into the
-same `*PayloadError` a single payload produces. That validator is the only
-reason the file ever imports `fmt`.
+`Validate` and names the index that failed. That validator is the only reason
+the file ever imports `fmt`.
 
-This is the only event file. There is no handler interface, no `Groups` struct
-and no `Register` function: a listener is `Placed.Subscribe(bus, group, fn)`
-written where the bus is built, so which group it joins, what middleware wraps
-it and which process runs it never enter the design. The file imports the event
-runtime, the payload types and (for an array payload) `fmt`, and nothing else,
-which is what keeps it importable on its own - by the publisher, by a listener,
-by a project that only needs the contract. `@group` nests the HTTP handlers and
-service stubs; the event library is placed per DSL package and is unaffected by
-it.
+The file imports the event runtime, the payload types and (for an array payload)
+`fmt`, and nothing else, which is what keeps it importable on its own. `@group`
+nests the HTTP handlers and service stubs; the event library is placed per DSL
+package and is unaffected by it. A package that declares no event leaves no
+folder behind.
 
-See [Events](/guide/events) for the whole picture.
+See [Events](/guide/events#what-is-generated) for the rest.
 
 ## Drift safety
 
