@@ -14,6 +14,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	events "github.com/craftgodotdev/craftgo/pkg/events"
+	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
 )
 
@@ -293,6 +294,83 @@ func TestJetStreamRedeliversAndRejects(t *testing.T) {
 	}
 	if seen[0] != 1 || seen[1] != 2 {
 		t.Errorf("delivery counts = %v, want [1 2]", seen)
+	}
+}
+
+// A panic inside a bus middleware unwinds past every return the chain
+// would have made, so only the bus's outermost recover catches it and
+// nothing above that is left to decide. This adapter reads an undecided
+// message as an ack, so a middleware that panicked used to have its
+// message acked and dropped - the one failure mode a durable exists to
+// prevent. The proof is the second delivery: the bus asks for a hand-back
+// and the adapter NAKs.
+func TestAPanicInAMiddlewareIsNakkedRatherThanAcked(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+
+	var (
+		mu       sync.Mutex
+		seen     []int
+		reported []error
+	)
+	tr := jsTransport(t, conn,
+		craftnats.WithAckWait(2*time.Second),
+		craftnats.WithJetStreamErrorHandler(func(_ events.Subscription, _ *events.Message, err error) {
+			mu.Lock()
+			reported = append(reported, err)
+			mu.Unlock()
+		}))
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
+
+	done := make(chan struct{})
+	bus.Use(func(_ events.Subscription, next events.Handler) events.Handler {
+		return func(ctx context.Context, m *events.Message) error {
+			mu.Lock()
+			seen = append(seen, m.Deliveries())
+			first := len(seen) == 1
+			mu.Unlock()
+			if first {
+				panic("middleware blew up")
+			}
+			close(done)
+			return next(ctx, m)
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := bus.Register(events.Subscription{
+		Event: "orders.Placed", Consumer: "C", Group: "escaped-panic",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the message was acked and never came back - a panic in a middleware lost it")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 2 {
+		t.Fatalf("deliveries = %v, want exactly two - the panic hands the message back once", seen)
+	}
+	if seen[0] != 1 || seen[1] != 2 {
+		t.Errorf("delivery counts = %v, want [1 2]", seen)
+	}
+	var panicked *events.PanicError
+	if len(reported) == 0 || !errors.As(reported[0], &panicked) {
+		t.Fatalf("the adapter reported %v, want a *PanicError", reported)
 	}
 }
 

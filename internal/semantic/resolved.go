@@ -32,6 +32,7 @@ const (
 	CatPrimitive               // string / int* / uint* / float* / bool
 	CatBytes                   // the `bytes` builtin (Go []byte)
 	CatAny                     // the `any` builtin (Go interface{})
+	CatJSON                    // the `json` builtin (Go json.RawMessage)
 	CatFile                    // the `file` builtin (Go *multipart.FileHeader)
 	CatScalar                  // a `scalar Name <prim>` defined type
 	CatEnum                    // an `enum Name { ... }` defined type
@@ -166,6 +167,14 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 			return rf
 		case prims.Any:
 			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatAny, name, true, ""
+			return rf
+		case prims.JSON:
+			// NOT nilable, though json.RawMessage is a []byte: an
+			// optional / `@nullable` json field wraps to
+			// *json.RawMessage so "absent" stays distinguishable from
+			// the literal 4 bytes `null`, which a raw JSON value is
+			// entitled to carry.
+			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatJSON, name, ""
 			return rf
 		case prims.File:
 			rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""

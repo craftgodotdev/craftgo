@@ -2082,3 +2082,28 @@ service S {
 		}
 	}
 }
+
+// A `json` field is an unconstrained schema - the document says nothing
+// about a value craftgo never reads - carrying the one description that
+// tells a reader the emptiness is deliberate rather than a field left
+// undocumented. `any` renders the same schema without the description.
+func TestGenerateOpenAPIJSONPrimitiveIsUnconstrained(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Req { payload json  meta json?  raw any }
+service S {
+    post Make /m { request Req }
+}`)
+	for _, want := range []string{
+		"payload:\n          description: raw JSON value",
+		"meta:\n          description: raw JSON value",
+		"raw: {}",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the document does not carry %q:\n%s", want, body)
+		}
+	}
+	// Unconstrained means unconstrained: no type, no format.
+	if strings.Contains(body, "raw JSON value\n          type:") {
+		t.Errorf("a json field must not be given a type:\n%s", body)
+	}
+}

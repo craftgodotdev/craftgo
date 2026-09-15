@@ -15,6 +15,9 @@ import (
 // about that delivery.
 type directTransport struct {
 	subs []events.Subscription
+	// handlerErr is what the last delivery answered with, which a
+	// transport reads alongside the disposition.
+	handlerErr error
 }
 
 func (d *directTransport) Subscribe(_ context.Context, subs []events.Subscription) error {
@@ -25,7 +28,7 @@ func (d *directTransport) Subscribe(_ context.Context, subs []events.Subscriptio
 func (d *directTransport) Publish(ctx context.Context, msg *events.Message) error {
 	for _, sub := range d.subs {
 		if sub.Event == msg.Event {
-			_ = sub.Handle(ctx, msg)
+			d.handlerErr = sub.Handle(ctx, msg)
 		}
 	}
 	return nil
@@ -44,7 +47,17 @@ func (d *dispositionTransport) CanDisposition(want events.Disposition) bool { re
 // returning it once the chain has finished with it.
 func deliverThrough(t *testing.T, chain events.Chain, h events.Handler) *events.Message {
 	t.Helper()
-	tr := &directTransport{}
+	return deliverOn(t, &directTransport{}, chain, h)
+}
+
+// deliverOn is deliverThrough over a named transport, for a test whose
+// subject is what the transport can do with a delivery rather than what
+// the chain asked for.
+func deliverOn(t *testing.T, tr interface {
+	events.Publisher
+	events.Subscriber
+}, chain events.Chain, h events.Handler) *events.Message {
+	t.Helper()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
 		events.WithMiddleware(chain...))
 	start(t, context.Background(), bus, events.Subscription{
@@ -55,6 +68,84 @@ func deliverThrough(t *testing.T, chain events.Chain, h events.Handler) *events.
 		t.Fatalf("publish: %v", err)
 	}
 	return msg
+}
+
+// canRedeliver is a transport that can hand a message back, the mode
+// every JetStream and share-group adapter runs in.
+func canRedeliver() *dispositionTransport {
+	return &dispositionTransport{can: map[events.Disposition]bool{
+		events.DispositionSettle: true, events.DispositionRedeliver: true,
+	}}
+}
+
+// A panic in a MIDDLEWARE unwinds past every return the chain would have
+// made, so only the bus's outermost recover catches it - and nothing is
+// left above THAT to decide for the message. Left unset it reaches the
+// transport as "take it as done": an adapter acks it, and a bug in a
+// middleware deletes traffic in silence. Where the transport can hand a
+// message back, the escaped panic asks it to, so the delivery fails the
+// way every other failed delivery does.
+func TestAPanicEscapingTheChainAsksForRedelivery(t *testing.T) {
+	blowUp := func(events.Subscription, events.Handler) events.Handler {
+		return func(context.Context, *events.Message) error { panic("middleware blew up") }
+	}
+	var ran bool
+	tr := canRedeliver()
+	msg := deliverOn(t, tr, events.NewChain(blowUp),
+		func(context.Context, *events.Message) error { ran = true; return nil })
+
+	var panicked *events.PanicError
+	if !errors.As(tr.handlerErr, &panicked) {
+		t.Fatalf("the transport saw %v, want a *PanicError", tr.handlerErr)
+	}
+	if panicked.Value != "middleware blew up" {
+		t.Errorf("PanicError.Value = %v, want the middleware's panic", panicked.Value)
+	}
+	if got := msg.Disposition(); got != events.DispositionRedeliver {
+		t.Errorf("disposition after a panic in a middleware = %v, want redeliver - unset settles and the message is gone", got)
+	}
+	if ran {
+		t.Error("the handler ran despite the middleware panicking")
+	}
+}
+
+// A transport that settles and nothing else has no hand-back to ask for,
+// so the escaped panic leaves the message undecided rather than naming a
+// disposition the transport would silently downgrade. Declare the need
+// with WithDispositionRequired to find out at startup instead.
+func TestAPanicEscapingTheChainLeavesASettleOnlyTransportUnset(t *testing.T) {
+	blowUp := func(events.Subscription, events.Handler) events.Handler {
+		return func(context.Context, *events.Message) error { panic("middleware blew up") }
+	}
+	msg := deliverOn(t, &directTransport{}, events.NewChain(blowUp),
+		func(context.Context, *events.Message) error { return nil })
+	if got := msg.Disposition(); got != events.DispositionUnset {
+		t.Errorf("disposition = %v, want unset on a transport that cannot redeliver", got)
+	}
+}
+
+// The two recovers differ on purpose. A panicking HANDLER is caught
+// beneath the chain, which then runs its returns and decides - so this
+// one leaves the message undecided even where a hand-back is available,
+// and a middleware that reads the *PanicError says what happens next.
+func TestAPanickingHandlerLeavesTheDecisionToTheChain(t *testing.T) {
+	var seen error
+	watch := func(_ events.Subscription, next events.Handler) events.Handler {
+		return func(ctx context.Context, msg *events.Message) error {
+			seen = next(ctx, msg)
+			return seen
+		}
+	}
+	msg := deliverOn(t, canRedeliver(), events.NewChain(watch),
+		func(context.Context, *events.Message) error { panic("handler blew up") })
+
+	var panicked *events.PanicError
+	if !errors.As(seen, &panicked) {
+		t.Fatalf("the middleware saw %v, want a *PanicError", seen)
+	}
+	if got := msg.Disposition(); got != events.DispositionUnset {
+		t.Errorf("disposition = %v, want unset - the chain above the handler decides", got)
+	}
 }
 
 // subscribeWith builds a bus from opts and registers one handler,

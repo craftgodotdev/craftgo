@@ -254,3 +254,48 @@ scalar Email string @format("email")`)
 		t.Fatalf("scalar Email should carry @format, got %v", sd2.Decorators)
 	}
 }
+
+// `json` is a type name and `@json` is a decorator name, in namespaces
+// that never meet: a field may carry both on one line. The parser reads
+// the first `json` as the field's type - which also puts a PascalCase
+// field name through the "PascalCase + builtin → field" carve-out, so
+// `Payload json` stays a field rather than becoming a mixin reference.
+func TestFieldOfTypeJSONCarriesTheJSONDecorator(t *testing.T) {
+	f := parseSrc(t, `package design
+
+type Hook {
+    payload json @json("Payload")
+    Payload json?
+}
+`)
+	td, ok := f.Decls[0].(*ast.TypeDecl)
+	if !ok {
+		t.Fatalf("first decl is %T, want a *ast.TypeDecl", f.Decls[0])
+	}
+	if len(td.Body) != 2 {
+		t.Fatalf("type body has %d members, want 2 fields (a mixin was read instead): %#v", len(td.Body), td.Body)
+	}
+
+	first, ok := td.Body[0].(*ast.Field)
+	if !ok {
+		t.Fatalf("first member is %T, want a *ast.Field", td.Body[0])
+	}
+	if first.Name != "payload" || first.Type.Named.Name.String() != "json" {
+		t.Errorf("first field is %q %q, want payload of type json", first.Name, first.Type.Named.Name.String())
+	}
+	if len(first.Decorators) != 1 || first.Decorators[0].Name != "json" {
+		t.Fatalf("first field's decorators = %#v, want one @json", first.Decorators)
+	}
+	lit, ok := first.Decorators[0].Args[0].Value.(*ast.StringLit)
+	if !ok || lit.Value != "Payload" {
+		t.Errorf("@json argument = %#v, want the string \"Payload\"", first.Decorators[0].Args[0].Value)
+	}
+
+	second, ok := td.Body[1].(*ast.Field)
+	if !ok {
+		t.Fatalf("second member is %T, want a *ast.Field - a PascalCase name before a builtin is a field", td.Body[1])
+	}
+	if second.Name != "Payload" || !second.Type.Optional {
+		t.Errorf("second field is %q (optional %v), want Payload optional", second.Name, second.Type.Optional)
+	}
+}

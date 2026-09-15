@@ -6974,6 +6974,8 @@ components:
           type:
           - string
           - "null"
+        details:
+          description: raw JSON value
         reason:
           type:
           - string

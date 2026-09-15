@@ -20,7 +20,8 @@ const fullDesign = `package gate
 middleware Guard
 
 type Thing {
-	id string
+	id      string
+	payload json
 }
 
 type GetReq {
@@ -145,6 +146,10 @@ type scaffoldShape struct {
 	// link runs `go build` rather than `go vet`: the command a user runs
 	// on a fresh project, at roughly ten times the cost.
 	link bool
+	// typesRoundTrip runs a JSON round trip against the generated types
+	// package, for a design whose fields claim something about the wire
+	// that only the compiler and the codec together can confirm.
+	typesRoundTrip bool
 }
 
 var scaffoldShapes = []scaffoldShape{
@@ -163,7 +168,8 @@ var scaffoldShapes = []scaffoldShape{
 			"config/config.yaml":         "config.yaml.tmpl",
 			"config/example.config.yaml": "example.config.yaml.tmpl",
 		},
-		link: true,
+		link:           true,
+		typesRoundTrip: true,
 	},
 	{
 		name:     "routes only",
@@ -234,6 +240,9 @@ func TestScaffoldsCompile(t *testing.T) {
 			if len(shape.yamlScaffolds) > 0 {
 				assertConfigRoundTrips(t, dir)
 			}
+			if shape.typesRoundTrip {
+				assertJSONFieldRoundTrips(t, dir)
+			}
 		})
 	}
 }
@@ -282,6 +291,54 @@ func assertConfigRoundTrips(t *testing.T, dir string) {
 	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Errorf("config.yaml.tmpl and config.go.tmpl disagree: %v\n%s", err, out)
+	}
+}
+
+// jsonRoundTripTest is what a `json` field claims: the bytes in are the
+// bytes out. It runs inside the generated module because that is the only
+// place the type exists, and it is the compiler - not a string check over
+// generated source - that says json.RawMessage was really emitted.
+const jsonRoundTripTest = `package gate
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestJSONFieldRoundTripsByteForByte(t *testing.T) {
+	const raw = ` + "`" + `{"explicit":null,"big":12345678901234567890,"trailing":1.50}` + "`" + `
+	in := ` + "`" + `{"id":"t-1","payload":` + "`" + ` + raw + ` + "`" + `}` + "`" + `
+
+	var got Thing
+	if err := json.Unmarshal([]byte(in), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if string(got.Payload) != raw {
+		t.Fatalf("payload decoded to %s, want the bytes that arrived: %s", got.Payload, raw)
+	}
+	out, err := json.Marshal(&got)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if string(out) != in {
+		t.Fatalf("re-encoded to %s, want %s", out, in)
+	}
+}
+`
+
+// assertJSONFieldRoundTrips runs jsonRoundTripTest against the generated
+// types package. A `json` field decoded into any and re-encoded would
+// lose the explicit null, the digits past 2^53 and the trailing zero -
+// three failures this test reads back one at a time.
+func assertJSONFieldRoundTrips(t *testing.T, dir string) {
+	t.Helper()
+	pkg := filepath.Join("internal", "types", "gate")
+	mustWrite(t, filepath.Join(dir, pkg), "roundtrip_test.go", jsonRoundTripTest)
+	run := exec.Command("go", "test", "./"+filepath.ToSlash(pkg)+"/")
+	run.Dir = dir
+	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Errorf("a json field does not carry its bytes through unchanged: %v\n%s", err, out)
 	}
 }
 

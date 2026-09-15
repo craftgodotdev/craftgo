@@ -59,6 +59,7 @@ Field syntax: `name TypeRef [@decorator(...) ...]`.
 | `bool`           | `bool`                  |                                            |
 | `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
 | `any`            | `any`                   | arbitrary JSON value (`object` is rejected as a field type) |
+| `json`           | `json.RawMessage`       | raw JSON value passed through byte for byte (keeps explicit `null`, big ints, `1.50`); body fields only, no validators, no `@default` |
 | `file`           | `*multipart.FileHeader` | only with `@form`                          |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
@@ -387,7 +388,9 @@ appends to the same chain afterwards (for a chain built out of a service context
 handler.
 
 `Bus.Start` wraps every handler in a recover, so a panicking consumer reaches the transport's error
-handler as a `*events.PanicError` and delivery continues. A payload that would not decode or failed
+handler as a `*events.PanicError` and delivery continues. A panicking handler leaves the disposition
+unset and the chain above it decides; a panic in a middleware unwinds past the chain, so the bus asks
+for `Redeliver` where the transport can honour one rather than letting an unset disposition ack it. A payload that would not decode or failed
 `Validate()` is a `*events.PayloadError` naming the contract; another codec's stamp is
 `events.ErrCodecMismatch`. Beyond that the runtime classifies nothing: what to do is a middleware's.
 

@@ -19,6 +19,7 @@ const (
 	File     // multipart upload
 	Object   // bag of fields, valid only inside `@example({...})`
 	DateTime // RFC 3339 timestamp
+	JSON     // raw JSON document, carried byte for byte
 )
 
 // Spec describes one built-in type.
@@ -37,6 +38,10 @@ type Spec struct {
 	// OASType and OASFormat are the OpenAPI schema `type` and `format`;
 	// an empty OASType is an unconstrained schema.
 	OASType, OASFormat string
+	// OASDescription is the schema `description` a built-in carries when
+	// an unconstrained schema alone would not say what the value holds.
+	// Empty for every name whose `type` already says it.
+	OASDescription string
 	// Lo and Hi bound the values an integer kind can hold.
 	Lo, Hi float64
 	// Doc is the hover text the language server shows.
@@ -60,6 +65,7 @@ var specs = []Spec{
 	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
 	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go."},
 	{Name: "any", Kind: Any, Go: "any", Doc: "**`any`** - opaque JSON value.\n\nGenerates `any` in Go."},
+	{Name: "json", Kind: JSON, Go: "json.RawMessage", OASDescription: "raw JSON value", Doc: "**`json`** - a raw JSON value, carried byte for byte.\n\nGenerates `json.RawMessage` in Go: the document is neither decoded nor re-encoded, so an explicit `null`, an integer past 2^53 and a trailing zero such as `1.50` all survive - which `any` does not. A body field only; no validator applies and `@default` is refused. `?` and `@nullable` give `*json.RawMessage`."},
 	{Name: "datetime", Kind: DateTime, Go: "time.Time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
 	{Name: "file", Kind: File, Go: "*multipart.FileHeader", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},
 	{Name: "object", Kind: Object},

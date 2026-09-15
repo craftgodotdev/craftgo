@@ -675,3 +675,62 @@ func TestAnArrayPayloadValidatesEveryElement(t *testing.T) {
 		t.Errorf("the error names neither the element nor the field: %v", err)
 	}
 }
+
+// A `json` payload field is bytes the design never reads, so what a
+// consumer gets back has to be what the publisher sent - not what a
+// round trip through map[string]any would leave of it. Each of the three
+// values below is one such loss: an explicit null collapses to Go nil
+// (and encodes as an absent key), an integer past 2^53 comes back as a
+// float64 with different digits, and 1.50 re-encodes as 1.5.
+func TestARawJSONPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
+	const raw = `{"explicit":null,"big":12345678901234567890,"trailing":1.50}`
+
+	got := make(chan *eventtypes.WarehouseClosed, 1)
+	tr := memory.New(memory.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
+		t.Errorf("consumer failed: %v", err)
+	}))
+	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
+	if err := events.WarehouseClosed.Subscribe(bus, consumers.OpsGroup,
+		func(_ context.Context, closed *eventtypes.WarehouseClosed) error {
+			got <- closed
+			return nil
+		}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	details := json.RawMessage(raw)
+	if err := events.WarehouseClosed.Publish(context.Background(), bus, &eventtypes.WarehouseClosed{
+		Warehouse: eventtypes.WarehouseNorth,
+		Details:   &details,
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	tr.Drain()
+
+	select {
+	case closed := <-got:
+		if closed.Details == nil {
+			t.Fatal("the consumer received no details at all")
+		}
+		if string(*closed.Details) != raw {
+			t.Errorf("details arrived as %s, want the published bytes %s", *closed.Details, raw)
+		}
+	default:
+		t.Fatal("nothing was delivered")
+	}
+}
+
+// An absent `json` field stays absent rather than arriving as the four
+// bytes `null`: `?` puts omitempty on the tag, so the key is not written.
+func TestAnAbsentRawJSONFieldIsNotWritten(t *testing.T) {
+	body, err := json.Marshal(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "details") {
+		t.Errorf("an unset optional json field reached the wire: %s", body)
+	}
+}

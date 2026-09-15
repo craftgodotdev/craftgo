@@ -141,7 +141,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.craftgo",
-          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|file)\\b"
+          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|json|datetime|file)\\b"
         }
       ]
     },

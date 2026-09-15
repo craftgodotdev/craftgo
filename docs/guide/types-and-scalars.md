@@ -28,7 +28,27 @@ Each field is `name type [decorators]`. Types compose from primitives, arrays, m
 | `float64`  | `float64`  |                                      |
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
+| `json`     | `json.RawMessage` | raw JSON value, byte for byte; body fields only |
 | `file`     | `*multipart.FileHeader` | only valid with `@form` |
+
+#### `json`: a value craftgo does not read
+
+A field declared `json` carries whatever JSON arrived, unexamined - a `jsonb` column, a nested document whose shape another system owns, a webhook body you forward on. It generates `json.RawMessage`, which the codec neither decodes nor re-encodes, so the bytes that came in are the bytes that go out:
+
+```craftgo
+type WebhookReceived {
+    id      string
+    payload json
+    meta    json?      // *json.RawMessage, omitted when nil
+    trace   json @nullable  // *json.RawMessage, always emitted
+}
+```
+
+Declaring such a field `any` instead is what a round trip through `map[string]any` costs: an explicit `null` becomes Go `nil` (a NOT NULL violation further down), an integer past 2^53 loses precision, and `1.50` re-encodes as `1.5`. `json` keeps all three.
+
+No validator applies to a `json` field - there is nothing to check without reading the value - and `@default` is refused for the same reason. It is a body field: `@query`, `@header`, `@cookie` and `@form` have no parser for it. In OpenAPI it is an unconstrained schema described as `raw JSON value`.
+
+`json` the type and [`@json("key")`](/reference/decorator-registry) the decorator are separate names in separate namespaces; `payload json @json("Payload")` is a field of type `json` whose wire key is `Payload`. So is `@format(json)`, which checks that a *string* field parses as JSON.
 
 ### Optional fields
 

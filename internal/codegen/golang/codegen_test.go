@@ -303,6 +303,41 @@ type Order { items Item[] @json("OrderItem")  storeId string? @json("store_id") 
 	)
 }
 
+// The three shapes a `json` field takes. It is NOT treated as nilable
+// even though json.RawMessage is a []byte: `?` and `@nullable` both wrap
+// to *json.RawMessage, so "the key was absent" stays distinguishable
+// from the four bytes `null`, which a raw JSON value may legitimately be.
+func TestGenerateTypesJSONShapes(t *testing.T) {
+	pkg := analyze(t, `package design
+type X { payload json  meta json?  trace json @nullable }`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, src,
+		`"encoding/json"`,
+		"Payload json.RawMessage  `json:\"payload\"`",
+		"Meta    *json.RawMessage `json:\"meta,omitempty\"`",
+		"Trace   *json.RawMessage `json:\"trace\"`",
+	)
+}
+
+// A required `json` field gets the nil check a required `any` gets: the
+// codec leaves both nil when the key is absent. An explicit null is NOT
+// absent for a json field - it decodes to the four bytes `null` - which
+// is the difference the type is for.
+func TestValidateRequiredJSONChecksNil(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X { payload json  meta json? }`)
+	mustContainAll(t, src, "if v.Payload == nil {", `"payload: required"`)
+	if strings.Contains(src, "v.Meta == nil") {
+		t.Errorf("an optional json field needs no presence check:\n%s", src)
+	}
+}
+
 func TestGenerateTypesBuiltins(t *testing.T) {
 	pkg := analyze(t, `package design
 type X { blob bytes  raw any  upload file  at datetime  seen datetime? }`)

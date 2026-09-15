@@ -174,7 +174,8 @@ func collectImports(pkg *semantic.Package, crossPkg crossPkg) []string {
 }
 
 // collectFieldImports recurses into a TypeRef collecting any built-in
-// names that resolve to imported Go types (`file` → mime/multipart).
+// names that resolve to imported Go types (`file` → mime/multipart,
+// `json` → encoding/json).
 // Generic and map types are recursed into so nested usages are caught
 // too.
 func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
@@ -192,6 +193,8 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 			set["mime/multipart"] = true
 		case "datetime":
 			set["time"] = true
+		case "json":
+			set["encoding/json"] = true
 		}
 		for _, a := range t.Named.Args {
 			collectFieldImports(a, set)

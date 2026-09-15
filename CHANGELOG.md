@@ -54,6 +54,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`format: date-time`); body fields only, no validators, no `@default`.
 - **`@json("key")` on a field.** Sets the JSON key when it is not the field
   name; the Go tag, the OpenAPI document and validation messages follow it.
+- **`json` primitive.** A `json.RawMessage` in Go, an unconstrained
+  OpenAPI schema described as `raw JSON value`: the document is carried
+  byte for byte instead of being decoded and re-encoded, so an explicit
+  `null`, an integer past 2^53 and a trailing zero such as `1.50` all
+  survive - none of which does when the field is declared `any`. Body
+  fields only, no validators, no `@default`; `?` and `@nullable` give
+  `*json.RawMessage`. The type and the `@json("key")` decorator are
+  separate names in separate namespaces.
 - **Stale output is pruned.** Inside the output directories the manifest
   names, every file carrying a generated header that the run did not write
   is deleted, and emptied directories with it; an output directory belongs
@@ -83,6 +91,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A `@group` whose name ends in `time`, a service named `Craft`, a
   package whose name ends in `types`**: none breaks its generated files.
 - **`@security` scheme names are listed in a stable order.**
+- **A panic in a bus middleware is handed back rather than settled.** The
+  recover outside the chain reset the message to no disposition at all,
+  which a transport reads as "take it as done" - so a panic raised in a
+  middleware (not in the handler) was acked and the message lost. It now
+  asks for redelivery wherever the transport can honour one
+  (`Dispositioner`), and the delivery is retried like any other failure;
+  on a transport that only settles, nothing changes. A panicking handler
+  is unaffected: the chain above it still decides.
 
 ### Removed
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -35,13 +36,19 @@ func requiredKind(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type.Optional || goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return access + " == nil"
 	}
-	if !f.Type.Array && f.Type.Map == nil && f.Type.Named != nil && f.Type.Named.Name.String() == "any" {
-		// Bare `any` lands on Go's empty interface; the codec leaves it
-		// nil for absent fields and for explicit JSON `null` (the
-		// decoder collapses both into the zero interface value). The
-		// Array/Map guard keeps `any[]` / `map<K,any>` on the no-check
-		// slice/map path, like every other required nilable collection.
-		return access + " == nil"
+	if !f.Type.Array && f.Type.Map == nil && f.Type.Named != nil {
+		switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
+		case prims.Any, prims.JSON:
+			// Bare `any` lands on Go's empty interface and bare `json`
+			// on a json.RawMessage; the codec leaves either nil when the
+			// key is absent. `any` also collapses an explicit JSON
+			// `null` into that same nil, while `json` keeps the literal
+			// four bytes - which is the point of the type, and passes
+			// this check as the present value it is. The Array/Map guard
+			// keeps `any[]` / `map<K,json>` on the no-check slice/map
+			// path, like every other required nilable collection.
+			return access + " == nil"
+		}
 	}
 	return ""
 }

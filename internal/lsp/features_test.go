@@ -73,6 +73,41 @@ func TestHoverBuiltinType(t *testing.T) {
 	}
 }
 
+// One line, two `json` tokens in two namespaces: the type and the
+// decorator. Hover has to tell them apart by the `@` in front rather
+// than by the spelling, or every `payload json @json("Payload")` field
+// documents the wrong thing.
+func TestHoverTellsTheJSONTypeFromTheJSONDecorator(t *testing.T) {
+	const src = `package design
+
+type Hook {
+    payload json @json("Payload")
+}
+`
+	view := parseSnapshot("test.craftgo", src)
+	var got []string
+	for _, tok := range view.tokens {
+		if tok.Text != "json" {
+			continue
+		}
+		idx, at := view.tokenAt(uint32(tok.Pos.Line-1), uint32(tok.Pos.Column-1))
+		hov := hoverForToken(view, idx, at)
+		if hov == nil {
+			t.Fatalf("no hover on the %d%s `json` token", len(got)+1, "th")
+		}
+		got = append(got, hov.Contents.Value)
+	}
+	if len(got) != 2 {
+		t.Fatalf("hovered %d `json` tokens, want 2 (the type and the decorator)", len(got))
+	}
+	if !strings.Contains(got[0], "json.RawMessage") {
+		t.Errorf("the type `json` hovered as something else: %q", got[0])
+	}
+	if !strings.Contains(got[1], "@json") || strings.Contains(got[1], "json.RawMessage") {
+		t.Errorf("the decorator `@json` hovered as the type: %q", got[1])
+	}
+}
+
 // TestHoverUserType verifies hovering over a reference to `Greeter`
 // returns the declaration's signature and doc string.
 func TestHoverUserType(t *testing.T) {
@@ -199,6 +234,29 @@ type T {
 		t.Fatal("expected completion items after @ at field site")
 	}
 	expectLabels(t, items, "length", "sensitive")
+}
+
+// A `json` field takes no validator, so the popup offers none: the
+// primitive resolves to its own category that no validator's AppliesTo
+// names. The decorators that shape a field regardless of type - @json
+// among them, on a field whose type is also spelt json - still appear.
+func TestCompletionOnAJSONFieldOffersNoValidator(t *testing.T) {
+	src := "package x\n\ntype T {\n\tpayload json @\n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 14)
+	expectNoLabels(t, items,
+		"length", "minLength", "maxLength", "pattern", "format",
+		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
+		"minItems", "maxItems", "uniqueItems", "maxSize", "mimeTypes")
+	expectLabels(t, items, "json", "nullable", "doc", "sensitive")
+}
+
+// The built-in popup is generated from the catalogue, so `json` and
+// `datetime` appear in it the way `string` does - otherwise the only
+// way to find either is the reference page.
+func TestCompletionTypePositionOffersJSON(t *testing.T) {
+	src := "package x\n\nservice S {\n    post P /p { request \n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 24)
+	expectLabels(t, items, "json", "datetime", "any", "string")
 }
 
 // TestCompletionServiceDecoratorSite pins the decorator popup for the zone

@@ -97,3 +97,10 @@ func TestDateTimeIsNotWireBindable(t *testing.T) {
 	expectError(t, `type SearchReq { since datetime @query }
 service S { post Do /do { request SearchReq } }`, CodeBindingType)
 }
+
+// A raw JSON value travels only in a body: a wire-string binder has no
+// parser for one, and a query string is not where a document rides.
+func TestJSONIsNotWireBindable(t *testing.T) {
+	expectError(t, `type SearchReq { filter json @query }
+service S { post Do /do { request SearchReq } }`, CodeBindingType)
+}

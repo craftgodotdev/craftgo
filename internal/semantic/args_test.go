@@ -486,6 +486,19 @@ service S { get M /u/{id} { request R  response Resp } }`
 }
 
 // @default on a file field is rejected (no literal default form).
+func TestDefaultOnJSONRejected(t *testing.T) {
+	expectError(t, `type Req { payload json? @default("{}") }`, CodeDecoratorConflict)
+}
+
+// Nothing validates a raw JSON value: reading it is the one thing the
+// type exists not to do. Both a string-shaped and a number-shaped
+// validator are refused, so the rejection is the field's type and not
+// one validator's argument kind.
+func TestJSONTakesNoValidator(t *testing.T) {
+	expectError(t, `type Req { payload json @minLength(1) }`, CodeDecoratorTypeMismatch)
+	expectError(t, `type Req { payload json @gte(1) }`, CodeDecoratorTypeMismatch)
+}
+
 func TestDefaultOnDateTimeRejected(t *testing.T) {
 	expectError(t, `type Req { at datetime? @default("2026-01-01T00:00:00Z") }`, CodeDecoratorConflict)
 }

@@ -219,6 +219,9 @@ const (
 	// PrimDateTime covers the `datetime` primitive, which no validator
 	// targets: a timestamp has no length, bound or format to check.
 	PrimDateTime
+	// PrimJSON covers the `json` primitive, which no validator targets:
+	// the point of it is that the bytes travel unexamined.
+	PrimJSON
 	// PrimAny matches any field type - used by validator-style
 	// decorators that don't care about primitive (e.g. `@example`).
 	PrimAny Prims = 0
@@ -248,6 +251,9 @@ func (p Prims) String() string {
 	}
 	if p&PrimDateTime != 0 {
 		parts = append(parts, "datetime")
+	}
+	if p&PrimJSON != 0 {
+		parts = append(parts, "json")
 	}
 	return strings.Join(parts, ", ")
 }
