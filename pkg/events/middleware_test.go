@@ -54,6 +54,61 @@ func TestBusMiddlewareWrapsEverySubscription(t *testing.T) {
 	}
 }
 
+// Use builds the same chain WithMiddleware does, for a deployable that
+// assembles its delivery chain after the bus rather than at the New call.
+// The chain is folded at Start, so a middleware added after the
+// registrations covers them too - every one of them, outside whatever
+// chain a subscription carries itself.
+func TestUseWrapsEverySubscriptionOutsideItsOwnChain(t *testing.T) {
+	var trace string
+	bus, tr := busWith(tagMW(&trace, "N"))
+	sub := tracingSub(&trace, "x.Y", "C1", "g")
+	sub.Chain = events.NewChain(tagMW(&trace, "S"))
+	if err := bus.RegisterAll(sub, tracingSub(&trace, "other.Z", "C2", "g2")); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	bus.Use(tagMW(&trace, "U1"), tagMW(&trace, "U2"))
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	if err := tr.subs[0].Handle(context.Background(), &events.Message{Event: "x.Y"}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if want := ">N>U1>U2>S|H|<S<U2<U1<N"; trace != want {
+		t.Errorf("chain order = %q, want %q", trace, want)
+	}
+
+	trace = ""
+	if err := tr.subs[1].Handle(context.Background(), &events.Message{Event: "other.Z"}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if want := ">N>U1>U2|H|<U2<U1<N"; trace != want {
+		t.Errorf("the second subscription ran %q, want %q", trace, want)
+	}
+}
+
+// Use after Start is a wiring mistake and not a runtime condition: the
+// batch is with the transport already wrapped, so a middleware arriving
+// now would cover nothing and say nothing about it.
+func TestUseAfterStartPanics(t *testing.T) {
+	var trace string
+	bus, _ := busWith()
+	start(t, context.Background(), bus, tracingSub(&trace, "x.Y", "C1", "g"))
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Use after Start did not panic")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "Use") || !strings.Contains(msg, "Start") {
+			t.Errorf("panic value = %v, want a message naming Use and Start", r)
+		}
+	}()
+	bus.Use(passthrough())
+}
+
 // A subscription's own chain runs INSIDE the bus-wide one, so a bus
 // concern - logging, tracing - still sees what a per-consumer chain did.
 func TestASubscriptionsChainRunsInsideTheBusChain(t *testing.T) {

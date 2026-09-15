@@ -44,7 +44,7 @@ func TestADescriptorRoundTripsItsPayload(t *testing.T) {
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 
 	got := make(chan *order, 1)
-	start(t, context.Background(), bus, orderPlaced.Subscription(bus, "SendReceipt", "receipts", nil,
+	start(t, context.Background(), bus, orderPlaced.Subscription(bus, "receipts",
 		func(_ context.Context, placed *order) error {
 			got <- placed
 			return nil
@@ -226,17 +226,43 @@ func TestTheTypedHandlersErrorIsPassedThrough(t *testing.T) {
 	}
 }
 
-// The subscription a descriptor builds is the one the design declared:
-// the contract, the consumer and group it was given, and the chain it was
-// handed.
+// Nothing declares a consumer any more, so the descriptor names one after
+// the contract - what [Bus.Plan] and a *PanicError then show - and leaves
+// the chain to the bus.
+func TestASubscriptionDefaultsItsConsumerToTheContract(t *testing.T) {
+	bus, _ := busOver()
+	sub := orderPlaced.Subscription(bus, "receipts", func(context.Context, *order) error { return nil })
+
+	if sub.Consumer != orderPlaced.Contract() {
+		t.Errorf("Consumer = %q, want the contract %q", sub.Consumer, orderPlaced.Contract())
+	}
+	if sub.Chain != nil {
+		t.Errorf("Chain = %v, want none - the chain is the bus's", sub.Chain)
+	}
+	if err := bus.Register(sub); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	want := events.Plan{Groups: []events.PlanGroup{{
+		Name:      "receipts",
+		Consumers: []events.PlanConsumer{{Event: "orders.Placed", Consumer: "orders.Placed"}},
+	}}}
+	if got := bus.Plan(); !reflect.DeepEqual(got, want) {
+		t.Errorf("plan = %+v, want %+v", got, want)
+	}
+}
+
+// A caller who needs another consumer name, or a chain around this one
+// handler, sets the field on the value the descriptor built.
 func TestADescriptorBuildsTheSubscription(t *testing.T) {
 	bus, tr := busOver()
 	var trace string
-	sub := orderPlaced.Subscription(bus, "SendReceipt", "receipts", events.NewChain(tagMW(&trace, "S")),
+	sub := orderPlaced.Subscription(bus, "receipts",
 		func(context.Context, *order) error {
 			trace += "|H|"
 			return nil
 		})
+	sub.Consumer = "SendReceipt"
+	sub.Chain = events.NewChain(tagMW(&trace, "S"))
 	if sub.Event != "orders.Placed" || sub.Consumer != "SendReceipt" || sub.Group != "receipts" {
 		t.Fatalf("subscription = %+v", sub)
 	}

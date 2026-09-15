@@ -74,15 +74,25 @@ func (e Event[T]) Handler(bus *Bus, fn func(ctx context.Context, payload *T) err
 	}
 }
 
-// Subscription is this event consumed by fn, under consumer and group,
-// behind chain. It is what generated registration code hands to
-// [Bus.Register].
-func (e Event[T]) Subscription(bus *Bus, consumer string, group Group, chain Chain, fn func(ctx context.Context, payload *T) error) Subscription {
+// Subscription is this event consumed by fn under group. It is one line
+// of an application's consumption, handed to [Bus.Register] or
+// [Bus.RegisterAll].
+//
+// There is no consumer parameter and no chain parameter: the middleware
+// every handler runs behind belongs on the bus, through [Bus.Use], and
+// [Subscription.Consumer] defaults to the contract, which is the name
+// [Bus.Plan] and a [*PanicError] then show. A caller who needs either -
+// two subscriptions of one contract in one process to tell apart, one
+// handler to wrap alone - sets the field on the value before registering
+// it:
+//
+//	sub := orders.Placed.Subscription(bus, Group, l.OrderPlaced)
+//	sub.Consumer = "SendReceipt"
+func (e Event[T]) Subscription(bus *Bus, group Group, fn func(ctx context.Context, payload *T) error) Subscription {
 	return Subscription{
 		Event:    e.contract,
-		Consumer: consumer,
+		Consumer: e.contract,
 		Group:    group,
-		Chain:    chain,
 		Handle:   e.Handler(bus, fn),
 	}
 }

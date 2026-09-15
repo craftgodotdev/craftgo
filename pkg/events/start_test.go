@@ -165,6 +165,56 @@ func TestRegisterRefusesTheSameContractTwiceInOneGroup(t *testing.T) {
 	}
 }
 
+// RegisterAll is Register down the list: a module states its whole
+// consumption as one call.
+func TestRegisterAllRegistersEveryOne(t *testing.T) {
+	bus, tr := busOver()
+	if err := bus.RegisterAll(
+		events.Subscription{Event: "a.One", Consumer: "A", Group: "g", Handle: noop()},
+		events.Subscription{Event: "b.Two", Consumer: "B", Group: "g", Handle: noop()},
+	); err != nil {
+		t.Fatalf("register all: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if len(tr.subs) != 2 {
+		t.Fatalf("the transport was handed %d subscriptions, want 2", len(tr.subs))
+	}
+}
+
+// The first refusal ends the list. What follows it is never offered, so
+// the refusal is the whole answer and a caller returning it is not left
+// guessing how far the list got.
+func TestRegisterAllStopsAtTheFirstRefusal(t *testing.T) {
+	bus, _ := busOver()
+	err := bus.RegisterAll(
+		events.Subscription{Event: "a.One", Consumer: "A", Group: "g", Handle: noop()},
+		events.Subscription{Event: "a.One", Consumer: "B", Group: "g", Handle: noop()},
+		events.Subscription{Event: "c.Three", Consumer: "C", Group: "g", Handle: noop()},
+	)
+	if !errors.Is(err, events.ErrDuplicateSubscription) {
+		t.Fatalf("err = %v, want ErrDuplicateSubscription", err)
+	}
+	var refused *events.RegisterError
+	if !errors.As(err, &refused) {
+		t.Fatalf("err = %T %v, want *RegisterError", err, err)
+	}
+	if refused.Event != "a.One" || refused.Group != "g" {
+		t.Errorf("the error does not name the contract and group: %+v", refused)
+	}
+
+	var got []string
+	for _, group := range bus.Plan().Groups {
+		for _, consumer := range group.Consumers {
+			got = append(got, consumer.Event)
+		}
+	}
+	if want := "a.One"; strings.Join(got, ",") != want {
+		t.Errorf("registered %v, want only %s - the list ran on past the refusal", got, want)
+	}
+}
+
 // A refusal names the subscription it refused: the sentinel says what the
 // rule was, and the message says which registration broke it.
 func TestARegisterErrorNamesTheSubscription(t *testing.T) {

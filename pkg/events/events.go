@@ -10,12 +10,13 @@
 //   - [Codec] turns a payload value into bytes and back.
 //   - [Publisher] and [Subscriber] are the two halves a transport
 //     adapter implements.
-//   - [Bus] binds a transport to a codec. [Bus.Register] records a
-//     [Subscription], [Bus.Start] hands the whole batch to the transport
-//     and [Bus.Plan] says what was registered.
+//   - [Bus] binds a transport to a codec. [Bus.Register] and
+//     [Bus.RegisterAll] record a [Subscription], [Bus.Start] hands the
+//     whole batch to the transport and [Bus.Plan] says what was
+//     registered.
 //   - [Chain] wraps a consumer's [Handler] in [Middleware]; install one
-//     on the bus with [WithMiddleware], or on one subscription through
-//     [Subscription.Chain].
+//     on the bus with [WithMiddleware] or [Bus.Use], or on one
+//     subscription through [Subscription.Chain].
 //   - [Disposition] is what a chain asks for one delivery - take it,
 //     hand it back, give it up. [WithDispositionRequired] refuses to
 //     register on a transport that cannot honour one.
@@ -210,10 +211,10 @@ type Group string
 type Subscription struct {
 	// Event is the contract name, matching [Message.Event].
 	Event string
-	// Consumer is the design-declared consumer name. Nothing on the broker
-	// depends on it: it names the handler in diagnostics and in [Bus.Plan],
-	// and two services may declare the same one for the same contract, so
-	// Event and Group are the pair that identifies a registration.
+	// Consumer names the handler in diagnostics and in [Bus.Plan].
+	// Nothing on the broker depends on it: [Event.Subscription] defaults it
+	// to the contract and a caller may put anything there, so Event and
+	// Group are the pair that identifies a registration.
 	Consumer string
 	// Group is the broker identity. [Bus.Register] refuses an empty one -
 	// the name is where a consumer resumes, so it is the application's to
@@ -231,11 +232,11 @@ type Subscription struct {
 // Bus binds a transport to a codec. Generated publishers and consumer
 // registrations take a *Bus and nothing else.
 //
-// Everything an [Option] sets is written in [New] and never again. The
-// registry is the one part that moves: [Bus.Register] adds to it until
-// [Bus.Start] hands it over, after which the Bus is immutable again. It
-// is guarded, so registering from several goroutines and reading
-// [Bus.Plan] at any time are both safe.
+// A Bus is assembled until it starts and fixed after: [Bus.Register] adds
+// to the registry and [Bus.Use] to the chain, [Bus.Start] hands the batch
+// over, and from there the Bus is immutable. Both are guarded, so
+// registering from several goroutines and reading [Bus.Plan] at any time
+// are safe.
 type Bus struct {
 	pub Publisher
 	sub Subscriber
@@ -295,6 +296,9 @@ func WithCodec(c Codec) Option { return func(b *Bus) { b.codec = c } }
 // Each middleware is handed the [Subscription] it wraps, so one chain can
 // read the contract, the consumer and the group it is running for. A
 // project wanting two different chains builds two buses.
+//
+// [Bus.Use] appends to the same chain after construction, for a
+// middleware built from something the constructor call does not have yet.
 func WithMiddleware(mws ...Middleware) Option {
 	return func(b *Bus) { b.chain = b.chain.Append(mws...) }
 }
@@ -700,7 +704,9 @@ func (e *PanicError) Unwrap() error {
 
 // decorated is the handler the transport receives: the subscription's own,
 // wrapped in a recover, the bus chain with the subscription's own chain
-// inside it, and a second recover. The deferred recover only works on the
+// inside it, and a second recover. The bus chain is passed in rather than
+// read from the Bus: [Bus.Use] may write it, so [Bus.Start] takes it under
+// the lock along with the batch. The deferred recover only works on the
 // goroutine that runs the handler, which is one a transport spawns - so
 // the wrappers go on the handler itself and not around any Subscribe call.
 //
@@ -714,12 +720,12 @@ func (e *PanicError) Unwrap() error {
 // catches, no panic is in flight, so the outer recover returns nil and
 // passes the error through untouched. A bus with no middleware and a
 // subscription with no chain install the inner one alone.
-func (b *Bus) decorated(sub Subscription) Handler {
+func decorated(busChain Chain, sub Subscription) Handler {
 	if sub.Handle == nil {
 		return nil
 	}
 	h := recoverHandler(sub, sub.Handle)
-	chain := b.chain.Append(sub.Chain...)
+	chain := busChain.Append(sub.Chain...)
 	if len(chain) == 0 {
 		return h
 	}
@@ -792,6 +798,27 @@ func (e *RegisterError) Error() string {
 
 func (e *RegisterError) Unwrap() error { return e.Err }
 
+// Use appends mws to the bus-wide chain [WithMiddleware] builds, for a
+// deployable whose delivery chain is assembled after the bus - out of a
+// service context, out of configuration - rather than held back until the
+// [New] call. The order is the one [WithMiddleware] documents: the
+// recover outermost, then the bus chain as it was built, then the
+// subscription's own [Subscription.Chain], then the handler.
+//
+// Use after [Bus.Start] panics. The batch has gone to the transport with
+// its handlers already wrapped, so a middleware arriving now would cover
+// nothing at all and say nothing about it - a wiring mistake to fix in
+// the code, like net/http's ServeMux on a duplicate pattern, rather than
+// an [ErrStarted] for the caller to handle.
+func (b *Bus) Use(mws ...Middleware) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.started {
+		panic("events: Bus.Use called after Bus.Start")
+	}
+	b.chain = b.chain.Append(mws...)
+}
+
 // Register records sub, to be handed to the transport by [Bus.Start].
 //
 // The checks here are the ones the bus can make on its own - a handler, a
@@ -829,6 +856,21 @@ func (b *Bus) Register(sub Subscription) error {
 	return nil
 }
 
+// RegisterAll registers subs in order and stops at the first refusal,
+// returning it - a [*RegisterError] already naming the contract and the
+// group, so a module lists its whole consumption as one call and a
+// refusal still says which line broke. The subscriptions before it stay
+// registered and the ones after it were never offered; nothing has
+// started, so a caller returning the error abandons the bus.
+func (b *Bus) RegisterAll(subs ...Subscription) error {
+	for _, sub := range subs {
+		if err := b.Register(sub); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func registerError(sub Subscription, err error) error {
 	return &RegisterError{Event: sub.Event, Consumer: sub.Consumer, Group: sub.Group, Err: err}
 }
@@ -856,6 +898,7 @@ func (b *Bus) Start(ctx context.Context) error {
 	}
 	b.started = true
 	subs := sortedSubscriptions(b.subs)
+	chain := b.chain
 	b.mu.Unlock()
 
 	if len(subs) == 0 {
@@ -865,7 +908,7 @@ func (b *Bus) Start(ctx context.Context) error {
 		return ErrNoSubscriber
 	}
 	for i := range subs {
-		subs[i].Handle = b.decorated(subs[i])
+		subs[i].Handle = decorated(chain, subs[i])
 	}
 	if err := b.sub.Subscribe(ctx, subs); err != nil {
 		return fmt.Errorf("events: start %d subscription(s): %w", len(subs), err)
