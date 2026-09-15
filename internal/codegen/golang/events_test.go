@@ -121,7 +121,7 @@ const OrderPlacedContract = "orders.OrderPlaced"
 
 // OrderPlaced is the orders.OrderPlaced contract.
 // OrderPlaced.Publish(ctx, bus, payload) sends one; a listener registers
-// OrderPlaced.Subscription(bus, group, fn) on its own bus.
+// OrderPlaced.Subscribe(bus, group, fn) on its own bus.
 var OrderPlaced = craftevents.NewEvent[types.OrderPlacedPayload](OrderPlacedContract, (*types.OrderPlacedPayload).Validate)
 
 // ShippedContract is the wire identity of Shipped.
@@ -132,7 +132,7 @@ const ShippedContract = "order.shipped.v2"
 //
 // Shipped is the order.shipped.v2 contract.
 // Shipped.Publish(ctx, bus, payload) sends one; a listener registers
-// Shipped.Subscription(bus, group, fn) on its own bus.
+// Shipped.Subscribe(bus, group, fn) on its own bus.
 var Shipped = craftevents.NewEvent[types.ShipmentPayload](ShippedContract, (*types.ShipmentPayload).Validate)
 `
 	if got != want {
@@ -169,7 +169,7 @@ const ThemeCreatedContract = "theme.created.v1"
 //
 // ThemeCreated is the theme.created.v1 contract.
 // ThemeCreated.Publish(ctx, bus, payload) sends one; a listener registers
-// ThemeCreated.Subscription(bus, group, fn) on its own bus.
+// ThemeCreated.Subscribe(bus, group, fn) on its own bus.
 var ThemeCreated = craftevents.NewEvent[types.ThemePayload](ThemeCreatedContract, (*types.ThemePayload).Validate)
 `
 	if got != want {

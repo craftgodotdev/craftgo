@@ -74,20 +74,39 @@ func (e Event[T]) Handler(bus *Bus, fn func(ctx context.Context, payload *T) err
 	}
 }
 
-// Subscription is this event consumed by fn under group. It is one line
-// of an application's consumption, handed to [Bus.Register] or
-// [Bus.RegisterAll].
+// Subscribe registers this event consumed by fn under group on bus. It
+// is one line of an application's consumption, and a module joins its
+// lines with errors.Join rather than stopping at the first:
+//
+//	return errors.Join(
+//		orders.Placed.Subscribe(bus, Group, l.OrderPlaced),
+//		orders.Shipped.Subscribe(bus, Group, l.OrderShipped),
+//	)
+//
+// Every line is offered to the bus that way, so a deployable whose
+// wiring is wrong hears about all of it at once. Each refusal is a
+// [*RegisterError] naming the contract and the group, which errors.As
+// reaches through the joined error. Nothing is delivered until
+// [Bus.Start].
+func (e Event[T]) Subscribe(bus *Bus, group Group, fn func(ctx context.Context, payload *T) error) error {
+	return bus.Register(e.Subscription(bus, group, fn))
+}
+
+// Subscription is this event consumed by fn under group, as the value
+// [Bus.Register] takes. [Event.Subscribe] is the line a listener
+// ordinarily writes; this is for the one that sets a field on the value
+// first:
+//
+//	sub := orders.Placed.Subscription(bus, Group, l.OrderPlaced)
+//	sub.Consumer = "SendReceipt"
+//	err := bus.Register(sub)
 //
 // There is no consumer parameter and no chain parameter: the middleware
 // every handler runs behind belongs on the bus, through [Bus.Use], and
 // [Subscription.Consumer] defaults to the contract, which is the name
-// [Bus.Plan] and a [*PanicError] then show. A caller who needs either -
-// two subscriptions of one contract in one process to tell apart, one
-// handler to wrap alone - sets the field on the value before registering
-// it:
-//
-//	sub := orders.Placed.Subscription(bus, Group, l.OrderPlaced)
-//	sub.Consumer = "SendReceipt"
+// [Bus.Plan] and a [*PanicError] then show. Two subscriptions of one
+// contract in one process to tell apart, or one handler to wrap alone,
+// are what those fields are for.
 func (e Event[T]) Subscription(bus *Bus, group Group, fn func(ctx context.Context, payload *T) error) Subscription {
 	return Subscription{
 		Event:    e.contract,

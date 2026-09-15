@@ -54,7 +54,7 @@ const trackTier = "TrackTier"
 func planned(t *testing.T) craftevents.Plan {
 	t.Helper()
 	bus := craftevents.New(craftevents.WithCodec(codecjson.Codec{}))
-	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext()); err != nil {
+	if err := consumers.Register(bus, svccontext.NewServiceContext()); err != nil {
 		t.Fatalf("register consumers: %v", err)
 	}
 	return bus.Plan()
@@ -228,7 +228,7 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 	if subscribe {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
-		if err := consumers.RegisterAll(bus, svc); err != nil {
+		if err := consumers.Register(bus, svc); err != nil {
 			t.Fatalf("register consumers: %v", err)
 		}
 		if err := bus.Start(ctx); err != nil {

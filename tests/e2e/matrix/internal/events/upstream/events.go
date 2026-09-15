@@ -16,5 +16,5 @@ const PaymentSettledContract = "payments.settled.v1"
 //
 // PaymentSettled is the payments.settled.v1 contract.
 // PaymentSettled.Publish(ctx, bus, payload) sends one; a listener registers
-// PaymentSettled.Subscription(bus, group, fn) on its own bus.
+// PaymentSettled.Subscribe(bus, group, fn) on its own bus.
 var PaymentSettled = craftevents.NewEvent[types.PaymentSettledPayload](PaymentSettledContract, (*types.PaymentSettledPayload).Validate)

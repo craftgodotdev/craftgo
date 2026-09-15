@@ -38,7 +38,7 @@ func (p *notifyProbe) NotifyDispatch(context.Context, *eventtypes.ShipmentDispat
 // which is a frame short of what arrives: reaching the handler is marked
 // between the two, so a test that called the inner one would read false
 // on a delivery that dispatched.
-func deliver(t *testing.T, sub func(*craftevents.Bus) craftevents.Subscription, publish func(*craftevents.Bus) error) (*craftevents.Message, error) {
+func deliver(t *testing.T, subscribe func(*craftevents.Bus) error, publish func(*craftevents.Bus) error) (*craftevents.Message, error) {
 	t.Helper()
 	tr := &handingTransport{}
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
@@ -49,7 +49,7 @@ func deliver(t *testing.T, sub func(*craftevents.Bus) craftevents.Subscription, 
 	if msg == nil {
 		t.Fatal("the transport was handed no message")
 	}
-	if err := bus.Register(sub(bus)); err != nil {
+	if err := subscribe(bus); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
@@ -80,8 +80,8 @@ func TestTheDescriptorValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
 	t.Run("a valid payload dispatches once and is left undecided", func(t *testing.T) {
 		probe := &dispositionProbe{}
 		delivered, err := deliver(t,
-			func(bus *craftevents.Bus) craftevents.Subscription {
-				return events.ItemStocked.Subscription(bus, consumers.InventoryGroup, probe.MirrorStock)
+			func(bus *craftevents.Bus) error {
+				return events.ItemStocked.Subscribe(bus, consumers.InventoryGroup, probe.MirrorStock)
 			},
 			func(bus *craftevents.Bus) error {
 				return events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
@@ -107,8 +107,8 @@ func TestTheDescriptorValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
 		// from another system arrives.
 		probe := &notifyProbe{}
 		delivered, err := deliver(t,
-			func(bus *craftevents.Bus) craftevents.Subscription {
-				return events.ShipmentDispatched.Subscription(bus, consumers.NotificationGroup, probe.NotifyDispatch)
+			func(bus *craftevents.Bus) error {
+				return events.ShipmentDispatched.Subscribe(bus, consumers.NotificationGroup, probe.NotifyDispatch)
 			},
 			func(bus *craftevents.Bus) error {
 				return bus.Publish(context.Background(), events.ShipmentDispatchedContract,

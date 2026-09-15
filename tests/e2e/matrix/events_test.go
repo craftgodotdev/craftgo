@@ -53,7 +53,7 @@ func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(crafteve
 	)
 	bus.Use(chain...)
 	svc := svccontext.NewServiceContext()
-	if err := consumers.RegisterAll(bus, svc); err != nil {
+	if err := consumers.Register(bus, svc); err != nil {
 		t.Fatalf("register consumers: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
@@ -87,7 +87,7 @@ func TestEventReachesEveryListenerOfTheContract(t *testing.T) {
 	}
 }
 
-// Every module registered from the one RegisterAll call receives, so a
+// Every module registered from the one Register call receives, so a
 // contract with a single listener and one with several are wired by the
 // same list of lines.
 func TestEveryRegisteredModuleReceives(t *testing.T) {
@@ -458,7 +458,7 @@ func TestOneGroupSpansSeveralContracts(t *testing.T) {
 // apart in this process is the group each joined.
 func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
-	if err := consumers.RegisterAll(bus, svccontext.NewServiceContext()); err != nil {
+	if err := consumers.Register(bus, svccontext.NewServiceContext()); err != nil {
 		t.Fatalf("register consumers: %v", err)
 	}
 	got, err := json.MarshalIndent(bus.Plan(), "", "  ")
@@ -486,15 +486,15 @@ func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
 // contract it is on: a group is where a listener resumes, so it is the
 // application's to choose rather than something to fall back into.
 //
-// RegisterAll stops at the refusal and returns it, so the line that broke
-// is the one named - and the lines after it were never offered.
+// The lines are joined, so the refusal names the line that broke and the
+// lines beside it are registered all the same.
 func TestRegisterRefusesASubscriptionWithNoGroup(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
 	guarded := consumers.Guarded{SvcCtx: svccontext.NewServiceContext()}
-	err := bus.RegisterAll(
-		events.ItemStocked.Subscription(bus, consumers.GuardedGroup, guarded.GuardedStock),
-		events.StocktakeStarted.Subscription(bus, "", guarded.BareStock),
-		events.WarehouseClosed.Subscription(bus, consumers.GuardedGroup, guarded.InheritedStock),
+	err := errors.Join(
+		events.ItemStocked.Subscribe(bus, consumers.GuardedGroup, guarded.GuardedStock),
+		events.StocktakeStarted.Subscribe(bus, "", guarded.BareStock),
+		events.WarehouseClosed.Subscribe(bus, consumers.GuardedGroup, guarded.InheritedStock),
 	)
 	if err == nil {
 		t.Fatal("registered a subscription with no group")
@@ -505,12 +505,19 @@ func TestRegisterRefusesASubscriptionWithNoGroup(t *testing.T) {
 	if !strings.Contains(err.Error(), events.StocktakeStartedContract) {
 		t.Errorf("the refusal does not name the contract of the line that broke: %v", err)
 	}
-	// The line before the refusal stayed, the one after it was never
-	// offered: a caller returning the error abandons the bus.
+	// Only the line that broke was refused: the other two are on the bus,
+	// so what the error reports is the whole of what went wrong.
 	groups := bus.Plan().Groups
-	if len(groups) != 1 || len(groups[0].Consumers) != 1 ||
-		groups[0].Consumers[0].Event != events.ItemStockedContract {
-		t.Errorf("RegisterAll did not stop at the refusal: %+v", groups)
+	if len(groups) != 1 {
+		t.Fatalf("the plan holds %d groups, want 1: %+v", len(groups), groups)
+	}
+	var got []string
+	for _, consumer := range groups[0].Consumers {
+		got = append(got, consumer.Event)
+	}
+	want := events.ItemStockedContract + "," + events.WarehouseClosedContract
+	if strings.Join(got, ",") != want {
+		t.Errorf("registered %v, want %s - a refusal must not take the lines beside it with it", got, want)
 	}
 }
 
@@ -526,8 +533,8 @@ func TestPanickingListenerDoesNotEndTheProcess(t *testing.T) {
 		mu.Unlock()
 	}))
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
-	if err := bus.Register(events.WarehouseClosed.Subscription(bus, consumers.OpsGroup,
-		panickingOps{}.RecordClosure)); err != nil {
+	if err := events.WarehouseClosed.Subscribe(bus, consumers.OpsGroup,
+		panickingOps{}.RecordClosure); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {

@@ -101,14 +101,14 @@ func (c *failingGuarded) InheritedStock(context.Context, *eventtypes.WarehouseCl
 	return nil
 }
 
-// guardedSubs is the guarded module's three lines, the shape one block of
-// a deployable's RegisterAll has.
-func guardedSubs(bus *craftevents.Bus, h guardedLogic) []craftevents.Subscription {
-	return []craftevents.Subscription{
-		events.ItemStocked.Subscription(bus, consumers.GuardedGroup, h.GuardedStock),
-		events.StocktakeStarted.Subscription(bus, consumers.GuardedGroup, h.BareStock),
-		events.WarehouseClosed.Subscription(bus, consumers.GuardedGroup, h.InheritedStock),
-	}
+// subscribeGuarded registers the guarded module's three lines, the shape
+// one block of a deployable's Register has.
+func subscribeGuarded(bus *craftevents.Bus, h guardedLogic) error {
+	return errors.Join(
+		events.ItemStocked.Subscribe(bus, consumers.GuardedGroup, h.GuardedStock),
+		events.StocktakeStarted.Subscribe(bus, consumers.GuardedGroup, h.BareStock),
+		events.WarehouseClosed.Subscribe(bus, consumers.GuardedGroup, h.InheritedStock),
+	)
 }
 
 // guardedLogic is what those three lines dispatch to. It is the test's
@@ -134,7 +134,7 @@ func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) {
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := bus.RegisterAll(guardedSubs(bus, h)...); err != nil {
+	if err := subscribeGuarded(bus, h); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {

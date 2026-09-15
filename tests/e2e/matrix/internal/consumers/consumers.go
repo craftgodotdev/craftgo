@@ -3,15 +3,16 @@
 // subscribes to, under which broker identity, and what runs on a
 // delivery are Go, written here.
 //
-// One struct per module, and one RegisterAll listing every subscription
-// as a line: `<pkg>.<Event>.Subscription(bus, group, method)`. The
-// compiler checks each line - a method whose payload does not match the
-// contract does not compile at the Subscription call - and
-// testdata/plan.json pins the set.
+// One struct per module, and one Register joining every subscription as
+// a line: `<pkg>.<Event>.Subscribe(bus, group, method)`. The compiler
+// checks each line - a method whose payload does not match the contract
+// does not compile at the Subscribe call - and testdata/plan.json pins
+// the set.
 package consumers
 
 import (
 	"context"
+	"errors"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
@@ -131,16 +132,16 @@ func (h Ledger) RecordSettlement(_ context.Context, payload *upstreamtypes.Payme
 	return nil
 }
 
-// RegisterAll registers every subscription this deployable runs. It is
+// Register registers every subscription this deployable runs. It is
 // what a project's main.go calls once, after putting its delivery chain
 // on the bus with [craftevents.Bus.Use]: the design says which contracts
 // exist, this says which of them this process listens to and under what
 // identity.
 //
-// The whole set goes to [craftevents.Bus.RegisterAll], so a refusal names
-// the contract and the group of the line that broke. Nothing is delivered
-// until [craftevents.Bus.Start].
-func RegisterAll(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
+// The lines are joined rather than chained, so every one is offered to
+// the bus and every refusal - each naming its contract and group -
+// reaches the caller. Nothing is delivered until [craftevents.Bus.Start].
+func Register(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
 	inventory := Inventory{SvcCtx: svcCtx}
 	notification := Notification{SvcCtx: svcCtx}
 	ops := Ops{SvcCtx: svcCtx}
@@ -148,24 +149,24 @@ func RegisterAll(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error 
 	guarded := Guarded{SvcCtx: svcCtx}
 	ledger := Ledger{SvcCtx: svcCtx}
 
-	return bus.RegisterAll(
-		events.ItemStocked.Subscription(bus, InventoryGroup, inventory.MirrorStock),
+	return errors.Join(
+		events.ItemStocked.Subscribe(bus, InventoryGroup, inventory.MirrorStock),
 
-		events.ItemStocked.Subscription(bus, NotificationGroup, notification.SendStockAlert),
-		events.Reconciled.Subscription(bus, NotificationGroup, notification.AuditReconciliation),
-		events.ShipmentDispatched.Subscription(bus, NotificationGroup, notification.NotifyDispatch),
-		events.StocktakeStarted.Subscription(bus, NotificationGroup, notification.TrackStocktake),
+		events.ItemStocked.Subscribe(bus, NotificationGroup, notification.SendStockAlert),
+		events.Reconciled.Subscribe(bus, NotificationGroup, notification.AuditReconciliation),
+		events.ShipmentDispatched.Subscribe(bus, NotificationGroup, notification.NotifyDispatch),
+		events.StocktakeStarted.Subscribe(bus, NotificationGroup, notification.TrackStocktake),
 
-		events.WarehouseClosed.Subscription(bus, OpsGroup, ops.RecordClosure),
+		events.WarehouseClosed.Subscribe(bus, OpsGroup, ops.RecordClosure),
 
-		events.ItemStocked.Subscription(bus, AnalyticsGroup, analytics.CountStocked),
-		events.ShipmentDispatched.Subscription(bus, AnalyticsGroup, analytics.CountDispatched),
-		events.TierPromoted.Subscription(bus, AnalyticsTierGroup, analytics.TrackTier),
+		events.ItemStocked.Subscribe(bus, AnalyticsGroup, analytics.CountStocked),
+		events.ShipmentDispatched.Subscribe(bus, AnalyticsGroup, analytics.CountDispatched),
+		events.TierPromoted.Subscribe(bus, AnalyticsTierGroup, analytics.TrackTier),
 
-		events.ItemStocked.Subscription(bus, GuardedGroup, guarded.GuardedStock),
-		events.StocktakeStarted.Subscription(bus, GuardedGroup, guarded.BareStock),
-		events.WarehouseClosed.Subscription(bus, GuardedGroup, guarded.InheritedStock),
+		events.ItemStocked.Subscribe(bus, GuardedGroup, guarded.GuardedStock),
+		events.StocktakeStarted.Subscribe(bus, GuardedGroup, guarded.BareStock),
+		events.WarehouseClosed.Subscribe(bus, GuardedGroup, guarded.InheritedStock),
 
-		upstream.PaymentSettled.Subscription(bus, LedgerGroup, ledger.RecordSettlement),
+		upstream.PaymentSettled.Subscribe(bus, LedgerGroup, ledger.RecordSettlement),
 	)
 }

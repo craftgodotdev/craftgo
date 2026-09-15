@@ -64,7 +64,7 @@ func TestUseWrapsEverySubscriptionOutsideItsOwnChain(t *testing.T) {
 	bus, tr := busWith(tagMW(&trace, "N"))
 	sub := tracingSub(&trace, "x.Y", "C1", "g")
 	sub.Chain = events.NewChain(tagMW(&trace, "S"))
-	if err := bus.RegisterAll(sub, tracingSub(&trace, "other.Z", "C2", "g2")); err != nil {
+	if err := errors.Join(bus.Register(sub), bus.Register(tracingSub(&trace, "other.Z", "C2", "g2"))); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	bus.Use(tagMW(&trace, "U1"), tagMW(&trace, "U2"))

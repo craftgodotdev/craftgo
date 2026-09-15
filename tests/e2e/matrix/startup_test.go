@@ -43,7 +43,7 @@ func (capableTransport) CanDisposition(craftevents.Disposition) bool { return tr
 // A delivery guarantee the deployment states is worth nothing if the
 // transport cannot keep it, so registration is refused rather than
 // running a chain whose Redeliver is silently settled. The refusal comes
-// out of the deployable's own RegisterAll: that is the only thing standing
+// out of the deployable's own Register: that is the only thing standing
 // between it and a binary that boots, serves HTTP, passes readiness and
 // quietly loses every message it meant to retry.
 func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
@@ -69,7 +69,7 @@ func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
 				craftevents.WithCodec(codecjson.Codec{}),
 				craftevents.WithDispositionRequired(craftevents.DispositionRedeliver))
 
-			err := consumers.RegisterAll(bus, svccontext.NewServiceContext())
+			err := consumers.Register(bus, svccontext.NewServiceContext())
 
 			if tc.registers {
 				if err != nil {

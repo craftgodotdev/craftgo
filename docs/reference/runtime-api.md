@@ -271,7 +271,6 @@ fails rather than picking an encoding.
 
 ```go
 func (b *Bus) Register(sub Subscription) error
-func (b *Bus) RegisterAll(subs ...Subscription) error
 func (b *Bus) Start(ctx context.Context) error
 
 type RegisterError struct {
@@ -291,11 +290,12 @@ carrying the offending subscription, so `errors.Is(err, events.ErrNoGroup)`
 reaches the reason while the message still names which consumer. Whether the
 *broker* accepts the set is the transport's answer, and it comes from `Start`.
 
-`RegisterAll` registers in order and stops at the first refusal, returning it, so
-one module states its whole consumption as a single call and a refusal still names
-the line that broke. The subscriptions before it stay registered and the ones after
-it were never offered; nothing has started, so a caller returning the error abandons
-the bus.
+A module states its whole consumption as `errors.Join` over one
+[`Subscribe`](#event-descriptors) line per contract. Every line is offered to the
+bus that way - a refusal in the middle stops neither the registrations after it nor
+the refusals beside it - and the joined error carries each `*RegisterError`, so a
+deployable wired wrongly in two places hears about both at once. Nothing has started
+either way, so a caller returning the error abandons the bus.
 
 `Start` hands every registered subscription to the transport in **one** call,
 each handler already wrapped: a recover outermost, then the bus-wide chain, then
@@ -324,6 +324,8 @@ func NewEvent[T any](contract string, validate func(*T) error) Event[T]
 func (e Event[T]) Contract() string
 func (e Event[T]) Publish(ctx context.Context, bus *Bus, payload *T, opts ...PublishOption) error
 func (e Event[T]) Handler(bus *Bus, fn func(ctx context.Context, payload *T) error) Handler
+func (e Event[T]) Subscribe(bus *Bus, group Group,
+	fn func(ctx context.Context, payload *T) error) error
 func (e Event[T]) Subscription(bus *Bus, group Group,
 	fn func(ctx context.Context, payload *T) error) Subscription
 ```
@@ -333,12 +335,14 @@ first and sends nothing when that fails - the contract is refused where it is
 broken rather than at every consumer. `Handler` adapts a typed function to the
 untyped one a transport delivers to, decoding and validating before it runs.
 
-`Subscription` is one line of an application's consumption, handed to `Register` or
-`RegisterAll`. It takes neither a consumer nor a chain: the middleware every handler
-runs behind belongs on the bus through [`Use`](#consumer-middleware), and `Consumer`
-defaults to the contract. A caller who needs either - two subscriptions of one
-contract to tell apart, one handler to wrap alone - sets the field on the value
-before registering it.
+`Subscribe` is one line of an application's consumption: it builds the subscription
+and registers it, so a module is `errors.Join` over its lines. It takes neither a
+consumer nor a chain - the middleware every handler runs behind belongs on the bus
+through [`Use`](#consumer-middleware), and `Consumer` defaults to the contract.
+
+`Subscription` returns the value instead of registering it, for the line that needs
+one of those two fields set - two subscriptions of one contract to tell apart, one
+handler to wrap alone. Set the field, then hand the value to `Register`.
 
 The bus is a parameter at every call and never a field: a descriptor is a value
 in a contract package and knows nothing about how any deployable is wired, so one

@@ -143,7 +143,7 @@ See the [Events guide](/guide/events) for the full picture.
 
 `@doc` and `@deprecated` also apply at event level; nothing else does.
 
-`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed - as has the listener declaration they sat on. All of it is the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), the group is an argument to `orders.Placed.Subscription(bus, group, fn)`, and the chain is `bus.Use(...)` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
+`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed - as has the listener declaration they sat on. All of it is the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), the group is an argument to `orders.Placed.Subscribe(bus, group, fn)`, and the chain is `bus.Use(...)` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
 
 ## Not supported
 

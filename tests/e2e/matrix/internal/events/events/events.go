@@ -16,7 +16,7 @@ const EnvelopedContract = "events.Enveloped"
 //
 // Enveloped is the events.Enveloped contract.
 // Enveloped.Publish(ctx, bus, payload) sends one; a listener registers
-// Enveloped.Subscription(bus, group, fn) on its own bus.
+// Enveloped.Subscribe(bus, group, fn) on its own bus.
 var Enveloped = craftevents.NewEvent[types.Envelope[types.ItemStocked]](EnvelopedContract, (*types.Envelope[types.ItemStocked]).Validate)
 
 // ForgedContract is the wire identity of Forged.
@@ -27,7 +27,7 @@ const ForgedContract = "events.Forged"
 //
 // Forged is the events.Forged contract.
 // Forged.Publish(ctx, bus, payload) sends one; a listener registers
-// Forged.Subscription(bus, group, fn) on its own bus.
+// Forged.Subscribe(bus, group, fn) on its own bus.
 var Forged = craftevents.NewEvent[types.ItemStocked](ForgedContract, (*types.ItemStocked).Validate)
 
 // ItemStockedContract is the wire identity of ItemStocked.
@@ -38,7 +38,7 @@ const ItemStockedContract = "events.ItemStocked"
 //
 // ItemStocked is the events.ItemStocked contract.
 // ItemStocked.Publish(ctx, bus, payload) sends one; a listener registers
-// ItemStocked.Subscription(bus, group, fn) on its own bus.
+// ItemStocked.Subscribe(bus, group, fn) on its own bus.
 var ItemStocked = craftevents.NewEvent[types.ItemStocked](ItemStockedContract, (*types.ItemStocked).Validate)
 
 // ReconciledContract is the wire identity of Reconciled.
@@ -49,7 +49,7 @@ const ReconciledContract = "legacy.inventory.reconciled.v2"
 //
 // Reconciled is the legacy.inventory.reconciled.v2 contract.
 // Reconciled.Publish(ctx, bus, payload) sends one; a listener registers
-// Reconciled.Subscription(bus, group, fn) on its own bus.
+// Reconciled.Subscribe(bus, group, fn) on its own bus.
 var Reconciled = craftevents.NewEvent[types.ItemStocked](ReconciledContract, (*types.ItemStocked).Validate)
 
 // ShipmentDispatchedContract is the wire identity of ShipmentDispatched.
@@ -60,7 +60,7 @@ const ShipmentDispatchedContract = "events.ShipmentDispatched"
 //
 // ShipmentDispatched is the events.ShipmentDispatched contract.
 // ShipmentDispatched.Publish(ctx, bus, payload) sends one; a listener registers
-// ShipmentDispatched.Subscription(bus, group, fn) on its own bus.
+// ShipmentDispatched.Subscribe(bus, group, fn) on its own bus.
 var ShipmentDispatched = craftevents.NewEvent[types.ShipmentDispatched](ShipmentDispatchedContract, (*types.ShipmentDispatched).Validate)
 
 // StocktakeStartedContract is the wire identity of StocktakeStarted.
@@ -71,7 +71,7 @@ const StocktakeStartedContract = "events.StocktakeStarted"
 //
 // StocktakeStarted is the events.StocktakeStarted contract.
 // StocktakeStarted.Publish(ctx, bus, payload) sends one; a listener registers
-// StocktakeStarted.Subscription(bus, group, fn) on its own bus.
+// StocktakeStarted.Subscribe(bus, group, fn) on its own bus.
 var StocktakeStarted = craftevents.NewEvent[types.StocktakeStarted](StocktakeStartedContract, (*types.StocktakeStarted).Validate)
 
 // TierPromotedContract is the wire identity of TierPromoted.
@@ -82,7 +82,7 @@ const TierPromotedContract = "events.TierPromoted"
 //
 // TierPromoted is the events.TierPromoted contract.
 // TierPromoted.Publish(ctx, bus, payload) sends one; a listener registers
-// TierPromoted.Subscription(bus, group, fn) on its own bus.
+// TierPromoted.Subscribe(bus, group, fn) on its own bus.
 var TierPromoted = craftevents.NewEvent[types.TierPromoted](TierPromotedContract, (*types.TierPromoted).Validate)
 
 // WarehouseClosedContract is the wire identity of WarehouseClosed.
@@ -93,5 +93,5 @@ const WarehouseClosedContract = "events.WarehouseClosed"
 //
 // WarehouseClosed is the events.WarehouseClosed contract.
 // WarehouseClosed.Publish(ctx, bus, payload) sends one; a listener registers
-// WarehouseClosed.Subscription(bus, group, fn) on its own bus.
+// WarehouseClosed.Subscribe(bus, group, fn) on its own bus.
 var WarehouseClosed = craftevents.NewEvent[types.WarehouseClosed](WarehouseClosedContract, (*types.WarehouseClosed).Validate)

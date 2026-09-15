@@ -71,7 +71,7 @@ func main() {
 	// subscriptions, Start hands the whole batch to the transport at once
 	// - a broker that binds one identity to several contracts cannot
 	// register a group one contract at a time.
-	if err := consumers.RegisterAll(bus); err != nil {
+	if err := consumers.Register(bus); err != nil {
 		log.Fatalf("register consumers: %v", err)
 	}
 	deliver, stopDelivery := context.WithCancel(ctx)

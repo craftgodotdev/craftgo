@@ -165,15 +165,29 @@ func TestRegisterRefusesTheSameContractTwiceInOneGroup(t *testing.T) {
 	}
 }
 
-// RegisterAll is Register down the list: a module states its whole
-// consumption as one call.
-func TestRegisterAllRegistersEveryOne(t *testing.T) {
+// The contracts the joined registrations below consume. A listener's
+// line goes through the descriptor, so a module states itself through
+// those and never through a Subscription literal.
+var (
+	aOne   = events.NewEvent[order]("a.One", nil)
+	bTwo   = events.NewEvent[order]("b.Two", nil)
+	cThree = events.NewEvent[order]("c.Three", nil)
+)
+
+// ignore is logic that does nothing, for the lines whose handler is not
+// what is under test.
+func ignore(context.Context, *order) error { return nil }
+
+// Subscribe is Register with the descriptor's own typing in front of it:
+// a module states its whole consumption as joined lines, and every one
+// of them reaches the transport.
+func TestSubscribeRegistersEveryOne(t *testing.T) {
 	bus, tr := busOver()
-	if err := bus.RegisterAll(
-		events.Subscription{Event: "a.One", Consumer: "A", Group: "g", Handle: noop()},
-		events.Subscription{Event: "b.Two", Consumer: "B", Group: "g", Handle: noop()},
+	if err := errors.Join(
+		aOne.Subscribe(bus, "g", ignore),
+		bTwo.Subscribe(bus, "g", ignore),
 	); err != nil {
-		t.Fatalf("register all: %v", err)
+		t.Fatalf("subscribe: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
@@ -183,18 +197,19 @@ func TestRegisterAllRegistersEveryOne(t *testing.T) {
 	}
 }
 
-// The first refusal ends the list. What follows it is never offered, so
-// the refusal is the whole answer and a caller returning it is not left
-// guessing how far the list got.
-func TestRegisterAllStopsAtTheFirstRefusal(t *testing.T) {
+// Joining the lines offers every one of them, so a refusal in the middle
+// hides neither the refusals beside it nor the registrations after it. A
+// deployable wired wrongly in two places hears about both at once.
+func TestJoinedSubscribesReportEveryRefusal(t *testing.T) {
 	bus, _ := busOver()
-	err := bus.RegisterAll(
-		events.Subscription{Event: "a.One", Consumer: "A", Group: "g", Handle: noop()},
-		events.Subscription{Event: "a.One", Consumer: "B", Group: "g", Handle: noop()},
-		events.Subscription{Event: "c.Three", Consumer: "C", Group: "g", Handle: noop()},
+	err := errors.Join(
+		aOne.Subscribe(bus, "g", ignore),
+		aOne.Subscribe(bus, "g", ignore),
+		bTwo.Subscribe(bus, "", ignore),
+		cThree.Subscribe(bus, "g", ignore),
 	)
-	if !errors.Is(err, events.ErrDuplicateSubscription) {
-		t.Fatalf("err = %v, want ErrDuplicateSubscription", err)
+	if !errors.Is(err, events.ErrDuplicateSubscription) || !errors.Is(err, events.ErrNoGroup) {
+		t.Fatalf("err = %v, want both refusals - the duplicate and the missing group", err)
 	}
 	var refused *events.RegisterError
 	if !errors.As(err, &refused) {
@@ -203,6 +218,11 @@ func TestRegisterAllStopsAtTheFirstRefusal(t *testing.T) {
 	if refused.Event != "a.One" || refused.Group != "g" {
 		t.Errorf("the error does not name the contract and group: %+v", refused)
 	}
+	for _, want := range []string{"a.One", "b.Two"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the joined error does not name %s: %v", want, err)
+		}
+	}
 
 	var got []string
 	for _, group := range bus.Plan().Groups {
@@ -210,8 +230,8 @@ func TestRegisterAllStopsAtTheFirstRefusal(t *testing.T) {
 			got = append(got, consumer.Event)
 		}
 	}
-	if want := "a.One"; strings.Join(got, ",") != want {
-		t.Errorf("registered %v, want only %s - the list ran on past the refusal", got, want)
+	if want := "a.One,c.Three"; strings.Join(got, ",") != want {
+		t.Errorf("registered %v, want %s - a refusal must not stop the lines after it", got, want)
 	}
 }
 

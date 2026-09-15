@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"errors"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
@@ -53,8 +54,8 @@ func (h Handler) RecordStatusChange(_ context.Context, payload *tasks.TaskStatus
 // Nothing is delivered until [craftevents.Bus.Start].
 func Register(bus *craftevents.Bus, feed *Feed) error {
 	h := NewHandler(feed)
-	return bus.RegisterAll(
-		tasksevents.TaskCreated.Subscription(bus, Group, h.RecordTaskCreated),
-		tasksevents.TaskStatusChanged.Subscription(bus, Group, h.RecordStatusChange),
+	return errors.Join(
+		tasksevents.TaskCreated.Subscribe(bus, Group, h.RecordTaskCreated),
+		tasksevents.TaskStatusChanged.Subscribe(bus, Group, h.RecordStatusChange),
 	)
 }

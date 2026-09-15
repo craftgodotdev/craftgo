@@ -665,7 +665,7 @@ var removed = map[string]string{
 	"key": "@key was removed: which entity a message belongs to is decided when it is published, not by the contract. " +
 		"Pass the key to the publish call instead - `orders.OrderPlaced.Publish(ctx, bus, payload, craftevents.WithKey(string(payload.OrderID)))`.",
 	"consumerGroup": "@consumerGroup was removed: a group is where a consumer resumes on the broker, so it belongs to the deployable rather than to the shared design. " +
-		"Name it where the bus is built and pass it to the subscription - `bus.Register(orders.Placed.Subscription(bus, ordersGroup, h.Placed))`.",
+		"Name it where the bus is built and pass it to the subscription - `orders.Placed.Subscribe(bus, ordersGroup, h.Placed)`.",
 	"consumeMiddlewares": "@consumeMiddlewares was removed, along with the `consume middleware Name` declaration: a subscription's chain is ordinary Go, built where the bus is. " +
 		"Install one bus-wide with `bus.Use(retry, timeout)`, or set `Subscription.Chain` for a single registration.",
 }

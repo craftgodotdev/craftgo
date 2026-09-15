@@ -22,13 +22,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   contracts` generates only payload types and this library, for a design
   several deployables import. Nothing else is generated for events.
 - **Event runtime, `pkg/events`** (its own module). `Bus` is the events
-  server: `Use` installs bus-wide middleware, `Register`/`RegisterAll`
-  take subscriptions (local checks, `*RegisterError`), `Start` hands the
-  whole batch to the transport once, handlers wrapped with panic
-  recovery, the bus chain and the subscription's own `Chain`; `Plan()`
-  with a stable JSON form for golden tests; typed `Group`; `Event[T]`
-  descriptors (`Publish`, `Handler`, `Subscription(bus, group, fn)`) that
-  decode and validate before a handler runs (`*PayloadError`,
+  server: `Use` installs bus-wide middleware, `Event[T].Subscribe` is the
+  listener's line and `Register` takes a subscription value (local checks,
+  `*RegisterError`, joined with `errors.Join` so every line is offered),
+  `Start` hands the whole batch to the transport once, handlers wrapped
+  with panic recovery, the bus chain and the subscription's own `Chain`;
+  `Plan()` with a stable JSON form for golden tests; typed `Group`;
+  `Event[T]` descriptors (`Publish`, `Handler`, `Subscribe(bus, group,
+  fn)`, and `Subscription` for the value a field is set on) that decode
+  and validate before a handler runs (`*PayloadError`,
   `ErrCodecMismatch`); publish options (`WithKey`,
   `WithDedupID`, `WithHeader`, `WithAdapterOption`, `WithPublishDefaults`);
   batch publishing with `PartialPublishError`; dispositions (`Settle`,

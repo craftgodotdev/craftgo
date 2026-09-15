@@ -17,5 +17,5 @@ const PayBatchedContract = "xrefs.PayBatched"
 //
 // PayBatched is the xrefs.PayBatched contract.
 // PayBatched.Publish(ctx, bus, payload) sends one; a listener registers
-// PayBatched.Subscription(bus, group, fn) on its own bus.
+// PayBatched.Subscribe(bus, group, fn) on its own bus.
 var PayBatched = craftevents.NewEvent[xshared.XBag[paytypes.XPayItem]](PayBatchedContract, (*xshared.XBag[paytypes.XPayItem]).Validate)

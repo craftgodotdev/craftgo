@@ -16,6 +16,6 @@ const {{.ConstName}} = "{{.Contract}}"
 {{end}}//
 {{end}}// {{.Name}} is the {{.Contract}} contract.
 // {{.Name}}.Publish(ctx, bus, payload) sends one; a listener registers
-// {{.Name}}.Subscription(bus, group, fn) on its own bus.
+// {{.Name}}.Subscribe(bus, group, fn) on its own bus.
 var {{.Name}} = craftevents.NewEvent[{{.PayloadType}}]({{.ConstName}}, {{.Validate}})
 {{end}}

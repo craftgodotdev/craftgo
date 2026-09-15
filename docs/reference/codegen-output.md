@@ -159,7 +159,7 @@ const PlacedContract = "orders.Placed"
 //
 // Placed is the orders.Placed contract.
 // Placed.Publish(ctx, bus, payload) sends one; a listener registers
-// Placed.Subscription(bus, group, fn) on its own bus.
+// Placed.Subscribe(bus, group, fn) on its own bus.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
@@ -169,7 +169,7 @@ bus - the bus is a parameter at `Placed.Publish(ctx, bus, payload)` - so one
 library serves every deployable.
 
 This is the only event file. There is no handler interface, no `Groups` struct
-and no `Register` function: a listener is `Placed.Subscription(bus, group, fn)`
+and no `Register` function: a listener is `Placed.Subscribe(bus, group, fn)`
 written where the bus is built, so which group it joins, what middleware wraps
 it and which process runs it never enter the design. The file imports the event
 runtime and the payload types and nothing else, which is what keeps it

@@ -10,8 +10,8 @@
 //   - [Codec] turns a payload value into bytes and back.
 //   - [Publisher] and [Subscriber] are the two halves a transport
 //     adapter implements.
-//   - [Bus] binds a transport to a codec. [Bus.Register] and
-//     [Bus.RegisterAll] record a [Subscription], [Bus.Start] hands the
+//   - [Bus] binds a transport to a codec. [Event.Subscribe] and
+//     [Bus.Register] record a [Subscription], [Bus.Start] hands the
 //     whole batch to the transport and [Bus.Plan] says what was
 //     registered.
 //   - [Chain] wraps a consumer's [Handler] in [Middleware]; install one
@@ -820,6 +820,9 @@ func (b *Bus) Use(mws ...Middleware) {
 }
 
 // Register records sub, to be handed to the transport by [Bus.Start].
+// [Event.Subscribe] builds one and registers it in a single line, which
+// is what a listener writes; this takes the value, for the registration
+// that sets [Subscription.Consumer] or [Subscription.Chain] first.
 //
 // The checks here are the ones the bus can make on its own - a handler, a
 // group, a codec for the contract, the dispositions
@@ -853,21 +856,6 @@ func (b *Bus) Register(sub Subscription) error {
 	}
 	b.claimed[key] = true
 	b.subs = append(b.subs, sub)
-	return nil
-}
-
-// RegisterAll registers subs in order and stops at the first refusal,
-// returning it - a [*RegisterError] already naming the contract and the
-// group, so a module lists its whole consumption as one call and a
-// refusal still says which line broke. The subscriptions before it stay
-// registered and the ones after it were never offered; nothing has
-// started, so a caller returning the error abandons the bus.
-func (b *Bus) RegisterAll(subs ...Subscription) error {
-	for _, sub := range subs {
-		if err := b.Register(sub); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

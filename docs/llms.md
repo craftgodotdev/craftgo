@@ -299,7 +299,7 @@ const PlacedContract = "orders.Placed"
 //
 // Placed is the orders.Placed contract.
 // Placed.Publish(ctx, bus, payload) sends one; a listener registers
-// Placed.Subscription(bus, group, fn) on its own bus.
+// Placed.Subscribe(bus, group, fn) on its own bus.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
@@ -316,10 +316,10 @@ var (
 
 func Register(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
 	l := logic.New(svcCtx)
-	return bus.RegisterAll(                                    // stops at the first refusal
-		orders.Placed.Subscription(bus, Group, l.OrderPlaced), // fn: (ctx, *types.OrderPlaced) error
-		orders.Shipped.Subscription(bus, Group, l.OrderShipped),
-		payments.Captured.Subscription(bus, ReceiptGroup, l.PaymentCaptured),
+	return errors.Join(                                     // every line offered, every refusal reported
+		orders.Placed.Subscribe(bus, Group, l.OrderPlaced), // fn: (ctx, *types.OrderPlaced) error
+		orders.Shipped.Subscribe(bus, Group, l.OrderShipped),
+		payments.Captured.Subscribe(bus, ReceiptGroup, l.PaymentCaptured),
 	)
 }
 
@@ -329,17 +329,18 @@ bus := craftevents.New(
 	craftevents.WithCodec(codecjson.Codec{}),     // or protobuf / msgpack / ...
 )
 bus.Use(logging.AccessLog(logger), retry, timeout)  // bus-wide chain; panics after Start
-err := handler.RegisterAll(bus, svcCtx)
+err := handler.Register(bus, svcCtx)
 err = bus.Start(ctx)                                // the whole batch, in one call
 
 err = ordersevents.Placed.Publish(ctx, bus, payload, craftevents.WithKey(payload.OrderID))
 err = bus.Publish(ctx, ordersevents.PlacedContract, payload)  // the untyped path
 
+func (e Event[T]) Subscribe(bus *Bus, group Group,
+	fn func(ctx context.Context, payload *T) error) error         // the listener's line: build + register
 func (e Event[T]) Subscription(bus *Bus, group Group,
 	fn func(ctx context.Context, payload *T) error) Subscription  // no consumer, no chain param
 func (b *Bus) Use(mws ...Middleware)             // append to the bus chain; panics after Start
-func (b *Bus) Register(sub Subscription) error   // refused once started
-func (b *Bus) RegisterAll(subs ...Subscription) error
+func (b *Bus) Register(sub Subscription) error   // the value path; refused once started
 func (b *Bus) Start(ctx context.Context) error
 func (b *Bus) Plan() Plan                        // groups -> consumers, stable order
 func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error
@@ -351,7 +352,8 @@ type Subscriber interface{ Subscribe(ctx context.Context, subs []Subscription) e
 
 `Group` is a named type with no fallback - declare the groups as values beside the registrations.
 `Consumer` defaults to the contract and names the handler in `Plan` and in a `*PanicError` only;
-set it on the value before registering when two subscriptions of one contract need telling apart.
+when two subscriptions of one contract need telling apart, take the value from `Subscription`, set
+the field and hand it to `bus.Register` - the exception `Subscribe` leaves room for.
 `Subscription.Chain` is the same kind of exception, for one registration that needs a wrap the rest
 of the deployable does not; it is applied inside the bus chain.
 
@@ -359,7 +361,7 @@ of the deployable does not; it is applied inside the bus chain.
 no codec, a disposition the transport cannot honour, and a duplicate `(Event, Group)`; whether the
 BROKER accepts the set is `Start`'s answer. A second `Start` or a later `Register` is `ErrStarted`,
 even after one that failed. `Plan()` works either side of `Start` and marshals in stable order -
-pin it in a golden file (`memory.New()` + `RegisterAll` in a test) and it is the listener map no
+pin it in a golden file (`memory.New()` + the module's `Register` in a test) and it is the listener map no
 generated file states any more.
 
 The ordering key is a publish option, not a design decision; without one a publish is keyless.

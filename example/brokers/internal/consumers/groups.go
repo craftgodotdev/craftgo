@@ -8,6 +8,8 @@
 package consumers
 
 import (
+	"errors"
+
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
 	"github.com/craftgodotdev/craftgo/example/brokers/internal/events/orders"
@@ -28,23 +30,23 @@ const (
 	LedgerGroup       craftevents.Group = "brokers-ledger"
 )
 
-// RegisterAll binds every subscription this binary runs to bus: one line
+// Register binds every subscription this binary runs to bus: one line
 // per (contract, group), each naming the method it dispatches to. The
 // compiler checks the pairing - a method whose payload does not match the
-// contract does not compile at the Subscription call.
+// contract does not compile at the Subscribe call.
 //
-// The whole set goes over in one [craftevents.Bus.RegisterAll], so a
-// refusal names the contract and group of the line that broke. Nothing is
-// delivered until [craftevents.Bus.Start].
-func RegisterAll(bus *craftevents.Bus) error {
+// The lines are joined, so every one is offered to the bus and each
+// refusal names the contract and group it was on. Nothing is delivered
+// until [craftevents.Bus.Start].
+func Register(bus *craftevents.Bus) error {
 	notifier, counter, ledger := Notifier{}, Counter{}, Ledger{}
-	return bus.RegisterAll(
-		orders.Placed.Subscription(bus, NotificationGroup, notifier.SendReceipt),
-		orders.Shipped.Subscription(bus, NotificationGroup, notifier.SendDispatchNote),
+	return errors.Join(
+		orders.Placed.Subscribe(bus, NotificationGroup, notifier.SendReceipt),
+		orders.Shipped.Subscribe(bus, NotificationGroup, notifier.SendDispatchNote),
 
-		orders.Placed.Subscription(bus, AnalyticsGroup, counter.CountOrder),
+		orders.Placed.Subscribe(bus, AnalyticsGroup, counter.CountOrder),
 
-		orders.Placed.Subscription(bus, LedgerGroup, ledger.BookOrder),
-		payments.Settled.Subscription(bus, LedgerGroup, ledger.RecordSettlement),
+		orders.Placed.Subscribe(bus, LedgerGroup, ledger.BookOrder),
+		payments.Settled.Subscribe(bus, LedgerGroup, ledger.RecordSettlement),
 	)
 }

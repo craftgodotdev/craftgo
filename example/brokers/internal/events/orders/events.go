@@ -16,7 +16,7 @@ const PlacedContract = "orders.Placed"
 //
 // Placed is the orders.Placed contract.
 // Placed.Publish(ctx, bus, payload) sends one; a listener registers
-// Placed.Subscription(bus, group, fn) on its own bus.
+// Placed.Subscribe(bus, group, fn) on its own bus.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 
 // ShippedContract is the wire identity of Shipped.
@@ -27,5 +27,5 @@ const ShippedContract = "orders.Shipped"
 //
 // Shipped is the orders.Shipped contract.
 // Shipped.Publish(ctx, bus, payload) sends one; a listener registers
-// Shipped.Subscription(bus, group, fn) on its own bus.
+// Shipped.Subscribe(bus, group, fn) on its own bus.
 var Shipped = craftevents.NewEvent[types.OrderShipped](ShippedContract, (*types.OrderShipped).Validate)

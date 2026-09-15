@@ -51,22 +51,24 @@ validation.
 
 Everything about DELIVERY is this project's, and lives in
 `internal/consumers/`: the logic structs, the group names, and the one
-`RegisterAll` that lists every subscription —
+`Register` that joins every subscription —
 
 ```go
-return bus.RegisterAll(
-    orders.Placed.Subscription(bus, NotificationGroup, notifier.SendReceipt),
-    orders.Shipped.Subscription(bus, NotificationGroup, notifier.SendDispatchNote),
-    orders.Placed.Subscription(bus, AnalyticsGroup, counter.CountOrder),
-    orders.Placed.Subscription(bus, LedgerGroup, ledger.BookOrder),
-    payments.Settled.Subscription(bus, LedgerGroup, ledger.RecordSettlement),
+return errors.Join(
+    orders.Placed.Subscribe(bus, NotificationGroup, notifier.SendReceipt),
+    orders.Shipped.Subscribe(bus, NotificationGroup, notifier.SendDispatchNote),
+    orders.Placed.Subscribe(bus, AnalyticsGroup, counter.CountOrder),
+    orders.Placed.Subscribe(bus, LedgerGroup, ledger.BookOrder),
+    payments.Settled.Subscribe(bus, LedgerGroup, ledger.RecordSettlement),
 )
 ```
 
 One line per (contract, group), and the compiler checks each: a method whose
-payload does not match the contract does not compile at the `Subscription`
-call. A second deployable running only the ledger, under group names of its
-own, imports the same generated library and writes its own two lines.
+payload does not match the contract does not compile at the `Subscribe`
+call. `errors.Join` offers every line to the bus, so a deployable wired
+wrongly in two places hears about both at once. A second deployable running
+only the ledger, under group names of its own, imports the same generated
+library and writes its own two lines.
 
 The delivery chain goes on the bus, not on a line: `main.go` calls
 `bus.Use(logging.AccessLog(...))` after `New`, where a real deployable has

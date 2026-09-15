@@ -62,8 +62,8 @@ func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
 
 	probe := &contextProbe{}
-	if err := bus.Register(events.ItemStocked.Subscription(bus, consumers.InventoryGroup,
-		probe.MirrorStock)); err != nil {
+	if err := events.ItemStocked.Subscribe(bus, consumers.InventoryGroup,
+		probe.MirrorStock); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := bus.Start(context.Background()); err != nil {

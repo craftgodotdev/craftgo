@@ -226,7 +226,7 @@ func TestRemovedEventDecoratorsAreRejectedWithTheirMigration(t *testing.T) {
 type P { id string }
 @consumerGroup("shared")
 event Placed { payload P }`,
-			want: "Subscription(bus",
+			want: "Subscribe(bus",
 		},
 		{
 			name: "consumeMiddlewares",

@@ -20,8 +20,8 @@ validate, build a subscription - and stops there.
 The other half lives in the application, on the **bus**. `events.Bus` is
 `server.Server` for the consumer side: the one thing every subscription passes
 through. `bus.Use(...)` installs the delivery chain the whole deployable runs
-behind, `bus.RegisterAll(...)` lists what it listens to, `bus.Start(ctx)` hands the
-batch to the transport. The generated library imports the event runtime and the
+behind, one `Subscribe` line per contract says what it listens to, `bus.Start(ctx)`
+hands the batch to the transport. The generated library imports the event runtime and the
 payload types and nothing else, so one contract package serves every deployable
 that imports it, each wired to its own bus, and the design never names a broker, a
 group, a codec or a process.
@@ -86,7 +86,7 @@ const PlacedContract = "orders.Placed"
 //
 // Placed is the orders.Placed contract.
 // Placed.Publish(ctx, bus, payload) sends one; a listener registers
-// Placed.Subscription(bus, group, fn) on its own bus.
+// Placed.Subscribe(bus, group, fn) on its own bus.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
@@ -133,26 +133,31 @@ var (
 
 func Register(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
 	l := logic.New(svcCtx)
-	return bus.RegisterAll(
-		orders.Placed.Subscription(bus, Group, l.OrderPlaced),
-		orders.Shipped.Subscription(bus, Group, l.OrderShipped),
-		orders.Placed.Subscription(bus, ReceiptGroup, l.SendReceipt),
+	return errors.Join(
+		orders.Placed.Subscribe(bus, Group, l.OrderPlaced),
+		orders.Shipped.Subscribe(bus, Group, l.OrderShipped),
+		orders.Placed.Subscribe(bus, ReceiptGroup, l.SendReceipt),
 	)
 }
 ```
 
-`Subscription(bus, group, fn)` is typed against the contract: `fn` takes
+`Subscribe(bus, group, fn)` is typed against the contract: `fn` takes
 `(ctx, *types.OrderPlaced) error`, the payload already decoded and validated, and a
 method with the wrong signature does not compile at the call. There is no consumer
 parameter and no chain parameter - the middleware every handler runs behind belongs
 on the bus, and `Subscription.Consumer` defaults to the contract.
 
-`RegisterAll` registers in order and stops at the first refusal, returning a
-`*RegisterError` that already names the contract and the group, so a module states
-its whole consumption as one call and a refusal still says which line broke.
-`Register(sub)` is the single-subscription form. Both check what the bus can check
-on its own: a handler, a group, a codec for the contract, the dispositions the bus
-requires, and no earlier subscription for the same contract and group.
+`errors.Join` is what holds the lines together, and it is the reason to prefer it to
+a chain that stops: every line is offered to the bus, so a refusal in the middle
+neither hides the refusals beside it nor cancels the registrations after it, and each
+one is a `*RegisterError` already naming its contract and group. A deployable wired
+wrongly in two places hears about both at once.
+
+`Subscribe` is `bus.Register(descriptor.Subscription(bus, group, fn))` in one line.
+`bus.Register(sub)` takes the value itself, which is what the line that sets
+`Subscription.Consumer` or `Subscription.Chain` first needs; both check what the bus
+can check on its own: a handler, a group, a codec for the contract, the dispositions
+the bus requires, and no earlier subscription for the same contract and group.
 
 `main.go` is where the bus, its chain and the modules meet:
 
@@ -163,7 +168,7 @@ bus := craftevents.New(
 )
 bus.Use(logging.AccessLog(logger), retry(svcCtx), timeout(30*time.Second))
 
-if err := handler.RegisterAll(bus, svcCtx); err != nil {
+if err := handler.Register(bus, svcCtx); err != nil {
 	return err
 }
 return bus.Start(ctx)
@@ -202,7 +207,12 @@ where telling the two apart in a log line is worth the extra line:
 ```go
 sub := orders.Placed.Subscription(bus, ReceiptGroup, l.SendReceipt)
 sub.Consumer = "SendReceipt"
+err := bus.Register(sub)
 ```
+
+`Subscription` builds the value `Subscribe` would have registered, and `bus.Register`
+takes it - the two-line form for the registration that needs a field set, where
+`Subscribe` is the one-line form for every other.
 
 ### Middleware
 
@@ -231,6 +241,7 @@ a wrap the rest of the deployable does not:
 ```go
 sub := orders.Placed.Subscription(bus, Group, l.OrderPlaced)
 sub.Chain = craftevents.NewChain(dedupe(store))
+err := bus.Register(sub)
 ```
 
 It is applied **inside** the bus chain, so a bus-wide concern like logging still
@@ -324,7 +335,7 @@ func TestPlan(t *testing.T) {
 		craftevents.WithTransport(memory.New()),
 		craftevents.WithCodec(codecjson.Codec{}),
 	)
-	if err := handler.RegisterAll(bus, svcCtx); err != nil {
+	if err := handler.Register(bus, svcCtx); err != nil {
 		t.Fatal(err)
 	}
 	got, err := json.MarshalIndent(bus.Plan(), "", "  ")
