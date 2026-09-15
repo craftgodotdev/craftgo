@@ -9,28 +9,27 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Added
 
-- **Events in the DSL.** `event Name { payload T }` declares a contract, at
-  file level or inside a `service`; `@contract("subject")` sets its wire
-  identity (default `<package>.<Event>`). `service X { consume C { event
-  pkg.E } }` declares a handler interface: one method per `consume`. Three
-  reserved words, `event`, `consume`, `payload`, still usable as
-  identifiers where unambiguous. Nothing about delivery is in the design:
-  consumer groups, middleware and folder layout are the application's.
-- **Event codegen, per DSL package under `events.targets[].out`.**
-  `events.go` holds one `<Name>Contract` constant and one
-  `events.Event[T]` descriptor per event; `handlers.go` holds
-  `<Service>Handler`, `<Service>Groups` (a `Default` group plus one field
-  per consume) and `Register<Service>Handler(bus, h, chain, groups) error`.
-  `output.kind: contracts` generates only payload types and this library,
-  for a design several deployables import. Nothing else is generated for
-  events.
-- **Event runtime, `pkg/events`** (its own module). `Bus` with
-  `Register` (local checks, `*RegisterError`) and `Start` (one batch call to
-  the transport, handlers wrapped with panic recovery, the bus chain and the
-  subscription's own `Chain`); `Plan()` with a stable JSON form for golden
-  tests; typed `Group`; `Event[T]` descriptors (`Publish`, `Handler`,
-  `Subscription`) that decode and validate before a handler runs
-  (`*PayloadError`, `ErrCodecMismatch`); publish options (`WithKey`,
+- **Events in the DSL.** `event Name { payload T }` declares a contract at
+  file level; `@contract("subject")` sets its wire identity (default
+  `<package>.<Event>`). A `service` holds HTTP methods only. The design
+  names no listener: which events a deployable consumes, on which group,
+  behind which middleware, is Go code in that deployable. Two reserved
+  words, `event` and `payload`, still usable as identifiers where
+  unambiguous.
+- **Event codegen, per DSL package under `events.targets[].out`.** One
+  file, `events.go`: a `<Name>Contract` constant and an `events.Event[T]`
+  descriptor per event, its `@doc` as the Go comment. `output.kind:
+  contracts` generates only payload types and this library, for a design
+  several deployables import. Nothing else is generated for events.
+- **Event runtime, `pkg/events`** (its own module). `Bus` is the events
+  server: `Use` installs bus-wide middleware, `Register`/`RegisterAll`
+  take subscriptions (local checks, `*RegisterError`), `Start` hands the
+  whole batch to the transport once, handlers wrapped with panic
+  recovery, the bus chain and the subscription's own `Chain`; `Plan()`
+  with a stable JSON form for golden tests; typed `Group`; `Event[T]`
+  descriptors (`Publish`, `Handler`, `Subscription(bus, group, fn)`) that
+  decode and validate before a handler runs (`*PayloadError`,
+  `ErrCodecMismatch`); publish options (`WithKey`,
   `WithDedupID`, `WithHeader`, `WithAdapterOption`, `WithPublishDefaults`);
   batch publishing with `PartialPublishError`; dispositions (`Settle`,
   `Redeliver`, `Reject`) a chain decides, `WithDispositionRequired` refusing
@@ -51,9 +50,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`format: date-time`); body fields only, no validators, no `@default`.
 - **`@json("key")` on a field.** Sets the JSON key when it is not the field
   name; the Go tag, the OpenAPI document and validation messages follow it.
-- **`.craftgo-gen` claims.** Every regenerated file is claimed by the design
-  that wrote it; a later run prunes what that design stops writing, and two
-  designs writing one file is an error before anything is written.
+- **Stale output is pruned.** Inside the output directories the manifest
+  names, every file carrying a generated header that the run did not write
+  is deleted, and emptied directories with it; an output directory belongs
+  to one design. Gen-once files carry no header and are never touched.
 - **`log.Slog()`**, a `*slog.Logger` writing through craftgo's own logger.
 
 ### Changed
