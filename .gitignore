@@ -18,7 +18,8 @@ coverage.txt
 coverage.html
 
 # Go workspace / vendor (vendor mode disabled)
-go.work
+# go.work IS tracked: the published pkg/events adapters carry no `replace`,
+# so the workspace is what resolves pkg/events locally. See RELEASING.md.
 go.work.sum
 /vendor/
 

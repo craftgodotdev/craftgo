@@ -217,6 +217,43 @@ clean-gen: ## Remove regenerable artefacts under every example mini-project + e2
 		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/internal/events" "$$d/docs"; \
 	done
 
+# ---- release -------------------------------------------------------------
+# Four modules are published from this repo and they share one version: the
+# root module, pkg/events, and the two adapters. Go's convention for a nested
+# module is the subdirectory as the tag prefix, so a release is four tags -
+# vX.Y.Z, pkg/events/vX.Y.Z, pkg/events/nats/vX.Y.Z, pkg/events/kafka/vX.Y.Z.
+#
+# `tag` is local-only: it never pushes. It writes the release commit and the
+# four tags, then prints the single `git push` for you to run. `tag-sync` is
+# the follow-up that needs the tags on origin. See RELEASING.md.
+VERSION ?=
+DRY_RUN ?=
+
+.PHONY: tag
+tag: ## Cut a release locally - VERSION=vX.Y.Z, DRY_RUN=1 to only print the plan. Never pushes.
+	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh tag "$(VERSION)"
+
+.PHONY: tag-sync
+tag-sync: ## After you push the tags: tidy the adapters against the published pkg/events. VERSION=vX.Y.Z.
+	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh sync "$(VERSION)"
+
+.PHONY: tag-list
+tag-list: ## Show the four latest tags of each published module.
+	@scripts/release.sh list
+
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
 ci: lint test-all build ## What CI runs: lint, every test suite (root + e2e + submodules), build.
+
+# ---- docs diagrams --------------------------------------------------------
+# Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with
+# the VS Code Excalidraw extension); the site embeds docs/public/diagrams/*.svg.
+# The export runs the real Excalidraw in a headless browser:
+#   npm i -g excalidraw-brute-export-cli && npx playwright install firefox
+.PHONY: docs-diagrams
+docs-diagrams: ## Re-export every docs/diagrams/*.excalidraw to docs/public/diagrams/*.svg.
+	@for f in docs/diagrams/*.excalidraw; do \
+		out=docs/public/diagrams/$$(basename $${f%.excalidraw}).svg; \
+		echo "→ $$out"; \
+		npx excalidraw-brute-export-cli -i "$$f" -o "$$out" -f svg -s 1 -b true -d false -e false --quiet || exit 1; \
+	done

@@ -14,6 +14,11 @@ builds:
     binary: craftgo
     env:
       - CGO_ENABLED=0 # pure-Go: static binaries that cross-compile anywhere
+      # The repo has a tracked go.work (see RELEASING.md). In workspace mode
+      # MVS runs across every member, so a shared dependency could resolve
+      # higher here than for someone doing `go install ...@vX.Y.Z`. Release
+      # binaries must match the published module graph, not the workspace.
+      - GOWORK=off
     flags:
       - -trimpath
     ldflags:
@@ -29,6 +34,7 @@ builds:
     binary: craftgo-lsp
     env:
       - CGO_ENABLED=0
+      - GOWORK=off # same reason as the craftgo build above
     flags:
       - -trimpath
     ldflags:
