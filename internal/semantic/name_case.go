@@ -53,8 +53,8 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 		if !dd.Extend {
 			a.warnNameCase("service", dd.Name, dd.Pos)
 		}
-		for _, s := range serviceMemberSites(dd) {
-			a.warnNameCase(s.Level.Name(), s.Name, s.Pos)
+		for _, m := range dd.Methods() {
+			a.warnNameCase("method", m.Name, m.Pos)
 		}
 	case *ast.MiddlewareDecl:
 		a.warnNameCase("middleware", dd.Name, dd.Pos)

@@ -150,7 +150,7 @@ func TestServiceExtendWithoutPrimary(t *testing.T) {
 // methods inside them, so a decorator with no method-level form has
 // nothing meaningful to do.
 func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
-	expectMsg(t, "not valid on a method or a consumer", `service S {}
+	expectMsg(t, "not valid on a method", `service S {}
 @prefix("/x")
 extend service S { get Op /x {} }`)
 }

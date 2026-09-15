@@ -349,25 +349,15 @@ const (
 	// something other than a `type` declaration.
 	CodeEventPayloadKind = "event/payload-kind"
 	// CodeEventContractCollision fires when two events resolve to the
-	// same contract name - publisher and consumer could not tell them
-	// apart on the wire.
+	// same contract name - a listener could not tell them apart on the
+	// wire.
 	CodeEventContractCollision = "event/contract-collision"
 	// CodeEventContractFormat fires when an `@contract` argument is
 	// empty or carries whitespace.
 	CodeEventContractFormat = "event/contract-format"
-	// CodeConsumerEventMissing fires when a `consume` body has no
-	// `event` clause.
-	CodeConsumerEventMissing = "consumer/event-missing"
-	// CodeConsumerEventUnknown fires when a consumer's `event` clause
-	// names an event no package declares.
-	CodeConsumerEventUnknown = "consumer/event-unknown"
 	// CodeEventDuplicate fires when one package declares two events of
-	// the same name. Consumers reference an event by that identifier.
+	// the same name.
 	CodeEventDuplicate = "event/duplicate-name"
-	// CodeConsumerDuplicateName fires when one service declares two
-	// consumers of the same name. Each is a method on that service's
-	// generated handler interface.
-	CodeConsumerDuplicateName = "consumer/duplicate-name"
 )
 
 // related is a tiny helper that builds a single-element [lexer.Related]

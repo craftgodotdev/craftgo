@@ -51,10 +51,8 @@ const (
 	LvlScalar
 	// LvlMiddleware is a `middleware Name(...)` declaration.
 	LvlMiddleware
-	// LvlEvent is an `event Name { ... }` inside a service body.
+	// LvlEvent is an `event Name { ... }` declaration.
 	LvlEvent
-	// LvlConsumer is a `consume Name { ... }` inside a service body.
-	LvlConsumer
 	// LvlErrorField is a field inside an `error` body. Distinct from
 	// [LvlField] because errors are server-emitted, so request-only
 	// decorators (`@path`, `@query`, `@body`, `@form`, `@maxSize`,
@@ -84,7 +82,6 @@ var levelNames = []struct {
 	{LvlScalar, "scalar"},
 	{LvlMiddleware, "middleware"},
 	{LvlEvent, "event"},
-	{LvlConsumer, "consumer"},
 	{LvlErrorField, "error field"},
 }
 
@@ -355,14 +352,14 @@ var Registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
 		Name:     "doc",
-		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlEvent | LvlConsumer | LvlErrorField,
+		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlEvent | LvlErrorField,
 		Doc:      "Free-form documentation surfaced in OpenAPI and IDE hover.",
 		Args:     ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
 	},
 	"deprecated": {
 		Name:     "deprecated",
-		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlEvent | LvlConsumer | LvlErrorField,
+		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnumValue | LvlMiddleware | LvlEvent | LvlErrorField,
 		Doc:      "Marks the construct as deprecated; OpenAPI emits the deprecated flag.",
 		Args:     ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
@@ -668,9 +665,9 @@ var removed = map[string]string{
 	"key": "@key was removed: which entity a message belongs to is decided when it is published, not by the contract. " +
 		"Pass the key to the publish call instead - `orders.OrderPlaced.Publish(ctx, bus, payload, craftevents.WithKey(string(payload.OrderID)))`.",
 	"consumerGroup": "@consumerGroup was removed: a group is where a consumer resumes on the broker, so it belongs to the deployable rather than to the shared design. " +
-		"Name it where the bus is built and pass it to the generated Register call - `RegisterOrdersHandler(bus, h, chain, orders.OrdersGroups{Default: ordersGroup})`.",
+		"Name it where the bus is built and pass it to the subscription - `bus.Register(orders.Placed.Subscription(bus, ordersGroup, h.Placed))`.",
 	"consumeMiddlewares": "@consumeMiddlewares was removed, along with the `consume middleware Name` declaration: a subscription's chain is ordinary Go, built where the bus is. " +
-		"Pass one to the generated Register call - `RegisterOrdersHandler(bus, h, craftevents.Chain{retry, timeout}, groups)`.",
+		"Install one bus-wide with `bus.Use(retry, timeout)`, or set `Subscription.Chain` for a single registration.",
 }
 
 // RemovedDecorator returns the migration note for a decorator craftgo has

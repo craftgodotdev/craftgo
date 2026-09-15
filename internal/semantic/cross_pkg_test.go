@@ -112,23 +112,23 @@ service Foo { get Y /y { response R } }`,
 	}
 }
 
-// A consuming service scaffolds no per-member file, so it claims no
+// A service with no method scaffolds no per-member file, so it claims no
 // output directory and two packages may each declare one of a name.
-func TestConsumingServiceOfOneNameInTwoPackagesIsFine(t *testing.T) {
+func TestMethodlessServiceOfOneNameInTwoPackagesIsFine(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package a
 type P { ok bool }
 event Placed { payload P }
-service Store { consume OnPlaced { event Placed } }`,
+service Store {}`,
 		"b/svc.craftgo": `package b
 type P { ok bool }
 event Shipped { payload P }
-service Store { consume OnShipped { event Shipped } }`,
+service Store {}`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	for _, d := range diags {
 		if d.IsError() {
-			t.Fatalf("two packages declaring one consuming service diagnosed: %v", diags)
+			t.Fatalf("two packages declaring one method-less service diagnosed: %v", diags)
 		}
 	}
 }

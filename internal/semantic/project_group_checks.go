@@ -172,9 +172,7 @@ func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 }
 
 // blockStubMembers lists the members of one service block that scaffold a
-// file into the service logic folder, in source order. A `consume` does
-// not: it is a method on a handler interface the application implements
-// where it likes, so it claims no directory.
+// file into the service logic folder, in source order.
 func blockStubMembers(block *ast.ServiceDecl) []segMember {
 	if block == nil {
 		return nil

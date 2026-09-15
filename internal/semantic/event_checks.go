@@ -1,5 +1,5 @@
-// Event and consumer rules: payload shape, contract-name uniqueness, and
-// consumer reference resolution.
+// Event rules: payload shape, `@contract` format, and contract-name
+// uniqueness.
 package semantic
 
 import (
@@ -9,14 +9,12 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkEvents runs the per-package event and consumer rules. Contract
-// uniqueness and cross-package reference resolution run at project level
-// (see [refResolver.checkProjectEvents]).
+// checkEvents runs the per-package event rules. Contract uniqueness runs
+// at project level (see [refResolver.checkProjectEvents]).
 func (a *analyzer) checkEvents() {
 	for _, name := range sortedNames(a.pkg.Events) {
-		a.checkEvent(a.pkg.Events[name].Decl)
+		a.checkEvent(a.pkg.Events[name])
 	}
-	a.checkConsumerShapes()
 }
 
 // checkEvent validates one event's payload clause and `@contract`
@@ -89,24 +87,8 @@ func lookupNonType(pkg *Package, name string) (ast.Decl, bool) {
 	return nil, false
 }
 
-// checkConsumerShapes rejects a consumer with no `event` clause.
-func (a *analyzer) checkConsumerShapes() {
-	for _, svcName := range sortedNames(a.pkg.Services) {
-		si := a.pkg.Services[svcName]
-		if si == nil {
-			continue
-		}
-		for _, c := range si.Consumers {
-			if eventRefName(c.Event) == "" {
-				a.diag(c.Pos, c.Pos, lexer.SeverityError, CodeConsumerEventMissing,
-					"consumer %q has no event - add `event <Name>` naming the contract it handles", c.Name)
-			}
-		}
-	}
-}
-
 // checkProjectEvents rejects two events that would share one contract
-// name, then resolves every consumer's event reference.
+// name.
 func (r *refResolver) checkProjectEvents() {
 	byContract := map[string]lexer.Position{}
 	for _, ev := range r.proj.Events() {
@@ -115,33 +97,10 @@ func (r *refResolver) checkProjectEvents() {
 		}
 		if prev, dup := byContract[ev.Contract]; dup {
 			d := r.diag(ev.Decl.Pos, lexer.SeverityError, CodeEventContractCollision,
-				"contract %q is declared twice - publisher and consumer cannot tell the two apart; rename one or set @contract", ev.Contract)
+				"contract %q is declared twice - a listener cannot tell the two apart; rename one or set @contract", ev.Contract)
 			d.Related = related(prev, "first declared here")
 			continue
 		}
 		byContract[ev.Contract] = ev.Decl.Pos
-	}
-	r.checkConsumerEvents()
-}
-
-// checkConsumerEvents reports a consumer whose `event` clause names a
-// contract no package declares.
-func (r *refResolver) checkConsumerEvents() {
-	for _, pkgName := range sortedNames(r.proj.Packages) {
-		pkg := r.proj.Packages[pkgName]
-		if pkg == nil {
-			continue
-		}
-		for _, name := range sortedNames(pkg.Consumers) {
-			c := pkg.Consumers[name].Decl
-			ref := eventRefName(c.Event)
-			if ref == "" {
-				continue
-			}
-			if _, ok := r.proj.LookupEvent(pkg.Name, ref); !ok {
-				r.diag(c.Event.Pos, lexer.SeverityError, CodeConsumerEventUnknown,
-					"consumer %q references event %q, which no package declares", c.Name, ref)
-			}
-		}
 	}
 }

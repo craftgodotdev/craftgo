@@ -110,11 +110,6 @@ func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 				r.walkNamedRef(m.Response.Type, currentPkg)
 			}
 		}
-		for _, e := range dd.Events() {
-			if e.Payload != nil && e.Payload.Type != nil {
-				r.walkNamedRef(e.Payload.Type, currentPkg)
-			}
-		}
 	}
 }
 

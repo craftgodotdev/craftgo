@@ -11,14 +11,12 @@ type OrderShipped {
 	carrier string        @minLength(1)
 }
 
-service OrderService {
-	@doc("An order was accepted.")
-	event Placed {
-		payload OrderPlaced
-	}
+@doc("An order was accepted.")
+event Placed {
+	payload OrderPlaced
+}
 
-	@doc("The same order left the warehouse.")
-	event Shipped {
-		payload OrderShipped
-	}
+@doc("The same order left the warehouse.")
+event Shipped {
+	payload OrderShipped
 }

@@ -9,9 +9,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// A service body mixing methods, events and consumers must survive the
-// format round trip unchanged, with doc comments, decorators, body
-// comments, trailing notes and blank-line grouping all preserved.
+// A file mixing a service with contracts must survive the format round
+// trip unchanged, with doc comments, decorators, body comments, trailing
+// notes and blank-line grouping all preserved.
 func TestFormatServiceWithEventsIsStable(t *testing.T) {
 	src := `package orders
 
@@ -20,21 +20,17 @@ type OrderPlacedPayload {
 	total   int64
 }
 
+// Emitted once an order is accepted.
+event OrderPlaced {
+	// the shape a listener receives
+	payload OrderPlacedPayload // versioned with the contract
+}  // end of contract
+
 @prefix("/v1")
 service OrderService {
 	post PlaceOrder /orders {
 		request  PlaceOrderReq
 		response Order
-	}
-
-	// Emitted once an order is accepted.
-	event OrderPlaced {
-		// the shape consumers receive
-		payload OrderPlacedPayload // versioned with the contract
-	}  // end of contract
-
-	consume SendReceipt {
-		event shared.OrderPlaced
 	}
 }
 `
@@ -54,20 +50,18 @@ service OrderService {
 	}
 }
 
-// A compact one-line member is a documented feature; the formatter
+// A compact one-line declaration is a documented feature; the formatter
 // expands it to canonical form exactly as it does for a method.
-func TestFormatExpandsCompactEventAndConsumer(t *testing.T) {
+func TestFormatExpandsCompactEvent(t *testing.T) {
 	src := `package p
-service S { event E { payload P }  consume C { event E } }
+event E { payload P }
 `
 	out, diags := Format("t.craftgo", src)
 	if len(diags) > 0 {
 		t.Fatalf("diagnostics: %v", diags)
 	}
-	for _, want := range []string{"\tevent E {\n\t\tpayload P\n\t}", "\tconsume C {\n\t\tevent E\n\t}"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("formatted output missing %q:\n%s", want, out)
-		}
+	if want := "event E {\n\tpayload P\n}"; !strings.Contains(out, want) {
+		t.Errorf("formatted output missing %q:\n%s", want, out)
 	}
 }
 
@@ -89,8 +83,9 @@ event PaymentSettled {
 }
 
 service LedgerService {
-	consume Record {
-		event upstream.PaymentSettled
+	post Record /records {
+		request  P
+		response P
 	}
 }
 `

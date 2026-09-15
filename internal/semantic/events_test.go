@@ -14,9 +14,7 @@ type OrderPlacedPayload {
 	nested  Nested
 }
 type Nested { a string }
-service OrderService {
-	event OrderPlaced { payload OrderPlacedPayload }
-}`
+event OrderPlaced { payload OrderPlacedPayload }`
 
 func TestEventResolvesContractAndPayload(t *testing.T) {
 	pkg := expectClean(t, ordersDesign)
@@ -32,10 +30,30 @@ func TestEventResolvesContractAndPayload(t *testing.T) {
 	if ev.Contract != "orders.OrderPlaced" {
 		t.Errorf("contract = %q, want orders.OrderPlaced", ev.Contract)
 	}
-	if ev.Service != "OrderService" || ev.Package != "orders" {
-		t.Errorf("home = %s/%s", ev.Package, ev.Service)
+	if ev.Package != "orders" {
+		t.Errorf("home = %s", ev.Package)
 	}
 	if ev.PayloadPkg != "orders" || ev.PayloadName != "OrderPlacedPayload" || ev.Payload == nil {
+		t.Errorf("payload = %s.%s (%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	}
+}
+
+// A payload declared in another package resolves to that package, which
+// is what a target needs to import the type from the right place.
+func TestEventPayloadResolvesAcrossPackages(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+type Envelope { id string }`,
+		"orders/orders.craftgo": `package orders
+event OrderPlaced { payload shared.Envelope }`,
+	})
+	proj, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	expectNoDiags(t, diags)
+	ev, ok := proj.LookupEvent("orders", "OrderPlaced")
+	if !ok {
+		t.Fatal("event did not resolve")
+	}
+	if ev.PayloadPkg != "shared" || ev.PayloadName != "Envelope" || ev.Payload == nil {
 		t.Errorf("payload = %s.%s (%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload)
 	}
 }
@@ -43,10 +61,8 @@ func TestEventResolvesContractAndPayload(t *testing.T) {
 func TestContractDecoratorOverridesTheDerivedName(t *testing.T) {
 	src := `package orders
 type P { id string }
-service S {
-	@contract("order.placed.v2")
-	event OrderPlaced { payload P }
-}`
+@contract("order.placed.v2")
+event OrderPlaced { payload P }`
 	expectClean(t, src)
 	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
 	if got := proj.Events()[0].Contract; got != "order.placed.v2" {
@@ -63,48 +79,30 @@ func TestEventRules(t *testing.T) {
 	}{
 		{
 			name: "payload missing",
-			src:  "package p\nservice S {\n\tevent E {}\n}",
+			src:  "package p\nevent E {}",
 			code: CodeEventPayloadMissing,
 			msg:  "has no payload",
 		},
 		{
 			name: "payload is not a struct",
-			src:  "package p\nenum E1 { A }\nservice S {\n\tevent E { payload E1 }\n}",
+			src:  "package p\nenum E1 { A }\nevent E { payload E1 }",
 			code: CodeEventPayloadKind,
 			msg:  "not a struct type",
 		},
 		{
 			name: "empty contract name",
-			src:  `package p` + "\n" + `type P { id string }` + "\n" + `service S {` + "\n\t" + `@contract("")` + "\n\t" + `event E { payload P }` + "\n" + `}`,
+			src:  `package p` + "\n" + `type P { id string }` + "\n" + `@contract("")` + "\n" + `event E { payload P }`,
 			code: CodeEventContractFormat,
 			msg:  "without whitespace",
-		},
-		{
-			name: "consumer without an event",
-			src:  "package p\nservice S {\n\tconsume C {}\n}",
-			code: CodeConsumerEventMissing,
-			msg:  "has no event",
 		},
 		{
 			name: "duplicate event name in a package",
 			src: `package p
 type P { id string }
-service A { event E { payload P } }
-service B { event E { payload P } }`,
+event E { payload P }
+event E { payload P }`,
 			code: CodeEventDuplicate,
-			msg:  "a consumer names an event by this identifier",
-		},
-		{
-			name: "duplicate consumer name in one service",
-			src: `package p
-type P { id string }
-service S {
-	event E { payload P }
-	consume C { event E }
-	consume C { event E }
-}`,
-			code: CodeConsumerDuplicateName,
-			msg:  `duplicate consumer "C" in service "S"`,
+			msg:  "a listener names an event by this identifier",
 		},
 	}
 	for _, c := range cases {
@@ -123,73 +121,22 @@ service S {
 func TestEventAndTypeShareANamespaceFreely(t *testing.T) {
 	expectClean(t, `package p
 type OrderPlaced { id string }
-service S {
-	event OrderPlaced { payload OrderPlaced }
-}`)
-}
-
-func TestConsumerResolvesAcrossPackages(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"orders/orders.craftgo": `package orders
-type P { id string }
-service OrderService {
-	event OrderPlaced { payload P }
-}`,
-		"notify/notify.craftgo": `package notify
-service NotificationService {
-	consume SendReceipt { event orders.OrderPlaced }
-}`,
-	})
-	proj, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	consumers := proj.Consumers()
-	if len(consumers) != 1 {
-		t.Fatalf("consumers = %d, want 1", len(consumers))
-	}
-	c := consumers[0]
-	if c.Event.Contract != "orders.OrderPlaced" {
-		t.Errorf("resolved contract = %q", c.Event.Contract)
-	}
-	if c.Event.PayloadPkg != "orders" || c.Event.PayloadName != "P" {
-		t.Errorf("resolved payload = %s.%s", c.Event.PayloadPkg, c.Event.PayloadName)
-	}
-	if c.Service != "NotificationService" || c.Package != "notify" {
-		t.Errorf("home = %s/%s", c.Package, c.Service)
-	}
-}
-
-func TestConsumerRejectsAnUnknownEvent(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"notify/notify.craftgo": `package notify
-service NotificationService {
-	consume SendReceipt { event orders.Nowhere }
-}`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if findCode(diags, CodeConsumerEventUnknown) == nil {
-		t.Fatalf("want %s, got %v", CodeConsumerEventUnknown, codes(diags))
-	}
+event OrderPlaced { payload OrderPlaced }`)
 }
 
 // Two events in different packages may resolve to one contract name only
-// through `@contract`; publisher and consumer could not tell them apart
-// on the wire, so it is rejected.
+// through `@contract`; a listener could not tell them apart on the wire,
+// so it is rejected.
 func TestContractCollisionAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/a.craftgo": `package a
 type P { id string }
-service A {
-	@contract("shared.Thing")
-	event One { payload P }
-}`,
+@contract("shared.Thing")
+event One { payload P }`,
 		"b/b.craftgo": `package b
 type Q { id string }
-service B {
-	@contract("shared.Thing")
-	event Two { payload Q }
-}`,
+@contract("shared.Thing")
+event Two { payload Q }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	if findCode(diags, CodeEventContractCollision) == nil {
@@ -212,123 +159,34 @@ service S {
 	}
 	d = expectDiag(t, `package p
 type P { id string }
-service S {
-	@timeout(5s)
-	event E { payload P }
-}`, CodeDecoratorPlacement)
+@timeout(5s)
+event E { payload P }`, CodeDecoratorPlacement)
 	if !strings.Contains(d.Msg, "@timeout") || !strings.Contains(d.Msg, "event") {
 		t.Errorf("msg = %q", d.Msg)
-	}
-}
-
-// Members declared in an `extend service` block belong to the same
-// service, so they merge into one ServiceInfo alongside the primary
-// block's.
-func TestExtendServiceMergesEventsAndConsumers(t *testing.T) {
-	pkg := expectClean(t, `package p
-type P { id string }
-service S {
-	event One { payload P }
-}
-extend service S {
-	event Two { payload P }
-	consume C { event One }
-}`)
-	si := pkg.Services["S"]
-	if len(si.Events) != 2 {
-		t.Errorf("merged events = %d, want 2", len(si.Events))
-	}
-	if len(si.Consumers) != 1 {
-		t.Errorf("merged consumers = %d, want 1", len(si.Consumers))
 	}
 }
 
 func TestEventNameCaseWarning(t *testing.T) {
 	d := expectWarning(t, `package p
 type P { id string }
-service S {
-	event lowered { payload P }
-}`, CodeDeclNameCase)
+event lowered { payload P }`, CodeDeclNameCase)
 	if !strings.Contains(d.Msg, "event name") {
 		t.Errorf("msg = %q, want it to name the event site", d.Msg)
 	}
 }
 
-// A consume scaffolds no file: it is a method on the handler interface
-// the application implements where it likes, so it competes with nothing
-// in the service logic folder - not a method of its own service, and not
-// a method another service puts in a shared @group.
-func TestConsumerNameCompetesWithNoFile(t *testing.T) {
-	expectClean(t, `package p
-type P { id string }
-service S {
-	get Foo /foo { response P }
-	event E { payload P }
-	consume Foo { event E }
-}`)
-	root, files := projectFixture(t, map[string]string{
-		"a/a.craftgo": `package a
-type P { id string }
-@group("ops")
-service A {
-	event E { payload P }
-	consume Handle { event E }
-}
-@group("ops")
-service B {
-	get Handle /h { response P }
-}`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if d := findCode(diags, CodeGroupMethodCollision); d != nil {
-		t.Fatalf("unexpected %s: %s", CodeGroupMethodCollision, d.Msg)
-	}
-}
-
-// Two services in one package may each name a consumer the same way as
-// long as they consume different contracts: the table is keyed per
-// service and their stubs land in different folders.
-func TestConsumerNamesAreScopedPerService(t *testing.T) {
-	const src = `package p
-type P { id string }
-service Producer {
-	event E { payload P }
-	event F { payload P }
-}
-service Mailer  { consume Handle { event E } }
-service Auditor { consume Handle { event F } }`
-	pkg := expectClean(t, src)
-	if len(pkg.Consumers) != 2 {
-		t.Fatalf("consumers = %d, want 2: %v", len(pkg.Consumers), pkg.Consumers)
-	}
-	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
-	var services []string
-	for _, c := range proj.Consumers() {
-		services = append(services, c.Service)
-	}
-	if len(services) != 2 {
-		t.Fatalf("resolved consumers = %v, want one per service", services)
-	}
-}
-
-// A consumer's `event` clause names a contract, so events must be a
-// declaration kind the lookup can yield - otherwise completion for
-// `pkg.<cursor>` in that clause can offer everything except the one thing
-// it accepts.
+// An event is a declaration kind the lookup can yield - otherwise
+// completion and go-to-definition cannot reach a contract.
 func TestEventsAreALookupKind(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"upstream/upstream.craftgo": `package upstream
 type P { id string }
 @contract("x.v1")
 event PaymentSettled { payload P }
-service S {
-	event Shipped { payload P }
-}`,
+event Shipped { payload P }`,
 	})
 	proj, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
+	expectNoDiags(t, diags)
 	pkg := proj.Packages["upstream"]
 	if pkg == nil {
 		t.Fatal("package missing")
@@ -353,57 +211,6 @@ service S {
 	}
 }
 
-// Consumer names are scoped to their service, so two services may reuse
-// one.
-func TestConsumerNameReusedAcrossServices(t *testing.T) {
-	expectClean(t, `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-service Audit { consume Process { event Placed } }
-service Metrics { consume Process { event Placed } }`)
-}
-
-// One name may be reused on different contracts, and one service may
-// consume a contract twice: which group each subscription joins is
-// decided by the application, not here.
-func TestConsumerNameReusedOnAnotherContract(t *testing.T) {
-	expectClean(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-service A { consume Process { event Placed } }
-service B { consume Process { event Cancelled } }`)
-	expectClean(t, `package p
-type P { id string }
-service Orders { event Placed { payload P } }
-service Worker {
-	consume Handle { event Placed }
-	consume Audit { event Placed }
-}`)
-}
-
-// A consumer declared in an `extend service` block belongs to the owning
-// service, so it merges into that service's consumer set.
-func TestExtendServiceConsumerBelongsToItsService(t *testing.T) {
-	proj, diags := AnalyzeProject(parseFiles(t, `package p
-type P { id string }
-service Orders {
-	event Placed { payload P }
-	event Cancelled { payload P }
-}
-service Watchers { consume Watch { event Placed } }
-@group("ops")
-extend service Watchers { consume Trail { event Cancelled } }`), Options{})
-	expectNoDiags(t, diags)
-	for _, c := range proj.Consumers() {
-		if c.Service != "Watchers" {
-			t.Errorf("%s belongs to %q, want Watchers", c.Name, c.Service)
-		}
-	}
-}
-
 // The decorators that named a broker group and a consume chain are gone.
 // A design still carrying one is told what replaced it rather than that
 // the name was never a decorator.
@@ -417,21 +224,17 @@ func TestRemovedEventDecoratorsAreRejectedWithTheirMigration(t *testing.T) {
 			name: "consumerGroup",
 			src: `package p
 type P { id string }
-service Orders { event Placed { payload P } }
 @consumerGroup("shared")
-service Watchers { consume Watch { event Placed } }`,
-			want: "RegisterOrdersHandler",
+event Placed { payload P }`,
+			want: "Subscription(bus",
 		},
 		{
 			name: "consumeMiddlewares",
 			src: `package p
 type P { id string }
-service Orders { event Placed { payload P } }
-service Watchers {
-	@consumeMiddlewares(Retry)
-	consume Watch { event Placed }
-}`,
-			want: "craftevents.Chain",
+@consumeMiddlewares(Retry)
+event Placed { payload P }`,
+			want: "bus.Use",
 		},
 	}
 	for _, c := range cases {
@@ -448,10 +251,8 @@ service Watchers {
 func TestAKeyDecoratorIsRejectedWithItsMigration(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
-service S {
-	@key(id)
-	event E { payload P }
-}`, CodeDecoratorRemoved)
+@key(id)
+event E { payload P }`, CodeDecoratorRemoved)
 	for _, want := range []string{"@key", "no longer", "WithKey"} {
 		if !strings.Contains(d.Msg, want) {
 			t.Errorf("migration message does not mention %q: %s", want, d.Msg)
@@ -464,10 +265,8 @@ service S {
 func TestAnUnrelatedUnknownDecoratorIsStillUnknown(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
-service S {
-	@keyy(id)
-	event E { payload P }
-}`, CodeDecoratorUnknown)
+@keyy(id)
+event E { payload P }`, CodeDecoratorUnknown)
 	if !strings.Contains(d.Msg, "unknown decorator @keyy") {
 		t.Errorf("msg = %q", d.Msg)
 	}

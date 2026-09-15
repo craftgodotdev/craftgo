@@ -15,23 +15,27 @@ type OrderPlacedPayload {
 	orderId string
 }
 
-service OrderService {
-	@doc("Emitted once an order is accepted.")
-	event OrderPlaced {
-		payload OrderPlacedPayload
-	}
+@doc("Emitted once an order is accepted.")
+event OrderPlaced {
+	payload OrderPlacedPayload
+}
 
-	consume Mirror {
-		event OrderPlaced
+service OrderService {
+	get Fetch /orders { response OrderPlacedPayload }
+
+	post Place /orders {
+		request  OrderPlacedPayload
+		response OrderPlacedPayload
 	}
 }
 `
 
 func TestHoverOnMemberKeywords(t *testing.T) {
 	cases := map[string]string{
-		"event":   "a contract this design declares",
-		"consume": "this service handles",
-		"payload": "the type an event contract carries",
+		"event":    "a contract this design declares",
+		"payload":  "the type an event contract carries",
+		"request":  "binds and validates",
+		"response": "the framework encodes it",
 	}
 	for needle, want := range cases {
 		t.Run(needle, func(t *testing.T) {
@@ -43,50 +47,39 @@ func TestHoverOnMemberKeywords(t *testing.T) {
 	}
 }
 
-// A decorator zone inside a service body belongs to the member that
-// follows it, so the completion list offers event decorators above an
-// `event` and method decorators above a verb.
-func TestDecoratorSiteLevelFollowsTheMember(t *testing.T) {
+// A decorator zone belongs to the declaration that follows it, so the
+// completion list offers event decorators above a file-level `event` and
+// method decorators above a verb inside a service body.
+func TestDecoratorSiteLevelFollowsTheDeclaration(t *testing.T) {
 	view := parseSnapshot("t.craftgo", eventsDSL)
-	cases := []struct {
+	for _, c := range []struct {
 		needle string
 		want   semantic.Level
 	}{
 		{"event", semantic.LvlEvent},
-		{"consume", semantic.LvlConsumer},
-	}
-	for _, c := range cases {
+		{"post", semantic.LvlMethod},
+	} {
 		pos := findToken(t, view, c.needle)
-		// The decorator zone sits on the line above the member keyword.
 		above := protocol.Position{Line: pos.Line - 1, Character: 0}
-		if got := nextServiceMemberLevel(view, above); got != c.want {
+		if got := guessLevel(view, above); got != c.want {
 			t.Errorf("level above %q = %s, want %s", c.needle, got.Name(), c.want.Name())
 		}
 	}
 }
 
-// The outline lists events and consumers alongside methods, so a service
-// body reads the same in the editor as in the source.
-func TestDocumentSymbolsIncludeEventsAndConsumers(t *testing.T) {
+// The outline lists a contract beside the services, so a file reads the
+// same in the editor as in the source.
+func TestDocumentSymbolsListContracts(t *testing.T) {
 	view := parseSnapshot("t.craftgo", eventsDSL)
-	var service *protocol.DocumentSymbol
-	for i, sym := range documentSymbols(view) {
-		if sym.Name == "OrderService" {
-			service = &documentSymbols(view)[i]
-		}
-	}
-	if service == nil {
-		t.Fatal("no service symbol")
-	}
 	details := map[string]string{}
-	for _, child := range service.Children {
-		details[child.Name] = child.Detail
+	for _, sym := range documentSymbols(view) {
+		details[sym.Name] = sym.Detail
 	}
 	if got := details["OrderPlaced"]; got != "event OrderPlaced (OrderPlacedPayload)" {
 		t.Errorf("event symbol detail = %q", got)
 	}
-	if got := details["Mirror"]; got != "consume Mirror (OrderPlaced)" {
-		t.Errorf("consumer symbol detail = %q", got)
+	if _, ok := details["OrderService"]; !ok {
+		t.Error("the service symbol is missing")
 	}
 }
 
@@ -97,11 +90,9 @@ func TestEventDecoratorCompletions(t *testing.T) {
 
 type P { id string }
 
-service OrderService {
-	@
-	event OrderPlaced {
-		payload P
-	}
+@
+event OrderPlaced {
+	payload P
 }
 `
 	view := parseSnapshot("t.craftgo", src)
@@ -119,102 +110,16 @@ service OrderService {
 	if have["timeout"] {
 		t.Error("event completions must not offer the method-only @timeout")
 	}
-}
-
-// Delivery is the application's, so a consumer's decorator zone offers
-// documentation and nothing that names a group or a chain.
-func TestConsumerDecoratorCompletions(t *testing.T) {
-	src := `package orders
-
-type P { id string }
-
-service OrderService {
-	event OrderPlaced {
-		payload P
-	}
-
-	@
-	consume Mirror {
-		event OrderPlaced
-	}
-}
-`
-	view := parseSnapshot("t.craftgo", src)
-	pos := findToken(t, view, "@")
-	pos.Character++
-	have := map[string]bool{}
-	for _, item := range decoratorCompletions(view, pos, "") {
-		have[item.Label] = true
-	}
-	if !have["doc"] {
-		t.Errorf("consumer completions missing @doc: %v", have)
-	}
-	for _, gone := range []string{"consumerGroup", "consumeMiddlewares", "ignoreMiddleware"} {
+	for _, gone := range []string{"consumerGroup", "consumeMiddlewares"} {
 		if have[gone] {
-			t.Errorf("consumer completions still offer @%s", gone)
+			t.Errorf("event completions still offer @%s", gone)
 		}
-	}
-	if have["contract"] {
-		t.Error("consumer completions must not offer the event-only @contract")
 	}
 }
 
-// Go-to-definition on a consumer's event reference lands on the event,
-// not on a same-named type: events have their own namespace, so the
-// generic declaration lookup cannot resolve one.
-func TestDefinitionOnAConsumerEventRef(t *testing.T) {
-	src := `package orders
-
-type OrderPlaced { id string }
-
-service OrderService {
-	event OrderPlaced { payload OrderPlaced }
-	consume Mirror { event OrderPlaced }
-}
-`
-	view := parseSnapshot("t.craftgo", src)
-	// The fourth `OrderPlaced` is the one in the consumer's event clause
-	// (type decl, event decl, payload ref, then the consumer's ref).
-	var idx, count int
-	for i, tok := range view.tokens {
-		if tok.Text != "OrderPlaced" {
-			continue
-		}
-		count++
-		if count == 4 {
-			idx = i
-			break
-		}
-	}
-	if count < 4 {
-		t.Fatalf("expected 4 OrderPlaced tokens, got %d", count)
-	}
-	if !isConsumerEventPosition(view, idx) {
-		t.Fatal("the consumer's event clause was not recognised")
-	}
-	// The same spelling in a payload position stays a type reference.
-	var payloadIdx, seen int
-	for i, tok := range view.tokens {
-		if tok.Text != "OrderPlaced" {
-			continue
-		}
-		seen++
-		if seen == 3 {
-			payloadIdx = i
-			break
-		}
-	}
-	if isConsumerEventPosition(view, payloadIdx) {
-		t.Error("a payload reference must not resolve as an event reference")
-	}
-	if !isTypeShapePosition(view, payloadIdx) {
-		t.Error("a payload reference must resolve as a type reference")
-	}
-}
-
-// `event`, `consume` and `payload` are legal field names, so the
-// keyword docs and the type-shape classifier must both look at which
-// declaration they sit in rather than at the spelling alone.
+// `event` and `payload` are legal field names, so the keyword docs and
+// the type-shape classifier must both look at which declaration they sit
+// in rather than at the spelling alone.
 func TestMemberKeywordsStayFieldNamesInsideATypeBody(t *testing.T) {
 	src := `package p
 
@@ -222,17 +127,16 @@ type MyType { id string }
 
 type Holder {
 	event   MyType
-	consume string
 	payload string
 }
 `
 	view := parseSnapshot("t.craftgo", src)
 
-	// Hover on the field named `event` must not show the consumer doc.
+	// Hover on the field named `event` must not show the keyword doc.
 	pos := findToken(t, view, "event")
 	idx, tok := view.tokenAt(pos.Line, pos.Character)
-	if hov := hoverForToken(view, idx, tok); hov != nil && strings.Contains(hov.Contents.Value, "this service handles") {
-		t.Errorf("a field named `event` showed the consumer keyword doc: %q", hov.Contents.Value)
+	if hov := hoverForToken(view, idx, tok); hov != nil && strings.Contains(hov.Contents.Value, "a contract this design declares") {
+		t.Errorf("a field named `event` showed the event keyword doc: %q", hov.Contents.Value)
 	}
 
 	// Go-to-definition on that field's type must still classify as a
@@ -252,23 +156,10 @@ type Holder {
 	}
 }
 
-// A consumer usually references a contract another package declares, so
-// the cursor lands on a qualified `pkg.Event`. Both halves have to resolve
-// - the reader clicks the event name far more often than the qualifier -
-// and the walk back to the clause keyword must clear the whole reference:
-// stepping one token at a time stops on the dot, where neither neighbour
-// is the keyword.
-func TestDefinitionOnAQualifiedConsumerEventRef(t *testing.T) {
-	src := `package notifications
-
-type Local { id string }
-
-service NotificationService {
-	consume SendReceipt { event orders.Placed }
-	post Store /store { request Local  response Local }
-}
-`
-	view := parseSnapshot("t.craftgo", src)
+// An event's payload names a type, so the cursor there resolves like any
+// other type reference - the event's own name does not.
+func TestPayloadRefIsATypeShapePosition(t *testing.T) {
+	view := parseSnapshot("t.craftgo", eventsDSL)
 	at := func(text string, nth int) int {
 		t.Helper()
 		var seen int
@@ -284,27 +175,11 @@ service NotificationService {
 		t.Fatalf("token %q #%d not found", text, nth)
 		return 0
 	}
-	for _, c := range []struct {
-		name string
-		idx  int
-		want bool
-	}{
-		{"the event name", at("Placed", 1), true},
-		{"the package qualifier", at("orders", 1), true},
-		{"a request type", at("Local", 2), false},
-		{"the consumer name", at("SendReceipt", 1), false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if got := isConsumerEventPosition(view, c.idx); got != c.want {
-				t.Errorf("isConsumerEventPosition = %v, want %v", got, c.want)
-			}
-		})
+	if !isTypeShapePosition(view, at("OrderPlacedPayload", 2)) { // the event's payload
+		t.Error("a payload reference must resolve as a type reference")
 	}
-	// Whichever half is clicked, the name looked up is the whole reference.
-	for _, idx := range []int{at("Placed", 1), at("orders", 1)} {
-		if got := qualifiedNameAt(view, idx); got != "orders.Placed" {
-			t.Errorf("qualifiedNameAt = %q, want %q", got, "orders.Placed")
-		}
+	if isTypeShapePosition(view, at("OrderPlaced", 1)) {
+		t.Error("an event's own name must not resolve as a type reference")
 	}
 }
 
@@ -316,11 +191,9 @@ func TestHoverOnARemovedDecorator(t *testing.T) {
 
 type P { id string }
 
-service OrderService {
-	@key(id)
-	event OrderPlaced {
-		payload P
-	}
+@key(id)
+event OrderPlaced {
+	payload P
 }
 `
 	v := mustHoverAt(t, "t.craftgo", src, "key")

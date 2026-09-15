@@ -9,13 +9,13 @@ import (
 {{end}}{{end}})
 {{range .Events}}
 // {{.ConstName}} is the wire identity of {{.Name}}.
-// Publisher and consumer both address the contract by this value.
+// Publisher and listener both address the contract by this value.
 const {{.ConstName}} = "{{.Contract}}"
 
 {{if .Doc}}{{range .Doc}}// {{.}}
 {{end}}//
 {{end}}// {{.Name}} is the {{.Contract}} contract.
-// {{.Name}}.Publish(ctx, bus, payload) sends one; a consumer reaches it
-// through the handler interface of the service that declares the consume.
+// {{.Name}}.Publish(ctx, bus, payload) sends one; a listener registers
+// {{.Name}}.Subscription(bus, group, fn) on its own bus.
 var {{.Name}} = craftevents.NewEvent[{{.PayloadType}}]({{.ConstName}}, {{.Validate}})
 {{end}}

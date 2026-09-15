@@ -1,36 +1,21 @@
-// Event model: the language-independent view of the contracts a service
-// publishes and the consumers that handle them. The resolved types carry
-// every fact a target needs - the contract name, the payload's home
-// package - already resolved.
+// Event model: the language-independent view of the contracts a design
+// declares. The resolved type carries every fact a target needs - the
+// contract name, the payload's home package - already resolved.
 package semantic
 
 import (
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // DecoratorContract overrides the derived contract name.
 const DecoratorContract = "contract"
 
-// EventInfo is one declared event with the service that declares it.
-type EventInfo struct {
-	Decl    *ast.EventDecl
-	Service string
-}
-
-// ConsumerInfo is one declared consumer with the service that declares it.
-type ConsumerInfo struct {
-	Decl    *ast.ConsumerDecl
-	Service string
-}
-
 // ResolvedEvent is the layer-agnostic view of one event contract.
 type ResolvedEvent struct {
 	Decl    *ast.EventDecl
 	Package string
-	Service string
 	// Name is the DSL identifier.
 	Name string
 	// Contract is the identity on the wire: `<package>.<Name>`, or the
@@ -55,20 +40,6 @@ type ResolvedEvent struct {
 	Doc []string
 }
 
-// ResolvedConsumer is the layer-agnostic view of one consumer.
-type ResolvedConsumer struct {
-	Decl    *ast.ConsumerDecl
-	Package string
-	Service string
-	Name    string
-	// Event is the contract this consumer handles. Zero-valued Contract
-	// means the reference did not resolve.
-	Event ResolvedEvent
-	// Doc reads like [ResolvedEvent.Doc]: the `@doc("...")` argument
-	// when one is given, otherwise the leading comment block.
-	Doc []string
-}
-
 // Events returns every event declared in the project, ordered by contract
 // name.
 func (p *Project) Events() []ResolvedEvent {
@@ -89,26 +60,6 @@ func (p *Project) Events() []ResolvedEvent {
 	return out
 }
 
-// Consumers returns every consumer declared in the project, ordered by
-// package then name.
-func (p *Project) Consumers() []ResolvedConsumer {
-	if p == nil {
-		return nil
-	}
-	var out []ResolvedConsumer
-	for _, pkgName := range sortedNames(p.Packages) {
-		pkg := p.Packages[pkgName]
-		if pkg == nil {
-			continue
-		}
-		for _, name := range sortedNames(pkg.Consumers) {
-			ci := pkg.Consumers[name]
-			out = append(out, p.ResolveConsumer(pkg, ci.Service, ci.Decl))
-		}
-	}
-	return out
-}
-
 // LookupEvent resolves an event reference written inside homePkg: a bare
 // `OrderPlaced` against homePkg, a qualified `orders.OrderPlaced` against
 // the named package.
@@ -121,20 +72,18 @@ func (p *Project) LookupEvent(homePkg, ref string) (ResolvedEvent, bool) {
 	if pkg == nil {
 		return ResolvedEvent{}, false
 	}
-	ei, ok := pkg.Events[name]
+	d, ok := pkg.Events[name]
 	if !ok {
 		return ResolvedEvent{}, false
 	}
-	return p.resolveEvent(pkg, ei), true
+	return p.resolveEvent(pkg, d), true
 }
 
 // resolveEvent computes the layer-agnostic facts for one event.
-func (p *Project) resolveEvent(pkg *Package, ei *EventInfo) ResolvedEvent {
-	d := ei.Decl
+func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 	re := ResolvedEvent{
 		Decl:     d,
 		Package:  pkg.Name,
-		Service:  ei.Service,
 		Name:     d.Name,
 		Contract: ContractName(pkg.Name, d),
 		Doc:      descriptionLines(d.Decorators, d.Doc),
@@ -165,25 +114,6 @@ func ContractName(pkgName string, d *ast.EventDecl) string {
 	return pkgName + "." + d.Name
 }
 
-// ResolveConsumer computes the layer-agnostic facts for one consumer
-// declared by svcName in pkg.
-func (p *Project) ResolveConsumer(pkg *Package, svcName string, d *ast.ConsumerDecl) ResolvedConsumer {
-	if p == nil || pkg == nil || d == nil {
-		return ResolvedConsumer{}
-	}
-	rc := ResolvedConsumer{
-		Decl:    d,
-		Package: pkg.Name,
-		Service: svcName,
-		Name:    d.Name,
-		Doc:     descriptionLines(d.Decorators, d.Doc),
-	}
-	if ev, ok := p.LookupEvent(pkg.Name, eventRefName(d.Event)); ok {
-		rc.Event = ev
-	}
-	return rc
-}
-
 // splitQualified splits `pkg.Name` into its parts, defaulting the
 // qualifier to fallback for a bare name.
 func splitQualified(ref, fallback string) (pkgName, name string) {
@@ -193,47 +123,4 @@ func splitQualified(ref, fallback string) (pkgName, name string) {
 		}
 	}
 	return fallback, ref
-}
-
-// eventRefName renders a consumer's event reference, "" when absent.
-func eventRefName(ce *ast.ConsumerEvent) string {
-	if ce == nil || ce.Ref == nil || ce.Ref.Name == nil {
-		return ""
-	}
-	return ce.Ref.Name.String()
-}
-
-// serviceMemberSite is one decorator-bearing member of a service body.
-type serviceMemberSite struct {
-	Level      Level
-	Name       string
-	Pos        lexer.Position
-	Decorators []*ast.Decorator
-}
-
-// Label renders the diagnostic phrase for this site, e.g.
-// "method Users.Create".
-func (s serviceMemberSite) Label(svc string) string {
-	return s.Level.Name() + " " + svc + "." + s.Name
-}
-
-// serviceMemberSites lists every decorator-bearing member of a service
-// body, in source order. Every pass that walks a service's decorators
-// reads this list.
-func serviceMemberSites(d *ast.ServiceDecl) []serviceMemberSite {
-	if d == nil {
-		return nil
-	}
-	out := make([]serviceMemberSite, 0, len(d.Members))
-	for _, m := range d.Members {
-		switch v := m.(type) {
-		case *ast.Method:
-			out = append(out, serviceMemberSite{LvlMethod, v.Name, v.Pos, v.Decorators})
-		case *ast.EventDecl:
-			out = append(out, serviceMemberSite{LvlEvent, v.Name, v.Pos, v.Decorators})
-		case *ast.ConsumerDecl:
-			out = append(out, serviceMemberSite{LvlConsumer, v.Name, v.Pos, v.Decorators})
-		}
-	}
-	return out
 }

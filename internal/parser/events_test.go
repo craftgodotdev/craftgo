@@ -24,29 +24,35 @@ func parseService(t *testing.T, src string) *ast.ServiceDecl {
 	return nil
 }
 
-func TestParseEventAndConsumerMembers(t *testing.T) {
-	sd := parseService(t, `package orders
+// parseEvent parses src and returns the first event declaration.
+func parseEvent(t *testing.T, src string) *ast.EventDecl {
+	t.Helper()
+	p := New("test.craftgo", src)
+	f := p.Parse()
+	if diags := p.Diagnostics(); len(diags) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	for _, d := range f.Decls {
+		if ed, ok := d.(*ast.EventDecl); ok {
+			return ed
+		}
+	}
+	t.Fatalf("no event declaration in %q", src)
+	return nil
+}
+
+func TestParseFileLevelEvent(t *testing.T) {
+	ev := parseEvent(t, `package orders
+
+// Emitted once an order is accepted.
+@contract("order.placed.v2")
+event OrderPlaced {
+	payload OrderPlacedPayload
+}
+
 service OrderService {
 	post PlaceOrder /orders { request Req  response Resp }
-
-	// Emitted once an order is accepted.
-	@contract("order.placed.v2")
-	event OrderPlaced {
-		payload OrderPlacedPayload
-	}
-
-	consume SendReceipt {
-		event shared.OrderPlaced
-	}
 }`)
-	if got := len(sd.Members); got != 3 {
-		t.Fatalf("members = %d, want 3", got)
-	}
-	events := sd.Events()
-	if len(events) != 1 {
-		t.Fatalf("events = %d, want 1", len(events))
-	}
-	ev := events[0]
 	if ev.Name != "OrderPlaced" {
 		t.Errorf("event name = %q", ev.Name)
 	}
@@ -59,21 +65,42 @@ service OrderService {
 	if len(ev.Doc) != 1 {
 		t.Errorf("doc = %v", ev.Doc)
 	}
+}
 
-	consumers := sd.Consumers()
-	if len(consumers) != 1 {
-		t.Fatalf("consumers = %d, want 1", len(consumers))
+// `consume` left the reserved-word list with the listener declarations;
+// a design still carrying one is told where the listener went rather
+// than being handed the generic member error.
+func TestParseConsumeInServiceBodyIsRejected(t *testing.T) {
+	p := New("test.craftgo", `package p
+service S {
+	consume SendReceipt {
+		event shared.OrderPlaced
 	}
-	if got := consumers[0].Event.Ref.Name.String(); got != "shared.OrderPlaced" {
-		t.Errorf("consumed event = %q", got)
+}`)
+	p.Parse()
+	diags := p.Diagnostics()
+	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "`consume` is no longer part of the DSL") {
+		t.Fatalf("want a consume-removed diagnostic, got %v", diags)
+	}
+}
+
+// An `event` inside a service body used to declare the contract that
+// service publishes; the diagnostic says where it belongs now.
+func TestParseEventInServiceBodyIsRejected(t *testing.T) {
+	p := New("test.craftgo", `package p
+service S {
+	event E { payload P }
+}`)
+	p.Parse()
+	diags := p.Diagnostics()
+	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "`event` is a file-level declaration") {
+		t.Fatalf("want a file-level-event diagnostic, got %v", diags)
 	}
 }
 
 func TestParseEventRejectsUnknownClause(t *testing.T) {
 	p := New("test.craftgo", `package p
-service S {
-	event E { response R }
-}`)
+event E { response R }`)
 	p.Parse()
 	diags := p.Diagnostics()
 	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload in event body") {
@@ -81,25 +108,11 @@ service S {
 	}
 }
 
-func TestParseConsumerRejectsUnknownClause(t *testing.T) {
-	p := New("test.craftgo", `package p
-service S {
-	consume C { payload P }
-}`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "event in consumer body") {
-		t.Fatalf("want an event-clause diagnostic, got %v", diags)
-	}
-}
-
 func TestParseEventRejectsDuplicatePayload(t *testing.T) {
 	p := New("test.craftgo", `package p
-service S {
-	event E {
-		payload A
-		payload B
-	}
+event E {
+	payload A
+	payload B
 }`)
 	p.Parse()
 	diags := p.Diagnostics()
@@ -110,9 +123,7 @@ service S {
 
 func TestParseEventRejectsArrayPayload(t *testing.T) {
 	p := New("test.craftgo", `package p
-service S {
-	event E { payload Order[] }
-}`)
+event E { payload Order[] }`)
 	p.Parse()
 	diags := p.Diagnostics()
 	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be a bare array") {
@@ -120,10 +131,10 @@ service S {
 	}
 }
 
-// The new keywords stay contextual where the grammar leaves no
+// The event keywords stay contextual where the grammar leaves no
 // ambiguity: a type body member is a field or a mixin, and a keyword
-// never spells a mixin, so `event` / `consume` / `payload` remain legal
-// field names.
+// never spells a mixin, so `event` / `payload` remain legal field names.
+// `consume` is an ordinary identifier again and needs no such rule.
 func TestNewKeywordsStillWorkAsFieldNames(t *testing.T) {
 	p := New("test.craftgo", `package p
 type T {

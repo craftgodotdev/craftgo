@@ -376,14 +376,6 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 			p.serviceMemberGap(printedAny, prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
 			p.Method(v)
 			printedAny, prevEnd = true, endOrStart(v.EndPos.Line, v.Pos.Line)
-		case *ast.EventDecl:
-			p.serviceMemberGap(printedAny, prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
-			p.EventDecl(v)
-			printedAny, prevEnd = true, endOrStart(v.EndPos.Line, v.Pos.Line)
-		case *ast.ConsumerDecl:
-			p.serviceMemberGap(printedAny, prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
-			p.ConsumerDecl(v)
-			printedAny, prevEnd = true, endOrStart(v.EndPos.Line, v.Pos.Line)
 		case *ast.FreeComment:
 			p.serviceMemberGap(printedAny, prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -506,19 +498,6 @@ func (p *Printer) EventDecl(e *ast.EventDecl) {
 		clauses = append(clauses, memberClause{"payload ", e.Payload.Pos.Line, e.Payload.Type})
 	}
 	p.memberBody(clauses, e.BodyComments, e.TrailingDoc)
-}
-
-func (p *Printer) ConsumerDecl(c *ast.ConsumerDecl) {
-	p.Doc(c.Doc)
-	p.declDecorators(c.Decorators, c.Pos.Line)
-	p.indent()
-	p.write("consume ")
-	p.write(c.Name)
-	var clauses []memberClause
-	if c.Event != nil {
-		clauses = append(clauses, memberClause{"event ", c.Event.Pos.Line, c.Event.Ref})
-	}
-	p.memberBody(clauses, c.BodyComments, c.TrailingDoc)
 }
 
 func (p *Printer) Path(path *ast.Path) {

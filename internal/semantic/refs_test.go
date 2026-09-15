@@ -216,25 +216,15 @@ extend service S {
 }
 
 func TestExtendServiceDecoratorCheckedWithoutMethods(t *testing.T) {
-	// An extend block's decorators resolve at the block, so a block whose
-	// body holds only a consumer has its names checked too - there is no
-	// method for them to be copied onto.
-	expectDiag(t, `type P { id string }
-service S {
-	event E { payload P }
-}
+	// An extend block's decorators resolve at the block, so an empty block
+	// has its names checked too - there is no method for them to be copied
+	// onto.
+	expectDiag(t, `service S {}
 @middlewares(Bogus)
-extend service S {
-	consume C { event E }
-}`, CodeDecoratorRef)
-	expectDiag(t, `type P { id string }
-service S {
-	event E { payload P }
-}
+extend service S {}`, CodeDecoratorRef)
+	expectDiag(t, `service S {}
 @errors(Bogus)
-extend service S {
-	consume C { event E }
-}`, CodeDecoratorRef)
+extend service S {}`, CodeDecoratorRef)
 }
 
 func TestExtendServiceDecoratorDiagnosedOnce(t *testing.T) {

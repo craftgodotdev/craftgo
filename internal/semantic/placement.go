@@ -47,8 +47,8 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 		if !dd.Extend {
 			a.checkPlacement(LvlService, "service "+dd.Name, dd.Decorators)
 		}
-		for _, s := range serviceMemberSites(dd) {
-			a.checkPlacement(s.Level, s.Label(dd.Name), s.Decorators)
+		for _, m := range dd.Methods() {
+			a.checkPlacement(LvlMethod, methodLabel(dd.Name, m), m.Decorators)
 		}
 	}
 }

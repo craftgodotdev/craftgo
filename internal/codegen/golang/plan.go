@@ -84,7 +84,7 @@ func PlannedOutputs(proj *semantic.Project, cfg *config.Config, projectRoot stri
 }
 
 // PlannedEventOutputs names what [GenerateEventTarget] writes: one
-// library per DSL package under the target's own directory.
+// events.go per DSL package under the target's own directory.
 func PlannedEventOutputs(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) []claim.Output {
 	events := claim.Output{Root: filepath.Join(projectRoot, outDir)}
 	for path := range expectedEventFiles(proj, events.Root) {

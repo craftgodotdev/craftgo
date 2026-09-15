@@ -242,22 +242,13 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			Range:          r,
 			SelectionRange: r,
 		}
+	case *ast.EventDecl:
+		return eventSymbol(v)
 	case *ast.ServiceDecl:
 		children := make([]protocol.DocumentSymbol, 0, len(v.Members))
 		for _, member := range v.Members {
-			switch m := member.(type) {
-			case *ast.Method:
-				if m.Name != "" {
-					children = append(children, methodSymbol(m))
-				}
-			case *ast.EventDecl:
-				if m.Name != "" {
-					children = append(children, memberSymbol(m.Pos, "event", m.Name, refString(payloadRefOf(m))))
-				}
-			case *ast.ConsumerDecl:
-				if m.Name != "" {
-					children = append(children, memberSymbol(m.Pos, "consume", m.Name, refString(consumerRefOf(m))))
-				}
+			if m, ok := member.(*ast.Method); ok && m.Name != "" {
+				children = append(children, methodSymbol(m))
 			}
 		}
 		return protocol.DocumentSymbol{
@@ -287,45 +278,21 @@ func fieldSymbol(f *ast.Field) protocol.DocumentSymbol {
 	}
 }
 
-// memberSymbol builds the outline entry for an `event` / `consume`
-// member: `<keyword> <Name> (<Ref>)`.
-func memberSymbol(pos lexer.Position, keyword, name, ref string) protocol.DocumentSymbol {
-	r := rangeOfPosLen(pos, len(keyword)+1+len(name))
-	detail := keyword + " " + name
-	if ref != "" {
-		detail += " (" + ref + ")"
+// eventSymbol builds the outline entry for a contract:
+// `event <Name> (<Payload>)`.
+func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
+	r := rangeOfPosLen(e.Pos, len("event")+1+len(e.Name))
+	detail := "event " + e.Name
+	if e.Payload != nil && e.Payload.Type != nil && e.Payload.Type.Name != nil {
+		detail += " (" + e.Payload.Type.Name.String() + ")"
 	}
 	return protocol.DocumentSymbol{
-		Name:           name,
+		Name:           e.Name,
 		Detail:         detail,
 		Kind:           protocol.SymbolKindEvent,
 		Range:          r,
 		SelectionRange: r,
 	}
-}
-
-// payloadRefOf returns an event's payload reference, nil when absent.
-func payloadRefOf(e *ast.EventDecl) *ast.NamedTypeRef {
-	if e.Payload == nil {
-		return nil
-	}
-	return e.Payload.Type
-}
-
-// consumerRefOf returns a consumer's event reference, nil when absent.
-func consumerRefOf(c *ast.ConsumerDecl) *ast.NamedTypeRef {
-	if c.Event == nil {
-		return nil
-	}
-	return c.Event.Ref
-}
-
-// refString renders a named reference, "" when absent.
-func refString(n *ast.NamedTypeRef) string {
-	if n == nil || n.Name == nil {
-		return ""
-	}
-	return n.Name.String()
 }
 
 func methodSymbol(m *ast.Method) protocol.DocumentSymbol {

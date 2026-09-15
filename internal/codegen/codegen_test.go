@@ -59,9 +59,7 @@ func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
 
 const ordersSrc = `package orders
 type OrderPlacedPayload { orderId string }
-service OrderService {
-	event OrderPlaced { payload OrderPlacedPayload }
-}`
+event OrderPlaced { payload OrderPlacedPayload }`
 
 // A project with no event generates nothing, so adding the feature costs
 // existing projects no output.

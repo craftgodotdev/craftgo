@@ -85,7 +85,7 @@ Validation ran with zero hand-written code. The handler decoded JSON, called `re
 - **Declarative validation** - `@length`, `@format(email)`, `@gte`, `@pattern`, `@requiresOneOf`, … compile to plain Go `if` statements. No reflection, no runtime tags.
 - **OpenAPI 3.1** - emitted from the same source, renders in Swagger UI, feeds `openapi-generator` for clients in any language.
 - **Rich type system** - scalars with inherited validators, enums, generics (`Page<User>`), cross-package composition, mixins, typed error categories.
-- **Events** - declare a contract on a service with `event`, handle one with `consume`, and craftgo generates one typed descriptor per contract plus a handler interface and `Register` function per service. Everything about delivery - the group, the middleware, which deployable runs what - is the application's, so nothing generated names a broker.
+- **Events** - declare a contract at file level with `event` and craftgo generates one typed descriptor per contract. Which deployable listens, on which group, behind which middleware, is ordinary Go written where the bus is built, so nothing generated names a broker.
 - **Language-independent event model** - the contract name and the payload shapes are decided in a language-neutral model rather than in the emitter, so every target describes one contract. Go is the source target.
 - **First-class tooling** - an LSP server (completion, hover, go-to-definition, live diagnostics, formatting) and a VS Code extension.
 - **Regenerate-safe** - your business logic lives in gen-once stubs the CLI never overwrites; everything else regenerates on every `craftgo gen`.
@@ -96,7 +96,7 @@ Validation ran with zero hand-written code. The handler decoded JSON, called `re
 design/*.craftgo  ──craftgo gen──▶  internal/types/      typed structs + Validate()
                                     internal/transport/  HTTP handlers
                                     internal/routes/      route registration
-                                    internal/events/      contract descriptors + handler interfaces
+                                    internal/events/      contract descriptors
                                     internal/service/     logic stubs (you edit these)
                                     docs/openapi.yaml      OpenAPI 3.1 spec
                                     main.go                wired entry point
@@ -108,7 +108,7 @@ design/*.craftgo  ──craftgo gen──▶  internal/types/      typed structs
 | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
 | [Getting Started](https://craftgodotdev.github.io/craftgo/guide/getting-started)           | Build and run your first endpoint in 5 minutes             |
 | [DSL Basics](https://craftgodotdev.github.io/craftgo/guide/dsl-basics)                     | The full syntax: types, services, decorators               |
-| [Events](https://craftgodotdev.github.io/craftgo/guide/events)                             | Event contracts, handler interfaces, transports, codecs    |
+| [Events](https://craftgodotdev.github.io/craftgo/guide/events)                             | Event contracts, subscriptions, transports, codecs         |
 | [Decorator Registry](https://craftgodotdev.github.io/craftgo/reference/decorator-registry) | Every decorator, its arguments, and where it applies       |
 | [Runtime API](https://craftgodotdev.github.io/craftgo/reference/runtime-api)               | `pkg/server` - the `net/http` wrapper your code runs on    |
 | [Codegen Output](https://craftgodotdev.github.io/craftgo/reference/codegen-output)         | Exactly what `craftgo gen` produces, file by file          |

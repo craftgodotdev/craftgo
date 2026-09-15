@@ -285,7 +285,9 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 				return semantic.LvlErrorField
 			}
 		case *ast.ServiceDecl:
-			return nextServiceMemberLevel(view, pos)
+			// A service body holds HTTP methods and nothing else, so
+			// every decorator zone inside one is a method site.
+			return semantic.LvlMethod
 		}
 	}
 	if nextDecl != nil {
@@ -309,45 +311,6 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	// as file scope so file-only decorators stay visible while
 	// decl-only ones are correctly hidden.
 	return semantic.LvlFile
-}
-
-// nextServiceMemberLevel classifies a decorator zone inside a service
-// body by the member keyword that follows it: a verb is a method, and
-// `event` / `consume` are their own sites. Falls back to the method
-// level when the body ends before a member keyword appears - the zone
-// below the last member, where there is nothing to attach to.
-func nextServiceMemberLevel(view snapshotView, pos protocol.Position) semantic.Level {
-	cursorLine := int(pos.Line) + 1
-	cursorCol := int(pos.Character) + 1
-	depth := 0
-	for _, t := range view.tokens {
-		if t.Pos.Line < cursorLine || (t.Pos.Line == cursorLine && t.Pos.Column <= cursorCol) {
-			continue
-		}
-		switch t.Kind {
-		case lexer.LBrace:
-			depth++
-			continue
-		case lexer.RBrace:
-			if depth == 0 {
-				return semantic.LvlMethod
-			}
-			depth--
-			continue
-		case lexer.KwEvent:
-			if depth == 0 {
-				return semantic.LvlEvent
-			}
-		case lexer.KwConsume:
-			if depth == 0 {
-				return semantic.LvlConsumer
-			}
-		}
-		if depth == 0 && isVerbToken(t) {
-			return semantic.LvlMethod
-		}
-	}
-	return semantic.LvlMethod
 }
 
 // firstTopLevelDeclKeyword scans the token stream forward from pos for the next
@@ -383,7 +346,7 @@ func firstTopLevelDeclKeyword(view snapshotView, pos protocol.Position) lexer.Ki
 		}
 		switch t.Kind {
 		case lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar,
-			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware:
+			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware, lexer.KwEvent:
 			return t.Kind
 		}
 	}

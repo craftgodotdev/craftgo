@@ -46,25 +46,44 @@ var verbDocs = map[string]string{
 	"options": "**`options`** - capability discovery (CORS preflight handler). The handler may return a custom Allow header set.",
 }
 
-// memberKeywordDocs documents the non-verb service-member keywords and
-// their clause keywords, so a hover inside a service body explains the
-// construct the cursor sits on.
-var memberKeywordDocs = map[string]string{
-	"event":    "**`event Name { payload Type }`** - a contract this design declares. Codegen emits one descriptor for it - publish and subscribe both go through that; transport and codec are runtime wiring, not part of the contract.",
-	"consume":  "**`consume Name { event Ref }`** - this service handles Ref. Codegen emits one method on the service's handler interface; which group it joins and what middleware it runs are the application's. Ref may be qualified (`orders.OrderPlaced`) to consume another package's contract.",
-	"payload":  "**`payload Type`** - the type an event contract carries. Must name a `type` declaration.",
-	"request":  "**`request Type`** - the type a method binds and validates from the request.",
-	"response": "**`response Type`** - the type a method returns; the framework encodes it.",
+// keywordDoc is one construct's hover text together with the declaration
+// keyword it is written under - `payload` inside an `event`, `request`
+// inside a `service`. The site is what keeps a field spelled `payload`
+// in a type body silent.
+type keywordDoc struct {
+	site lexer.Kind
+	doc  string
 }
 
-// isMemberKeywordToken reports whether t is one of the service-member or
-// clause keywords [memberKeywordDocs] documents.
-func isMemberKeywordToken(t lexer.Token) bool {
-	switch t.Kind {
-	case lexer.KwEvent, lexer.KwConsume, lexer.KwPayload, lexer.KwRequest, lexer.KwResponse:
-		return true
+// memberKeywordDocs documents the `event` declaration, its `payload`
+// clause and the method clause keywords, so a hover explains the
+// construct the cursor sits on.
+var memberKeywordDocs = map[lexer.Kind]keywordDoc{
+	lexer.KwEvent:    {lexer.KwEvent, "**`event Name { payload Type }`** - a contract this design declares, at file level: a service publishes HTTP, never events. Codegen emits one descriptor for it - publish and subscribe both go through that; transport, codec and which deployable listens are runtime wiring, not part of the contract."},
+	lexer.KwPayload:  {lexer.KwEvent, "**`payload Type`** - the type an event contract carries. Must name a `type` declaration."},
+	lexer.KwRequest:  {lexer.KwService, "**`request Type`** - the type a method binds and validates from the request."},
+	lexer.KwResponse: {lexer.KwService, "**`response Type`** - the type a method returns; the framework encodes it."},
+}
+
+// memberKeywordHover renders a clause keyword's doc when the cursor sits
+// inside the declaration that keyword belongs to. An `extend service`
+// body counts as a service body.
+func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
+	kd, ok := memberKeywordDocs[tok.Kind]
+	if !ok {
+		return nil
 	}
-	return false
+	site := enclosingDeclKeyword(view, idx+1)
+	if site == lexer.KwExtend {
+		site = lexer.KwService
+	}
+	if site != kd.site {
+		return nil
+	}
+	return &protocol.Hover{
+		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: kd.doc},
+		Range:    rangePtr(rangeOf(tok)),
+	}
 }
 
 // onHover answers `textDocument/hover`. It tokenises the buffer, finds
@@ -115,11 +134,8 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 			Range:    rangePtr(rangeOf(tok)),
 		}
 	}
-	if doc, ok := memberKeywordDocs[tok.Text]; ok && isMemberKeywordToken(tok) && inServiceBody(view, idx+1) {
-		return &protocol.Hover{
-			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
-			Range:    rangePtr(rangeOf(tok)),
-		}
+	if h := memberKeywordHover(view, idx, tok); h != nil {
+		return h
 	}
 	// Built-in types - only when the token spelling matches AND the
 	// surrounding context is a type position (right after `request`,

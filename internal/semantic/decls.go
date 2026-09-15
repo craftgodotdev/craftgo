@@ -34,13 +34,12 @@ func (a *analyzer) setPackageName(files []*ast.File) {
 //     `seenMW` map so `middleware Foo` and `type Foo` coexist.
 //   - service → handler / route packages, each namespaced per
 //     service; merge handled by mergeServices.
-//   - event / consumer → their own namespaces, so `event OrderPlaced`
-//     may sit next to the `type OrderPlaced` it carries.
+//   - event → its own namespace, so `event OrderPlaced` may sit next to
+//     the `type OrderPlaced` it carries.
 func (a *analyzer) collectDecls(files []*ast.File) {
-	seen := map[string]lexer.Position{}    // type / enum / scalar / error namespace
-	seenMW := map[string]lexer.Position{}  // middleware namespace
-	seenEv := map[string]lexer.Position{}  // event namespace, package-wide
-	seenCon := map[string]lexer.Position{} // consumer namespace, per service
+	seen := map[string]lexer.Position{}   // type / enum / scalar / error namespace
+	seenMW := map[string]lexer.Position{} // middleware namespace
+	seenEv := map[string]lexer.Position{} // event namespace, package-wide
 	registerIn := func(table map[string]lexer.Position, name string, pos lexer.Position, rejectBuiltin bool) bool {
 		if rejectBuiltin && prims.Is(name) {
 			// A type / enum / scalar / error named after a built-in spelling
@@ -108,12 +107,9 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 				if dd == nil {
 					continue
 				}
-				// A contract declared outside a service shares the event
-				// namespace with the ones services declare; it simply has
-				// no producer in this design.
 				if a.registerMember(seenEv, dd.Name, dd.Pos, CodeEventDuplicate,
-					"duplicate event %q in package %q - a consumer names an event by this identifier, so it must be unique across the package") {
-					a.pkg.Events[dd.Name] = &EventInfo{Decl: dd}
+					"duplicate event %q in package %q - a listener names an event by this identifier, so it must be unique across the package") {
+					a.pkg.Events[dd.Name] = dd
 				}
 			case *ast.ServiceDecl:
 				if dd == nil {
@@ -132,22 +128,6 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 					d.Related = related(si.Primary.Pos, "first declared here")
 				} else {
 					si.Primary = dd
-				}
-				for _, ev := range dd.Events() {
-					if a.registerMember(seenEv, ev.Name, ev.Pos, CodeEventDuplicate,
-						"duplicate event %q in package %q - a consumer names an event by this identifier, so it must be unique across the package") {
-						a.pkg.Events[ev.Name] = &EventInfo{Decl: ev, Service: dd.Name}
-					}
-				}
-				for _, c := range dd.Consumers() {
-					// Keyed per service: the name is a method on that
-					// service's generated handler interface, so it has to
-					// be unique there and nowhere wider.
-					key := dd.Name + "." + c.Name
-					if a.registerMember(seenCon, key, c.Pos, CodeConsumerDuplicateName,
-						"duplicate consumer %q in service %q") {
-						a.pkg.Consumers[key] = &ConsumerInfo{Decl: c, Service: dd.Name}
-					}
 				}
 			}
 		}
@@ -185,14 +165,12 @@ func (a *analyzer) mergeServices() {
 			continue
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
-		si.Events = append(si.Events, si.Primary.Events()...)
-		si.Consumers = append(si.Consumers, si.Primary.Consumers()...)
 		for _, e := range si.Extends {
 			// Filter decorators by level: only those that can apply at
 			// method-level get propagated. Service-only decorators like
 			// `@prefix` make no sense per-method - we emit a diagnostic
 			// instead so the user moves them to the primary service.
-			var propagate, propagateConsumer []*ast.Decorator
+			var propagate []*ast.Decorator
 			for _, d := range e.Decorators {
 				spec, ok := Lookup(d.Name)
 				if !ok {
@@ -211,31 +189,17 @@ func (a *analyzer) mergeServices() {
 					a.checkGroupArg(d)
 					continue
 				}
-				if spec.Levels&(LvlMethod|LvlConsumer) == 0 {
+				if spec.Levels&LvlMethod == 0 {
 					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
-						"decorator @%s on extend service %q is not valid on a method or a consumer; move it to the primary service", d.Name, name)
+						"decorator @%s on extend service %q is not valid on a method; move it to the primary service", d.Name, name)
 					continue
 				}
-				if spec.Levels&LvlMethod != 0 {
-					propagate = append(propagate, d)
-				}
-				if spec.Levels&LvlConsumer != 0 {
-					propagateConsumer = append(propagateConsumer, d)
-				}
+				propagate = append(propagate, d)
 			}
 			for _, m := range e.Methods() {
 				m.Decorators = prependPropagated(propagate, m.Decorators)
 				si.Methods = append(si.Methods, m)
 			}
-			// Each decorator reaches the members whose level it is valid
-			// at, so a block-level chain lands on this block's consumers
-			// the way it lands on its methods. An event carries no member
-			// decorator, so it merges in as written.
-			for _, c := range e.Consumers() {
-				c.Decorators = prependPropagated(propagateConsumer, c.Decorators)
-				si.Consumers = append(si.Consumers, c)
-			}
-			si.Events = append(si.Events, e.Events()...)
 		}
 	}
 }

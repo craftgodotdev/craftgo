@@ -5,7 +5,7 @@
 //
 //   - Package-name consistency across files.
 //   - Symbol tables for types, enums, errors, scalars, middlewares,
-//     events, consumers.
+//     events.
 //   - Primary / `extend service` merge.
 //   - Duplicate names (top-level, fields, methods, routes) and
 //     uniform enum value kinds.
@@ -60,21 +60,16 @@ type Package struct {
 	// Events maps `event Name { ... }` declarations by name. Events have
 	// their own namespace, so an event and its payload type may share a
 	// name.
-	Events map[string]*EventInfo
-	// Consumers maps `consume Name { ... }` declarations by name, in
-	// their own namespace for the same reason.
-	Consumers map[string]*ConsumerInfo
+	Events map[string]*ast.EventDecl
 }
 
 // ServiceInfo bundles the primary `service` declaration with every `extend
-// service` continuation that targets the same name. Methods, Events and
-// Consumers are the merged lists in source order.
+// service` continuation that targets the same name. Methods is the merged
+// list in source order.
 type ServiceInfo struct {
-	Primary   *ast.ServiceDecl
-	Extends   []*ast.ServiceDecl
-	Methods   []*ast.Method
-	Events    []*ast.EventDecl
-	Consumers []*ast.ConsumerDecl
+	Primary *ast.ServiceDecl
+	Extends []*ast.ServiceDecl
+	Methods []*ast.Method
 }
 
 // Options configure the analyser's optional cross-reference checks.
@@ -147,8 +142,7 @@ func newAnalyzer(proj *Project, opts Options) *analyzer {
 			Scalars:     map[string]*ast.ScalarDecl{},
 			Middlewares: map[string]*ast.MiddlewareDecl{},
 			Services:    map[string]*ServiceInfo{},
-			Events:      map[string]*EventInfo{},
-			Consumers:   map[string]*ConsumerInfo{},
+			Events:      map[string]*ast.EventDecl{},
 		},
 		proj: proj,
 		opts: opts,

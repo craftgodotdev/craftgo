@@ -70,22 +70,17 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 		// case stays here so future additions slot in symmetrically.
 	case *ast.ServiceDecl:
 		if dd.Extend {
-			// An extend block's decorators are member decorators that
-			// [analyzer.mergeServices] copies onto the block's members.
+			// An extend block's decorators are method decorators that
+			// [analyzer.mergeServices] copies onto the block's methods.
 			// They resolve here, on the block that writes them, so a
-			// block carrying no method - one holding only consumers -
-			// still has its names checked, and a block carrying several
-			// reports one diagnostic rather than one per member. Either
-			// member kind may receive them, so both levels are in scope.
-			a.checkMemberLevelRefs(dd.Decorators, LvlMethod|LvlConsumer)
+			// block carrying several methods reports one diagnostic
+			// rather than one per method.
+			a.checkMemberLevelRefs(dd.Decorators, LvlMethod)
 		} else {
 			a.checkServiceLevelRefs(dd.Decorators)
 		}
 		for _, m := range dd.Methods() {
 			a.checkMemberLevelRefs(m.Decorators, LvlMethod)
-		}
-		for _, c := range dd.Consumers() {
-			a.checkMemberLevelRefs(c.Decorators, LvlConsumer)
 		}
 	}
 }

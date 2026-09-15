@@ -105,14 +105,6 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 						a.checkLocalNamedRef(m.Response.Type, nil, imports)
 					}
 				}
-				// An event's payload is a type reference; a consumer's
-				// `event` clause names an event, which lives in its own
-				// namespace and resolves in checkEventRefs.
-				for _, e := range v.Events() {
-					if e.Payload != nil && e.Payload.Type != nil {
-						a.checkLocalNamedRef(e.Payload.Type, nil, imports)
-					}
-				}
 			}
 		}
 	}

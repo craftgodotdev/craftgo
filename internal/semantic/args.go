@@ -55,8 +55,8 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 		if !dd.Extend {
 			a.checkArgsScope(dd.Decorators)
 		}
-		for _, s := range serviceMemberSites(dd) {
-			a.checkArgsScope(s.Decorators)
+		for _, m := range dd.Methods() {
+			a.checkArgsScope(m.Decorators)
 		}
 	}
 }

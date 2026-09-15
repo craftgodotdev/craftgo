@@ -7,15 +7,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/claim"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // GenerateEventTarget is the Go row of the language-target catalogue: it
-// emits one library per DSL package - the contract descriptors, and the
-// handler interface of every service that consumes one.
+// emits one library per DSL package - the contract descriptors.
 //
 // The library is pure contract, so it is generated the same whatever the
 // project deploys: a contracts project writes it and stops, and an
@@ -41,39 +39,12 @@ func expectedEventFiles(proj *semantic.Project, root string) map[string]bool {
 	keep := map[string]bool{}
 	for _, name := range sortedPackageNames(proj) {
 		pkg := proj.Packages[name]
-		if pkg == nil {
+		if pkg == nil || len(pkg.Events) == 0 {
 			continue
 		}
-		dir := filepath.Join(root, name)
-		if len(pkg.Events) > 0 {
-			keep[filepath.Join(dir, "events.go")] = true
-		}
-		if packageConsumes(proj, pkg) {
-			keep[filepath.Join(dir, "handlers.go")] = true
-		}
+		keep[filepath.Join(root, name, "events.go")] = true
 	}
 	return keep
-}
-
-// packageConsumes reports whether a service in pkg consumes a contract
-// that resolves - the condition [writePackageHandlers] emits on.
-func packageConsumes(proj *semantic.Project, pkg *semantic.Package) bool {
-	for _, svcName := range sortedServices(pkg) {
-		for _, cd := range pkg.Services[svcName].Consumers {
-			if _, ok := proj.LookupEvent(pkg.Name, consumerEventRef(cd)); ok {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// consumerEventRef returns the event name a consumer references.
-func consumerEventRef(c *ast.ConsumerDecl) string {
-	if c == nil || c.Event == nil || c.Event.Ref == nil || c.Event.Ref.Name == nil {
-		return ""
-	}
-	return c.Event.Ref.Name.String()
 }
 
 // appSideDirs are the outputs a contracts project does not write. Flipping

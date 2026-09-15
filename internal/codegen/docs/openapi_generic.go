@@ -314,14 +314,6 @@ func collectGenericInstancesInPackage(pkg *semantic.Package, registry *genericRe
 				visit(&ast.TypeRef{Named: m.Response.Type})
 			}
 		}
-		// An event payload instantiates a generic the same way a request
-		// does; without this its component is never emitted and the
-		// document carries a dangling $ref.
-		for _, ed := range si.Events {
-			if ed.Payload != nil && ed.Payload.Type != nil {
-				visit(&ast.TypeRef{Named: ed.Payload.Type})
-			}
-		}
 	}
 }
 

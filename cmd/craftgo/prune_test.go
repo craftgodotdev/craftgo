@@ -18,18 +18,10 @@ type Order {
 	total int32  @gte(0)
 }
 
+event Placed { payload Order }
+
 service Orders {
 	get ListOrders /orders { response Order }
-
-	event Placed { payload Order }
-}
-
-service Billing {
-	consume ChargeOrder { event Placed }
-}
-
-service Shipping {
-	consume ShipOrder { event Placed }
 }
 `
 
@@ -41,18 +33,10 @@ type Order {
 	total int32  @gte(0)
 }
 
+event Placed { payload Order }
+
 service Catalog {
 	get ListOrders /orders { response Order }
-
-	event Placed { payload Order }
-}
-
-service Billing {
-	consume ChargeOrder { event Placed }
-}
-
-service Shipping {
-	consume ShipOrder { event Placed }
 }
 `
 
@@ -187,7 +171,6 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 		"internal/routes/orders/routes.go",
 		"internal/service/orders/list_orders.go",
 		"internal/events/store/events.go",
-		"internal/events/store/handlers.go",
 	} {
 		if !exists(t, dir, filepath.FromSlash(path)) {
 			t.Fatalf("the first run must write %s", path)
@@ -220,7 +203,6 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 		"internal/transport/catalog/list_orders.go",
 		"internal/routes/catalog/routes.go",
 		"internal/events/store/events.go",
-		"internal/events/store/handlers.go",
 	} {
 		if !exists(t, dir, filepath.FromSlash(path)) {
 			t.Errorf("the recut design must still produce %s", path)
@@ -296,20 +278,14 @@ service Orders {
 }
 
 // farmDesign is a second, unrelated design: different package, different
-// contracts, its own consuming service.
+// contracts.
 const farmDesign = `package farm
 
 type Animal {
 	id string @minLength(1)
 }
 
-service Barn {
-	event Fed { payload Animal }
-}
-
-service Tally {
-	consume CountFed { event Fed }
-}
+event Fed { payload Animal }
 `
 
 // Two designs pointed at one project root write one another's

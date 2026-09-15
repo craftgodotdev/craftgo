@@ -1,4 +1,4 @@
-// events.craftgo declares the contracts TaskService publishes. The
+// events.craftgo declares the contracts the tasks package publishes. The
 // payloads are separate from the API types on purpose: an event is a
 // published contract with its own compatibility story, not a mirror of
 // whatever the REST response happens to return today.
@@ -25,14 +25,12 @@ type TaskStatusChanged {
 	changedAt string @format(datetime)
 }
 
-extend service TaskService {
-	@doc("A task was created.")
-	event TaskCreated {
-		payload TaskCreated
-	}
+@doc("A task was created.")
+event TaskCreated {
+	payload TaskCreated
+}
 
-	@doc("A task moved between statuses.")
-	event TaskStatusChanged {
-		payload TaskStatusChanged
-	}
+@doc("A task moved between statuses.")
+event TaskStatusChanged {
+	payload TaskStatusChanged
 }

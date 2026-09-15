@@ -55,7 +55,6 @@ const (
 	KwFalse
 	KwNull
 	KwEvent
-	KwConsume
 	KwPayload
 
 	// --- HTTP verbs (also keyword-class). ---
@@ -101,7 +100,7 @@ var kindNames = map[Kind]string{
 	KwService: "service", KwExtend: "extend", KwMiddleware: "middleware",
 	KwRequest: "request", KwResponse: "response",
 	KwMap: "map", KwTrue: "true", KwFalse: "false", KwNull: "null",
-	KwEvent: "event", KwConsume: "consume", KwPayload: "payload",
+	KwEvent: "event", KwPayload: "payload",
 
 	VerbGet: "get", VerbPost: "post", VerbPut: "put", VerbPatch: "patch",
 	VerbDelete: "delete", VerbHead: "head", VerbOptions: "options",
@@ -142,7 +141,6 @@ var keywords = map[string]Kind{
 	"false":      KwFalse,
 	"null":       KwNull,
 	"event":      KwEvent,
-	"consume":    KwConsume,
 	"payload":    KwPayload,
 
 	"get":     VerbGet,

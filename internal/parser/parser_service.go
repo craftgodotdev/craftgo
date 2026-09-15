@@ -1,5 +1,6 @@
-// Service parsing: service / extend blocks, methods, events, consumers,
-// verbs, and route paths.
+// Service parsing: service / extend blocks, methods, route paths, and
+// the file-level `event` declaration, which shares the method body
+// shape.
 package parser
 
 import (
@@ -51,7 +52,7 @@ func (p *Parser) parseExtendService(decs []*ast.Decorator) *ast.ServiceDecl {
 }
 
 // rejectMethodTypeSuffix flags a clause type (`request`, `response`,
-// `payload`, `event`) written with an array suffix (`Order[]`) or an
+// `payload`) written with an array suffix (`Order[]`) or an
 // optional marker (`User?`). Both shapes would silently parse without
 // these checks - `[]`/`?` simply leave the next iteration on a stray
 // token - so the diagnostic explains the gap and steers users to wrap
@@ -72,29 +73,33 @@ func (p *Parser) rejectMethodTypeSuffix(slot string) {
 	}
 }
 
-// parseServiceMember reads one member of a service body: an HTTP method,
-// an `event` contract, or a `consume` declaration. The leading doc and
-// decorator chain are shared by all three, so they are read once here
-// and handed to the kind-specific parser.
+// parseServiceMember reads one member of a service body: an HTTP
+// method. The leading doc and decorator chain are read here and handed
+// to the method parser.
 func (p *Parser) parseServiceMember() ast.ServiceMember {
 	p.captureDoc()
 	decs := p.parseDecorators()
 	t := p.peek()
-	switch t.Kind {
-	case lexer.KwEvent:
-		p.claimChainComments(decs, t)
-		return p.parseEventDecl(decs)
-	case lexer.KwConsume:
-		p.claimChainComments(decs, t)
-		return p.parseConsumerDecl(decs)
-	}
 	verb, ok := verbFromToken(t.Kind)
 	if !ok {
-		p.errorf(t.Pos, "expected an HTTP verb, `event`, or `consume`, got %s", t.Kind)
+		p.errorf(t.Pos, "%s", serviceMemberError(t))
 		return nil
 	}
 	p.claimChainComments(decs, t)
 	return p.parseMethod(decs, verb)
+}
+
+// serviceMemberError explains what a service body holds. `event` and
+// `consume` used to be written here, so each gets the diagnostic that
+// says where the declaration went rather than the generic one.
+func serviceMemberError(t lexer.Token) string {
+	switch {
+	case t.Kind == lexer.KwEvent:
+		return "`event` is a file-level declaration - move `event ... { payload ... }` out of the service body; a service holds HTTP methods only"
+	case t.Kind == lexer.Ident && t.Text == "consume":
+		return "`consume` is no longer part of the DSL - which events a deployable listens to is Go code, written where its bus is built"
+	}
+	return "expected an HTTP verb, got " + t.Kind.String()
 }
 
 // claimChainComments claims the comments sitting inside a member's
@@ -107,7 +112,7 @@ func (p *Parser) claimChainComments(decs []*ast.Decorator, kw lexer.Token) {
 	}
 }
 
-// memberBody is the `{ ... }` tail every service member shares: the
+// memberBody is the `{ ... }` tail a method and an event share: the
 // trailing `// note` on the closing brace, the free-floating comment
 // blocks written inside, and the closing brace position (which the
 // formatter uses to preserve blank-line grouping).
@@ -182,69 +187,25 @@ func (p *Parser) parseMethod(decs []*ast.Decorator, verb string) *ast.Method {
 	return m
 }
 
-// singleClauseMember is the shape `event` and `consume` share: a name,
-// then a body holding exactly one `<keyword> <TypeRef>` clause.
-type singleClauseMember struct {
-	Pos         ast.Pos
-	Name        string
-	Doc         []string
-	ClausePos   ast.Pos
-	Ref         *ast.NamedTypeRef
-	HasClause   bool
-	TrailingDoc []string
-	Comments    []*ast.FreeComment
-	EndPos      ast.Pos
-}
-
-// parseSingleClauseMember reads `<member> Name { <clause> Ref }`. clause
-// is the clause keyword, label its spelling, and kind the member word;
-// the latter two only shape diagnostics.
-func (p *Parser) parseSingleClauseMember(clause lexer.Kind, label, kind string) singleClauseMember {
+// parseEventDecl reads `event Name { payload Type }`.
+func (p *Parser) parseEventDecl(decs []*ast.Decorator) *ast.EventDecl {
 	t := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	m := singleClauseMember{Pos: t.Pos, Name: name.Text, Doc: p.takeDoc()}
+	e := &ast.EventDecl{Pos: t.Pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
 	body := p.parseMemberBody(func(tok lexer.Token) bool {
-		if tok.Kind != clause {
+		if tok.Kind != lexer.KwPayload {
 			return false
 		}
 		kw := p.advance()
-		if m.HasClause {
-			p.errorf(kw.Pos, "duplicate %s clause in %s %q", label, kind, m.Name)
+		if e.Payload != nil {
+			p.errorf(kw.Pos, "duplicate payload clause in event %q", e.Name)
 		}
-		m.ClausePos = p.peek().Pos
-		m.Ref = p.parseNamedTypeRef()
-		m.HasClause = true
-		p.rejectMethodTypeSuffix(label)
+		e.Payload = &ast.EventPayload{Pos: p.peek().Pos, Type: p.parseNamedTypeRef()}
+		p.rejectMethodTypeSuffix("payload")
 		return true
-	}, label+" in "+kind+" body")
-	m.TrailingDoc, m.Comments, m.EndPos = body.TrailingDoc, body.Comments, body.EndPos
-	return m
-}
-
-// parseEventDecl reads `event Name { payload Type }`.
-func (p *Parser) parseEventDecl(decs []*ast.Decorator) *ast.EventDecl {
-	m := p.parseSingleClauseMember(lexer.KwPayload, "payload", "event")
-	e := &ast.EventDecl{
-		Pos: m.Pos, Decorators: decs, Doc: m.Doc, Name: m.Name,
-		TrailingDoc: m.TrailingDoc, BodyComments: m.Comments, EndPos: m.EndPos,
-	}
-	if m.HasClause {
-		e.Payload = &ast.EventPayload{Pos: m.ClausePos, Type: m.Ref}
-	}
+	}, "payload in event body")
+	e.TrailingDoc, e.BodyComments, e.EndPos = body.TrailingDoc, body.Comments, body.EndPos
 	return e
-}
-
-// parseConsumerDecl reads `consume Name { event Ref }`.
-func (p *Parser) parseConsumerDecl(decs []*ast.Decorator) *ast.ConsumerDecl {
-	m := p.parseSingleClauseMember(lexer.KwEvent, "event", "consumer")
-	c := &ast.ConsumerDecl{
-		Pos: m.Pos, Decorators: decs, Doc: m.Doc, Name: m.Name,
-		TrailingDoc: m.TrailingDoc, BodyComments: m.Comments, EndPos: m.EndPos,
-	}
-	if m.HasClause {
-		c.Event = &ast.ConsumerEvent{Pos: m.ClausePos, Ref: m.Ref}
-	}
-	return c
 }
 
 // parsePath reads `/seg1/seg2/...`. A segment is either a literal (including

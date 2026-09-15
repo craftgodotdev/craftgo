@@ -13,8 +13,8 @@ import (
 
 // planSrc exercises every shape the plan has to account for: a package
 // with enums and errors and one without, a service with methods, one with
-// methods behind a `@group`, a consumer split into another logic folder,
-// an events-only service in a second package, and a middleware.
+// methods behind a `@group`, a contract beside them, a second package
+// with no event at all, and a middleware.
 var planSrc = []string{`package shop
 enum Tier { Gold = 1  Silver = 2 }
 error NotFound OrderMissing { id string }
@@ -23,12 +23,11 @@ type Order {
 	tier  Tier
 }
 middleware AuthRequired
+event Placed { payload Order }
 @prefix("/shop")
 service Orders {
 	get GetOrder /orders/{id} { request Order  response Order }
 	post PlaceOrder /orders { request Order  response Order }
-	event Placed { payload Order }
-	consume Reconcile { event Placed }
 }
 @group("admin/v2")
 extend service Orders {
@@ -37,9 +36,6 @@ extend service Orders {
 type Shelf { code string @minLength(1) }
 service Stock {
 	get Shelves /shelves { response Shelf }
-}
-service Restock {
-	consume OnPlaced { event shop.Placed }
 }`}
 
 // planConfig turns on every target a run can write, so the plan is

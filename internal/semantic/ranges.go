@@ -108,8 +108,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 			}
 		}
 	case *ast.ServiceDecl:
-		for _, s := range serviceMemberSites(dd) {
-			a.checkDecoratorRanges(s.Decorators)
+		for _, m := range dd.Methods() {
+			a.checkDecoratorRanges(m.Decorators)
 		}
 	}
 }

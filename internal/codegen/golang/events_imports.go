@@ -3,33 +3,15 @@ package golang
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// reservedAliases are the identifiers the event templates bind: their
-// imports, their parameters, and the variables inside their bodies. A
+// reservedAliases are the identifiers the event template binds. A
 // payload package whose DSL name is one of these is imported under a
 // different alias, or the generated file would shadow the name.
 var reservedAliases = map[string]bool{
-	// package-level imports
 	"craftevents": true,
-	"context":     true,
-	"errors":      true,
-	"fmt":         true,
-	// parameters, receivers and locals the templates bind
-	"bus":     true,
-	"h":       true,
-	"chain":   true,
-	"groups":  true,
-	"g":       true,
-	"own":     true,
-	"ctx":     true,
-	"payload": true,
-	"err":     true,
 }
 
 // importSet accumulates the Go imports a generated event file needs,
@@ -100,37 +82,6 @@ func (s *importSet) payloadRefType(ref *ast.NamedTypeRef, typesImport string) st
 		alias = s.aliasFor(extra.Path)
 	}
 	return alias + "." + bare
-}
-
-// payloadType renders a resolved event's payload from the consuming
-// package's point of view. A contract declared elsewhere renders through
-// its own package's alias, so a consumer never needs the publisher's
-// `types` alias.
-func (s *importSet) payloadType(ev semantic.ResolvedEvent, typesImport string, cfg *config.Config) string {
-	if ev.PayloadName == "" {
-		return ""
-	}
-	if path := s.payloadImport(ev, typesImport, cfg); path != "" {
-		s.add(extraImport{Alias: ev.PayloadPkg, Path: path})
-		return s.aliasFor(path) + "." + ev.PayloadName
-	}
-	s.add(extraImport{Alias: "types", Path: typesImport})
-	return "types." + ev.PayloadName
-}
-
-// payloadImport returns the Go import path a payload's package lives at,
-// or "" when it is the consuming package's own types import. Cross-
-// package paths come from [crossPkg]; a payload in a package the
-// resolver did not see falls back to the same `<types>/<pkg>` rule
-// [importPathsForGroup] applies.
-func (s *importSet) payloadImport(ev semantic.ResolvedEvent, typesImport string, cfg *config.Config) string {
-	if path, ok := s.crossPkg[ev.PayloadPkg]; ok {
-		return path
-	}
-	if ev.PayloadPkg == "" || typesImport == "" || strings.HasSuffix(typesImport, "/"+ev.PayloadPkg) {
-		return ""
-	}
-	return typesImportRoot(cfg) + "/" + ev.PayloadPkg
 }
 
 // addRefImports pins every cross-package import a reference and its

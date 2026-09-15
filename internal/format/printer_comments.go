@@ -74,12 +74,7 @@ func chainSpans(f *ast.File) []chainSpan {
 		case *ast.ServiceDecl:
 			add(v.Decorators, v.Pos.Line)
 			for _, m := range v.Members {
-				switch mm := m.(type) {
-				case *ast.Method:
-					add(mm.Decorators, mm.Pos.Line)
-				case *ast.EventDecl:
-					add(mm.Decorators, mm.Pos.Line)
-				case *ast.ConsumerDecl:
+				if mm, ok := m.(*ast.Method); ok {
 					add(mm.Decorators, mm.Pos.Line)
 				}
 			}

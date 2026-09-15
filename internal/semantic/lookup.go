@@ -17,9 +17,7 @@ const (
 	ErrorDecls
 	MiddlewareDecls
 	ServiceDecls // primary `service` declarations
-	// EventDecls covers every contract the package declares, wherever it
-	// was written: inside a service or at file level. A consumer's
-	// `event` clause names one of these.
+	// EventDecls covers every contract the package declares.
 	EventDecls
 
 	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls | EventDecls
@@ -59,8 +57,8 @@ func (p *Package) Decl(name string, kinds DeclKind) ast.Decl {
 		}
 	}
 	if kinds&EventDecls != 0 {
-		if info := p.Events[name]; info != nil && info.Decl != nil {
-			return info.Decl
+		if d, ok := p.Events[name]; ok {
+			return d
 		}
 	}
 	if kinds&ServiceDecls != 0 {
@@ -91,11 +89,7 @@ func (p *Package) Decls(kinds DeclKind) []ast.Decl {
 		out = appendDecls(out, p.Middlewares)
 	}
 	if kinds&EventDecls != 0 {
-		for _, name := range sortedNames(p.Events) {
-			if info := p.Events[name]; info != nil && info.Decl != nil {
-				out = append(out, info.Decl)
-			}
-		}
+		out = appendDecls(out, p.Events)
 	}
 	if kinds&ServiceDecls != 0 {
 		for _, name := range sortedNames(p.Services) {

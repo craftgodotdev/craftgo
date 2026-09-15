@@ -220,28 +220,12 @@ func (d *ServiceDecl) DeclPos() Pos     { return d.Pos }
 // Convenience for callers (semantic, codegen) that ignore free-floating
 // comments and want the typed list.
 func (d *ServiceDecl) Methods() []*Method {
-	return serviceMembersOf[*Method](d)
-}
-
-// Events returns only the [*EventDecl] entries from Members in source order.
-func (d *ServiceDecl) Events() []*EventDecl {
-	return serviceMembersOf[*EventDecl](d)
-}
-
-// Consumers returns only the [*ConsumerDecl] entries from Members in source
-// order.
-func (d *ServiceDecl) Consumers() []*ConsumerDecl {
-	return serviceMembersOf[*ConsumerDecl](d)
-}
-
-// serviceMembersOf filters a service body down to one member kind.
-func serviceMembersOf[M ServiceMember](d *ServiceDecl) []M {
 	if d == nil {
 		return nil
 	}
-	out := make([]M, 0, len(d.Members))
+	out := make([]*Method, 0, len(d.Members))
 	for _, m := range d.Members {
-		if mm, ok := m.(M); ok {
+		if mm, ok := m.(*Method); ok {
 			out = append(out, mm)
 		}
 	}
@@ -249,9 +233,8 @@ func serviceMembersOf[M ServiceMember](d *ServiceDecl) []M {
 }
 
 // ServiceMember is the interface implemented by anything that can appear inside
-// a `service` body: [*Method] for typed endpoints, [*EventDecl] for published
-// event contracts, [*ConsumerDecl] for consumers of one, and [*FreeComment]
-// for free-floating notes / section dividers.
+// a `service` body: [*Method] for typed endpoints and [*FreeComment] for
+// free-floating notes / section dividers.
 type ServiceMember interface {
 	serviceMember()
 	// MemberPos returns the position of the member's first token.
@@ -296,9 +279,9 @@ type MethodResponse struct {
 	Type *NamedTypeRef
 }
 
-// EventDecl is `event Name { payload Type }` inside a service body: the
-// contract the service publishes. Both the publisher and every consumer
-// of it derive from this one declaration.
+// EventDecl is `event Name { payload Type }`: one contract the design
+// declares. It is file-level - which deployable publishes it, and which
+// listen, is the application's rather than the design's.
 //
 // TrailingDoc, BodyComments and EndPos mirror [Method].
 type EventDecl struct {
@@ -312,11 +295,6 @@ type EventDecl struct {
 	EndPos       Pos
 }
 
-func (*EventDecl) serviceMember()   { astMarker() }
-func (e *EventDecl) MemberPos() Pos { return e.Pos }
-
-// An event is also a top-level declaration: a contract written outside any
-// service is one this design describes but does not publish.
 func (*EventDecl) declNode()          { astMarker() }
 func (e *EventDecl) DeclName() string { return e.Name }
 func (e *EventDecl) DeclPos() Pos     { return e.Pos }
@@ -325,29 +303,6 @@ func (e *EventDecl) DeclPos() Pos     { return e.Pos }
 type EventPayload struct {
 	Pos  Pos
 	Type *NamedTypeRef
-}
-
-// ConsumerDecl is `consume Name { event Ref }` inside a service body:
-// this service handles Ref. Ref may be qualified (`orders.OrderPlaced`)
-// to consume a contract another package publishes.
-type ConsumerDecl struct {
-	Pos          Pos
-	Decorators   []*Decorator
-	Doc          []string
-	Name         string
-	Event        *ConsumerEvent
-	TrailingDoc  []string
-	BodyComments []*FreeComment
-	EndPos       Pos
-}
-
-func (*ConsumerDecl) serviceMember()   { astMarker() }
-func (c *ConsumerDecl) MemberPos() Pos { return c.Pos }
-
-// ConsumerEvent is the `event Ref` clause of a consumer body.
-type ConsumerEvent struct {
-	Pos Pos
-	Ref *NamedTypeRef
 }
 
 // Path is the parsed representation of a route path. Each segment is either

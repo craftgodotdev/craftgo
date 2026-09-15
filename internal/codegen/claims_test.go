@@ -63,15 +63,11 @@ func eventDirs(t *testing.T, root, out string) []string {
 
 const alphaSrc = `package x
 type Placed { id string @minLength(1) }
-service AlphaService {
-	event Placed { payload Placed }
-}`
+event Placed { payload Placed }`
 
 const betaSrc = `package y
 type Shipped { id string @minLength(1) }
-service BetaService {
-	event Shipped { payload Shipped }
-}`
+event Shipped { payload Shipped }`
 
 // Several manifests may write into one event output so a contract set has a
 // single Go copy - the layout a service split across api, consumer and
@@ -111,9 +107,7 @@ func TestPruneStillClearsItsOwnStaleOutput(t *testing.T) {
 	genInto(t, root, "design", alphaSrc, out)
 	genInto(t, root, "design", `package renamed
 type Placed { id string @minLength(1) }
-service AlphaService {
-	event Placed { payload Placed }
-}`, out)
+event Placed { payload Placed }`, out)
 	got := eventDirs(t, root, out)
 	if len(got) != 1 || got[0] != "renamed" {
 		t.Errorf("the renamed package's old directory must go, got %v", got)
@@ -270,9 +264,7 @@ func TestInventoryForAMissingDesignIsIgnored(t *testing.T) {
 	}
 	genInto(t, root, "renamed", `package z
 type Placed { id string @minLength(1) }
-service BetaService {
-	event Placed { payload Placed }
-}`, out)
+event Placed { payload Placed }`, out)
 
 	cfg := eventsConfig()
 	cfg.Events.Targets = []config.EventTarget{{Lang: config.LangGo, Out: out}}
@@ -348,9 +340,7 @@ func TestTwoDesignsCannotWriteOneFile(t *testing.T) {
 	root := t.TempDir()
 	const clash = `package x
 type Shipped { id string @minLength(1) }
-service BetaService {
-	event Shipped { payload Shipped }
-}`
+event Shipped { payload Shipped }`
 	genInto(t, root, "a", alphaSrc, out)
 
 	proj := analyzeProject(t, clash)
@@ -430,9 +420,7 @@ func TestStaleGeneratedEventFilesArePruned(t *testing.T) {
 
 	before := analyzeProject(t, `package orders
 type P { id string }
-service OrderService {
-	event OrderPlaced { payload P }
-}`)
+event OrderPlaced { payload P }`)
 	if err := GenerateEventTargets(before, cfg, dir); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -448,9 +436,7 @@ service OrderService {
 
 	after := analyzeProject(t, `package billing
 type P { id string }
-service OrderService {
-	event OrderPlaced { payload P }
-}`)
+event OrderPlaced { payload P }`)
 	if err := GenerateEventTargets(after, cfg, dir); err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}

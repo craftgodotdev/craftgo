@@ -31,21 +31,15 @@ type ThingCreated {
 	id string
 }
 
+event ThingCreated {
+	payload ThingCreated
+}
+
 @middlewares(Guard)
 service ThingService {
 	get GetThing /things/{id} {
 		request  GetReq
 		response Thing
-	}
-
-	event ThingCreated {
-		payload ThingCreated
-	}
-}
-
-service AuditService {
-	consume RecordThing {
-		event ThingCreated
 	}
 }
 `
@@ -94,24 +88,16 @@ events:
       out: ./internal/events
 `
 
-// eventsOnlyDesign declares contracts and a consumer and no route at all,
-// the shape a consumer deployable generates from.
+// eventsOnlyDesign declares contracts and no route at all, the shape a
+// contract library generates from.
 const eventsOnlyDesign = `package gate
 
 type ThingCreated {
 	id string
 }
 
-service ThingService {
-	event ThingCreated {
-		payload ThingCreated
-	}
-}
-
-service AuditService {
-	consume RecordThing {
-		event ThingCreated
-	}
+event ThingCreated {
+	payload ThingCreated
 }
 `
 
@@ -193,15 +179,14 @@ var scaffoldShapes = []scaffoldShape{
 	{
 		// A design with no HTTP method has no server to boot, so no
 		// main.go is scaffolded - the deployable builds its own bus and
-		// calls the generated Register. What IS written still has to
+		// registers the descriptors itself. What IS written still has to
 		// compile on its own.
 		name:     "events only",
 		manifest: eventsOnlyManifest,
 		design:   eventsOnlyDesign,
 		goScaffolds: map[string]string{
-			"internal/events/gate/events.go":   "events.tmpl",
-			"internal/events/gate/handlers.go": "handlers.tmpl",
-			"internal/wiring/wiring.go":        "wiring.tmpl",
+			"internal/events/gate/events.go": "events.tmpl",
+			"internal/wiring/wiring.go":      "wiring.tmpl",
 		},
 		link: true,
 	},

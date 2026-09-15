@@ -50,8 +50,8 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 			scope = "extend " + scope
 		}
 		a.checkDecoratorScope(scope, dd.Decorators)
-		for _, s := range serviceMemberSites(dd) {
-			a.checkDecoratorScope(s.Label(dd.Name), s.Decorators)
+		for _, m := range dd.Methods() {
+			a.checkDecoratorScope(methodLabel(dd.Name, m), m.Decorators)
 		}
 	}
 }
