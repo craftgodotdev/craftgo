@@ -93,7 +93,6 @@ func generateValidators(pkg *semantic.Package, outDir string, r *projectResolver
 		return fmt.Errorf("package has no name")
 	}
 	if !pkgValidates(pkg) {
-		pruneTypesFile(outDir, pkg.Name, "validate.go")
 		return nil
 	}
 	r = resolverFor(pkg, r)

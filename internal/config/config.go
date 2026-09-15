@@ -434,7 +434,7 @@ func Load(path string) (*Config, error) {
 var removedKeys = []struct{ key, note string }{
 	{"design", "a manifest holds its own design folder - generate each deployable from the design beside it"},
 	{"output.services", "a project generates every service its design declares"},
-	{"output.consumeMiddleware", "a subscription's middleware is an events.Chain the application builds and passes to the generated Register function"},
+	{"output.consumeMiddleware", "middleware is installed on the bus with bus.Use, or on one subscription through Subscription.Chain"},
 	{"events.asyncapi", "craftgo writes no asyncapi document"},
 }
 

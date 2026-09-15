@@ -233,7 +233,7 @@ func TestDescriptorPassesNilWithoutAValidateMethod(t *testing.T) {
 
 // Every generated file parses as Go, and the plan names exactly the
 // files the run wrote.
-func TestEventLibraryIsValidGoAndFullyClaimed(t *testing.T) {
+func TestEventLibraryIsValidGoAndFullyPlanned(t *testing.T) {
 	cfg := eventsConfig()
 	proj := analyzeProject(t, ordersSrc, notifySrc)
 	dir := genEvents(t, proj, cfg)
@@ -253,19 +253,17 @@ func TestEventLibraryIsValidGoAndFullyClaimed(t *testing.T) {
 		t.Fatalf("wrote %d files, want one events.go per declaring package: %v", len(written), written)
 	}
 	planned := map[string]bool{}
-	for _, out := range PlannedEventOutputs(proj, cfg, dir, goEventsOut) {
-		for _, f := range out.Files {
-			planned[f] = true
-		}
+	for _, f := range RegeneratedEventFiles(proj, dir, goEventsOut) {
+		planned[f] = true
 	}
 	for f := range written {
 		if !planned[f] {
-			t.Errorf("%s was written but is unclaimed", f)
+			t.Errorf("%s was written but the plan misses it - the sweep would delete it", f)
 		}
 	}
 	for f := range planned {
 		if !written[f] {
-			t.Errorf("%s is claimed but nothing wrote it", f)
+			t.Errorf("%s is planned but nothing wrote it", f)
 		}
 	}
 }

@@ -347,12 +347,10 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 			}
 		}
 	}
-	// With no route left the umbrella is removed, not skipped: a previous
-	// run wrote one, and leaving it behind means a generated file that
-	// calls into per-service packages this run no longer emits - which
-	// `craftgo gen` would then be unable to correct.
+	// With no route left the umbrella is not written, and the sweep takes
+	// the one a previous run wrote: leaving it behind means a generated
+	// file calling into per-service packages this run no longer emits.
 	if len(entries) == 0 {
-		removeGenerated(filepath.Join(projectRoot, cfg.Output.Routes, "routes.go"))
 		return nil
 	}
 	// Stable iteration order: by (service name, group). Service names are

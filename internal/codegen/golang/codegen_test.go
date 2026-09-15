@@ -617,63 +617,24 @@ scalar Email string @format(email)`)
 	}
 }
 
-// The design dropping its last type must not leave the previous run's
-// files behind: they are what an importer would still reach for. Only
-// craftgo's own output goes - a hand-written file in the same directory
-// is left alone, and keeps the directory.
-func TestGenerateTypesRemovesStaleGeneratedFiles(t *testing.T) {
+// The design dropping its last type writes no types.go and no
+// validate.go: the files would carry a package clause and nothing else.
+// What an earlier run put there is the sweep's to take, not the
+// emitter's.
+func TestGenerateTypesWritesNothingWithoutTypes(t *testing.T) {
 	pkg := analyze(t, `package design
 service Health {
 	get Ping /ping {}
 }`)
-	for _, tc := range []struct {
-		name     string
-		handWrit bool
-	}{
-		{"generated only", false},
-		{"alongside a hand-written file", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			pkgDir := filepath.Join(dir, "design")
-			if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			for _, name := range []string{"types.go", "validate.go"} {
-				body := generatedHeader + "\n\npackage design\n\ntype Gone struct{}\n"
-				if err := os.WriteFile(filepath.Join(pkgDir, name), []byte(body), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			mine := filepath.Join(pkgDir, "helpers.go")
-			if tc.handWrit {
-				if err := os.WriteFile(mine, []byte("package design\n\nfunc Helper() {}\n"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			if err := generateTypes(pkg, dir, nil); err != nil {
-				t.Fatal(err)
-			}
-			if err := generateValidators(pkg, dir, nil); err != nil {
-				t.Fatal(err)
-			}
-
-			if !tc.handWrit {
-				if _, err := os.Stat(pkgDir); !os.IsNotExist(err) {
-					t.Fatalf("expected the emptied package directory to go, stat returned %v", err)
-				}
-				return
-			}
-			for _, name := range []string{"types.go", "validate.go"} {
-				if _, err := os.Stat(filepath.Join(pkgDir, name)); !os.IsNotExist(err) {
-					t.Errorf("stale %s survived, stat returned %v", name, err)
-				}
-			}
-			if _, err := os.Stat(mine); err != nil {
-				t.Errorf("hand-written file must be left alone: %v", err)
-			}
-		})
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := generateValidators(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "design")); !os.IsNotExist(err) {
+		t.Errorf("the package directory must be left uncreated, stat returned %v", err)
 	}
 }
 

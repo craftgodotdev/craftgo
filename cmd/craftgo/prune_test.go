@@ -3,10 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-
-	"github.com/craftgodotdev/craftgo/internal/claim"
 )
 
 // storeDesign is the shape a recut exercises: an HTTP service that also
@@ -52,56 +49,20 @@ type Entry {
 }
 `
 
-// claimed reports whether some design claims file under root.
-func claimed(t *testing.T, root, file string) bool {
-	t.Helper()
-	for _, rec := range claim.Read(root) {
-		for _, f := range rec.Files {
-			if f == file {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// rel renders path relative to root for a test message.
-func rel(root, path string) string {
-	out, err := filepath.Rel(root, path)
-	if err != nil {
-		return path
-	}
-	return filepath.ToSlash(out)
-}
-
 func exists(t *testing.T, parts ...string) bool {
 	t.Helper()
 	_, err := os.Stat(filepath.Join(parts...))
 	return err == nil
 }
 
-func read(t *testing.T, path string) string {
-	t.Helper()
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(body)
-}
-
 // treeOf reads every generated file under root, keyed by its path
-// relative to root, so two runs can be compared byte for byte. The claim
-// records are left out: they are the ledger of who generates the
-// directory, and it gains a line as each deployable joins.
+// relative to root, so two runs can be compared byte for byte.
 func treeOf(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) == ".craftgo" || filepath.Base(path) == "craftgo.design.yaml" {
 			return err
-		}
-		if strings.Contains(path, claim.Dir) {
-			return nil
 		}
 		body, readErr := os.ReadFile(path)
 		if readErr != nil {
@@ -159,7 +120,7 @@ func genProject(t *testing.T, dir string) {
 }
 
 // Renaming a service used to leave its application half on disk: the run
-// wrote the new one, pruned nothing, and left a routes file pointing at a
+// wrote the new one, swept nothing, and left a routes file pointing at a
 // transport package it no longer generated - so the project no longer
 // built and `craftgo gen` could not put it right.
 func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
@@ -180,21 +141,17 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 	mustWrite(t, dir, "design/store.craftgo", storeRecut)
 	genProject(t, dir)
 
-	// Every regenerated file of the service that is gone goes, and so
-	// does the claim entry that named them - the only record of what used
-	// to be here.
+	// Every regenerated file of the service that is gone goes, and the
+	// directories the removals empty go with them.
 	if exists(t, dir, "internal", "transport", "orders") {
 		t.Error("the handlers of a renamed service must go - the routes file no longer registers them")
 	}
 	if exists(t, dir, "internal", "routes", "orders") {
 		t.Error("the routes of a renamed service must go")
 	}
-	if claimed(t, filepath.Join(dir, "internal", "transport"), "orders/list_orders.go") {
-		t.Error("the claim must stop naming the handler")
-	}
 
-	// The logic stub is gen-once - the user's own code - so it is never
-	// claimed and never pruned.
+	// The logic stub is gen-once - the user's own code - so its directory
+	// is never swept.
 	if !exists(t, dir, "internal", "service", "orders", "list_orders.go") {
 		t.Error("a gen-once logic stub must survive the service that seeded it")
 	}
@@ -238,9 +195,6 @@ func TestRemovedPackageLosesItsTypesFolder(t *testing.T) {
 	if exists(t, dir, "internal", "types", "audit") {
 		t.Error("a package the design no longer declares must lose its types folder, directory included")
 	}
-	if claimed(t, filepath.Join(dir, "internal", "types"), "audit/types.go") {
-		t.Error("the claim must stop naming the removed package's files")
-	}
 	if !exists(t, dir, "internal", "types", "store", "types.go") {
 		t.Error("the package that survives keeps its types")
 	}
@@ -272,66 +226,64 @@ service Orders {
 	if exists(t, dir, "internal", "events", "store") {
 		t.Error("a design with no event must lose its event library, directory included")
 	}
-	if claimed(t, filepath.Join(dir, "internal", "events"), "store/events.go") {
-		t.Error("the claim must stop naming the library")
-	}
 }
 
-// farmDesign is a second, unrelated design: different package, different
-// contracts.
-const farmDesign = `package farm
+// The sweep goes by the generated header, so a file craftgo did not write
+// survives the run that clears the generated ones around it - and holds
+// its directory open.
+func TestHandWrittenFilesInAnOutputDirectorySurvive(t *testing.T) {
+	dir := storeProject(t, storeDesign)
+	genProject(t, dir)
 
-type Animal {
-	id string @minLength(1)
-}
+	mustWrite(t, dir, "internal/transport/orders/helper.go", "package orders\n\nfunc Helper() {}\n")
+	mustWrite(t, dir, "internal/events/store/notes.go", "package store\n\n// mine\n")
 
-event Fed { payload Animal }
-`
+	mustWrite(t, dir, "design/store.craftgo", storeRecut)
+	genProject(t, dir)
 
-// Two designs pointed at one project root write one another's
-// project-wide files - the wiring package, the container, the documents -
-// each a complete rewrite from its own design's point of view. The second
-// run used to win silently, and which half of the project a binary
-// carried depended on the order of the build.
-func TestTwoDesignsCannotWriteOneProject(t *testing.T) {
-	repo := t.TempDir()
-	mustWrite(t, repo, "go.mod", "module github.com/test/repo\n\ngo 1.24\n")
-	mustWrite(t, repo, "store/design/craftgo.design.yaml", "")
-	mustWrite(t, repo, "store/design/store.craftgo", storeDesign)
-	mustWrite(t, repo, "farm/design/craftgo.design.yaml", "")
-	mustWrite(t, repo, "farm/design/farm.craftgo", farmDesign)
-
-	if err := runGen([]string{"-f", filepath.Join(repo, "store", "design"), "-c", repo}); err != nil {
-		t.Fatalf("the first design must generate: %v", err)
-	}
-	before := read(t, filepath.Join(repo, "internal", "wiring", "wiring.go"))
-
-	err := runGen([]string{"-f", filepath.Join(repo, "farm", "design"), "-c", repo})
-	if err == nil {
-		t.Fatal("a second design writing the first's files must be refused")
-	}
-	// Both designs and both manifests: the design is the identity the
-	// rule turns on, the manifest is the file the user edits.
-	for _, want := range []string{"store/design", "farm/design"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the error must name %q, got: %v", want, err)
-		}
-	}
-
-	for _, want := range []struct{ root, file string }{
-		{filepath.Join(repo, "internal", "wiring"), "wiring.go"},
-		{filepath.Join(repo, "svccontext"), "middlewares.go"},
+	for _, path := range []string{
+		"internal/transport/orders/helper.go",
+		"internal/events/store/notes.go",
 	} {
-		if !claimed(t, want.root, want.file) {
-			t.Errorf("%s/%s is regenerated and must be claimed", rel(repo, want.root), want.file)
+		if !exists(t, dir, filepath.FromSlash(path)) {
+			t.Errorf("%s is hand-written and must survive", path)
 		}
 	}
-
-	// Nothing of the first design's was touched.
-	if got := read(t, filepath.Join(repo, "internal", "wiring", "wiring.go")); got != before {
-		t.Error("the refusal must come before anything is written")
+	if exists(t, dir, "internal", "transport", "orders", "list_orders.go") {
+		t.Error("the handler of the service that is gone must still go")
 	}
-	if exists(t, repo, "internal", "events", "farm") {
-		t.Error("the refused run must write none of its own output either")
+}
+
+// A design that drops its last service loses the whole HTTP half - the
+// per-service routes, the umbrella that registers them, the handlers.
+// Leaving the umbrella behind means a generated file calling into
+// packages the run no longer emits, and the project stops building.
+func TestDroppingTheLastServiceClearsTheHTTPHalf(t *testing.T) {
+	dir := storeProject(t, storeDesign)
+	genProject(t, dir)
+	if !exists(t, dir, "internal", "routes", "routes.go") {
+		t.Fatal("the first run must write the routes umbrella")
+	}
+
+	mustWrite(t, dir, "design/store.craftgo", `package store
+
+type Order {
+	id    string @minLength(1)
+	total int32  @gte(0)
+}
+
+event Placed { payload Order }
+`)
+	genProject(t, dir)
+
+	// The output roots stay - a run that leaves one bare still owns it -
+	// but nothing generated is left inside them.
+	for _, path := range []string{"internal/routes/routes.go", "internal/routes/orders", "internal/transport/orders"} {
+		if exists(t, dir, filepath.FromSlash(path)) {
+			t.Errorf("%s must go with the last service", path)
+		}
+	}
+	if !exists(t, dir, "internal", "events", "store", "events.go") {
+		t.Error("the contracts the design still declares must survive")
 	}
 }

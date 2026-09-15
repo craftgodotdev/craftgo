@@ -105,30 +105,19 @@ service WebService {
 	}
 }
 
-// The routes umbrella is removed when the design stops declaring routes.
-// Skipping the write instead leaves a generated file calling into
-// per-service packages this run no longer emits - and because the emitter
-// returns before it can rewrite anything, `craftgo gen` cannot repair it:
-// the user has to delete the file by hand.
-func TestRoutesUmbrellaGoesWhenTheLastRouteDoes(t *testing.T) {
+// With no route left the umbrella is not written: an events-only design
+// has no per-service package to register, and the file an earlier run
+// left behind is the sweep's to take.
+func TestRoutesUmbrellaIsNotWrittenWithoutRoutes(t *testing.T) {
 	dir := t.TempDir()
 	cfg := eventsConfig()
-	routesDir := filepath.Join(dir, cfg.Output.Routes)
-	if err := os.MkdirAll(routesDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	stale := filepath.Join(routesDir, "routes.go")
-	if err := os.WriteFile(stale, []byte(generatedHeader+"\n\npackage routes\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// An events-only design: every service declares contracts, no method.
 	proj := analyzeProject(t, ordersSrc, notifySrc)
 	if err := generateProjectRoutesUmbrella(proj, cfg, dir); err != nil {
 		t.Fatalf("routes umbrella: %v", err)
 	}
+	stale := filepath.Join(dir, cfg.Output.Routes, "routes.go")
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		body, _ := os.ReadFile(stale)
-		t.Errorf("routes.go survived a design with no route (%v):\n%s", err, body)
+		t.Errorf("an events-only design must write no routes umbrella, stat returned %v", err)
 	}
 }
 

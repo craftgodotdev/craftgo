@@ -66,7 +66,7 @@ func SelectableTargets() []string {
 // OpenAPI projection.
 //
 // targets narrows the run to the named ones; empty runs everything. A
-// target that does not run also does not prune, so a narrowed pass never
+// target that does not run also does not sweep, so a narrowed pass never
 // deletes another target's output.
 func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string, targets ...string) error {
 	sel, err := selection(targets)
@@ -78,12 +78,16 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string, ta
 	if err := validate(proj, cfg); err != nil {
 		return err
 	}
-	// Nothing is written until every file this run regenerates is known
-	// to be this design's to write.
-	outs := plannedOutputs(proj, cfg, projectRoot, sel)
-	if err := checkClaims(outs, cfg, proj.Root, projectRoot); err != nil {
+	if err := emit(proj, cfg, projectRoot, sel); err != nil {
 		return err
 	}
+	return prune(outputDirs(cfg, projectRoot, sel), regeneratedFiles(proj, cfg, projectRoot))
+}
+
+// emit runs the selected targets in order. It is the writing half of a
+// pass; the sweep that follows is what makes what it wrote the whole of
+// what the output directories hold.
+func emit(proj *semantic.Project, cfg *config.Config, projectRoot string, sel map[string]bool) error {
 	if sel[config.LangGo] {
 		if err := golang.Generate(proj, cfg, projectRoot); err != nil {
 			return err
@@ -97,12 +101,7 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string, ta
 			return err
 		}
 	}
-	// The sweep reads what the LAST run claimed, and the record is filed
-	// last because it overwrites that list.
-	if err := pruneClaims(outs, proj.Root); err != nil {
-		return err
-	}
-	return recordClaims(outs, cfg, proj.Root)
+	return nil
 }
 
 // selection turns the requested names into a lookup, rejecting anything
@@ -148,25 +147,18 @@ func GenerateDocuments(proj *semantic.Project, cfg *config.Config, projectRoot s
 // A project whose design declares no event generates nothing.
 func GenerateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	sel, _ := selection(nil)
-	outs := plannedEventOutputs(proj, cfg, projectRoot, sel)
-	if err := checkClaims(outs, cfg, proj.Root, projectRoot); err != nil {
-		return err
-	}
 	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
 		return err
 	}
-	if err := pruneClaims(outs, proj.Root); err != nil {
-		return err
-	}
-	return recordClaims(outs, cfg, proj.Root)
+	return prune(eventOutputDirs(cfg, projectRoot, sel), regeneratedFiles(proj, cfg, projectRoot))
 }
 
 // generateEventTargets is [GenerateEventTargets] narrowed to a selection.
 func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string, sel map[string]bool) error {
 	// A design with no event still runs every target: the artefacts of an
 	// event the design used to declare are exactly what has to go, and a
-	// target that does not run also claims nothing - so nothing would
-	// prune the descriptor left on disk for a contract nobody declares.
+	// target that does not run also does not sweep - so nothing would
+	// take the descriptor left on disk for a contract nobody declares.
 	for _, target := range LangTargets {
 		if !sel[target.Lang] {
 			continue
