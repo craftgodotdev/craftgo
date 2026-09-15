@@ -18,7 +18,9 @@ import (
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/upstream"
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
+	upstreamtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/upstream"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
@@ -606,5 +608,70 @@ func TestUndecodablePayloadNeverReachesLogic(t *testing.T) {
 	}
 	if got := svc.DeliveredTo("RecordClosure"); len(got) != 0 {
 		t.Errorf("malformed payload reached logic: %#v", got)
+	}
+}
+
+// A contract declared `payload T[]` carries a JSON array: the generated
+// descriptor is typed on the slice, the body on the wire is an array, and
+// the whole batch reaches one handler.
+func TestAnArrayPayloadContractRoundTripsABatch(t *testing.T) {
+	transport := memory.New()
+	bus := craftevents.New(
+		craftevents.WithTransport(transport),
+		craftevents.WithCodec(codecjson.Codec{}),
+	)
+	got := make(chan *[]upstreamtypes.PaymentSettledPayload, 1)
+	if err := upstream.PaymentsSettledBatch.Subscribe(bus, "settlements",
+		func(_ context.Context, batch *[]upstreamtypes.PaymentSettledPayload) error {
+			got <- batch
+			return nil
+		}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	batch := &[]upstreamtypes.PaymentSettledPayload{
+		{InvoiceID: "inv-1", Amount: 100},
+		{InvoiceID: "inv-2", Amount: 250},
+	}
+	if err := upstream.PaymentsSettledBatch.Publish(context.Background(), bus, batch); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	transport.Drain()
+
+	select {
+	case delivered := <-got:
+		if len(*delivered) != 2 || (*delivered)[1].InvoiceID != "inv-2" {
+			t.Errorf("delivered %+v", *delivered)
+		}
+	default:
+		t.Fatal("nothing delivered")
+	}
+}
+
+// Every element is validated, with the same validators the element type
+// declares: one broken member fails the publish as a *PayloadError naming
+// the element, and nothing goes out.
+func TestAnArrayPayloadValidatesEveryElement(t *testing.T) {
+	bus := craftevents.New(
+		craftevents.WithTransport(memory.New()),
+		craftevents.WithCodec(codecjson.Codec{}),
+	)
+	err := upstream.PaymentsSettledBatch.Publish(context.Background(), bus,
+		&[]upstreamtypes.PaymentSettledPayload{
+			{InvoiceID: "inv-1", Amount: 100},
+			{InvoiceID: "", Amount: -1},
+		})
+	var payloadErr *craftevents.PayloadError
+	if !errors.As(err, &payloadErr) {
+		t.Fatalf("err = %T %v, want *PayloadError", err, err)
+	}
+	if payloadErr.Event != upstream.PaymentsSettledBatchContract {
+		t.Errorf("the error does not name the contract: %+v", payloadErr)
+	}
+	if !strings.Contains(err.Error(), "item 1") || !strings.Contains(err.Error(), "invoiceId") {
+		t.Errorf("the error names neither the element nor the field: %v", err)
 	}
 }

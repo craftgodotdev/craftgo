@@ -168,14 +168,22 @@ is `nil` when the payload package emits no `validate.go`. A descriptor holds no
 bus - the bus is a parameter at `Placed.Publish(ctx, bus, payload)` - so one
 library serves every deployable.
 
+A `payload T[]` contract is typed on the slice -
+`craftevents.NewEvent[[]types.OrderPlaced](BatchPlacedContract, validateBatchPlaced)` -
+and the file declares `validateBatchPlaced`, which runs each element's own
+`Validate` and names the index that failed; the descriptor turns that into the
+same `*PayloadError` a single payload produces. That validator is the only
+reason the file ever imports `fmt`.
+
 This is the only event file. There is no handler interface, no `Groups` struct
 and no `Register` function: a listener is `Placed.Subscribe(bus, group, fn)`
 written where the bus is built, so which group it joins, what middleware wraps
 it and which process runs it never enter the design. The file imports the event
-runtime and the payload types and nothing else, which is what keeps it
-importable on its own - by the publisher, by a listener, by a project that only
-needs the contract. `@group` nests the HTTP handlers and service stubs; the
-event library is placed per DSL package and is unaffected by it.
+runtime, the payload types and (for an array payload) `fmt`, and nothing else,
+which is what keeps it importable on its own - by the publisher, by a listener,
+by a project that only needs the contract. `@group` nests the HTTP handlers and
+service stubs; the event library is placed per DSL package and is unaffected by
+it.
 
 See [Events](/guide/events) for the whole picture.
 

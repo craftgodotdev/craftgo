@@ -303,6 +303,10 @@ func (e *EventDecl) DeclPos() Pos     { return e.Pos }
 type EventPayload struct {
 	Pos  Pos
 	Type *NamedTypeRef
+	// Array marks `payload Type[]`: the contract carries a JSON array of
+	// Type rather than one of it. Only one dimension is legal, so a bool
+	// says everything a depth would.
+	Array bool
 }
 
 // Path is the parsed representation of a route path. Each segment is either

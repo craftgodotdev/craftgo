@@ -27,7 +27,7 @@ to is Go code, written where its bus is built. See [Events](/guide/events).
 | ----------- | --------------------- | ---------------------------------------- |
 | `request`   | inside method body    | Names the request type                   |
 | `response`  | inside method body    | Names the response type                  |
-| `payload`   | inside event body     | Names the type an event contract carries |
+| `payload`   | inside event body     | Names the type an event contract carries (or an array of it: `Type[]`) |
 
 ## Type keywords
 
@@ -224,7 +224,8 @@ event Placed {
 ```
 
 File level only - a `service` body holds HTTP methods. `payload` names a `type`
-declaration, so every contract has named fields and its own `Validate()`. Events
+declaration, so every contract has named fields and its own `Validate()`;
+`payload OrderPlaced[]` is a contract carrying a JSON array of that type. Events
 have their own namespace, so `type OrderPlaced` and `event OrderPlaced` coexist.
 The wire identity defaults to `<package>.<Event>` and `@contract("...")`
 overrides it. Codegen writes one constant and one descriptor per event; the
@@ -278,5 +279,5 @@ where <decl> is one of:
   [@decorator]* service Name { methods... }
   [@decorator]* extend service Name { methods... }
   [@decorator]* middleware Name
-  [@decorator]* event Name { payload Type }
+  [@decorator]* event Name { payload Type }        // or `payload Type[]` for an array body
 ```

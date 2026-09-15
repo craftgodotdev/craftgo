@@ -90,6 +90,27 @@ func TestEventRules(t *testing.T) {
 			msg:  "not a struct type",
 		},
 		{
+			// An array payload resolves its element exactly as a scalar
+			// one does, so an array of an enum is refused for the same
+			// reason the enum itself is.
+			name: "array payload of a non-struct",
+			src:  "package p\nenum E1 { A }\nevent E { payload E1[] }",
+			code: CodeEventPayloadKind,
+			msg:  "not a struct type",
+		},
+		{
+			name: "payload is a primitive",
+			src:  "package p\nevent E { payload string }",
+			code: CodeEventPayloadKind,
+			msg:  "not a struct type",
+		},
+		{
+			name: "array payload of a primitive",
+			src:  "package p\nevent E { payload string[] }",
+			code: CodeEventPayloadKind,
+			msg:  "not a struct type",
+		},
+		{
 			name: "empty contract name",
 			src:  `package p` + "\n" + `type P { id string }` + "\n" + `@contract("")` + "\n" + `event E { payload P }`,
 			code: CodeEventContractFormat,
@@ -112,6 +133,48 @@ event E { payload P }`,
 				t.Errorf("msg = %q, want it to contain %q", d.Msg, c.msg)
 			}
 		})
+	}
+}
+
+// A contract may carry an array of a declared type: the body on the wire
+// is a JSON array, and everything else about the payload - which package
+// the type lives in, which declaration it is - resolves exactly as a
+// single one does.
+func TestEventPayloadMayBeAnArrayOfAType(t *testing.T) {
+	src := `package orders
+type OrderPlacedPayload { orderId string }
+event BatchPlaced { payload OrderPlacedPayload[] }`
+	expectClean(t, src)
+	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
+	ev, ok := proj.LookupEvent("orders", "BatchPlaced")
+	if !ok {
+		t.Fatal("event did not resolve")
+	}
+	if !ev.PayloadArray {
+		t.Error("PayloadArray is false - the contract reads as a single payload")
+	}
+	if ev.PayloadPkg != "orders" || ev.PayloadName != "OrderPlacedPayload" || ev.Payload == nil {
+		t.Errorf("element = %s.%s (%v), want the declared type", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	}
+}
+
+// The element of an array payload resolves across packages too - the
+// array suffix says nothing about where the type lives.
+func TestArrayPayloadResolvesAcrossPackages(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/shared.craftgo": `package shared
+type Envelope { id string }`,
+		"orders/orders.craftgo": `package orders
+event Batch { payload shared.Envelope[] }`,
+	})
+	proj, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	expectNoDiags(t, diags)
+	ev, ok := proj.LookupEvent("orders", "Batch")
+	if !ok {
+		t.Fatal("event did not resolve")
+	}
+	if !ev.PayloadArray || ev.PayloadPkg != "shared" || ev.PayloadName != "Envelope" || ev.Payload == nil {
+		t.Errorf("payload = []%s.%s (%v, array=%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload, ev.PayloadArray)
 	}
 }
 

@@ -421,6 +421,9 @@ type memberClause struct {
 	keyword string
 	line    int
 	ref     *ast.NamedTypeRef
+	// array prints the `[]` suffix an event payload may carry. A method
+	// clause never sets it - `request`/`response` refuse the suffix.
+	array bool
 }
 
 // memberBody prints the `{ ... }` of a service member: the clause lines
@@ -454,6 +457,9 @@ func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment
 		p.indent()
 		p.write(cl.keyword)
 		p.NamedTypeRef(cl.ref)
+		if cl.array {
+			p.write("[]")
+		}
 		p.writeSourceTrailing(cl.line, false)
 		p.nl()
 		prevEnd = cl.line
@@ -479,10 +485,10 @@ func (p *Printer) Method(m *ast.Method) {
 	}
 	var clauses []memberClause
 	if m.Request != nil {
-		clauses = append(clauses, memberClause{"request  ", m.Request.Pos.Line, m.Request})
+		clauses = append(clauses, memberClause{keyword: "request  ", line: m.Request.Pos.Line, ref: m.Request})
 	}
 	if m.Response != nil {
-		clauses = append(clauses, memberClause{"response ", m.Response.Pos.Line, m.Response.Type})
+		clauses = append(clauses, memberClause{keyword: "response ", line: m.Response.Pos.Line, ref: m.Response.Type})
 	}
 	p.memberBody(clauses, m.BodyComments, m.TrailingDoc)
 }
@@ -495,7 +501,7 @@ func (p *Printer) EventDecl(e *ast.EventDecl) {
 	p.write(e.Name)
 	var clauses []memberClause
 	if e.Payload != nil {
-		clauses = append(clauses, memberClause{"payload ", e.Payload.Pos.Line, e.Payload.Type})
+		clauses = append(clauses, memberClause{keyword: "payload ", line: e.Payload.Pos.Line, ref: e.Payload.Type, array: e.Payload.Array})
 	}
 	p.memberBody(clauses, e.BodyComments, e.TrailingDoc)
 }

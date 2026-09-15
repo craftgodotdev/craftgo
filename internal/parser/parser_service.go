@@ -51,26 +51,55 @@ func (p *Parser) parseExtendService(decs []*ast.Decorator) *ast.ServiceDecl {
 	return p.parseServiceDecl(decs, true)
 }
 
-// rejectMethodTypeSuffix flags a clause type (`request`, `response`,
-// `payload`) written with an array suffix (`Order[]`) or an
-// optional marker (`User?`). Both shapes would silently parse without
-// these checks - `[]`/`?` simply leave the next iteration on a stray
-// token - so the diagnostic explains the gap and steers users to wrap
-// the type in a struct.
+// rejectMethodTypeSuffix flags a method clause type (`request`,
+// `response`) written with an array suffix (`Order[]`) or an optional
+// marker (`User?`). Both shapes would silently parse without these
+// checks - `[]`/`?` simply leave the next iteration on a stray token -
+// so the diagnostic explains the gap and steers users to wrap the type
+// in a struct. An event payload takes one `[]`; see
+// [Parser.parseEventPayloadSuffix].
 func (p *Parser) rejectMethodTypeSuffix(slot string) {
 	t := p.peek()
-	switch t.Kind {
-	case lexer.LBracket:
-		p.errorf(t.Pos, "%s type cannot be a bare array - wrap it in a type (e.g. `type Items { items Order[] }`) and reference that type instead", slot)
-		// consume `[]` so subsequent parsing doesn't compound the error.
-		p.advance()
-		if p.peek().Kind == lexer.RBracket {
-			p.advance()
-		}
-	case lexer.Question:
-		p.errorf(t.Pos, "%s type cannot be optional - omit the `?` (use a struct field with `?` if a nullable payload is needed)", slot)
+	if t.Kind != lexer.LBracket {
+		p.rejectOptionalSuffix(slot)
+		return
+	}
+	p.errorf(t.Pos, "%s type cannot be a bare array - wrap it in a type (e.g. `type Items { items Order[] }`) and reference that type instead", slot)
+	// consume `[]` so subsequent parsing doesn't compound the error.
+	p.advance()
+	if p.peek().Kind == lexer.RBracket {
 		p.advance()
 	}
+}
+
+// rejectOptionalSuffix flags a clause type written with the optional
+// marker (`User?`). No clause takes one: the `?` would make the whole
+// message nullable, which a field inside the type expresses instead.
+func (p *Parser) rejectOptionalSuffix(slot string) {
+	t := p.peek()
+	if t.Kind != lexer.Question {
+		return
+	}
+	p.errorf(t.Pos, "%s type cannot be optional - omit the `?` (use a struct field with `?` if a nullable payload is needed)", slot)
+	p.advance()
+}
+
+// parseEventPayloadSuffix reads the suffix an event payload may carry.
+// One `[]` is legal and sets [ast.EventPayload.Array]: the contract's
+// body is a JSON array of that type. A second dimension has no declared
+// element type to validate, so it is reported and consumed - the inner
+// array goes in a type, as it does for a method clause.
+func (p *Parser) parseEventPayloadSuffix(pl *ast.EventPayload) {
+	for p.peek().Kind == lexer.LBracket {
+		t := p.advance()
+		p.expect(lexer.RBracket)
+		if pl.Array {
+			p.errorf(t.Pos, "payload type cannot be a nested array - a payload is a type or an array of one; wrap the inner array in a type instead")
+			continue
+		}
+		pl.Array = true
+	}
+	p.rejectOptionalSuffix("payload")
 }
 
 // parseServiceMember reads one member of a service body: an HTTP
@@ -187,7 +216,8 @@ func (p *Parser) parseMethod(decs []*ast.Decorator, verb string) *ast.Method {
 	return m
 }
 
-// parseEventDecl reads `event Name { payload Type }`.
+// parseEventDecl reads `event Name { payload Type }`, or `Type[]` for a
+// contract whose body is an array of that type.
 func (p *Parser) parseEventDecl(decs []*ast.Decorator) *ast.EventDecl {
 	t := p.advance()
 	name, _ := p.expect(lexer.Ident)
@@ -201,7 +231,7 @@ func (p *Parser) parseEventDecl(decs []*ast.Decorator) *ast.EventDecl {
 			p.errorf(kw.Pos, "duplicate payload clause in event %q", e.Name)
 		}
 		e.Payload = &ast.EventPayload{Pos: p.peek().Pos, Type: p.parseNamedTypeRef()}
-		p.rejectMethodTypeSuffix("payload")
+		p.parseEventPayloadSuffix(e.Payload)
 		return true
 	}, "payload in event body")
 	e.TrailingDoc, e.BodyComments, e.EndPos = body.TrailingDoc, body.Comments, body.EndPos

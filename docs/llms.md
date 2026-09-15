@@ -29,7 +29,7 @@ package <ident>
   [@decorator]* service Name { members... }
   [@decorator]* extend service Name { members... }
   [@decorator]* middleware Name
-  [@decorator]* event Name { payload Type }
+  [@decorator]* event Name { payload Type }      // or `payload Type[]`
 
 <service member> is one of:
   [@decorator]* <verb> Name [path] { request Type?  response Type? }
@@ -275,6 +275,10 @@ event Shipped { payload OrderShipped }
   (`event/payload-kind` otherwise); a missing `payload` is `event/payload-missing`, a duplicate
   event name `event/duplicate-name`. An `event` inside a `service` body is a syntax error naming
   the move.
+- `payload Type[]` is a contract whose body is a JSON array of that type: the descriptor is
+  typed on the slice (`NewEvent[[]types.Type]`) and the generated validator runs each element's
+  own `Validate`. One dimension only - a nested array, a `?`, a map or a primitive payload is
+  refused.
 - Wire identity is `<package>.<Event>`, overridden by `@contract("orders.placed.v2")`
   (`event/contract-format` on a malformed one). Two events resolving to one identity:
   `event/contract-collision`.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkEvents runs the per-package event rules. Contract uniqueness runs
@@ -48,10 +49,21 @@ func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 }
 
 // checkPayloadKind reports an event payload that resolves to something
-// other than a struct type. Cross-package refs whose package is unknown,
-// and names nothing declares, are left to the reference pass.
+// other than a struct type. An array payload (`payload T[]`) resolves
+// its ELEMENT here, exactly as a scalar one resolves: an array of a
+// declared type is a contract, an array of anything else is not.
+// Cross-package refs whose package is unknown, and names nothing
+// declares, are left to the reference pass.
 func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 	ref := d.Payload.Type.Name.String()
+	if prims.Is(ref) {
+		// A primitive names no declaration, so neither the lookup below
+		// nor the reference pass (which knows the primitive) would say
+		// anything - and the contract would carry an unnamed, unvalidated
+		// body.
+		a.payloadKindDiag(d, ref)
+		return
+	}
 	pkgName, name := splitQualified(ref, a.pkg.Name)
 	home := a.pkg
 	if pkgName != a.pkg.Name {
@@ -67,9 +79,14 @@ func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 		return
 	}
 	if _, isOther := lookupNonType(home, name); isOther {
-		a.diag(d.Payload.Pos, d.Payload.Pos, lexer.SeverityError, CodeEventPayloadKind,
-			"event %q payload %q is not a struct type - a payload must name a `type` declaration so the contract has named fields", d.Name, ref)
+		a.payloadKindDiag(d, ref)
 	}
+}
+
+// payloadKindDiag reports a payload that is not a struct type.
+func (a *analyzer) payloadKindDiag(d *ast.EventDecl, ref string) {
+	a.diag(d.Payload.Pos, d.Payload.Pos, lexer.SeverityError, CodeEventPayloadKind,
+		"event %q payload %q is not a struct type - a payload must name a `type` declaration so the contract has named fields", d.Name, ref)
 }
 
 // lookupNonType reports whether name resolves in pkg to a declaration

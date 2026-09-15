@@ -31,6 +31,10 @@ type ResolvedEvent struct {
 	// generic arguments. Targets render from this - PayloadName alone
 	// drops the arguments, which a generic payload needs.
 	PayloadRef *ast.NamedTypeRef
+	// PayloadArray reports a `payload T[]` contract: the body is an array
+	// of the payload type. PayloadPkg, PayloadName, PayloadRef and Payload
+	// all describe the ELEMENT, resolved exactly as a scalar payload is.
+	PayloadArray bool
 	// Payload is the resolved declaration, nil when the ref did not
 	// resolve (the analyser has already reported that).
 	Payload *ast.TypeDecl
@@ -92,6 +96,7 @@ func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 		return re
 	}
 	re.PayloadRef = d.Payload.Type
+	re.PayloadArray = d.Payload.Array
 	re.PayloadPkg, re.PayloadName = splitQualified(d.Payload.Type.Name.String(), pkg.Name)
 	if home := p.Packages[re.PayloadPkg]; home != nil {
 		re.Payload = home.Types[re.PayloadName]

@@ -18,3 +18,12 @@ type PaymentSettledPayload {
 event PaymentSettled {
 	payload PaymentSettledPayload
 }
+
+// A settlement batch is the same payload, many at a time: the contract
+// carries an array of the type, so the descriptor is typed on the slice
+// and the generated validator runs each element's own Validate.
+@doc("A batch of payments cleared upstream.")
+@contract("payments.settled.batch.v1")
+event PaymentsSettledBatch {
+	payload PaymentSettledPayload[]
+}

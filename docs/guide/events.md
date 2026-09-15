@@ -50,6 +50,15 @@ event Placed {
 its own `Validate()`. Events have their own namespace, so `type OrderPlaced` and
 `event OrderPlaced` coexist.
 
+A payload may also be an **array** of a declared type - a contract whose body on
+the wire is a JSON array, typed on the slice and validated element by element:
+
+```craftgo
+event BatchPlaced {
+    payload OrderPlaced[]
+}
+```
+
 A contract's wire identity defaults to `<package>.<Event>` - `orders.Placed` above -
 and `@contract("order.placed.v2")` overrides it to interoperate with a name another
 system already publishes. Both sides address the contract by that string, and how a

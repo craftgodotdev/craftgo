@@ -284,7 +284,11 @@ func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
 	r := rangeOfPosLen(e.Pos, len("event")+1+len(e.Name))
 	detail := "event " + e.Name
 	if e.Payload != nil && e.Payload.Type != nil && e.Payload.Type.Name != nil {
-		detail += " (" + e.Payload.Type.Name.String() + ")"
+		payload := e.Payload.Type.Name.String()
+		if e.Payload.Array {
+			payload += "[]"
+		}
+		detail += " (" + payload + ")"
 	}
 	return protocol.DocumentSymbol{
 		Name:           e.Name,

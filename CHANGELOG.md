@@ -11,11 +11,13 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **Events in the DSL.** `event Name { payload T }` declares a contract at
   file level; `@contract("subject")` sets its wire identity (default
-  `<package>.<Event>`). A `service` holds HTTP methods only. The design
-  names no listener: which events a deployable consumes, on which group,
-  behind which middleware, is Go code in that deployable. Two reserved
-  words, `event` and `payload`, still usable as identifiers where
-  unambiguous.
+  `<package>.<Event>`). A payload may be an array of a declared type,
+  `payload T[]`, for a contract whose body is a JSON array: the descriptor
+  is typed on the slice and every element is validated in turn. A
+  `service` holds HTTP methods only. The design names no listener: which
+  events a deployable consumes, on which group, behind which middleware,
+  is Go code in that deployable. Two reserved words, `event` and
+  `payload`, still usable as identifiers where unambiguous.
 - **Event codegen, per DSL package under `events.targets[].out`.** One
   file, `events.go`: a `<Name>Contract` constant and an `events.Event[T]`
   descriptor per event, its `@doc` as the Go comment. `output.kind:

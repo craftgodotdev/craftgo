@@ -121,13 +121,57 @@ event E {
 	}
 }
 
-func TestParseEventRejectsArrayPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+// A contract may carry an array of a declared type - a JSON array body -
+// so `payload Order[]` parses, with the suffix recorded on the clause
+// rather than dropped.
+func TestParseEventAcceptsAnArrayPayload(t *testing.T) {
+	e := parseEvent(t, `package p
 event E { payload Order[] }`)
+	if e.Payload == nil || e.Payload.Type == nil {
+		t.Fatalf("payload did not parse: %+v", e)
+	}
+	if got := e.Payload.Type.Name.String(); got != "Order" {
+		t.Errorf("payload type = %q, want the element type Order", got)
+	}
+	if !e.Payload.Array {
+		t.Error("the `[]` suffix was dropped - the payload reads as a single Order")
+	}
+}
+
+// A map is not a payload at all: a contract names a type so its body has
+// named fields, and `map<...>` names none.
+func TestParseEventRejectsMapPayload(t *testing.T) {
+	p := New("test.craftgo", `package p
+event E { payload map<string, int> }`)
 	p.Parse()
 	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be a bare array") {
-		t.Fatalf("want a bare-array diagnostic, got %v", diags)
+	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "expected Ident") {
+		t.Fatalf("want a payload-type diagnostic, got %v", diags)
+	}
+}
+
+// A single dimension is the whole of it: an array of arrays has no
+// declared element type to validate, so it keeps a diagnostic pointing at
+// the wrapper type.
+func TestParseEventRejectsNestedArrayPayload(t *testing.T) {
+	p := New("test.craftgo", `package p
+event E { payload Order[][] }`)
+	p.Parse()
+	diags := p.Diagnostics()
+	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be a nested array") {
+		t.Fatalf("want a nested-array diagnostic, got %v", diags)
+	}
+}
+
+// The `?` marker stays refused on every clause, array payload included:
+// a nullable message is a field of the type, not the type.
+func TestParseEventRejectsOptionalArrayPayload(t *testing.T) {
+	p := New("test.craftgo", `package p
+event E { payload Order[]? }`)
+	p.Parse()
+	diags := p.Diagnostics()
+	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be optional") {
+		t.Fatalf("want an optional-marker diagnostic, got %v", diags)
 	}
 }
 

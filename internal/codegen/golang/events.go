@@ -24,19 +24,29 @@ type eventsData struct {
 	Package string
 	Imports []extraImport
 	Events  []eventDescriptor
+	// UsesFmt is set when the file declares an element validator, the
+	// only thing in it that formats an error.
+	UsesFmt bool
 }
 
 // eventDescriptor is one contract: its subject, and the payload the
 // descriptor is typed on.
 type eventDescriptor struct {
-	Name        string
-	ConstName   string
-	Contract    string
+	Name      string
+	ConstName string
+	Contract  string
+	// PayloadType is the Go type the descriptor carries - the payload
+	// type, or a slice of it for a `payload T[]` contract.
 	PayloadType string
-	// Validate is the method value handed to NewEvent, or `nil` when the
-	// payload type carries no generated Validate.
+	// Validate is what NewEvent is given: the payload type's generated
+	// method value, the element validator the file declares for an array
+	// payload, or `nil` when nothing validates.
 	Validate string
-	Doc      []string
+	// ValidateElems asks the template to declare [eventDescriptor.Validate]:
+	// an array payload has no Validate of its own, so the file carries the
+	// loop that runs the element's.
+	ValidateElems bool
+	Doc           []string
 }
 
 // generatePackageEvents writes pkg's event library under the Go event
@@ -58,13 +68,20 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 			continue
 		}
 		payload := imports.payloadRefType(ev.PayloadRef, typesImport)
+		if ev.PayloadArray {
+			payload = "[]" + payload
+		}
+		validate := validateFunc(ev, r.Proj, payload)
+		elems := ev.PayloadArray && validate != "nil"
+		data.UsesFmt = data.UsesFmt || elems
 		data.Events = append(data.Events, eventDescriptor{
-			Name:        ev.Name,
-			ConstName:   ev.Name + "Contract",
-			Contract:    ev.Contract,
-			PayloadType: payload,
-			Validate:    validateFunc(ev, r.Proj, payload),
-			Doc:         ev.Doc,
+			Name:          ev.Name,
+			ConstName:     ev.Name + "Contract",
+			Contract:      ev.Contract,
+			PayloadType:   payload,
+			Validate:      validate,
+			ValidateElems: elems,
+			Doc:           ev.Doc,
 		})
 	}
 	if len(data.Events) == 0 {
@@ -75,13 +92,18 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 }
 
 // validateFunc renders the validation NewEvent is given: the payload
-// type's generated method value, or `nil` when the type carries none.
-// [pkgValidates] is the same condition validate.go is emitted on, so the
-// descriptor and the file declaring the method cannot disagree.
+// type's generated method value, the name of the element validator this
+// file declares for a `payload T[]` contract (a slice has no method of
+// its own), or `nil` when the type carries none. [pkgValidates] is the
+// same condition validate.go is emitted on, so the descriptor and the
+// file declaring the method cannot disagree.
 func validateFunc(ev semantic.ResolvedEvent, proj *semantic.Project, payloadType string) string {
 	home := proj.Packages[ev.PayloadPkg]
 	if ev.Payload == nil || home == nil || !pkgValidates(home) {
 		return "nil"
+	}
+	if ev.PayloadArray {
+		return "validate" + ev.Name
 	}
 	return "(*" + payloadType + ").Validate"
 }

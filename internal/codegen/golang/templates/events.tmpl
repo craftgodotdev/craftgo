@@ -3,7 +3,9 @@
 package {{.Package}}
 
 import (
-	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
+{{if .UsesFmt}}	"fmt"
+
+{{end}}	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 {{if .Imports}}
 {{range .Imports}}	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
 {{end}}{{end}})
@@ -18,4 +20,16 @@ const {{.ConstName}} = "{{.Contract}}"
 // {{.Name}}.Publish(ctx, bus, payload) sends one; a listener registers
 // {{.Name}}.Subscribe(bus, group, fn) on its own bus.
 var {{.Name}} = craftevents.NewEvent[{{.PayloadType}}]({{.ConstName}}, {{.Validate}})
-{{end}}
+{{if .ValidateElems}}
+// {{.Validate}} validates every element the payload carries. The failing
+// element names its index, and the descriptor turns the error into a
+// *craftevents.PayloadError exactly as it does for a single payload.
+func {{.Validate}}(items *{{.PayloadType}}) error {
+	for i := range *items {
+		if err := (*items)[i].Validate(); err != nil {
+			return fmt.Errorf("item %d: %w", i, err)
+		}
+	}
+	return nil
+}
+{{end}}{{end}}

@@ -65,6 +65,33 @@ event E { payload P }
 	}
 }
 
+// An array payload keeps its `[]`: the suffix lives on the clause, not on
+// the type reference the printer walks, so a missing case silently
+// rewrites the contract into one carrying a single object.
+func TestFormatRoundTripsAnArrayPayload(t *testing.T) {
+	src := `package orders
+
+type OrderPlacedPayload {
+	orderId string
+}
+
+event BatchPlaced {
+	payload OrderPlacedPayload[]
+}
+`
+	out, diags := Format("t.craftgo", src)
+	if len(diags) > 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	if out != src {
+		t.Errorf("not round-tripped.\n--- want ---\n%s\n--- got ---\n%s", src, out)
+	}
+	again, _ := Format("t.craftgo", out)
+	if again != out {
+		t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, again)
+	}
+}
+
 // A contract declared outside a service is a top-level declaration; the
 // printer must round-trip it. A missing case in the decl switch drops the
 // declaration silently, which is the failure mode the formatter exists to
