@@ -20,7 +20,7 @@ and `anyOf: [{$ref}, {type: "null"}]` for named/generic refs - not the removed
 client generators (hey-api, openapi-typescript) keep the `| null` union instead
 of silently dropping it.
 
-The rest of this page walks through what's emitted and how to render or consume it.
+The rest of this page walks through what's emitted and how to render or publish it.
 
 ## What gets generated
 

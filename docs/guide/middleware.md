@@ -11,7 +11,7 @@ This page is the **HTTP** side. Event consumers have their own middleware - a di
 [ 2 ] Declared middleware - DSL keyword + @middlewares(...) - per-service or per-method
 ```
 
-(For consumers: an `events.Chain` built in ordinary Go where the bus is, covered in the [events guide](/guide/events#middleware).)
+(For consumers: `bus.Use(...)` is the same idea on the events side - a chain built in ordinary Go where the bus is, covered in the [events guide](/guide/events#middleware).)
 
 Use **runtime middleware** for cross-cutting concerns that apply globally regardless of the API contract: access log, OTel, recovery.
 

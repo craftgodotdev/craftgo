@@ -1,9 +1,0 @@
-{
-  "design": "../design",
-  "manifests": [
-    "../design"
-  ],
-  "files": [
-    "openapi.yaml"
-  ]
-}

@@ -29,18 +29,17 @@ package <ident>
   [@decorator]* service Name { members... }
   [@decorator]* extend service Name { members... }
   [@decorator]* middleware Name
+  [@decorator]* event Name { payload Type }
 
 <service member> is one of:
   [@decorator]* <verb> Name [path] { request Type?  response Type? }
-  [@decorator]* event Name { payload Type }
-  [@decorator]* consume Name { event Ref }
 ```
 
 Files in the same directory share `package` and see each other's declarations. Cross-directory references qualify with the target package's name (`shared.Type`); no import statement is needed (an `import "<sibling-dir>"` line is still accepted but deprecated).
 
-## Keywords (18)
+## Keywords (17)
 
-`package`, `import`, `type`, `enum`, `error`, `scalar`, `service`, `extend`, `middleware`, `request`, `response`, `event`, `consume`, `payload`, `map`, `true`, `false`, `null`. Plus HTTP verbs (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`).
+`package`, `import`, `type`, `enum`, `error`, `scalar`, `service`, `extend`, `middleware`, `request`, `response`, `event`, `payload`, `map`, `true`, `false`, `null`. Plus HTTP verbs (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`).
 
 A reserved word is still legal where the grammar leaves no ambiguity: as a field name in a type body, as an enum value name, as a decorator argument naming a field, and as a path segment or path-parameter name.
 
@@ -255,9 +254,9 @@ svc.AuthRequired = middleware.NewAuthRequiredMiddleware()
 
 ## Events
 
-The design is a **contract catalogue** plus **handler interfaces** - what is on the wire, and who
-consumes it. Groups, middleware, transport and delivery settings are the application's and never
-appear in the DSL.
+The design is a **contract catalogue** - what is on the wire, and nothing else. Which events a
+deployable listens to, on which group, behind which middleware, is that deployable's own Go: the
+design never names a listener, a broker, a group or a codec.
 
 ```craftgo
 package orders
@@ -266,70 +265,81 @@ type OrderPlaced  { orderId string @minLength(1)  total int64 @gte(0) }
 type OrderShipped { orderId string  carrier string }
 
 @doc("Emitted once an order is accepted.")
-event Placed { payload OrderPlaced }              // file level
+event Placed { payload OrderPlaced }              // file level - a service body is HTTP only
 
-service OrderService {
-    post PlaceOrder /orders { request PlaceOrderReq  response Order }
-    event Shipped { payload OrderShipped }        // or in a service - same output
-}
+@contract("order.shipped.v2")
+event Shipped { payload OrderShipped }
 ```
 
-```craftgo
-package notifications
-
-service Notifier {
-    consume SendReceipt { event orders.Placed }   // qualified: another package's contract
-}
-```
-
-- `event Name { payload Type }` - `Type` must name a `type` declaration (`event/payload-kind`
-  otherwise). File level or inside a `service`: the position no longer changes what is generated,
-  and an event in a service no longer means that service publishes it.
-- Wire identity is `<package>.<Event>`, overridden by `@contract("orders.placed.v2")`. Two events
-  resolving to one identity: `event/contract-collision`.
-- `consume Name { event Ref }` - one method on the generated handler interface. `Ref` is bare or
-  `pkg.Event`; absent is `consumer/event-missing`, unresolvable `consumer/event-unknown`. Consume
-  names are unique within their service.
-- Events and consumers have their own namespaces (`type OrderPlaced` and `event OrderPlaced`
-  coexist), merge across `extend service`, and take `@doc` / `@deprecated`. `@group` is HTTP-only.
+- `event Name { payload Type }` at **file level**. `Type` must name a `type` declaration
+  (`event/payload-kind` otherwise); a missing `payload` is `event/payload-missing`, a duplicate
+  event name `event/duplicate-name`. An `event` inside a `service` body is a syntax error naming
+  the move.
+- Wire identity is `<package>.<Event>`, overridden by `@contract("orders.placed.v2")`
+  (`event/contract-format` on a malformed one). Two events resolving to one identity:
+  `event/contract-collision`.
+- Events have their own namespace (`type OrderPlaced` and `event OrderPlaced` coexist) and take
+  `@contract`, `@doc` and `@deprecated` - nothing else. `@group` is HTTP-only.
 - Removed, each rejected with `decorator/removed` and a migration note: `@key`, the decorator that
   named a consumer's broker group, the one that named its middleware, and the standalone
-  consumer-middleware declaration. A group and a `Chain` are arguments to `Register<Svc>Handler`.
+  consumer-middleware declaration. The listener declaration they sat on went with them, and a
+  service body still holding one is a syntax error saying where the listener lives now.
 
-Generated per DSL package under an `events.targets[].out`, and nothing else - no publisher, no
-consumer stub, no event field on `svccontext`, no `internal/transport/events.go`:
+Generated per DSL package that declares an event, under an `events.targets[].out`, and nothing
+else - no handler interface, no `Groups`, no `Register<Svc>Handler`, no publisher, no consumer
+stub, no event field on `svccontext`, no `internal/transport/events.go`:
 
 ```go
-// <out>/orders/events.go - GEN every run, when the package declares an event
+// <out>/orders/events.go - GEN every run, the only event file
+// PlacedContract is the wire identity of Placed.
+// Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
-var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 
-// <out>/notifications/handlers.go - GEN every run, when a service in the package consumes
-type NotifierHandler interface {                                     // payload decoded + validated
-	SendReceipt(ctx context.Context, payload *orders.OrderPlaced) error
-}
-type NotifierGroups struct{ Default, SendReceipt craftevents.Group }  // empty field -> Default
-func RegisterNotifierHandler(bus *craftevents.Bus, h NotifierHandler,
-	chain craftevents.Chain, groups NotifierGroups) error             // one bus.Register per consume
+// Emitted once an order is accepted.       <- @doc replaces the generated comment
+//
+// Placed is the orders.Placed contract.
+// Placed.Publish(ctx, bus, payload) sends one; a listener registers
+// Placed.Subscription(bus, group, fn) on its own bus.
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
 A descriptor holds no bus - it is a parameter at every call, so one contract package serves every
-deployable, and `wiring.Register` / `svccontext` / `main.go` keep only their HTTP duties:
+deployable, and `wiring.Register` / `svccontext` / `main.go` keep only their HTTP duties. The
+listener half is hand-written Go, one line per event:
 
 ```go
+// internal/handler/orders/handler.go - groups as values beside the registrations
+var (
+	Group        = craftevents.Group("order-worker")
+	ReceiptGroup = craftevents.Group("order-receipts")
+)
+
+func Register(bus *craftevents.Bus, svcCtx *svccontext.ServiceContext) error {
+	l := logic.New(svcCtx)
+	return bus.RegisterAll(                                    // stops at the first refusal
+		orders.Placed.Subscription(bus, Group, l.OrderPlaced), // fn: (ctx, *types.OrderPlaced) error
+		orders.Shipped.Subscription(bus, Group, l.OrderShipped),
+		payments.Captured.Subscription(bus, ReceiptGroup, l.PaymentCaptured),
+	)
+}
+
+// main.go
 bus := craftevents.New(
 	craftevents.WithTransport(memory.New()),      // or a broker adapter
 	craftevents.WithCodec(codecjson.Codec{}),     // or protobuf / msgpack / ...
-	craftevents.WithMiddleware(logging.AccessLog(logger)),
 )
-err := notifications.RegisterNotifierHandler(bus, h, craftevents.Chain{retry},
-	notifications.NotifierGroups{Default: "notifier"})  // both group fields empty -> error
-err = bus.Start(ctx)                                   // the whole batch, in one call
+bus.Use(logging.AccessLog(logger), retry, timeout)  // bus-wide chain; panics after Start
+err := handler.RegisterAll(bus, svcCtx)
+err = bus.Start(ctx)                                // the whole batch, in one call
 
 err = ordersevents.Placed.Publish(ctx, bus, payload, craftevents.WithKey(payload.OrderID))
 err = bus.Publish(ctx, ordersevents.PlacedContract, payload)  // the untyped path
 
+func (e Event[T]) Subscription(bus *Bus, group Group,
+	fn func(ctx context.Context, payload *T) error) Subscription  // no consumer, no chain param
+func (b *Bus) Use(mws ...Middleware)             // append to the bus chain; panics after Start
 func (b *Bus) Register(sub Subscription) error   // refused once started
+func (b *Bus) RegisterAll(subs ...Subscription) error
 func (b *Bus) Start(ctx context.Context) error
 func (b *Bus) Plan() Plan                        // groups -> consumers, stable order
 func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error
@@ -339,11 +349,18 @@ type Subscription struct{ Event, Consumer string; Group Group; Chain Chain; Hand
 type Subscriber interface{ Subscribe(ctx context.Context, subs []Subscription) error } // batch only
 ```
 
-`Register` refuses a started bus, a nil `Handle`, an empty `Group` (`ErrNoGroup` - no fallback), a
-contract with no codec, a disposition the transport cannot honour, and a duplicate `(Event, Group)`;
-whether the BROKER accepts the set is `Start`'s answer. A second `Start` or a later `Register` is
-`ErrStarted`, even after one that failed. `Plan()` works either side of `Start` and marshals in
-stable order - pin it in a golden file to state a deployable's consumption.
+`Group` is a named type with no fallback - declare the groups as values beside the registrations.
+`Consumer` defaults to the contract and names the handler in `Plan` and in a `*PanicError` only;
+set it on the value before registering when two subscriptions of one contract need telling apart.
+`Subscription.Chain` is the same kind of exception, for one registration that needs a wrap the rest
+of the deployable does not; it is applied inside the bus chain.
+
+`Register` refuses a started bus, a nil `Handle`, an empty `Group` (`ErrNoGroup`), a contract with
+no codec, a disposition the transport cannot honour, and a duplicate `(Event, Group)`; whether the
+BROKER accepts the set is `Start`'s answer. A second `Start` or a later `Register` is `ErrStarted`,
+even after one that failed. `Plan()` works either side of `Start` and marshals in stable order -
+pin it in a golden file (`memory.New()` + `RegisterAll` in a test) and it is the listener map no
+generated file states any more.
 
 The ordering key is a publish option, not a design decision; without one a publish is keyless.
 `WithDedupID`, `WithHeader(k, v)` and `WithAdapterOption(adapter, k, v)` are the rest;
@@ -354,12 +371,14 @@ codec, `logging` the shipped consumer middleware, `kafka` and `nats` broker adap
 Metadata is the publisher's to set, on `Envelope.Metadata`, so a message carrying any is a
 one-envelope `Bus.PublishAll` (`Bus.Publish` takes none). `events.IsReservedMeta` names the keys
 that are not a caller's - `MetaCodec` (`content-codec`) and anything under `MetaPrefix` (`craftgo-`);
-an entry under one is dropped silently. A handler method gets the decoded payload, so metadata is
-read in a middleware or a hand-written `Subscription`.
+an entry under one is dropped silently. A handler is given the decoded payload, so metadata is read
+in a middleware or a hand-written `Subscription`.
 
 Consumer middleware is ordinary Go, never declared in the DSL: `func(sub Subscription, next Handler)
-Handler`, folded outermost-first into a `Chain`. `WithMiddleware` installs one bus-wide; the `chain`
-argument of `Register<Svc>Handler` becomes `Subscription.Chain`, applied inside it.
+Handler`, folded outermost-first. `WithMiddleware(mws...)` installs it at construction, `bus.Use`
+appends to the same chain afterwards (for a chain built out of a service context); `Use` after
+`Start` panics. Order: recover outermost, then the bus chain, then `Subscription.Chain`, then the
+handler.
 
 `Bus.Start` wraps every handler in a recover, so a panicking consumer reaches the transport's error
 handler as a `*events.PanicError` and delivery continues. A payload that would not decode or failed
@@ -399,8 +418,8 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 | Decorator                    | Sites                                                        | Args                      |
 | ---------------------------- | ------------------------------------------------------------ | ------------------------- |
-| `@doc("...")`                | any level (file, type, field, service, method, enum, error, scalar, middleware, event, consumer, enumValue, errorField) | `(string)` |
-| `@deprecated`                | file, type, field, service, method, enumValue, middleware, event, consumer, errorField | `()` or `(string)`        |
+| `@doc("...")`                | any level (file, type, field, service, method, enum, error, scalar, middleware, event, enumValue, errorField) | `(string)` |
+| `@deprecated`                | file, type, field, service, method, enumValue, middleware, event, errorField | `()` or `(string)`        |
 | `@example(value)`            | field, errorField                                            | literal (string/int/float/bool/null) or array - **not** an object |
 | `@requiresOneOf(a, b, ...)`  | type                                                         | idents (or array literal) |
 | `@mutuallyExclusive(a, ...)` | type                                                         | idents (or array literal) |
@@ -495,12 +514,12 @@ Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`. `@default` on a non-optional field fires `decorator/default-needs-optional` (warning; formatter auto-fixes on save).
 
-### Event / consumer level
+### Event level
 
 | Decorator          | Sites    | Args                  | Effect                                                                                     |
 | ------------------ | -------- | --------------------- | ------------------------------------------------------------------------------------------ |
 | `@contract("...")` | event    | `(string)`            | Override the wire identity. Default `<package>.<Event>`.                                     |
-| `@doc` / `@deprecated` | event, consumer | see above  | Carried onto the generated descriptor / handler method.                                      |
+| `@doc` / `@deprecated` | event | see above         | `@doc` replaces the descriptor's generated comment. Nothing else applies at event level.     |
 
 ## CLI
 
@@ -562,14 +581,13 @@ The Go module path is **not** in this file. craftgo reads it from `go.mod` at ge
 
 `output.kind: contracts` generates only what other projects import - payload types, the event library and the documents - and stops before the application half. Its defaults move out of `internal/`, which Go forbids importing across modules: `output.types: ./gen/types` and `events.targets[].out: ./gen/events`.
 
-### `.craftgo-gen/` - who generated what
+### Stale output is pruned
 
-Every REGENERATED file (the ones carrying `DO NOT EDIT`) is claimed by the design it came from. Each output directory holds `.craftgo-gen/<design>.json` listing the design, the manifests generating through it, and its files. Commit them.
+A generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents - is the whole record. At the end of a run craftgo walks the output directories the manifest names, deletes every file carrying that header the run did not write, and removes the directories that leaves empty. It covers transport, routes, wiring, `svccontext/middlewares.go`, the event packages, a removed DSL package's `output.types` folder and the OpenAPI document. Nothing is stored on the side.
 
-- Two DIFFERENT designs writing one file is an error, reported before anything is written and naming both designs and both manifests.
-- Two manifests reading ONE design file one claim, so the deployables of a shared design may write the contract half together.
-- A prune removes only what the same design produced on its last run, across every regenerated output - transport, routes, wiring, `svccontext/middlewares.go`, the event packages, a removed DSL package's `output.types` folder, the OpenAPI document - and only while the file still carries its `DO NOT EDIT` header.
-- Gen-once scaffolds are never claimed: they are written only when missing.
+- An output directory belongs to **exactly one design**. Two different designs writing into one directory delete each other's output; share contracts through an `output.kind: contracts` project the deployables import. (Two manifests generating the *same* design into one directory is fine - they write the same files.)
+- Gen-once territory is never walked: `output.service`, `output.middleware`, `output.config` and `main.go` are written only when missing, and neither those directories nor the project root is swept.
+- Strip the header and the sweep stops seeing the file - it survives a design that no longer produces it, but the next run still overwrites it if the design names that path.
 
 ### `openapi.basePath`
 
@@ -652,9 +670,8 @@ project/
 │   │   ├── validate.go
 │   │   ├── enums.go
 │   │   └── errors.go
-│   ├── events/<pkg>/                             GEN every run (when events are declared)
-│   │   ├── events.go
-│   │   └── handlers.go
+│   ├── events/<pkg>/                             GEN every run (when the package declares an event)
+│   │   └── events.go
 │   ├── transport/<svc>/                          GEN every run
 │   │   └── <method>.go
 │   ├── service/<svc>/<method>.go           GEN ONCE

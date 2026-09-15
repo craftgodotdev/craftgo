@@ -1,6 +1,6 @@
 # Keywords
 
-The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifiers cannot use these names, with the contextual carve-outs noted below.
+The DSL has 17 keywords plus the seven HTTP verbs. They are reserved - identifiers cannot use these names, with the contextual carve-outs noted below.
 
 ## Declaration keywords
 
@@ -17,6 +17,10 @@ The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifie
 | `middleware` | top level   | Declare a named middleware slot                               |
 | `event`      | top level   | Declare an event contract this package owns                   |
 
+A `service` body holds HTTP methods only. `event` is a file-level declaration
+and there is no consumer declaration at all - which events a deployable listens
+to is Go code, written where its bus is built. See [Events](/guide/events).
+
 ## Member body keywords
 
 | Keyword     | Where                 | Purpose                                  |
@@ -24,9 +28,6 @@ The DSL has 18 keywords plus the seven HTTP verbs. They are reserved - identifie
 | `request`   | inside method body    | Names the request type                   |
 | `response`  | inside method body    | Names the response type                  |
 | `payload`   | inside event body     | Names the type an event contract carries |
-| `event`     | inside service body   | Same declaration, written beside the service that cares about it - the position changes nothing |
-| `event`     | inside consumer body  | Names the contract a consumer handles    |
-| `consume`   | inside service body   | Declare a consumer of a contract          |
 
 ## Type keywords
 
@@ -210,6 +211,27 @@ Declared at file (package) level. Codegen produces a typed slot on `ServiceConte
 
 See [Middleware](/guide/middleware).
 
+## `event`
+
+Declare an event contract this package owns:
+
+```craftgo
+@doc("Emitted once an order is accepted.")
+@contract("order.placed.v2")
+event Placed {
+    payload OrderPlaced
+}
+```
+
+File level only - a `service` body holds HTTP methods. `payload` names a `type`
+declaration, so every contract has named fields and its own `Validate()`. Events
+have their own namespace, so `type OrderPlaced` and `event OrderPlaced` coexist.
+The wire identity defaults to `<package>.<Event>` and `@contract("...")`
+overrides it. Codegen writes one constant and one descriptor per event; the
+listener side is ordinary Go against the bus.
+
+See [Events](/guide/events).
+
 ## `request` and `response`
 
 Used inside a method body to name the request and response types:
@@ -256,4 +278,5 @@ where <decl> is one of:
   [@decorator]* service Name { methods... }
   [@decorator]* extend service Name { methods... }
   [@decorator]* middleware Name
+  [@decorator]* event Name { payload Type }
 ```

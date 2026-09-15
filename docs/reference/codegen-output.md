@@ -26,9 +26,8 @@ internal/
 │   └── <method>.go              http.HandlerFunc per method
 ├── service/<svc>/               GEN-ONCE - your business logic
 │   └── <method>.go              the stub you fill in
-├── events/<pkg>/                REGEN - one folder per DSL package
-│   ├── events.go                contract constant + descriptor per event
-│   └── handlers.go              handler interface, groups, Register per consuming service
+├── events/<pkg>/                REGEN - one folder per DSL package declaring an event
+│   └── events.go                contract constant + descriptor per event
 ├── routes/
 │   ├── routes.go                REGEN - umbrella RegisterAll
 │   └── <svc>/routes.go          REGEN - per-service RegisterRoutes
@@ -50,9 +49,10 @@ docs/openapi.yaml                REGEN - OpenAPI 3.1 spec
 main.go                          GEN-ONCE - wired entry point
 ```
 
-The two `events/<pkg>/` files are written per DSL **package**, not per service:
-`events.go` when the package declares an event, `handlers.go` when a service in
-it consumes one. A package that does neither leaves no folder behind.
+`events/<pkg>/events.go` is written per DSL **package**, not per service, and
+only when that package declares an event. A package that declares none leaves no
+folder behind, and no second event file exists: which events a deployable
+listens to is its own Go.
 
 Here `<method>` / `<svc>` / `<name>` render in the case set by `output.fileCase`
 (**snake_case** by default, so `create_user.go` and `user_service/`; `kebab` and
@@ -146,39 +146,36 @@ Wires the `ServiceContext`, the `server.Server`, route registration, middleware,
 ### `events/<pkg>/events.go` (regen)
 
 The contract descriptors of one DSL package, written when it declares at least
-one `event` - wherever the declaration sits, at file level or inside a
-`service` body. Per event: a `<Name>Contract` constant holding the wire
-identity (`<package>.<Event>` unless `@contract("...")` names another), and one
+one `event`. Per event: a `<Name>Contract` constant holding the wire identity
+(`<package>.<Event>` unless `@contract("...")` names another), and one
 `events.Event[T]` descriptor bound to the payload type and its `Validate()`:
 
 ```go
+// PlacedContract is the wire identity of Placed.
+// Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
 
+// Emitted once an order is accepted.
+//
+// Placed is the orders.Placed contract.
+// Placed.Publish(ctx, bus, payload) sends one; a listener registers
+// Placed.Subscription(bus, group, fn) on its own bus.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
-The validator argument is `nil` when the payload package emits no
-`validate.go`. A descriptor holds no bus - the bus is a parameter at
-`Placed.Publish(ctx, bus, payload)` - so one library serves every deployable.
+`@doc("...")` replaces the descriptor's leading comment. The validator argument
+is `nil` when the payload package emits no `validate.go`. A descriptor holds no
+bus - the bus is a parameter at `Placed.Publish(ctx, bus, payload)` - so one
+library serves every deployable.
 
-### `events/<pkg>/handlers.go` (regen)
-
-The application-facing half, written when a service in the package consumes a
-contract that resolves. Per consuming service, three declarations:
-
-| Declaration | Shape |
-|---|---|
-| `<Svc>Handler` | The interface you implement - one `(ctx, payload *types.X) error` method per `consume`, payload decoded and validated before it runs |
-| `<Svc>Groups` | A `Default` field plus one field per consume; a field left empty falls back to `Default` |
-| `Register<Svc>Handler(bus, h, chain, groups) error` | Registers one subscription per consume, each behind `chain`; nothing is delivered until `bus.Start` |
-
-Both files import only the event runtime and the payload types, which is what
-keeps the library importable on its own - by the publisher, by a consumer, by a
-project that only needs the contract. Delivery is not in them: which group each
-consume joins, what middleware wraps it and which process runs what are the
-application's to decide and arrive as arguments. `@group` nests the HTTP
-handlers and service stubs; the event library is placed per DSL package and is
-unaffected by it.
+This is the only event file. There is no handler interface, no `Groups` struct
+and no `Register` function: a listener is `Placed.Subscription(bus, group, fn)`
+written where the bus is built, so which group it joins, what middleware wraps
+it and which process runs it never enter the design. The file imports the event
+runtime and the payload types and nothing else, which is what keeps it
+importable on its own - by the publisher, by a listener, by a project that only
+needs the contract. `@group` nests the HTTP handlers and service stubs; the
+event library is placed per DSL package and is unaffected by it.
 
 See [Events](/guide/events) for the whole picture.
 

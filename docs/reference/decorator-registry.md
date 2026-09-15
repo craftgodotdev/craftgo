@@ -15,15 +15,14 @@ A decorator's **level** is where it may be written. Applying one at the wrong le
 | error / error-field | `error` declaration / a field in its body |
 | scalar | `scalar` declaration |
 | middleware | `middleware` declaration |
-| event | an `event` declaration, at file level or inside a `service` |
-| consumer | a `consume` inside a `service` |
+| event | an `event` declaration (file level) |
 
 ## Documentation & lifecycle
 
 | Decorator | Levels | Args | Effect |
 |---|---|---|---|
 | `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in the OpenAPI `description` and IDE hover. |
-| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, consumer, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
+| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
 | `@example(v)` | field | `(literal \| {k: v})` | Example value rendered in the field's OpenAPI schema. |
 | `@version("1.2.3")` | file | `(string)` | OpenAPI document version (overrides `openapi.version` in the manifest). |
 
@@ -142,9 +141,9 @@ See the [Events guide](/guide/events) for the full picture.
 |---|---|---|
 | `@contract("order.placed.v2")` | `(string)` | Override the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes. Two events resolving to one name raise `event/contract-collision`. |
 
-`@doc` and `@deprecated` also apply at event and consumer level; nothing else does.
+`@doc` and `@deprecated` also apply at event level; nothing else does.
 
-`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed. All three are the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), and the group and the chain are arguments to the generated `Register<Service>Handler` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
+`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed - as has the listener declaration they sat on. All of it is the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), the group is an argument to `orders.Placed.Subscription(bus, group, fn)`, and the chain is `bus.Use(...)` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
 
 ## Not supported
 

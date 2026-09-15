@@ -235,7 +235,7 @@ type Group string // the broker identity: Kafka group, NATS queue group, JetStre
 
 type Subscription struct {
 	Event    string // the contract, matching Message.Event
-	Consumer string // the handler's design-declared name; diagnostics and Plan only
+	Consumer string // names the handler in diagnostics and Plan; defaults to the contract
 	Group    Group  // the broker identity; Register refuses an empty one
 	Chain    Chain  // this subscription's own middleware, applied inside the bus chain
 	Handle   Handler
@@ -271,6 +271,7 @@ fails rather than picking an encoding.
 
 ```go
 func (b *Bus) Register(sub Subscription) error
+func (b *Bus) RegisterAll(subs ...Subscription) error
 func (b *Bus) Start(ctx context.Context) error
 
 type RegisterError struct {
@@ -290,8 +291,11 @@ carrying the offending subscription, so `errors.Is(err, events.ErrNoGroup)`
 reaches the reason while the message still names which consumer. Whether the
 *broker* accepts the set is the transport's answer, and it comes from `Start`.
 
-The generated `Register<Service>Handler(bus, h, chain, groups)` is what calls it:
-one `Register` per `consume` the design declares.
+`RegisterAll` registers in order and stops at the first refusal, returning it, so
+one module states its whole consumption as a single call and a refusal still names
+the line that broke. The subscriptions before it stay registered and the ones after
+it were never offered; nothing has started, so a caller returning the error abandons
+the bus.
 
 `Start` hands every registered subscription to the transport in **one** call,
 each handler already wrapped: a recover outermost, then the bus-wide chain, then
@@ -320,7 +324,7 @@ func NewEvent[T any](contract string, validate func(*T) error) Event[T]
 func (e Event[T]) Contract() string
 func (e Event[T]) Publish(ctx context.Context, bus *Bus, payload *T, opts ...PublishOption) error
 func (e Event[T]) Handler(bus *Bus, fn func(ctx context.Context, payload *T) error) Handler
-func (e Event[T]) Subscription(bus *Bus, consumer string, group Group, chain Chain,
+func (e Event[T]) Subscription(bus *Bus, group Group,
 	fn func(ctx context.Context, payload *T) error) Subscription
 ```
 
@@ -328,7 +332,13 @@ func (e Event[T]) Subscription(bus *Bus, consumer string, group Group, chain Cha
 first and sends nothing when that fails - the contract is refused where it is
 broken rather than at every consumer. `Handler` adapts a typed function to the
 untyped one a transport delivers to, decoding and validating before it runs.
-`Subscription` is what generated registration code hands to `Register`.
+
+`Subscription` is one line of an application's consumption, handed to `Register` or
+`RegisterAll`. It takes neither a consumer nor a chain: the middleware every handler
+runs behind belongs on the bus through [`Use`](#consumer-middleware), and `Consumer`
+defaults to the contract. A caller who needs either - two subscriptions of one
+contract to tell apart, one handler to wrap alone - sets the field on the value
+before registering it.
 
 The bus is a parameter at every call and never a field: a descriptor is a value
 in a contract package and knows nothing about how any deployable is wired, so one
@@ -549,7 +559,8 @@ failure is a middleware's decision.
 type Middleware func(sub Subscription, next Handler) Handler
 type Chain []Middleware
 
-func WithMiddleware(mws ...Middleware) Option // install on the bus
+func WithMiddleware(mws ...Middleware) Option // install on the bus at construction
+func (b *Bus) Use(mws ...Middleware)          // append to the same chain afterwards
 
 func NewChain(mws ...Middleware) Chain
 func (c Chain) Append(mws ...Middleware) Chain
@@ -559,12 +570,19 @@ func Recover() Middleware
 
 `WithMiddleware` installs the chain every subscription registered through the bus
 is wrapped in, outermost first. The bus is the seam that covers all of them
-because every subscription passes through `Bus.Register` - a generated
-`Register<Service>Handler`, a hand-built `Subscription`, and one built against
-another design's contracts alike. A subscription's own `Chain` is applied
-*inside* this one, so a bus-wide concern - logging, tracing - still sees what a
-per-consumer chain did. Repeating the option appends. Nothing is generated for
-any of it.
+because every subscription passes through `Bus.Register` - a descriptor's
+`Subscription`, a hand-built one, and one built against another design's contracts
+alike. A subscription's own `Chain` is applied *inside* this one, so a bus-wide
+concern - logging, tracing - still sees what a per-consumer chain did. Repeating the
+option appends. Nothing is generated for any of it.
+
+`Bus.Use(mws...)` appends to that same chain after construction, for a deployable
+whose delivery chain is assembled out of a service context or out of configuration
+rather than held back until the `New` call. `Use` after `Start` **panics**: the batch
+has gone to the transport with its handlers already wrapped, so a middleware arriving
+then would cover nothing at all and say nothing about it - a wiring mistake to fix in
+the code, like `net/http`'s `ServeMux` on a duplicate pattern, rather than an
+`ErrStarted` for the caller to handle.
 
 Each middleware is handed the `Subscription` it wraps, so one chain can read the
 contract, the consumer and the group it is running for.

@@ -45,7 +45,7 @@ design/
 
 Files in the same subfolder share one package and see each other's declarations directly. To use a declaration from another subfolder, just qualify it with that package's name (`shared.Type`) - cross-package references resolve automatically, no import needed.
 
-## Six declaration kinds
+## Seven declaration kinds
 
 Every craftgo file declares from this set:
 
@@ -55,8 +55,9 @@ Every craftgo file declares from this set:
 | `enum`      | Closed value set                              |
 | `scalar`    | Named primitive with bundled validators       |
 | `error`     | Typed error with HTTP status                  |
-| `service`   | Group of HTTP methods, events and consumers   |
+| `service`   | Group of HTTP methods                         |
 | `middleware`| Named middleware slot                         |
+| `event`     | Event contract this package owns              |
 
 ```craftgo
 package design
@@ -67,11 +68,12 @@ scalar Email    string @format(email)
 error NotFound  UserNotFound
 service UserService { ... }
 middleware Auth
+event UserCreated { payload User }
 ```
 
-A service body holds three member kinds: HTTP methods, `event` contracts, and
-`consume` declarations. Methods are covered below; see
-[Events](/guide/events) for the other two.
+A service body holds HTTP methods and nothing else; `event` is a file-level
+declaration like the rest. Methods are covered below; see
+[Events](/guide/events) for contracts and the listeners that receive them.
 
 ## Types
 
@@ -316,7 +318,7 @@ type User { ... }
 
 ## Next
 
-- [Events](/guide/events) - event contracts, consumers, and the event runtime
+- [Events](/guide/events) - event contracts, listeners, and the event runtime
 - [Decorators](/guide/decorators) - the full decorator catalog
 - [Validators](/guide/validators) - validation runtime semantics
 - [Types and Scalars](/guide/types-and-scalars) - generics, mixins, advanced types
