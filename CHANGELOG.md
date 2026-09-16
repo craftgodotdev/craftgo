@@ -75,6 +75,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   is deleted, and emptied directories with it; an output directory belongs
   to one design. Gen-once files carry no header and are never touched.
 - **`log.Slog()`**, a `*slog.Logger` writing through craftgo's own logger.
+- **`nats.ErrConsumerStopped`**, the sentinel behind the report a group
+  makes when its durable stops delivering - deleted, or its stream was.
+  The transport keeps running with that group dead, so an application
+  that wants it back matches this error and acts.
 
 ### Changed
 

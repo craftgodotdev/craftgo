@@ -1132,3 +1132,75 @@ func TestPublishAfterCloseSendsNothing(t *testing.T) {
 		t.Errorf("stream holds %d messages, want 0", n)
 	}
 }
+
+// A durable deleted underneath a running process stops delivery with
+// nothing else to notice, so the report has to be recognisable: an
+// application that wants the group back matches
+// [craftnats.ErrConsumerStopped] and restarts.
+func TestADeletedDurableIsReportedAsErrConsumerStopped(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+
+	reported := make(chan error, 8)
+	tr := jsTransport(t, conn, craftnats.WithJetStreamErrorHandler(
+		func(_ events.Subscription, _ *events.Message, err error) {
+			select {
+			case reported <- err:
+			default:
+			}
+		}))
+
+	delivered := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "deleted-durable",
+		Handle: func(_ context.Context, _ *events.Message) error {
+			select {
+			case delivered <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{
+		Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-delivered:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the group never consumed, so there is nothing to delete underneath it")
+	}
+
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatalf("jetstream: %v", err)
+	}
+	del, delCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer delCancel()
+	if err := js.DeleteConsumer(del, "ORDERS", "deleted-durable"); err != nil {
+		t.Fatalf("delete consumer: %v", err)
+	}
+
+	deadline := time.After(75 * time.Second)
+	for {
+		select {
+		case err := <-reported:
+			if !errors.Is(err, craftnats.ErrConsumerStopped) {
+				continue // the client reports the lost consumer its own way first
+			}
+			for _, want := range []string{"deleted-durable", "ORDERS"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("report %q does not name %q", err, want)
+				}
+			}
+			return
+		case <-deadline:
+			t.Fatal("a deleted durable was never reported as ErrConsumerStopped")
+		}
+	}
+}

@@ -509,6 +509,14 @@ func (j *JetStream) subscribed(group events.Group) bool {
 	return j.groups[group]
 }
 
+// ErrConsumerStopped reports, through [WithJetStreamErrorHandler], a
+// group whose durable stopped delivering after boot: the durable was
+// deleted, or the stream under it was. Nothing recreates it - the
+// process keeps running, and keeps passing readiness, with that group
+// silently dead - so an application that wants the group back has to
+// match this error and act on it.
+var ErrConsumerStopped = errors.New("nats: consumer stopped consuming")
+
 func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 	consumer, ackWait, err := j.durable(ctx, g)
 	if err != nil {
@@ -533,14 +541,11 @@ func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 	j.groups[g.name] = true
 	j.mu.Unlock()
 
-	// A durable or stream deleted after boot stops delivery with nothing
-	// else to notice: the process keeps passing readiness with the group
-	// gone.
 	go func() {
 		select {
 		case <-cc.Closed():
 			if ctx.Err() == nil && !j.isClosing() {
-				j.report(whole, nil, fmt.Errorf("nats: consumer %q on stream %q stopped consuming - it was deleted, or the stream was", g.name, g.stream))
+				j.report(whole, nil, fmt.Errorf("%w: %q on stream %q - it was deleted, or the stream was", ErrConsumerStopped, g.name, g.stream))
 			}
 		case <-ctx.Done():
 			cc.Stop()
