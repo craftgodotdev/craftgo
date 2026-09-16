@@ -303,10 +303,10 @@ type Order { items Item[] @json("OrderItem")  storeId string? @json("store_id") 
 	)
 }
 
-// The three shapes a `bytes @format(raw)` field takes. It is NOT treated
-// as nilable even though wire.Raw is a []byte: `?` and `@nullable` both
-// wrap to *wire.Raw, so "the key was absent" stays distinguishable from
-// the four bytes `null`, which an encoded value may legitimately be.
+// The three shapes a `bytes @format(raw)` field takes, all of them
+// wire.Raw: the slice's own nil is absence, and the four bytes `null` a
+// value that stays distinguishable from it. Only the tag changes - `?`
+// omits an absent value, `@nullable` keeps the key.
 func TestGenerateTypesRawBytesShapes(t *testing.T) {
 	pkg := analyze(t, `package design
 type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
@@ -319,9 +319,9 @@ type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @form
 	mustParseGo(t, src)
 	mustContainAll(t, src,
 		`"github.com/craftgodotdev/craftgo/pkg/wire"`,
-		"Payload wire.Raw  `json:\"payload\"`",
-		"Meta    *wire.Raw `json:\"meta,omitempty\"`",
-		"Trace   *wire.Raw `json:\"trace\"`",
+		"Payload wire.Raw `json:\"payload\"`",
+		"Meta    wire.Raw `json:\"meta,omitempty\"`",
+		"Trace   wire.Raw `json:\"trace\"`",
 	)
 }
 
@@ -332,7 +332,7 @@ type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @form
 func TestGenerateTypesRawBytesScalar(t *testing.T) {
 	pkg := analyze(t, `package design
 scalar RawDoc bytes @format(raw)
-type X { photos RawDoc?  cover RawDoc }`)
+type X { photos RawDoc?  cover RawDoc  audit RawDoc @nullable }`)
 	dir := t.TempDir()
 	if err := generateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
@@ -343,21 +343,26 @@ type X { photos RawDoc?  cover RawDoc }`)
 	mustContainAll(t, src,
 		`"github.com/craftgodotdev/craftgo/pkg/wire"`,
 		"type RawDoc = wire.Raw",
-		"Photos *wire.Raw `json:\"photos,omitempty\"`",
-		"Cover  wire.Raw  `json:\"cover\"`",
+		"Photos wire.Raw `json:\"photos,omitempty\"`",
+		"Cover  wire.Raw `json:\"cover\"`",
+		"Audit  wire.Raw `json:\"audit\"`",
 	)
 }
 
-// A required raw field gets a length check, not a nil compare: wire.Raw
-// is a slice the codec leaves empty when the key is absent. An explicit
-// null is NOT absent for it - it decodes to the four bytes `null` - which
-// is the difference the shape is for.
+// Only a PLAIN raw field gets a presence check, and it is a length
+// check rather than a nil compare: wire.Raw is a slice the codec leaves
+// empty when the key is absent. An explicit null is NOT absent for it -
+// it decodes to the four bytes `null` - which is the difference the
+// shape is for. `?` and `@nullable` both say the value may be missing,
+// so neither is checked at all.
 func TestValidateRequiredRawBytesChecksLen(t *testing.T) {
 	src := runValidateGen(t, `package design
-type X { payload bytes @format(raw)  meta bytes? @format(raw) }`)
+type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
 	mustContainAll(t, src, "if len(v.Payload) == 0 {", `"payload: required"`)
-	if strings.Contains(src, "v.Meta == nil") {
-		t.Errorf("an optional raw field needs no presence check:\n%s", src)
+	for _, banned := range []string{"v.Meta", "v.Trace"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("an optional / @nullable raw field needs no presence check, got %q:\n%s", banned, src)
+		}
 	}
 }
 

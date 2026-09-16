@@ -58,10 +58,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   in the message's own encoding, and the codec embeds them untouched
   instead of base64-encoding the buffer - so an explicit `null`, an
   integer past 2^53 and a trailing zero such as `1.50` all survive, none
-  of which does when the field is declared `any`. Generates `wire.Raw`
-  (`*wire.Raw` for `?` / `@nullable`) and an unconstrained OpenAPI schema
-  described as `raw encoded value`. Body fields only, no other validator,
-  no `@default`; refused on every type but `bytes`.
+  of which does when the field is declared `any`. Generates `wire.Raw` in
+  every shape - `?` only omits an absent value, `@nullable` only keeps the
+  key - and an unconstrained OpenAPI schema described as `raw encoded
+  value`. Body fields only, no other validator, no `@default`; refused on
+  every type but `bytes`.
 - **`github.com/craftgodotdev/craftgo/pkg/wire`, a fifth published
   module.** It holds `wire.Raw` alone, imports nothing but the standard
   library, and is released at the shared version like the others - so a

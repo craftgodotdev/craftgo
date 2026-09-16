@@ -658,10 +658,10 @@ type Contact { email string?  phone string? }`)
 	}
 }
 
-// A raw member gets the clean pointer presence check, not the
-// always-present fallback a plain `bytes` member would take: the shape
-// is not nilable, so `?` wraps it to *wire.Raw and absence is nil. It is
-// the one bytes-shaped field a cross-field group can reference.
+// A raw member gets the clean nil presence check, not the always-present
+// fallback a plain `bytes` member would take: a wire.Raw is nil only
+// when the key was absent, an explicit null being the four bytes `null`.
+// It is the one bytes-shaped field a cross-field group can reference.
 func TestValidateCrossFieldOnRawBytes(t *testing.T) {
 	src := runValidateGen(t, `package design
 @requiresOneOf(left, right)

@@ -309,9 +309,9 @@ func TestRawBytesTakesNoOtherValidator(t *testing.T) {
 }
 
 // A raw member is the one bytes-shaped field a cross-field group may
-// reference: it is not nilable, so `?` wraps it to a pointer and its
+// reference: a wire.Raw is nil only when the key was absent, so its
 // presence is the clean `!= nil` the group's OpenAPI means. A plain
-// `bytes?` member, which stays a bare slice, is still refused.
+// `bytes?` member, checked by emptiness, is still refused.
 func TestCrossFieldAcceptsARawBytesMember(t *testing.T) {
 	mustClean(t, `@requiresOneOf(left, right)
 type Choice { left bytes? @format(raw)  right string? }`)

@@ -53,5 +53,5 @@ type WarehouseClosed struct {
 	Warehouse Warehouse  `json:"warehouse"`
 	Reason    *string    `json:"reason,omitempty"`
 	ClosedAt  *time.Time `json:"closedAt,omitempty"`
-	Details   *wire.Raw  `json:"details,omitempty"`
+	Details   wire.Raw   `json:"details,omitempty"`
 }

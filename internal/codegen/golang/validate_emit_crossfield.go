@@ -123,6 +123,7 @@ func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string
 // has a meaningful value (matching's definition):
 //
 //   - optional `T?` OR `@nullable T` (pointer) → `v.X != nil`
+//   - `bytes @format(raw)`  → `v.X != nil`
 //   - slice / map           → `len(v.X) > 0`
 //   - string                → `v.X != ""`
 //   - numeric               → `v.X != 0`
@@ -131,13 +132,16 @@ func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string
 // `@nullable` forces the field to a Go pointer even on plain `T`. The
 // pointer check must come BEFORE the value-shape branches so cross-
 // field rules emit a nil-check rather than `v.X == ""` against a
-// `*string` (which fails to compile).
+// `*string` (which fails to compile). A raw field is a `wire.Raw`
+// slice, and nil is the absent value for it, so it takes the nil check
+// too rather than the emptiness one a slice would get - an explicit
+// `null` arrives as the four bytes `null` and is present.
 func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
 	if f.Type == nil {
 		return "true"
 	}
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) || isRawBytesField(f, ctx.pkg, ctx.resolver) {
 		return access + " != nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {
@@ -183,15 +187,15 @@ func absenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 // absenceExpr is the inverse of [presenceExpr]. Operators are flipped
 // directly (`!=` ↔ `==`, `> 0` → `== 0`, `bool` → `!bool`) so the
 // generated source is the form `staticcheck` recommends and no extra
-// `!(...)` wrapping leaks into the output. Pointer-shape (`T?` or
-// `@nullable T`) is checked first via [goFieldIsPointer] so the emit
-// stays type-safe.
+// `!(...)` wrapping leaks into the output. The nil-checked shapes -
+// pointer (`T?` or `@nullable T`) and raw - are handled first, matching
+// [presenceExpr], so the emit stays type-safe.
 func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
 	if f.Type == nil {
 		return "false"
 	}
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) || isRawBytesField(f, ctx.pkg, ctx.resolver) {
 		return access + " == nil"
 	}
 	if f.Type.Array || f.Type.Map != nil {

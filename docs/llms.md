@@ -59,7 +59,7 @@ Field syntax: `name TypeRef [@decorator(...) ...]`.
 | `bool`           | `bool`                  |                                            |
 | `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
 | `any`            | `any`                   | arbitrary JSON value, decoded and re-encoded (`object` is rejected as a field type) |
-| `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` give `*wire.Raw`, from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
+| `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` stay `wire.Raw` (nil is absence, an explicit `null` is the four bytes `null`), from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
 | `file`           | `*multipart.FileHeader` | only with `@form`                          |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |

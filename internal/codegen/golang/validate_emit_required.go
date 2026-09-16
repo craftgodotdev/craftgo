@@ -29,7 +29,9 @@ import (
 // is not a legal value. For pointer types (`T?` / `T @nullable`), for
 // `any` and for a `bytes @format(raw)` field we DO need the check - an
 // absent key leaves a nil pointer, a nil interface, or an empty
-// `wire.Raw`.
+// `wire.Raw`. Only a plain required raw field reaches that last check:
+// `?` and `@nullable` leave it a `wire.Raw` too, but they also turn the
+// presence check off.
 func requiredKind(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil {
 		return ""

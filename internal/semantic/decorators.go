@@ -354,7 +354,7 @@ const FormatRaw = "raw"
 // value names a check; this one changes the field's Go type and how its
 // value travels, so it says so where the author is typing it.
 const FormatRawDoc = "**`@format(raw)`** - the bytes ARE the value, in the message's own encoding.\n\n" +
-	"Only on a `bytes` field. The codec embeds them untouched instead of base64-encoding the buffer, so what a producer wrote is what a consumer reads - an explicit `null`, an integer past 2^53 and a trailing zero such as `1.50` all survive, none of which does through `any`. Generates `wire.Raw` in Go (`*wire.Raw` for `?` / `@nullable`). A body field only; no other validator applies and `@default` is refused."
+	"Only on a `bytes` field. The codec embeds them untouched instead of base64-encoding the buffer, so what a producer wrote is what a consumer reads - an explicit `null`, an integer past 2^53 and a trailing zero such as `1.50` all survive, none of which does through `any`. Generates `wire.Raw` in Go - in every shape: nil is the absent value and an explicit `null` is the four bytes `null`, so `?` only omits an absent value and `@nullable` only keeps the key. A body field only; no other validator applies and `@default` is refused."
 
 // HasRawFormat reports whether a decorator chain carries `@format(raw)`.
 // Exported because the resolved IR, codegen and the language server all

@@ -55,8 +55,8 @@ type payload struct {
 	Attempt int        `json:"attempt"`
 	Ok      bool       `json:"ok"`
 	Body    wire.Raw   `json:"body"`
-	Extra   *wire.Raw  `json:"extra"`
-	Missing *wire.Raw  `json:"missing"`
+	Extra   wire.Raw   `json:"extra,omitempty"`
+	Missing wire.Raw   `json:"missing,omitempty"`
 	Nested  nested     `json:"nested"`
 	List    []wire.Raw `json:"list"`
 }
@@ -65,7 +65,8 @@ type payload struct {
 // and that a decode into `any` cannot give back unchanged - an integer
 // past 2^53, a trailing zero, and a document holding both next to an
 // explicit null - plus an array, whose elements must survive too. The
-// bare `null` is not among them; [RunNull] has it, and says why.
+// bare `null` is not among them; [RunNull] carries it, so a codec whose
+// format is not JSON can hand it its own spelling.
 func JSONValues() [][]byte {
 	return [][]byte{
 		[]byte(`12345678901234567890`),
@@ -92,22 +93,23 @@ func Run(t *testing.T, c Codec) {
 // struct, and the elements of an array. Alongside them ride plain
 // string, int and bool fields, which must decode as they always did.
 //
-// Every value must be a VALUE. The format's own null goes to [RunNull],
-// which pins the one place it behaves differently.
+// Every value must be a VALUE. The format's own null is a value too and
+// goes to [RunNull], which puts it through these same shapes.
 func RunWith(t *testing.T, c Codec, values ...[]byte) {
 	t.Helper()
 	runWith(t, c, values...)
 }
 
-// RunNull round-trips the format's own null in a REQUIRED raw field,
-// where it is a value like any other and must come back as the bytes
-// that spell it.
+// RunNull round-trips the format's own null through every raw-carrying
+// shape, where it is a value like any other and must come back as the
+// bytes that spell it - the optional field included, which is what a
+// `*Raw` could not do: a Go codec spells "this was not there" with a nil
+// pointer, and decoding a null into one leaves it nil without ever
+// reaching the value's own decoder. A raw field is a [wire.Raw] in every
+// shape, so the two stay apart on the slice's own nil.
 //
-// It is checked apart because an OPTIONAL raw field is a pointer, and a
-// pointer is also how a Go codec spells "this was not there": decoding
-// the format's null into one leaves it nil, so a field SET to null and a
-// field never set read alike. Distinguishing them is what a required
-// field is for, and what this checks.
+// It is a separate entry point because a codec whose format is not JSON
+// spells null in its own bytes.
 func RunNull(t *testing.T, c Codec, null []byte) {
 	t.Helper()
 	runNull(t, c, null)
@@ -133,7 +135,7 @@ func runWith(t reporter, c Codec, values ...[]byte) {
 // runNull is [RunNull] against the reduced [reporter].
 func runNull(t reporter, c Codec, null []byte) {
 	t.Helper()
-	for _, problem := range checkNull(c, null) {
+	for _, problem := range checkValue(c, null) {
 		t.Errorf("codec %s, carrying the null %s: %s", c.Name(), null, problem)
 	}
 }
@@ -142,52 +144,29 @@ func runNull(t reporter, c Codec, null []byte) {
 // returns what did not survive - empty when the codec honoured the
 // contract. Returning the failures rather than raising them is what
 // makes the suite checkable by its own tests.
+//
+// The unset optional slot is the one that must come back nil: absence is
+// not a value, and it is the only thing a raw field's nil means.
 func checkValue(c Codec, value []byte) []string {
 	out, problems := roundTrip(c, value)
 	if len(problems) > 0 {
 		return problems
 	}
-	problems = append(problems, samenessProblems(value, out)...)
-	if out.Extra == nil {
-		problems = append(problems, "a set optional raw field came back absent")
-	} else if string(*out.Extra) != string(value) {
-		problems = append(problems, fmt.Sprintf(
-			"a set optional raw field came back as %s", *out.Extra))
-	}
-	return problems
-}
-
-// checkNull is [checkValue] for the format's null: the required field
-// must keep it, and the optional field is expected to read as absent -
-// which is the documented shape, not a failure.
-func checkNull(c Codec, null []byte) []string {
-	out, problems := roundTrip(c, null)
-	if len(problems) > 0 {
-		return problems
-	}
-	return append(problems, samenessProblems(null, out)...)
-}
-
-// samenessProblems reports every raw slot of a decoded payload that did
-// not come back as want. The optional slot is left to the caller: it is
-// the one whose answer depends on whether the value is the format's null.
-func samenessProblems(want []byte, out payload) []string {
-	var problems []string
 	same := func(where string, got wire.Raw) {
-		if string(got) != string(want) {
+		if string(got) != string(value) {
 			problems = append(problems, fmt.Sprintf("%s came back as %s", where, got))
 		}
 	}
 	same("a required raw field", out.Body)
+	same("a set optional raw field", out.Extra)
 	same("a raw field of a nested struct", out.Nested.Doc)
 	if out.Missing != nil {
 		problems = append(problems, fmt.Sprintf(
-			"an unset optional raw field came back as %s - absence is not a value", *out.Missing))
+			"an unset optional raw field came back as %s - absence is not a value", out.Missing))
 	}
 	if len(out.List) != 2 {
-		problems = append(problems, fmt.Sprintf(
+		return append(problems, fmt.Sprintf(
 			"an array of raw values came back with %d element(s), want 2", len(out.List)))
-		return problems
 	}
 	for _, got := range out.List {
 		same("an element of an array of raw values", got)
@@ -199,13 +178,12 @@ func samenessProblems(want []byte, out payload) []string {
 // plain fields ride along and are checked here: a codec that carries raw
 // bytes by breaking everything else has not passed.
 func roundTrip(c Codec, value []byte) (payload, []string) {
-	extra := wire.Raw(value)
 	in := payload{
 		ID:      "evt-1",
 		Attempt: 3,
 		Ok:      true,
 		Body:    wire.Raw(value),
-		Extra:   &extra,
+		Extra:   wire.Raw(value),
 		Nested:  nested{Note: "one level down", Doc: wire.Raw(value)},
 		List:    []wire.Raw{wire.Raw(value), wire.Raw(value)},
 	}

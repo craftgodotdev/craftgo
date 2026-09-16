@@ -95,7 +95,7 @@ func (droppingCodec) Unmarshal(data []byte, v any) error {
 	if !ok {
 		return nil
 	}
-	p.Body, p.Nested.Doc, p.List = nil, nil, nil
+	p.Body, p.Extra, p.Nested.Doc, p.List = nil, nil, nil, nil
 	return nil
 }
 

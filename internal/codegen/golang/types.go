@@ -342,8 +342,12 @@ func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectR
 //     encodes to JSON `null`.
 //   - A scalar whose underlying primitive is itself nilable (`scalar
 //     Blob bytes` → `[]byte`) - no extra wrap either: the named slice
-//     holds nil directly, exactly like a raw `bytes` field, so an
+//     holds nil directly, exactly like a bare `bytes` field, so an
 //     optional / `@nullable` `Blob` stays `Blob`, not `*Blob`.
+//   - `bytes @format(raw)`, and a scalar over it - `wire.Raw` in every
+//     shape. It is a slice, and nil is the absent value the encoder
+//     writes as `null`; a pointer would collapse an explicit `null`
+//     into that same nil and lose the difference.
 //   - Value types (string, int, struct, scalar-over-value) - wrap in
 //     `*T` so the field can hold nil. Combined with [jsonTag] dropping
 //     `omitempty`, the encoder emits `"f": null` for nil and `"f":
@@ -379,10 +383,10 @@ func isRawBytesField(f *ast.Field, pkg *semantic.Package, r *projectResolver) bo
 
 // goFieldPointerWrap reports whether [goFieldType] prepends `*` to the
 // field's base type: the field is optional (`?`) or `@nullable` and its
-// resolved type does not already hold nil (slice, map, bytes, any, file,
-// or a scalar over one of those). The nilability fact comes from the
-// semantic field IR, so the emitted Go and the design-time checks cannot
-// disagree.
+// resolved type does not already hold nil (slice, map, bytes, raw, any,
+// file, or a scalar over one of those). The nilability fact comes from
+// the semantic field IR, so the emitted Go and the design-time checks
+// cannot disagree.
 func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
 	if f == nil || f.Type == nil {
 		return false

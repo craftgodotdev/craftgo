@@ -702,10 +702,9 @@ func TestARawPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 		t.Fatalf("start: %v", err)
 	}
 
-	details := wire.Raw(raw)
 	if err := events.WarehouseClosed.Publish(context.Background(), bus, &eventtypes.WarehouseClosed{
 		Warehouse: eventtypes.WarehouseNorth,
-		Details:   &details,
+		Details:   wire.Raw(raw),
 	}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -716,8 +715,8 @@ func TestARawPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 		if closed.Details == nil {
 			t.Fatal("the consumer received no details at all")
 		}
-		if string(*closed.Details) != raw {
-			t.Errorf("details arrived as %s, want the published bytes %s", *closed.Details, raw)
+		if string(closed.Details) != raw {
+			t.Errorf("details arrived as %s, want the published bytes %s", closed.Details, raw)
 		}
 	default:
 		t.Fatal("nothing was delivered")

@@ -48,8 +48,7 @@ func TestNilRawEncodesAsNull(t *testing.T) {
 }
 
 // A literal `null` that arrived is kept as the four bytes it is: it is
-// a JSON value, not the absence of one, and only the field's own
-// pointer says whether the key was there at all.
+// a JSON value, not the absence of one, which a nil Raw is.
 func TestLiteralNullIsKept(t *testing.T) {
 	var r wire.Raw
 	if err := json.Unmarshal([]byte("null"), &r); err != nil {
@@ -78,5 +77,25 @@ func TestUnmarshalCopiesTheBytes(t *testing.T) {
 	buf[2] = 'b'
 	if string(r) != `{"a":1}` {
 		t.Errorf("Raw aliased the caller's buffer: %s", r)
+	}
+}
+
+// Why a raw field is a Raw in every shape and never a *Raw:
+// encoding/json nils the pointer on an explicit `null` without ever
+// calling UnmarshalJSON, so a null and an absent key read alike through
+// it. The value shape keeps them apart.
+func TestPointerToRawLosesTheNullTheValueKeeps(t *testing.T) {
+	var got struct {
+		Ptr   *wire.Raw `json:"ptr"`
+		Value wire.Raw  `json:"value"`
+	}
+	if err := json.Unmarshal([]byte(`{"ptr":null,"value":null}`), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Ptr != nil {
+		t.Errorf("*Raw held %s; the shape exists because it holds nil here", *got.Ptr)
+	}
+	if string(got.Value) != "null" {
+		t.Errorf("Raw decoded an explicit null to %q, want the four bytes `null`", got.Value)
 	}
 }

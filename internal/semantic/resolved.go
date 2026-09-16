@@ -66,13 +66,14 @@ type ResolvedField struct {
 	HomePkg string
 
 	// IsNilable reports whether the Go type holds nil directly (slice, map,
-	// bytes, any, file, or a scalar over a nilable primitive), so an optional
-	// `?` / `@nullable` use of it needs no redundant pointer wrap. This is the
-	// fact codegen's `*T` decision and the cross-field presence check must
-	// agree on. [CatRawBytes] is deliberately NOT nilable although wire.Raw
-	// is a slice: an optional raw field wraps to `*wire.Raw` so "the key was
-	// absent" stays distinguishable from the four bytes `null`, which an
-	// encoded value may legitimately be.
+	// bytes, raw, any, file, or a scalar over a nilable primitive), so an
+	// optional `?` / `@nullable` use of it needs no redundant pointer wrap.
+	// This is the fact codegen's `*T` decision and the cross-field presence
+	// check must agree on. [CatRawBytes] is nilable like the slice it is:
+	// a nil wire.Raw is the absent value and an explicit `null` arrives as
+	// the four bytes `null`, so the two stay apart on their own. A pointer
+	// would lose them: encoding/json nils a pointer on a JSON `null`
+	// without ever calling UnmarshalJSON.
 	IsNilable bool
 
 	// Name is the identifier the target renders the field with, supplied by
@@ -170,7 +171,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		switch sp.Kind {
 		case prims.Bytes:
 			if HasRawFormat(f.Decorators) {
-				rf.Category, rf.ResolvedPrim, rf.HomePkg = CatRawBytes, name, ""
+				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, name, true, ""
 				return rf
 			}
 			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatBytes, name, true, ""
@@ -192,7 +193,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 				// A scalar over raw bytes names the same Go type a bare
 				// raw field lowers to, so the field IS raw - the scalar
 				// is the design's name for it, not a second type.
-				rf.Category, rf.ResolvedPrim, rf.HomePkg = CatRawBytes, sd.Primitive, ""
+				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, sd.Primitive, true, ""
 				return rf
 			}
 			rf.Category, rf.ResolvedPrim = CatScalar, sd.Primitive

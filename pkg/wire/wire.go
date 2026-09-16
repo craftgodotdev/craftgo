@@ -29,11 +29,14 @@ import "errors"
 //
 // A nil Raw is the absent value; in JSON it encodes as `null`. The four
 // bytes `null` are a value in their own right and stay distinguishable
-// from absence, which is why an optional or `@nullable` raw field lowers
-// to `*Raw` rather than relying on the slice's own nil. A zero-length
-// non-nil Raw is not a value at all: encoding one reports the error
-// encoding/json raises for empty Marshaler output rather than inventing
-// a value it was never given.
+// from absence on the slice's own nil, so a raw field is a Raw in every
+// shape and no pointer form exists: `?` only adds `,omitempty` so an
+// absent value is omitted, `@nullable` keeps the key. A `*Raw` would
+// lose the difference - encoding/json nils the pointer on a JSON `null`
+// without ever calling [Raw.UnmarshalJSON]. A zero-length non-nil Raw is
+// not a value at all: encoding one reports the error encoding/json
+// raises for empty Marshaler output rather than inventing a value it was
+// never given.
 type Raw []byte
 
 // MarshalJSON returns the bytes verbatim, so the value reaches the wire

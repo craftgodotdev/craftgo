@@ -40,12 +40,12 @@ Sometimes a field carries a value your design does not own - a `jsonb` column, a
 type WebhookReceived {
     id      string
     payload bytes @format(raw)
-    meta    bytes? @format(raw)            // *wire.Raw, omitted when nil
-    trace   bytes @format(raw) @nullable   // *wire.Raw, always emitted
+    meta    bytes? @format(raw)            // wire.Raw, omitted when nil
+    trace   bytes @format(raw) @nullable   // wire.Raw, always emitted (nil sends null)
 }
 ```
 
-It generates [`wire.Raw`](https://pkg.go.dev/github.com/craftgodotdev/craftgo/pkg/wire) - a `[]byte` whose codec methods hand the bytes through untouched. It is its own module and imports nothing but the standard library, so a package that consumes your contract inherits that and nothing else. `?` and `@nullable` give `*wire.Raw`, so an absent key stays distinguishable from a value that is there.
+It generates [`wire.Raw`](https://pkg.go.dev/github.com/craftgodotdev/craftgo/pkg/wire) - a `[]byte` whose codec methods hand the bytes through untouched. It is its own module and imports nothing but the standard library, so a package that consumes your contract inherits that and nothing else. Every shape is `wire.Raw` - never a pointer: a nil holds absence, an explicit `null` arrives as the four bytes `null`, and the two stay apart. A pointer would lose them, because Go's JSON decoder nils a pointer on `null` without reading the value.
 
 Three ways to carry a document, and what each costs:
 
