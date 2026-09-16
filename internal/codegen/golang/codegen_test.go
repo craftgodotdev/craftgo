@@ -303,13 +303,13 @@ type Order { items Item[] @json("OrderItem")  storeId string? @json("store_id") 
 	)
 }
 
-// The three shapes a `json` field takes. It is NOT treated as nilable
-// even though json.RawMessage is a []byte: `?` and `@nullable` both wrap
-// to *json.RawMessage, so "the key was absent" stays distinguishable
-// from the four bytes `null`, which a raw JSON value may legitimately be.
-func TestGenerateTypesJSONShapes(t *testing.T) {
+// The three shapes a `bytes @format(raw)` field takes. It is NOT treated
+// as nilable even though wire.Raw is a []byte: `?` and `@nullable` both
+// wrap to *wire.Raw, so "the key was absent" stays distinguishable from
+// the four bytes `null`, which an encoded value may legitimately be.
+func TestGenerateTypesRawBytesShapes(t *testing.T) {
 	pkg := analyze(t, `package design
-type X { payload json  meta json?  trace json @nullable }`)
+type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
 	dir := t.TempDir()
 	if err := generateTypes(pkg, dir, nil); err != nil {
 		t.Fatal(err)
@@ -318,23 +318,62 @@ type X { payload json  meta json?  trace json @nullable }`)
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src,
-		`"encoding/json"`,
-		"Payload json.RawMessage  `json:\"payload\"`",
-		"Meta    *json.RawMessage `json:\"meta,omitempty\"`",
-		"Trace   *json.RawMessage `json:\"trace\"`",
+		`"github.com/craftgodotdev/craftgo/pkg/wire"`,
+		"Payload wire.Raw  `json:\"payload\"`",
+		"Meta    *wire.Raw `json:\"meta,omitempty\"`",
+		"Trace   *wire.Raw `json:\"trace\"`",
 	)
 }
 
-// A required `json` field gets the nil check a required `any` gets: the
-// codec leaves both nil when the key is absent. An explicit null is NOT
-// absent for a json field - it decodes to the four bytes `null` - which
-// is the difference the type is for.
-func TestValidateRequiredJSONChecksNil(t *testing.T) {
+// A scalar over raw bytes is an ALIAS: the runtime type carries the
+// bytes through the codec on its own methods, and a defined type would
+// leave those behind and silently base64 the value instead. A field of
+// that scalar lowers to the same type it aliases.
+func TestGenerateTypesRawBytesScalar(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar RawDoc bytes @format(raw)
+type X { photos RawDoc?  cover RawDoc }`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, src,
+		`"github.com/craftgodotdev/craftgo/pkg/wire"`,
+		"type RawDoc = wire.Raw",
+		"Photos *wire.Raw `json:\"photos,omitempty\"`",
+		"Cover  wire.Raw  `json:\"cover\"`",
+	)
+}
+
+// A required raw field gets a length check, not a nil compare: wire.Raw
+// is a slice the codec leaves empty when the key is absent. An explicit
+// null is NOT absent for it - it decodes to the four bytes `null` - which
+// is the difference the shape is for.
+func TestValidateRequiredRawBytesChecksLen(t *testing.T) {
 	src := runValidateGen(t, `package design
-type X { payload json  meta json? }`)
-	mustContainAll(t, src, "if v.Payload == nil {", `"payload: required"`)
+type X { payload bytes @format(raw)  meta bytes? @format(raw) }`)
+	mustContainAll(t, src, "if len(v.Payload) == 0 {", `"payload: required"`)
 	if strings.Contains(src, "v.Meta == nil") {
-		t.Errorf("an optional json field needs no presence check:\n%s", src)
+		t.Errorf("an optional raw field needs no presence check:\n%s", src)
+	}
+}
+
+// A raw scalar declares no validator, so no Validate() method is emitted
+// for it and no field calls one: the scalar is an alias for a type this
+// package cannot define a method on, and either half alone would not
+// compile.
+func TestValidateRawBytesScalarHasNoMethod(t *testing.T) {
+	src := runValidateGen(t, `package design
+scalar RawDoc bytes @format(raw)
+type X { photos RawDoc }`)
+	mustContainAll(t, src, "if len(v.Photos) == 0 {")
+	for _, banned := range []string{"func (v RawDoc) Validate()", "v.Photos.Validate()"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("a raw scalar is an alias; %q would not compile:\n%s", banned, src)
+		}
 	}
 }
 

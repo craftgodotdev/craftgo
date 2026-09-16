@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # release.sh - cut a release of every published module at one version.
 #
-#   tag <version>    write the release commit + the four tags, print the push
+#   tag <version>    write the release commit + the five tags, print the push
 #   sync <version>   after the push: tidy the adapters, commit the checksums
 #   list             the four latest tags of each published module
 #
-# Nothing here ever pushes. `tag` leaves a commit and four local tags and
+# Nothing here ever pushes. `tag` leaves a commit and five local tags and
 # prints the exact `git push` for a human to run; `sync` is the follow-up that
 # needs those tags to be on origin. RELEASING.md has the two phases and why
 # the adapters cannot be tidied before the pkg/events tag is published.
@@ -26,9 +26,15 @@ DRY_RUN="${DRY_RUN:-}"
 # no prefix, which is also what keeps them the only ones GoReleaser sees -
 # .github/workflows/release.yml filters tags on `v[0-9]+...`, and a filter
 # pattern's `*` never crosses a `/`.
+#
+# The two dependency-free runtime modules come first: pkg/events, which the
+# adapters require, and pkg/wire, which a generated contract package requires.
+# Both are tagged in the same phase-1 push as the adapters, so by the time a
+# consumer resolves an adapter every module it can reach is already published.
 MODULES=(
 	".|github.com/craftgodotdev/craftgo|"
 	"pkg/events|github.com/craftgodotdev/craftgo/pkg/events|pkg/events/"
+	"pkg/wire|github.com/craftgodotdev/craftgo/pkg/wire|pkg/wire/"
 	"pkg/events/nats|github.com/craftgodotdev/craftgo/pkg/events/nats|pkg/events/nats/"
 	"pkg/events/kafka|github.com/craftgodotdev/craftgo/pkg/events/kafka|pkg/events/kafka/"
 )
@@ -193,7 +199,7 @@ cmd_tag() {
 	for tag in $(tag_names "$version"); do printf ' \\\n      %s' "$tag"; done
 	printf '\n\n'
 	note "the unprefixed tag $version is the only one GoReleaser reacts to;"
-	note "the three nested tags just publish module versions."
+	note "the four nested tags just publish module versions."
 	note "then: make tag-sync VERSION=$version"
 	if dry; then printf '\n  (dry run: nothing was written)\n'; fi
 }
@@ -273,6 +279,7 @@ cmd_list() {
 		prefix="$(prefix_of "$entry")"
 		# `pkg/events/v*` cannot match `pkg/events/nats/v1.0.0`: the element
 		# after the prefix would have to start with `v`, and `nats` does not.
+		# `pkg/wire/v*` has no nested module under it at all.
 		tags="$(git tag --list "${prefix}v*" --sort=-v:refname | head -4 | tr '\n' ' ')"
 		printf '%-50s %s\n' "$(module_of "$entry")" "${tags:-(none yet)}"
 	done

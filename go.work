@@ -1,10 +1,10 @@
-// The workspace exists because the published nested modules - pkg/events and
-// its nats/kafka adapters - carry no `replace` directives: a release pins
-// `require github.com/craftgodotdev/craftgo/pkg/events vX.Y.Z`, and a consumer
-// of pkg/events/nats@vX.Y.Z must get that real version, not a local path.
-// Inside this repo the workspace does the resolving instead, so a change to
-// pkg/events is visible to the adapters (and to the examples and the e2e
-// fixture) before it is tagged or pushed.
+// The workspace exists because the published nested modules - pkg/events,
+// its nats/kafka adapters and pkg/wire - carry no `replace` directives: a
+// release pins `require github.com/craftgodotdev/craftgo/pkg/events vX.Y.Z`,
+// and a consumer of pkg/events/nats@vX.Y.Z must get that real version, not a
+// local path. Inside this repo the workspace does the resolving instead, so a
+// change to pkg/events or pkg/wire is visible to the adapters (and to the
+// examples and the e2e fixture) before it is tagged or pushed.
 //
 // `go mod tidy` ignores workspaces, so example/ and tests/e2e/matrix keep
 // their `replace` lines: those are what make `make tidy` resolve the
@@ -22,5 +22,6 @@ use (
 	./pkg/events
 	./pkg/events/kafka
 	./pkg/events/nats
+	./pkg/wire
 	./tests/e2e/matrix
 )

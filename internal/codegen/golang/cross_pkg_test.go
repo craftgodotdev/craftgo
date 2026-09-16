@@ -211,7 +211,7 @@ func TestCollectBodyImportsMixinFileArg(t *testing.T) {
 		}},
 	}
 	imports := map[string]bool{}
-	collectBodyImports(body, cross, imports)
+	collectBodyImports(body, &semantic.Package{}, &projectResolver{CrossPkg: cross}, imports)
 	if !imports["mime/multipart"] {
 		t.Errorf("a mixin with a file generic-arg must import mime/multipart; got %v", imports)
 	}

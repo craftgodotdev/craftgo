@@ -54,14 +54,21 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`format: date-time`); body fields only, no validators, no `@default`.
 - **`@json("key")` on a field.** Sets the JSON key when it is not the field
   name; the Go tag, the OpenAPI document and validation messages follow it.
-- **`json` primitive.** A `json.RawMessage` in Go, an unconstrained
-  OpenAPI schema described as `raw JSON value`: the document is carried
-  byte for byte instead of being decoded and re-encoded, so an explicit
-  `null`, an integer past 2^53 and a trailing zero such as `1.50` all
-  survive - none of which does when the field is declared `any`. Body
-  fields only, no validators, no `@default`; `?` and `@nullable` give
-  `*json.RawMessage`. The type and the `@json("key")` decorator are
-  separate names in separate namespaces.
+- **`@format(raw)` on a `bytes` field.** The bytes already ARE the value,
+  in the message's own encoding, and the codec embeds them untouched
+  instead of base64-encoding the buffer - so an explicit `null`, an
+  integer past 2^53 and a trailing zero such as `1.50` all survive, none
+  of which does when the field is declared `any`. Generates `wire.Raw`
+  (`*wire.Raw` for `?` / `@nullable`) and an unconstrained OpenAPI schema
+  described as `raw encoded value`. Body fields only, no other validator,
+  no `@default`; refused on every type but `bytes`.
+- **`github.com/craftgodotdev/craftgo/pkg/wire`, a fifth published
+  module.** It holds `wire.Raw` alone, imports nothing but the standard
+  library, and is released at the shared version like the others - so a
+  package consuming a contract that carries a raw value inherits that and
+  nothing else, neither the event runtime nor the craftgo toolchain. Its
+  `pkg/wire/codectest` suite is how a codec proves it passes such a value
+  through in its own encoding.
 - **Stale output is pruned.** Inside the output directories the manifest
   names, every file carrying a generated header that the run did not write
   is deleted, and emptied directories with it; an output directory belongs

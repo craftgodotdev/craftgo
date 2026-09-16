@@ -72,11 +72,13 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		// (`scalar Score int @gte(100) @lte(10)`) must be caught here too,
 		// not only on fields.
 		a.checkPairOrdering(scalarAsField)
-		if dd.Primitive == "bytes" {
+		if dd.Primitive == "bytes" && !HasRawFormat(dd.Decorators) {
 			// Same rule as a bytes field: @pattern / @format constrain text,
 			// not a binary value, so the validator drops them while OpenAPI
 			// advertises them. Caught here too because a scalar carries its
-			// decorators on the declaration, not the using field.
+			// decorators on the declaration, not the using field. A scalar
+			// over `bytes @format(raw)` is out of scope: `raw` constrains
+			// nothing, and the compatibility check refuses the rest.
 			for _, d := range dd.Decorators {
 				if d != nil && (d.Name == "pattern" || d.Name == "format") {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,

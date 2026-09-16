@@ -264,12 +264,17 @@ func fractionalArg(a *ast.DecoratorArg) (*ast.FloatLit, bool) {
 // bytes field silently drops the check while the OpenAPI schema still
 // advertises the pattern / format. A binary value has no string pattern;
 // the author wants a `string` field.
+//
+// A `bytes @format(raw)` field is out of scope here: `raw` constrains
+// nothing, so it is not the mistake this rule describes, and the field
+// resolves to [PrimRawBytes] - which is what refuses `@pattern` on it
+// through the ordinary compatibility check, once.
 func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return
 	}
 	prim := a.primOf(f.Type)
-	if prim != "bytes" {
+	if prim != "bytes" || HasRawFormat(f.Decorators) {
 		return
 	}
 	for _, d := range f.Decorators {

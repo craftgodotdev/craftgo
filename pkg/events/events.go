@@ -102,6 +102,26 @@ func IsReservedMeta(key string) bool {
 
 // Codec turns a payload value into bytes and back. Implementations must
 // be safe for concurrent use.
+//
+// # Raw values
+//
+// A field a design declares `bytes @format(raw)` lowers to
+// `github.com/craftgodotdev/craftgo/pkg/wire.Raw`, and a codec must pass
+// such a value through as the BYTES OF THAT VALUE in its own encoding:
+// embedded where the value belongs, never re-encoded and never treated
+// as a byte string to base64. The JSON codec gets this from the two
+// methods on the type; a msgpack or CBOR codec registers its own
+// handling for it. Proving it is one line - the conformance suite in
+// `pkg/wire/codectest` round-trips every shape a design can declare and
+// fails a codec that loses an explicit null, an integer past 2^53 or a
+// trailing zero:
+//
+//	func TestCodecCarriesRawValues(t *testing.T) { codectest.Run(t, MyCodec{}) }
+//
+// A schema codec that cannot embed an arbitrary encoded value has a
+// decision to make rather than a contract to meet - carry the bytes as
+// bytes, refuse the payload - and its own documentation is where it
+// says which.
 type Codec interface {
 	// Name identifies the encoding on the wire (see [MetaCodec]).
 	Name() string

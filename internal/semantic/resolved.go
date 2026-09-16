@@ -32,7 +32,7 @@ const (
 	CatPrimitive               // string / int* / uint* / float* / bool
 	CatBytes                   // the `bytes` builtin (Go []byte)
 	CatAny                     // the `any` builtin (Go interface{})
-	CatJSON                    // the `json` builtin (Go json.RawMessage)
+	CatRawBytes                // `bytes @format(raw)` (Go wire.Raw)
 	CatFile                    // the `file` builtin (Go *multipart.FileHeader)
 	CatScalar                  // a `scalar Name <prim>` defined type
 	CatEnum                    // an `enum Name { ... }` defined type
@@ -69,7 +69,10 @@ type ResolvedField struct {
 	// bytes, any, file, or a scalar over a nilable primitive), so an optional
 	// `?` / `@nullable` use of it needs no redundant pointer wrap. This is the
 	// fact codegen's `*T` decision and the cross-field presence check must
-	// agree on.
+	// agree on. [CatRawBytes] is deliberately NOT nilable although wire.Raw
+	// is a slice: an optional raw field wraps to `*wire.Raw` so "the key was
+	// absent" stays distinguishable from the four bytes `null`, which an
+	// encoded value may legitimately be.
 	IsNilable bool
 
 	// Name is the identifier the target renders the field with, supplied by
@@ -151,6 +154,9 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		return rf
 	}
 	parts := t.Named.Name.Parts
+	if len(parts) == 0 {
+		return rf // a half-typed ref the editor is still holding open
+	}
 	name := parts[len(parts)-1]
 	homePkg := pkg
 	if len(parts) == 2 && proj != nil {
@@ -163,18 +169,14 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	if sp, ok := prims.Lookup(name); ok {
 		switch sp.Kind {
 		case prims.Bytes:
+			if HasRawFormat(f.Decorators) {
+				rf.Category, rf.ResolvedPrim, rf.HomePkg = CatRawBytes, name, ""
+				return rf
+			}
 			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatBytes, name, true, ""
 			return rf
 		case prims.Any:
 			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatAny, name, true, ""
-			return rf
-		case prims.JSON:
-			// NOT nilable, though json.RawMessage is a []byte: an
-			// optional / `@nullable` json field wraps to
-			// *json.RawMessage so "absent" stays distinguishable from
-			// the literal 4 bytes `null`, which a raw JSON value is
-			// entitled to carry.
-			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatJSON, name, ""
 			return rf
 		case prims.File:
 			rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""
@@ -186,6 +188,13 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	}
 	if homePkg != nil {
 		if sd, ok := homePkg.Scalars[name]; ok && sd != nil {
+			if sd.Primitive == "bytes" && (HasRawFormat(sd.Decorators) || HasRawFormat(f.Decorators)) {
+				// A scalar over raw bytes names the same Go type a bare
+				// raw field lowers to, so the field IS raw - the scalar
+				// is the design's name for it, not a second type.
+				rf.Category, rf.ResolvedPrim, rf.HomePkg = CatRawBytes, sd.Primitive, ""
+				return rf
+			}
 			rf.Category, rf.ResolvedPrim = CatScalar, sd.Primitive
 			rf.IsNilable = NilableScalarPrimitive(sd.Primitive)
 			return rf

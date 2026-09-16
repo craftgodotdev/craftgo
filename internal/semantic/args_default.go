@@ -196,12 +196,6 @@ func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, pri
 				fieldName)
 			return
 		}
-		if prim == "json" {
-			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
-				"@default is not supported on a `json` field %q - the point of the type is that craftgo does not read the bytes, so it has nothing to write either",
-				fieldName)
-			return
-		}
 		if prim == "datetime" {
 			a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
 				"@default is not supported on a `datetime` field %q - a fixed timestamp is rarely the default meant, and \"now\" is the handler's to decide",

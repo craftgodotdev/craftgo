@@ -15,6 +15,7 @@ import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
+	"github.com/craftgodotdev/craftgo/pkg/wire"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
@@ -676,13 +677,13 @@ func TestAnArrayPayloadValidatesEveryElement(t *testing.T) {
 	}
 }
 
-// A `json` payload field is bytes the design never reads, so what a
-// consumer gets back has to be what the publisher sent - not what a
-// round trip through map[string]any would leave of it. Each of the three
-// values below is one such loss: an explicit null collapses to Go nil
-// (and encodes as an absent key), an integer past 2^53 comes back as a
-// float64 with different digits, and 1.50 re-encodes as 1.5.
-func TestARawJSONPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
+// A `bytes @format(raw)` payload field is bytes the design never reads,
+// so what a consumer gets back has to be what the publisher sent - not
+// what a round trip through map[string]any would leave of it. Each of
+// the three values below is one such loss: an explicit null collapses to
+// Go nil (and encodes as an absent key), an integer past 2^53 comes back
+// as a float64 with different digits, and 1.50 re-encodes as 1.5.
+func TestARawPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 	const raw = `{"explicit":null,"big":12345678901234567890,"trailing":1.50}`
 
 	got := make(chan *eventtypes.WarehouseClosed, 1)
@@ -701,7 +702,7 @@ func TestARawJSONPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 		t.Fatalf("start: %v", err)
 	}
 
-	details := json.RawMessage(raw)
+	details := wire.Raw(raw)
 	if err := events.WarehouseClosed.Publish(context.Background(), bus, &eventtypes.WarehouseClosed{
 		Warehouse: eventtypes.WarehouseNorth,
 		Details:   &details,
@@ -723,14 +724,14 @@ func TestARawJSONPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 	}
 }
 
-// An absent `json` field stays absent rather than arriving as the four
+// An absent raw field stays absent rather than arriving as the four
 // bytes `null`: `?` puts omitempty on the tag, so the key is not written.
-func TestAnAbsentRawJSONFieldIsNotWritten(t *testing.T) {
+func TestAnAbsentRawFieldIsNotWritten(t *testing.T) {
 	body, err := json.Marshal(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(body), "details") {
-		t.Errorf("an unset optional json field reached the wire: %s", body)
+		t.Errorf("an unset optional raw field reached the wire: %s", body)
 	}
 }

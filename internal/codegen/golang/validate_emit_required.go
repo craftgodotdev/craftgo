@@ -26,9 +26,10 @@ import (
 // field as required - the key IS part of the contract - which means a
 // strict JSON-Schema consumer rejects input this validator accepts.
 // Pair the field with `@minLength(1)` / `@gte(1)` when the zero value
-// is not a legal value. For pointer types (`T?` / `T @nullable`) and
-// `any` we DO need the check - the decoder accepts `null` and leaves a
-// nil pointer or the literal 4-byte `null` `json.RawMessage`.
+// is not a legal value. For pointer types (`T?` / `T @nullable`), for
+// `any` and for a `bytes @format(raw)` field we DO need the check - an
+// absent key leaves a nil pointer, a nil interface, or an empty
+// `wire.Raw`.
 func requiredKind(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil {
 		return ""
@@ -36,17 +37,22 @@ func requiredKind(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type.Optional || goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return access + " == nil"
 	}
+	if isRawBytesField(f, ctx.pkg, ctx.resolver) {
+		// A raw field is a slice the codec leaves empty when the key is
+		// absent. An explicit `null` is NOT absent for it - it decodes to
+		// the four bytes `null`, which is the point of the shape - and
+		// passes this check as the present value it is.
+		return "len(" + access + ") == 0"
+	}
 	if !f.Type.Array && f.Type.Map == nil && f.Type.Named != nil {
 		switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
-		case prims.Any, prims.JSON:
-			// Bare `any` lands on Go's empty interface and bare `json`
-			// on a json.RawMessage; the codec leaves either nil when the
-			// key is absent. `any` also collapses an explicit JSON
-			// `null` into that same nil, while `json` keeps the literal
-			// four bytes - which is the point of the type, and passes
-			// this check as the present value it is. The Array/Map guard
-			// keeps `any[]` / `map<K,json>` on the no-check slice/map
-			// path, like every other required nilable collection.
+		case prims.Any:
+			// Bare `any` lands on Go's empty interface; the codec leaves
+			// it nil both for an absent key and for an explicit JSON
+			// `null` (the decoder collapses both into the zero interface
+			// value). The Array/Map guard keeps `any[]` / `map<K,any>` on
+			// the no-check slice/map path, like every other required
+			// nilable collection.
 			return access + " == nil"
 		}
 	}

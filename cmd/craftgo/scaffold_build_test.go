@@ -21,7 +21,7 @@ middleware Guard
 
 type Thing {
 	id      string
-	payload json
+	payload bytes @format(raw)
 }
 
 type GetReq {
@@ -241,7 +241,7 @@ func TestScaffoldsCompile(t *testing.T) {
 				assertConfigRoundTrips(t, dir)
 			}
 			if shape.typesRoundTrip {
-				assertJSONFieldRoundTrips(t, dir)
+				assertRawFieldRoundTrips(t, dir)
 			}
 		})
 	}
@@ -294,18 +294,19 @@ func assertConfigRoundTrips(t *testing.T, dir string) {
 	}
 }
 
-// jsonRoundTripTest is what a `json` field claims: the bytes in are the
-// bytes out. It runs inside the generated module because that is the only
-// place the type exists, and it is the compiler - not a string check over
-// generated source - that says json.RawMessage was really emitted.
-const jsonRoundTripTest = `package gate
+// rawRoundTripTest is what a `bytes @format(raw)` field claims: the
+// bytes in are the bytes out. It runs inside the generated module
+// because that is the only place the type exists, and it is the compiler
+// - not a string check over generated source - that says wire.Raw was
+// really emitted.
+const rawRoundTripTest = `package gate
 
 import (
 	"encoding/json"
 	"testing"
 )
 
-func TestJSONFieldRoundTripsByteForByte(t *testing.T) {
+func TestRawFieldRoundTripsByteForByte(t *testing.T) {
 	const raw = ` + "`" + `{"explicit":null,"big":12345678901234567890,"trailing":1.50}` + "`" + `
 	in := ` + "`" + `{"id":"t-1","payload":` + "`" + ` + raw + ` + "`" + `}` + "`" + `
 
@@ -326,19 +327,19 @@ func TestJSONFieldRoundTripsByteForByte(t *testing.T) {
 }
 `
 
-// assertJSONFieldRoundTrips runs jsonRoundTripTest against the generated
-// types package. A `json` field decoded into any and re-encoded would
-// lose the explicit null, the digits past 2^53 and the trailing zero -
-// three failures this test reads back one at a time.
-func assertJSONFieldRoundTrips(t *testing.T, dir string) {
+// assertRawFieldRoundTrips runs rawRoundTripTest against the generated
+// types package. A raw field decoded into any and re-encoded would lose
+// the explicit null, the digits past 2^53 and the trailing zero - three
+// failures this test reads back one at a time.
+func assertRawFieldRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	pkg := filepath.Join("internal", "types", "gate")
-	mustWrite(t, filepath.Join(dir, pkg), "roundtrip_test.go", jsonRoundTripTest)
+	mustWrite(t, filepath.Join(dir, pkg), "roundtrip_test.go", rawRoundTripTest)
 	run := exec.Command("go", "test", "./"+filepath.ToSlash(pkg)+"/")
 	run.Dir = dir
 	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
 	if out, err := run.CombinedOutput(); err != nil {
-		t.Errorf("a json field does not carry its bytes through unchanged: %v\n%s", err, out)
+		t.Errorf("a raw field does not carry its bytes through unchanged: %v\n%s", err, out)
 	}
 }
 
@@ -372,14 +373,27 @@ func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) str
 	// A workspace rather than requires: the generated module names no
 	// dependency of its own, so the build resolves craftgo out of the repo
 	// and everything else out of the root module's build list. Nothing is
-	// fetched that building this repo has not already fetched.
-	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t.\n\t"+
-		root+"\n\t"+filepath.Join(root, "pkg", "events")+"\n)\n")
+	// fetched that building this repo has not already fetched. Every
+	// published module a generated project can reach has to be listed -
+	// pkg/events for a consumer, pkg/wire for a `bytes @format(raw)` field -
+	// or its import resolves to nothing.
+	uses := []string{".", root}
+	for _, m := range repoModules {
+		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
+	}
+	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+
+		strings.Join(uses, "\n\t")+"\n)\n")
 	return dir
 }
 
-// repoRoot walks up to the module holding both go.mod and the separate
-// pkg/events module, the pair a generated project's workspace has to name.
+// repoModules are the nested modules of this repo, relative to its root,
+// that a generated project's workspace has to name alongside the root
+// module. Adding a published module here is what keeps the scaffold
+// builds resolving it the way a real project's `go get` would.
+var repoModules = []string{"pkg/events", "pkg/wire"}
+
+// repoRoot walks up to the module holding go.mod and every module in
+// [repoModules] - the set a generated project's workspace has to name.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -388,8 +402,14 @@ func repoRoot(t *testing.T) string {
 	}
 	for {
 		_, mod := os.Stat(filepath.Join(dir, "go.mod"))
-		_, events := os.Stat(filepath.Join(dir, "pkg", "events", "go.mod"))
-		if mod == nil && events == nil {
+		nested := true
+		for _, m := range repoModules {
+			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(m), "go.mod")); err != nil {
+				nested = false
+				break
+			}
+		}
+		if mod == nil && nested {
 			real, err := filepath.EvalSymlinks(dir)
 			if err != nil {
 				t.Fatal(err)

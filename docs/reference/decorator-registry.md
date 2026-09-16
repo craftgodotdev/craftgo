@@ -36,7 +36,7 @@ All apply at field, scalar, and error-field level. They target `string`-typed va
 | `@minLength(n)` | `(int)` | Length `>= n`. |
 | `@maxLength(n)` | `(int)` | Length `<= n`. |
 | `@pattern("re")` | `(string)` | RE2 regex the value must match. |
-| `@format(name)` | `(ident \| string)` | Named format - `email`, `uuid`, `url`, `datetime`, … |
+| `@format(name)` | `(ident \| string)` | Named format - `email`, `uuid`, `url`, `datetime`, … On a `bytes` field only, `raw`: the bytes already ARE the value in the message's own encoding, so the codec embeds them untouched (Go `wire.Raw`). `raw` checks nothing and is refused on every other type; no other validator applies to a field carrying it. |
 
 ## Field validation - number
 
@@ -93,7 +93,7 @@ Field level (a few also apply at error-field level for response writing).
 |---|---|---|
 | `@default(v)` | `(literal)` | Value applied when the field is absent on the wire. Field must be optional (`?`). |
 | `@nullable` | - | The field accepts an explicit JSON `null` (flag form). |
-| `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. Distinct from the `json` type: `payload json @json("Payload")` declares a raw-JSON field under the wire key `Payload`. |
+| `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. |
 | `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@default`, or `@nullable`. |
 | `@path` / `@path("name")` | `(string?)` | Bind from a URL path parameter. |
 | `@query` / `@query("name")` | `(string?)` | Bind from the URL query string. |

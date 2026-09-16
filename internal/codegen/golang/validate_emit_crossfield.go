@@ -153,10 +153,6 @@ func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 			return access
 		case prims.DateTime:
 			return "!" + access + ".IsZero()"
-		case prims.JSON:
-			// json.RawMessage is a []byte, so the slice rule applies:
-			// absent decodes to nil, an explicit `null` to four bytes.
-			return "len(" + access + ") > 0"
 		}
 	}
 	return "true"
@@ -211,8 +207,6 @@ func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 			return "!" + access
 		case prims.DateTime:
 			return access + ".IsZero()"
-		case prims.JSON:
-			return "len(" + access + ") == 0"
 		}
 	}
 	return "false"

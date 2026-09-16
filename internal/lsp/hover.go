@@ -125,6 +125,9 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if tok.Kind == lexer.Ident && idx > 0 && view.tokens[idx-1].Kind == lexer.At {
 		return decoratorHover(tok.Text, joinedRange(view.tokens[idx-1], tok))
 	}
+	if h := formatRawArgHover(view, idx, tok); h != nil {
+		return h
+	}
 	// HTTP verb keywords (`get`, `post`, ...) - the lexer assigns
 	// these distinct Kw* token kinds, so dispatch by token text via
 	// the verbDocs table.
@@ -164,6 +167,26 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 		}
 	}
 	return nil
+}
+
+// formatRawArgHover renders the popup for the `raw` ident inside
+// `@format(raw)`. Every other `@format` value names a check the
+// reference page lists and the hover on `@format` itself covers; `raw`
+// changes the field's Go type and how its value travels, so it answers
+// for itself where the author is typing it.
+func formatRawArgHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
+	if tok.Kind != lexer.Ident || tok.Text != semantic.FormatRaw || idx < 3 {
+		return nil
+	}
+	if view.tokens[idx-1].Kind != lexer.LParen ||
+		view.tokens[idx-2].Text != "format" ||
+		view.tokens[idx-3].Kind != lexer.At {
+		return nil
+	}
+	return &protocol.Hover{
+		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: semantic.FormatRawDoc},
+		Range:    rangePtr(rangeOf(tok)),
+	}
 }
 
 // findFieldAtPos walks every type / error body looking for a field

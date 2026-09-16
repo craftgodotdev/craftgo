@@ -11,10 +11,10 @@ GOFLAGS      ?=
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
-# pkg/events is its own module so a generated contract package can depend on
-# it without pulling in the rest of craftgo; it is therefore not covered by
-# GO_PKGS and is tested, vetted and linted here instead.
-SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka
+# pkg/events and pkg/wire are their own modules so a generated contract package
+# can depend on them without pulling in the rest of craftgo; they are therefore
+# not covered by GO_PKGS and are tested, vetted and linted here instead.
+SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -81,11 +81,12 @@ test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
 test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestrator, and each sub-module.
 
 .PHONY: vet
-vet: ## go vet over all root packages and the event runtime module.
+vet: ## go vet over all root packages and every published nested module.
 	$(GO) vet $(GO_PKGS)
 	@(cd pkg/events && $(GO) vet ./...)
 	@(cd pkg/events/nats && $(GO) vet ./...)
 	@(cd pkg/events/kafka && $(GO) vet ./...)
+	@(cd pkg/wire && $(GO) vet ./...)
 
 .PHONY: fmt
 fmt: ## gofmt -w on the entire tree.
@@ -108,6 +109,7 @@ golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not insta
 		(cd pkg/events && golangci-lint run ./...) || exit 1; \
 		(cd pkg/events/nats && golangci-lint run ./...) || exit 1; \
 		(cd pkg/events/kafka && golangci-lint run ./...) || exit 1; \
+		(cd pkg/wire && golangci-lint run ./...) || exit 1; \
 	else echo "golangci-lint not installed - skipping"; fi
 
 # ---- codegen + example --------------------------------------------------
@@ -218,13 +220,14 @@ clean-gen: ## Remove regenerable artefacts under every example mini-project + e2
 	done
 
 # ---- release -------------------------------------------------------------
-# Four modules are published from this repo and they share one version: the
-# root module, pkg/events, and the two adapters. Go's convention for a nested
-# module is the subdirectory as the tag prefix, so a release is four tags -
-# vX.Y.Z, pkg/events/vX.Y.Z, pkg/events/nats/vX.Y.Z, pkg/events/kafka/vX.Y.Z.
+# Five modules are published from this repo and they share one version: the
+# root module, pkg/events, the two adapters, and pkg/wire. Go's convention for
+# a nested module is the subdirectory as the tag prefix, so a release is five
+# tags - vX.Y.Z, pkg/events/vX.Y.Z, pkg/wire/vX.Y.Z, pkg/events/nats/vX.Y.Z,
+# pkg/events/kafka/vX.Y.Z.
 #
 # `tag` is local-only: it never pushes. It writes the release commit and the
-# four tags, then prints the single `git push` for you to run. `tag-sync` is
+# five tags, then prints the single `git push` for you to run. `tag-sync` is
 # the follow-up that needs the tags on origin. See RELEASING.md.
 VERSION ?=
 DRY_RUN ?=
@@ -238,7 +241,7 @@ tag-sync: ## After you push the tags: tidy the adapters against the published pk
 	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh sync "$(VERSION)"
 
 .PHONY: tag-list
-tag-list: ## Show the four latest tags of each published module.
+tag-list: ## Show the four latest tags of each published module (five modules).
 	@scripts/release.sh list
 
 # ---- one-shot CI surface -------------------------------------------------

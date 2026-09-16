@@ -24,7 +24,7 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 		return nil, false
 	}
 	for _, d := range f.Decorators {
-		if d.Name != decName || len(d.Args) == 0 {
+		if d == nil || d.Name != decName || len(d.Args) == 0 {
 			continue
 		}
 		// The enum a member identifier resolves against - for an array

@@ -221,10 +221,7 @@ func primitiveSchema(name string) *openapi3.Schema {
 		return nil
 	}
 	if sp.OASType == "" {
-		// An unconstrained schema: `any` says nothing more, `json` says
-		// what the unconstrained-ness means so a reader of the document
-		// is not left guessing whether the field was left undocumented.
-		return &openapi3.Schema{Description: sp.OASDescription}
+		return &openapi3.Schema{}
 	}
 	s := &openapi3.Schema{Type: &openapi3.Types{sp.OASType}, Format: sp.OASFormat}
 	if sp.Kind == prims.Uint {

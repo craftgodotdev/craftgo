@@ -176,7 +176,7 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, homePkg string, seen map[st
 	}
 	if sp, ok := prims.Lookup(t.Named.Name.String()); ok {
 		switch sp.Kind {
-		case prims.Any, prims.Bytes, prims.File, prims.JSON:
+		case prims.Any, prims.Bytes, prims.File:
 			return false
 		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
 			return true

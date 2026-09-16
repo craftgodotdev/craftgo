@@ -98,9 +98,12 @@ func TestDateTimeIsNotWireBindable(t *testing.T) {
 service S { post Do /do { request SearchReq } }`, CodeBindingType)
 }
 
-// A raw JSON value travels only in a body: a wire-string binder has no
-// parser for one, and a query string is not where a document rides.
-func TestJSONIsNotWireBindable(t *testing.T) {
-	expectError(t, `type SearchReq { filter json @query }
-service S { post Do /do { request SearchReq } }`, CodeBindingType)
+// A raw value travels only in a body: a wire-string binder has no parser
+// for one, and a query string is not where an encoded document rides.
+// Every off-body binding is refused, the way `bytes` itself already is.
+func TestRawBytesIsNotWireBindable(t *testing.T) {
+	for _, binding := range []string{"@query", "@header", "@path", "@cookie", "@form"} {
+		expectError(t, `type SearchReq { filter bytes @format(raw) `+binding+` }
+service S { post Do /do/{filter} { request SearchReq } }`, CodeBindingType)
+	}
 }

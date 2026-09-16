@@ -33,7 +33,7 @@ func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 			if !ok || f.Pos.Line != line {
 				continue
 			}
-			return primOfTypeRef(f.Type, view.file)
+			return primOfTypeRef(f.Type, f.Decorators, view.file)
 		}
 	}
 	return 0
@@ -66,16 +66,22 @@ func scalarPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 		// (the "decorator zone above the decl"). Same heuristic as
 		// guessLevel.
 		if sd.Pos.Line == line || (sd.Pos.Line >= line && noDeclBetween(view.file, line, sd.Pos.Line)) {
-			return primFromIdent(sd.Primitive)
+			return primFromIdent(sd.Primitive, sd.Decorators)
 		}
 	}
 	return 0
 }
 
-// primFromIdent maps a built-in primitive spelling to its semantic
-// category bit. Delegates to [semantic.PrimFromName] so the editor's
-// primitive classification can't drift from the analyser's.
-func primFromIdent(name string) semantic.Prims {
+// primFromIdent maps a built-in primitive spelling, plus the decorators
+// written alongside it, to its semantic category bit. Delegates to
+// [semantic.PrimFromName] so the editor's primitive classification can't
+// drift from the analyser's - and reads the same `@format(raw)` the
+// analyser does, since that is what tells a `bytes` field apart from the
+// raw shape no other validator may touch.
+func primFromIdent(name string, decs []*ast.Decorator) semantic.Prims {
+	if name == "bytes" && semantic.HasRawFormat(decs) {
+		return semantic.PrimRawBytes
+	}
 	return semantic.PrimFromName(name)
 }
 
@@ -90,7 +96,7 @@ func primFromIdent(name string) semantic.Prims {
 // scalar references another scalar). Unknown / cross-package refs
 // return 0 so the caller falls back to "no AppliesTo filter" rather
 // than hiding decorators we cannot classify.
-func primOfTypeRef(t *ast.TypeRef, file *ast.File) semantic.Prims {
+func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semantic.Prims {
 	if t == nil {
 		return 0
 	}
@@ -104,7 +110,7 @@ func primOfTypeRef(t *ast.TypeRef, file *ast.File) semantic.Prims {
 	// Built-in primitive names classify through the shared oracle; `any` /
 	// `object` are deliberately unclassified (0) and never fall to the
 	// scalar-decl lookup below.
-	if p := semantic.PrimFromName(name); p != 0 {
+	if p := primFromIdent(name, decs); p != 0 {
 		return p
 	}
 	if name == "any" || name == "object" {
@@ -117,7 +123,12 @@ func primOfTypeRef(t *ast.TypeRef, file *ast.File) semantic.Prims {
 				// name and recurse so the lookup transparently
 				// handles scalar-of-scalar chains.
 				inner := &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{sd.Primitive}}}}
-				return primOfTypeRef(inner, file)
+				if semantic.HasRawFormat(sd.Decorators) {
+					// The scalar's own `@format(raw)` reaches every
+					// field of the type, decorated or not.
+					decs = sd.Decorators
+				}
+				return primOfTypeRef(inner, decs, file)
 			}
 		}
 	}

@@ -6975,7 +6975,7 @@ components:
           - string
           - "null"
         details:
-          description: raw JSON value
+          description: raw encoded value
         reason:
           type:
           - string

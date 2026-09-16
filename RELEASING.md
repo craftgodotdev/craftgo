@@ -1,14 +1,21 @@
 # Releasing
 
-Four modules are published from this repository and they all share one
+Five modules are published from this repository and they all share one
 version:
 
 | Module                                              | Directory          | Tag                        |
 | --------------------------------------------------- | ------------------ | -------------------------- |
 | `github.com/craftgodotdev/craftgo`                  | `.`                | `v1.8.0`                   |
 | `github.com/craftgodotdev/craftgo/pkg/events`       | `pkg/events`       | `pkg/events/v1.8.0`        |
+| `github.com/craftgodotdev/craftgo/pkg/wire`         | `pkg/wire`         | `pkg/wire/v1.8.0`          |
 | `github.com/craftgodotdev/craftgo/pkg/events/nats`  | `pkg/events/nats`  | `pkg/events/nats/v1.8.0`   |
 | `github.com/craftgodotdev/craftgo/pkg/events/kafka` | `pkg/events/kafka` | `pkg/events/kafka/v1.8.0`  |
+
+`pkg/events` and `pkg/wire` are the two dependency-free runtime modules: the
+adapters require `pkg/events`, and a generated contract package with a `bytes
+@format(raw)` field requires `pkg/wire`. Neither requires anything of ours, so
+both are tagged in phase 1 alongside everything else - by the time a consumer
+resolves an adapter or a contract, every module it can reach is published.
 
 `example/*` and `tests/e2e/matrix` are modules too, but they are never
 published - they exist so the generated code is compiled and tested.
@@ -61,7 +68,7 @@ make tag VERSION=v1.8.0 DRY_RUN=1
 ```
 
 It refuses to run when `VERSION` is missing or is not `vX.Y.Z`, when `HEAD`
-is detached, when the working tree is dirty, or when any of the four tags
+is detached, when the working tree is dirty, or when any of the five tags
 already exists. (Under `DRY_RUN=1` the dirty-tree and existing-tag refusals
 become warnings - a dry run writes nothing, so it can still show you the plan
 from a work-in-progress tree.) Nothing is checked against origin, because
@@ -92,15 +99,16 @@ What it does:
 
 3. Commits `release: vX.Y.Z`.
 
-4. Creates four annotated tags on that commit: `vX.Y.Z` plus the three
+4. Creates five annotated tags on that commit: `vX.Y.Z` plus the four
    prefixed ones.
 
-5. Prints the push - one command, the commit and all four tags together:
+5. Prints the push - one command, the commit and all five tags together:
 
    ```
    git push origin <sha>:refs/heads/<branch> \
        v1.8.0 \
        pkg/events/v1.8.0 \
+       pkg/wire/v1.8.0 \
        pkg/events/nats/v1.8.0 \
        pkg/events/kafka/v1.8.0
    ```
@@ -127,12 +135,12 @@ Between phase 1 and the push, `make tidy` will fail in `pkg/events/nats` and
 
 ## The push
 
-Run the printed command. It pushes the release commit and all four tags in
+Run the printed command. It pushes the release commit and all five tags in
 one go, so the module versions and the branch can never drift apart.
 
 `.github/workflows/release.yml` reacts to the root tag only
 (`v[0-9]+.[0-9]+.[0-9]+`) and runs GoReleaser: cross-compiled `craftgo` and
-`craftgo-lsp` binaries, archives, checksums, a GitHub Release. The three
+`craftgo-lsp` binaries, archives, checksums, a GitHub Release. The four
 nested tags cannot match that filter - a tag filter pattern is anchored at the
 start of the tag name and its `*` never crosses a `/` - so they publish module
 versions and nothing else.
@@ -165,7 +173,8 @@ verifies the module against its own checksum, not against this repo's
 `go.work` is tracked (and `.gitignore` deliberately does not ignore it). It is
 what makes local development work now that the adapters have no `replace`:
 inside the workspace, `github.com/craftgodotdev/craftgo/pkg/events` resolves
-to `pkg/events/` on disk, so a change there is visible to the adapters, the
+to `pkg/events/` on disk (and `pkg/wire` likewise), so a change there is
+visible to the adapters, the
 examples and the e2e fixture before it is tagged or pushed.
 
 `example/*` and `tests/e2e/matrix` keep their `replace` lines even though the
