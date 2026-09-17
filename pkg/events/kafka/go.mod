@@ -2,7 +2,7 @@
 // contract package that depends on it - stays free of a broker client.
 module github.com/craftgodotdev/craftgo/pkg/events/kafka
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/craftgodotdev/craftgo/pkg/events v1.8.0
@@ -12,6 +12,7 @@ require (
 )
 
 require (
-	github.com/klauspost/compress v1.18.7 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
 )

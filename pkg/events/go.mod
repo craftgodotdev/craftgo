@@ -8,4 +8,4 @@
 // `for` variable in this module sees the last value. Pass it as a parameter.
 module github.com/craftgodotdev/craftgo/pkg/events
 
-go 1.21
+go 1.26
