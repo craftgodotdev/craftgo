@@ -77,8 +77,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`log.Slog()`**, a `*slog.Logger` writing through craftgo's own logger.
 - **`nats.ErrConsumerStopped`**, the sentinel behind the report a group
   makes when its durable stops delivering - deleted, or its stream was.
-  The transport keeps running with that group dead, so an application
-  that wants it back matches this error and acts.
+  The server answers Consumer Deleted only to a pull request already
+  waiting, so a durable deleted between two pulls is caught instead on
+  the first missed heartbeat, about 30s, where the adapter asks whether
+  it is still there and stops the group when it is not. The transport
+  keeps running with that group dead, so an application that wants it
+  back matches this error and acts.
 
 ### Changed
 

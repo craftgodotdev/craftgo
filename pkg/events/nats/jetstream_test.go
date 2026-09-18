@@ -1133,12 +1133,13 @@ func TestPublishAfterCloseSendsNothing(t *testing.T) {
 	}
 }
 
-// A durable deleted underneath a running process stops delivery with
-// nothing else to notice, so the report has to be recognisable: an
-// application that wants the group back matches
-// [craftnats.ErrConsumerStopped] and restarts.
-func TestADeletedDurableIsReportedAsErrConsumerStopped(t *testing.T) {
-	conn := runJetStreamServer(t)
+// deletedDurableGroup is the start both tests below share: a transport
+// consuming group "deleted-durable" off ORDERS with handle as its only
+// listener, one message published into it, the failures that group
+// reports, and the test's own handle on the durable to watch the server
+// side through.
+func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(context.Context, *events.Message) error) (<-chan error, jetstream.Consumer) {
+	t.Helper()
 	provision(t, conn, "ORDERS", "orders.>")
 
 	reported := make(chan error, 8)
@@ -1150,18 +1151,10 @@ func TestADeletedDurableIsReportedAsErrConsumerStopped(t *testing.T) {
 			}
 		}))
 
-	delivered := make(chan struct{}, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	t.Cleanup(cancel)
 	if err := tr.Subscribe(ctx, []events.Subscription{{
-		Event: "orders.Placed", Consumer: "C", Group: "deleted-durable",
-		Handle: func(_ context.Context, _ *events.Message) error {
-			select {
-			case delivered <- struct{}{}:
-			default:
-			}
-			return nil
-		},
+		Event: "orders.Placed", Consumer: "C", Group: "deleted-durable", Handle: handle,
 	}}); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -1170,28 +1163,46 @@ func TestADeletedDurableIsReportedAsErrConsumerStopped(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-delivered:
-	case <-time.After(20 * time.Second):
-		t.Fatal("the group never consumed, so there is nothing to delete underneath it")
-	}
 
 	js, err := jetstream.New(conn)
 	if err != nil {
 		t.Fatalf("jetstream: %v", err)
 	}
-	del, delCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer delCancel()
-	if err := js.DeleteConsumer(del, "ORDERS", "deleted-durable"); err != nil {
-		t.Fatalf("delete consumer: %v", err)
+	infoCtx, infoCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer infoCancel()
+	durable, err := js.Consumer(infoCtx, "ORDERS", "deleted-durable")
+	if err != nil {
+		t.Fatalf("consumer handle: %v", err)
 	}
+	return reported, durable
+}
 
-	deadline := time.After(75 * time.Second)
+// deleteConsumer removes a durable underneath a running process, the way
+// an operator or a botched migration would.
+func deleteConsumer(t *testing.T, conn *natsclient.Conn, stream, name string) {
+	t.Helper()
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := js.DeleteConsumer(ctx, stream, name); err != nil {
+		t.Fatalf("delete consumer %s: %v", name, err)
+	}
+}
+
+// awaitConsumerStopped waits for the group's ErrConsumerStopped report,
+// skipping what the client notices its own way first - the missed
+// heartbeat, the Consumer Deleted status.
+func awaitConsumerStopped(t *testing.T, reported <-chan error, within time.Duration) {
+	t.Helper()
+	deadline := time.After(within)
 	for {
 		select {
 		case err := <-reported:
 			if !errors.Is(err, craftnats.ErrConsumerStopped) {
-				continue // the client reports the lost consumer its own way first
+				continue
 			}
 			for _, want := range []string{"deleted-durable", "ORDERS"} {
 				if !strings.Contains(err.Error(), want) {
@@ -1200,7 +1211,105 @@ func TestADeletedDurableIsReportedAsErrConsumerStopped(t *testing.T) {
 			}
 			return
 		case <-deadline:
-			t.Fatal("a deleted durable was never reported as ErrConsumerStopped")
+			t.Fatalf("a deleted durable was never reported as ErrConsumerStopped within %s", within)
 		}
 	}
+}
+
+// A durable deleted underneath a running process stops delivery with
+// nothing else to notice, so the report has to be recognisable: an
+// application that wants the group back matches
+// [craftnats.ErrConsumerStopped] and restarts.
+//
+// Here the client's next pull request is already queued on the server
+// when the durable goes, which is the only case the server answers: it
+// releases every waiting request with Consumer Deleted, and the report
+// follows in milliseconds.
+func TestADeletedDurableWithAPullWaitingIsReportedAtOnce(t *testing.T) {
+	conn := runJetStreamServer(t)
+
+	delivered := make(chan struct{}, 1)
+	reported, durable := deletedDurableGroup(t, conn, func(context.Context, *events.Message) error {
+		select {
+		case delivered <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+
+	select {
+	case <-delivered:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the group never consumed, so there is nothing to delete underneath it")
+	}
+
+	waiting := time.Now().Add(20 * time.Second)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		info, err := durable.Info(ctx)
+		cancel()
+		if err != nil {
+			t.Fatalf("consumer info: %v", err)
+		}
+		if info.NumWaiting >= 1 {
+			break
+		}
+		if time.Now().After(waiting) {
+			t.Fatal("the client never left a pull request waiting, so a delete would have nothing to answer")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	deleteConsumer(t, conn, "ORDERS", "deleted-durable")
+
+	awaitConsumerStopped(t, reported, 20*time.Second)
+}
+
+// The same deletion with no pull request waiting: the handler is still
+// running, so the batch of one is spent and the server holds nothing to
+// answer. The client is told nothing, and the durable's absence surfaces
+// only when its heartbeats stop - about 30s, twice the heartbeat the
+// client derives from its 30s pull expiry - after which the adapter asks
+// the server whether the durable is still there and stops consuming.
+//
+// Without that question the group re-pulls into the void for ever and
+// reports nothing, which is what this transport used to do.
+func TestADeletedDurableWithNoPullWaitingIsReportedOnTheNextMissedHeartbeat(t *testing.T) {
+	conn := runJetStreamServer(t)
+
+	delivered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	releaseHandler := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(releaseHandler)
+
+	reported, durable := deletedDurableGroup(t, conn, func(context.Context, *events.Message) error {
+		select {
+		case delivered <- struct{}{}:
+		default:
+		}
+		<-release
+		return nil
+	})
+
+	select {
+	case <-delivered:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the group never consumed, so there is nothing to delete underneath it")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	info, err := durable.Info(ctx)
+	if err != nil {
+		t.Fatalf("consumer info: %v", err)
+	}
+	if info.NumWaiting != 0 {
+		t.Fatalf("NumWaiting = %d while the handler runs, so the delete would be answered after all", info.NumWaiting)
+	}
+	deleteConsumer(t, conn, "ORDERS", "deleted-durable")
+	if _, err := durable.Info(ctx); !errors.Is(err, jetstream.ErrConsumerNotFound) {
+		t.Fatalf("info after the delete: err = %v, want ErrConsumerNotFound", err)
+	}
+	releaseHandler()
+
+	awaitConsumerStopped(t, reported, 60*time.Second)
 }

@@ -94,9 +94,11 @@ func WithJetStreamErrorHandler(fn func(sub events.Subscription, msg *events.Mess
 	return func(j *JetStream) { j.onError = fn }
 }
 
-// WithProbeTimeout bounds each start-up check against the server.
-// Default 5s. A clustered server with JetStream disabled never answers
-// the account query, so a timeout is the only way to learn.
+// WithProbeTimeout bounds each check craftgo makes against the server:
+// the start-up ones, and the question a missed heartbeat raises - is
+// this group's durable still there. Default 5s. A clustered server with
+// JetStream disabled never answers the account query, so a timeout is
+// the only way to learn.
 func WithProbeTimeout(d time.Duration) JetStreamOption {
 	return func(j *JetStream) { j.probeTimeout = d }
 }
@@ -511,10 +513,15 @@ func (j *JetStream) subscribed(group events.Group) bool {
 
 // ErrConsumerStopped reports, through [WithJetStreamErrorHandler], a
 // group whose durable stopped delivering after boot: the durable was
-// deleted, or the stream under it was. Nothing recreates it - the
-// process keeps running, and keeps passing readiness, with that group
-// silently dead - so an application that wants the group back has to
-// match this error and act on it.
+// deleted, or the stream under it was. It is raised from the server's
+// Consumer Deleted status where a pull request was waiting for one, and
+// otherwise from the first missed heartbeat after the deletion - about
+// 30s, twice the heartbeat the client derives from its pull expiry -
+// which is when the adapter asks the server whether the durable is
+// still there. Nothing recreates it - the process keeps running, and
+// keeps passing readiness, with that group silently dead - so an
+// application that wants the group back has to match this error and act
+// on it.
 var ErrConsumerStopped = errors.New("nats: consumer stopped consuming")
 
 func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
@@ -526,9 +533,25 @@ func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 	cc, err := consumer.Consume(
 		func(m jetstream.Msg) { j.dispatch(ctx, g, ackWait, m) },
 		jetstream.PullMaxMessages(g.config.maxInFlight),
-		jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
-			if ctx.Err() == nil {
-				j.report(whole, nil, fmt.Errorf("nats: consume group %q: %w", g.name, err))
+		jetstream.ConsumeErrHandler(func(cc jetstream.ConsumeContext, err error) {
+			if ctx.Err() != nil {
+				return
+			}
+			j.report(whole, nil, fmt.Errorf("nats: consume group %q: %w", g.name, err))
+			if !errors.Is(err, jetstream.ErrNoHeartbeat) {
+				return
+			}
+			// A durable deleted while no pull request was waiting is
+			// answered by nobody - the server releases Consumer Deleted
+			// to its waiting queue alone - so a missed heartbeat is the
+			// only hint it is gone, and a client told nothing re-pulls
+			// into the void for ever. Stopping here is what the Closed
+			// goroutine below reports; an unreachable server answers
+			// neither way, and the next missed heartbeat asks again.
+			probeCtx, cancel := context.WithTimeout(ctx, j.probeTimeout)
+			defer cancel()
+			if _, err := consumer.Info(probeCtx); errors.Is(err, jetstream.ErrConsumerNotFound) || errors.Is(err, jetstream.ErrStreamNotFound) {
+				cc.Stop()
 			}
 		}),
 	)
