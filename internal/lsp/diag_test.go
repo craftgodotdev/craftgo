@@ -250,3 +250,32 @@ type User {
 		t.Fatalf("expected a decorator/* code in diagnostics, got %+v", got)
 	}
 }
+
+// The editor is where a `@format(raw)` on the wrong type is caught, so
+// the analyser's decorator/type mismatch has to reach the buffer with
+// the code and the offending spelling intact - a raw field is accepted
+// beside it, so what is reported is the type and not the decorator.
+func TestBuildDiagnosticsFormatRawOffBytes(t *testing.T) {
+	src := `package design
+
+type Hook {
+	ok      bytes @format(raw)
+	payload string @format(raw)
+}
+`
+	got := newTestServer().buildDiagnostics(uri.New("file:///test.craftgo"), src)
+	if len(got) != 1 {
+		t.Fatalf("expected exactly one diagnostic, got %d: %+v", len(got), got)
+	}
+	d := got[0]
+	if d.Code != "decorator/typemismatch" {
+		t.Errorf("Code = %v, want decorator/typemismatch", d.Code)
+	}
+	if !strings.Contains(d.Message, "@format(raw) applies to bytes") ||
+		!strings.Contains(d.Message, "is string") {
+		t.Errorf("Message = %q", d.Message)
+	}
+	if d.Range.Start.Line != 4 {
+		t.Errorf("the squiggly sits on line %d, want the `payload` row (4)", d.Range.Start.Line)
+	}
+}

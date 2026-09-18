@@ -36,7 +36,7 @@ All apply at field, scalar, and error-field level. They target `string`-typed va
 | `@minLength(n)` | `(int)` | Length `>= n`. |
 | `@maxLength(n)` | `(int)` | Length `<= n`. |
 | `@pattern("re")` | `(string)` | RE2 regex the value must match. |
-| `@format(name)` | `(ident \| string)` | Named format - `email`, `uuid`, `url`, `datetime`, … |
+| `@format(name)` | `(ident \| string)` | Named format - `email`, `uuid`, `url`, `datetime`, … On a `bytes` field only, `raw`: the bytes already ARE the value in the message's own encoding, so the codec embeds them untouched (Go `wire.Raw`). `raw` checks nothing and is refused on every other type; no other validator applies to a field carrying it. |
 
 ## Field validation - number
 

@@ -58,7 +58,7 @@ var specs = []Spec{
 	{Name: "uint64", Kind: Uint, Bits: 64, Go: "uint64", Parser: "strconv.ParseUint", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint64`** - 64-bit unsigned integer."},
 	{Name: "float32", Kind: Float, Bits: 32, Go: "float32", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "float", Doc: "**`float32`** - 32-bit IEEE-754 float."},
 	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
-	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go."},
+	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go, base64 on the wire. Add `@format(raw)` when the bytes already ARE the value in the message's own encoding and the codec must embed them untouched."},
 	{Name: "any", Kind: Any, Go: "any", Doc: "**`any`** - opaque JSON value.\n\nGenerates `any` in Go."},
 	{Name: "datetime", Kind: DateTime, Go: "time.Time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
 	{Name: "file", Kind: File, Go: "*multipart.FileHeader", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},

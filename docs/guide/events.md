@@ -165,6 +165,8 @@ type Middleware func(sub craftevents.Subscription, next craftevents.Handler) cra
 
 A middleware asks for something other than "done" through the message: `msg.Settle()` takes the delivery, `msg.Redeliver()` hands it back, `msg.Reject()` gives it up. Asking for nothing settles.
 
+A frame that panicked did not finish deciding, so what it asked for is dropped. A panicking **handler** leaves the message undecided and the chain above it decides, as it does for any other error. A panic in a **middleware** unwinds past the whole chain, leaving nothing above to decide - so the bus asks for redelivery on a transport that can honour one, and the delivery is retried rather than acked away.
+
 ::: danger Only some transports can honour this
 JetStream and a Kafka share group track each record; a classic Kafka consumer group, core NATS and the in-process transport do not, and there `Redeliver` settles instead. Name what you need with `WithDispositionRequired` and `Register` refuses a transport that cannot honour it.
 :::

@@ -10,6 +10,11 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// rawSchemaDescription is what a `bytes @format(raw)` schema says in
+// place of a type: the value is carried in the message's own encoding,
+// and the document has nothing more to add about it.
+const rawSchemaDescription = "raw encoded value"
+
 // schemaKeyword stamps one constraint decorator onto a schema.
 type schemaKeyword func(d *ast.Decorator, s *openapi3.Schema)
 
@@ -56,14 +61,22 @@ var schemaKeywords = map[string]schemaKeyword{
 		if len(d.Args) != 1 {
 			return
 		}
-		switch v := d.Args[0].Value.(type) {
-		case *ast.StringLit:
-			s.Format = strfmt.OpenAPIFormat(v.Value)
-		case *ast.IdentExpr:
-			if v.Name != nil {
-				s.Format = strfmt.OpenAPIFormat(v.Name.String())
-			}
+		name := semantic.StringOrIdentArg(d.Args[0])
+		if name == "" {
+			return
 		}
+		if name == semantic.FormatRaw {
+			// `raw` constrains nothing: the bytes ARE the value, in
+			// whatever encoding the message travels in, so `type: string,
+			// format: byte` would be a lie about a field no base64
+			// decoder should touch. What is left is the one line telling
+			// a reader the empty schema is deliberate rather than a field
+			// nobody documented.
+			s.Type, s.Format = nil, ""
+			s.Description = appendDescription(s.Description, rawSchemaDescription)
+			return
+		}
+		s.Format = strfmt.OpenAPIFormat(name)
 	},
 	"gt":  func(d *ast.Decorator, s *openapi3.Schema) { emitExclusive(s, "exclusiveMinimum", d, 0) },
 	"gte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "minimum", d, 0, setMin) },

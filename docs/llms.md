@@ -58,7 +58,8 @@ Field syntax: `name TypeRef [@decorator(...) ...]`.
 | `float32/64`     | matching Go             |                                            |
 | `bool`           | `bool`                  |                                            |
 | `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
-| `any`            | `any`                   | arbitrary JSON value (`object` is rejected as a field type) |
+| `any`            | `any`                   | arbitrary JSON value, decoded and re-encoded (`object` is rejected as a field type) |
+| `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` stay `wire.Raw` (nil is absence, an explicit `null` is the four bytes `null`), from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
 | `file`           | `*multipart.FileHeader` | only with `@form`                          |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
@@ -386,8 +387,13 @@ appends to the same chain afterwards (for a chain built out of a service context
 `Start` panics. Order: recover outermost, then the bus chain, then `Subscription.Chain`, then the
 handler.
 
+A codec must pass a `wire.Raw` through as the bytes of that value in its own encoding; the conformance
+suite `pkg/wire/codectest` (`codectest.Run(t, c)`) is how one proves it.
+
 `Bus.Start` wraps every handler in a recover, so a panicking consumer reaches the transport's error
-handler as a `*events.PanicError` and delivery continues. A payload that would not decode or failed
+handler as a `*events.PanicError` and delivery continues. A panicking handler leaves the disposition
+unset and the chain above it decides; a panic in a middleware unwinds past the chain, so the bus asks
+for `Redeliver` where the transport can honour one rather than letting an unset disposition ack it. A payload that would not decode or failed
 `Validate()` is a `*events.PayloadError` naming the contract; another codec's stamp is
 `events.ErrCodecMismatch`. Beyond that the runtime classifies nothing: what to do is a middleware's.
 
@@ -456,7 +462,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
 | `@mimeTypes([...])` | file      | string array       | Multipart MIME allow-list     |
 
-**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`.
+**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table).
 
 Validators on `errorField` are emitted as OpenAPI schema constraints only (no runtime check on server-emitted error bodies). Every string/number validator above may also sit directly on a `scalar` declaration to bake the constraint into the scalar type (`scalar Email string @format(email) @maxLength(254)`).
 

@@ -485,6 +485,14 @@ service S { get M /u/{id} { request R  response Resp } }`
 	}
 }
 
+// @default on a raw field is rejected with the rule `bytes` already
+// carries: craftgo does not read the value, so it has nothing to write
+// either, and no literal spells it.
+func TestDefaultOnRawBytesRejected(t *testing.T) {
+	d := expectError(t, `type Req { payload bytes? @format(raw) @default("{}") }`, CodeDecoratorConflict)
+	expectMessage(t, d, "@default is not supported on a `bytes` field")
+}
+
 // @default on a file field is rejected (no literal default form).
 func TestDefaultOnDateTimeRejected(t *testing.T) {
 	expectError(t, `type Req { at datetime? @default("2026-01-01T00:00:00Z") }`, CodeDecoratorConflict)

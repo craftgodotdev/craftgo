@@ -171,7 +171,11 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames
 			base = &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		}
 		applyFieldConstraints(sc.Decorators, base)
-		base.Description = semantic.Description(sc.Decorators, sc.Doc)
+		if desc := semantic.Description(sc.Decorators, sc.Doc); desc != "" {
+			// Ahead of, not over: a raw scalar's schema already carries
+			// the line that says what its emptiness means.
+			base.Description = appendDescription(desc, base.Description)
+		}
 		names.put(doc, name, &openapi3.SchemaRef{Value: base})
 	}
 }

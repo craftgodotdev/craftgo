@@ -48,9 +48,12 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 		if !ok {
 			continue
 		}
-		actual := a.fieldPrim(f.Type)
+		actual := a.fieldPrimOf(f)
 		for _, d := range f.Decorators {
 			if d == nil {
+				continue
+			}
+			if a.formatRawMismatch(d, actual, parent+"."+f.Name, describeTypeRef(f.Type)) {
 				continue
 			}
 			spec, ok := Lookup(d.Name)
@@ -80,6 +83,9 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 // validator inheritance + codegen).
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	actual := PrimFromName(sd.Primitive)
+	if sd.Primitive == "bytes" && HasRawFormat(sd.Decorators) {
+		actual = PrimRawBytes
+	}
 	if actual == 0 || actual == PrimFile {
 		// Not a recognised scalar primitive. `file` resolves to PrimFile
 		// (non-zero) but is a multipart-upload wire keyword, not a Go type -
@@ -96,6 +102,9 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 		if d == nil {
 			continue
 		}
+		if a.formatRawMismatch(d, actual, "scalar "+sd.Name, sd.Primitive) {
+			continue
+		}
 		spec, ok := Lookup(d.Name)
 		if !ok || spec.AppliesTo == 0 {
 			continue
@@ -107,6 +116,46 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 				d.Name, spec.AppliesTo, sd.Name, actual)
 		}
 	}
+}
+
+// formatRawMismatch reports `@format(raw)` sitting on anything but the
+// raw-bytes shape, and returns true when it did so the caller skips the
+// generic check for that decorator (one mistake, one diagnostic).
+//
+// `raw` is the one `@format` value the AppliesTo table cannot judge: it
+// is an ARGUMENT, and `@format` legitimately applies to every
+// string-shaped field - so `payload string @format(raw)` passes that
+// check and has to be refused where the argument is read. A field that
+// IS bytes resolves to [PrimRawBytes] instead, which is what makes every
+// OTHER validator refuse on it through the generic path.
+//
+// subject is the diagnostic's subject ("Req.payload", "scalar Blob") and
+// actualDesc how the refused type is spelt.
+func (a *analyzer) formatRawMismatch(d *ast.Decorator, actual Prims, subject, actualDesc string) bool {
+	if !isFormatRaw(d) || actual == PrimRawBytes {
+		return false
+	}
+	a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+		"@format(raw) applies to bytes, but %s is %s - `raw` says the bytes already are the value in the message's own encoding, which only `bytes` carries",
+		subject, actualDesc)
+	return true
+}
+
+// fieldPrimOf is [analyzer.fieldPrim] for a whole FIELD: the raw-bytes
+// shape is `bytes` plus the `@format(raw)` written on the field or on the
+// scalar it names, so the type ref alone cannot classify it. The resolved
+// IR already answers that question for codegen and the LSP, so it answers
+// it here too rather than the analyser deciding a second way. Every other
+// validator's AppliesTo misses [PrimRawBytes], which is what refuses them
+// on a raw field through the ordinary compatibility check.
+func (a *analyzer) fieldPrimOf(f *ast.Field) Prims {
+	if f == nil {
+		return 0
+	}
+	if ResolveField(f, a.pkg, a.proj).Category == CatRawBytes {
+		return PrimRawBytes
+	}
+	return a.fieldPrim(f.Type)
 }
 
 // fieldPrim resolves a field's [ast.TypeRef] to a single primitive

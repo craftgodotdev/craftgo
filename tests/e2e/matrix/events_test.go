@@ -15,6 +15,7 @@ import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
+	"github.com/craftgodotdev/craftgo/pkg/wire"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/consumers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/events/events"
@@ -673,5 +674,63 @@ func TestAnArrayPayloadValidatesEveryElement(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "item 1") || !strings.Contains(err.Error(), "invoiceId") {
 		t.Errorf("the error names neither the element nor the field: %v", err)
+	}
+}
+
+// A `bytes @format(raw)` payload field is bytes the design never reads,
+// so what a consumer gets back has to be what the publisher sent - not
+// what a round trip through map[string]any would leave of it. Each of
+// the three values below is one such loss: an explicit null collapses to
+// Go nil (and encodes as an absent key), an integer past 2^53 comes back
+// as a float64 with different digits, and 1.50 re-encodes as 1.5.
+func TestARawPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
+	const raw = `{"explicit":null,"big":12345678901234567890,"trailing":1.50}`
+
+	got := make(chan *eventtypes.WarehouseClosed, 1)
+	tr := memory.New(memory.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
+		t.Errorf("consumer failed: %v", err)
+	}))
+	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
+	if err := events.WarehouseClosed.Subscribe(bus, consumers.OpsGroup,
+		func(_ context.Context, closed *eventtypes.WarehouseClosed) error {
+			got <- closed
+			return nil
+		}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	if err := events.WarehouseClosed.Publish(context.Background(), bus, &eventtypes.WarehouseClosed{
+		Warehouse: eventtypes.WarehouseNorth,
+		Details:   wire.Raw(raw),
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	tr.Drain()
+
+	select {
+	case closed := <-got:
+		if closed.Details == nil {
+			t.Fatal("the consumer received no details at all")
+		}
+		if string(closed.Details) != raw {
+			t.Errorf("details arrived as %s, want the published bytes %s", closed.Details, raw)
+		}
+	default:
+		t.Fatal("nothing was delivered")
+	}
+}
+
+// An absent raw field stays absent rather than arriving as the four
+// bytes `null`: `?` puts omitempty on the tag, so the key is not written.
+func TestAnAbsentRawFieldIsNotWritten(t *testing.T) {
+	body, err := json.Marshal(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "details") {
+		t.Errorf("an unset optional raw field reached the wire: %s", body)
 	}
 }

@@ -20,7 +20,8 @@ const fullDesign = `package gate
 middleware Guard
 
 type Thing {
-	id string
+	id      string
+	payload bytes @format(raw)
 }
 
 type GetReq {
@@ -145,6 +146,10 @@ type scaffoldShape struct {
 	// link runs `go build` rather than `go vet`: the command a user runs
 	// on a fresh project, at roughly ten times the cost.
 	link bool
+	// typesRoundTrip runs a JSON round trip against the generated types
+	// package, for a design whose fields claim something about the wire
+	// that only the compiler and the codec together can confirm.
+	typesRoundTrip bool
 }
 
 var scaffoldShapes = []scaffoldShape{
@@ -163,7 +168,8 @@ var scaffoldShapes = []scaffoldShape{
 			"config/config.yaml":         "config.yaml.tmpl",
 			"config/example.config.yaml": "example.config.yaml.tmpl",
 		},
-		link: true,
+		link:           true,
+		typesRoundTrip: true,
 	},
 	{
 		name:     "routes only",
@@ -234,6 +240,9 @@ func TestScaffoldsCompile(t *testing.T) {
 			if len(shape.yamlScaffolds) > 0 {
 				assertConfigRoundTrips(t, dir)
 			}
+			if shape.typesRoundTrip {
+				assertRawFieldRoundTrips(t, dir)
+			}
 		})
 	}
 }
@@ -285,6 +294,55 @@ func assertConfigRoundTrips(t *testing.T, dir string) {
 	}
 }
 
+// rawRoundTripTest is what a `bytes @format(raw)` field claims: the
+// bytes in are the bytes out. It runs inside the generated module
+// because that is the only place the type exists, and it is the compiler
+// - not a string check over generated source - that says wire.Raw was
+// really emitted.
+const rawRoundTripTest = `package gate
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestRawFieldRoundTripsByteForByte(t *testing.T) {
+	const raw = ` + "`" + `{"explicit":null,"big":12345678901234567890,"trailing":1.50}` + "`" + `
+	in := ` + "`" + `{"id":"t-1","payload":` + "`" + ` + raw + ` + "`" + `}` + "`" + `
+
+	var got Thing
+	if err := json.Unmarshal([]byte(in), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if string(got.Payload) != raw {
+		t.Fatalf("payload decoded to %s, want the bytes that arrived: %s", got.Payload, raw)
+	}
+	out, err := json.Marshal(&got)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if string(out) != in {
+		t.Fatalf("re-encoded to %s, want %s", out, in)
+	}
+}
+`
+
+// assertRawFieldRoundTrips runs rawRoundTripTest against the generated
+// types package. A raw field decoded into any and re-encoded would lose
+// the explicit null, the digits past 2^53 and the trailing zero - three
+// failures this test reads back one at a time.
+func assertRawFieldRoundTrips(t *testing.T, dir string) {
+	t.Helper()
+	pkg := filepath.Join("internal", "types", "gate")
+	mustWrite(t, filepath.Join(dir, pkg), "roundtrip_test.go", rawRoundTripTest)
+	run := exec.Command("go", "test", "./"+filepath.ToSlash(pkg)+"/")
+	run.Dir = dir
+	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Errorf("a raw field does not carry its bytes through unchanged: %v\n%s", err, out)
+	}
+}
+
 // generateScaffoldProject runs gen over shape in a fresh directory and
 // returns it, having confirmed every scaffold the shape claims is there.
 func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) string {
@@ -315,14 +373,27 @@ func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) str
 	// A workspace rather than requires: the generated module names no
 	// dependency of its own, so the build resolves craftgo out of the repo
 	// and everything else out of the root module's build list. Nothing is
-	// fetched that building this repo has not already fetched.
-	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t.\n\t"+
-		root+"\n\t"+filepath.Join(root, "pkg", "events")+"\n)\n")
+	// fetched that building this repo has not already fetched. Every
+	// published module a generated project can reach has to be listed -
+	// pkg/events for a consumer, pkg/wire for a `bytes @format(raw)` field -
+	// or its import resolves to nothing.
+	uses := []string{".", root}
+	for _, m := range repoModules {
+		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
+	}
+	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+
+		strings.Join(uses, "\n\t")+"\n)\n")
 	return dir
 }
 
-// repoRoot walks up to the module holding both go.mod and the separate
-// pkg/events module, the pair a generated project's workspace has to name.
+// repoModules are the nested modules of this repo, relative to its root,
+// that a generated project's workspace has to name alongside the root
+// module. Adding a published module here is what keeps the scaffold
+// builds resolving it the way a real project's `go get` would.
+var repoModules = []string{"pkg/events", "pkg/wire"}
+
+// repoRoot walks up to the module holding go.mod and every module in
+// [repoModules] - the set a generated project's workspace has to name.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -331,8 +402,14 @@ func repoRoot(t *testing.T) string {
 	}
 	for {
 		_, mod := os.Stat(filepath.Join(dir, "go.mod"))
-		_, events := os.Stat(filepath.Join(dir, "pkg", "events", "go.mod"))
-		if mod == nil && events == nil {
+		nested := true
+		for _, m := range repoModules {
+			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(m), "go.mod")); err != nil {
+				nested = false
+				break
+			}
+		}
+		if mod == nil && nested {
 			real, err := filepath.EvalSymlinks(dir)
 			if err != nil {
 				t.Fatal(err)

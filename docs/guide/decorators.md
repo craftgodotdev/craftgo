@@ -208,6 +208,8 @@ number).
 
 **Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. RFC-compliant validators (email, ipv4/ipv6, cidr, mac, datetime/date/time, base64, json) delegate to Go stdlib (`net`, `net/mail`, `net/url`, `time`, `encoding/*`); the remainder use regex.
 
+One more value is not a check at all: [`@format(raw)`](/guide/types-and-scalars#raw-encoded-values-bytes-format-raw), valid only on a `bytes` field, says the bytes already ARE the value in the message's own encoding and the codec must embed them untouched.
+
 ```craftgo
 type User {
     email   string @format(email) @maxLength(254)

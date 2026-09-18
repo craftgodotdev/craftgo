@@ -18,7 +18,8 @@ require (
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/craftgodotdev/craftgo/pkg/events v0.0.0
+	github.com/craftgodotdev/craftgo/pkg/events v1.8.0
+	github.com/craftgodotdev/craftgo/pkg/wire v0.0.0
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
@@ -30,3 +31,5 @@ replace github.com/craftgodotdev/craftgo => ../../..
 replace github.com/craftgodotdev/craftgo/pkg/events => ../../../pkg/events
 
 replace github.com/craftgodotdev/craftgo/pkg/events/kafka => ../../../pkg/events/kafka
+
+replace github.com/craftgodotdev/craftgo/pkg/wire => ../../../pkg/wire

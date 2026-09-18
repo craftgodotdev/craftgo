@@ -125,7 +125,11 @@ func scalarFieldLevelChecks(f *ast.Field, access, primDSL string, ctx emitCtx) s
 // never emit a `v.Field.Validate()` call against a scalar whose
 // Validate() method was skipped (which would not compile).
 func scalarDeclHasValidators(sd *ast.ScalarDecl) bool {
-	if sd == nil {
+	if sd == nil || semantic.HasRawFormat(sd.Decorators) {
+		// `@format(raw)` is the one `@format` that checks nothing: a raw
+		// scalar is an ALIAS for wire.Raw, a type this package cannot
+		// define a method on - so it must claim no validators or the
+		// emitted Validate() would not compile.
 		return false
 	}
 	for _, d := range sd.Decorators {

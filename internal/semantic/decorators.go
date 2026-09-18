@@ -16,6 +16,7 @@ package semantic
 import (
 	"strings"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
@@ -219,6 +220,10 @@ const (
 	// PrimDateTime covers the `datetime` primitive, which no validator
 	// targets: a timestamp has no length, bound or format to check.
 	PrimDateTime
+	// PrimRawBytes covers a `bytes @format(raw)` field, which no
+	// validator but that `@format` targets: the point of it is that the
+	// bytes travel unexamined.
+	PrimRawBytes
 	// PrimAny matches any field type - used by validator-style
 	// decorators that don't care about primitive (e.g. `@example`).
 	PrimAny Prims = 0
@@ -248,6 +253,9 @@ func (p Prims) String() string {
 	}
 	if p&PrimDateTime != 0 {
 		parts = append(parts, "datetime")
+	}
+	if p&PrimRawBytes != 0 {
+		parts = append(parts, "bytes @format(raw)")
 	}
 	return strings.Join(parts, ", ")
 }
@@ -336,10 +344,38 @@ type Spec struct {
 	Metadata bool
 }
 
-// formatValues lists the named string formats accepted by `@format` on a
-// field or scalar: the [strfmt] catalogue codegen emits the checks from,
-// so the legal-name set and the validator set cannot drift.
-var formatValues = strfmt.Names()
+// FormatRaw is the one `@format` value that checks nothing. On a `bytes`
+// field it says the bytes ALREADY ARE the value in the message's own
+// encoding, so the codec embeds them untouched instead of base64-encoding
+// the buffer. Every other type is refused by [analyzer.formatRawMismatch].
+const FormatRaw = "raw"
+
+// FormatRawDoc is the hover text for that `raw`. Every other `@format`
+// value names a check; this one changes the field's Go type and how its
+// value travels, so it says so where the author is typing it.
+const FormatRawDoc = "**`@format(raw)`** - the bytes ARE the value, in the message's own encoding.\n\n" +
+	"Only on a `bytes` field. The codec embeds them untouched instead of base64-encoding the buffer, so what a producer wrote is what a consumer reads - an explicit `null`, an integer past 2^53 and a trailing zero such as `1.50` all survive, none of which does through `any`. Generates `wire.Raw` in Go - in every shape: nil is the absent value and an explicit `null` is the four bytes `null`, so `?` only omits an absent value and `@nullable` only keeps the key. A body field only; no other validator applies and `@default` is refused."
+
+// HasRawFormat reports whether a decorator chain carries `@format(raw)`.
+// Exported because the resolved IR, codegen and the language server all
+// have to recognise the same shape, and re-reading the argument in each
+// is how the three drift apart.
+func HasRawFormat(decs []*ast.Decorator) bool {
+	return isFormatRaw(ast.FindDecorator(decs, "format"))
+}
+
+// isFormatRaw reports whether d is that `@format(raw)`.
+func isFormatRaw(d *ast.Decorator) bool {
+	return d != nil && d.Name == "format" && len(d.Args) > 0 &&
+		StringOrIdentArg(d.Args[0]) == FormatRaw
+}
+
+// formatValues lists every value `@format` accepts on a field or scalar:
+// the [strfmt] catalogue codegen emits the string checks from - so the
+// legal-name set and the validator set cannot drift - plus [FormatRaw],
+// which is not a check at all but the `bytes` field's statement that its
+// bytes are the encoded value.
+var formatValues = append(strfmt.Names(), FormatRaw)
 
 // Registry is the closed set of decorators the framework recognises. A
 // `@name` not present here is reported as `decorator/unknown` - there is
@@ -439,13 +475,16 @@ var Registry = map[string]Spec{
 	"format": {
 		Name:   "format",
 		Levels: LvlField | LvlScalar | LvlErrorField,
-		Doc:    "Named format constraint (e.g. email, uuid, datetime).",
+		Doc:    "Named format constraint (e.g. email, uuid, datetime). `raw`, on a `bytes` field only, says the bytes are the encoded value and the codec embeds them untouched.",
 		Args: ArgsRule{
 			Min: 1, Max: 1,
 			Kinds: []ArgKind{ArgStringOrIdent},
 			Enum:  formatValues,
 		},
-		AppliesTo:  PrimString,
+		// PrimRawBytes is `bytes @format(raw)` - the one shape `@format`
+		// reaches that is not string-shaped, and the only decorator that
+		// reaches it: it is what put the field in that category.
+		AppliesTo:  PrimString | PrimRawBytes,
 		Constraint: ConstraintText,
 	},
 

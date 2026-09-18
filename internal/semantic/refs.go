@@ -161,12 +161,12 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 // violate several at once.
 func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf ResolvedField, report func(code, msg string)) {
 	f := rf.Field
-	// A nilable-but-not-pointer member has no clean cross-field presence:
-	// `?` / `@nullable` add no pointer (the Go type is already nilable), so
-	// the runtime can't use the `!= nil` check that lines up with the group's
+	// A nilable member with no clean cross-field presence: `?` /
+	// `@nullable` add no pointer (the Go type is already nilable), so the
+	// runtime can't use the `!= nil` check that lines up with the group's
 	// OpenAPI present-and-non-null. A slice / map is checked by emptiness
 	// (`len(...) > 0`, so an empty `[]` / `{}` reads as absent) and a `bytes`
-	// / `any` member (raw or via a scalar) has no presence expression at all
+	// / `any` member (via a scalar or not) has no presence expression at all
 	// (always treated as present). Reject so the author references a
 	// pointer-backed field instead.
 	if presenceUnclean(rf) {
@@ -212,18 +212,20 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 	}
 }
 
-// presenceUnclean reports whether a cross-field member's Go type is nilable
-// but not a pointer, so its runtime presence can't be the clean `!= nil`
-// check that matches the group's OpenAPI present-and-non-null. A slice / map
-// is checked by emptiness (`len(...) > 0`); a raw `bytes` (`[]byte`) or `any`
-// (`interface{}`) member - or a scalar over either, which lowers to the bare
-// named slice / interface - has no presence expression and is always treated
-// as present. A `file` is `*multipart.FileHeader` - already a pointer - so it
-// stays pointer-backed and is not flagged. The nilability fact comes from the
+// presenceUnclean reports whether a cross-field member's runtime presence
+// can't be the clean `!= nil` check that matches the group's OpenAPI
+// present-and-non-null. A slice / map is checked by emptiness (`len(...) >
+// 0`); a plain `bytes` (`[]byte`) or `any` (`interface{}`) member - or a
+// scalar over either, which lowers to the bare named slice / interface - has
+// no presence expression and is always treated as present. Two nilable
+// categories are clean and are not flagged: a `file` is
+// `*multipart.FileHeader`, and a [CatRawBytes] member is a wire.Raw whose
+// nil means the key was absent (an explicit `null` arrives as the four bytes
+// `null` and is the present value it is). The nilability fact comes from the
 // resolved IR ([ResolveField]), the single source the codegen pointer-wrap
 // decision reads too, so the cross-field check and the emitted Go agree.
 func presenceUnclean(rf ResolvedField) bool {
-	return rf.IsNilable && rf.Category != CatFile
+	return rf.IsNilable && rf.Category != CatFile && rf.Category != CatRawBytes
 }
 
 // checkServiceLevelRefs validates `@middlewares` and `@security` at the

@@ -13,6 +13,7 @@ func TestResolveField(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
 scalar Blob bytes
+scalar RawDoc bytes @format(raw)
 scalar Cents int
 enum Tone { Warm Cool }
 enum Tier { Bronze = 1  Gold = 2 }`,
@@ -26,6 +27,7 @@ type Inner { x int }
 type T {
   s      string
   b      bytes
+  rawdoc bytes @format(raw)
   blob   Blob
   email  Email
   c      Color
@@ -34,6 +36,7 @@ type T {
   mp     map<string, int>
   lvl    Level
   xblob  shared.Blob
+  xraw   shared.RawDoc
   xcents shared.Cents
   xtone  shared.Tone
   xtier  shared.Tier
@@ -61,6 +64,9 @@ type T {
 	}
 	check("s", CatPrimitive, "string", false, "")
 	check("b", CatBytes, "bytes", true, "")
+	// A raw field is a wire.Raw: nilable like the slice it is, and named
+	// by no package - the scalar spelling lowers to the same type.
+	check("rawdoc", CatRawBytes, "bytes", true, "")
 	check("blob", CatScalar, "bytes", true, "m")    // local scalar over bytes -> nilable
 	check("email", CatScalar, "string", false, "m") // local scalar over value -> not nilable
 	check("c", CatEnum, "string", false, "m")       // enum backing primitive, resolved like a scalar's
@@ -69,6 +75,7 @@ type T {
 	check("arr", CatArray, "", true, "")
 	check("mp", CatMap, "", true, "")
 	check("xblob", CatScalar, "bytes", true, "shared") // CROSS-PKG scalar over bytes -> resolved + nilable
+	check("xraw", CatRawBytes, "bytes", true, "")
 	check("xcents", CatScalar, "int", false, "shared")
 	check("xtone", CatEnum, "string", false, "shared") // CROSS-PKG enum: backing read from the declaring package
 	check("xtier", CatEnum, "int", false, "shared")

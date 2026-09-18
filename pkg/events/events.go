@@ -102,6 +102,26 @@ func IsReservedMeta(key string) bool {
 
 // Codec turns a payload value into bytes and back. Implementations must
 // be safe for concurrent use.
+//
+// # Raw values
+//
+// A field a design declares `bytes @format(raw)` lowers to
+// `github.com/craftgodotdev/craftgo/pkg/wire.Raw`, and a codec must pass
+// such a value through as the BYTES OF THAT VALUE in its own encoding:
+// embedded where the value belongs, never re-encoded and never treated
+// as a byte string to base64. The JSON codec gets this from the two
+// methods on the type; a msgpack or CBOR codec registers its own
+// handling for it. Proving it is one line - the conformance suite in
+// `pkg/wire/codectest` round-trips every shape a design can declare and
+// fails a codec that loses an explicit null, an integer past 2^53 or a
+// trailing zero:
+//
+//	func TestCodecCarriesRawValues(t *testing.T) { codectest.Run(t, MyCodec{}) }
+//
+// A schema codec that cannot embed an arbitrary encoded value has a
+// decision to make rather than a contract to meet - carry the bytes as
+// bytes, refuse the payload - and its own documentation is where it
+// says which.
 type Codec interface {
 	// Name identifies the encoding on the wire (see [MetaCodec]).
 	Name() string
@@ -716,30 +736,47 @@ func (e *PanicError) Unwrap() error {
 // the failure it most needs to. The outer one catches a panic in the chain
 // itself, which the inner one sits beneath and can never see.
 //
+// escaped reaches the OUTER one alone - [recoverHandler] has what it is
+// for. The inner one always leaves the message undecided: the chain above
+// it has not run its returns yet.
+//
 // Only one [*PanicError] is ever built per panic: once the inner recover
 // catches, no panic is in flight, so the outer recover returns nil and
 // passes the error through untouched. A bus with no middleware and a
 // subscription with no chain install the inner one alone.
-func decorated(busChain Chain, sub Subscription) Handler {
+func decorated(busChain Chain, sub Subscription, escaped Disposition) Handler {
 	if sub.Handle == nil {
 		return nil
 	}
-	h := recoverHandler(sub, sub.Handle)
+	h := recoverHandler(sub, sub.Handle, DispositionUnset)
 	chain := busChain.Append(sub.Chain...)
 	if len(chain) == 0 {
 		return h
 	}
-	return recoverHandler(sub, chain.wrap(sub, h))
+	return recoverHandler(sub, chain.wrap(sub, h), escaped)
 }
 
 // recoverHandler wraps h so a panic becomes a [*PanicError] naming sub.
 // It is the only place one is built.
 //
+// escaped is what the message asks for once this recover has caught: a
+// frame that panicked did not finish deciding, so whatever it asked for
+// is void and this writes over it.
+//
+// [DispositionUnset] is right where something above still decides - the
+// wrap below the chain, whose [*PanicError] the chain observes as an
+// ordinary error and answers for. It is wrong for the outermost wrap,
+// where nothing is above: the transport reads unset as "take it as done"
+// and a panic in a middleware would settle the message and lose it. So
+// [Bus.Start] passes [DispositionRedeliver] there on a transport that can
+// honour one ([Dispositioner]), and the escaped panic is retried like any
+// other error. On a transport that cannot, unset is all there is.
+//
 // A middleware cannot see a panic raised by a middleware BELOW it: that
 // panic unwinds its own frame and only a recover outside it catches. Put
 // [Recover] between two middlewares to change that. A panicking handler is
 // not affected - the wrap below the chain already turns one into an error.
-func recoverHandler(sub Subscription, h Handler) Handler {
+func recoverHandler(sub Subscription, h Handler, escaped Disposition) Handler {
 	event, consumer, group := sub.Event, sub.Consumer, sub.Group
 	return func(ctx context.Context, msg *Message) (err error) {
 		defer func() {
@@ -754,11 +791,8 @@ func recoverHandler(sub Subscription, h Handler) Handler {
 				Value:    r,
 				Stack:    debug.Stack(),
 			}
-			// A frame that panicked did not finish deciding, so what it
-			// asked for is void. Unset rather than settle: a middleware
-			// above it still decides.
 			if msg != nil {
-				msg.disposition = DispositionUnset
+				msg.disposition = escaped
 			}
 		}()
 		return h(ctx, msg)
@@ -895,8 +929,17 @@ func (b *Bus) Start(ctx context.Context) error {
 	if b.sub == nil {
 		return ErrNoSubscriber
 	}
+	// A panic that escapes the chain is a failed delivery like any other,
+	// so it is handed back wherever the transport can hand one back. Read
+	// once, like the required disposition [Bus.Register] checks: an answer
+	// that moved between messages would make the guarantee true of some
+	// deliveries and not others.
+	escaped := DispositionUnset
+	if canDisposition(b.sub, DispositionRedeliver) {
+		escaped = DispositionRedeliver
+	}
 	for i := range subs {
-		subs[i].Handle = decorated(chain, subs[i])
+		subs[i].Handle = decorated(chain, subs[i], escaped)
 	}
 	if err := b.sub.Subscribe(ctx, subs); err != nil {
 		return fmt.Errorf("events: start %d subscription(s): %w", len(subs), err)

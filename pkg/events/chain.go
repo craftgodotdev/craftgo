@@ -105,6 +105,8 @@ func Recover() Middleware {
 		if next == nil {
 			return nil
 		}
-		return recoverHandler(sub, next)
+		// Unset, not a hand-back: this recover is placed INSIDE a chain,
+		// so the middlewares above it still return and still decide.
+		return recoverHandler(sub, next, DispositionUnset)
 	}
 }

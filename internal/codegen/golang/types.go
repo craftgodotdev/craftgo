@@ -20,6 +20,16 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+const (
+	// rawImportPath and rawGoType are the runtime type a `bytes
+	// @format(raw)` field lowers to: a []byte the codec embeds as it
+	// stands instead of base64-encoding it. It is its own stdlib-only
+	// module, like pkg/events, so a generated contract package naming it
+	// inherits nothing else - not the craftgo toolchain that wrote it.
+	rawImportPath = "github.com/craftgodotdev/craftgo/pkg/wire"
+	rawGoType     = "wire.Raw"
+)
+
 // generateTypes emits a `types.go` file under outDir/<pkg.Name>/ containing
 // Go struct definitions for every concrete (non-generic) [ast.TypeDecl] in
 // pkg. Generic declarations (those with [ast.TypeDecl.TypeParams]) are
@@ -76,7 +86,7 @@ func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 		generatedHeader + "\n",
 		"package " + pkg.Name + "\n",
 	}
-	if imps := collectImports(pkg, r.CrossPkg); len(imps) > 0 {
+	if imps := collectImports(pkg, r); len(imps) > 0 {
 		parts = append(parts, renderImports(imps))
 	}
 	if scs := renderScalars(pkg); scs != "" {
@@ -103,9 +113,18 @@ func renderScalars(pkg *semantic.Package) string {
 	// via its `interface{ Validate() error }` assertion - so `Page<Email>`
 	// enforces Email's @format instead of silently dropping it.
 	const tmpl = "// %s is a DSL scalar over %s; its declared validators live on its Validate() method and are inherited by every field of this type.\ntype %s %s\n\n"
+	// A scalar over `bytes @format(raw)` is the one ALIAS: the raw type
+	// carries the bytes through the codec on its own methods, and a
+	// defined type would leave those behind and silently base64 the value
+	// instead. It declares no validator to hang off a method either.
+	const rawTmpl = "// %s is a DSL scalar over bytes @format(raw): an alias for the runtime's pass-through type, whose codec methods carry the bytes untouched.\ntype %s = %s\n\n"
 	parts := make([]string, len(names))
 	for i, n := range names {
 		sd := pkg.Scalars[n]
+		if semantic.HasRawFormat(sd.Decorators) {
+			parts[i] = fmt.Sprintf(rawTmpl, sd.Name, sd.Name, rawGoType)
+			continue
+		}
 		parts[i] = fmt.Sprintf(tmpl, sd.Name, sd.Primitive, sd.Name, scalarPrimitiveGo(sd.Primitive))
 	}
 	return strings.Join(parts, "")
@@ -145,10 +164,19 @@ func renderImports(imps []string) string {
 // It is the single home for the body import walk so the type emitter and the
 // error emitter can't drift: a mixin-only cross-package ref must be collected
 // for both, or the side that misses it emits `undefined: <pkg>`.
-func collectBodyImports(body []ast.TypeMember, crossPkg crossPkg, imports map[string]bool) {
+func collectBodyImports(body []ast.TypeMember, pkg *semantic.Package, r *projectResolver, imports map[string]bool) {
+	crossPkg := r.CrossPkg
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
+			if isRawBytesField(v, pkg, r) {
+				// A raw field lowers to wire.Raw whatever it was spelt as,
+				// so the runtime import is the only one it reaches - the
+				// package of a `shared.RawDoc` scalar it no longer names
+				// would land here unused.
+				imports[rawImportPath] = true
+				continue
+			}
 			collectFieldImports(v.Type, imports)
 			walkCrossPkgImports(v.Type, crossPkg, imports)
 		case *ast.Mixin:
@@ -165,10 +193,16 @@ func collectBodyImports(body []ast.TypeMember, crossPkg crossPkg, imports map[st
 	}
 }
 
-func collectImports(pkg *semantic.Package, crossPkg crossPkg) []string {
+func collectImports(pkg *semantic.Package, r *projectResolver) []string {
 	imports := map[string]bool{}
 	for _, td := range pkg.Types {
-		collectBodyImports(td.Body, crossPkg, imports)
+		collectBodyImports(td.Body, pkg, r, imports)
+	}
+	for _, sd := range pkg.Scalars {
+		if semantic.HasRawFormat(sd.Decorators) {
+			// The scalar itself is an alias for the runtime type.
+			imports[rawImportPath] = true
+		}
 	}
 	return sortedKeys(imports)
 }
@@ -308,8 +342,12 @@ func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectR
 //     encodes to JSON `null`.
 //   - A scalar whose underlying primitive is itself nilable (`scalar
 //     Blob bytes` → `[]byte`) - no extra wrap either: the named slice
-//     holds nil directly, exactly like a raw `bytes` field, so an
+//     holds nil directly, exactly like a bare `bytes` field, so an
 //     optional / `@nullable` `Blob` stays `Blob`, not `*Blob`.
+//   - `bytes @format(raw)`, and a scalar over it - `wire.Raw` in every
+//     shape. It is a slice, and nil is the absent value the encoder
+//     writes as `null`; a pointer would collapse an explicit `null`
+//     into that same nil and lose the difference.
 //   - Value types (string, int, struct, scalar-over-value) - wrap in
 //     `*T` so the field can hold nil. Combined with [jsonTag] dropping
 //     `omitempty`, the encoder emits `"f": null` for nil and `"f":
@@ -324,18 +362,31 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver) string
 	clone := *f.Type
 	clone.Optional = false
 	s := goTypeRef(&clone)
+	if isRawBytesField(f, pkg, r) {
+		// `bytes @format(raw)`: the bytes ARE the value, so the field
+		// holds the runtime's pass-through type rather than the []byte a
+		// codec would base64. A scalar over raw bytes is an alias for
+		// that same type, so it lowers here too.
+		s = rawGoType
+	}
 	if goFieldPointerWrap(f, pkg, r) {
 		s = "*" + s
 	}
 	return s
 }
 
+// isRawBytesField reports whether f is the raw-bytes shape - `bytes
+// @format(raw)`, or a scalar over one - whose Go type is [rawGoType].
+func isRawBytesField(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
+	return semantic.ResolveField(f, pkg, r.Project()).Category == semantic.CatRawBytes
+}
+
 // goFieldPointerWrap reports whether [goFieldType] prepends `*` to the
 // field's base type: the field is optional (`?`) or `@nullable` and its
-// resolved type does not already hold nil (slice, map, bytes, any, file,
-// or a scalar over one of those). The nilability fact comes from the
-// semantic field IR, so the emitted Go and the design-time checks cannot
-// disagree.
+// resolved type does not already hold nil (slice, map, bytes, raw, any,
+// file, or a scalar over one of those). The nilability fact comes from
+// the semantic field IR, so the emitted Go and the design-time checks
+// cannot disagree.
 func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
 	if f == nil || f.Type == nil {
 		return false

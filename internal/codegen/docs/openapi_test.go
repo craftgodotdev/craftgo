@@ -2082,3 +2082,45 @@ service S {
 		}
 	}
 }
+
+// A `bytes @format(raw)` field is an unconstrained schema - the document
+// says nothing about a value craftgo never reads - carrying the one
+// description that tells a reader the emptiness is deliberate rather
+// than a field left undocumented. `any` renders the same schema without
+// the description, and plain `bytes` keeps its base64 string type.
+func TestGenerateOpenAPIRawBytesIsUnconstrained(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Req { payload bytes @format(raw)  meta bytes? @format(raw)  raw any  blob bytes }
+service S {
+    post Make /m { request Req }
+}`)
+	for _, want := range []string{
+		"payload:\n          description: raw encoded value",
+		"meta:\n          description: raw encoded value",
+		"raw: {}",
+		"format: byte",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the document does not carry %q:\n%s", want, body)
+		}
+	}
+	// Unconstrained means unconstrained: no type, no format.
+	if strings.Contains(body, "raw encoded value\n          type:") {
+		t.Errorf("a raw field must not be given a type:\n%s", body)
+	}
+}
+
+// A scalar over raw bytes renders the same unconstrained schema, with
+// its own doc ahead of the line that says what the emptiness means.
+func TestGenerateOpenAPIRawBytesScalar(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+// A document stored as it arrived.
+scalar RawDoc bytes @format(raw)
+type Req { photos RawDoc }
+service S {
+    post Make /m { request Req }
+}`)
+	if !strings.Contains(body, "A document stored as it arrived.\n\n        raw encoded value") {
+		t.Errorf("the scalar schema does not carry its doc ahead of the raw note:\n%s", body)
+	}
+}

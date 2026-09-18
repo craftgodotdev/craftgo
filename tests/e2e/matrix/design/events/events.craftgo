@@ -6,6 +6,9 @@
 //     enum declared in another package;
 //   - a `@contract(...)` override, for interoperating with a name a
 //     system outside the design already publishes;
+//   - a raw encoded field, whose bytes have to reach a consumer as they
+//     were published - undocumented on purpose, so the document pins the
+//     description the shape itself carries;
 //   - a payload that pulls fields in through a mixin;
 //   - a generic payload, whose argument must survive into every target;
 //   - a same-name event and payload type, proving the two namespaces
@@ -50,6 +53,7 @@ type WarehouseClosed {
 	warehouse Warehouse
 	reason    string?
 	closedAt  datetime?
+	details   bytes? @format(raw)
 }
 
 // An event may carry a payload of its own name - separate namespaces.

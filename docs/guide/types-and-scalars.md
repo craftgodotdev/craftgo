@@ -19,7 +19,7 @@ Each field is `name type [decorators]`. Types compose from primitives, arrays, m
 | DSL        | Go         | Notes                                |
 | ---------- | ---------- | ------------------------------------ |
 | `string`   | `string`   |                                      |
-| `bytes`    | `[]byte`   | base64-decoded from JSON             |
+| `bytes`    | `[]byte`   | base64-decoded from JSON; see `@format(raw)` below |
 | `int`      | `int`      | platform-sized                       |
 | `int32`    | `int32`    | explicit width                       |
 | `int64`    | `int64`    |                                      |
@@ -29,6 +29,52 @@ Each field is `name type [decorators]`. Types compose from primitives, arrays, m
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
 | `file`     | `*multipart.FileHeader` | only valid with `@form` |
+
+#### raw encoded values: `bytes @format(raw)`
+
+Sometimes a field carries a value your design does not own - a `jsonb` column, a nested document another system defines, a webhook body you forward on. `bytes` alone is not it: a `bytes` field is a byte STRING, base64 on the wire, and a document put through it comes back as a blob nobody downstream can read without decoding it first.
+
+`@format(raw)` says the opposite: these bytes already ARE the value, in whatever encoding the message travels in, and the codec embeds them where the value belongs instead of encoding them again.
+
+```craftgo
+type WebhookReceived {
+    id      string
+    payload bytes @format(raw)
+    meta    bytes? @format(raw)            // wire.Raw, omitted when nil
+    trace   bytes @format(raw) @nullable   // wire.Raw, always emitted (nil sends null)
+}
+```
+
+It generates [`wire.Raw`](https://pkg.go.dev/github.com/craftgodotdev/craftgo/pkg/wire) - a `[]byte` whose codec methods hand the bytes through untouched. It is its own module and imports nothing but the standard library, so a package that consumes your contract inherits that and nothing else. Every shape is `wire.Raw` - never a pointer: a nil holds absence, an explicit `null` arrives as the four bytes `null`, and the two stay apart. A pointer would lose them, because Go's JSON decoder nils a pointer on `null` without reading the value.
+
+Three ways to carry a document, and what each costs:
+
+| Declared | Go | What travels | What it costs |
+| --- | --- | --- | --- |
+| `bytes` | `[]byte` | base64 of the bytes | a reader gets a blob, not a document: no consumer can index into it and the payload grows by a third |
+| `bytes @format(raw)` | `wire.Raw` | the value itself, embedded | nothing is checked, because nothing is read |
+| `any` | `any` | the value, decoded and re-encoded | an explicit `null` becomes Go `nil` and encodes as an absent key (a NOT NULL violation further down), an integer past 2^53 loses digits to `float64`, and `1.50` comes back `1.5` |
+
+Those three losses are not hypothetical: a round trip through `map[string]any` is the only thing `any` can do, and each one is a value another system already stored. `bytes @format(raw)` keeps all three, because it never looks.
+
+What travels unchanged is the VALUE. Insignificant whitespace between tokens does not survive - Go's JSON encoder compacts what a raw value hands it - but every token, and the text of every number and string, is what arrived.
+
+`raw` is the one `@format` that is not a check, and the one that may sit on something other than a string: it is refused on `string`, on every number, on `bool`, `any`, `datetime`, an `enum`, a declared `type`, a map and an array. On a `bytes` field it is also the only decorator that applies - no other validator has anything to measure - and `@default` is refused, because craftgo has no value to write. It is a body field: `@query`, `@header`, `@path`, `@cookie` and `@form` have no parser for one. In OpenAPI it is an unconstrained schema described as `raw encoded value`.
+
+A scalar names the shape once:
+
+```craftgo
+scalar RawDoc bytes @format(raw)
+
+type Photo {
+    original RawDoc
+    thumb    RawDoc?
+}
+```
+
+`RawDoc` generates as a Go alias for `wire.Raw` (not a defined type), because the pass-through lives on that type's methods and a defined type would leave them behind.
+
+Not to be confused with [`@json("key")`](/reference/decorator-registry), which sets a field's wire key, or with `@format(json)`, which checks that a *string* field parses as JSON.
 
 ### Optional fields
 

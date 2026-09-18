@@ -73,6 +73,45 @@ func TestHoverBuiltinType(t *testing.T) {
 	}
 }
 
+// `@format(raw)` is the one `@format` value that is not a check: it
+// changes the field's Go type and how its value travels, so the token
+// answers for itself rather than leaving the author to the reference
+// page. The `bytes` beside it explains the pairing from its own side.
+func TestHoverFormatRawOnABytesField(t *testing.T) {
+	const src = `package design
+
+type Hook {
+    payload bytes @format(raw)
+}
+`
+	view := parseSnapshot("test.craftgo", src)
+	hov := hoverAtToken(t, view, "raw")
+	if !strings.Contains(hov, "the bytes ARE the value") || !strings.Contains(hov, "wire.Raw") {
+		t.Errorf("hovering `raw` did not explain the shape: %q", hov)
+	}
+	if got := hoverAtToken(t, view, "bytes"); !strings.Contains(got, "@format(raw)") {
+		t.Errorf("hovering `bytes` does not point at the raw form: %q", got)
+	}
+}
+
+// hoverAtToken returns the hover text for the first token spelt text.
+func hoverAtToken(t *testing.T, view snapshotView, text string) string {
+	t.Helper()
+	for _, tok := range view.tokens {
+		if tok.Text != text {
+			continue
+		}
+		idx, at := view.tokenAt(uint32(tok.Pos.Line-1), uint32(tok.Pos.Column-1))
+		hov := hoverForToken(view, idx, at)
+		if hov == nil {
+			t.Fatalf("no hover on the token %q", text)
+		}
+		return hov.Contents.Value
+	}
+	t.Fatalf("no token spelt %q in the buffer", text)
+	return ""
+}
+
 // TestHoverUserType verifies hovering over a reference to `Greeter`
 // returns the declaration's signature and doc string.
 func TestHoverUserType(t *testing.T) {
@@ -199,6 +238,48 @@ type T {
 		t.Fatal("expected completion items after @ at field site")
 	}
 	expectLabels(t, items, "length", "sensitive")
+}
+
+// A `bytes @format(raw)` field takes no other validator, so the popup
+// offers none: the field resolves to its own category that no
+// validator's AppliesTo names. The decorators that shape a field
+// regardless of type still appear, and so does `@format` - it is what
+// put the field in that category.
+func TestCompletionOnARawBytesFieldOffersNoValidator(t *testing.T) {
+	src := "package x\n\ntype T {\n\tpayload bytes @format(raw) @\n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 28)
+	expectNoLabels(t, items,
+		"length", "minLength", "maxLength", "pattern",
+		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
+		"minItems", "maxItems", "uniqueItems", "maxSize", "mimeTypes")
+	expectLabels(t, items, "format", "json", "nullable", "doc", "sensitive")
+}
+
+// A plain `bytes` field is string-shaped, so the same popup one
+// decorator earlier still offers the text validators: it is the
+// `@format(raw)` that narrows the field, nothing about `bytes` itself.
+func TestCompletionOnAPlainBytesFieldStillOffersTextValidators(t *testing.T) {
+	src := "package x\n\ntype T {\n\tpayload bytes @\n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 16)
+	expectLabels(t, items, "format", "minLength", "maxLength")
+}
+
+// `raw` is offered inside `@format(...)` beside the string formats: the
+// argument popup is generated from the registry's enum, which is the
+// same list the analyser accepts.
+func TestCompletionFormatArgOffersRaw(t *testing.T) {
+	src := "package x\n\ntype T {\n\tpayload bytes @format(\n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 23)
+	expectLabels(t, items, "raw", "email", "uuid")
+}
+
+// The built-in popup is generated from the catalogue, so `datetime`
+// appears in it the way `string` does - otherwise the only way to find
+// it is the reference page.
+func TestCompletionTypePositionOffersBuiltins(t *testing.T) {
+	src := "package x\n\nservice S {\n    post P /p { request \n}\n"
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 24)
+	expectLabels(t, items, "datetime", "bytes", "any", "string")
 }
 
 // TestCompletionServiceDecoratorSite pins the decorator popup for the zone

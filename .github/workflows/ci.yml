@@ -32,6 +32,7 @@ jobs:
           (cd pkg/events && go vet ./...)
           (cd pkg/events/nats && go vet ./...)
           (cd pkg/events/kafka && go vet ./...)
+          (cd pkg/wire && go vet ./...)
 
       - name: fmt-check
         run: |
@@ -45,8 +46,8 @@ jobs:
         with:
           version: v2.12.2
 
-      # The event runtime and its adapters are their own modules, so the
-      # root run does not reach them.
+      # The event runtime, its adapters and the pass-through wire type are
+      # their own modules, so the root run does not reach them.
       - name: golangci-lint (event runtime module)
         uses: golangci/golangci-lint-action@v8
         with:
@@ -62,6 +63,11 @@ jobs:
         with:
           version: v2.12.2
           working-directory: pkg/events/kafka
+      - name: golangci-lint (wire module)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: pkg/wire
 
       # Fails on a known vulnerability that the code actually reaches (call-graph
       # analysis); advisory-only findings in unused code do not break the build.
@@ -75,7 +81,7 @@ jobs:
         run: |
           set -e
           for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
-                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka; do
+                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
             echo "→ build $d"
             (cd "$d" && go build ./...)
           done
@@ -134,7 +140,7 @@ jobs:
           set -e
           go build ./...
           for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
-                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka; do
+                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
             (cd "$d" && go build ./...)
           done
 
@@ -158,7 +164,7 @@ jobs:
         run: |
           set -e
           for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
-                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka; do
+                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
             echo "→ test $d"
             (cd "$d" && go test ${{ matrix.race }} -count=1 ./...)
           done

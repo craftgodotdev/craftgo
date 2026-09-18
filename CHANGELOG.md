@@ -9,6 +9,46 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Added
 
+- **`@format(raw)` on a `bytes` field.** The bytes already ARE the value,
+  in the message's own encoding, and the codec embeds them untouched
+  instead of base64-encoding the buffer - so an explicit `null`, an
+  integer past 2^53 and a trailing zero such as `1.50` all survive, none
+  of which does when the field is declared `any`. Generates `wire.Raw` in
+  every shape - `?` only omits an absent value, `@nullable` only keeps the
+  key - and an unconstrained OpenAPI schema described as `raw encoded
+  value`. Body fields only, no other validator, no `@default`; refused on
+  every type but `bytes`.
+- **`github.com/craftgodotdev/craftgo/pkg/wire`, a fifth published
+  module.** It holds `wire.Raw` alone, imports nothing but the standard
+  library, and is released at the shared version like the others - so a
+  package consuming a contract that carries a raw value inherits that and
+  nothing else, neither the event runtime nor the craftgo toolchain. Its
+  `pkg/wire/codectest` suite is how a codec proves it passes such a value
+  through in its own encoding.
+- **`nats.ErrConsumerStopped`**, the sentinel behind the report a group
+  makes when its durable stops delivering - deleted, or its stream was.
+  The server answers Consumer Deleted only to a pull request already
+  waiting, so a durable deleted between two pulls is caught instead on
+  the first missed heartbeat, about 30s, where the adapter asks whether
+  it is still there and stops the group when it is not. The transport
+  keeps running with that group dead, so an application that wants it
+  back matches this error and acts.
+
+### Fixed
+
+- **A panic in a bus middleware is handed back rather than settled.** The
+  recover outside the chain reset the message to no disposition at all,
+  which a transport reads as "take it as done" - so a panic raised in a
+  middleware (not in the handler) was acked and the message lost. It now
+  asks for redelivery wherever the transport can honour one
+  (`Dispositioner`), and the delivery is retried like any other failure;
+  on a transport that only settles, nothing changes. A panicking handler
+  is unaffected: the chain above it still decides.
+
+## [1.8.0] - 2026-09-15 [UTC+7]
+
+### Added
+
 - **Events in the DSL.** `event Name { payload T }` declares a contract at
   file level; `@contract("subject")` sets its wire identity (default
   `<package>.<Event>`). A payload may be an array of a declared type,

@@ -53,7 +53,6 @@ func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) er
 // shared [collectImports] machinery. The result is returned
 // pre-formatting; the caller runs `go/format` to normalise whitespace.
 func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
-	crossPkg := r.CrossPkg
 	names := sortedKeys(pkg.Errors)
 
 	needsHTTP := false
@@ -78,7 +77,7 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 		imports["strconv"] = true
 	}
 	for _, name := range names {
-		collectBodyImports(pkg.Errors[name].Body, crossPkg, imports)
+		collectBodyImports(pkg.Errors[name].Body, pkg, r, imports)
 	}
 
 	parts := []string{
