@@ -1,7 +1,7 @@
 github.com/antithesishq/antithesis-sdk-go v0.7.2-default-no-op h1:p2zFsAzvhIpFya8AIOHIbWf7NGvO34QpLGclyf7nXj8=
 github.com/antithesishq/antithesis-sdk-go v0.7.2-default-no-op/go.mod h1:FQyySiasQQM8735Ddel3MRojmy4dA1IqCeyJ5jmPMbI=
-github.com/craftgodotdev/craftgo/pkg/events v1.8.0 h1:wtCmQx2BnXsAzjka1XR3bzoTP6JinMJ8HldTZd7GLLo=
-github.com/craftgodotdev/craftgo/pkg/events v1.8.0/go.mod h1:5HwAOL8ggw9IPuhjLmLSJZJjm0eVNhxFNpKqoZRJr/I=
+github.com/craftgodotdev/craftgo/pkg/events v1.8.1 h1:3dhh5oplz6wufehpgzsaQqzNcupcHkCrF21CpROgZ00=
+github.com/craftgodotdev/craftgo/pkg/events v1.8.1/go.mod h1:5HwAOL8ggw9IPuhjLmLSJZJjm0eVNhxFNpKqoZRJr/I=
 github.com/google/go-tpm v0.9.8 h1:slArAR9Ft+1ybZu0lBwpSmpwhRXaa85hWtMinMyRAWo=
 github.com/google/go-tpm v0.9.8/go.mod h1:h9jEsEECg7gtLis0upRBQU+GhYVH6jMjrFxI8u6bVUY=
 github.com/klauspost/compress v1.19.2 h1:hMRETovs/pu/dVWN7zIT1PGG8t509MwT6bO7XSi26R8=
