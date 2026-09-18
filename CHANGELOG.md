@@ -7,6 +7,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-09-18 [UTC+7]
+
 ### Added
 
 - **`@format(raw)` on a `bytes` field.** The bytes already ARE the value,
