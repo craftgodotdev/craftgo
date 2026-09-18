@@ -44,6 +44,10 @@ MODULES=(
 ADAPTERS=(pkg/events/nats pkg/events/kafka)
 EVENTS_MODULE="github.com/craftgodotdev/craftgo/pkg/events"
 
+# Keep a Changelog, dated in the maintainer's timezone: `tag` turns the
+# Unreleased section into `## [X.Y.Z] - YYYY-MM-DD [UTC+7]`.
+CHANGELOG="CHANGELOG.md"
+
 # Where the binaries carry their reported version. Bare (no leading v), to
 # match the -ldflags GoReleaser injects. <file>|<declaration>
 VERSION_VARS=(
@@ -137,7 +141,7 @@ cmd_tag() {
 	local version="${1:-}"
 	require_version "$version" tag
 	local bare="${version#v}"
-	local branch tag entry dir sha
+	local branch tag entry dir sha unreleased
 	local -a paths=()
 
 	cd_repo_root
@@ -161,6 +165,16 @@ cmd_tag() {
 			note "tag $tag is free"
 		fi
 	done
+	# The changelog is rolled below, so it has to be rollable: a section
+	# for this version already exists only if a release stopped halfway,
+	# and an empty Unreleased means a release with nothing to show.
+	if grep -q "^## \[$bare\]" "$CHANGELOG"; then
+		refuse "$CHANGELOG already has a '## [$bare]' section"
+	fi
+	unreleased="$(sed -n '/^## \[Unreleased\]/,/^## \[[0-9]/p' "$CHANGELOG")"
+	if ! grep -q '^- ' <<<"$unreleased"; then
+		refuse "$CHANGELOG lists nothing under '## [Unreleased]'"
+	fi
 	note "origin is not consulted (no network here). If an earlier release"
 	note "stopped halfway, 'git fetch --tags' and look before tagging again."
 
@@ -181,9 +195,13 @@ cmd_tag() {
 		bump_version_var "${entry%%|*}" "${entry##*|}" "$bare"
 	done
 
+	section "roll the changelog"
+	roll_changelog "$bare"
+
 	section "commit"
 	for dir in "${ADAPTERS[@]}"; do paths+=("$dir/go.mod"); done
 	for entry in "${VERSION_VARS[@]}"; do paths+=("${entry%%|*}"); done
+	paths+=("$CHANGELOG")
 	run git add -- "${paths[@]}"
 	run git commit -m "release: $version"
 
@@ -221,6 +239,24 @@ bump_version_var() {
 	sed -E "s/^${decl} = \"[0-9]+\.[0-9]+\.[0-9]+\"/${decl} = \"${bare}\"/" "$file" >"$tmp"
 	mv "$tmp" "$file"
 	grep -q "^${decl} = \"${bare}\"" "$file" || die "failed to bump $decl in $file"
+}
+
+# roll_changelog <bare version>
+# Opens the version's section under an emptied Unreleased, dated today where
+# every existing heading is dated. sed takes the two new lines as literal
+# newlines escaped with a backslash; `\n` in a replacement is GNU-only.
+roll_changelog() {
+	local bare="$1" today tmp
+	today="$(TZ=Asia/Ho_Chi_Minh date +%F)"
+	note "$CHANGELOG: the Unreleased entries become ## [$bare] - $today [UTC+7]"
+	dry && return 0
+	tmp="$(mktemp)"
+	sed "s|^## \[Unreleased\]$|## [Unreleased]\\
+\\
+## [$bare] - $today [UTC+7]|" "$CHANGELOG" >"$tmp"
+	mv "$tmp" "$CHANGELOG"
+	grep -q "^## \[$bare\] - $today \[UTC+7\]$" "$CHANGELOG" \
+		|| die "failed to roll $CHANGELOG"
 }
 
 # ---- sync ----------------------------------------------------------------

@@ -68,12 +68,14 @@ make tag VERSION=v1.8.0 DRY_RUN=1
 ```
 
 It refuses to run when `VERSION` is missing or is not `vX.Y.Z`, when `HEAD`
-is detached, when the working tree is dirty, or when any of the five tags
-already exists. (Under `DRY_RUN=1` the dirty-tree and existing-tag refusals
-become warnings - a dry run writes nothing, so it can still show you the plan
-from a work-in-progress tree.) Nothing is checked against origin, because
-nothing here touches the network; if an earlier release stopped halfway,
-`git fetch --tags` and look before you tag again.
+is detached, when the working tree is dirty, when any of the five tags already
+exists, or when `CHANGELOG.md` either already carries a `## [X.Y.Z]` section
+or lists nothing under `## [Unreleased]`. (Under `DRY_RUN=1` the dirty-tree,
+existing-tag and changelog refusals become warnings - a dry run writes
+nothing, so it can still show you the plan from a work-in-progress tree.)
+Nothing is checked against origin, because nothing here touches the network;
+if an earlier release stopped halfway, `git fetch --tags` and look before you
+tag again.
 
 `make tag` only cuts `vX.Y.Z`. A pre-release (`v1.8.0-rc.1`) is a manual tag -
 the release workflow accepts one and GoReleaser marks it pre-release, but the
@@ -97,12 +99,18 @@ What it does:
    bare `X.Y.Z`. Release builds overwrite both through `-ldflags`; the source
    value is the fallback for `go install` from a checkout.
 
-3. Commits `release: vX.Y.Z`.
+3. Rolls `CHANGELOG.md`: everything listed under `## [Unreleased]` becomes
+   `## [X.Y.Z] - YYYY-MM-DD [UTC+7]`, dated today in `Asia/Ho_Chi_Minh` like
+   every heading below it, and an empty `## [Unreleased]` stays on top for the
+   next cycle. A section that lists nothing is refused rather than released,
+   and so is a version whose section is already there.
 
-4. Creates five annotated tags on that commit: `vX.Y.Z` plus the four
+4. Commits `release: vX.Y.Z`.
+
+5. Creates five annotated tags on that commit: `vX.Y.Z` plus the four
    prefixed ones.
 
-5. Prints the push - one command, the commit and all five tags together:
+6. Prints the push - one command, the commit and all five tags together:
 
    ```
    git push origin <sha>:refs/heads/<branch> \
