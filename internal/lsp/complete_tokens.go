@@ -98,42 +98,42 @@ func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 }
 
 // isExtendServiceContext reports whether the cursor sits at the
-// identifier slot of an `extend service <cursor>` clause. The check
-// walks tokens backwards: if the two most recent non-cursor tokens
-// (skipping any partial ident the user is typing) are `service` then
-// `extend`, we are at the slot.
+// identifier slot of an `extend service <cursor>` clause: the two
+// tokens before it, skipping any partial ident being typed, are
+// `service` then `extend`.
 //
-// Boundary handling: when the cursor sits past the last real token
-// (tokenAt returned -1 because EOF is the only thing left),
-// `idx == len(view.tokens)` and we must NOT index into the slice.
-// Likewise the partial-ident skip needs to verify `idx` is in range
-// before reading `view.tokens[idx]`.
+// `end` is the exclusive bound of the tokens that precede the cursor.
+// [scanFromIndex] computes it for both cursor shapes and, crucially,
+// steps over the EOF token the stream always ends with - reading the
+// slice's last entry instead would see EOF as the previous token and
+// never fire on a clause the user is typing at the end of the buffer.
 func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	if idx < 0 {
-		idx = len(view.tokens)
-	}
-	// Skip a partial ident at the cursor - the user is mid-typing
-	// the service name and we still want to fire.
+	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
+	end := scanFromIndex(view, idx, target) + 1
+	// The service name the user is mid-typing is not part of the prefix
+	// being matched.
 	if idx >= 0 && idx < len(view.tokens) && view.tokens[idx].Kind == lexer.Ident {
-		idx--
+		end = idx
 	}
-	if idx < 2 {
+	if end < 2 {
 		return false
 	}
-	prev := view.tokens[idx-1]
-	prev2 := view.tokens[idx-2]
-	return prev.Kind == lexer.KwService && prev2.Kind == lexer.KwExtend
+	return view.tokens[end-1].Kind == lexer.KwService && view.tokens[end-2].Kind == lexer.KwExtend
 }
 
-// keywordCompletions surfaces every reserved keyword as a completion
-// item. The high-traffic declaration keywords (`type`, `service`,
-// `error`, `enum`, `scalar`, `middleware`, `extend`, the verb set)
-// carry snippet expansions so Tab-completes a fully-shaped skeleton
-// with the cursor landing at the body's first edit point - the
-// keyword set is exactly what the user types most when scaffolding a
-// new file, and the snippet payoff outweighs the popup verbosity.
-func keywordCompletions() []protocol.CompletionItem {
+// keywordCompletions surfaces the named reserved keywords as completion
+// items, in catalogue order. Callers pass the set that is legal where
+// the cursor sits - a keyword offered outside the block that accepts it
+// is a suggestion the parser would reject.
+//
+// The high-traffic declaration keywords (`type`, `service`, `error`,
+// `enum`, `scalar`, `middleware`, `extend`, the verb set) carry snippet
+// expansions so Tab-completes a fully-shaped skeleton with the cursor
+// landing at the body's first edit point - the keyword set is exactly
+// what the user types most when scaffolding a new file, and the snippet
+// payoff outweighs the popup verbosity.
+func keywordCompletions(want ...string) []protocol.CompletionItem {
 	type entry struct {
 		label   string
 		snippet string // empty means plain insert (no snippet)
@@ -165,8 +165,15 @@ func keywordCompletions() []protocol.CompletionItem {
 		{"false", ""},
 		{"null", ""},
 	}
-	out := make([]protocol.CompletionItem, 0, len(entries))
+	keep := make(map[string]bool, len(want))
+	for _, w := range want {
+		keep[w] = true
+	}
+	out := make([]protocol.CompletionItem, 0, len(want))
 	for _, e := range entries {
+		if !keep[e.label] {
+			continue
+		}
 		item := protocol.CompletionItem{
 			Label: e.label,
 			Kind:  protocol.CompletionItemKindKeyword,

@@ -73,7 +73,7 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 	if !ok {
 		return nil
 	}
-	site := enclosingDeclKeyword(view, idx+1)
+	site, _ := enclosingDeclKeyword(view, idx+1)
 	if site == lexer.KwExtend {
 		site = lexer.KwService
 	}

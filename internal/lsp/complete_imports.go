@@ -2,7 +2,9 @@
 package lsp
 
 import (
+	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -92,6 +94,17 @@ func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem 
 	return out
 }
 
+// quotedImportPathCompletions is [importPathCompletions] for the slot
+// BEFORE the quotes exist (`import <cursor>`), so each item inserts the
+// literal the line needs rather than a bare path.
+func quotedImportPathCompletions(currentURI string) []protocol.CompletionItem {
+	items := importPathCompletions(currentURI, "")
+	for i := range items {
+		items[i].InsertText = strconv.Quote(items[i].Label)
+	}
+	return items
+}
+
 // importStringPrefix returns the substring of the `import "…"` literal
 // that lies between the opening quote and the cursor - used as the
 // prefix filter for [importPathCompletions]. Returns an empty string
@@ -134,6 +147,59 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 		}
 	}
 	return ""
+}
+
+// packageNameCompletions answers `package <cursor>`. A design file's
+// package is not free-form: the sibling files in its folder have already
+// named it, and an import resolves a FOLDER to the package its files
+// declare - so a file that disagrees with its neighbours lands its
+// declarations in a package nothing imports.
+//
+// Siblings in the same folder are therefore the answer whenever there
+// are any. In a brand-new folder there are none, and the project's other
+// package names are offered instead: the flat layout, where every design
+// file shares one package, is the other common shape.
+func (s *Server) packageNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+	fsPath := uriToPath(currentURI)
+	v := s.loadProject(fsPath, currentSrc)
+	dir := filepath.Dir(fsPath)
+	siblings, project := map[string]int{}, map[string]bool{}
+	for _, lf := range v.files {
+		if lf.path == fsPath || lf.file == nil || lf.file.Package == nil || lf.file.Package.Name == "" {
+			continue
+		}
+		project[lf.file.Package.Name] = true
+		if filepath.Dir(lf.path) == dir {
+			siblings[lf.file.Package.Name]++
+		}
+	}
+	if len(siblings) > 0 {
+		return packageItems(siblings, "declared by %d sibling file(s) in this folder")
+	}
+	counts := make(map[string]int, len(project))
+	for name := range project {
+		counts[name] = 0
+	}
+	return packageItems(counts, "package declared elsewhere in this project")
+}
+
+// packageItems renders one item per package name in names, sorted. The
+// detail carries the count when the format string takes one.
+func packageItems(names map[string]int, detail string) []protocol.CompletionItem {
+	out := make([]protocol.CompletionItem, 0, len(names))
+	for _, name := range sortedKeys(names) {
+		d := detail
+		if strings.Contains(detail, "%d") {
+			d = fmt.Sprintf(detail, names[name])
+		}
+		out = append(out, protocol.CompletionItem{
+			Label:      name,
+			Kind:       protocol.CompletionItemKindModule,
+			Detail:     d,
+			InsertText: name,
+		})
+	}
+	return out
 }
 
 // packageDeclCompletions returns every declaration of the package named

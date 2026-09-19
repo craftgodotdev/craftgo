@@ -20,10 +20,13 @@ import (
 //  2. Inside an `import "…"` literal → sibling packages from the
 //     design root.
 //  3. After a qualified prefix `pkg.…` → decls inside that package.
-//  4. After `request` / `response` / `:` / `<` / `,` (a type position)
-//     → declared types (project-wide) + built-in primitives.
-//  5. Anywhere else → keywords + project-wide types as a single
-//     blended list. VSCode handles client-side filtering by prefix.
+//  4. A type position - a generic or map argument, a `scalar Name`
+//     primitive, a field's `name <cursor>` slot, or a `request` /
+//     `response` / `payload` clause. Each offers the declaration kinds
+//     ITS slot accepts, with the built-in primitives where one is legal.
+//  5. Anywhere else → the keywords and declarations the ENCLOSING
+//     BLOCK accepts (see [blockCompletions]); VSCode handles
+//     client-side filtering by prefix.
 func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.CompletionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -38,19 +41,30 @@ func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req j
 	return reply(ctx, &protocol.CompletionList{IsIncomplete: false, Items: items}, nil)
 }
 
-// completionsAt returns the candidate items for a cursor in view.
-func (s *Server) completionsAt(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
-	prev, mid := surroundingTokens(view, pos)
-	// Inside an import string literal (`import "…|"`) - suggest
-	// available package paths.
+// namedSlotCompletions answers the slots whose content is a NAME the
+// project, the decorator registry or the design folder already knows -
+// an import path, an extend target, a decorator or its arguments, a
+// qualified reference, an error category, the file's package, a route's
+// path parameter. Each is recognised by a token the user has already
+// typed, so the walk is ordered by how specific that token is.
+//
+// The bool distinguishes "this slot is mine and the answer is nothing"
+// from "not my slot"; only the latter falls through to the type-shape
+// and block-fallback half in [Server.completionsAt].
+func (s *Server) namedSlotCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string, prev, mid *lexer.Token) ([]protocol.CompletionItem, bool) {
 	if isInsideImportString(view, pos) {
 		prefix := importStringPrefix(view, pos)
-		return importPathCompletions(currentURI, prefix)
+		return importPathCompletions(currentURI, prefix), true
+	}
+	// `import <cursor>` - the quotes are not typed yet, so the same
+	// sibling-package list is offered with them included.
+	if prev != nil && prev.Kind == lexer.KwImport {
+		return quotedImportPathCompletions(currentURI), true
 	}
 	// After `extend service ` - list every primary service name in
 	// the project so the user can pick which one this block extends.
 	if isExtendServiceContext(view, pos) {
-		return s.serviceNameCompletions(currentURI, currentSrc)
+		return s.serviceNameCompletions(currentURI, currentSrc), true
 	}
 	// Inside a decorator argument list `@name(…|…)` - surface the
 	// registered enum values, declared middleware names, or
@@ -60,7 +74,16 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// otherwise route to the type-position branch.
 	if name, ok := decoratorArgContext(view, pos); ok {
 		if items := s.decoratorArgItems(view, pos, currentURI, currentSrc, name, prev, mid); items != nil {
-			return items
+			return items, true
+		}
+		// A registered decorator whose slot has no closed set takes a
+		// free literal (`@doc("...")`, `@tags(users)`). Nothing useful
+		// can be listed, and the block fallback below would answer with
+		// declarations that are illegal inside parentheses - stay quiet.
+		// An UNREGISTERED name means the context read is unreliable (a
+		// stray `(` earlier in the buffer), so those fall through.
+		if _, known := semantic.Registry[name]; known {
+			return nil, true
 		}
 	}
 	// Qualified ref `pkg.<cursor>` - list only the named package's
@@ -79,28 +102,49 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// `pkg.` shape is not mistaken for a decorator context.
 	if mid != nil && mid.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, mid); ok {
-			return s.packageDeclCompletions(currentURI, currentSrc, pkg)
+			return s.packageDeclCompletions(currentURI, currentSrc, pkg), true
 		}
 	}
 	if prev != nil && prev.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, prev); ok {
-			return s.packageDeclCompletions(currentURI, currentSrc, pkg)
+			return s.packageDeclCompletions(currentURI, currentSrc, pkg), true
 		}
 	}
 	// Decorator name completion - cursor on (or right after) `@`, or
 	// inside an identifier whose preceding token is `@`.
 	if mid != nil && mid.Kind == lexer.At {
-		return decoratorCompletions(view, pos, "")
+		return decoratorCompletions(view, pos, ""), true
 	}
 	if mid != nil && mid.Kind == lexer.Ident && prev != nil && prev.Kind == lexer.At {
-		return decoratorCompletions(view, pos, mid.Text)
+		return decoratorCompletions(view, pos, mid.Text), true
 	}
 	// `error <Category>` position - fires when the cursor sits right
 	// after the `error` keyword (mid is nil or the in-progress
 	// category identifier). The 19 reserved HTTP categories are a
 	// closed set, so completion is the obvious affordance.
 	if prev != nil && prev.Kind == lexer.KwError && (mid == nil || mid.Kind == lexer.Ident) {
-		return errorCategoryCompletions()
+		return errorCategoryCompletions(), true
+	}
+	// `package <cursor>` - the file header. A design file's package is
+	// not free-form: sibling files in the folder have already named it.
+	if prev != nil && prev.Kind == lexer.KwPackage && (mid == nil || mid.Kind == lexer.Ident) {
+		return s.packageNameCompletions(currentURI, currentSrc), true
+	}
+	// `/{<cursor>}` - a route's path parameter. Claiming it here is what
+	// keeps [Server.completionsAt]'s just-opened-a-block rule from
+	// reading the parameter's own brace as a block and answering
+	// nothing.
+	if i, ok := pathParamContext(view, prev); ok {
+		return s.pathParamCompletions(view, currentURI, currentSrc, i), true
+	}
+	return nil, false
+}
+
+// completionsAt returns the candidate items for a cursor in view.
+func (s *Server) completionsAt(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
+	prev, mid := surroundingTokens(view, pos)
+	if items, ok := s.namedSlotCompletions(view, pos, currentURI, currentSrc, prev, mid); ok {
+		return items
 	}
 	// Just opened a block - cursor right after `{` with no
 	// in-progress identifier. Auto-suggest here is purely noise: the
@@ -125,9 +169,21 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if prev != nil && (prev.Kind == lexer.Question || prev.Kind == lexer.RBracket) && (mid == nil || mid.Kind != lexer.Ident) {
 		return nil
 	}
-	// Type position: include builtins + every declared type
+	// `type Page<<cursor>>` - a type PARAMETER being declared, not a
+	// type being referenced. The name is the author's to invent, so
+	// nothing is offered; without this the `<` would read as the
+	// generic-argument bracket it is everywhere else.
+	if isTypeParamDeclPosition(view, pos) {
+		return nil
+	}
+	// `request X` / `response X` / `payload X` - a method or event
+	// clause, each of which names a message rather than any type.
+	if prev != nil && (prev.Kind == lexer.KwRequest || prev.Kind == lexer.KwResponse || prev.Kind == lexer.KwPayload) {
+		return s.clauseTypeCompletions(currentURI, currentSrc, prev.Kind)
+	}
+	// Generic / map argument: builtins + every declared type
 	// (project-wide).
-	if prev != nil && isTypePositionTrigger(*prev) {
+	if isTypeArgPosition(prev, mid) {
 		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
 	// `scalar Name <cursor>` - the primitive-type slot. The previous
@@ -136,13 +192,138 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// tokens back to surface primitives in the position where they
 	// are the ONLY legal next token.
 	if isScalarPrimitivePosition(view, pos) {
+		return scalarPrimitiveCompletions()
+	}
+	// `name <cursor>` - a field's type slot, which carries no separator
+	// token for isTypePositionTrigger to key off.
+	if isFieldTypePosition(view, pos, prev) {
 		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
-	// General context - keywords + project-wide declared types so
-	// users typing identifiers see what they have already defined.
-	items := keywordCompletions()
-	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
-	return items
+	return s.blockCompletions(view, pos, currentURI, currentSrc)
+}
+
+// completionBlock names the syntactic block a cursor sits in. Each one
+// accepts a different set of words, which is what [blockCompletions]
+// turns into the fallback list.
+type completionBlock uint8
+
+const (
+	// blockFile is file scope - the declaration keywords live here.
+	blockFile completionBlock = iota
+	// blockType is a `type` / `error` body: fields and mixins.
+	blockType
+	// blockEnum is an `enum` body: free-text value names only.
+	blockEnum
+	// blockService is a `service` / `extend service` body: HTTP methods.
+	blockService
+	// blockMethod is a method body: the request / response clauses.
+	blockMethod
+	// blockEvent is an `event` body: the payload clause.
+	blockEvent
+)
+
+// blockAt classifies the block the cursor sits in from the declaration
+// keyword that opened it and the brace depth reached at the cursor.
+// Declaration bodies sit at depth 1; only a service nests further, so
+// depth 2 inside one is a method body.
+func blockAt(view snapshotView, pos protocol.Position) completionBlock {
+	idx, _ := view.tokenAt(pos.Line, pos.Character)
+	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
+	kw, depth := enclosingDeclKeyword(view, scanFromIndex(view, idx, target)+1)
+	if depth == 0 {
+		return blockFile
+	}
+	switch kw {
+	case lexer.KwType, lexer.KwError:
+		return blockType
+	case lexer.KwEnum:
+		return blockEnum
+	case lexer.KwEvent:
+		return blockEvent
+	case lexer.KwService, lexer.KwExtend:
+		if depth > 1 {
+			return blockMethod
+		}
+		return blockService
+	}
+	return blockFile
+}
+
+// fileKeywords / serviceKeywords / methodKeywords / eventKeywords are the
+// reserved words each block accepts as the first word of a member. They
+// are deliberately narrow: `map` reaches the user through the type
+// position, `true` / `false` through a bool field's `@default`, and no
+// block accepts the whole catalogue.
+var (
+	fileKeywords    = []string{"package", "import", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"}
+	serviceKeywords = []string{"get", "post", "put", "patch", "delete", "head", "options"}
+	methodKeywords  = []string{"request", "response"}
+	eventKeywords   = []string{"payload"}
+)
+
+// blockCompletions is the fallback for a cursor the specific branches did
+// not claim: whatever the enclosing block legally accepts there.
+//
+//   - file scope     → the declaration keywords
+//   - type / error   → declared types, the only thing a mixin row may
+//     name (a field NAME is free text, so nothing is offered for it)
+//   - enum           → nothing; a value name is free text
+//   - service        → the HTTP verbs
+//   - method body    → `request` / `response`
+//   - event body     → `payload`
+func (s *Server) blockCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
+	switch blockAt(view, pos) {
+	case blockType:
+		return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
+	case blockEnum:
+		return nil
+	case blockService:
+		return keywordCompletions(serviceKeywords...)
+	case blockMethod:
+		return keywordCompletions(methodKeywords...)
+	case blockEvent:
+		return keywordCompletions(eventKeywords...)
+	}
+	return keywordCompletions(fileKeywords...)
+}
+
+// pathParamContext reports whether the cursor sits inside the `{…}` of a
+// route path parameter, and returns the index of that opening brace.
+//
+// The shape it matches is the one [parser.parsePath] itself accepts - a
+// `{` that follows a `/` and closes after at most one word - so a method
+// body's opening brace, which never carries a bare `}` two tokens later,
+// cannot be mistaken for one. `prev` is the brace when the parameter is
+// still empty (`/{|}`, what an auto-closing editor leaves behind) and
+// the partial name once the user has typed into it (`/{i|d}`).
+func pathParamContext(view snapshotView, prev *lexer.Token) (int, bool) {
+	i := tokenIndex(view, prev)
+	if i < 0 {
+		return 0, false
+	}
+	if view.tokens[i].Kind != lexer.LBrace {
+		i--
+	}
+	if i < 1 || view.tokens[i].Kind != lexer.LBrace || view.tokens[i-1].Kind != lexer.Slash {
+		return 0, false
+	}
+	if (i+1 < len(view.tokens) && view.tokens[i+1].Kind == lexer.RBrace) ||
+		(i+2 < len(view.tokens) && view.tokens[i+2].Kind == lexer.RBrace) {
+		return i, true
+	}
+	return 0, false
+}
+
+// tokenIndex returns t's index in the view, or -1 when t is not one of
+// its tokens. The callers hold a pointer handed out by
+// [surroundingTokens], so identity is the match.
+func tokenIndex(view snapshotView, t *lexer.Token) int {
+	for i := range view.tokens {
+		if &view.tokens[i] == t {
+			return i
+		}
+	}
+	return -1
 }
 
 // surroundingTokens returns the tokens immediately before and at the
@@ -204,20 +385,73 @@ func posLessEq(a, b lexer.Position) bool {
 	return a.Column <= b.Column
 }
 
-// isTypePositionTrigger reports whether the previous token tells us
-// the cursor sits where a type identifier (declared user type OR
-// built-in primitive) is the legal next token. Used by the dispatcher
-// to surface declared decls + primitive suggestions.
+// isTypeArgPosition reports whether the cursor sits in a generic or map
+// argument list, where a type identifier - declared type OR built-in
+// primitive - is the legal next token:
 //
-//   - `request X` / `response X`           - method body
-//   - `field_name X` (Colon is currently unused but reserved)
-//   - `Page<X>` / `Pair<A, X>`             - generic args
-//   - `map<X, Y>` / array element types    - via Comma
-func isTypePositionTrigger(t lexer.Token) bool {
-	switch t.Kind {
-	case lexer.KwRequest, lexer.KwResponse,
-		lexer.Colon, lexer.LAngle, lexer.Comma:
+//   - `Page<X>` / `map<X, Y>`     - first argument, after the `<`
+//   - `Pair<A, X>` / `map<K, X>`  - later arguments, after a `,`
+//
+// Both punctuators are read from `mid` as well as `prev` because
+// tokenAt's inclusive end-column rule resolves a cursor touching one
+// onto the punctuator itself: `map<|` arrives with the `<` as mid and
+// `map` as prev.
+//
+// Colon is NOT a trigger: the grammar spells no type after one, and the
+// two places it does appear - a decorator's `name: value` argument and
+// an object literal's key - take a value. The clause keywords are not
+// either; they name a struct, which is a narrower set
+// ([Server.clauseTypeCompletions]). A field writes its type as
+// `name X`, with no separator token at all - [isFieldTypePosition]
+// recognises that slot.
+func isTypeArgPosition(prev, mid *lexer.Token) bool {
+	if mid != nil && (mid.Kind == lexer.LAngle || mid.Kind == lexer.Comma) {
 		return true
+	}
+	return prev != nil && (prev.Kind == lexer.LAngle || prev.Kind == lexer.Comma)
+}
+
+// isFieldTypePosition reports whether the cursor sits in a field's type
+// slot - the `<cursor>` of `name <cursor>` inside a `type` or `error`
+// body, where both primitives and declared types are legal.
+//
+// The anchor is the parsed field whose NAME token is prev: the parser
+// has already ruled on which rows are fields, so a mixin row, an enum
+// value, a method clause, a declaration name and a bare `Ident` at file
+// scope are all excluded without re-deriving the grammar here.
+// Requiring the name token itself also keeps the slot AFTER a finished
+// type (`name string <cursor>`, where the legal next token is a suffix,
+// a decorator or the next member) out of the branch.
+func isFieldTypePosition(view snapshotView, pos protocol.Position, prev *lexer.Token) bool {
+	if prev == nil {
+		return false
+	}
+	f := fieldAtCursor(view, pos)
+	return f != nil && f.Pos == prev.Pos
+}
+
+// isTypeParamDeclPosition reports whether the cursor sits in the
+// `<...>` of a type PARAMETER list on a `type` declaration - the slot
+// that names a new parameter - rather than in the generic-argument list
+// of a type being used. The two are spelled alike, so the opening `<`
+// is walked back to and its owner checked: `type Name<` declares,
+// anything else (`Page<`, `map<`) references.
+func isTypeParamDeclPosition(view snapshotView, pos protocol.Position) bool {
+	idx, _ := view.tokenAt(pos.Line, pos.Character)
+	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
+	i := scanFromIndex(view, idx, target)
+	if idx >= 0 && idx < len(view.tokens) &&
+		(view.tokens[idx].Kind == lexer.LAngle || view.tokens[idx].Kind == lexer.Comma) {
+		i = idx
+	}
+	for ; i >= 2; i-- {
+		switch view.tokens[i].Kind {
+		case lexer.Ident, lexer.Comma:
+			continue
+		case lexer.LAngle:
+			return view.tokens[i-1].Kind == lexer.Ident && view.tokens[i-2].Kind == lexer.KwType
+		}
+		return false
 	}
 	return false
 }

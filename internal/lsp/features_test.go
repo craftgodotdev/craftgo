@@ -537,6 +537,458 @@ func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 	expectLabels(t, items, "RealType")
 }
 
+// cursorMark is the caret in a completion fixture. Exactly one `|` in
+// the source marks where the cursor sits; it is stripped before the
+// buffer is parsed. The DSL has no `|` token, so the mark is never
+// ambiguous - and a marked fixture reads as the buffer the user is
+// looking at, which a hand-counted line/character pair does not.
+const cursorMark = "|"
+
+// mustCompletionsAtCursor runs the completion provider at the fixture's
+// cursor mark.
+func mustCompletionsAtCursor(t *testing.T, path, src string) []protocol.CompletionItem {
+	t.Helper()
+	i := strings.Index(src, cursorMark)
+	if i < 0 {
+		t.Fatalf("fixture carries no %q cursor mark", cursorMark)
+	}
+	head := src[:i]
+	return mustCompletionsAt(t, path, strings.Replace(src, cursorMark, "", 1),
+		uint32(strings.Count(head, "\n")),
+		uint32(len(head)-(strings.LastIndex(head, "\n")+1)))
+}
+
+// typeSlotFixtures is the shared preamble for the completion tables: one
+// declared type, one enum and one bool scalar, so a popup that offers
+// declarations has something to offer.
+const typeSlotFixtures = "package x\n\ntype Address { city string }\nenum Kind { Active }\nscalar Flag bool\n"
+
+// TestCompletionTypeSlots pins every position where the grammar makes a
+// type name the legal next token. The field slot is the one the DSL
+// spells without a separator - `name Type`, no colon - so it has no
+// trigger token of its own and used to fall through to the generic
+// keyword list, which carries no primitives at all. The map / generic
+// cases sit with the cursor touching the `<` or `,`, where tokenAt
+// resolves the punctuation as the cursor's own token rather than the
+// preceding one.
+func TestCompletionTypeSlots(t *testing.T) {
+	cases := map[string]string{
+		"field type slot":                       "type User {\n    home |\n}\n",
+		"field type slot, one-line body":        "type User { home | }\n",
+		"field type slot in an error body":      "error NotFound Missing {\n    at |\n}\n",
+		"field type half typed":                 "type User {\n    home Add|\n}\n",
+		"field type slot, keyword-named field":  "type User {\n    map |\n}\n",
+		"map key, cursor on the angle":          "type User {\n    tags map<|\n}\n",
+		"map value, cursor on the comma":        "type User {\n    tags map<string,|\n}\n",
+		"generic argument, cursor on the angle": "type Page<T> { items T[] }\ntype User {\n    page Page<|\n}\n",
+	}
+	for label, body := range cases {
+		t.Run(label, func(t *testing.T) {
+			items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body)
+			// Built-in primitives, `map`, AND the project's declarations.
+			expectLabels(t, items, "string", "int", "bytes", "datetime", "any", "file", "map", "Address", "Kind", "Flag")
+			// `object` is only legal inside `@example({...})`, and the
+			// declaration keywords belong to the block fallback - a type
+			// slot that surfaces either has taken the wrong branch.
+			expectNoLabels(t, items, "object", "service", "middleware", "extend")
+		})
+	}
+}
+
+// TestCompletionClauseSlotsOfferMessageTypes pins `request`, `response`
+// and `payload`. All three name a message, and the analyser rejects an
+// enum or a scalar in any of them - so those two kinds are filtered out
+// even though they are perfectly good FIELD types. `payload` is the
+// strict one: it must name a `type`, so its popup carries no built-ins
+// either.
+func TestCompletionClauseSlotsOfferMessageTypes(t *testing.T) {
+	t.Run("method clause", func(t *testing.T) {
+		items := mustCompletionsAtCursor(t, "t.craftgo",
+			typeSlotFixtures+"service S {\n    get Fetch /f {\n        request |\n    }\n}\n")
+		expectLabels(t, items, "Address", "string", "bytes", "datetime")
+		// An enum / scalar has no fields to bind, and `map` does not
+		// parse in a clause at all.
+		expectNoLabels(t, items, "Kind", "Flag", "map", "object", "get", "request")
+	})
+	t.Run("event payload", func(t *testing.T) {
+		items := mustCompletionsAtCursor(t, "t.craftgo",
+			typeSlotFixtures+"event Moved {\n    payload |\n}\n")
+		expectLabels(t, items, "Address")
+		expectNoLabels(t, items, "Kind", "Flag", "map", "string", "bytes", "payload")
+	})
+}
+
+// TestCompletionTypePositionNotInOtherSlots is the precision half of
+// TestCompletionTypeSlots: every slot here takes a name, a value or a
+// keyword rather than a type, so the primitives must stay out and each
+// position must offer what the block it sits in legally accepts.
+func TestCompletionTypePositionNotInOtherSlots(t *testing.T) {
+	cases := []struct {
+		label string
+		src   string
+		want  []string
+	}{
+		{
+			label: "package declaration",
+			src:   "package x |\n",
+			want:  []string{"type", "service"},
+		},
+		{
+			label: "decorator object-literal value",
+			src:   typeSlotFixtures + "type User {\n    home Address @example({ city: | })\n}\n",
+		},
+		{
+			label: "enum value",
+			src:   typeSlotFixtures + "enum E {\n    Active |\n}\n",
+		},
+		{
+			label: "method name",
+			src:   typeSlotFixtures + "service S {\n    get Fetch |\n}\n",
+			want:  []string{"get", "post"},
+		},
+		{
+			label: "fresh member line",
+			src:   typeSlotFixtures + "type User {\n    id string\n    |\n}\n",
+			want:  []string{"Address"},
+		},
+		{
+			label: "mixin row",
+			src:   typeSlotFixtures + "type User {\n    Address |\n}\n",
+			want:  []string{"Address"},
+		},
+		{
+			label: "slot after a finished field type",
+			src:   typeSlotFixtures + "type User {\n    id string |\n}\n",
+			want:  []string{"Address"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			expectNoLabels(t, items, "string", "int", "bytes", "datetime")
+			expectLabels(t, items, c.want...)
+		})
+	}
+}
+
+// TestCompletionSuppressedAfterTypeSuffix pins the second suppression
+// rule alongside TestCompletionSuppressedAfterOpenBrace: past a `?` or
+// a `[]` the field's type is finished, so the popup stays shut until
+// the user types `@`. A type-position branch that reached this far
+// would bury that silence under the whole primitive catalogue.
+func TestCompletionSuppressedAfterTypeSuffix(t *testing.T) {
+	for label, body := range map[string]string{
+		"optional suffix": "type User {\n    home Address? |\n}\n",
+		"array suffix":    "type User {\n    home Address[] |\n}\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+				t.Errorf("expected no completions past a type suffix, got %d items: %v", len(items), labelSet(items))
+			}
+		})
+	}
+}
+
+// TestCompletionBlockFallbackMatchesTheBlock pins the fallback the
+// dispatcher lands on when no specific branch claims the cursor. Each
+// block accepts a different set of words - a service body holds HTTP
+// methods, a method body holds two clauses, an enum body holds names
+// the author invents - and the fallback now answers with that set
+// instead of the whole keyword catalogue plus every declared type.
+func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
+	cases := []struct {
+		label        string
+		src          string
+		want, banned []string
+	}{
+		{
+			label:  "file scope",
+			src:    typeSlotFixtures + "|\n",
+			want:   []string{"package", "import", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"},
+			banned: []string{"get", "request", "response", "payload", "map", "true", "Address"},
+		},
+		{
+			label: "type body",
+			src:   typeSlotFixtures + "type User {\n    id string\n    |\n}\n",
+			want:  []string{"Address"},
+			// A mixin names a `type`; an enum or scalar there is rejected
+			// ("mixin K is a enum, not a type"), and the keyword dump is
+			// what this fallback used to be.
+			banned: []string{"Kind", "Flag", "type", "service", "get", "request", "string"},
+		},
+		{
+			label:  "error body",
+			src:    typeSlotFixtures + "error NotFound Missing {\n    at string\n    |\n}\n",
+			want:   []string{"Address"},
+			banned: []string{"Kind", "Flag", "type", "get", "request"},
+		},
+		{
+			label:  "service body",
+			src:    typeSlotFixtures + "service S {\n    get A /a {}\n    |\n}\n",
+			want:   []string{"get", "post", "put", "patch", "delete", "head", "options"},
+			banned: []string{"type", "service", "request", "Address"},
+		},
+		{
+			label:  "method body",
+			src:    typeSlotFixtures + "service S {\n    get A /a {\n        request Address\n        |\n    }\n}\n",
+			want:   []string{"request", "response"},
+			banned: []string{"get", "type", "payload", "Address"},
+		},
+		{
+			label:  "event body",
+			src:    typeSlotFixtures + "event E {\n    payload Address\n    |\n}\n",
+			want:   []string{"payload"},
+			banned: []string{"request", "response", "type", "Address"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			expectLabels(t, items, c.want...)
+			expectNoLabels(t, items, c.banned...)
+		})
+	}
+}
+
+// TestCompletionEnumBodyOffersNothing is the block whose legal content
+// is entirely the author's: an enum value is a name nobody else can
+// supply, so the popup stays shut rather than dumping declarations that
+// are illegal between those braces.
+func TestCompletionEnumBodyOffersNothing(t *testing.T) {
+	for label, body := range map[string]string{
+		"after a value":       "enum E {\n    Active\n    |\n}\n",
+		"after a value name":  "enum E {\n    Active |\n}\n",
+		"after an assignment": "enum E {\n    Active = |\n}\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+				t.Errorf("expected no completions in an enum body, got %d items: %v", len(items), labelSet(items))
+			}
+		})
+	}
+}
+
+// pathParamFixture declares a request type whose fields cover each
+// path-binding verdict: `id` binds, `q` is already bound to the query
+// string, `tags` is an array and `note` is optional - a matched route
+// always supplies a segment, so neither can source one.
+const pathParamFixture = "package x\n\ntype Req {\n" +
+	"    id string\n" +
+	"    sku int\n" +
+	"    q string @query\n" +
+	"    tags string[]\n" +
+	"    note string?\n" +
+	"}\n"
+
+// TestCompletionPathParameterOffersRequestFields pins `/{<cursor>}`.
+// A `{param}` binds to the request field of the same name, so the
+// request type is the closed set the slot accepts. The empty-brace case
+// is the one an auto-closing editor produces, and it is also the one
+// the parser cannot represent - `{}` is not a path parameter to it, so
+// the clause is read from the token stream.
+func TestCompletionPathParameterOffersRequestFields(t *testing.T) {
+	cases := []struct {
+		label        string
+		src          string
+		want, banned []string
+	}{
+		{
+			label:  "empty braces",
+			src:    pathParamFixture + "service S {\n    get A /store/{|} { request Req }\n}\n",
+			want:   []string{"id", "sku"},
+			banned: []string{"q", "tags", "note", "request", "get"},
+		},
+		{
+			label:  "half-typed parameter name",
+			src:    pathParamFixture + "service S {\n    get A /store/{i|} { request Req }\n}\n",
+			want:   []string{"id", "sku"},
+			banned: []string{"q", "tags", "note", "request"},
+		},
+		{
+			label:  "second parameter skips the one already bound",
+			src:    pathParamFixture + "service S {\n    get A /s/{id}/{|} { request Req }\n}\n",
+			want:   []string{"sku"},
+			banned: []string{"id", "q", "tags", "note"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			expectLabels(t, items, c.want...)
+			expectNoLabels(t, items, c.banned...)
+		})
+	}
+}
+
+// TestCompletionPathParameterWithoutRequestStaysSilent pins the limit of
+// the rule above: with no `request` clause written yet there is no field
+// set to read, and the popup says nothing rather than guessing.
+func TestCompletionPathParameterWithoutRequestStaysSilent(t *testing.T) {
+	src := pathParamFixture + "service S {\n    get A /store/{|} { }\n}\n"
+	if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+		t.Errorf("expected no completions without a request clause, got %v", labelSet(items))
+	}
+}
+
+// TestCompletionDefaultValueFollowsTheFieldType pins `@default(...)`.
+// The decorator takes ArgAny, so the legal set is the FIELD's: an enum
+// offers its values, a bool offers the two literals, and a scalar is
+// followed to the primitive it wraps. Every other type takes a free
+// literal, where a popup can only get in the way.
+func TestCompletionDefaultValueFollowsTheFieldType(t *testing.T) {
+	cases := []struct {
+		label string
+		src   string
+		want  []string
+	}{
+		{
+			label: "bool field",
+			src:   typeSlotFixtures + "type User {\n    ok bool @default(|)\n}\n",
+			want:  []string{"true", "false"},
+		},
+		{
+			label: "scalar over bool",
+			src:   typeSlotFixtures + "type User {\n    ok Flag @default(|)\n}\n",
+			want:  []string{"true", "false"},
+		},
+		{
+			label: "enum field",
+			src:   typeSlotFixtures + "type User {\n    k Kind @default(|)\n}\n",
+			want:  []string{"Active"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			expectLabels(t, items, c.want...)
+			expectNoLabels(t, items, "string", "Address", "type")
+		})
+	}
+	t.Run("string field has no closed set", func(t *testing.T) {
+		src := typeSlotFixtures + "type User {\n    s string @default(|)\n}\n"
+		if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+			t.Errorf("expected no completions for a free-literal default, got %v", labelSet(items))
+		}
+	})
+}
+
+// TestCompletionDecoratorArgWithNoClosedSetStaysSilent pins the rule for
+// every other decorator slot: a registered decorator whose argument is a
+// free literal answers with nothing, rather than falling through to a
+// block fallback whose declarations are illegal inside parentheses.
+func TestCompletionDecoratorArgWithNoClosedSetStaysSilent(t *testing.T) {
+	for label, body := range map[string]string{
+		"doc prose":            "type User {\n    s string @doc(|)\n}\n",
+		"object literal value": "type User {\n    s string @example({ s: | })\n}\n",
+		"pattern literal":      "type User {\n    s string @pattern(|)\n}\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+				t.Errorf("expected no completions in a free-literal decorator slot, got %v", labelSet(items))
+			}
+		})
+	}
+}
+
+// TestCompletionScalarPrimitiveSlotIsBuiltinsOnly narrows the slot the
+// analyser calls a closed set: `scalar Name X` accepts a built-in that
+// lowers to a Go type and nothing else - not a declared type, not
+// another scalar, and not `any` / `file` / `object` / `map`, all of
+// which it rejects with CodeScalarBadPrimitive.
+func TestCompletionScalarPrimitiveSlotIsBuiltinsOnly(t *testing.T) {
+	items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+"scalar Email |\n")
+	expectLabels(t, items, "string", "int", "bool", "bytes", "float64", "datetime")
+	expectNoLabels(t, items, "any", "file", "object", "map", "Address", "Kind", "Flag")
+}
+
+// TestCompletionTypeParameterDeclarationOffersNothing separates the two
+// meanings of `<`: `Page<User>` references a type, while `type Page<T>`
+// declares a parameter whose name is the author's to invent. The second
+// used to answer with the whole type catalogue.
+func TestCompletionTypeParameterDeclarationOffersNothing(t *testing.T) {
+	for label, body := range map[string]string{
+		"first parameter":  "type Page<|> { id string }\n",
+		"second parameter": "type Pair<A, |> { id string }\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+				t.Errorf("expected no completions in a type-parameter declaration, got %v", labelSet(items))
+			}
+		})
+	}
+}
+
+// TestCompletionExtendServiceTargetAtEndOfBuffer covers the clause the
+// user is typing at the very end of the file, where the only thing after
+// the cursor is the stream's EOF token. Reading the slice's last entry
+// saw EOF as the previous token, so the service list never fired.
+func TestCompletionExtendServiceTargetAtEndOfBuffer(t *testing.T) {
+	src := "package x\n\nservice Api {\n    get A /a {}\n}\nextend service |"
+	for _, tail := range []string{"", "Ap"} {
+		items := mustCompletionsAtCursor(t, "t.craftgo", src+tail)
+		expectLabels(t, items, "Api")
+		// The service list is exclusive: a keyword here means the branch
+		// did not fire and the block fallback answered instead.
+		expectNoLabels(t, items, "type", "service", "extend", "package")
+	}
+}
+
+// TestCompletionHeaderLines pins the two file-header slots, both of
+// which need the project on disk: `package <cursor>` answers with the
+// name the folder's other files already declare, and `import <cursor>`
+// offers the importable folders with the quotes the line still needs.
+func TestCompletionHeaderLines(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "craftgo.design.yaml"),
+		[]byte("package: example.com/m\noutput:\n  types: ./types\n"), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	dir := filepath.Join(root, "design")
+	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+	write(filepath.Join(dir, "a.craftgo"), "package shop\n\ntype Ping { id string }\n")
+	write(filepath.Join(dir, "shared", "s.craftgo"), "package shared\n\ntype Money { amount int }\n")
+	buf := filepath.Join(dir, "b.craftgo")
+
+	run := func(src string) []protocol.CompletionItem {
+		t.Helper()
+		i := strings.Index(src, cursorMark)
+		clean := strings.Replace(src, cursorMark, "", 1)
+		write(buf, clean)
+		head := src[:i]
+		view := parseSnapshot(buf, clean)
+		srv := &Server{docs: map[uri.URI]*document{}}
+		pos := protocol.Position{
+			Line:      uint32(strings.Count(head, "\n")),
+			Character: uint32(len(head) - (strings.LastIndex(head, "\n") + 1)),
+		}
+		return srv.completionsAt(view, pos, string(uri.File(buf)), clean)
+	}
+
+	t.Run("package name comes from the folder", func(t *testing.T) {
+		items := run("package |\n")
+		expectLabels(t, items, "shop")
+		// The sibling folder declares `shared`; this file is not in it.
+		expectNoLabels(t, items, "shared", "type", "Ping")
+	})
+	t.Run("import path arrives quoted", func(t *testing.T) {
+		items := run("package shop\n\nimport |\n")
+		expectLabels(t, items, "design/shared")
+		for _, it := range items {
+			if it.Label == "design/shared" && it.InsertText != `"design/shared"` {
+				t.Errorf("import path must insert with quotes, got %q", it.InsertText)
+			}
+		}
+	})
+}
+
 // TestCompletionScalarPrimitivePosition checks that typing
 // `scalar Email <cursor>` offers the primitive set rather than the
 // keyword list. The `scalar Name <primitive>` slot is the ONLY legal
