@@ -94,10 +94,12 @@ What it does:
    moves the `require` line, because `-dropreplace` on an absent replace is a
    no-op.
 
-2. Bumps the version the binaries report - `var version` in
-   `cmd/craftgo/main.go` and `Version` in `internal/lsp/server.go` - to the
-   bare `X.Y.Z`. Release builds overwrite both through `-ldflags`; the source
-   value is the fallback for `go install` from a checkout.
+2. Bumps every place the version is written down - `var version` in
+   `cmd/craftgo/main.go`, `Version` in `internal/lsp/server.go`, and
+   `const VERSION` in `docs/.vitepress/config.ts` - to the bare `X.Y.Z`.
+   Release builds overwrite the two Go values through `-ldflags`; the source
+   value is the fallback for `go install` from a checkout. The docs constant
+   is the version the site's nav shows.
 
 3. Rolls `CHANGELOG.md`: everything listed under `## [Unreleased]` becomes
    `## [X.Y.Z] - YYYY-MM-DD [UTC+7]`, dated today in `Asia/Ho_Chi_Minh` like

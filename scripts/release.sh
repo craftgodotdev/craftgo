@@ -48,11 +48,13 @@ EVENTS_MODULE="github.com/craftgodotdev/craftgo/pkg/events"
 # Unreleased section into `## [X.Y.Z] - YYYY-MM-DD [UTC+7]`.
 CHANGELOG="CHANGELOG.md"
 
-# Where the binaries carry their reported version. Bare (no leading v), to
-# match the -ldflags GoReleaser injects. <file>|<declaration>
+# Where the version is written down in the tree. Bare (no leading v), to match
+# the -ldflags GoReleaser injects. The two Go vars are what a binary reports;
+# the docs constant is what the site's nav shows. <file>|<declaration>
 VERSION_VARS=(
 	"cmd/craftgo/main.go|var version"
 	"internal/lsp/server.go|var Version"
+	"docs/.vitepress/config.ts|const VERSION"
 )
 
 # ---- output --------------------------------------------------------------

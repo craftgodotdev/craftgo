@@ -7,6 +7,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The version in the docs nav follows the release.** It was a literal in
+  `docs/.vitepress/config.ts` that nothing bumped, so the site still read
+  `v1.7.1` three releases after 1.7.1. It is now a `const VERSION` that
+  `scripts/release.sh` rewrites along with the two Go version vars, so it
+  moves with every `make tag`.
+
 ## [1.8.2] - 2026-09-19 [UTC+7]
 
 ### Fixed
