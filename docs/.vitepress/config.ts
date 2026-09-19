@@ -12,6 +12,10 @@ const SITE_TITLE = "craftgo";
 const SITE_DESCRIPTION =
   "Design-first Go framework on net/http. Spec your API, generate everything.";
 
+// The released version the nav shows. `scripts/release.sh` bumps this line
+// alongside the two Go version vars, so the site moves with every release.
+const VERSION = "1.8.2";
+
 export default defineConfig({
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
@@ -84,7 +88,7 @@ export default defineConfig({
       { text: "Tutorials", link: "/tutorials/todo-api" },
       { text: "AI Reference", link: "/llms" },
       {
-        text: "v1.7.1",
+        text: `v${VERSION}`,
         items: [
           {
             text: "Changelog",

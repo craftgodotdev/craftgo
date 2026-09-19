@@ -94,10 +94,12 @@ What it does:
    moves the `require` line, because `-dropreplace` on an absent replace is a
    no-op.
 
-2. Bumps the version the binaries report - `var version` in
-   `cmd/craftgo/main.go` and `Version` in `internal/lsp/server.go` - to the
-   bare `X.Y.Z`. Release builds overwrite both through `-ldflags`; the source
-   value is the fallback for `go install` from a checkout.
+2. Bumps every place the version is written down - `var version` in
+   `cmd/craftgo/main.go`, `Version` in `internal/lsp/server.go`, and
+   `const VERSION` in `docs/.vitepress/config.ts` - to the bare `X.Y.Z`.
+   Release builds overwrite the two Go values through `-ldflags`; the source
+   value is the fallback for `go install` from a checkout. The docs constant
+   is the version the site's nav shows.
 
 3. Rolls `CHANGELOG.md`: everything listed under `## [Unreleased]` becomes
    `## [X.Y.Z] - YYYY-MM-DD [UTC+7]`, dated today in `Asia/Ho_Chi_Minh` like
@@ -110,15 +112,16 @@ What it does:
 5. Creates five annotated tags on that commit: `vX.Y.Z` plus the four
    prefixed ones.
 
-6. Prints the push - one command, the commit and all five tags together:
+6. Prints the push - two commands, the root tag alone in the second:
 
    ```
    git push origin <sha>:refs/heads/<branch> \
-       v1.8.0 \
        pkg/events/v1.8.0 \
        pkg/wire/v1.8.0 \
        pkg/events/nats/v1.8.0 \
        pkg/events/kafka/v1.8.0
+
+   git push origin v1.8.0
    ```
 
 Run `make ci` before you tag. Nothing in `make tag` runs the test suite.
@@ -143,8 +146,8 @@ Between phase 1 and the push, `make tidy` will fail in `pkg/events/nats` and
 
 ## The push
 
-Run the printed command. It pushes the release commit and all five tags in
-one go, so the module versions and the branch can never drift apart.
+Run the printed commands, in the printed order. The first carries the release
+commit and the four nested tags; the second carries the root tag alone.
 
 `.github/workflows/release.yml` reacts to the root tag only
 (`v[0-9]+.[0-9]+.[0-9]+`) and runs GoReleaser: cross-compiled `craftgo` and
@@ -152,6 +155,22 @@ one go, so the module versions and the branch can never drift apart.
 nested tags cannot match that filter - a tag filter pattern is anchored at the
 start of the tag name and its `*` never crosses a `/` - so they publish module
 versions and nothing else.
+
+**The root tag has to be pushed by itself.** GitHub raises no `push` event
+when one push carries more than three tags, and a workflow that never sees
+the event never starts - the tag lands on origin and nothing builds. Five
+tags in one push is exactly that case. Confirm the run rather than assume it:
+
+```
+gh run list --workflow=release.yml --limit 1
+gh release view v1.8.0
+```
+
+A root tag already on origin with no run behind it can be replayed by
+deleting and re-pushing that one tag (`git push origin :v1.8.0`, then
+`git push origin v1.8.0`) - it moves nothing, because it points at the same
+commit. The module versions are untouched by this; only the GitHub Release
+is at stake.
 
 ## Phase 2 - `make tag-sync VERSION=vX.Y.Z`
 
@@ -242,7 +261,8 @@ go install github.com/craftgodotdev/craftgo/cmd/craftgo@v1.8.0
 Before the push, nothing has escaped:
 
 ```
-git tag -d v1.8.0 pkg/events/v1.8.0 pkg/events/nats/v1.8.0 pkg/events/kafka/v1.8.0
+git tag -d v1.8.0 pkg/events/v1.8.0 pkg/wire/v1.8.0 \
+    pkg/events/nats/v1.8.0 pkg/events/kafka/v1.8.0
 git reset --hard HEAD~1
 ```
 

@@ -7,6 +7,21 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The version in the docs nav follows the release.** It was a literal in
+  `docs/.vitepress/config.ts` that nothing bumped, so the site still read
+  `v1.7.1` three releases after 1.7.1. It is now a `const VERSION` that
+  `scripts/release.sh` rewrites along with the two Go version vars, so it
+  moves with every `make tag`.
+
+- **A release publishes its GitHub Release again.** `make tag` printed one
+  `git push` carrying the release commit and all five tags; GitHub raises no
+  push event when a push carries more than three tags, so the tags landed on
+  origin and the release workflow never ran - 1.8.0 and 1.8.1 have module
+  versions but no binaries. The printed push is now two commands, with the
+  root tag alone in the second.
+
 ## [1.8.2] - 2026-09-19 [UTC+7]
 
 ### Fixed
