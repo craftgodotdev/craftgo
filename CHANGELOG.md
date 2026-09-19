@@ -7,6 +7,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-09-19 [UTC+7]
+
 ### Fixed
 
 - **A built-in primitive in `request` or `response` is refused instead of

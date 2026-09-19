@@ -2,23 +2,19 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/craftgodotdev/craftgo)](https://goreportcard.com/report/github.com/craftgodotdev/craftgo)
 
-**Write the spec. Generate everything.**
+Design-first framework for Go HTTP services and event contracts.
 
-craftgo is a design-first framework for Go HTTP services. You describe your API once in a small DSL - types, validators, endpoints, errors - and `craftgo gen` produces typed structs, request validation, HTTP handlers, route wiring, and an OpenAPI 3.1 spec. The generated code is plain `net/http`: no custom router, no reflection, no runtime struct tags. It reads like code you would have written by hand.
+You describe the API once in a small DSL. `craftgo gen` writes the typed structs, the validation, the HTTP handlers, the route wiring and an OpenAPI 3.1 document. The output is plain `net/http`: no custom router, no reflection, no runtime struct tags. You write the business logic and nothing else.
 
-📖 **[Documentation](https://craftgodotdev.github.io/craftgo)** · 🤖 **[AI-ready reference (llms.md)](https://craftgodotdev.github.io/craftgo/llms)**
-
----
+[Documentation](https://craftgodotdev.github.io/craftgo) · [Single-page reference for LLMs](https://craftgodotdev.github.io/craftgo/llms)
 
 ## Quickstart
 
-Requires Go 1.26+.
+Requires Go 1.26 or newer.
 
 ```bash
-# 1. Install the CLI
 go install github.com/craftgodotdev/craftgo/cmd/craftgo@latest
 
-# 2. New project
 mkdir hello && cd hello
 go mod init example.com/hello
 go get github.com/craftgodotdev/craftgo
@@ -51,22 +47,25 @@ service UserService {
 }
 ```
 
-Generate, then fill the one logic stub:
+Generate:
 
 ```bash
 craftgo gen design
 ```
 
+Fill the one stub it leaves for you:
+
 ```go
-// internal/service/user-service/create-user.go  (the only file you edit)
+// internal/service/user_service/create_user.go
 func (l *CreateUserService) CreateUser(req *types.CreateUserReq) (*types.User, error) {
     return &types.User{ID: "u1", Name: req.Name, Email: req.Email}, nil
 }
 ```
 
+Run it:
+
 ```bash
 go run .
-# listening on :8080 (api)
 ```
 
 ```bash
@@ -76,43 +75,83 @@ curl -X POST localhost:8080/api/v1/users \
 # name: length out of range [1, 80]
 ```
 
-Validation ran with zero hand-written code. The handler decoded JSON, called `req.Validate()`, dispatched to your function, and encoded the response.
+The handler decoded the body, ran `req.Validate()`, called your function and encoded the reply. The `/api` comes from the manifest's `openapi.basePath`, the `/v1` from the service's `@prefix`.
+
+## Events
+
+The same design declares event contracts. Enable the target in the manifest:
+
+```yaml
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+```
+
+Write `design/orders/events.craftgo`:
+
+```craftgo
+package orders
+
+type OrderPlaced {
+    id     string
+    total  float64 @gte(0)
+    placed datetime
+}
+
+@contract("orders.placed.v1")
+event Placed {
+    payload OrderPlaced
+}
+```
+
+`craftgo gen design` writes the payload struct and one typed descriptor:
+
+```go
+// internal/events/orders/events.go
+const PlacedContract = "orders.placed.v1"
+
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
+```
+
+That descriptor is the whole contract. Publishing is `orders.Placed.Publish(ctx, bus, &payload)` and listening is
+`orders.Placed.Subscribe(bus, group, handler)`, both validated for you. Nothing generated names a broker: which
+deployable listens, on which group and behind which middleware is Go you write where the bus is built. NATS and
+Kafka transports ship in `pkg/events/nats` and `pkg/events/kafka`.
 
 ## What you get
 
-- **One source of truth** - types, validators, handlers, routes, and the OpenAPI spec all come from the same `.craftgo` files. Change the DSL, regenerate, done.
-- **Plain `net/http`** - generated handlers are `http.HandlerFunc` registered on `*http.ServeMux`. Middleware is `func(http.Handler) http.Handler`. Nothing to learn beyond the standard library.
-- **Declarative validation** - `@length`, `@format(email)`, `@gte`, `@pattern`, `@requiresOneOf`, … compile to plain Go `if` statements. No reflection, no runtime tags.
-- **OpenAPI 3.1** - emitted from the same source, renders in Swagger UI, feeds `openapi-generator` for clients in any language.
-- **Rich type system** - scalars with inherited validators, enums, generics (`Page<User>`), cross-package composition, mixins, typed error categories.
-- **Events** - declare a contract at file level with `event` and craftgo generates one typed descriptor per contract. Which deployable listens, on which group, behind which middleware, is ordinary Go written where the bus is built, so nothing generated names a broker.
-- **Language-independent event model** - the contract name and the payload shapes are decided in a language-neutral model rather than in the emitter, so every target describes one contract. Go is the source target.
-- **First-class tooling** - an LSP server (completion, hover, go-to-definition, live diagnostics, formatting) and a VS Code extension.
-- **Regenerate-safe** - your business logic lives in gen-once stubs the CLI never overwrites; everything else regenerates on every `craftgo gen`.
+- **One source of truth.** Types, validation, handlers, routes and the OpenAPI document come from the same files. Change the DSL, regenerate.
+- **Plain net/http.** Handlers are `http.HandlerFunc` on an `*http.ServeMux`. Middleware is `func(http.Handler) http.Handler`.
+- **Validation as code.** `@length`, `@format(email)`, `@gte`, `@pattern` and the rest compile to ordinary `if` statements.
+- **A real type system.** Scalars that inherit their validators, enums, generics such as `Page<User>`, cross-package composition, mixins, typed error categories.
+- **Editor support.** A language server with completion, hover, go-to-definition, diagnostics and formatting, plus a VS Code extension.
+- **Safe to regenerate.** Your logic lives in stubs the CLI writes once and never overwrites.
 
-## How it fits together
+## What gets generated
 
 ```
-design/*.craftgo  ──craftgo gen──▶  internal/types/      typed structs + Validate()
-                                    internal/transport/  HTTP handlers
-                                    internal/routes/      route registration
-                                    internal/events/      contract descriptors
-                                    internal/service/     logic stubs (you edit these)
-                                    docs/openapi.yaml      OpenAPI 3.1 spec
-                                    main.go                wired entry point
+design/*.craftgo  --craftgo gen-->  internal/types/<package>/      structs and Validate()
+                                    internal/events/<package>/     event descriptors
+                                    internal/transport/<service>/  HTTP handlers
+                                    internal/routes/               route registration
+                                    internal/service/<service>/    your logic (written once)
+                                    internal/wiring/               one call that attaches the design
+                                    config/                        config struct and example file
+                                    docs/openapi.yaml              the OpenAPI document
+                                    main.go                        entry point
 ```
+
+Every path is a manifest key, so any of them can move. A design with no service generates the contract half alone,
+which is what a shared events package is.
 
 ## Documentation
 
-|                                                                                            |                                                            |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| [Getting Started](https://craftgodotdev.github.io/craftgo/guide/getting-started)           | Build and run your first endpoint in 5 minutes             |
-| [DSL Basics](https://craftgodotdev.github.io/craftgo/guide/dsl-basics)                     | The full syntax: types, services, decorators               |
-| [Events](https://craftgodotdev.github.io/craftgo/guide/events)                             | Event contracts, subscriptions, transports, codecs         |
-| [Decorator Registry](https://craftgodotdev.github.io/craftgo/reference/decorator-registry) | Every decorator, its arguments, and where it applies       |
-| [Runtime API](https://craftgodotdev.github.io/craftgo/reference/runtime-api)               | `pkg/server` - the `net/http` wrapper your code runs on    |
-| [Codegen Output](https://craftgodotdev.github.io/craftgo/reference/codegen-output)         | Exactly what `craftgo gen` produces, file by file          |
-| [llms.md](https://craftgodotdev.github.io/craftgo/llms)                                    | Single-page reference built for pasting into an LLM prompt |
+[Getting started](https://craftgodotdev.github.io/craftgo/guide/getting-started) walks through a first endpoint.
+[DSL basics](https://craftgodotdev.github.io/craftgo/guide/dsl-basics) is the syntax, and the
+[decorator registry](https://craftgodotdev.github.io/craftgo/reference/decorator-registry) lists every decorator.
+[Events](https://craftgodotdev.github.io/craftgo/guide/events) covers contracts, subscriptions and codecs.
+[llms.md](https://craftgodotdev.github.io/craftgo/llms) is the whole reference on one page, for pasting into a prompt.
 
 ## License
 

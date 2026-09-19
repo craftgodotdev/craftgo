@@ -44,7 +44,7 @@ import (
 // `go install`; release builds inject the git tag via
 // `-ldflags="-X ...internal/lsp.Version=<tag>"` (see .goreleaser.yaml), so it
 // must be a var - `-X` cannot write a const.
-var Version = "1.8.1"
+var Version = "1.8.2"
 
 // ErrExitWithoutShutdown reports an `exit` notification that arrived before
 // `shutdown`. LSP requires the server process to terminate with a non-zero
