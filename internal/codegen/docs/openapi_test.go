@@ -2124,3 +2124,66 @@ service S {
 		t.Errorf("the scalar schema does not carry its doc ahead of the raw note:\n%s", body)
 	}
 }
+
+// A scalar or an enum in `response` is the one fieldless shape the
+// analyser still accepts there, so the document it produces has to hold
+// up: `<M>RespBody` must $ref the declaration's own component and that
+// component must actually be emitted. The assertion is over EVERY $ref
+// in the document, which is also what catches the dangling
+// `#/components/schemas/string` a built-in primitive used to leave
+// behind before the analyser rejected it.
+func TestGenerateOpenAPIScalarAndEnumResponseRefsResolve(t *testing.T) {
+	for label, src := range map[string]string{
+		"scalar": "package design\nscalar Token string\ntype Req { v string }\nservice S { post Do /do { request Req  response Token } }",
+		"enum":   "package design\nenum Color { red green }\ntype Req { v string }\nservice S { post Do /do { request Req  response Color } }",
+	} {
+		t.Run(label, func(t *testing.T) {
+			body := generateOpenAPIToString(t, src)
+			declared := declaredSchemaNames(body)
+			for _, ref := range schemaRefNames(body) {
+				if !declared[ref] {
+					t.Errorf("$ref %q has no component schema; declared: %v\n%s", ref, declared, body)
+				}
+			}
+			if !declared["DoRespBody"] {
+				t.Errorf("DoRespBody component missing:\n%s", body)
+			}
+		})
+	}
+}
+
+// declaredSchemaNames returns the keys under `components.schemas`, which
+// the emitter writes at a fixed four-space indent.
+func declaredSchemaNames(body string) map[string]bool {
+	out := map[string]bool{}
+	inSchemas := false
+	for _, line := range strings.Split(body, "\n") {
+		switch {
+		case line == "  schemas:":
+			inSchemas = true
+		case inSchemas && strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "     ") && strings.HasSuffix(line, ":"):
+			out[strings.TrimSuffix(strings.TrimSpace(line), ":")] = true
+		case inSchemas && line != "" && !strings.HasPrefix(line, "    "):
+			inSchemas = false
+		}
+	}
+	return out
+}
+
+// schemaRefNames returns every component name the document $refs.
+func schemaRefNames(body string) []string {
+	const marker = "#/components/schemas/"
+	var out []string
+	for rest := body; ; {
+		i := strings.Index(rest, marker)
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len(marker):]
+		end := strings.IndexAny(rest, "'\" \n")
+		if end < 0 {
+			end = len(rest)
+		}
+		out = append(out, rest[:end])
+	}
+}

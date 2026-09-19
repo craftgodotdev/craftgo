@@ -21,7 +21,8 @@ import (
 //   - `@security(A, B, ...)` → keys declared in the project's
 //     `openapi.securitySchemes` (any slot, since the decorator is a
 //     variadic ident list).
-//   - `@default(...)` → enum values when the field's type is an enum.
+//   - `@default(...)` → the closed set the field's own type has: an
+//     enum's values, or `true` / `false` for a bool.
 //   - everything else → the registered enum values from the
 //     decorator's [semantic.Spec].
 //
@@ -43,7 +44,7 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 		}
 	}
 	if name == "default" {
-		if items := s.defaultEnumCompletions(view, pos, currentURI, currentSrc); items != nil {
+		if items := s.defaultValueCompletions(view, pos, currentURI, currentSrc); items != nil {
 			return items
 		}
 	}
@@ -118,13 +119,21 @@ func httpStatusCompletions() []protocol.CompletionItem {
 // only counted when they're STRICTLY before the cursor; that keeps
 // the closing paren of the decorator we're inside from prematurely
 // flipping `depth` negative.
+//
+// A cursor on whitespace has no token of its own, and the walk then
+// starts at the last token that ENDS before it. Starting at the end of
+// the stream instead would count every `)` further down the file,
+// including the one closing the very list the cursor sits in, and the
+// depth counter would swallow the `(` we are looking for.
 func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
+	start := idx
 	if idx < 0 {
-		idx = len(view.tokens)
+		target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
+		start = scanFromIndex(view, idx, target)
 	}
 	depth := 0
-	for i := idx; i >= 0; i-- {
+	for i := start; i >= 0; i-- {
 		if i >= len(view.tokens) {
 			continue
 		}

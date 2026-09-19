@@ -74,4 +74,5 @@ func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) 
 	a.checkDuplicateAutoWireNames(m)
 	a.checkNoContentStatusBody(m)
 	a.checkRequestBodyType(m)
+	a.checkResponseBodyType(m)
 }

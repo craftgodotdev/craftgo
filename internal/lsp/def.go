@@ -72,14 +72,17 @@ func enumValueDefinition(v projectView, view snapshotView, pos protocol.Position
 }
 
 // enclosingDeclKeyword returns the declaration keyword that opened the
-// block the token at idx sits in, or [lexer.EOF] when idx is at file
-// level. Declarations never nest, so the last keyword seen at brace
-// depth 0 before idx is the enclosing one.
+// block the token at idx sits in - [lexer.EOF] when idx is at file
+// level - together with the brace depth at idx. Declarations never
+// nest, so the last keyword seen at brace depth 0 before idx is the
+// enclosing one, and the depth then says HOW deep inside it the token
+// sits: 1 is the declaration's own body, 2 a method body inside a
+// service.
 //
 // The walk is forward rather than backward because every keyword
 // spelling is also a legal field name: `event` inside a type body is a
 // field, and only the brace depth it sits at tells the two apart.
-func enclosingDeclKeyword(view snapshotView, idx int) lexer.Kind {
+func enclosingDeclKeyword(view snapshotView, idx int) (lexer.Kind, int) {
 	last := lexer.EOF
 	depth := 0
 	for i := 0; i < idx && i < len(view.tokens); i++ {
@@ -100,7 +103,7 @@ func enclosingDeclKeyword(view snapshotView, idx int) lexer.Kind {
 			}
 		}
 	}
-	return last
+	return last, depth
 }
 
 // lookupKindAt classifies the cursor's surrounding syntax into the
@@ -178,7 +181,8 @@ func isTypeShapePosition(view snapshotView, idx int) bool {
 			// At file level this names the contract being declared, not a
 			// type. Inside a type body the same word is a field name and
 			// the cursor is on its type.
-			return enclosingDeclKeyword(view, idx) != lexer.KwEvent
+			kw, _ := enclosingDeclKeyword(view, idx)
+			return kw != lexer.KwEvent
 		case lexer.KwService, lexer.KwExtend:
 			// A service name, not a type reference. Without this the walk
 			// runs past the header into the previous declaration and the

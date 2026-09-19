@@ -11,31 +11,169 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func (s *Server) defaultEnumCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
+// defaultValueCompletions answers `@default(<cursor>)` from the field the
+// cursor sits on. `@default` takes ArgAny, so the legal set is whatever
+// the FIELD's type accepts, and only two types have a closed one: an
+// enum offers its values, a bool offers `true` / `false`. Every other
+// type takes a free literal and gets nil, so the popup stays out of the
+// way. A scalar is followed to the primitive it wraps, so
+// `scalar Flag bool` behaves like `bool`.
+func (s *Server) defaultValueCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
 	f := fieldAtCursor(view, pos)
-	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+	if f == nil || f.Type == nil || f.Type.Map != nil || f.Type.Array || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return nil
+	}
+	name := f.Type.Named.Name.String()
+	if sp, ok := prims.Lookup(name); ok {
+		if sp.Kind == prims.Bool {
+			return boolLiteralCompletions()
+		}
 		return nil
 	}
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
-	e, ok := v.lookup(f.Type.Named.Name.String(), semantic.EnumDecls).(*ast.EnumDecl)
+	switch d := v.lookup(name, semantic.EnumDecls|semantic.ScalarDecls).(type) {
+	case *ast.EnumDecl:
+		enumVals := d.EnumValues()
+		out := make([]protocol.CompletionItem, 0, len(enumVals))
+		for _, val := range enumVals {
+			out = append(out, protocol.CompletionItem{
+				Label:      val.Name,
+				Kind:       protocol.CompletionItemKindEnumMember,
+				Detail:     "value of enum " + d.Name,
+				InsertText: val.Name,
+			})
+		}
+		return out
+	case *ast.ScalarDecl:
+		if sp, ok := prims.Lookup(d.Primitive); ok && sp.Kind == prims.Bool {
+			return boolLiteralCompletions()
+		}
+	}
+	return nil
+}
+
+// boolLiteralCompletions is the two-value set a bool-typed slot accepts.
+func boolLiteralCompletions() []protocol.CompletionItem {
+	return []protocol.CompletionItem{
+		{Label: "true", Kind: protocol.CompletionItemKindValue, Detail: "bool", InsertText: "true"},
+		{Label: "false", Kind: protocol.CompletionItemKindValue, Detail: "bool", InsertText: "false"},
+	}
+}
+
+// pathParamCompletions answers `get Name /store/{<cursor>}` with the
+// request type's field names. A `{param}` binds to the request field of
+// the same name (the auto-@path rule), so the request type IS the closed
+// set - no guessing involved. Fields that cannot source a path segment
+// (optional, array, map, or a type with no single-value wire form) are
+// left out, as are the parameters the template already uses.
+//
+// The clause is read from the TOKEN stream rather than the AST: an
+// unfinished `{}` is not a path parameter to [parser.parsePath], which
+// takes it for the method body and leaves the real body - and with it
+// the request clause - unparsed. The tokens survive that.
+//
+// The route is authored before the body in plenty of sessions, and then
+// there is no request clause to read: the answer is nil rather than a
+// guess at what the type will be.
+func (s *Server) pathParamCompletions(view snapshotView, currentURI, currentSrc string, brace int) []protocol.CompletionItem {
+	name := requestTypeAfter(view, brace)
+	if name == "" {
+		return nil
+	}
+	v := s.loadProject(uriToPath(currentURI), currentSrc)
+	td, ok := v.lookup(name, semantic.TypeDecls).(*ast.TypeDecl)
 	if !ok {
 		return nil
 	}
-	enumVals := e.EnumValues()
-	out := make([]protocol.CompletionItem, 0, len(enumVals))
-	for _, val := range enumVals {
+	used := pathParamsBefore(view, brace)
+	var out []protocol.CompletionItem
+	for _, mem := range td.Body {
+		f, ok := mem.(*ast.Field)
+		if !ok || used[f.Name] || !pathBindableField(v, f) {
+			continue
+		}
 		out = append(out, protocol.CompletionItem{
-			Label:      val.Name,
-			Kind:       protocol.CompletionItemKindEnumMember,
-			Detail:     "value of enum " + e.Name,
-			InsertText: val.Name,
+			Label:         f.Name,
+			Kind:          protocol.CompletionItemKindField,
+			Detail:        typeRefString(f.Type) + " - field of " + td.Name,
+			Documentation: strings.Join(f.Doc, "\n"),
+			InsertText:    f.Name,
 		})
 	}
 	return out
+}
+
+// requestTypeAfter returns the type named by the `request` clause that
+// follows the token at i, or "" when the method declares none. The scan
+// stops at the next verb or declaration keyword so a later method's
+// clause is never borrowed.
+func requestTypeAfter(view snapshotView, i int) string {
+	for j := i + 1; j < len(view.tokens); j++ {
+		switch view.tokens[j].Kind {
+		case lexer.KwRequest:
+			if j+1 >= len(view.tokens) || view.tokens[j+1].Kind != lexer.Ident {
+				return ""
+			}
+			return qualifiedNameAt(view, j+1)
+		case lexer.VerbGet, lexer.VerbPost, lexer.VerbPut, lexer.VerbPatch,
+			lexer.VerbDelete, lexer.VerbHead, lexer.VerbOptions,
+			lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar,
+			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware, lexer.KwEvent:
+			return ""
+		}
+	}
+	return ""
+}
+
+// pathParamsBefore returns the parameter names the route template already
+// binds ahead of the brace at i. A template is written on one line, so
+// the line bounds the scan.
+func pathParamsBefore(view snapshotView, i int) map[string]bool {
+	used := map[string]bool{}
+	line := view.tokens[i].Pos.Line
+	for j := 0; j+2 < i; j++ {
+		if view.tokens[j].Pos.Line != line || view.tokens[j].Kind != lexer.LBrace {
+			continue
+		}
+		if view.tokens[j+2].Kind == lexer.RBrace {
+			used[view.tokens[j+1].Text] = true
+		}
+	}
+	return used
+}
+
+// pathBindableField reports whether f can source a `{param}` segment: a
+// single, always-present value with a wire-string form, bound from the
+// path rather than from somewhere else. Mirrors the analyser's
+// auto-@path rule, which rejects an optional, array or struct-shaped
+// field in that position, and only promotes a field that carries no
+// binding decorator of its own.
+func pathBindableField(v projectView, f *ast.Field) bool {
+	t := f.Type
+	if t == nil || t.Named == nil || t.Map != nil || t.Array || t.Optional {
+		return false
+	}
+	for _, d := range []string{"query", "header", "cookie", "body", "form"} {
+		if ast.HasDecorator(f.Decorators, d) {
+			return false
+		}
+	}
+	name := t.Named.Name.String()
+	if prims.Is(name) {
+		return prims.IsWireParseable(name)
+	}
+	switch d := v.lookup(name, semantic.EnumDecls|semantic.ScalarDecls).(type) {
+	case *ast.EnumDecl:
+		return true
+	case *ast.ScalarDecl:
+		return prims.IsWireParseable(d.Primitive)
+	}
+	return false
 }
 
 // serviceNameCompletions lists the primary `service Name` declarations
@@ -180,6 +318,19 @@ func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.
 // typeCompletionsProjectWide lists type-position completions: the
 // built-in primitives and every project-wide declaration except errors.
 func (s *Server) typeCompletionsProjectWide(currentURI, currentSrc string) []protocol.CompletionItem {
+	items := primitiveCompletions()
+	// `map<K, V>` is a type, not a declaration keyword: a type position
+	// is the only place it is legal. Its snippet lives with the other
+	// keyword snippets rather than being spelled a second time here.
+	items = append(items, keywordCompletions("map")...)
+	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
+	return items
+}
+
+// primitiveCompletions is one item per documented built-in. `object` is
+// the only one left out: it carries no Doc because it is legal solely
+// inside an `@example({...})` literal, never as a written type.
+func primitiveCompletions() []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	for _, sp := range prims.All() {
 		if sp.Doc == "" {
@@ -191,14 +342,49 @@ func (s *Server) typeCompletionsProjectWide(currentURI, currentSrc string) []pro
 			Detail: "built-in",
 		})
 	}
-	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
 	return items
 }
 
-// typePositionDecls is every declaration kind a type-position completion
-// offers. Errors are left out: they are not referenceable as types, and
-// `@errors(...)` has its own resolution path.
-const typePositionDecls = semantic.AnyDecl &^ semantic.ErrorDecls
+// scalarPrimitiveCompletions is the closed set a `scalar Name <cursor>`
+// slot accepts: a built-in that lowers to a Go type. `any`, `object`
+// and `file` are excluded - the analyser rejects all three there - and
+// so is every declared type, including other scalars: a scalar wraps a
+// built-in, never another declaration.
+//
+// [semantic.PrimFromName] is the same oracle the analyser's check reads,
+// so the popup and the diagnostic cannot drift apart.
+func scalarPrimitiveCompletions() []protocol.CompletionItem {
+	var out []protocol.CompletionItem
+	for _, sp := range prims.All() {
+		p := semantic.PrimFromName(sp.Name)
+		if p == 0 || p == semantic.PrimFile {
+			continue
+		}
+		out = append(out, protocol.CompletionItem{
+			Label:  sp.Name,
+			Kind:   protocol.CompletionItemKindKeyword,
+			Detail: "built-in",
+		})
+	}
+	return out
+}
+
+// typePositionDecls is every declaration kind a field's type may name.
+// A middleware, a service and an event are declarations the analyser
+// reports as an unknown TYPE when one appears in that slot, and an
+// error is not referenceable either (`@errors(...)` has its own
+// resolution path) - so the three type-shaped kinds are the whole set.
+const typePositionDecls = semantic.TypeDecls | semantic.EnumDecls | semantic.ScalarDecls
+
+// clauseTypeCompletions answers the `request` / `response` / `payload`
+// slots, which name a message rather than any type. All three reject a
+// built-in primitive, an enum and a scalar - none has fields to bind or
+// decode, and a primitive names no generated type at all - so only
+// `type` declarations are offered, and `map` is left out because the
+// clause parses a named reference, not a type expression.
+func (s *Server) clauseTypeCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+	return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
+}
 
 // declCompletions offers every declaration of the selected kinds across
 // the project. A declaration in another package is offered as `pkg.Name`
