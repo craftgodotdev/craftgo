@@ -15,6 +15,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `scripts/release.sh` rewrites along with the two Go version vars, so it
   moves with every `make tag`.
 
+- **A release publishes its GitHub Release again.** `make tag` printed one
+  `git push` carrying the release commit and all five tags; GitHub raises no
+  push event when a push carries more than three tags, so the tags landed on
+  origin and the release workflow never ran - 1.8.0 and 1.8.1 have module
+  versions but no binaries. The printed push is now two commands, with the
+  root tag alone in the second.
+
 ## [1.8.2] - 2026-09-19 [UTC+7]
 
 ### Fixed

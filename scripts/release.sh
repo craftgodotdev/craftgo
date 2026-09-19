@@ -213,13 +213,20 @@ cmd_tag() {
 			-m "$(module_of "$entry") $version"
 	done
 
-	section "push - run this yourself"
+	# Two pushes, not one: GitHub raises no push event when a single push
+	# carries more than three tags, and .github/workflows/release.yml only
+	# runs on that event, so the root tag travels alone.
+	section "push - run this yourself, in this order"
 	if dry; then sha="<release-commit>"; else sha="$(git rev-parse HEAD)"; fi
 	printf '\n  git push origin %s:refs/heads/%s' "$sha" "$branch"
-	for tag in $(tag_names "$version"); do printf ' \\\n      %s' "$tag"; done
-	printf '\n\n'
-	note "the unprefixed tag $version is the only one GoReleaser reacts to;"
+	for tag in $(tag_names "$version"); do
+		if [ "$tag" != "$version" ]; then printf ' \\\n      %s' "$tag"; fi
+	done
+	printf '\n\n  git push origin %s\n\n' "$version"
+	note "the unprefixed tag $version is the only one GoReleaser reacts to,"
+	note "and it is alone in the second push so that push event fires;"
 	note "the four nested tags just publish module versions."
+	note "check it ran: gh run list --workflow=release.yml --limit 1"
 	note "then: make tag-sync VERSION=$version"
 	if dry; then printf '\n  (dry run: nothing was written)\n'; fi
 }
