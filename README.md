@@ -77,20 +77,62 @@ curl -X POST localhost:8080/api/v1/users \
 
 The handler decoded the body, ran `req.Validate()`, called your function and encoded the reply. The `/api` comes from the manifest's `openapi.basePath`, the `/v1` from the service's `@prefix`.
 
+## Events
+
+The same design declares event contracts. Enable the target in the manifest:
+
+```yaml
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+```
+
+Write `design/orders/events.craftgo`:
+
+```craftgo
+package orders
+
+type OrderPlaced {
+    id     string
+    total  float64 @gte(0)
+    placed datetime
+}
+
+@contract("orders.placed.v1")
+event Placed {
+    payload OrderPlaced
+}
+```
+
+`craftgo gen design` writes the payload struct and one typed descriptor:
+
+```go
+// internal/events/orders/events.go
+const PlacedContract = "orders.placed.v1"
+
+var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
+```
+
+That descriptor is the whole contract. Publishing is `orders.Placed.Publish(ctx, bus, &payload)` and listening is
+`orders.Placed.Subscribe(bus, group, handler)`, both validated for you. Nothing generated names a broker: which
+deployable listens, on which group and behind which middleware is Go you write where the bus is built. NATS and
+Kafka transports ship in `pkg/events/nats` and `pkg/events/kafka`.
+
 ## What you get
 
 - **One source of truth.** Types, validation, handlers, routes and the OpenAPI document come from the same files. Change the DSL, regenerate.
 - **Plain net/http.** Handlers are `http.HandlerFunc` on an `*http.ServeMux`. Middleware is `func(http.Handler) http.Handler`.
 - **Validation as code.** `@length`, `@format(email)`, `@gte`, `@pattern` and the rest compile to ordinary `if` statements.
 - **A real type system.** Scalars that inherit their validators, enums, generics such as `Page<User>`, cross-package composition, mixins, typed error categories.
-- **Event contracts.** `event` declares a contract and craftgo generates one typed descriptor for it. Which deployable listens, on which group, behind which middleware, is Go you write where the bus is built, so nothing generated names a broker.
 - **Editor support.** A language server with completion, hover, go-to-definition, diagnostics and formatting, plus a VS Code extension.
 - **Safe to regenerate.** Your logic lives in stubs the CLI writes once and never overwrites.
 
 ## What gets generated
 
 ```
-design/*.craftgo  --craftgo gen-->  internal/types/<package>/   structs and Validate()
+design/*.craftgo  --craftgo gen-->  internal/types/<package>/      structs and Validate()
+                                    internal/events/<package>/     event descriptors
                                     internal/transport/<service>/  HTTP handlers
                                     internal/routes/               route registration
                                     internal/service/<service>/    your logic (written once)
@@ -100,7 +142,8 @@ design/*.craftgo  --craftgo gen-->  internal/types/<package>/   structs and Vali
                                     main.go                        entry point
 ```
 
-Every path is a manifest key, so any of them can move.
+Every path is a manifest key, so any of them can move. A design with no service generates the contract half alone,
+which is what a shared events package is.
 
 ## Documentation
 
