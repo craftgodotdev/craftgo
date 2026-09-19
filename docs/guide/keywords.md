@@ -246,6 +246,8 @@ post CreateUser /users {
 
 Both are optional. Methods without `request` accept no body. Methods without `response` return an empty body with the configured status.
 
+Each clause names a `type`. A bare array (`Order[]`) and a built-in primitive (`string`, `bytes`, `any`, ...) are rejected in both clauses - neither has the fields a request binds, and a primitive names no generated type at all - so wrap the value instead: `type Resp { value string }`. A scalar or an enum is rejected in `request` for that same fieldless reason, but is fine in `response`, where it generates a real named type.
+
 ## `map`
 
 Used inside a type expression for map types:

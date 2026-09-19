@@ -1,5 +1,5 @@
-// Method-level combination checks: request body type, body-verb rules,
-// @status(204) bodies, and raw-mode redundancy.
+// Method-level combination checks: request and response body types,
+// body-verb rules, @status(204) bodies, and raw-mode redundancy.
 package semantic
 
 import (
@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
@@ -16,19 +17,22 @@ func methodLabel(svc string, m *ast.Method) string {
 	return "method " + svc + "." + m.Name
 }
 
-// checkRequestBodyType rejects a request type that is a bare scalar or enum
-// (a fieldless named type). The request binder/decoder drives off the
-// type's FIELDS, so a fieldless type yields no decode and no parameters -
-// the client payload is silently dropped (and a constraint-free scalar
-// produces non-compiling Go, since the handler calls a Validate() that
-// isn't generated). Wrap the value in a `type { value <T> }`. Mirrors the
-// existing bare-array request reject.
+// checkRequestBodyType rejects a request type that is a built-in
+// primitive, a scalar or an enum - all fieldless. The request
+// binder/decoder drives off the type's FIELDS, so a fieldless type
+// yields no decode and no parameters - the client payload is silently
+// dropped and the OpenAPI operation loses its `requestBody` - and the
+// Go it emits does not compile: the handler declares `var req
+// types.<name>` and calls a `Validate()` neither a primitive nor a
+// constraint-free scalar has. Wrap the value in a `type { value <T> }`.
+// Mirrors the existing bare-array request reject, which is likewise
+// unconditional.
 func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
 	pkg, sym := a.resolveNamed(a.pkg.Name, m.Request)
-	kind := bareRequestKind(pkg, sym)
+	kind := bareRequestKind(pkg, m.Request, sym)
 	if kind == "" {
 		return
 	}
@@ -38,18 +42,64 @@ func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 		name, kind, name)
 }
 
-// bareRequestKind reports whether `name` resolves to a scalar or enum in pkg
-// (a fieldless type that has nothing to bind or decode as a request body), or
-// "" otherwise.
-func bareRequestKind(pkg *Package, name string) string {
+// checkResponseBodyType rejects a response type that is a built-in
+// primitive. The clause names the Go type the stub returns
+// (`(*types.<name>, error)`) and the schema the OpenAPI response body
+// $refs; a built-in supplies neither, so the tree names a type the
+// generated types package never declares and the document carries a
+// dangling `#/components/schemas/<name>`.
+//
+// A scalar or an enum stays accepted: unlike the request side nothing
+// binds a response, and both generate a real named Go type and $ref a
+// schema that IS emitted.
+//
+// Raw sides are rejected too. `@rawResponse` / `@passthrough` make the
+// block docs-only for the transport, but the OpenAPI document is still
+// emitted from it - so the dangling $ref survives the raw flag, exactly
+// as the bare-array reject does.
+func (a *analyzer) checkResponseBodyType(m *ast.Method) {
+	if m == nil || m.Response == nil || m.Response.Type == nil {
+		return
+	}
+	name := builtinClauseName(m.Response.Type)
+	if name == "" {
+		return
+	}
+	a.diag(m.Response.Pos, m.Response.Pos, lexer.SeverityError, CodeBindingType,
+		"response type %q is a built-in primitive, which names no generated type to encode as a response body - wrap it in a type (`type Resp { value %s }`)",
+		name, name)
+}
+
+// bareRequestKind names the fieldless thing a request clause refers to -
+// "built-in primitive", "scalar" or "enum" - or "" when it names a
+// message. sym is the symbol n resolves to in pkg.
+func bareRequestKind(pkg *Package, n *ast.NamedTypeRef, sym string) string {
+	if builtinClauseName(n) != "" {
+		return "built-in primitive"
+	}
 	if pkg == nil {
 		return ""
 	}
-	if _, ok := pkg.Scalars[name]; ok {
+	if _, ok := pkg.Scalars[sym]; ok {
 		return "scalar"
 	}
-	if _, ok := pkg.Enums[name]; ok {
+	if _, ok := pkg.Enums[sym]; ok {
 		return "enum"
+	}
+	return ""
+}
+
+// builtinClauseName returns the built-in primitive a `request` /
+// `response` clause names, or "" when it names a declaration. Only a
+// BARE name can be a built-in: a qualified reference always names a
+// declaration, and [CodeDeclBuiltinName] keeps a declaration from taking
+// a built-in's spelling.
+func builtinClauseName(n *ast.NamedTypeRef) string {
+	if n == nil || n.Name == nil || len(n.Name.Parts) != 1 {
+		return ""
+	}
+	if name := n.Name.Parts[0]; prims.Is(name) {
+		return name
 	}
 	return ""
 }

@@ -146,19 +146,21 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if items, ok := s.namedSlotCompletions(view, pos, currentURI, currentSrc, prev, mid); ok {
 		return items
 	}
-	// Just opened a block - cursor right after `{` with no
-	// in-progress identifier. Auto-suggest here is purely noise: the
-	// user has not signalled what they're about to type, and the
-	// project-wide-decls dump shadows whatever they actually wanted.
-	// Return empty so VS Code's popup stays out of the way; users who
-	// invoke completion manually (or start typing a letter) will land
-	// in the regular branches below.
+	// Just opened a block - cursor right after `{` with no in-progress
+	// identifier. A block whose members open with one of a short, closed
+	// list of keys answers with that list: the keys ARE the affordance,
+	// and there are at most seven. Every other block stays quiet (see
+	// [blockOffersKeysWhenOpened]).
 	//
 	// `mid` may be the matching `}` (when the cursor sits inside an
 	// empty `{}`), nil (cursor on whitespace), or absent. Anything
 	// other than an in-progress identifier counts as "no signal yet".
 	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
-		return nil
+		block := blockAt(view, pos)
+		if !blockOffersKeysWhenOpened(block) {
+			return nil
+		}
+		return s.blockKeyCompletions(block, currentURI, currentSrc)
 	}
 	// Field type suffix (`?` optional, `]` array close) - the legal
 	// next token is either another type suffix, a decorator (`@...`),
@@ -179,7 +181,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	// `request X` / `response X` / `payload X` - a method or event
 	// clause, each of which names a message rather than any type.
 	if prev != nil && (prev.Kind == lexer.KwRequest || prev.Kind == lexer.KwResponse || prev.Kind == lexer.KwPayload) {
-		return s.clauseTypeCompletions(currentURI, currentSrc, prev.Kind)
+		return s.clauseTypeCompletions(currentURI, currentSrc)
 	}
 	// Generic / map argument: builtins + every declared type
 	// (project-wide).
@@ -272,7 +274,13 @@ var (
 //   - method body    → `request` / `response`
 //   - event body     → `payload`
 func (s *Server) blockCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
-	switch blockAt(view, pos) {
+	return s.blockKeyCompletions(blockAt(view, pos), currentURI, currentSrc)
+}
+
+// blockKeyCompletions is [Server.blockCompletions] for a block already
+// classified - the just-opened-a-brace branch has done that work.
+func (s *Server) blockKeyCompletions(block completionBlock, currentURI, currentSrc string) []protocol.CompletionItem {
+	switch block {
 	case blockType:
 		return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
 	case blockEnum:
@@ -285,6 +293,28 @@ func (s *Server) blockCompletions(view snapshotView, pos protocol.Position, curr
 		return keywordCompletions(eventKeywords...)
 	}
 	return keywordCompletions(fileKeywords...)
+}
+
+// blockOffersKeysWhenOpened reports whether a cursor that has just
+// opened b's brace is answered with b's keys rather than left silent.
+//
+// The three that are: a service body takes one of seven HTTP verbs, a
+// method body `request` / `response`, an event body `payload`. Each set
+// is closed, short, and the only thing that can legally start a member,
+// so listing it is the affordance rather than noise.
+//
+// The rest stay silent. A `type` / `error` body opens on a field NAME,
+// which is free text, and its one closed alternative - a mixin row - is
+// every declared type in the project, the dump this rule was added to
+// stop. An enum body is free text with no candidates at all. blockFile
+// is also where an UNRECOGNISED `{` classifies, so the declaration
+// keywords there would be wrong rather than merely noisy.
+func blockOffersKeysWhenOpened(b completionBlock) bool {
+	switch b {
+	case blockService, blockMethod, blockEvent:
+		return true
+	}
+	return false
 }
 
 // pathParamContext reports whether the cursor sits inside the `{…}` of a

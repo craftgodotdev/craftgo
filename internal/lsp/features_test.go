@@ -275,10 +275,11 @@ func TestCompletionFormatArgOffersRaw(t *testing.T) {
 
 // The built-in popup is generated from the catalogue, so `datetime`
 // appears in it the way `string` does - otherwise the only way to find
-// it is the reference page.
+// it is the reference page. A FIELD type slot is where the catalogue
+// belongs; a `request` / `response` clause names a message, and the
+// analyser rejects every primitive in one.
 func TestCompletionTypePositionOffersBuiltins(t *testing.T) {
-	src := "package x\n\nservice S {\n    post P /p { request \n}\n"
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 24)
+	items := mustCompletionsAtCursor(t, "t.craftgo", "package x\n\ntype User {\n    home |\n}\n")
 	expectLabels(t, items, "datetime", "bytes", "any", "string")
 }
 
@@ -469,11 +470,14 @@ func keys(m map[string]string) []string {
 	return out
 }
 
-// TestCompletionSuppressedAfterOpenBrace pins the "no auto-suggest
-// right after `{`" rule. A cursor between `{` and `}` without any
-// in-progress identifier returns no completions, since the user has
-// not signalled what they want yet. Manual invocation or typing a
-// character still surfaces relevant items via the other branches.
+// TestCompletionSuppressedAfterOpenBrace pins the half of the
+// just-opened-a-brace rule that still answers nothing: a block whose
+// members open on free text (a field name, an enum value) has nothing
+// to offer, and its one closed alternative - a mixin row - is every
+// declared type in the project, which is the dump this rule exists to
+// stop. Typing a character still reaches those declarations through the
+// regular block fallback. The blocks that DO answer are pinned by
+// TestCompletionJustOpenedBlockOffersItsKeys.
 func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	cases := []struct {
 		label string
@@ -483,31 +487,90 @@ func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 		col  int
 	}{
 		{
-			label: "extend service body just opened",
-			src:   "package x\n\nextend service Test {}",
-			line:  2, col: 21, // between `{` and `}`
-		},
-		{
-			label: "service body with whitespace",
-			src:   "package x\n\nservice S {\n  \n}",
-			line:  3, col: 2, // blank indented line
-		},
-		{
 			label: "type body just opened",
-			src:   "package x\n\ntype T {}",
-			line:  2, col: 8,
+			src:   typeSlotFixtures + "type T {}",
+			line:  5, col: 8, // between `{` and `}`
+		},
+		{
+			label: "type body with whitespace",
+			src:   typeSlotFixtures + "type T {\n  \n}",
+			line:  6, col: 2, // blank indented line
+		},
+		{
+			label: "error body just opened",
+			src:   typeSlotFixtures + "error NotFound Missing {}",
+			line:  5, col: 24,
+		},
+		{
+			label: "enum body just opened",
+			src:   typeSlotFixtures + "enum E {}",
+			line:  5, col: 8,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
 			items := mustCompletionsAt(t, "t.craftgo", c.src, uint32(c.line), uint32(c.col))
 			if len(items) != 0 {
-				labels := make([]string, 0, len(items))
-				for _, it := range items {
-					labels = append(labels, it.Label)
-				}
-				t.Errorf("expected no completions right after `{`, got %d items: %v", len(items), labels)
+				t.Errorf("expected no completions right after `{`, got %d items: %v", len(items), labelSet(items))
 			}
+		})
+	}
+}
+
+// TestCompletionJustOpenedBlockOffersItsKeys is the other half: a block
+// whose members can only open with one of a short, closed list of keys
+// answers with that list the moment its brace is opened. The fallback
+// already narrowed each block to its own set, so there is no dump left
+// to suppress - the keys ARE the affordance, and a cursor sitting in an
+// empty `{}` is exactly when an author wants to see them.
+func TestCompletionJustOpenedBlockOffersItsKeys(t *testing.T) {
+	cases := []struct {
+		label        string
+		src          string
+		line, col    int
+		want, banned []string
+	}{
+		{
+			label: "service body just opened",
+			src:   typeSlotFixtures + "service S {}",
+			line:  5, col: 11,
+			want:   []string{"get", "post", "put", "patch", "delete", "head", "options"},
+			banned: []string{"type", "service", "request", "Address"},
+		},
+		{
+			label: "extend service body just opened",
+			src:   typeSlotFixtures + "extend service S {}",
+			line:  5, col: 18,
+			want:   []string{"get", "post", "put", "patch", "delete", "head", "options"},
+			banned: []string{"type", "service", "request", "Address"},
+		},
+		{
+			label: "service body with whitespace",
+			src:   typeSlotFixtures + "service S {\n  \n}",
+			line:  6, col: 2,
+			want:   []string{"get", "post", "put", "patch", "delete", "head", "options"},
+			banned: []string{"type", "request", "Address"},
+		},
+		{
+			label: "method body just opened",
+			src:   typeSlotFixtures + "service S {\n    get A /a {}\n}\n",
+			line:  6, col: 14,
+			want:   []string{"request", "response"},
+			banned: []string{"get", "type", "payload", "Address"},
+		},
+		{
+			label: "event body just opened",
+			src:   typeSlotFixtures + "event E {}",
+			line:  5, col: 9,
+			want:   []string{"payload"},
+			banned: []string{"request", "response", "type", "Address"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			items := mustCompletionsAt(t, "t.craftgo", c.src, uint32(c.line), uint32(c.col))
+			expectLabels(t, items, c.want...)
+			expectNoLabels(t, items, c.banned...)
 		})
 	}
 }
@@ -596,26 +659,26 @@ func TestCompletionTypeSlots(t *testing.T) {
 }
 
 // TestCompletionClauseSlotsOfferMessageTypes pins `request`, `response`
-// and `payload`. All three name a message, and the analyser rejects an
-// enum or a scalar in any of them - so those two kinds are filtered out
-// even though they are perfectly good FIELD types. `payload` is the
-// strict one: it must name a `type`, so its popup carries no built-ins
-// either.
+// and `payload`. All three name a message, and the analyser rejects a
+// built-in primitive, an enum and a scalar in every one of them - so all
+// three popups carry `type` declarations and nothing else, even though
+// the primitives and the other two kinds are perfectly good FIELD types.
 func TestCompletionClauseSlotsOfferMessageTypes(t *testing.T) {
-	t.Run("method clause", func(t *testing.T) {
-		items := mustCompletionsAtCursor(t, "t.craftgo",
-			typeSlotFixtures+"service S {\n    get Fetch /f {\n        request |\n    }\n}\n")
-		expectLabels(t, items, "Address", "string", "bytes", "datetime")
-		// An enum / scalar has no fields to bind, and `map` does not
-		// parse in a clause at all.
-		expectNoLabels(t, items, "Kind", "Flag", "map", "object", "get", "request")
-	})
-	t.Run("event payload", func(t *testing.T) {
-		items := mustCompletionsAtCursor(t, "t.craftgo",
-			typeSlotFixtures+"event Moved {\n    payload |\n}\n")
-		expectLabels(t, items, "Address")
-		expectNoLabels(t, items, "Kind", "Flag", "map", "string", "bytes", "payload")
-	})
+	for label, body := range map[string]string{
+		"method request":  "service S {\n    get Fetch /f {\n        request |\n    }\n}\n",
+		"method response": "service S {\n    get Fetch /f {\n        response |\n    }\n}\n",
+		"event payload":   "event Moved {\n    payload |\n}\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body)
+			expectLabels(t, items, "Address")
+			// A primitive names no generated type, an enum / scalar has
+			// no fields to bind, and `map` does not parse in a clause at
+			// all.
+			expectNoLabels(t, items, "string", "int", "bytes", "datetime", "any", "file",
+				"Kind", "Flag", "map", "object", "get", "request", "response", "payload")
+		})
+	}
 }
 
 // TestCompletionTypePositionNotInOtherSlots is the precision half of

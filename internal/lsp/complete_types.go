@@ -377,21 +377,13 @@ func scalarPrimitiveCompletions() []protocol.CompletionItem {
 const typePositionDecls = semantic.TypeDecls | semantic.EnumDecls | semantic.ScalarDecls
 
 // clauseTypeCompletions answers the `request` / `response` / `payload`
-// slots, which name a message rather than any type. All three reject an
-// enum and a scalar - neither has fields to bind or decode - so only
+// slots, which name a message rather than any type. All three reject a
+// built-in primitive, an enum and a scalar - none has fields to bind or
+// decode, and a primitive names no generated type at all - so only
 // `type` declarations are offered, and `map` is left out because the
 // clause parses a named reference, not a type expression.
-//
-// `payload` is the strict one: the analyser demands a `type`
-// declaration in so many words. A method clause additionally gets the
-// built-ins, which it does not reject; the popup follows the analyser
-// rather than second-guessing it.
-func (s *Server) clauseTypeCompletions(currentURI, currentSrc string, kw lexer.Kind) []protocol.CompletionItem {
-	items := s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
-	if kw == lexer.KwPayload {
-		return items
-	}
-	return append(primitiveCompletions(), items...)
+func (s *Server) clauseTypeCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+	return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
 }
 
 // declCompletions offers every declaration of the selected kinds across

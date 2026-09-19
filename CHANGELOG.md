@@ -7,6 +7,41 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A built-in primitive in `request` or `response` is refused instead of
+  generating a tree that does not compile.** The request rule only looked
+  in the package's scalars and enums, so `string` / `bytes` / `any` and
+  every other built-in slipped past both clauses - and the response side
+  had no rule at all beyond the parser's bare-array reject. What came out
+  named a type nothing declares: `var req types.string` followed by a
+  `req.Validate()` no generator emits, a stub returning `(*types.string,
+  error)`, an OpenAPI response body `$ref`-ing a
+  `#/components/schemas/string` the document never declares, and a
+  request body dropped from the contract entirely. Both clauses now
+  reject every built-in spelling, pointing at the wrap (`type Resp {
+  value string }`). Raw sides are refused too: `@rawRequest` /
+  `@rawResponse` / `@passthrough` make the block docs-only for the
+  transport, but the document is still emitted from it, so the dangling
+  `$ref` outlived the flag. A scalar or an enum in `response` stays
+  legal - both generate a real named type whose schema IS emitted. No
+  design that spelled a primitive there ever produced a buildable tree,
+  so nothing that worked before stops working.
+
+### Changed
+
+- **Completion offers a block's keys the moment its brace opens.** A
+  cursor just after `{` used to answer nothing, because the fallback then
+  dumped 24 keywords and every declared type. The fallback is now the
+  block's own set, so `service S {` offers the seven HTTP verbs, a method
+  body `request` / `response`, and an `event` body `payload`. A `type` /
+  `error` body and an `enum` body still stay quiet: those open on free
+  text, and a type body's one closed alternative is every declared type
+  in the project.
+- **The `request` / `response` popups list message types only.** They
+  used to carry the built-in primitives alongside them, which the
+  analyser now rejects; `payload` already listed types alone.
+
 ## [1.8.1] - 2026-09-18 [UTC+7]
 
 ### Added
