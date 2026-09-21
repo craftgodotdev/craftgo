@@ -30,6 +30,27 @@ func (t *Telemetry) GRPCServerHandler() stats.Handler {
 	)
 }
 
+// GRPCClientHandler instruments every call this process MAKES against
+// this stack's providers: the client span and the
+// `rpc.client.call.duration` instrument, and - the reason a caller needs
+// it at all - the W3C trace context written into the request metadata,
+// so the server it calls continues the trace instead of starting one.
+// Without it a gRPC client sends no `traceparent` and the two halves of
+// a request land in separate traces. [rpc.Dial] installs what is passed
+// to it. Health and reflection calls are left out, and with both signals
+// off the handler does nothing.
+func (t *Telemetry) GRPCClientHandler() stats.Handler {
+	if !t.instrumented() {
+		return noopStats{}
+	}
+	return otelgrpc.NewClientHandler(
+		otelgrpc.WithTracerProvider(t.TracerProvider()),
+		otelgrpc.WithMeterProvider(t.MeterProvider()),
+		otelgrpc.WithPropagators(t.propagator()),
+		otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool { return !rpc.IsInfrastructureMethod(info.FullMethodName) }),
+	)
+}
+
 // noopStats is the handler of an unconfigured stack.
 type noopStats struct{}
 

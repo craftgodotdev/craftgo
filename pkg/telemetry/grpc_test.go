@@ -171,3 +171,105 @@ func TestGRPCServerHandlerUnconfiguredIsPassThrough(t *testing.T) {
 		t.Fatalf("call through the pass-through handler: %v %v", out, err)
 	}
 }
+
+// dialerTo serves impl behind tel's stats handler and returns the
+// option that reaches it, so a test can dial it more than one way.
+func dialerTo(t *testing.T, tel *telemetry.Telemetry, impl pinger) rpc.ClientOption {
+	t.Helper()
+	srv := rpc.New(nil, rpc.WithStatsHandler(tel.GRPCServerHandler()))
+	srv.RegisterService(&echoDesc, impl)
+	lis := bufconn.Listen(1 << 20)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Stop(ctx)
+	})
+	return rpc.WithDialOptions(grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+		return lis.DialContext(ctx)
+	}))
+}
+
+// A gRPC client sends no trace context of its own. The handler is what
+// carries the caller's trace to the service it calls, so one request
+// stays one trace across the wire; without it the server opens a trace
+// of its own and the two halves never meet.
+func TestGRPCClientHandlerCarriesTheTraceAcrossTheWire(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		ServiceName: "todo",
+		OTel:        telemetry.OTelConfig{Enabled: true, Exporter: "none"},
+		Metrics:     telemetry.MetricsConfig{Enabled: true, Exporter: "prometheus", AdminAddr: "127.0.0.1:0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+
+	var seen trace.SpanContext
+	dialer := dialerTo(t, tel, pingFunc(func(ctx context.Context, in *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {
+		seen = trace.SpanContextFromContext(ctx)
+		return in, nil
+	}))
+
+	// call dials with opts, opens a caller span, and reports the trace
+	// id the caller was on and the one the server saw.
+	call := func(opts ...rpc.ClientOption) (string, string) {
+		t.Helper()
+		conn, err := rpc.Dial("passthrough:///bufconn", append(opts, dialer)...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		ctx, span := tel.TracerProvider().Tracer("caller").Start(context.Background(), "caller")
+		defer span.End()
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		if err := conn.Invoke(ctx, pingMethod, wrapperspb.String("x"), new(wrapperspb.StringValue)); err != nil {
+			t.Fatal(err)
+		}
+		return span.SpanContext().TraceID().String(), seen.TraceID().String()
+	}
+
+	caller, server := call(rpc.WithClientStatsHandler(tel.GRPCClientHandler()))
+	if caller != server {
+		t.Errorf("the trace broke at the wire: caller %s, server %s", caller, server)
+	}
+	if !seen.IsValid() {
+		t.Error("no span reached the server")
+	}
+	if caller, server := call(); caller == server {
+		t.Errorf("an uninstrumented client carried the trace, so the handler is not what does it: %s", caller)
+	}
+
+	body, _ := scrape(t, tel.ScrapeURL())
+	if !strings.Contains(body, "rpc_client_call_duration_seconds_count") {
+		t.Errorf("no client instruments in the scrape:\n%s", body[:min(len(body), 400)])
+	}
+}
+
+// An unconfigured stack, and a nil one, still hand grpc a working
+// client handler.
+func TestGRPCClientHandlerUnconfiguredIsPassThrough(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{ServiceName: "todo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nilTel *telemetry.Telemetry
+	if tel.GRPCClientHandler() == nil || nilTel.GRPCClientHandler() == nil {
+		t.Fatal("the handler must never be nil")
+	}
+	dialer := dialerTo(t, tel, pingFunc(func(_ context.Context, in *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {
+		return in, nil
+	}))
+	conn, err := rpc.Dial("passthrough:///bufconn", rpc.WithClientStatsHandler(tel.GRPCClientHandler()), dialer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out := new(wrapperspb.StringValue)
+	if err := conn.Invoke(ctx, pingMethod, wrapperspb.String("x"), out); err != nil || out.GetValue() != "x" {
+		t.Fatalf("call through the pass-through handler: %v %v", out, err)
+	}
+}
