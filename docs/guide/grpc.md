@@ -133,7 +133,7 @@ func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloR
 }
 ```
 
-`rpc.Validate` runs the request's own `Validate() error` when it has one - the method `protoc-gen-validate` generates - and answers `InvalidArgument`; a message without it passes.
+`rpc.Validate` runs the request's own `Validate() error` when it has one - the method `protoc-gen-validate` generates - and answers `InvalidArgument`. A message without that method passes, so the call is inert until you add such a plugin; a validator with no method of its own, protovalidate among them, goes on the server as an interceptor instead.
 
 The logic stub lands under `output.service`, from the same template the HTTP stubs use, and is yours once written:
 
