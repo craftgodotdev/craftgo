@@ -4,7 +4,8 @@
 // single source of truth. Traces and metrics are set up together by
 // [telemetry.Init], which keeps the exporter selection (none / stdout /
 // otlp_grpc / otlp_http / prometheus) next to the SDK rather than inline
-// here, and gives both signals one `serviceName`, one HTTP wrapper and
+// here, and gives both signals one `serviceName`, one HTTP wrapper,
+// one gRPC handler and
 // one Shutdown. The only knob exposed to the deployer is `config.yaml`
 // (see config/example.config.yaml for the full field reference).
 
@@ -52,7 +53,8 @@ func main() {
 
 	ctx := context.Background()
 
-	// Both signals share `serviceName`, one HTTP wrapper and one Shutdown.
+	// Both signals share `serviceName`, one HTTP wrapper, one gRPC
+	// handler and one Shutdown.
 	tel, err := telemetry.Init(ctx, cfg.Config)
 	if err != nil {
 		log.Default().Error("init telemetry", log.Err(err))

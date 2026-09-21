@@ -77,17 +77,5 @@ func parameter(names []string, opts Options) string {
 // pbImportPath is the Go import path of the pb package for one design
 // file: the module, the pb output directory, then the file's directory.
 func pbImportPath(module, pbDir, name string) string {
-	return joinSlash(module, strings.TrimPrefix(pbDir, "./"), path.Dir(name))
-}
-
-// joinSlash joins path elements with `/`, dropping empty and `.` ones.
-func joinSlash(elems ...string) string {
-	var parts []string
-	for _, e := range elems {
-		e = strings.Trim(strings.ReplaceAll(e, "\\", "/"), "/")
-		if e != "" && e != "." {
-			parts = append(parts, e)
-		}
-	}
-	return strings.Join(parts, "/")
+	return path.Join(module, Options{PBDir: pbDir}.pbRel(), path.Dir(name))
 }

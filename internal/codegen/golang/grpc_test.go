@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
@@ -15,9 +16,7 @@ import (
 // a manifest with every default.
 func loadProtos(t *testing.T, cfg *config.Config) *protodesign.Set {
 	t.Helper()
-	set, err := protodesign.Load(context.Background(), filepath.Join("testdata", "proto"), protodesign.Options{
-		Module: cfg.Package, PBDir: cfg.Output.PB, FileCase: cfg.Output.FileCase,
-	})
+	set, err := protodesign.Load(context.Background(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(cfg, "."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +95,43 @@ func TestGRPCLogicIsWrittenOnceAndServersAlways(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(grpcServerDir(root, cfg, svc), "server.go")); err != nil {
 		t.Error("server.go missing")
+	}
+}
+
+// protoSet compiles a throwaway design holding one proto.
+func protoSet(t *testing.T, cfg *config.Config, proto string) *protodesign.Set {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "x", "x.proto"), []byte(proto), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, err := protodesign.Load(context.Background(), root, designopts.ProtoOptions(cfg, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set
+}
+
+// An RPC whose file would take the server struct's, or whose logic type
+// another RPC's constructor is named after, is rejected before the two
+// files overwrite each other or fail to compile.
+func TestValidateProtoOutputsRejectsCollidingRPCNames(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	for proto, want := range map[string]string{
+		"syntax = \"proto3\";\npackage x;\nservice S { rpc Server(R) returns (R); }\nmessage R {}\n":                         "rpc Server would generate file server.go",
+		"syntax = \"proto3\";\npackage x;\nservice S { rpc Get(R) returns (R); rpc NewGet(R) returns (R); }\nmessage R {}\n": "generate a logic constructor and a logic type of one name, NewGetService",
+	} {
+		err := ValidateProtoOutputs(nil, protoSet(t, cfg, proto), cfg)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want %q", err, want)
+		}
+	}
+	ok := protoSet(t, cfg, "syntax = \"proto3\";\npackage x;\nservice S { rpc Get(R) returns (R); rpc NewServer(R) returns (R); }\nmessage R {}\n")
+	if err := ValidateProtoOutputs(nil, ok, cfg); err != nil {
+		t.Errorf("distinct names rejected: %v", err)
 	}
 }
 

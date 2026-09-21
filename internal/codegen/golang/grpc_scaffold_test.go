@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -112,12 +113,15 @@ func TestWiringGRPCIsWrittenOnlyWithServices(t *testing.T) {
 	if pbAliasFor("greet") != "greetpb" || pbAliasFor("greetpb") != "greetpb" {
 		t.Error("a package named with a pb suffix keeps it once")
 	}
-	aliases := newAliasTable()
-	if a, b := aliases.claim("greetpb", "x/a"), aliases.claim("greetpb", "x/b"); a == b {
-		t.Errorf("two packages got one alias: %s", a)
+	imports := newGRPCImportSet()
+	imports.add(extraImport{Alias: "greetpb", Path: "x/a"})
+	imports.add(extraImport{Alias: "greetpb", Path: "x/b"})
+	imports.add(extraImport{Alias: "rpc", Path: "x/c"})
+	if a, b := imports.aliasFor("x/a"), imports.aliasFor("x/b"); a != "greetpb" || b != "greetpb2" {
+		t.Errorf("aliases = %s, %s", a, b)
 	}
-	if aliases.claim("greetpb", "x/a") != "greetpb" {
-		t.Error("an import path must keep its first alias")
+	if got := imports.aliasFor("x/c"); got != "rpc2" {
+		t.Errorf("a reserved name must be avoided, got %s", got)
 	}
 }
 
@@ -171,13 +175,37 @@ func TestScaffoldGapNotes(t *testing.T) {
 	// Plugins disabled and no pb code yet.
 	external := *cfg
 	external.Output.PB = "-"
-	disabled, err := protodesign.Load(t.Context(), filepath.Join("testdata", "proto"), protodesign.Options{Module: cfg.Package, FileCase: cfg.Output.FileCase})
-	if err == nil {
+	if _, err := protodesign.Load(t.Context(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(&external, ".")); err == nil {
 		t.Fatal("the fixture has no go_package, so a disabled load must fail")
 	}
-	_ = disabled
 	if notes := scaffoldGapNotes(proj, set, &external, fresh); !containsNote(notes, "holds no .pb.go yet") {
 		t.Errorf("missing pb note in %v", notes)
+	}
+}
+
+// The stubs of a service the design dropped stay, and the run says where
+// they are - for a proto service and an HTTP one alike.
+func TestOrphanedStubsAreNamed(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	set := loadProtos(t, cfg)
+	proj := analyzeProject(t, httpScaffoldSrc)
+	dir := t.TempDir()
+	if err := generateGRPCServices(set, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := generateService(proj.Packages["todos"], cfg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if notes := orphanedStubNotes(proj, set, cfg, dir); len(notes) != 0 {
+		t.Errorf("declared services noted: %v", notes)
+	}
+	notes := orphanedStubNotes(proj, nil, cfg, dir)
+	if len(notes) != 1 || !strings.Contains(notes[0], "./internal/service/greeter holds logic stubs of a service the design no longer declares") {
+		t.Errorf("dropped proto service: %v", notes)
+	}
+	empty, _ := semantic.AnalyzeProject(nil, semantic.Options{})
+	if notes := orphanedStubNotes(empty, set, cfg, dir); len(notes) != 1 || !strings.Contains(notes[0], "./internal/service/todo_service holds") {
+		t.Errorf("dropped HTTP service: %v", notes)
 	}
 }
 

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -30,12 +28,13 @@ type grpcImports struct {
 // under that package's own name.
 const pbAlias = "pb"
 
-// grpcReservedAliases are the import names the gRPC files already use,
-// which a foreign pb package name must not take.
-var grpcReservedAliases = map[string]bool{
-	pbAlias: true, "service": true, "svccontext": true, "rpc": true, "grpc": true,
-	"context": true, "log": true, "types": true,
-}
+// grpcServerFile is the file holding the server struct, beside the
+// per-RPC files; an RPC whose file would take the name is rejected.
+const grpcServerFile = "server"
+
+// logicTypeName is the name of the per-RPC logic struct, the rule the
+// HTTP scaffold sets for its methods.
+func logicTypeName(method string) string { return method + "Service" }
 
 // grpcServerData is the template input for `grpc_server.tmpl`.
 type grpcServerData struct {
@@ -48,18 +47,16 @@ type grpcServerData struct {
 
 // grpcMethodData is the template input for `grpc_method.tmpl`.
 type grpcMethodData struct {
-	Package          string
-	Service          string
-	Method           string
-	FullMethod       string
-	ServiceName      string
-	Doc              []string
-	Sig              grpcSignature
-	NeedsPB          bool
-	PBImport         string
-	ServiceImport    string
-	SvccontextImport string
-	ExtraImports     []extraImport
+	Package       string
+	Method        string
+	FullMethod    string
+	ServiceName   string
+	Doc           []string
+	Sig           grpcSignature
+	NeedsPB       bool
+	PBImport      string
+	ServiceImport string
+	ExtraImports  []extraImport
 }
 
 // grpcImportsFor computes the import paths of one proto service.
@@ -87,7 +84,7 @@ func generateGRPCServers(protos *protodesign.Set, cfg *config.Config, projectRoo
 	for _, svc := range protos.Services {
 		dir := grpcServerDir(projectRoot, cfg, svc)
 		imps := grpcImportsFor(cfg, svc)
-		if err := writeRendered(dir, "server.go", "grpc_server.tmpl", buildGRPCServerData(svc, imps)); err != nil {
+		if err := writeRendered(dir, grpcServerFile+".go", "grpc_server.tmpl", buildGRPCServerData(svc, imps)); err != nil {
 			return err
 		}
 		for _, m := range svc.Methods {
@@ -114,18 +111,16 @@ func buildGRPCServerData(svc *protodesign.Service, imps grpcImports) grpcServerD
 func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) grpcMethodData {
 	refs := newTypeRefs(svc)
 	d := grpcMethodData{
-		Package:          svc.Package,
-		Service:          svc.Name,
-		Method:           m.Name,
-		FullMethod:       "/" + svc.FullName + "/" + string(m.Desc.Desc.Name()),
-		ServiceName:      m.Name + "Service",
-		Doc:              m.Doc,
-		Sig:              buildGRPCSignature(m, refs.render(m.In), refs.render(m.Out)),
-		PBImport:         imps.PB,
-		ServiceImport:    imps.Service,
-		SvccontextImport: imps.Svccontext,
+		Package:       svc.Package,
+		Method:        m.Name,
+		FullMethod:    "/" + svc.FullName + "/" + string(m.Desc.Desc.Name()),
+		ServiceName:   logicTypeName(m.Name),
+		Doc:           m.Doc,
+		Sig:           buildGRPCSignature(m, refs.render(m.In), refs.render(m.Out)),
+		PBImport:      imps.PB,
+		ServiceImport: imps.Service,
 	}
-	d.NeedsPB, d.ExtraImports = refs.imports()
+	d.NeedsPB, d.ExtraImports = refs.usedOwn, refs.imports.sorted()
 	return d
 }
 
@@ -155,34 +150,30 @@ func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps 
 		Package:          svc.Package,
 		Service:          svc.Name,
 		Method:           m.Name,
-		ServiceName:      m.Name + "Service",
+		ServiceName:      logicTypeName(m.Name),
 		Doc:              m.Doc,
 		Notes:            streamNotes(m.Kind),
-		HasRequest:       sig.HasRequest,
-		HasResponse:      sig.HasResponse,
 		Sig:              sig.Logic,
 		SvccontextImport: imps.Svccontext,
 	}
-	needsPB, extra := refs.imports()
-	if needsPB {
+	if refs.usedOwn {
 		d.PBImports = append(d.PBImports, extraImport{Alias: pbAlias, Path: imps.PB})
 	}
-	d.PBImports = append(d.PBImports, extra...)
+	d.PBImports = append(d.PBImports, refs.imports.sorted()...)
 	return d
 }
 
-// typeRefs renders message types for one service's files and records
-// which packages they pull in: the service's own pb package under
-// [pbAlias], every other under its package name, made distinct from the
-// aliases the file already uses.
+// typeRefs renders message types for one service's files: the service's
+// own pb package under [pbAlias], every other under its package name,
+// through the file's import set so the aliases stay distinct.
 type typeRefs struct {
 	own     string
-	aliases map[string]string // import path → alias
+	imports *importSet
 	usedOwn bool
 }
 
 func newTypeRefs(svc *protodesign.Service) *typeRefs {
-	return &typeRefs{own: svc.PBImport, aliases: map[string]string{}}
+	return &typeRefs{own: svc.PBImport, imports: newGRPCImportSet()}
 }
 
 // render spells ref as `<alias>.<Name>`.
@@ -191,43 +182,8 @@ func (r *typeRefs) render(ref protodesign.TypeRef) string {
 		r.usedOwn = true
 		return pbAlias + "." + ref.Name
 	}
-	alias, ok := r.aliases[ref.ImportPath]
-	if !ok {
-		alias = ref.Package
-		for grpcReservedAliases[alias] || r.aliasTaken(alias) {
-			alias += "pb"
-		}
-		r.aliases[ref.ImportPath] = alias
-	}
-	return alias + "." + ref.Name
-}
-
-func (r *typeRefs) aliasTaken(alias string) bool {
-	for _, a := range r.aliases {
-		if a == alias {
-			return true
-		}
-	}
-	return false
-}
-
-// imports reports whether the own pb package was rendered and lists the
-// foreign packages, sorted by path.
-func (r *typeRefs) imports() (bool, []extraImport) {
-	var extra []extraImport
-	for p, a := range r.aliases {
-		extra = append(extra, extraImport{Alias: a, Path: p})
-	}
-	sort.Slice(extra, func(i, j int) bool { return extra[i].Path < extra[j].Path })
-	return r.usedOwn, extra
-}
-
-// strconvItoa is strconv.Itoa for the alias tables.
-func strconvItoa(n int) string { return strconv.Itoa(n) }
-
-// sortExtraImports orders imports by path, the order gofmt keeps.
-func sortExtraImports(imps []extraImport) {
-	sort.Slice(imps, func(i, j int) bool { return imps[i].Path < imps[j].Path })
+	r.imports.add(extraImport{Alias: ref.Package, Path: ref.ImportPath})
+	return r.imports.aliasFor(ref.ImportPath) + "." + ref.Name
 }
 
 // writeScaffoldOnce renders tmplName into path unless a file is already
@@ -246,13 +202,33 @@ func writeScaffoldOnce(path, tmplName string, data any) error {
 	return os.WriteFile(path, formatted, 0o644)
 }
 
-// ValidateProtoOutputs rejects a proto service whose logic directory a
-// DSL service already owns: both would write `<output.service>/<dir>`,
-// and their package clauses differ. The DSL side's own collisions are
-// the analyser's, the proto side's are protodesign's; this is the one
-// check that sees both.
+// ValidateProtoOutputs rejects what the gRPC emitters would write over
+// each other: a proto service whose logic directory a DSL service already
+// owns (both would write `<output.service>/<dir>`, with different package
+// clauses), an RPC whose file would take the server struct's, and an RPC
+// whose logic type another RPC's constructor is named after (`X` beside
+// `NewX`). The DSL side's own collisions are the analyser's, the proto
+// side's are protodesign's; this is the one check that sees the emitted
+// names.
 func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) error {
-	if proj == nil || protos == nil {
+	if protos == nil {
+		return nil
+	}
+	for _, svc := range protos.Services {
+		types := map[string]string{}
+		for _, m := range svc.Methods {
+			if m.File == grpcServerFile {
+				return fmt.Errorf("%s: rpc %s would generate file %s.go, which holds the server struct - rename it", svc.FullName, m.Name, grpcServerFile)
+			}
+			types[logicTypeName(m.Name)] = m.Name
+		}
+		for _, m := range svc.Methods {
+			if other, ok := types["New"+logicTypeName(m.Name)]; ok {
+				return fmt.Errorf("%s: rpcs %s and %s generate a logic constructor and a logic type of one name, New%s - rename one", svc.FullName, m.Name, other, logicTypeName(m.Name))
+			}
+		}
+	}
+	if proj == nil {
 		return nil
 	}
 	owners := map[string]string{}

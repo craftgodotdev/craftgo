@@ -16,7 +16,7 @@ func ProtoOptions(cfg *config.Config, projectRoot string) protodesign.Options {
 		Module:       cfg.Package,
 		FileCase:     cfg.Output.FileCase,
 		PluginGo:     cfg.Proto.Plugins.Go,
-		PluginGoGrpc: cfg.Proto.Plugins.GoGrpc,
+		PluginGoGRPC: cfg.Proto.Plugins.GoGRPC,
 	}
 	if !cfg.Output.PBDisabled() {
 		opts.PBDir = cfg.Output.PB

@@ -200,7 +200,7 @@ func TestPBFiles(t *testing.T) {
 	for i, w := range want {
 		want[i] = filepath.FromSlash(w)
 	}
-	if got := set.PBFiles("internal/pb"); !reflect.DeepEqual(got, want) {
+	if got := set.PBFiles(""); !reflect.DeepEqual(got, want) {
 		t.Errorf("pb files = %v\nwant %v", got, want)
 	}
 }
@@ -222,7 +222,7 @@ message R {}
 	if a.PBImport != "github.com/acme/contracts/gen/a" || a.Package != "apb" {
 		t.Errorf("service = %+v", *a)
 	}
-	if got := set.PBFiles("internal/pb"); got != nil {
+	if got := set.PBFiles(""); got != nil {
 		t.Errorf("no plugin, but PBFiles = %v", got)
 	}
 }
@@ -294,7 +294,7 @@ service A { rpc Get(shared.ID) returns (shared.ID); }
 	if want := (TypeRef{Name: "ID", ImportPath: "github.com/acme/shared/gen/shared", Package: "shared"}); get.In != want {
 		t.Errorf("in = %+v", get.In)
 	}
-	if got := set.PBFiles("pb"); !reflect.DeepEqual(got, []string{filepath.Join("pb", "a", "a.pb.go"), filepath.Join("pb", "a", "a_grpc.pb.go")}) {
+	if got := set.PBFiles("proj"); !reflect.DeepEqual(got, []string{filepath.Join("proj", "internal", "pb", "a", "a.pb.go"), filepath.Join("proj", "internal", "pb", "a", "a_grpc.pb.go")}) {
 		t.Errorf("pb files = %v", got)
 	}
 }

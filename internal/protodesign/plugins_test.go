@@ -79,7 +79,7 @@ func TestRunPluginsWritesThePredictedFiles(t *testing.T) {
 	if err := RunPlugins(set, project); err != nil {
 		t.Fatal(err)
 	}
-	pbRoot := filepath.Join(project, "internal", "pb")
+	pbRoot := set.PBRoot(project)
 	var written []string
 	_ = filepath.WalkDir(pbRoot, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -88,7 +88,7 @@ func TestRunPluginsWritesThePredictedFiles(t *testing.T) {
 		return nil
 	})
 	sort.Strings(written)
-	want := set.PBFiles(pbRoot)
+	want := set.PBFiles(project)
 	sort.Strings(want)
 	if !reflect.DeepEqual(written, want) {
 		t.Fatalf("written %v\nplanned %v", written, want)

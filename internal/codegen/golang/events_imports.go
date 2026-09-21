@@ -14,17 +14,34 @@ var reservedAliases = map[string]bool{
 	"craftevents": true,
 }
 
-// importSet accumulates the Go imports a generated event file needs,
-// keyed by path so the same package is never imported twice, and keeps
-// every alias distinct.
+// grpcReservedAliases are the identifiers the gRPC templates bind: the
+// service's own pb package, the logic package, the runtime, and the
+// standard packages the files spell literally.
+var grpcReservedAliases = map[string]bool{
+	pbAlias: true, "service": true, "svccontext": true, "rpc": true, "grpc": true,
+	"context": true, "log": true,
+}
+
+// importSet accumulates the Go imports a generated file needs, keyed by
+// path so the same package is never imported twice, and keeps every
+// alias distinct from each other and from the names the template binds.
 type importSet struct {
 	crossPkg crossPkg
+	reserved map[string]bool
 	byPath   map[string]string
 	taken    map[string]string // alias → path
 }
 
+// newImportSet is the set of an event file, resolving DSL type
+// references through crossPkg.
 func newImportSet(crossPkg crossPkg) *importSet {
-	return &importSet{crossPkg: crossPkg, byPath: map[string]string{}, taken: map[string]string{}}
+	return &importSet{crossPkg: crossPkg, reserved: reservedAliases, byPath: map[string]string{}, taken: map[string]string{}}
+}
+
+// newGRPCImportSet is the set of a gRPC file: pb packages only, no DSL
+// types.
+func newGRPCImportSet() *importSet {
+	return &importSet{reserved: grpcReservedAliases, byPath: map[string]string{}, taken: map[string]string{}}
 }
 
 func (s *importSet) add(imp extraImport) {
@@ -45,7 +62,7 @@ func (s *importSet) claim(alias, path string) string {
 		return ""
 	}
 	candidate := alias
-	for i := 2; reservedAliases[candidate] || (s.taken[candidate] != "" && s.taken[candidate] != path); i++ {
+	for i := 2; s.reserved[candidate] || (s.taken[candidate] != "" && s.taken[candidate] != path); i++ {
 		candidate = fmt.Sprintf("%s%d", alias, i)
 	}
 	s.taken[candidate] = path

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
@@ -55,9 +56,7 @@ func workspaceProject(t *testing.T) string {
 // CLI compiles a design folder.
 func protoFixture(t *testing.T, cfg *config.Config) *protodesign.Set {
 	t.Helper()
-	set, err := protodesign.Load(context.Background(), filepath.Join("golang", "testdata", "proto"), protodesign.Options{
-		Module: cfg.Package, PBDir: cfg.Output.PB, FileCase: cfg.Output.FileCase,
-	})
+	set, err := protodesign.Load(context.Background(), filepath.Join("golang", "testdata", "proto"), designopts.ProtoOptions(cfg, "."))
 	if err != nil {
 		t.Fatal(err)
 	}

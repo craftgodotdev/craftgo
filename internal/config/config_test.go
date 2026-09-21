@@ -446,7 +446,7 @@ proto:
 	if got := cfg.Proto.Includes; len(got) != 2 || got[0] != "./third_party" {
 		t.Errorf("includes = %v", got)
 	}
-	if cfg.Proto.Plugins.Go != "/opt/bin/protoc-gen-go" || cfg.Proto.Plugins.GoGrpc != "protoc-gen-go-grpc" {
+	if cfg.Proto.Plugins.Go != "/opt/bin/protoc-gen-go" || cfg.Proto.Plugins.GoGRPC != "protoc-gen-go-grpc" {
 		t.Errorf("plugins = %+v", cfg.Proto.Plugins)
 	}
 }

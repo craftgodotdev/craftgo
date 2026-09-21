@@ -43,7 +43,7 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		}
 	}
 	// The pb code is contract-side, generated for every project kind.
-	files = append(files, protos.PBFiles(filepath.Join(projectRoot, cfg.Output.PB))...)
+	files = append(files, protos.PBFiles(projectRoot)...)
 	if cfg.Output.ContractsOnly() {
 		return files
 	}
@@ -75,7 +75,7 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	if protos != nil {
 		for _, svc := range protos.Services {
 			dir := grpcServerDir(projectRoot, cfg, svc)
-			files = append(files, filepath.Join(dir, "server.go"))
+			files = append(files, filepath.Join(dir, grpcServerFile+".go"))
 			for _, m := range svc.Methods {
 				files = append(files, filepath.Join(dir, m.File+".go"))
 			}

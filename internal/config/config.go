@@ -145,7 +145,7 @@ type Proto struct {
 // name is looked up on PATH, a path is run as given.
 type Plugins struct {
 	Go     string `yaml:"go"`
-	GoGrpc string `yaml:"goGrpc"`
+	GoGRPC string `yaml:"goGrpc"`
 }
 
 // Supported values for [Output.FileCase]. They name the case used for

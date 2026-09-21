@@ -42,20 +42,22 @@ func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot
 }
 
 // buildWiringGRPCData gives every pb package one alias (`<name>pb`) and
-// every server package one (`<dir>grpc`), suffixing a repeat so two
-// packages of one name coexist in the file.
+// every server package one (`<dir>grpc`) through the file's import set,
+// so two packages of one name coexist in the file.
 func buildWiringGRPCData(protos *protodesign.Set, cfg *config.Config) wiringGRPCData {
-	aliases := newAliasTable()
+	imports := newGRPCImportSet()
 	d := wiringGRPCData{SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext))}
 	for _, svc := range protos.Services {
 		serverImport := goImportFromRel(cfg.Package, cfg.Output.GRPC) + "/" + svc.Dir
+		imports.add(extraImport{Alias: pbAliasFor(svc.Package), Path: svc.PBImport})
+		imports.add(extraImport{Alias: strings.NewReplacer("_", "", "-", "").Replace(svc.Dir) + "grpc", Path: serverImport})
 		d.Services = append(d.Services, wiringGRPCService{
 			Service:     svc.Name,
-			PBAlias:     aliases.claim(pbAliasFor(svc.Package), svc.PBImport),
-			ServerAlias: aliases.claim(strings.NewReplacer("_", "", "-", "").Replace(svc.Dir)+"grpc", serverImport),
+			PBAlias:     imports.aliasFor(svc.PBImport),
+			ServerAlias: imports.aliasFor(serverImport),
 		})
 	}
-	d.Imports = aliases.imports()
+	d.Imports = imports.sorted()
 	return d
 }
 
@@ -66,40 +68,4 @@ func pbAliasFor(pkg string) string {
 		return pkg
 	}
 	return pkg + "pb"
-}
-
-// aliasTable hands out one alias per import path and keeps them
-// distinct.
-type aliasTable struct {
-	byPath map[string]string
-	taken  map[string]bool
-}
-
-func newAliasTable() *aliasTable {
-	return &aliasTable{byPath: map[string]string{}, taken: map[string]bool{}}
-}
-
-// claim returns the alias for path, allocating base (or base plus a
-// counter) on first sight.
-func (t *aliasTable) claim(base, path string) string {
-	if alias, ok := t.byPath[path]; ok {
-		return alias
-	}
-	alias := base
-	for n := 2; t.taken[alias]; n++ {
-		alias = base + strconvItoa(n)
-	}
-	t.taken[alias] = true
-	t.byPath[path] = alias
-	return alias
-}
-
-// imports lists the claimed imports sorted by path.
-func (t *aliasTable) imports() []extraImport {
-	out := make([]extraImport, 0, len(t.byPath))
-	for path, alias := range t.byPath {
-		out = append(out, extraImport{Alias: alias, Path: path})
-	}
-	sortExtraImports(out)
-	return out
 }

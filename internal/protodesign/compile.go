@@ -88,7 +88,6 @@ func compile(ctx context.Context, designRoot string, names, includes []string) (
 // newService reads one service off the protogen graph.
 func newService(f *protogen.File, svc *protogen.Service, plugin *protogen.Plugin, fileCase string) *Service {
 	s := &Service{
-		Desc:     svc,
 		Name:     svc.GoName,
 		FullName: string(svc.Desc.FullName()),
 		Package:  string(f.GoPackageName),

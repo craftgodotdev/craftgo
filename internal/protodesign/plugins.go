@@ -31,7 +31,7 @@ type Plugin struct {
 func (o Options) plugins() []Plugin {
 	return []Plugin{
 		{Name: "protoc-gen-go", Command: o.PluginGo},
-		{Name: "protoc-gen-go-grpc", Command: o.PluginGoGrpc},
+		{Name: "protoc-gen-go-grpc", Command: o.PluginGoGRPC},
 	}
 }
 
@@ -44,7 +44,7 @@ func RunPlugins(set *Set, projectRoot string) error {
 	if set == nil || !set.Options.PBEnabled() {
 		return nil
 	}
-	out := filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(set.Options.PBDir, "./")))
+	out := set.PBRoot(projectRoot)
 	for _, p := range set.Options.plugins() {
 		argv, err := resolvePlugin(projectRoot, p)
 		if err != nil {
