@@ -2,12 +2,14 @@ package rpc
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -112,6 +114,37 @@ func TestDialAccessLog(t *testing.T) {
 	}
 	if _, ok := lines[0].fields["latency"].(time.Duration); !ok {
 		t.Errorf("latency = %T", lines[0].fields["latency"])
+	}
+}
+
+// The escape hatches reach grpc: transport security replaces the
+// insecure default, and a dial option lands on the connection.
+func TestDialEscapeHatches(t *testing.T) {
+	dialer := listen(t, &echo{ping: pong})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// TLS against a plaintext server cannot handshake; the insecure
+	// default can, so the contrast is the option taking effect.
+	tlsConn, err := Dial("passthrough:///bufconn", dialer,
+		WithClientTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tlsConn.Close()
+	if _, err := invoke(ctx, tlsConn, "ping"); err == nil {
+		t.Error("a TLS client reached a plaintext server, so the credentials were dropped")
+	}
+
+	// A dial option the caller passes is honoured: one byte is not
+	// enough for the reply.
+	capped, err := Dial("passthrough:///bufconn", dialer, WithDialOptions(grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer capped.Close()
+	if _, err := invoke(ctx, capped, "ping"); status.Code(err) != codes.ResourceExhausted {
+		t.Errorf("the dial option did not reach the connection: %v", err)
 	}
 }
 

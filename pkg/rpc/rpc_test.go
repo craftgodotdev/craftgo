@@ -419,6 +419,15 @@ func TestInfrastructureMethodsBypassTheChain(t *testing.T) {
 	}
 }
 
+// An option the caller passes reaches grpc.NewServer.
+func TestWithServerOptionsReachGRPC(t *testing.T) {
+	srv := New(nil, WithServerOptions(grpc.MaxRecvMsgSize(1))).SetLogger(newCapture())
+	conn := serve(t, srv, &echo{ping: pong})
+	if _, err := ping(conn, "a request larger than one byte"); status.Code(err) != codes.ResourceExhausted {
+		t.Errorf("the server option did not reach grpc: %v", err)
+	}
+}
+
 func TestWithoutDefaultHealth(t *testing.T) {
 	srv := New(nil, WithoutDefaultHealth())
 	srv.RegisterService(&echoDesc, &echo{})
