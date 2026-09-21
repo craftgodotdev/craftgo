@@ -956,6 +956,8 @@ Logic signatures: unary `X(req *pb.Req) (*pb.Resp, error)`; server stream `X(req
 
 Runtime `pkg/rpc`: `rpc.New(svc, rpc.WithStatsHandler(tel.GRPCServerHandler()), rpc.WithReflection(bool))`, `Use(rpc.AccessLog(l))`, `Use(rpc.Timeout(d))` (unary only), Recovery always outermost, `grpc.health.v1` registered, `Start(addr)` / `Stop(ctx)`. `tel.GRPCServerHandler()` emits spans + `rpc.server.call.duration`. A design of protos alone boots gRPC only; routes + protos boot both listeners.
 
+Calling one: the pb client is generated (`pb.NewGreeterClient(cc)`), and the connection comes from `rpc.Dial(addr, rpc.WithClientStatsHandler(tel.GRPCClientHandler()), rpc.WithClientTimeout(d), rpc.WithClientAccessLog(l), rpc.WithClientTransportCredentials(c), rpc.WithDialOptions(...))`. **A gRPC client sends no `traceparent` without a stats handler**, so an uninstrumented caller breaks the trace at the wire. Dial once, keep the conn on the ServiceContext. Another module can import the client only when the pb code is outside `internal/` - `output.kind: contracts` puts it in `./gen/pb`.
+
 ## Things craftgo does not do
 
 - Service discovery (etcd, k8s)

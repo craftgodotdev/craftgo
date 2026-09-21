@@ -27,6 +27,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   New manifest keys: `output.pb`, `output.grpc`, `proto.includes`,
   `proto.plugins`. See the gRPC guide and `example/grpc`.
 
+- **A dialer that carries the trace to the service it calls.** A gRPC
+  client sends no `traceparent` of its own, so an uninstrumented caller
+  breaks one request into two unrelated traces. `rpc.Dial(addr, opts...)`
+  installs the stats handler that carries it - `telemetry.GRPCClientHandler()`,
+  the caller-side twin of `GRPCServerHandler()`, which also emits
+  `rpc.client.call.duration` - beside a default deadline for a call that
+  carries none and an access log. The pb client itself is already
+  generated; a service other teams call ships it with
+  `output.kind: contracts`, which puts the pb code outside `internal/`.
+
 ### Fixed
 
 - **The version in the docs nav follows the release.** It was a literal in

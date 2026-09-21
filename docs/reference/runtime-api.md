@@ -674,7 +674,25 @@ grpcSrv := rpc.New(svcCtx, opts...)
 
 `telemetry.GRPCServerHandler()` is the stats handler the generated `main.go` installs: one `otelgrpc` handler emitting the span and the `rpc.server.call.duration` histogram against the stack's providers, adopting the caller's W3C trace context from the request metadata, and leaving the health and reflection calls out.
 
+### Calling another service
+
+```go
+conn, err := rpc.Dial(addr, rpc.WithClientStatsHandler(tel.GRPCClientHandler()))
+```
+
+`Dial` returns a `*grpc.ClientConn` with the guards a craftgo service makes calls under. It connects lazily, so an unreachable target is a failed call rather than a failed startup, and the caller closes it.
+
+| Option | Effect |
+|---|---|
+| `WithClientStatsHandler(h stats.Handler)` | The client span, the `rpc.client.call.duration` histogram, and - the reason a caller needs one - the W3C trace context written into the request metadata. A nil handler is ignored. |
+| `WithClientTimeout(d)` | A default deadline for a unary call whose context carries none; a caller with its own keeps it. Streams are not bounded. |
+| `WithClientAccessLog(l log.Logger)` | One `grpc client` line per unary call with `method`, `code`, `latency` and the trace ids. |
+| `WithClientTransportCredentials(c)` | Transport security; the default is insecure. |
+| `WithDialOptions(opts ...grpc.DialOption)` | Straight to `grpc.NewClient`. |
+
+`telemetry.GRPCClientHandler()` is the caller-side twin of `GRPCServerHandler()`. Without it a gRPC client sends no `traceparent`, so the service it calls starts a trace of its own.
+
 ## Related packages
 
 - `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
-- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every HTTP request and `GRPCServerHandler()` every RPC, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.
+- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every HTTP request, `GRPCServerHandler()` every RPC served and `GRPCClientHandler()` every RPC made, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.

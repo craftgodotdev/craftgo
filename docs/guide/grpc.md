@@ -242,6 +242,40 @@ grpc:
 
 A project with routes and RPCs runs both listeners in one process, with one `ServiceContext`, one config and one telemetry stack; a project with RPCs alone boots the gRPC listener only.
 
+## Calling a gRPC service
+
+The client is generated too: `protoc-gen-go-grpc` writes `GreeterClient` and `NewGreeterClient(cc)` into `greet_grpc.pb.go`, so nothing has to be written by hand. What the caller has to get right is the connection, and a bare `grpc.NewClient` gets one thing wrong: **a gRPC client sends no trace context of its own**. Without a stats handler there is no `traceparent` in the request metadata, the service you call opens a trace of its own, and the two halves of one request never meet in the backend.
+
+`rpc.Dial` is where that is decided, beside the deadline and the access log:
+
+```go
+conn, err := rpc.Dial(addr,
+	rpc.WithClientStatsHandler(tel.GRPCClientHandler()),
+	rpc.WithClientAccessLog(log.Default()),
+	rpc.WithClientTimeout(2*time.Second),
+)
+if err != nil {
+	return nil, err
+}
+svc.Greeter = greetpb.NewGreeterClient(conn)
+```
+
+A connection is long-lived and dialed once, so it belongs on the `ServiceContext` beside your database handles - add the field there and the address to `config.go`, both of which are yours. `Dial` connects lazily, so a service may be dialed before the one it calls is up; an unreachable target is a failed call, not a failed startup. Close it when the process drains.
+
+| Option | Effect |
+|---|---|
+| `WithClientStatsHandler(h)` | The client span, `rpc.client.call.duration`, and the trace context on the wire. `tel.GRPCClientHandler()` is the stack's own. |
+| `WithClientTimeout(d)` | A default deadline for a unary call that carries none; a caller with its own keeps it. Streams are not bounded. |
+| `WithClientAccessLog(l)` | One `grpc client` line per unary call with `method`, `code`, `latency` and the trace ids. |
+| `WithClientTransportCredentials(c)` | Transport security. The default is insecure, which is what a call inside a cluster or a mesh uses. |
+| `WithDialOptions(...)` | Straight to `grpc.NewClient`: a resolver, a load-balancing policy, keepalive, interceptors of your own. |
+
+With the handler installed the caller's trace id reaches the callee's logs and spans; without it the callee starts a new trace. That is the whole difference, and it is one option.
+
+### A client other services import
+
+`internal/pb` is `internal`, so only the project that generated it can import the client. A service other teams call ships its contract instead: a project with `output.kind: contracts` whose design holds the `.proto` writes the pb code - client included - to `./gen/pb`, which any module can `go get`. The callers then dial it with `rpc.Dial` exactly as above.
+
 ## Adding gRPC to an existing project
 
 `main.go` and `config/config.go` are written once. A project that had them before its first proto keeps them, and `craftgo gen` says so:
