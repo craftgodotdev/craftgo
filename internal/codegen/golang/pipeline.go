@@ -13,15 +13,15 @@ import (
 // pre-flight checks that reject a design before any file is written,
 // then per package the type artefacts (types, enums, errors,
 // validators), the middleware scaffolds, per package the service
-// artefacts (transport, service stubs, routes), and finally the
-// project-wide files (routes umbrella, runtime scaffolds, main.go).
+// artefacts (transport, service stubs, routes), per proto service the
+// gRPC server package and logic stubs, and finally the project-wide
+// files (routes umbrella, runtime scaffolds, main.go).
 //
 // protos is the compiled proto set, nil when the design holds none.
 //
 // The design is validated, and the event target and the OpenAPI
 // projection run, around it; see [codegen.Generate].
 func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
-	_ = protos
 	names := sortedPackageNames(proj)
 	resolvers := make(map[string]*projectResolver, len(names))
 	for _, name := range names {
@@ -56,6 +56,14 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 			{"transport", func() error { return generateTransport(p, cfg, projectRoot, r) }},
 			{"service", func() error { return generateService(p, cfg, projectRoot, r) }},
 			{"routes-svc", func() error { return generateRoutes(p, cfg, projectRoot) }},
+		}); err != nil {
+			return err
+		}
+	}
+	if protos.HasServices() {
+		if err := runSteps("grpc", []genStep{
+			{"server", func() error { return generateGRPCServers(protos, cfg, projectRoot) }},
+			{"service", func() error { return generateGRPCServices(protos, cfg, projectRoot) }},
 		}); err != nil {
 			return err
 		}

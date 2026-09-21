@@ -14,8 +14,16 @@ import (
 {{- range .ExtraTypesImports}}
 	{{.Alias}} "{{.Path}}"
 {{- end}}
+{{- if .PBImports}}
+{{range .PBImports}}
+	{{.Alias}} "{{.Path}}"
+{{- end}}
+{{- end}}
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+{{- if .Sig.NeedsGRPC}}
+	"google.golang.org/grpc"
+{{- end}}
 	"{{.SvccontextImport}}"
 )
 
@@ -56,6 +64,9 @@ func New{{.ServiceName}}(ctx context.Context, svcCtx *svccontext.ServiceContext)
 }
 
 {{- range .Doc}}
+// {{.}}
+{{- end}}
+{{- range .Notes}}
 // {{.}}
 {{- end}}
 {{- if .IsPassthrough}}

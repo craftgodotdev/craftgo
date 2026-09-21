@@ -22,7 +22,6 @@ import (
 
 // RegeneratedFiles names what [Generate] writes.
 func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
-	_ = protos
 	typesRoot := filepath.Join(projectRoot, cfg.Output.Types)
 	var files []string
 	for _, name := range sortedPackageNames(proj) {
@@ -71,6 +70,15 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		routes = append(routes, filepath.Join(routesRoot, "routes.go"))
 	}
 	files = append(files, routes...)
+	if protos != nil {
+		for _, svc := range protos.Services {
+			dir := grpcServerDir(projectRoot, cfg, svc)
+			files = append(files, filepath.Join(dir, "server.go"))
+			for _, m := range svc.Methods {
+				files = append(files, filepath.Join(dir, m.File+".go"))
+			}
+		}
+	}
 	files = append(files, filepath.Join(projectRoot, cfg.Output.Wiring, "wiring.go"))
 	return append(files, filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext), "middlewares.go"))
 }
@@ -87,6 +95,7 @@ func OutputDirs(cfg *config.Config, projectRoot string) []string {
 	return append(dirs,
 		filepath.Join(projectRoot, cfg.Output.Transport),
 		filepath.Join(projectRoot, cfg.Output.Routes),
+		filepath.Join(projectRoot, cfg.Output.GRPC),
 		filepath.Join(projectRoot, cfg.Output.Wiring),
 		filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext)),
 	)

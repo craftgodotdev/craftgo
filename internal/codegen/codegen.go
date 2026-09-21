@@ -84,7 +84,7 @@ func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...stri
 	}
 	// The design is validated whatever is being generated: a design that
 	// cannot produce a correct document is not one to emit code from.
-	if err := validate(in.Design, cfg); err != nil {
+	if err := validate(in, cfg); err != nil {
 		return err
 	}
 	if err := emit(in, cfg, projectRoot, sel); err != nil {
@@ -134,13 +134,17 @@ func selection(targets []string) (map[string]bool, error) {
 }
 
 // validate runs the checks that must reject a design before any file is
-// written: malformed security schemes, and operationId / component-schema
-// name collisions.
-func validate(proj *semantic.Project, cfg *config.Config) error {
+// written: malformed security schemes, operationId / component-schema
+// name collisions, and a proto service sharing its output directory
+// with a DSL service.
+func validate(in Inputs, cfg *config.Config) error {
 	if errs := docs.ValidateSecuritySchemes(cfg); len(errs) > 0 {
 		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
 	}
-	return docs.ValidateOpenAPI(proj, cfg)
+	if err := docs.ValidateOpenAPI(in.Design, cfg); err != nil {
+		return err
+	}
+	return golang.ValidateProtoOutputs(in.Design, in.Protos, cfg)
 }
 
 // GenerateDocuments writes the OpenAPI projection, a pure function of the

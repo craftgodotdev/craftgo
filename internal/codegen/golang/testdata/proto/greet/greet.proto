@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package greet;
+
+import "google/protobuf/empty.proto";
+import "common/money.proto";
+
+// Greeter says hello in every streaming shape.
+service Greeter {
+  // SayHello answers one greeting.
+  rpc SayHello(HelloRequest) returns (HelloReply);
+  rpc ListHellos(HelloRequest) returns (stream HelloReply);
+  rpc RecordHellos(stream HelloRequest) returns (HelloReply);
+  rpc Chat(stream HelloRequest) returns (stream HelloReply);
+  // Ping uses only well-known types.
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc Quote(common.Money) returns (HelloReply);
+}
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloReply {
+  string message = 1;
+}
