@@ -1,7 +1,8 @@
-// craftgo gen subcommand: design parse, semantic analysis, per-package + project-wide codegen.
+// craftgo gen subcommand: design parse, semantic analysis, proto compile, per-package + project-wide codegen.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/codegen"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -75,8 +77,9 @@ func findManifest(manifestFolder, contextRoot, target string) (*config.Config, s
 	return cfg, projectRoot, designDir, nil
 }
 
-// runGen resolves the manifest, analyses the design, and hands the
-// validated project to [codegen.Generate].
+// runGen resolves the manifest, analyses the design - the `.craftgo`
+// files and the `.proto` files under the design folder - and hands the
+// validated inputs to [codegen.Generate].
 func runGen(args []string) error {
 	manifestFolder, contextRoot, target, targets, err := parseGenArgs(args)
 	if err != nil {
@@ -99,28 +102,44 @@ func runGen(args []string) error {
 	}
 	cfg.Package = modulePath
 
-	proj, err := analyzeDesign(designDir, cfg)
+	protos, err := protodesign.Load(context.Background(), designDir, designopts.ProtoOptions(cfg, projectRoot))
 	if err != nil {
 		return err
 	}
-	if err := codegen.Generate(codegen.Inputs{Design: proj}, cfg, projectRoot, targets...); err != nil {
+	// A design of protos alone is a gRPC service with no HTTP half: the
+	// DSL side is then an empty project, not a missing one.
+	proj, err := analyzeDesign(designDir, cfg, protos != nil)
+	if err != nil {
 		return err
 	}
-	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
-	for _, note := range codegen.OutputNotes(codegen.Inputs{Design: proj}, cfg, projectRoot) {
+	in := codegen.Inputs{Design: proj, Protos: protos}
+	if err := codegen.Generate(in, cfg, projectRoot, targets...); err != nil {
+		return err
+	}
+	fmt.Printf("craftgo: generated %d package(s)%s under %s\n", len(proj.Packages), grpcSummary(protos), projectRoot)
+	for _, note := range codegen.OutputNotes(in, cfg, projectRoot) {
 		fmt.Println("craftgo: " + note)
 	}
 	return nil
+}
+
+// grpcSummary is the gRPC half of the run summary, empty without protos.
+func grpcSummary(protos *protodesign.Set) string {
+	if protos == nil {
+		return ""
+	}
+	return fmt.Sprintf(", %d gRPC service(s)", len(protos.Services))
 }
 
 // analyzeDesign parses every `.craftgo` under designDir, runs the
 // semantic analyser, and returns the validated [semantic.Project].
 // Diagnostic-level errors collapse into a single multi-line error
 // so callers don't have to thread the diagnostic slice further.
-// A project with zero DSL packages is rejected here - the
-// downstream codegen would silently produce nothing.
-func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, error) {
-	files, err := parseDesign(designDir)
+// A project with zero DSL packages is rejected here - the downstream
+// codegen would silently produce nothing - unless allowEmpty says the
+// design has another half (its protos) to generate from.
+func analyzeDesign(designDir string, cfg *config.Config, allowEmpty bool) (*semantic.Project, error) {
+	files, err := parseDesign(designDir, allowEmpty)
 	if err != nil {
 		return nil, err
 	}
@@ -140,8 +159,8 @@ func analyzeDesign(designDir string, cfg *config.Config) (*semantic.Project, err
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)
 	}
-	if len(proj.Packages) == 0 {
-		return nil, fmt.Errorf("project has no DSL packages - every project must have at least one .craftgo file declaring `package X`")
+	if len(proj.Packages) == 0 && !allowEmpty {
+		return nil, fmt.Errorf("project has no DSL packages - every project must have at least one .craftgo file declaring `package X`, or a .proto declaring a service")
 	}
 	return proj, nil
 }
@@ -170,8 +189,9 @@ func fileDecoratorString(files []*ast.File, name string) string {
 
 // parseDesign walks designDir for `.craftgo` files, parses each one, and
 // returns the collected AST. Parser diagnostics are aggregated and returned
-// as a single error so the caller doesn't see a half-parsed package.
-func parseDesign(designDir string) ([]*ast.File, error) {
+// as a single error so the caller doesn't see a half-parsed package. With
+// allowEmpty, a folder holding no `.craftgo` yields no files and no error.
+func parseDesign(designDir string, allowEmpty bool) ([]*ast.File, error) {
 	srcs, err := designopts.Load(designDir)
 	if err != nil {
 		return nil, err
@@ -186,7 +206,10 @@ func parseDesign(designDir string) ([]*ast.File, error) {
 		return nil, fmt.Errorf("parse errors:\n%s", strings.Join(parseDiags, "\n"))
 	}
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no .craftgo files found under %s", designDir)
+		if allowEmpty {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("no .craftgo or .proto files found under %s", designDir)
 	}
 	return files, nil
 }

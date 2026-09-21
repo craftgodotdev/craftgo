@@ -85,7 +85,11 @@ Usage:
 
   craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
                           Generate types, handlers, routes, OpenAPI from
-                          .craftgo files. Flags:
+                          .craftgo files, and the pb code, gRPC server layer
+                          and logic stubs from .proto files in the same
+                          folder (protoc-gen-go and protoc-gen-go-grpc run
+                          through "go tool"; pin them with "go get -tool").
+                          Flags:
                             -f, --folder   path to the folder holding
                                            craftgo.design.yaml (skips walk-up)
                             --target       generate only the named target

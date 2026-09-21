@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package grpcmatrix;
+
+import "google/protobuf/empty.proto";
+
+// Greeter covers every RPC shape the generator handles, plus a call on
+// well-known types only.
+service Greeter {
+  // SayHello answers one greeting; an empty name is refused.
+  rpc SayHello(HelloRequest) returns (HelloReply);
+  rpc ListHellos(HelloRequest) returns (stream HelloReply);
+  rpc RecordHellos(stream HelloRequest) returns (HelloReply);
+  rpc Chat(stream HelloRequest) returns (stream HelloReply);
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+message HelloRequest {
+  string name = 1;
+  int32 count = 2;
+}
+
+message HelloReply {
+  string message = 1;
+}
