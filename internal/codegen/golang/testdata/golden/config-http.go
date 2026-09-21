@@ -31,7 +31,7 @@ import (
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
-// maps to one runtime concern - server listener, distributed tracing,
+// maps to one runtime concern - a listener, distributed tracing,
 // metrics - so feature owners can extend their own block without
 // stepping on each other.
 //

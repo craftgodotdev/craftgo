@@ -39,17 +39,11 @@ import (
 // sit at the top level of config.yaml. Reusing the library type lets
 // main.go pass `cfg.Config` straight to telemetry.Init.
 type Config struct {
-{{- if .HasHTTP}}
-	Server            ServerConfig `yaml:"server"`
-{{- end}}
-{{- if .HasGRPC}}
-	GRPC              GRPCConfig   `yaml:"grpc"`
-{{- end}}
-	Logging           LogConfig    `yaml:"logging"`
-	telemetry.Config  `yaml:",inline"`
-{{- if .HasHTTP}}
-	Docs              DocsConfig `yaml:"docs"`
-{{- end}}
+	Server           ServerConfig `yaml:"server"`
+	GRPC             GRPCConfig   `yaml:"grpc"`
+	Logging          LogConfig    `yaml:"logging"`
+	telemetry.Config `yaml:",inline"`
+	Docs             DocsConfig `yaml:"docs"`
 }
 
 // LogConfig controls the process-wide logger. Only the minimum level is
@@ -63,8 +57,6 @@ type LogConfig struct {
 	// value leaves the info default in place.
 	Level string `yaml:"level"`
 }
-
-{{- if .HasHTTP}}
 
 // DocsConfig controls the in-process API-reference docs page. When enabled,
 // main.go serves the generated OpenAPI document plus an HTML page that renders
@@ -83,8 +75,6 @@ type DocsConfig struct {
 	// "/openapi.yaml".
 	SpecPath string `yaml:"specPath"`
 }
-{{- end}}
-{{- if .HasHTTP}}
 
 // ServerConfig configures the public API listener that handles HTTP
 // traffic. The admin / metrics scrape lives on a separate listener
@@ -140,18 +130,10 @@ type CompressionConfig struct {
 	// the framework default (compress/gzip.DefaultCompression).
 	Level int `yaml:"level"`
 }
-{{- end}}
 
-{{- if .HasGRPC}}
-
-{{- if .HasHTTP}}
 // GRPCConfig configures the gRPC listener: its own port beside `server`,
 // one process, one ServiceContext, one telemetry stack. The generated
 // server layer and the interceptors main.go installs read nothing else.
-{{- else}}
-// GRPCConfig configures the gRPC listener. The generated server layer
-// and the interceptors main.go installs read nothing else.
-{{- end}}
 type GRPCConfig struct {
 	// Addr is the bind address for the gRPC server, e.g. ":9000".
 	Addr string `yaml:"addr"`
@@ -166,7 +148,6 @@ type GRPCConfig struct {
 	// listener exposed to the public internet.
 	Reflection bool `yaml:"reflection"`
 }
-{{- end}}
 
 // The OTel + Metrics block shapes live in `pkg/telemetry` (look there
 // for field-by-field docs). The aliases below let `config.yaml` and
@@ -221,23 +202,19 @@ func Load(cfgPath string) (*Config, error) {
 // so a project that deletes config.yaml and runs purely on defaults
 // behaves identically to one that copied the example.
 func (c *Config) applyDefaults() {
-{{- if .HasHTTP}}
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":8080"
 	}
-{{- end}}
-{{- if .HasGRPC}}
 	if c.GRPC.Addr == "" {
 		c.GRPC.Addr = ":9000"
 	}
-{{- end}}
 
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
 	}
 
 	if c.ServiceName == "" {
-		c.ServiceName = "{{.OperationName}}"
+		c.ServiceName = "app"
 	}
 	if c.OTel.Exporter == "" {
 		c.OTel.Exporter = "none"
@@ -253,8 +230,6 @@ func (c *Config) applyDefaults() {
 		c.Metrics.Path = "/metrics"
 	}
 
-{{- if .HasHTTP}}
-
 	if c.Docs.UI == "" {
 		c.Docs.UI = "redoc"
 	}
@@ -264,5 +239,4 @@ func (c *Config) applyDefaults() {
 	if c.Docs.SpecPath == "" {
 		c.Docs.SpecPath = "/openapi.yaml"
 	}
-{{- end}}
 }

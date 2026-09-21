@@ -13,10 +13,10 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// mainData is the template input for `main.tmpl`. The umbrella
-// routes.RegisterAll keeps the import set tiny - main.go references
-// only `config`, `routes`, `middleware`, `svccontext`, and the
-// runtime observability packages.
+// mainData is the template input for `main.tmpl`. The one wiring call
+// keeps the import set tiny - main.go references only `config`,
+// `wiring`, `middleware`, `svccontext`, the runtime observability
+// packages, and `pkg/rpc` when the design declares a proto service.
 type mainData struct {
 	ConfigImport string
 	// WiringImport is the generated wiring package holding Register, the

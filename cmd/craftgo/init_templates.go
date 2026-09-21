@@ -7,11 +7,11 @@ import (
 	"text/template"
 )
 
-// initTemplatesFS holds the four starter files emitted by `craftgo init`.
-// Keeping the bodies in real `.tmpl` files (instead of multi-line Go
-// string literals) makes them editable without touching Go source -
-// changing the YAML manifest no longer means rebuilding mental model
-// of escape rules + concatenation in main.go.
+// initTemplatesFS holds the starter files emitted by `craftgo init`:
+// the project manifest, and nothing else - the runtime scaffolds are
+// written by `craftgo gen` under its gen-once policy. Keeping the
+// bodies in real `.tmpl` files rather than Go string literals makes
+// them editable without touching Go source.
 //
 //go:embed templates/*.tmpl
 var initTemplatesFS embed.FS

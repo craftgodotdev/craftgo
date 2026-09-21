@@ -102,10 +102,10 @@ func main() {
 		}))
 	}
 
-	// One call attaches the whole design: every HTTP route it declares.
-	// The wiring package is regenerated on each `craftgo gen`, so this
-	// line stays put when the design gains or loses one. The returned
-	// shutdown runs beside srv.Stop below.
+	// One call attaches every HTTP route the design declares. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays
+	// put when the design gains or loses one. The returned shutdown runs
+	// beside srv.Stop below.
 	shutdownWiring, err := wiring.Register(ctx, srv, svc)
 	if err != nil {
 		log.Default().Error("wire services", log.Err(err))

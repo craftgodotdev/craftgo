@@ -6,9 +6,33 @@
 # This file is the single source of truth: per-environment overrides
 # go in `config.yaml` itself (one file per env, mounted by the
 # deployer). No environment variables are read.
-# gRPC listener. The stats handler emits the spans and
-# rpc.server.call.duration against the telemetry stack configured below.
-# handlerTimeout bounds unary calls only; streams are not bounded.
+
+# Public HTTP listener.
+#
+# handlerTimeout / maxBodySize are GLOBAL DEFAULTS. A per-method
+# `@timeout` or `@maxBodySize` OVERRIDES the matching default (used
+# as-is, longer/larger or shorter/smaller); routes without one inherit
+# it. Zero = no global default (per-method decorators still apply).
+#
+# Transport-level deadlines (http.Server.ReadTimeout / WriteTimeout
+# / IdleTimeout / ReadHeaderTimeout / MaxHeaderBytes) are NOT here
+# - set them on the underlying http.Server in main.go if the stdlib
+# defaults are not enough.
+server:
+  addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
+  handlerTimeout: 0s          # global default handler deadline; 0 = no cap
+  maxBodySize: 0              # global default body cap (bytes); 0 = no cap
+  strictJSON: true            # reject unknown fields and trailing data in JSON bodies; false ignores both
+  compression:
+    enabled: false            # gzip/deflate negotiated via Accept-Encoding;
+                              # leave false when running behind a compressing
+                              # reverse proxy (nginx/envoy/cloudfront)
+    minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
+    level: 0                  # gzip level 1..9; 0 → DefaultCompression
+# gRPC listener, beside the HTTP one: one process, one ServiceContext,
+# one telemetry stack (the stats handler emits rpc.server.call.duration
+# and the spans). handlerTimeout bounds unary calls only; streams are
+# not bounded.
 grpc:
   addr: ":9000"               # bind address; "127.0.0.1:9000" for localhost-only
   handlerTimeout: 0s          # default deadline for unary RPCs; 0 = no cap
@@ -47,3 +71,10 @@ metrics:
   serviceName: ""             # overrides the top-level serviceName for metrics
   adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
   path: /metrics              # route the scrape is exposed on (prometheus only)
+
+# In-process API reference docs, served on the public API listener.
+docs:
+  enabled: true               # false → no docs/spec routes registered
+  ui: redoc                   # redoc | swagger | scalar (assets loaded from a CDN)
+  path: /docs                 # HTML docs page route
+  specPath: /openapi.yaml     # route serving the raw OpenAPI document

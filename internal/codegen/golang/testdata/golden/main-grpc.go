@@ -61,13 +61,12 @@ func main() {
 
 	svc := svccontext.NewServiceContext(cfg)
 
-	// The gRPC listener takes the guards the HTTP chain takes, in the same
-	// order: the OTel stats handler opens the span in the transport, ahead
-	// of every interceptor, so AccessLog sees the trace ids on ctx, and the
-	// same handler records `rpc.server.call.duration` against the
-	// configured MeterProvider. Recovery is always outermost. Errors are
-	// mapped onto status codes where the generated server layer returns
-	// them (rpc.Error), as WriteError does for HTTP.
+	// The gRPC listener's guards, outermost first. The OTel stats handler
+	// opens the span in the transport, ahead of every interceptor, so
+	// AccessLog sees the trace ids on ctx, and the same handler records
+	// `rpc.server.call.duration` against the configured MeterProvider.
+	// Recovery wraps every interceptor. Errors are mapped onto status
+	// codes where the generated server layer returns them (rpc.Error).
 	grpcSrv := rpc.New(svc,
 		rpc.WithStatsHandler(tel.GRPCServerHandler()),
 		rpc.WithReflection(cfg.GRPC.Reflection),

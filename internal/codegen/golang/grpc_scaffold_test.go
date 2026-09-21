@@ -33,26 +33,34 @@ func TestGRPCScaffoldsArePinned(t *testing.T) {
 		expectGolden(t, tc.golden, string(mainGo))
 	}
 
-	data := runtimeData{
-		Package:       cfg.Package,
-		OperationName: operationNameFor(cfg.Package),
-		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-		HasGRPC:       true,
-	}
-	for _, f := range []struct {
-		template string
-		formatGo bool
-		golden   string
-	}{
-		{"config.go.tmpl", true, "config-grpc.go"},
-		{"config.yaml.tmpl", false, "config-grpc.yaml"},
-		{"example.config.yaml.tmpl", false, "example-config-grpc.yaml"},
-	} {
-		body, err := renderRuntimeTemplate(f.template, data, f.formatGo)
-		if err != nil {
-			t.Fatalf("%s: %v", f.template, err)
+	// A gRPC-only project configures no HTTP listener; a mixed one
+	// configures both.
+	for _, shape := range []struct {
+		hasHTTP bool
+		suffix  string
+	}{{false, "grpc"}, {true, "mixed"}} {
+		data := runtimeData{
+			Package:       cfg.Package,
+			OperationName: operationNameFor(cfg.Package),
+			ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
+			HasGRPC:       true,
+			HasHTTP:       shape.hasHTTP,
 		}
-		expectGolden(t, f.golden, string(body))
+		for _, f := range []struct {
+			template string
+			formatGo bool
+			golden   string
+		}{
+			{"config.go.tmpl", true, "config-" + shape.suffix + ".go"},
+			{"config.yaml.tmpl", false, "config-" + shape.suffix + ".yaml"},
+			{"example.config.yaml.tmpl", false, "example-config-" + shape.suffix + ".yaml"},
+		} {
+			body, err := renderRuntimeTemplate(f.template, data, f.formatGo)
+			if err != nil {
+				t.Fatalf("%s: %v", f.template, err)
+			}
+			expectGolden(t, f.golden, string(body))
+		}
 	}
 
 	wiring, err := renderGo(tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(set, cfg))
@@ -136,7 +144,7 @@ func TestScaffoldGapNotes(t *testing.T) {
 	if err := generateProjectMain(proj, nil, cfg, dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := generateRuntimeConfig(nil, cfg, dir); err != nil {
+	if err := generateRuntimeConfig(proj, nil, cfg, dir); err != nil {
 		t.Fatal(err)
 	}
 	notes := scaffoldGapNotes(proj, set, cfg, dir)
@@ -166,7 +174,7 @@ func TestScaffoldGapNotes(t *testing.T) {
 	if err := generateProjectMain(proj, set, cfg, fresh); err != nil {
 		t.Fatal(err)
 	}
-	if err := generateRuntimeConfig(set, cfg, fresh); err != nil {
+	if err := generateRuntimeConfig(proj, set, cfg, fresh); err != nil {
 		t.Fatal(err)
 	}
 	if notes := scaffoldGapNotes(proj, set, cfg, fresh); len(notes) != 0 {

@@ -81,7 +81,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 		{"routes-umbrella", func() error { return generateProjectRoutesUmbrella(proj, cfg, projectRoot) }},
 		{"wiring", func() error { return generateWiring(proj, cfg, projectRoot) }},
 		{"wiring-grpc", func() error { return generateWiringGRPC(protos, cfg, projectRoot) }},
-		{"config", func() error { return generateRuntimeConfig(protos, cfg, projectRoot) }},
+		{"config", func() error { return generateRuntimeConfig(proj, protos, cfg, projectRoot) }},
 		{"svccontext", func() error { return generateSvccontext(proj, cfg, projectRoot) }},
 		{"main", func() error { return generateProjectMain(proj, protos, cfg, projectRoot) }},
 	})

@@ -56,6 +56,7 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
 		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
+		HasHTTP:       true,
 	}
 	for _, f := range []struct {
 		template string

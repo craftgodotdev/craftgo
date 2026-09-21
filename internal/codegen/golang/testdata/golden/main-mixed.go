@@ -4,10 +4,10 @@
 // single source of truth. Traces and metrics are set up together by
 // [telemetry.Init], which keeps the exporter selection (none / stdout /
 // otlp_grpc / otlp_http / prometheus) next to the SDK rather than inline
-// here, and gives both signals one `serviceName`, one HTTP wrapper,
-// one gRPC handler and
-// one Shutdown. The only knob exposed to the deployer is `config.yaml`
-// (see config/example.config.yaml for the full field reference).
+// here, and gives both signals one `serviceName`, one HTTP wrapper, one
+// gRPC handler and one Shutdown. The only knob exposed to the deployer
+// is `config.yaml` (see config/example.config.yaml for the full field
+// reference).
 
 package main
 
@@ -53,8 +53,8 @@ func main() {
 
 	ctx := context.Background()
 
-	// Both signals share `serviceName`, one HTTP wrapper, one gRPC
-	// handler and one Shutdown.
+	// Both signals share `serviceName`, one HTTP wrapper, one gRPC handler
+	// and one Shutdown.
 	tel, err := telemetry.Init(ctx, cfg.Config)
 	if err != nil {
 		log.Default().Error("init telemetry", log.Err(err))
@@ -105,10 +105,10 @@ func main() {
 		}))
 	}
 
-	// One call attaches the whole design: every HTTP route it declares.
-	// The wiring package is regenerated on each `craftgo gen`, so this
-	// line stays put when the design gains or loses one. The returned
-	// shutdown runs beside srv.Stop below.
+	// One call attaches every HTTP route the design declares. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays
+	// put when the design gains or loses one. The returned shutdown runs
+	// beside srv.Stop below.
 	shutdownWiring, err := wiring.Register(ctx, srv, svc)
 	if err != nil {
 		log.Default().Error("wire services", log.Err(err))
@@ -126,13 +126,12 @@ func main() {
 		})
 	}
 
-	// The gRPC listener takes the guards the HTTP chain takes, in the same
-	// order: the OTel stats handler opens the span in the transport, ahead
-	// of every interceptor, so AccessLog sees the trace ids on ctx, and the
-	// same handler records `rpc.server.call.duration` against the
-	// configured MeterProvider. Recovery is always outermost. Errors are
-	// mapped onto status codes where the generated server layer returns
-	// them (rpc.Error), as WriteError does for HTTP.
+	// The gRPC listener's guards, outermost first. The OTel stats handler
+	// opens the span in the transport, ahead of every interceptor, so
+	// AccessLog sees the trace ids on ctx, and the same handler records
+	// `rpc.server.call.duration` against the configured MeterProvider.
+	// Recovery wraps every interceptor. Errors are mapped onto status
+	// codes where the generated server layer returns them (rpc.Error).
 	grpcSrv := rpc.New(svc,
 		rpc.WithStatsHandler(tel.GRPCServerHandler()),
 		rpc.WithReflection(cfg.GRPC.Reflection),
