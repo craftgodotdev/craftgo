@@ -483,6 +483,11 @@ func TestStopCutsOffAfterTheDeadline(t *testing.T) {
 	if err := <-inflight; err == nil {
 		t.Error("the hung call must fail once the server is cut off")
 	}
+	// Probes stopped routing traffic here the moment Stop began.
+	resp, err := srv.health.Check(context.Background(), &healthpb.HealthCheckRequest{Service: "test.Echo"})
+	if err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_NOT_SERVING {
+		t.Errorf("health after Stop = %v, %v", resp, err)
+	}
 }
 
 func TestRegisterServiceAfterBuild(t *testing.T) {

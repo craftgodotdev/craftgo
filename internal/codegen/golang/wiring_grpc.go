@@ -51,12 +51,21 @@ func buildWiringGRPCData(protos *protodesign.Set, cfg *config.Config) wiringGRPC
 		serverImport := goImportFromRel(cfg.Package, cfg.Output.GRPC) + "/" + svc.Dir
 		d.Services = append(d.Services, wiringGRPCService{
 			Service:     svc.Name,
-			PBAlias:     aliases.claim(svc.Package+"pb", svc.PBImport),
+			PBAlias:     aliases.claim(pbAliasFor(svc.Package), svc.PBImport),
 			ServerAlias: aliases.claim(strings.NewReplacer("_", "", "-", "").Replace(svc.Dir)+"grpc", serverImport),
 		})
 	}
 	d.Imports = aliases.imports()
 	return d
+}
+
+// pbAliasFor is the wiring's alias for a pb package: its name plus `pb`,
+// unless the name already ends that way (`greetpb`).
+func pbAliasFor(pkg string) string {
+	if strings.HasSuffix(pkg, "pb") {
+		return pkg
+	}
+	return pkg + "pb"
 }
 
 // aliasTable hands out one alias per import path and keeps them

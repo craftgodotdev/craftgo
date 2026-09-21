@@ -158,6 +158,9 @@ func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		if protos.HasServices() && !fileMentions(mainPath, "wiring.RegisterGRPC(") {
 			out = append(out, cfg.Output.Main+" predates the gRPC services and never calls wiring.RegisterGRPC - it is generated once, so add the gRPC listener block by hand (docs/guide/grpc.md shows it)")
 		}
+		if !protos.HasServices() && fileMentions(mainPath, "wiring.RegisterGRPC(") {
+			out = append(out, cfg.Output.Main+" still boots a gRPC listener, but the design declares no proto service and "+cfg.Output.Wiring+"/grpc.go is gone - it is generated once, so remove the gRPC block by hand (or restore the proto)")
+		}
 		if projectHasRoutes(proj) && !fileMentions(mainPath, "wiring.Register(") {
 			out = append(out, cfg.Output.Main+" predates the HTTP routes and never calls wiring.Register - it is generated once, so add the HTTP listener block by hand (docs/guide/runtime.md shows it)")
 		}

@@ -109,6 +109,9 @@ func TestWiringGRPCIsWrittenOnlyWithServices(t *testing.T) {
 	if !strings.Contains(string(body), "greetpb.RegisterGreeterServer(srv, greetergrpc.NewServer(svcCtx))") {
 		t.Errorf("registration line missing:\n%s", body)
 	}
+	if pbAliasFor("greet") != "greetpb" || pbAliasFor("greetpb") != "greetpb" {
+		t.Error("a package named with a pb suffix keeps it once")
+	}
 	aliases := newAliasTable()
 	if a, b := aliases.claim("greetpb", "x/a"), aliases.claim("greetpb", "x/b"); a == b {
 		t.Errorf("two packages got one alias: %s", a)
@@ -149,6 +152,10 @@ func TestScaffoldGapNotes(t *testing.T) {
 	}
 	if notes := scaffoldGapNotes(proj, set, cfg, protoDir); !containsNote(notes, "never calls wiring.Register -") {
 		t.Errorf("missing HTTP note in %v", notes)
+	}
+	// The proto-era main.go keeps booting gRPC after the last proto is gone.
+	if notes := scaffoldGapNotes(empty, nil, cfg, protoDir); !containsNote(notes, "still boots a gRPC listener") {
+		t.Errorf("missing dropped-proto note in %v", notes)
 	}
 	// Fresh scaffolds match the design: nothing to say.
 	fresh := t.TempDir()
