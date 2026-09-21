@@ -500,4 +500,20 @@ func TestRegisterServiceAfterBuild(t *testing.T) {
 	if srv.GRPCServer() != inner {
 		t.Error("GRPCServer must build once")
 	}
+	resp, err := srv.health.Check(context.Background(), &healthpb.HealthCheckRequest{Service: "test.Echo"})
+	if err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		t.Errorf("a late registration must be SERVING: %v, %v", resp, err)
+	}
+}
+
+// Serve after Stop answers nil, as the HTTP Start does once closed.
+func TestServeAfterStopReturnsNil(t *testing.T) {
+	srv := New(nil).SetLogger(newCapture())
+	if err := srv.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	srv.GRPCServer().Stop()
+	if err := srv.Serve(bufconn.Listen(1 << 20)); err != nil {
+		t.Errorf("serve after stop = %v", err)
+	}
 }

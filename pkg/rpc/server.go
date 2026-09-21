@@ -89,6 +89,9 @@ func New(_ any, opts ...Option) *Server {
 // Use appends an interceptor to the chain, outermost first. Recovery is
 // always ahead of the chain, and infrastructure methods - health,
 // reflection - bypass it, as the HTTP probes bypass the middleware chain.
+// The chain is read once, when the server is built, so a Use after
+// [Server.GRPCServer] or [Server.Serve] changes nothing - as a Use after
+// the HTTP Start does.
 func (s *Server) Use(i Interceptor) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,12 +119,16 @@ func (s *Server) Logger() log.Logger {
 // RegisterService is [grpc.ServiceRegistrar], so the generated
 // `pb.RegisterXServer(srv, impl)` takes the Server directly. Before the
 // server is built the registration is recorded; afterwards it goes
-// straight to grpc, which refuses it once serving.
+// straight to grpc, and the health service learns the name - grpc itself
+// exits the process for a registration once it is serving.
 func (s *Server) RegisterService(desc *grpc.ServiceDesc, impl any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.inner != nil {
 		s.inner.RegisterService(desc, impl)
+		if s.health != nil {
+			s.health.SetServingStatus(desc.ServiceName, healthpb.HealthCheckResponse_SERVING)
+		}
 		return
 	}
 	s.services = append(s.services, registration{desc: desc, impl: impl})
@@ -190,9 +197,10 @@ func (s *Server) Serve(lis net.Listener) error {
 	return nil
 }
 
-// Stop drains the server: the health service flips to NOT_SERVING so
-// probes stop routing new traffic here, in-flight RPCs finish, and when
-// ctx expires first the rest are cut off and ctx's error is returned. A
+// Stop drains the server: the health service flips to NOT_SERVING (a
+// health Watch in progress sees it; a later Check meets the closed
+// listener), the listener closes, in-flight RPCs finish, and when ctx
+// expires first the rest are cut off and ctx's error is returned. A
 // server never built is a no-op.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
