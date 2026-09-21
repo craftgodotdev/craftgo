@@ -40,7 +40,17 @@ output:
                                      # Regenerated each run, so main.go
                                      # survives a design that gains or loses
                                      # one.
-  service:    ./internal/service
+  service:    ./internal/service     # logic scaffolds, HTTP and gRPC alike:
+                                     # one file per method / RPC, written
+                                     # once and never overwritten.
+  pb:         ./internal/pb          # where protoc-gen-go + protoc-gen-go-grpc
+                                     # write the pb code of every .proto under
+                                     # the design folder. "-" runs no plugin
+                                     # (your own buf/protoc pipeline; every
+                                     # proto then needs `option go_package`).
+  grpc:       ./internal/grpc        # gRPC server layer: one package per proto
+                                     # service, one file per RPC, delegating to
+                                     # the logic scaffold. Regenerated each run.
   middleware: ./internal/middleware
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
@@ -70,6 +80,19 @@ output:
 #   targets:
 #     - lang: go
 #       out: ./internal/events
+
+# gRPC. A `.proto` under the design folder IS the design: the folder is
+# the import root, and `craftgo gen` runs protoc-gen-go + protoc-gen-go-grpc
+# through `go tool` - pin them once with
+#   go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+#                google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+# proto:
+#   includes: []                    # extra import roots (relative to the
+#                                   # project root) for protos you import
+#                                   # but do not own; each needs go_package.
+#   plugins:                        # explicit plugin commands instead of
+#     go: protoc-gen-go             # `go tool`: a bare name is looked up on
+#     goGrpc: protoc-gen-go-grpc    # PATH, a path is run as given.
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.

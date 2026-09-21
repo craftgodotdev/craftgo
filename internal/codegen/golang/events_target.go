@@ -54,6 +54,7 @@ func appSideDirs(cfg *config.Config) []struct{ key, path string } {
 		{"output.routes", cfg.Output.Routes},
 		{"output.service", cfg.Output.Service},
 		{"output.wiring", cfg.Output.Wiring},
+		{"output.grpc", cfg.Output.GRPC},
 		{"output.middleware", cfg.Output.Middleware},
 		{"output.config", cfg.Output.Config},
 		{"output.svccontext", fileDirRel(cfg.Output.Svccontext)},
