@@ -80,15 +80,25 @@ func resolvePlugin(projectRoot string, p Plugin) ([]string, error) {
 	}
 	probe := exec.Command("go", "tool", "-n", p.Name)
 	probe.Dir = projectRoot
-	out, err := probe.CombinedOutput()
-	if err != nil {
+	var stdout, stderr bytes.Buffer
+	probe.Stdout, probe.Stderr = &stdout, &stderr
+	if err := probe.Run(); err != nil {
 		return nil, fmt.Errorf("%s is not a tool of the go.mod at %s (%s)\n"+
 			"  pin both plugins once, at the versions the project builds with:\n"+
 			"    go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest\n"+
 			"  or name the command under proto.plugins in craftgo.design.yaml",
-			p.Name, projectRoot, strings.TrimSpace(string(out)))
+			p.Name, projectRoot, strings.TrimSpace(stderr.String()))
 	}
-	return []string{strings.TrimSpace(string(out))}, nil
+	// Only stdout is the path: a cold module cache puts `go: downloading`
+	// lines on stderr first.
+	return []string{toolPath(stdout.String())}, nil
+}
+
+// toolPath is the executable `go tool -n` printed: its last non-empty
+// line, trimmed.
+func toolPath(stdout string) string {
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 // runPlugin feeds req to the plugin on stdin and decodes its response.

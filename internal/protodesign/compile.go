@@ -37,7 +37,7 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 		if !opts.PBEnabled() {
 			return nil, fmt.Errorf("output.pb is \"-\", so every design proto needs `option go_package`: %w", err)
 		}
-		return nil, err
+		return nil, fmt.Errorf("a proto under proto.includes needs `option go_package` (the design's own protos are placed under output.pb): %w", err)
 	}
 	set := &Set{Options: opts, Root: designRoot, Names: names, Plugin: plugin, Request: req}
 	for _, f := range plugin.Files {

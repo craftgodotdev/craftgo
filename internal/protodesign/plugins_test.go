@@ -175,3 +175,17 @@ func TestWriteResponseRefusesEscapes(t *testing.T) {
 func responseWith(name string) *pluginpb.CodeGeneratorResponse {
 	return &pluginpb.CodeGeneratorResponse{File: []*pluginpb.CodeGeneratorResponse_File{{Name: proto.String(name), Content: proto.String("x")}}}
 }
+
+// The path is the last line `go tool -n` prints: a cold module cache
+// writes `go: downloading` lines first, and they must not become argv[0].
+func TestToolPathIsTheLastLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"/cache/protoc-gen-go\n": "/cache/protoc-gen-go",
+		"go: downloading google.golang.org/protobuf v1.36.11\n/cache/x\n": "/cache/x",
+		"  /cache/y  ": "/cache/y",
+	} {
+		if got := toolPath(in); got != want {
+			t.Errorf("toolPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
