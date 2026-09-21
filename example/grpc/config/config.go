@@ -31,7 +31,7 @@ import (
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
-// maps to one runtime concern - server listener, distributed tracing,
+// maps to one runtime concern - a listener, distributed tracing,
 // metrics - so feature owners can extend their own block without
 // stepping on each other.
 //
@@ -39,11 +39,9 @@ import (
 // sit at the top level of config.yaml. Reusing the library type lets
 // main.go pass `cfg.Config` straight to telemetry.Init.
 type Config struct {
-	Server           ServerConfig `yaml:"server"`
-	GRPC             GRPCConfig   `yaml:"grpc"`
-	Logging          LogConfig    `yaml:"logging"`
+	GRPC             GRPCConfig `yaml:"grpc"`
+	Logging          LogConfig  `yaml:"logging"`
 	telemetry.Config `yaml:",inline"`
-	Docs             DocsConfig `yaml:"docs"`
 }
 
 // LogConfig controls the process-wide logger. Only the minimum level is
@@ -58,67 +56,8 @@ type LogConfig struct {
 	Level string `yaml:"level"`
 }
 
-// DocsConfig controls the in-process API-reference docs page. When enabled,
-// main.go serves the generated OpenAPI document plus an HTML page that renders
-// it with the chosen UI (assets loaded from a CDN).
-type DocsConfig struct {
-	// Enabled toggles the docs + spec routes. Default true.
-	Enabled bool `yaml:"enabled"`
-
-	// UI is the renderer: "redoc" (default), "swagger", or "scalar".
-	UI string `yaml:"ui"`
-
-	// Path is the HTML docs page route. Default "/docs".
-	Path string `yaml:"path"`
-
-	// SpecPath is the route serving the raw OpenAPI document. Default
-	// "/openapi.yaml".
-	SpecPath string `yaml:"specPath"`
-}
-
-// ServerConfig configures the public API listener that handles HTTP
-// traffic. The admin / metrics scrape lives on a separate listener
-// (see [MetricsConfig]) so ops can firewall the two independently.
-//
-// Transport-level deadlines (`http.Server.ReadTimeout`,
-// `WriteTimeout`, `IdleTimeout`, `ReadHeaderTimeout`,
-// `MaxHeaderBytes`) are NOT modelled here - those are server-wide
-// stdlib knobs the user sets directly on the http.Server in main.go
-// when the defaults are insufficient. This struct only carries
-// per-handler defaults the framework can enforce uniformly.
-type ServerConfig struct {
-	// Addr is the bind address for the public HTTP server, e.g. ":8080"
-	// or "127.0.0.1:8080" to limit to localhost during development.
-	Addr string `yaml:"addr"`
-
-	// HandlerTimeout is the default per-handler execution deadline,
-	// applied to every route that does not declare its own `@timeout`
-	// (a per-method `@timeout(d)` overrides it, longer or shorter). It
-	// is a soft context deadline the handler must honour via ctx.Done().
-	// Zero = no default.
-	HandlerTimeout time.Duration `yaml:"handlerTimeout"`
-
-	// MaxBodySize is the default request-body cap in bytes, applied to
-	// every route that does not declare its own `@maxBodySize`. A
-	// per-method `@maxBodySize(n)` overrides it (used as-is, larger or
-	// smaller). Zero = no default cap.
-	MaxBodySize int64 `yaml:"maxBodySize"`
-
-	// StrictJSON rejects a JSON request body that does not match the
-	// request type exactly: an unknown field answers 400 with
-	// `<field>: unknown field`, and so does data after the JSON value.
-	// False accepts and ignores both, as encoding/json does.
-	StrictJSON bool `yaml:"strictJSON"`
-
-	// Compression toggles gzip / deflate response compression. Disabled
-	// by default so deployments behind a compressing reverse proxy
-	// (Nginx, Envoy, CloudFront) don't double-encode.
-	Compression CompressionConfig `yaml:"compression"`
-}
-
-// GRPCConfig configures the gRPC listener: its own port beside `server`,
-// one process, one ServiceContext, one telemetry stack. The generated
-// server layer and the interceptors main.go installs read nothing else.
+// GRPCConfig configures the gRPC listener. The generated server layer
+// and the interceptors main.go installs read nothing else.
 type GRPCConfig struct {
 	// Addr is the bind address for the gRPC server, e.g. ":9000".
 	Addr string `yaml:"addr"`
@@ -132,21 +71,6 @@ type GRPCConfig struct {
 	// can call the server without the .proto files. Leave it off on a
 	// listener exposed to the public internet.
 	Reflection bool `yaml:"reflection"`
-}
-
-// CompressionConfig drives the response compression middleware. The
-// middleware negotiates gzip / deflate against the client's
-// Accept-Encoding; small bodies and pre-compressed media types
-// (image/*, video/*, application/zip, ...) pass through untouched.
-type CompressionConfig struct {
-	// Enabled toggles the middleware. False = no wrap, no Vary header.
-	Enabled bool `yaml:"enabled"`
-	// MinSize is the byte threshold below which responses skip
-	// compression. Zero falls back to the framework default (1024).
-	MinSize int `yaml:"minSize"`
-	// Level is the gzip / deflate level (1..9). Zero falls back to
-	// the framework default (compress/gzip.DefaultCompression).
-	Level int `yaml:"level"`
 }
 
 // The OTel + Metrics block shapes live in `pkg/telemetry` (look there
@@ -202,9 +126,6 @@ func Load(cfgPath string) (*Config, error) {
 // so a project that deletes config.yaml and runs purely on defaults
 // behaves identically to one that copied the example.
 func (c *Config) applyDefaults() {
-	if c.Server.Addr == "" {
-		c.Server.Addr = ":8080"
-	}
 	if c.GRPC.Addr == "" {
 		c.GRPC.Addr = ":9000"
 	}
@@ -228,15 +149,5 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Metrics.Path == "" {
 		c.Metrics.Path = "/metrics"
-	}
-
-	if c.Docs.UI == "" {
-		c.Docs.UI = "redoc"
-	}
-	if c.Docs.Path == "" {
-		c.Docs.Path = "/docs"
-	}
-	if c.Docs.SpecPath == "" {
-		c.Docs.SpecPath = "/openapi.yaml"
 	}
 }

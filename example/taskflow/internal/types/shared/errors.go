@@ -42,12 +42,15 @@ func (e *AlreadyExistsErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *AlreadyExistsErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict category.
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *AlreadyExistsErr) HTTPStatus() int { return 409 }
 
 // ErrCodeForbiddenErr is the canonical machine-readable code for ForbiddenErr.
@@ -89,12 +92,15 @@ func (e *ForbiddenErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *ForbiddenErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Forbidden category.
+// HTTPStatus returns the HTTP status code associated with the Forbidden
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *ForbiddenErr) HTTPStatus() int { return 403 }
 
 // ErrCodeInternalErr is the canonical machine-readable code for InternalErr.
@@ -127,12 +133,15 @@ func (e *InternalErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *InternalErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Internal category.
+// HTTPStatus returns the HTTP status code associated with the Internal
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *InternalErr) HTTPStatus() int { return 500 }
 
 // ErrCodeRateLimitedErr is the canonical machine-readable code for RateLimitedErr.
@@ -174,12 +183,15 @@ func (e *RateLimitedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *RateLimitedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests category.
+// HTTPStatus returns the HTTP status code associated with the TooManyRequests
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
 // ErrCodeResourceNotFound is the canonical machine-readable code for ResourceNotFoundErr.
@@ -222,12 +234,15 @@ func (e *ResourceNotFoundErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *ResourceNotFoundErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound category.
+// HTTPStatus returns the HTTP status code associated with the NotFound
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *ResourceNotFoundErr) HTTPStatus() int { return 404 }
 
 // ErrCodeUnauthorizedErr is the canonical machine-readable code for UnauthorizedErr.
@@ -269,12 +284,15 @@ func (e *UnauthorizedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *UnauthorizedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Unauthorized category.
+// HTTPStatus returns the HTTP status code associated with the Unauthorized
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *UnauthorizedErr) HTTPStatus() int { return 401 }
 
 // ErrCodeValidationErr is the canonical machine-readable code for ValidationErr.
@@ -317,10 +335,13 @@ func (e *ValidationErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *ValidationErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the UnprocessableEntity category.
+// HTTPStatus returns the HTTP status code associated with the UnprocessableEntity
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *ValidationErr) HTTPStatus() int { return 422 }

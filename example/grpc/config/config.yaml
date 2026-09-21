@@ -2,16 +2,6 @@
 # field documentation. This file typically belongs in .gitignore - commit
 # example.config.yaml as the documented reference instead.
 
-server:
-  addr: ":8080"
-  handlerTimeout: 0s
-  maxBodySize: 0
-  strictJSON: true
-  compression:
-    enabled: false
-    minSize: 0
-    level: 0
-
 grpc:
   addr: ":9000"
   handlerTimeout: 0s
@@ -33,9 +23,3 @@ metrics:
   endpoint: ""
   adminAddr: ":9090"
   path: /metrics
-
-docs:
-  enabled: true
-  ui: redoc
-  path: /docs
-  specPath: /openapi.yaml
