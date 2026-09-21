@@ -80,7 +80,7 @@ All paths are relative to the **project root** (the parent of the design folder,
 | `pb`         | `./internal/pb`                      | directory           | Where `protoc-gen-go` + `protoc-gen-go-grpc` write the pb code of every `.proto` under the design folder, mirroring the proto's directory. `"-"` runs no plugin (your own buf/protoc pipeline; every proto then needs `option go_package`) |
 | `grpc`       | `./internal/grpc`                    | directory           | One subfolder per proto service: `server.go` plus `<rpc>.go` per RPC, delegating to the logic under `service` |
 | `svccontext` | `./svccontext/svccontext.go`         | **file path**       | Single Go file with the dependency container (gen-once); `middlewares.go` lands beside it |
-| `openapi`    | `./docs/openapi.yaml`                | **file path**       | The generated OpenAPI 3.1 spec |
+| `openapi`    | `./docs/openapi.yaml`                | **file path**       | The generated OpenAPI 3.1 spec. It describes the `.craftgo` design, so a project whose design holds only `.proto` files writes none |
 | `config`     | `./config`                           | directory           | `config.go`, `config.yaml`, `example.config.yaml` (all gen-once) |
 | `main`       | `./main.go`                          | **file path**       | The project entry point (gen-once) |
 

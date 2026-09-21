@@ -62,7 +62,7 @@ message HelloReply {
 
 `option go_package` is not needed. craftgo places every design proto's Go package under `output.pb` (default `./internal/pb`), mirroring the proto's directory: `design/greet/greet.proto` becomes `internal/pb/greet`, import path `<module>/internal/pb/greet`, Go package `greet`. A `go_package` you do write keeps its `;name` suffix for the package name; its path is ignored. Two protos in one directory must declare one package, as Go would demand of the directory, and a proto directly in the design root lands in `output.pb` itself as package `pb` - give it a directory. An RPC may not be named `Server` (the server struct's file), and two RPCs may not be named `X` and `NewX` (the logic type and its constructor); both are refused before anything is written.
 
-A design with protos alone - no `.craftgo` at all - is a plain gRPC service; a design with both boots both listeners from one `main.go`.
+A design with protos alone - no `.craftgo` at all - is a plain gRPC service; a design with both boots both listeners from one `main.go`. A gRPC-only project needs no manifest key of its own: its config carries no `server:` or `docs:` block, and no OpenAPI document is written, because the document describes the `.craftgo` half and there is none.
 
 ### The plugins
 
