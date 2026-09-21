@@ -15,6 +15,7 @@ use (
 	.
 	./example/brokers
 	./example/ecommerce
+	./example/grpc
 	./example/raw
 	./example/taskflow
 	./example/todo

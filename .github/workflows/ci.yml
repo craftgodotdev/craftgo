@@ -80,7 +80,7 @@ jobs:
       - name: build submodules
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc \
                    tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
             echo "→ build $d"
             (cd "$d" && go build ./...)
@@ -91,7 +91,7 @@ jobs:
       - name: generate
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow; do
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/grpc; do
             echo "→ gen $d"
             go run ./cmd/craftgo gen -f "$d/design" -c "$d"
           done
@@ -139,7 +139,7 @@ jobs:
         run: |
           set -e
           go build ./...
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc \
                    tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
             (cd "$d" && go build ./...)
           done
@@ -163,7 +163,7 @@ jobs:
       - name: test submodules
         run: |
           set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers \
+          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc \
                    tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
             echo "→ test $d"
             (cd "$d" && go test ${{ matrix.race }} -count=1 ./...)

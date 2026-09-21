@@ -1,0 +1,7 @@
+# A gRPC service designed in protobuf: the .proto beside this file is the
+# design, and `craftgo gen` runs protoc-gen-go + protoc-gen-go-grpc (pinned
+# as tools in go.mod) before writing the server layer, the logic stubs, the
+# wiring, config and main.go around them. No HTTP route, so no OpenAPI
+# document to serve.
+output:
+  openapi: "-"

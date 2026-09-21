@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package greet;
+
+// Greeter is the service the generated server layer implements: one Go
+// file per RPC under internal/grpc/greeter, each delegating to a logic
+// stub under internal/service/greeter that is yours to fill in.
+service Greeter {
+  // SayHello answers one greeting.
+  rpc SayHello(HelloRequest) returns (HelloReply);
+  // ListHellos streams `count` greetings back.
+  rpc ListHellos(HelloRequest) returns (stream HelloReply);
+  // RecordHellos counts the greetings the client streams in.
+  rpc RecordHellos(stream HelloRequest) returns (HelloReply);
+  // Chat echoes greetings for as long as the client keeps sending.
+  rpc Chat(stream HelloRequest) returns (stream HelloReply);
+}
+
+message HelloRequest {
+  string name = 1;
+  int32 count = 2;
+}
+
+message HelloReply {
+  string message = 1;
+}
