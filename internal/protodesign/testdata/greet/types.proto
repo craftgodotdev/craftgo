@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package greet;
+
+import "common/money.proto";
+
+// Receipt lives in a second file of the same package.
+message Receipt {
+  common.Money total = 1;
+}

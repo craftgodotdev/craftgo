@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package common;
+
+// Money is shared by every service in the design.
+message Money {
+  string currency = 1;
+  int64 amount = 2;
+}
