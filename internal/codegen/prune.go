@@ -78,7 +78,7 @@ func outputDirs(cfg *config.Config, projectRoot string, sel map[string]bool) []s
 	}
 	dirs = append(dirs, eventOutputDirs(cfg, projectRoot, sel)...)
 	if sel[TargetDocs] {
-		if doc := docs.RegeneratedFile(cfg, projectRoot); doc != "" {
+		if doc := docs.OutputDir(cfg, projectRoot); doc != "" {
 			dirs = append(dirs, sweepDir{path: filepath.Dir(doc), headers: generatedHeaders})
 		}
 	}
@@ -138,7 +138,7 @@ func regeneratedFiles(in Inputs, cfg *config.Config, projectRoot string) map[str
 			files = append(files, golang.RegeneratedEventFiles(proj, projectRoot, cfgTarget.Out)...)
 		}
 	}
-	if doc := docs.RegeneratedFile(cfg, projectRoot); doc != "" {
+	if doc := docs.RegeneratedFile(proj, cfg, projectRoot); doc != "" {
 		files = append(files, doc)
 	}
 	set := make(map[string]bool, len(files))

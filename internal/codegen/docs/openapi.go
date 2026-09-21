@@ -102,6 +102,9 @@ func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot str
 	if dest := cfg.Output.OpenAPI; dest == "" || dest == "-" {
 		return nil
 	}
+	if !describable(proj) {
+		return nil
+	}
 	if dups := projectMergeCollisions(proj); len(dups) > 0 {
 		return mergeCollisionError(dups)
 	}
