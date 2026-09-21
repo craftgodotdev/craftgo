@@ -12,6 +12,7 @@
 package protodesign
 
 import (
+	"path/filepath"
 	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -32,6 +33,10 @@ type Options struct {
 	// FileCase is the manifest's `output.fileCase`; it names the per-service
 	// directory and the per-RPC file the scaffolds are written to.
 	FileCase string
+	// PluginGo and PluginGoGrpc name the plugin commands the manifest
+	// chose under proto.plugins. Empty runs the tool go.mod pins.
+	PluginGo     string
+	PluginGoGrpc string
 }
 
 // PBEnabled reports whether the plugins run for this project.
@@ -144,9 +149,9 @@ func (s *Set) PBFiles(pbRoot string) []string {
 	var out []string
 	for _, name := range s.Names {
 		prefix := strings.TrimSuffix(name, ".proto")
-		out = append(out, joinSlash(pbRoot, prefix+".pb.go"))
+		out = append(out, filepath.Join(pbRoot, filepath.FromSlash(prefix+".pb.go")))
 		if f := s.Plugin.FilesByPath[name]; f != nil && len(f.Services) > 0 {
-			out = append(out, joinSlash(pbRoot, prefix+"_grpc.pb.go"))
+			out = append(out, filepath.Join(pbRoot, filepath.FromSlash(prefix+"_grpc.pb.go")))
 		}
 	}
 	return out

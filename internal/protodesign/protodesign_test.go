@@ -197,6 +197,9 @@ func TestPBFiles(t *testing.T) {
 		"internal/pb/greet/types.pb.go",
 		"internal/pb/root.pb.go", "internal/pb/root_grpc.pb.go",
 	}
+	for i, w := range want {
+		want[i] = filepath.FromSlash(w)
+	}
 	if got := set.PBFiles("internal/pb"); !reflect.DeepEqual(got, want) {
 		t.Errorf("pb files = %v\nwant %v", got, want)
 	}
@@ -291,7 +294,7 @@ service A { rpc Get(shared.ID) returns (shared.ID); }
 	if want := (TypeRef{Name: "ID", ImportPath: "github.com/acme/shared/gen/shared", Package: "shared"}); get.In != want {
 		t.Errorf("in = %+v", get.In)
 	}
-	if got := set.PBFiles("pb"); !reflect.DeepEqual(got, []string{"pb/a/a.pb.go", "pb/a/a_grpc.pb.go"}) {
+	if got := set.PBFiles("pb"); !reflect.DeepEqual(got, []string{filepath.Join("pb", "a", "a.pb.go"), filepath.Join("pb", "a", "a_grpc.pb.go")}) {
 		t.Errorf("pb files = %v", got)
 	}
 }

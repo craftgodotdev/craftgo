@@ -39,6 +39,15 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 			return err
 		}
 	}
+	// The pb code is a contract artefact, generated for every project
+	// kind; the plugins write nothing when output.pb is "-".
+	if protos != nil {
+		if err := runSteps("proto", []genStep{
+			{"pb", func() error { return protodesign.RunPlugins(protos, projectRoot) }},
+		}); err != nil {
+			return err
+		}
+	}
 	// A contracts project stops here: the rest is the application half,
 	// which the deployables that import this one generate for themselves.
 	if cfg.Output.ContractsOnly() {

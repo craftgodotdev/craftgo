@@ -42,6 +42,8 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 			files = append(files, filepath.Join(typesRoot, name, "errors.go"))
 		}
 	}
+	// The pb code is contract-side, generated for every project kind.
+	files = append(files, protos.PBFiles(filepath.Join(projectRoot, cfg.Output.PB))...)
 	if cfg.Output.ContractsOnly() {
 		return files
 	}
