@@ -25,7 +25,13 @@ internal/
 ├── transport/<svc>/             REGEN - one folder per service
 │   └── <method>.go              http.HandlerFunc per method
 ├── service/<svc>/               GEN-ONCE - your business logic
-│   └── <method>.go              the stub you fill in
+│   └── <method>.go              the stub you fill in (HTTP methods and RPCs alike)
+├── pb/<dir>/                    PLUGIN - protoc-gen-go + protoc-gen-go-grpc, per .proto directory
+│   ├── <file>.pb.go             messages
+│   └── <file>_grpc.pb.go        client, server interface, Unimplemented server
+├── grpc/<svc>/                  REGEN - one folder per proto service
+│   ├── server.go                Server implementing pb.<Svc>Server
+│   └── <rpc>.go                 one method per RPC, delegating to service/
 ├── events/<pkg>/                REGEN - one folder per DSL package declaring an event
 │   └── events.go                contract constant + descriptor per event
 ├── routes/
@@ -34,7 +40,8 @@ internal/
 ├── middleware/
 │   └── <name>_middleware.go     GEN-ONCE - one per declared middleware
 └── wiring/
-    └── wiring.go                REGEN - the single Register call main.go makes
+    ├── wiring.go                REGEN - the single Register call main.go makes
+    └── grpc.go                  REGEN - RegisterGRPC, present while a proto declares a service
 
 svccontext/
 ├── svccontext.go                GEN-ONCE - your dependency container
@@ -106,6 +113,16 @@ func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
 
 This is the only place you write code. Everything above and below it is regenerated.
 
+An RPC gets the same stub from the same template, with the pb types in the signature and the generic stream types for the streaming shapes - see [gRPC](/guide/grpc#what-is-generated).
+
+### `pb/<dir>/` (plugin)
+
+The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own, and the sweep recognises them under `output.pb` alone. `output.pb: "-"` runs no plugin.
+
+### `grpc/<svc>/` (regen)
+
+`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request, `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
+
 ### `routes/` (regen)
 
 `routes/<svc>/routes.go` registers each method on the mux via `srv.Handle("VERB /path", transport.X(svcCtx), mws...)`, applying declared middleware. `routes/routes.go` is the umbrella that calls every per-service `RegisterRoutes`.
@@ -126,6 +143,16 @@ runs beside `srv.Stop`. The body changes with the design; the signature does
 not, which is what lets `main.go` be written once and never edited again. It is
 emitted even for a design with no route.
 
+### `wiring/grpc.go` (regen)
+
+The gRPC twin, written while a proto declares a service and swept otherwise:
+
+```go
+func RegisterGRPC(ctx context.Context, srv *rpc.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error)
+```
+
+It registers every proto service's `Server` on `srv`.
+
 ### `svccontext/` (gen-once + regen)
 
 `svccontext.go` is your dependency container - add DB handles, clients, config here. `middlewares.go` (regen) declares the typed middleware fields so `@middlewares(Auth)` has a `svcCtx.Auth` to resolve against.
@@ -136,7 +163,7 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 
 ### `main.go` (gen-once)
 
-Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. Yours to customize - add a flag, change the listen address, register an extra middleware.
+Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Yours to customize - add a flag, change the listen address, register an extra middleware.
 
 ### `events/<pkg>/events.go` (regen)
 

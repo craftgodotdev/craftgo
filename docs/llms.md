@@ -940,12 +940,27 @@ extend service UserService {
 
 Both methods share `/users` prefix and `AuthRequired`. `PurgeUser` additionally runs `AdminOnly`.
 
+## gRPC (proto as the design)
+
+A `.proto` under the design folder is a gRPC design; no DSL involved. `craftgo gen` compiles it in-process, runs `protoc-gen-go` + `protoc-gen-go-grpc` through `go tool` (pin once: `go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`), and writes:
+
+```
+internal/pb/<dir>/<file>.pb.go, <file>_grpc.pb.go   plugins (output.pb; "-" = run none, then go_package required)
+internal/grpc/<svc>/server.go + <rpc>.go             REGEN: Server{pb.Unimplemented<Svc>Server; svcCtx}, one method per RPC
+internal/service/<svc>/<rpc>.go                      GEN-ONCE: logic stub, same shape as HTTP
+internal/wiring/grpc.go                              REGEN: RegisterGRPC(ctx, srv *rpc.Server, svcCtx) (shutdown, error)
+config/ (grpc: addr/handlerTimeout/reflection), main.go (rpc.New + interceptors + RegisterGRPC)   GEN-ONCE
+```
+
+Logic signatures: unary `X(req *pb.Req) (*pb.Resp, error)`; server stream `X(req *pb.Req, stream grpc.ServerStreamingServer[pb.Resp]) error`; client stream `X(stream grpc.ClientStreamingServer[pb.Req, pb.Resp]) error`; bidi `X(stream grpc.BidiStreamingServer[pb.Req, pb.Resp]) error`. The server layer calls `rpc.Validate(req)` (a `Validate() error` on the message → `InvalidArgument`) and `rpc.Error(ctx, err)` (status errors pass through; craftgo typed errors map HTTP status → code with an `ErrorInfo{Reason: ErrCode()}` detail; unknown errors log and answer `Internal`).
+
+Runtime `pkg/rpc`: `rpc.New(svc, rpc.WithStatsHandler(tel.GRPCServerHandler()), rpc.WithReflection(bool))`, `Use(rpc.AccessLog(l))`, `Use(rpc.Timeout(d))` (unary only), Recovery always outermost, `grpc.health.v1` registered, `Start(addr)` / `Stop(ctx)`. `tel.GRPCServerHandler()` emits spans + `rpc.server.call.duration`. A design of protos alone boots gRPC only; routes + protos boot both listeners.
+
 ## Things craftgo does not do
 
 - Service discovery (etcd, k8s)
 - Database model generation
-- gRPC code generation (yet)
-- Runtime middleware library (auth, ratelimit, breaker) - use any `func(http.Handler) http.Handler`
+- Runtime middleware library (auth, ratelimit, breaker) - use any `func(http.Handler) http.Handler` (or a gRPC interceptor)
 - Multi-language client gen - emit OpenAPI and run a generator over it; Go is craftgo's only source-code target
 - Broker adapters in the core module - `pkg/events` defines the transport interfaces and depends on nothing; the Kafka and NATS adapters ship as their own modules under `pkg/events/`, and anything else (RabbitMQ, SQS) is an external `Publisher` / `Subscriber`
 - Custom routers - uses Go 1.22+ stdlib `*http.ServeMux`

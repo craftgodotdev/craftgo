@@ -635,7 +635,46 @@ Any other broker - RabbitMQ, SQS, Pub/Sub, Redis Streams - is an outside package
 implementing `Publisher` and/or `Subscriber`, and those two interfaces are all it
 needs: none of the above is privileged. See [Events](/guide/events).
 
+## gRPC runtime
+
+The generated gRPC layer runs on `github.com/craftgodotdev/craftgo/pkg/rpc` - a thin wrapper over `*grpc.Server` that installs the guards the HTTP server installs. The generated `main.go` wires it; see [gRPC](/guide/grpc).
+
+```go
+grpcSrv := rpc.New(svcCtx, opts...)
+```
+
+| Option | Effect |
+|---|---|
+| `WithStatsHandler(h stats.Handler)` | Install a stats handler - `tel.GRPCServerHandler()` - which runs in the transport, ahead of every interceptor. A nil handler is ignored. |
+| `WithReflection(on bool)` | Serve the gRPC reflection service. |
+| `WithoutDefaultHealth()` | Disable the auto-registered `grpc.health.v1` service. |
+| `WithServerOptions(opts ...grpc.ServerOption)` | Pass options straight to `grpc.NewServer` - message size limits, keepalive, credentials. |
+
+| Method | Description |
+|---|---|
+| `Use(i Interceptor) *Server` | Append an interceptor to the chain, outermost first. Recovery is always ahead of the chain, and health and reflection calls bypass it. |
+| `SetLogger(l log.Logger)` / `Logger() log.Logger` | Swap or read the logger; `SetLogger` also mirrors to `log.Default()`. |
+| `RegisterService(desc *grpc.ServiceDesc, impl any)` | `grpc.ServiceRegistrar`, so `pb.RegisterXServer(srv, impl)` takes the server directly. |
+| `GRPCServer() *grpc.Server` | Build the underlying server once and return it. |
+| `Start(addr string) error` | Listen and serve until `Stop`; returns nil once stopped. |
+| `Serve(lis net.Listener) error` | Serve on a listener you own - a `bufconn` in tests. |
+| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. No-op before `Start`. |
+
+`Interceptor` pairs the two shapes gRPC needs, `Unary grpc.UnaryServerInterceptor` and `Stream grpc.StreamServerInterceptor`; `rpc.Unary(f)` and `rpc.Stream(f)` wrap one side.
+
+| Function | Description |
+|---|---|
+| `Recovery(logger)` | Panic → `Internal` with an opaque message, logged with the stack and the call's trace ids. Installed outermost by the server itself. |
+| `AccessLog(logger, opts...)` | One `grpc access` line per call with `method`, `code`, `latency` and the trace ids; a stream logs once when it ends. `AccessLogSkipMethods(...)` and `AccessLogFields(fn)` shape it. |
+| `Timeout(d)` | Bound unary calls to `d`; a late response is dropped for `DeadlineExceeded`. Streams are not bounded; `d <= 0` installs nothing. |
+| `Error(ctx, err) error` | What the generated server layer returns on failure: status errors pass through, a craftgo typed error (`HTTPStatus() int`) becomes the matching code with an `ErrorInfo{Reason: ErrCode()}` detail, a context error becomes `Canceled` / `DeadlineExceeded`, anything else goes to the unknown-error handler. |
+| `SetHandleUnknownError(h)` | Swap the process-wide handler for errors that carry neither a status nor an HTTP status; the default logs and answers `Internal`. |
+| `Validate(msg any) error` | Run the message's own `Validate() error` (protoc-gen-validate) and answer `InvalidArgument`. |
+| `IsInfrastructureMethod(fullMethod string) bool` | Whether a full method belongs to the health or reflection services. |
+
+`telemetry.GRPCServerHandler()` is the stats handler the generated `main.go` installs: one `otelgrpc` handler emitting the span and the `rpc.server.call.duration` histogram against the stack's providers, adopting the caller's W3C trace context from the request metadata, and leaving the health and reflection calls out.
+
 ## Related packages
 
 - `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
-- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every request, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.
+- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every HTTP request and `GRPCServerHandler()` every RPC, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.

@@ -7,6 +7,26 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Added
+
+- **gRPC, designed in protobuf.** A `.proto` under the design folder is a
+  gRPC design: `craftgo gen` compiles it in-process, runs `protoc-gen-go`
+  and `protoc-gen-go-grpc` through `go tool` - pinned in `go.mod`, so the
+  plugin version is the project's protobuf version and no `protoc` install
+  is needed - and writes the craftgo structure around the pb code: a
+  regenerated server package per service under `output.grpc`, gen-once
+  logic stubs under `output.service` from the same template the HTTP stubs
+  use, `wiring/grpc.go` with `RegisterGRPC`, and a `grpc:` block in the
+  config and main.go scaffolds. A design of protos alone boots the gRPC
+  listener only; routes and RPCs boot both. The new `pkg/rpc` runtime gives
+  the listener the HTTP chain's guards - recovery, access log, a default
+  deadline, `rpc.Error` mapping craftgo typed errors onto status codes with
+  an `ErrorInfo` detail, `grpc.health.v1`, reflection - and
+  `telemetry.GRPCServerHandler()` emits the spans and
+  `rpc.server.call.duration` against the same stack as the HTTP wrapper.
+  New manifest keys: `output.pb`, `output.grpc`, `proto.includes`,
+  `proto.plugins`. See the gRPC guide and `example/grpc`.
+
 ### Fixed
 
 - **The version in the docs nav follows the release.** It was a literal in
