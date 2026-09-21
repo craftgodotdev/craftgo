@@ -1,7 +1,8 @@
 # A gRPC service designed in protobuf: the .proto beside this file is the
 # design, and `craftgo gen` runs protoc-gen-go + protoc-gen-go-grpc (pinned
 # as tools in go.mod) before writing the server layer, the logic stubs, the
-# wiring, config and main.go around them. No HTTP route, so no OpenAPI
-# document to serve.
-output:
-  openapi: "-"
+# wiring, config and main.go around them.
+#
+# Every key is left at its default, which is the point: a design of protos
+# alone needs no configuration. The OpenAPI document describes the `.craftgo`
+# half, so a project without one writes none.

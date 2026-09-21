@@ -89,8 +89,8 @@ output:
 #   go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest \
 #                google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 # Your own protos need no `option go_package` - output.pb places them.
-# A design of protos alone declares no route, so set `openapi: "-"` above:
-# there is no document to write and none to serve.
+# The OpenAPI document describes the `.craftgo` half, so a design of protos
+# alone writes none and `openapi:` above is moot.
 # proto:
 #   includes: []                    # extra import roots (relative to the
 #                                   # project root) for protos you import
