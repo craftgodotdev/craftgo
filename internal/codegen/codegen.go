@@ -50,7 +50,7 @@ type LangTarget struct {
 	Generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
 	// OutputNotes reports what the target found in its output and could
 	// not account for.
-	OutputNotes func(proj *semantic.Project, cfg *config.Config, projectRoot string) []string
+	OutputNotes func(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string
 }
 
 // LangTargets is the closed set of supported languages. It must match
@@ -189,13 +189,13 @@ func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoo
 
 // OutputNotes reports what every enabled target found in its output and
 // could not account for.
-func OutputNotes(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
+func OutputNotes(in Inputs, cfg *config.Config, projectRoot string) []string {
 	var out []string
 	for _, target := range LangTargets {
 		if target.OutputNotes == nil {
 			continue
 		}
-		out = append(out, target.OutputNotes(proj, cfg, projectRoot)...)
+		out = append(out, target.OutputNotes(in.Design, in.Protos, cfg, projectRoot)...)
 	}
 	return out
 }

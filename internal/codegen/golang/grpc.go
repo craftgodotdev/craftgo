@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -219,6 +220,14 @@ func (r *typeRefs) imports() (bool, []extraImport) {
 	}
 	sort.Slice(extra, func(i, j int) bool { return extra[i].Path < extra[j].Path })
 	return r.usedOwn, extra
+}
+
+// strconvItoa is strconv.Itoa for the alias tables.
+func strconvItoa(n int) string { return strconv.Itoa(n) }
+
+// sortExtraImports orders imports by path, the order gofmt keeps.
+func sortExtraImports(imps []extraImport) {
+	sort.Slice(imps, func(i, j int) bool { return imps[i].Path < imps[j].Path })
 }
 
 // writeScaffoldOnce renders tmplName into path unless a file is already

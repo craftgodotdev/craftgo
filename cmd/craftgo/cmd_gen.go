@@ -107,7 +107,7 @@ func runGen(args []string) error {
 		return err
 	}
 	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
-	for _, note := range codegen.OutputNotes(proj, cfg, projectRoot) {
+	for _, note := range codegen.OutputNotes(codegen.Inputs{Design: proj}, cfg, projectRoot) {
 		fmt.Println("craftgo: " + note)
 	}
 	return nil

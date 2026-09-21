@@ -225,7 +225,7 @@ func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), cfg, root), "output.kind is contracts")
+	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), nil, cfg, root), "output.kind is contracts")
 	if len(notes) != 1 || !strings.Contains(notes[0], cfg.Output.Transport) {
 		t.Errorf("leftover application output must be named: %v", notes)
 	}
@@ -243,8 +243,8 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	cfg.Output.Main = "-"
 	proj := analyzeProject(t, alphaSrc)
 
-	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "yours to write"); len(notes) != 1 {
-		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, cfg, root))
+	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 1 {
+		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, nil, cfg, root))
 	}
 
 	// Once the project supplies one, the note goes.
@@ -255,7 +255,7 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("package svccontext\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "yours to write"); len(notes) != 0 {
+	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 0 {
 		t.Errorf("a hand-written container must silence it: %v", notes)
 	}
 }

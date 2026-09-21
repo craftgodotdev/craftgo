@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -35,6 +36,12 @@ type mainData struct {
 	// OpenAPIEmbed is the forward-slash path of the generated OpenAPI document
 	// relative to main.go's directory, for the `//go:embed` directive.
 	OpenAPIEmbed string
+	// HasRoutes gates the HTTP listener: the server, its middleware, the
+	// wiring.Register call, the docs and the drain.
+	HasRoutes bool
+	// HasGRPC gates the gRPC listener: the rpc server, its interceptors,
+	// the wiring.RegisterGRPC call and the drain.
+	HasGRPC bool
 }
 
 // generateProjectMain scaffolds the project's main.go (`output.main`)
@@ -50,17 +57,18 @@ type mainData struct {
 // Setting `output.main: "-"` in the manifest opts the project out of
 // scaffolding entirely - useful for test fixtures that ship their own
 // httptest server and would collide with a generated `package main`.
-func generateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+func generateProjectMain(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	if proj == nil {
 		return nil
 	}
 	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
-	// Skip when nothing is wireable: main.go boots an HTTP server, and a
-	// design with no route has none to boot. An events-only deployable
-	// builds its own bus and calls the generated Register itself.
-	if !projectHasRoutes(proj) {
+	// Skip when nothing is wireable: main.go boots the listeners, and a
+	// design with no route and no RPC has none to boot. An events-only
+	// deployable builds its own bus and calls the generated Register
+	// itself.
+	if !projectHasRoutes(proj) && !protos.HasServices() {
 		return nil
 	}
 	dest := filepath.Join(projectRoot, cfg.Output.Main)
@@ -70,7 +78,7 @@ func generateProjectMain(proj *semantic.Project, cfg *config.Config, projectRoot
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	data := buildProjectMainData(proj, cfg)
+	data := buildProjectMainData(proj, protos, cfg)
 	formatted, err := renderGo(tmpl("main.tmpl"), data)
 	if err != nil {
 		return fmt.Errorf("render main.go: %w", err)
@@ -96,12 +104,14 @@ func projectHasRoutes(proj *semantic.Project) bool {
 // buildProjectMainData unions every package's middleware names into
 // one deterministic list. The umbrella RegisterAll already aggregates
 // services so the template needs no further per-package wiring.
-func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
+func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) mainData {
 	d := mainData{
 		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
 		WiringImport:     goImportFromRel(cfg.Package, cfg.Output.Wiring),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		HasRoutes:        projectHasRoutes(proj),
+		HasGRPC:          protos.HasServices(),
 	}
 	seen := map[string]bool{}
 	for _, k := range slices.Sorted(maps.Keys(proj.Packages)) {
@@ -119,9 +129,10 @@ func buildProjectMainData(proj *semantic.Project, cfg *config.Config) mainData {
 	}
 	d.HasMiddlewares = len(d.Middlewares) > 0
 
-	// Wire the in-process API docs only when the OpenAPI document is emitted
-	// and lives under main.go's directory (go:embed cannot cross `..`).
-	if spec := cfg.Output.OpenAPI; spec != "" && spec != "-" {
+	// Wire the in-process API docs only when there is an HTTP server to
+	// serve them, the OpenAPI document is emitted, and it lives under
+	// main.go's directory (go:embed cannot cross `..`).
+	if spec := cfg.Output.OpenAPI; d.HasRoutes && spec != "" && spec != "-" {
 		mainDir := filepath.Dir(filepath.Clean(cfg.Output.Main))
 		if rel, err := filepath.Rel(mainDir, filepath.Clean(spec)); err == nil {
 			rel = filepath.ToSlash(rel)

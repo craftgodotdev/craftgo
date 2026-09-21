@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -134,10 +135,48 @@ func missingContainerNote(cfg *config.Config, projectRoot string) []string {
 
 // EventOutputNotes reports what the Go output holds that this run cannot
 // account for.
-func EventOutputNotes(_ *semantic.Project, cfg *config.Config, projectRoot string) []string {
+func EventOutputNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	out := staleApplicationOutput(cfg, projectRoot)
 	out = append(out, missingContainerNote(cfg, projectRoot)...)
-	return append(out, staleWiringImport(cfg, projectRoot)...)
+	out = append(out, staleWiringImport(cfg, projectRoot)...)
+	return append(out, scaffoldGapNotes(proj, protos, cfg, projectRoot)...)
+}
+
+// scaffoldGapNotes reports a gen-once scaffold that predates the design's
+// current transports. main.go and config.go are written once, so a
+// project that gains its first proto service after they were written -
+// or its first HTTP route - has a wiring call the design needs and the
+// scaffold does not make.
+func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
+	if cfg.Output.RuntimeDisabled() || cfg.Output.ContractsOnly() {
+		return nil
+	}
+	mainPath := filepath.Join(projectRoot, cfg.Output.Main)
+	configPath := filepath.Join(projectRoot, cfg.Output.Config, "config.go")
+	var out []string
+	if _, err := os.Stat(mainPath); err == nil {
+		if protos.HasServices() && !fileMentions(mainPath, "wiring.RegisterGRPC(") {
+			out = append(out, cfg.Output.Main+" predates the gRPC services and never calls wiring.RegisterGRPC - it is generated once, so add the gRPC listener block by hand (docs/guide/grpc.md shows it)")
+		}
+		if projectHasRoutes(proj) && !fileMentions(mainPath, "wiring.Register(") {
+			out = append(out, cfg.Output.Main+" predates the HTTP routes and never calls wiring.Register - it is generated once, so add the HTTP listener block by hand (docs/guide/runtime.md shows it)")
+		}
+	}
+	if _, err := os.Stat(configPath); err == nil && protos.HasServices() && !fileMentions(configPath, "GRPCConfig") {
+		out = append(out, cfg.Output.Config+"/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)")
+	}
+	if protos != nil && cfg.Output.PBDisabled() {
+		for _, svc := range protos.Services {
+			rel, ok := strings.CutPrefix(svc.PBImport, cfg.Package+"/")
+			if !ok {
+				continue
+			}
+			if matches, _ := filepath.Glob(filepath.Join(projectRoot, filepath.FromSlash(rel), "*.pb.go")); len(matches) == 0 {
+				out = append(out, "output.pb is \"-\" and "+rel+" holds no .pb.go yet - the generated gRPC layer imports it, so run your protoc/buf pipeline before `go build`")
+			}
+		}
+	}
+	return out
 }
 
 // staleWiringImport reports a main.go calling a wiring package other than

@@ -12,40 +12,29 @@ package main
 
 import (
 	"context"
-{{- if .HasDocs}}
 	_ "embed"
-{{- end}}
-{{- if .HasRoutes}}
 	"net/http"
-{{- end}}
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
-{{- if .HasGRPC}}
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
-{{- end}}
-{{- if .HasRoutes}}
 	"github.com/craftgodotdev/craftgo/pkg/server"
-{{- end}}
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 
-	"{{.ConfigImport}}"
-	"{{.WiringImport}}"
-{{- if .HasMiddlewares}}
-	"{{.MiddlewareImport}}"
-{{- end}}
-	"{{.SvccontextImport}}"
+	"example.com/app/config"
+	"example.com/app/internal/middleware"
+	"example.com/app/internal/wiring"
+	"example.com/app/svccontext"
 )
-{{- if .HasDocs}}
 
 // openapiSpec is the generated OpenAPI document, embedded so the docs page
 // (config.docs) serves it without shipping a separate file.
-//go:embed {{.OpenAPIEmbed}}
+//
+//go:embed docs/openapi.yaml
 var openapiSpec []byte
-{{- end}}
 
 func main() {
 	cfg, err := config.Load(config.Path())
@@ -81,16 +70,11 @@ func main() {
 	}
 
 	svc := svccontext.NewServiceContext(cfg)
-{{- if .HasMiddlewares}}
 
 	// Each design-declared middleware lives on the embedded
 	// Middlewares struct of ServiceContext. Wire each field once at
 	// startup with whatever params your impl needs.
-{{- range .Middlewares}}
-	svc.{{.}} = middleware.New{{.}}Middleware()
-{{- end}}
-{{- end}}
-{{- if .HasRoutes}}
+	svc.AuthRequired = middleware.NewAuthRequiredMiddleware()
 
 	// Build the Server and attach runtime globals via Use. Order
 	// matters: OTel opens the span first so AccessLog sees the trace
@@ -119,7 +103,6 @@ func main() {
 		}))
 	}
 
-
 	// One call attaches the whole design: every HTTP route it declares.
 	// The wiring package is regenerated on each `craftgo gen`, so this
 	// line stays put when the design gains or loses one. The returned
@@ -129,7 +112,6 @@ func main() {
 		log.Default().Error("wire services", log.Err(err))
 		os.Exit(1)
 	}
-{{- if .HasDocs}}
 
 	// Serve the API-reference docs (config.docs). The OpenAPI document is
 	// embedded above; the UI assets load from a CDN.
@@ -141,9 +123,6 @@ func main() {
 			SpecPath: cfg.Docs.SpecPath,
 		})
 	}
-{{- end}}
-{{- end}}
-{{- if .HasGRPC}}
 
 	// The gRPC listener takes the guards the HTTP chain takes, in the same
 	// order: the OTel stats handler opens the span in the transport, ahead
@@ -170,8 +149,6 @@ func main() {
 		log.Default().Error("wire grpc services", log.Err(err))
 		os.Exit(1)
 	}
-{{- end}}
-{{- if .HasRoutes}}
 
 	go func() {
 		log.Default().Info("listening", log.String("addr", cfg.Server.Addr))
@@ -180,8 +157,6 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-{{- end}}
-{{- if .HasGRPC}}
 
 	go func() {
 		log.Default().Info("grpc listening", log.String("addr", cfg.GRPC.Addr))
@@ -190,7 +165,6 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-{{- end}}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -198,18 +172,14 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-{{- if .HasRoutes}}
 	_ = srv.Stop(shutdownCtx)
 	// Whatever Register attached is released within the same budget the
 	// HTTP drain uses.
 	_ = shutdownWiring(shutdownCtx)
-{{- end}}
-{{- if .HasGRPC}}
 	// In-flight RPCs finish within the same budget; whatever is still
 	// running when it runs out is cut off.
 	_ = grpcSrv.Stop(shutdownCtx)
 	_ = shutdownGRPC(shutdownCtx)
-{{- end}}
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))

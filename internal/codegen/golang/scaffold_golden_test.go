@@ -46,7 +46,7 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	proj := analyzeProject(t, httpScaffoldSrc)
 
-	mainGo, err := renderGo(tmpl("main.tmpl"), buildProjectMainData(proj, cfg))
+	mainGo, err := renderGo(tmpl("main.tmpl"), buildProjectMainData(proj, nil, cfg))
 	if err != nil {
 		t.Fatal(err)
 	}

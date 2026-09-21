@@ -11,6 +11,7 @@ import (
 // route and could not be overridden by a larger per-method cap.
 func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 	data := mainData{
+		HasRoutes:        true,
 		ConfigImport:     "example.com/app/config",
 		WiringImport:     "example.com/app/internal/wiring",
 		SvccontextImport: "example.com/app/svccontext",
@@ -34,6 +35,7 @@ func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 // min(default, per-method).
 func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
 	data := mainData{
+		HasRoutes:        true,
 		ConfigImport:     "example.com/app/config",
 		WiringImport:     "example.com/app/internal/wiring",
 		SvccontextImport: "example.com/app/svccontext",
@@ -57,6 +59,7 @@ func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
 // registration.
 func TestGenerateMainOrdersTheWiring(t *testing.T) {
 	data := mainData{
+		HasRoutes:        true,
 		ConfigImport:     "example.com/app/config",
 		WiringImport:     "example.com/app/internal/wiring",
 		SvccontextImport: "example.com/app/svccontext",

@@ -82,6 +82,9 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		}
 	}
 	files = append(files, filepath.Join(projectRoot, cfg.Output.Wiring, "wiring.go"))
+	if protos.HasServices() {
+		files = append(files, filepath.Join(projectRoot, cfg.Output.Wiring, "grpc.go"))
+	}
 	return append(files, filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext), "middlewares.go"))
 }
 

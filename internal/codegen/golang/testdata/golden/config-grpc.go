@@ -39,13 +39,11 @@ import (
 // sit at the top level of config.yaml. Reusing the library type lets
 // main.go pass `cfg.Config` straight to telemetry.Init.
 type Config struct {
-	Server            ServerConfig `yaml:"server"`
-{{- if .HasGRPC}}
-	GRPC              GRPCConfig   `yaml:"grpc"`
-{{- end}}
-	Logging           LogConfig    `yaml:"logging"`
-	telemetry.Config  `yaml:",inline"`
-	Docs              DocsConfig `yaml:"docs"`
+	Server           ServerConfig `yaml:"server"`
+	GRPC             GRPCConfig   `yaml:"grpc"`
+	Logging          LogConfig    `yaml:"logging"`
+	telemetry.Config `yaml:",inline"`
+	Docs             DocsConfig `yaml:"docs"`
 }
 
 // LogConfig controls the process-wide logger. Only the minimum level is
@@ -118,8 +116,6 @@ type ServerConfig struct {
 	Compression CompressionConfig `yaml:"compression"`
 }
 
-{{- if .HasGRPC}}
-
 // GRPCConfig configures the gRPC listener: its own port beside `server`,
 // one process, one ServiceContext, one telemetry stack. The generated
 // server layer and the interceptors main.go installs read nothing else.
@@ -137,7 +133,6 @@ type GRPCConfig struct {
 	// listener exposed to the public internet.
 	Reflection bool `yaml:"reflection"`
 }
-{{- end}}
 
 // CompressionConfig drives the response compression middleware. The
 // middleware negotiates gzip / deflate against the client's
@@ -210,18 +205,16 @@ func (c *Config) applyDefaults() {
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":8080"
 	}
-{{- if .HasGRPC}}
 	if c.GRPC.Addr == "" {
 		c.GRPC.Addr = ":9000"
 	}
-{{- end}}
 
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
 	}
 
 	if c.ServiceName == "" {
-		c.ServiceName = "{{.OperationName}}"
+		c.ServiceName = "app"
 	}
 	if c.OTel.Exporter == "" {
 		c.OTel.Exporter = "none"

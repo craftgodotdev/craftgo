@@ -29,7 +29,6 @@ server:
                               # reverse proxy (nginx/envoy/cloudfront)
     minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
     level: 0                  # gzip level 1..9; 0 → DefaultCompression
-{{- if .HasGRPC}}
 
 # gRPC listener, beside the HTTP one: one process, one ServiceContext,
 # one telemetry stack (the stats handler emits rpc.server.call.duration
@@ -39,7 +38,6 @@ grpc:
   addr: ":9000"               # bind address; "127.0.0.1:9000" for localhost-only
   handlerTimeout: 0s          # default deadline for unary RPCs; 0 = no cap
   reflection: true            # serve grpc.reflection for grpcurl/grpcui; off on public listeners
-{{- end}}
 
 # Process-wide logger. main.go feeds level to log.SetLevel, which retunes
 # the server and the generated logic layer together. Format (JSON vs
@@ -51,7 +49,7 @@ logging:
 # `service.name` resource attribute. Backends key on it to tell one
 # service's traces and metrics from another's. Each signal can override it
 # below, but only do that to report under a different name on purpose.
-serviceName: {{.OperationName}}
+serviceName: app
 
 # Distributed tracing via OpenTelemetry. Note that the HTTP middleware
 # emits BOTH signals from one wrapper, so `enabled: false` here stops the
