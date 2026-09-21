@@ -28,13 +28,10 @@ var noopPropagator = propagation.NewCompositeTextMapPropagator()
 // uses the no-op provider, and with both off the middleware is a plain
 // pass-through, so an unconfigured process pays nothing.
 func (t *Telemetry) HTTPMiddleware() server.Middleware {
-	if t == nil || (t.tracers == nil && t.meters == nil) {
+	if !t.instrumented() {
 		return func(next http.Handler) http.Handler { return next }
 	}
-	prop := propagation.TextMapPropagator(noopPropagator)
-	if t.tracers != nil {
-		prop = propagator
-	}
+	prop := t.propagator()
 	opts := []otelhttp.Option{
 		otelhttp.WithTracerProvider(t.TracerProvider()),
 		otelhttp.WithMeterProvider(t.MeterProvider()),
@@ -43,6 +40,21 @@ func (t *Telemetry) HTTPMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return instrument(next, t.serviceName, prop, opts...)
 	}
+}
+
+// instrumented reports whether the stack has a signal to emit; a stack
+// without one adds nothing to a request or a call.
+func (t *Telemetry) instrumented() bool {
+	return t != nil && (t.tracers != nil || t.meters != nil)
+}
+
+// propagator is what the stack reads from and writes to the wire: the
+// W3C propagator when it traces, nothing otherwise.
+func (t *Telemetry) propagator() propagation.TextMapPropagator {
+	if t.tracers != nil {
+		return propagator
+	}
+	return noopPropagator
 }
 
 // instrument wraps next in otelhttp under the span name operation and

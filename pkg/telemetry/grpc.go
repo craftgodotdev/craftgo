@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc/stats"
 
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
@@ -20,17 +19,13 @@ import (
 // HTTP probes bypass the middleware chain. With both signals off the
 // handler does nothing; it is never nil, which grpc would refuse.
 func (t *Telemetry) GRPCServerHandler() stats.Handler {
-	if t == nil || (t.tracers == nil && t.meters == nil) {
+	if !t.instrumented() {
 		return noopStats{}
-	}
-	prop := propagation.TextMapPropagator(noopPropagator)
-	if t.tracers != nil {
-		prop = propagator
 	}
 	return otelgrpc.NewServerHandler(
 		otelgrpc.WithTracerProvider(t.TracerProvider()),
 		otelgrpc.WithMeterProvider(t.MeterProvider()),
-		otelgrpc.WithPropagators(prop),
+		otelgrpc.WithPropagators(t.propagator()),
 		otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool { return !rpc.IsInfrastructureMethod(info.FullMethodName) }),
 	)
 }
