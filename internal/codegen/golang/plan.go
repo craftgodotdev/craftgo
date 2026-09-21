@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -20,7 +21,8 @@ import (
 // when missing, and the sweep never walks their directories.
 
 // RegeneratedFiles names what [Generate] writes.
-func RegeneratedFiles(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
+func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
+	_ = protos
 	typesRoot := filepath.Join(projectRoot, cfg.Output.Types)
 	var files []string
 	for _, name := range sortedPackageNames(proj) {

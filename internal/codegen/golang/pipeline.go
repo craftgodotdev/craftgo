@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -15,9 +16,12 @@ import (
 // artefacts (transport, service stubs, routes), and finally the
 // project-wide files (routes umbrella, runtime scaffolds, main.go).
 //
+// protos is the compiled proto set, nil when the design holds none.
+//
 // The design is validated, and the event target and the OpenAPI
 // projection run, around it; see [codegen.Generate].
-func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
+	_ = protos
 	names := sortedPackageNames(proj)
 	resolvers := make(map[string]*projectResolver, len(names))
 	for _, name := range names {

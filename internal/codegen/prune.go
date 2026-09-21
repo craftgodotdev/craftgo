@@ -10,7 +10,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // An output directory belongs to one design. What craftgo regenerates
@@ -112,8 +111,9 @@ func owned(dirs []string, projectRoot string) []string {
 // `--target` narrowed the run to: a target that did not run still owns
 // its output, and a directory holding two targets' files must not lose
 // one of them to the other's sweep.
-func regeneratedFiles(proj *semantic.Project, cfg *config.Config, projectRoot string) map[string]bool {
-	files := golang.RegeneratedFiles(proj, cfg, projectRoot)
+func regeneratedFiles(in Inputs, cfg *config.Config, projectRoot string) map[string]bool {
+	proj := in.Design
+	files := golang.RegeneratedFiles(proj, in.Protos, cfg, projectRoot)
 	for _, target := range LangTargets {
 		cfgTarget, ok := cfg.Events.TargetFor(target.Lang)
 		if !ok || !cfgTarget.Enabled() {

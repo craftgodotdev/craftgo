@@ -124,7 +124,7 @@ func TestCatalogueMatchesSupportedLangs(t *testing.T) {
 func TestEveryEnabledTargetWritesItsOwnOutput(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	dir := t.TempDir()
-	if err := Generate(proj, eventsConfig(), dir); err != nil {
+	if err := Generate(Inputs{Design: proj}, eventsConfig(), dir); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	for _, want := range []string{
@@ -144,7 +144,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	cfg := eventsConfig()
 	dir := t.TempDir()
-	if err := Generate(proj, cfg, dir); err != nil {
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
 		t.Fatalf("generate all: %v", err)
 	}
 	goFile := filepath.Join(dir, "internal", "events", "orders", "events.go")
@@ -155,7 +155,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 		}
 	}
 	// Regenerate only the documents; the Go output must survive.
-	if err := Generate(proj, cfg, dir, TargetDocs); err != nil {
+	if err := Generate(Inputs{Design: proj}, cfg, dir, TargetDocs); err != nil {
 		t.Fatalf("generate docs: %v", err)
 	}
 	if _, err := os.Stat(goFile); err != nil {
@@ -166,7 +166,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 // An unknown target name fails rather than silently generating less.
 func TestUnknownTargetIsRejected(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
-	err := Generate(proj, eventsConfig(), t.TempDir(), "rust")
+	err := Generate(Inputs{Design: proj}, eventsConfig(), t.TempDir(), "rust")
 	if err == nil {
 		t.Fatal("expected an error for an unknown target")
 	}
@@ -181,7 +181,7 @@ func TestUnknownTargetIsRejected(t *testing.T) {
 func TestSelectableTargetsAreKnown(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	for _, name := range SelectableTargets() {
-		if err := Generate(proj, eventsConfig(), t.TempDir(), name); err != nil {
+		if err := Generate(Inputs{Design: proj}, eventsConfig(), t.TempDir(), name); err != nil {
 			t.Errorf("target %q is offered but does not run: %v", name, err)
 		}
 	}

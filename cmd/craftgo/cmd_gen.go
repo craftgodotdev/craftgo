@@ -103,7 +103,7 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := codegen.Generate(proj, cfg, projectRoot, targets...); err != nil {
+	if err := codegen.Generate(codegen.Inputs{Design: proj}, cfg, projectRoot, targets...); err != nil {
 		return err
 	}
 	fmt.Printf("craftgo: generated %d package(s) under %s\n", len(proj.Packages), projectRoot)
