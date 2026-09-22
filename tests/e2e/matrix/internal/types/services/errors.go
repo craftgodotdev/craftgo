@@ -37,12 +37,15 @@ func (e *AcctUserNotFoundErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *AcctUserNotFoundErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound category.
+// HTTPStatus returns the HTTP status code associated with the NotFound
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *AcctUserNotFoundErr) HTTPStatus() int { return 404 }
 
 // ErrCodeAcctValidationFailed is the canonical machine-readable code for AcctValidationFailedErr.
@@ -84,12 +87,15 @@ func (e *AcctValidationFailedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *AcctValidationFailedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the BadRequest category.
+// HTTPStatus returns the HTTP status code associated with the BadRequest
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *AcctValidationFailedErr) HTTPStatus() int { return 400 }
 
 // ErrCodeRateLimited is the canonical machine-readable code for RateLimitedErr.
@@ -131,12 +137,15 @@ func (e *RateLimitedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *RateLimitedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests category.
+// HTTPStatus returns the HTTP status code associated with the TooManyRequests
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
 // WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.

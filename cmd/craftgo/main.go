@@ -1,16 +1,18 @@
 // Command craftgo is the CLI entrypoint that drives the design-first
 // pipeline: locate the project manifest, parse every `.craftgo` source
-// file, run semantic analysis, and dispatch each codegen artefact.
+// file and compile every `.proto` beside it, run semantic analysis, and
+// dispatch each codegen artefact.
 //
 // Usage:
 //
-//	craftgo init [path] [-package <module>]
+//	craftgo init [path]
 //	craftgo gen  [-f <design-folder>] [-c|--context <project-root>] [path]
+//	craftgo fmt  [path] [-l] [-w]
 //
 // `init` scaffolds a fresh design folder at <path> (default `design`).
-// The path argument IS the design folder - manifest + sample `.craftgo`
-// files land flat inside it. Existing files are never overwritten so
-// re-running on a populated directory fills only the gaps.
+// The path argument IS the design folder - the manifest lands flat
+// inside it. An existing manifest is left alone and the command does
+// nothing.
 //
 // `gen` resolves the design folder one of two ways: with `-f` it uses
 // the supplied path directly; without it walks upward from <path> (or
@@ -85,7 +87,11 @@ Usage:
 
   craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
                           Generate types, handlers, routes, OpenAPI from
-                          .craftgo files. Flags:
+                          .craftgo files, and the pb code, gRPC server layer
+                          and logic stubs from .proto files in the same
+                          folder (protoc-gen-go and protoc-gen-go-grpc run
+                          through "go tool"; pin them with "go get -tool").
+                          Flags:
                             -f, --folder   path to the folder holding
                                            craftgo.design.yaml (skips walk-up)
                             --target       generate only the named target

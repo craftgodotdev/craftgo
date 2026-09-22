@@ -1,0 +1,25 @@
+# Local runtime configuration. See example.config.yaml for the full
+# field documentation. This file typically belongs in .gitignore - commit
+# example.config.yaml as the documented reference instead.
+
+grpc:
+  addr: ":9000"
+  handlerTimeout: 0s
+  reflection: true
+
+logging:
+  level: info
+
+serviceName: app
+
+otel:
+  enabled: true
+  exporter: none
+  endpoint: ""
+
+metrics:
+  enabled: true
+  exporter: prometheus
+  endpoint: ""
+  adminAddr: ":9090"
+  path: /metrics

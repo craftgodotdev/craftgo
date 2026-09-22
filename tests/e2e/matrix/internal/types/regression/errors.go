@@ -47,12 +47,15 @@ func (e *Rg5CodeErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *Rg5CodeErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound category.
+// HTTPStatus returns the HTTP status code associated with the NotFound
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *Rg5CodeErr) HTTPStatus() int { return 404 }
 
 // ErrCodeRg5HdrError is the canonical machine-readable code for Rg5HdrError.
@@ -95,12 +98,15 @@ func (e *Rg5HdrError) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *Rg5HdrError) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict category.
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *Rg5HdrError) HTTPStatus() int { return 409 }
 
 // WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
@@ -150,12 +156,15 @@ func (e *Rg5NullErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *Rg5NullErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the BadRequest category.
+// HTTPStatus returns the HTTP status code associated with the BadRequest
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *Rg5NullErr) HTTPStatus() int { return 400 }
 
 // ErrCodeRg7Dup is the canonical machine-readable code for Rg7DupErr.
@@ -197,12 +206,15 @@ func (e *Rg7DupErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *Rg7DupErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict category.
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *Rg7DupErr) HTTPStatus() int { return 409 }
 
 // ErrCodeRg7Secret is the canonical machine-readable code for Rg7SecretErr.
@@ -247,12 +259,15 @@ func (e *Rg7SecretErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *Rg7SecretErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Forbidden category.
+// HTTPStatus returns the HTTP status code associated with the Forbidden
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *Rg7SecretErr) HTTPStatus() int { return 403 }
 
 // WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
@@ -306,10 +321,13 @@ func (e *RgValidationFailedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *RgValidationFailedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the UnprocessableEntity category.
+// HTTPStatus returns the HTTP status code associated with the UnprocessableEntity
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *RgValidationFailedErr) HTTPStatus() int { return 422 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -20,7 +21,7 @@ import (
 // when missing, and the sweep never walks their directories.
 
 // RegeneratedFiles names what [Generate] writes.
-func RegeneratedFiles(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
+func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	typesRoot := filepath.Join(projectRoot, cfg.Output.Types)
 	var files []string
 	for _, name := range sortedPackageNames(proj) {
@@ -41,6 +42,8 @@ func RegeneratedFiles(proj *semantic.Project, cfg *config.Config, projectRoot st
 			files = append(files, filepath.Join(typesRoot, name, "errors.go"))
 		}
 	}
+	// The pb code is contract-side, generated for every project kind.
+	files = append(files, protos.PBFiles(projectRoot)...)
 	if cfg.Output.ContractsOnly() {
 		return files
 	}
@@ -69,7 +72,19 @@ func RegeneratedFiles(proj *semantic.Project, cfg *config.Config, projectRoot st
 		routes = append(routes, filepath.Join(routesRoot, "routes.go"))
 	}
 	files = append(files, routes...)
+	if protos != nil {
+		for _, svc := range protos.Services {
+			dir := grpcServerDir(projectRoot, cfg, svc)
+			files = append(files, filepath.Join(dir, grpcServerFile+".go"))
+			for _, m := range svc.Methods {
+				files = append(files, filepath.Join(dir, m.File+".go"))
+			}
+		}
+	}
 	files = append(files, filepath.Join(projectRoot, cfg.Output.Wiring, "wiring.go"))
+	if protos.HasServices() {
+		files = append(files, filepath.Join(projectRoot, cfg.Output.Wiring, "grpc.go"))
+	}
 	return append(files, filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext), "middlewares.go"))
 }
 
@@ -85,6 +100,7 @@ func OutputDirs(cfg *config.Config, projectRoot string) []string {
 	return append(dirs,
 		filepath.Join(projectRoot, cfg.Output.Transport),
 		filepath.Join(projectRoot, cfg.Output.Routes),
+		filepath.Join(projectRoot, cfg.Output.GRPC),
 		filepath.Join(projectRoot, cfg.Output.Wiring),
 		filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext)),
 	)

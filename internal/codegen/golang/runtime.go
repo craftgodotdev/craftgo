@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -23,6 +24,15 @@ type runtimeData struct {
 	// ConfigImport is the generated config package, which follows
 	// `output.config` rather than sitting at a fixed path.
 	ConfigImport string
+	// HasGRPC adds the `grpc:` block - listener address, default
+	// deadline, reflection - to the config package.
+	HasGRPC bool
+	// HasHTTP keeps the `server:` and `docs:` blocks. A project whose
+	// design declares gRPC services and no route starts no HTTP
+	// listener, so the fields would configure nothing; a project whose
+	// main.go is its own keeps them, since what it serves is not the
+	// design's to know.
+	HasHTTP bool
 }
 
 // generateRuntimeConfig scaffolds the project's `config/` package
@@ -41,7 +51,7 @@ type runtimeData struct {
 // those files to change the shape of the scaffolded artefact -
 // per-project overrides are out of scope here (the runtime config
 // is meant to be edited freely after the first gen).
-func generateRuntimeConfig(cfg *config.Config, projectRoot string) error {
+func generateRuntimeConfig(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
@@ -50,6 +60,8 @@ func generateRuntimeConfig(cfg *config.Config, projectRoot string) error {
 		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
 		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
+		HasGRPC:       protos.HasServices(),
+		HasHTTP:       projectHasRoutes(proj) || !protos.HasServices(),
 	}
 	files := []struct {
 		name     string

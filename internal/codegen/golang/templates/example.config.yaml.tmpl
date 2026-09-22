@@ -6,6 +6,7 @@
 # This file is the single source of truth: per-environment overrides
 # go in `config.yaml` itself (one file per env, mounted by the
 # deployer). No environment variables are read.
+{{- if .HasHTTP}}
 
 # Public HTTP listener.
 #
@@ -29,6 +30,24 @@ server:
                               # reverse proxy (nginx/envoy/cloudfront)
     minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
     level: 0                  # gzip level 1..9; 0 → DefaultCompression
+{{- end}}
+{{- if .HasGRPC}}
+
+{{- if .HasHTTP}}
+# gRPC listener, beside the HTTP one: one process, one ServiceContext,
+# one telemetry stack (the stats handler emits rpc.server.call.duration
+# and the spans). handlerTimeout bounds unary calls only; streams are
+# not bounded.
+{{- else}}
+# gRPC listener. The stats handler emits the spans and
+# rpc.server.call.duration against the telemetry stack configured below.
+# handlerTimeout bounds unary calls only; streams are not bounded.
+{{- end}}
+grpc:
+  addr: ":9000"               # bind address; "127.0.0.1:9000" for localhost-only
+  handlerTimeout: 0s          # default deadline for unary RPCs; 0 = no cap
+  reflection: true            # serve grpc.reflection for grpcurl/grpcui; off on public listeners
+{{- end}}
 
 # Process-wide logger. main.go feeds level to log.SetLevel, which retunes
 # the server and the generated logic layer together. Format (JSON vs
@@ -63,6 +82,7 @@ metrics:
   serviceName: ""             # overrides the top-level serviceName for metrics
   adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
   path: /metrics              # route the scrape is exposed on (prometheus only)
+{{- if .HasHTTP}}
 
 # In-process API reference docs, served on the public API listener.
 docs:
@@ -70,3 +90,4 @@ docs:
   ui: redoc                   # redoc | swagger | scalar (assets loaded from a CDN)
   path: /docs                 # HTML docs page route
   specPath: /openapi.yaml     # route serving the raw OpenAPI document
+{{- end}}

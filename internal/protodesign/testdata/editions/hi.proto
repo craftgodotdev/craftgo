@@ -1,0 +1,13 @@
+edition = "2023";
+
+package hi;
+
+service Hi {
+  rpc Say(Req) returns (Resp);
+}
+
+message Req {
+  string text = 1;
+}
+
+message Resp {}

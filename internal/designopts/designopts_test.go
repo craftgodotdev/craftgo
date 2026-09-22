@@ -250,3 +250,21 @@ func hasCode(diags []lexer.Diagnostic, code string) bool {
 	}
 	return false
 }
+
+func TestProtoOptionsFollowTheManifest(t *testing.T) {
+	cfg := &config.Config{Package: "example.com/app"}
+	cfg.Output.PB = "./internal/pb"
+	cfg.Output.FileCase = "kebab"
+	cfg.Proto.Includes = []string{"./third_party"}
+	got := ProtoOptions(cfg, filepath.Join("/", "proj"))
+	if got.Module != "example.com/app" || got.PBDir != "./internal/pb" || got.FileCase != "kebab" {
+		t.Errorf("options = %+v", got)
+	}
+	if want := filepath.Join("/", "proj", "third_party"); len(got.Includes) != 1 || got.Includes[0] != want {
+		t.Errorf("includes = %v", got.Includes)
+	}
+	cfg.Output.PB = "-"
+	if got := ProtoOptions(cfg, "/proj"); got.PBDir != "" {
+		t.Errorf(`pb "-" must leave PBDir empty, got %q`, got.PBDir)
+	}
+}

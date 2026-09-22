@@ -39,11 +39,19 @@ output:
   openapi:    ./docs/openapi.yaml
   config:     ./config
   main:       ./main.go
+  # pb:       ./internal/pb        # only meaningful when the design holds a .proto
+  # grpc:     ./internal/grpc
 
 events: # only meaningful when the design declares events
   targets:
     - lang: go
       out: ./internal/events
+
+proto: # only meaningful when the design holds .proto files
+  includes: []
+  plugins:
+    go: ""
+    goGrpc: ""
 
 openapi:
   title:    My API
@@ -68,9 +76,11 @@ All paths are relative to the **project root** (the parent of the design folder,
 | `routes`     | `./internal/routes`                  | directory           | Per-service `routes.go` plus an umbrella `routes.go` |
 | `service`    | `./internal/service`                 | directory           | One subfolder per service; `<method>.go` per method (gen-once) |
 | `middleware` | `./internal/middleware`              | directory           | One file per declared `middleware Name` (gen-once) |
-| `wiring`     | `./internal/wiring`                  | directory           | The generated `wiring.Register` package `main.go` calls |
+| `wiring`     | `./internal/wiring`                  | directory           | The generated `wiring.Register` package `main.go` calls; `grpc.go` with `RegisterGRPC` lands beside it while a proto declares a service |
+| `pb`         | `./internal/pb`                      | directory           | Where `protoc-gen-go` + `protoc-gen-go-grpc` write the pb code of every `.proto` under the design folder, mirroring the proto's directory. `"-"` runs no plugin (your own buf/protoc pipeline; every proto then needs `option go_package`) |
+| `grpc`       | `./internal/grpc`                    | directory           | One subfolder per proto service: `server.go` plus `<rpc>.go` per RPC, delegating to the logic under `service` |
 | `svccontext` | `./svccontext/svccontext.go`         | **file path**       | Single Go file with the dependency container (gen-once); `middlewares.go` lands beside it |
-| `openapi`    | `./docs/openapi.yaml`                | **file path**       | The generated OpenAPI 3.1 spec |
+| `openapi`    | `./docs/openapi.yaml`                | **file path**       | The generated OpenAPI 3.1 spec. It describes the `.craftgo` design, so a project whose design holds only `.proto` files writes none |
 | `config`     | `./config`                           | directory           | `config.go`, `config.yaml`, `example.config.yaml` (all gen-once) |
 | `main`       | `./main.go`                          | **file path**       | The project entry point (gen-once) |
 
@@ -102,17 +112,27 @@ nothing either way. Set a target's `out` to `"-"` to skip it.
 Transport and codec are deliberately absent: they are runtime wiring chosen in
 `main.go`, not design-time facts. See [Events](/guide/events).
 
+### `proto.*`
+
+Read only when the design folder holds `.proto` files - see [gRPC](/guide/grpc).
+
+| Key                | Default | Meaning                                                                                          |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
+| `includes`         | `[]`    | Extra import roots, relative to the project root, for protos the design imports but does not own. Each file found there must carry `option go_package`. The design folder is always the first import root. |
+| `plugins.go`       | `""`    | The `protoc-gen-go` command. Empty runs `go tool protoc-gen-go`, pinned by the `tool` directive in `go.mod`. A bare name is looked up on `PATH`, a path is run as given. |
+| `plugins.goGrpc`   | `""`    | The `protoc-gen-go-grpc` command, same rules.                                                     |
+
 ### File and directory naming (`output.fileCase`)
 
 The names craftgo derives from your DSL identifiers - the per-method `<method>.go`
 handler and service files, the per-service directory, and each middleware file -
 follow the case set by `output.fileCase`:
 
-| `fileCase`        | method file      | service directory | middleware file      |
-| ----------------- | ---------------- | ----------------- | -------------------- |
-| `snake` (default) | `create_user.go` | `user_service/`   | `auth_middleware.go` |
-| `kebab`           | `create-user.go` | `user-service/`   | `auth-middleware.go` |
-| `camel`           | `createUser.go`  | `userService/`    | `authMiddleware.go`  |
+| `fileCase`        | method / RPC file | service directory | middleware file      |
+| ----------------- | ----------------- | ----------------- | -------------------- |
+| `snake` (default) | `create_user.go`  | `user_service/`   | `auth_middleware.go` |
+| `kebab`           | `create-user.go`  | `user-service/`   | `auth-middleware.go` |
+| `camel`           | `createUser.go`   | `userService/`    | `authMiddleware.go`  |
 
 ```yaml
 output:
@@ -162,13 +182,14 @@ If `go.mod` is missing, `craftgo gen` fails with a clear error. Run `go mod init
 
 `application` - the default - generates both halves of the design: the contract half (payload types, the event library, the documents) and the application around it (transport handlers, routes, service stubs, middleware, wiring, config, `svccontext` and `main.go`).
 
-`contracts` generates only the half **other projects import** - the payload types, the event library and the documents - and stops there. Nothing under `output.transport`, `output.routes`, `output.service`, `output.middleware`, `output.wiring`, `output.config`, `output.svccontext` or `output.main` is written.
+`contracts` generates only the half **other projects import** - the payload types, the event library, the pb code of any proto, and the documents - and stops there. Nothing under `output.transport`, `output.routes`, `output.service`, `output.middleware`, `output.wiring`, `output.config`, `output.svccontext` or `output.main` is written.
 
 Its two defaults move out of `internal/`, because Go forbids importing that path across modules and being imported is the whole point of the project:
 
 | Key                     | `application`        | `contracts`     |
 | ----------------------- | -------------------- | --------------- |
 | `output.types`          | `./internal/types`   | `./gen/types`   |
+| `output.pb`             | `./internal/pb`      | `./gen/pb`      |
 | `events.targets[].out`  | `./internal/events`  | `./gen/events`  |
 
 ```yaml
@@ -191,7 +212,7 @@ Switching an existing project to `kind: contracts` leaves whatever it generated 
 
 Every file craftgo REGENERATES opens with a generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents. That header is the whole record: at the end of a run, craftgo walks the output directories the manifest names and **deletes every file carrying it that this run did not write**, then removes the directories that leaves empty. Nothing is stored on the side and nothing extra is committed.
 
-It covers every output the run regenerates, not just the event contracts: the transport handlers, the routes, `wiring.go`, `svccontext/middlewares.go`, the event library, the `output.types` folder of a DSL package that is gone, the OpenAPI document. Rename a service and its old files go with its name; delete an `event` and its descriptor goes with it. Nothing else could know: the design that dropped them no longer says what they were called.
+It covers every output the run regenerates, not just the event contracts: the transport handlers, the routes, `wiring.go`, `svccontext/middlewares.go`, the event library, the `output.types` folder of a DSL package that is gone, the OpenAPI document, the gRPC server packages and - by the plugins' own headers, under `output.pb` only - the pb code of a proto that is gone. Rename a service and its old files go with its name; delete an `event` and its descriptor goes with it. Nothing else could know: the design that dropped them no longer says what they were called.
 
 Three rules follow, and all three are load-bearing:
 
@@ -253,8 +274,10 @@ The semantic analyzer cross-checks every `@security(<name>)` reference against t
 
 Generated by `craftgo gen` on first run alongside `config.go`. Read by `main.go` via `config.Load()`. Default content:
 
+The blocks a project gets follow its design: `server:` and `docs:` are absent from a project whose design declares gRPC services and no HTTP route, and `grpc:` is present only when a proto declares a service. A project whose `main.go` is its own (`output.main: "-"` writes none) keeps every block, since what it serves is not the design's to know.
+
 ```yaml
-server:
+server:                # present when the design declares an HTTP route
   addr: ":8080"
   handlerTimeout: 0s
   maxBodySize: 0
@@ -263,6 +286,11 @@ server:
     enabled: false
     minSize: 0
     level: 0
+
+grpc:                  # present when a proto declares a service
+  addr: ":9000"
+  handlerTimeout: 0s
+  reflection: true
 
 logging:
   level: info
@@ -281,7 +309,7 @@ metrics:
   adminAddr: ":9090"
   path: /metrics
 
-docs:
+docs:                  # present when the design declares an HTTP route
   enabled: true
   ui: redoc
   path: /docs
@@ -289,6 +317,8 @@ docs:
 ```
 
 ### `server`
+
+Present when the design declares an HTTP route.
 
 | Key                          | Type      | Effect                                                                  |
 | ---------------------------- | --------- | ----------------------------------------------------------------------- |
@@ -301,6 +331,16 @@ docs:
 | `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |
 
 Compression is off by default. Turn it on only when not behind a compressing reverse proxy (Nginx, Envoy, CloudFront).
+
+### `grpc`
+
+Present when a proto declares a service; see [gRPC](/guide/grpc).
+
+| Key              | Type     | Meaning                                                                 |
+| ---------------- | -------- | ----------------------------------------------------------------------- |
+| `addr`           | string   | Listen address of the gRPC server. `":9000"`, `"127.0.0.1:9000"`, etc.   |
+| `handlerTimeout` | duration | Default deadline for unary RPCs, carried on the handler context; a shorter client deadline still wins. Streams are not bounded. `0s` = no default. |
+| `reflection`     | bool     | Serve `grpc.reflection` so `grpcurl` / `grpcui` work without the `.proto` files. Leave it off on a public listener. |
 
 ### `logging`
 
@@ -350,6 +390,8 @@ signals, so `otel.enabled: false` stops the spans while `http.server.*` keeps
 flowing as long as `metrics.enabled` is true.
 
 ### `docs`
+
+Present when the design declares an HTTP route: the docs page is served on the HTTP listener, and a project with no route starts none.
 
 | Key        | Effect                                                                 |
 | ---------- | ---------------------------------------------------------------------- |

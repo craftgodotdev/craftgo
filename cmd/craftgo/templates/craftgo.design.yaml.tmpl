@@ -35,12 +35,15 @@ output:
   types:      ./internal/types
   transport:  ./internal/transport
   routes:     ./internal/routes
-  wiring:     ./internal/wiring      # the one Register call main.go makes:
-                                     # every HTTP route the design declares.
-                                     # Regenerated each run, so main.go
-                                     # survives a design that gains or loses
-                                     # one.
-  service:    ./internal/service
+  wiring:     ./internal/wiring      # the Register calls main.go makes:
+                                     # wiring.go for every HTTP route the
+                                     # design declares, grpc.go for every
+                                     # proto service. Regenerated each run,
+                                     # so main.go survives a design that
+                                     # gains or loses one.
+  service:    ./internal/service     # logic scaffolds, HTTP and gRPC alike:
+                                     # one file per method / RPC, written
+                                     # once and never overwritten.
   middleware: ./internal/middleware
   svccontext: ./svccontext/svccontext.go
   openapi:    ./docs/openapi.yaml
@@ -54,6 +57,15 @@ output:
                                     # skips config/ and svccontext/, useful
                                     # for test fixtures that ship their own
                                     # boot wiring)
+  # pb:       ./internal/pb         # where protoc-gen-go + protoc-gen-go-grpc
+                                    # write the pb code of every .proto under
+                                    # the design folder (see the `proto:` block
+                                    # below). "-" runs no plugin - your own
+                                    # buf/protoc pipeline - and every proto
+                                    # then needs `option go_package`.
+  # grpc:     ./internal/grpc       # gRPC server layer: one package per proto
+                                    # service, one file per RPC, delegating to
+                                    # the logic scaffold. Regenerated each run.
   # fileCase: snake                 # case of GENERATED file/dir names derived
                                     # from identifiers: snake (default) ->
                                     # create_user.go / user_service/, or `kebab`
@@ -70,6 +82,22 @@ output:
 #   targets:
 #     - lang: go
 #       out: ./internal/events
+
+# gRPC. A `.proto` under the design folder IS the design: the folder is
+# the import root, and `craftgo gen` runs protoc-gen-go + protoc-gen-go-grpc
+# through `go tool` - pin them once with
+#   go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+#                google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+# Your own protos need no `option go_package` - output.pb places them.
+# The OpenAPI document describes the `.craftgo` half, so a design of protos
+# alone writes none and `openapi:` above is moot.
+# proto:
+#   includes: []                    # extra import roots (relative to the
+#                                   # project root) for protos you import
+#                                   # but do not own; each needs go_package.
+#   plugins:                        # explicit plugin commands instead of the
+#     go: protoc-gen-go             # `go tool` default (empty): a bare name is
+#     goGrpc: protoc-gen-go-grpc    # looked up on PATH, a path is run as given.
 
 # OpenAPI metadata flows into the generated openapi.yaml's info /
 # servers / components blocks.

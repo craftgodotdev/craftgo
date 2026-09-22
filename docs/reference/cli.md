@@ -17,7 +17,7 @@ After `init`, you write `.craftgo` files inside the design folder, then run `cra
 
 ## `craftgo gen [path]`
 
-Generates types, validators, handlers, routes, and an OpenAPI spec from `.craftgo` files.
+Generates types, validators, handlers, routes, and an OpenAPI spec from `.craftgo` files, and - from the `.proto` files in the same folder - the pb code, the gRPC server layer, its logic stubs and wiring. The protoc plugins run through `go tool`; pin them once with `go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest` (see [gRPC](/guide/grpc)).
 
 ```bash
 craftgo gen                       # walk up from cwd for craftgo.design.yaml
@@ -32,6 +32,7 @@ Flags:
 | ------------------------- | ------------------------------------------------------------------------------------- |
 | `-f`, `--folder <path>`   | Path to the folder holding `craftgo.design.yaml`. Skips the walk-up.                  |
 | `-c`, `--context <path>`  | Project root the `output.*` paths resolve against. Defaults to cwd when `-f` is given, otherwise to the parent of the manifest dir. |
+| `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. |
 | `-h`, `--help`            | Show help.                                                                            |
 
 Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.

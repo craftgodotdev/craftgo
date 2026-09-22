@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -394,5 +395,75 @@ func TestEventTargetOutMustStayInsideProject(t *testing.T) {
 	cfg := &Config{Events: Events{Targets: []EventTarget{{Lang: LangGo, Out: "../contracts"}}}}
 	if err := cfg.validate(); err == nil {
 		t.Error("events.targets out escaping the project was accepted")
+	}
+}
+
+func loadManifest(t *testing.T, body string) (*Config, error) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), Filename)
+	writeFile(t, path, body)
+	return Load(path)
+}
+
+func TestLoadProtoDefaults(t *testing.T) {
+	cfg, err := loadManifest(t, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output.PB != "./internal/pb" || cfg.Output.GRPC != "./internal/grpc" {
+		t.Errorf("pb = %q grpc = %q", cfg.Output.PB, cfg.Output.GRPC)
+	}
+	if cfg.Output.PBDisabled() {
+		t.Error("pb enabled by default")
+	}
+	if len(cfg.Proto.Includes) != 0 || cfg.Proto.Plugins != (Plugins{}) {
+		t.Errorf("proto = %+v", cfg.Proto)
+	}
+	contracts, err := loadManifest(t, "output:\n  kind: contracts\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contracts.Output.PB != "./gen/pb" {
+		t.Errorf("contracts pb = %q", contracts.Output.PB)
+	}
+}
+
+func TestLoadProtoBlock(t *testing.T) {
+	cfg, err := loadManifest(t, `output:
+  pb: "-"
+proto:
+  includes: [./third_party, ./vendor/protos]
+  plugins:
+    go: /opt/bin/protoc-gen-go
+    goGrpc: protoc-gen-go-grpc
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Output.PBDisabled() {
+		t.Error(`pb: "-" must disable the plugins`)
+	}
+	if got := cfg.Proto.Includes; len(got) != 2 || got[0] != "./third_party" {
+		t.Errorf("includes = %v", got)
+	}
+	if cfg.Proto.Plugins.Go != "/opt/bin/protoc-gen-go" || cfg.Proto.Plugins.GoGRPC != "protoc-gen-go-grpc" {
+		t.Errorf("plugins = %+v", cfg.Proto.Plugins)
+	}
+}
+
+func TestProtoKeysAreValidated(t *testing.T) {
+	cases := map[string]string{
+		`output:` + "\n  grpc: \"-\"\n":              `output.grpc cannot be "-"`,
+		`output:` + "\n  pb: ../elsewhere\n":         "output.pb",
+		`output:` + "\n  grpc: ./internal/types\n":   "output.types and output.grpc both write",
+		`output:` + "\n  pb: ./internal/transport\n": "output.transport and output.pb both write",
+		`proto:` + "\n  includes: [../shared]\n":     "proto.includes[0]",
+		`proto:` + "\n  includes: [\"\"]\n":          "proto.includes[0]: an include names a directory",
+	}
+	for body, want := range cases {
+		_, err := loadManifest(t, body)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
 	}
 }

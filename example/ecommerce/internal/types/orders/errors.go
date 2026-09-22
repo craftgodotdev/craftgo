@@ -46,12 +46,15 @@ func (e *ActionDeniedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *ActionDeniedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Forbidden category.
+// HTTPStatus returns the HTTP status code associated with the Forbidden
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *ActionDeniedErr) HTTPStatus() int { return 403 }
 
 // ErrCodeOrderNotFound is the canonical machine-readable code for OrderNotFoundErr.
@@ -84,12 +87,15 @@ func (e *OrderNotFoundErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *OrderNotFoundErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound category.
+// HTTPStatus returns the HTTP status code associated with the NotFound
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *OrderNotFoundErr) HTTPStatus() int { return 404 }
 
 // ErrCodePaymentFailed is the canonical machine-readable code for PaymentFailedErr.
@@ -133,10 +139,13 @@ func (e *PaymentFailedErr) Error() string { return e.message }
 // ErrCode returns the machine-readable error code bound to the type.
 // The transport layer reads this via an `interface{ ErrCode() string }`
 // assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`. The accessor is named
-// `ErrCode` (not `Code`) so it does not shadow a user-declared
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
 // `code <type>` field promoted from the embedded body struct.
 func (e *PaymentFailedErr) ErrCode() string { return e.code }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict category.
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
 func (e *PaymentFailedErr) HTTPStatus() int { return 409 }

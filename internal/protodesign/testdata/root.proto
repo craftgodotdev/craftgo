@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package root;
+
+// Rooter sits directly in the design root, so its pb package is output.pb itself.
+service Rooter {
+  rpc Do(Nothing) returns (Nothing);
+}
+
+message Nothing {}

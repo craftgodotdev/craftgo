@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -12,12 +13,15 @@ import (
 // pre-flight checks that reject a design before any file is written,
 // then per package the type artefacts (types, enums, errors,
 // validators), the middleware scaffolds, per package the service
-// artefacts (transport, service stubs, routes), and finally the
-// project-wide files (routes umbrella, runtime scaffolds, main.go).
+// artefacts (transport, service stubs, routes), per proto service the
+// gRPC server package and logic stubs, and finally the project-wide
+// files (routes umbrella, runtime scaffolds, main.go).
+//
+// protos is the compiled proto set, nil when the design holds none.
 //
 // The design is validated, and the event target and the OpenAPI
 // projection run, around it; see [codegen.Generate].
-func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	names := sortedPackageNames(proj)
 	resolvers := make(map[string]*projectResolver, len(names))
 	for _, name := range names {
@@ -31,6 +35,15 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) er
 			{"enums", func() error { return generateEnums(p, typesDir) }},
 			{"errors", func() error { return generateErrors(p, typesDir, r) }},
 			{"validators", func() error { return generateValidators(p, typesDir, r) }},
+		}); err != nil {
+			return err
+		}
+	}
+	// The pb code is a contract artefact, generated for every project
+	// kind; the plugins write nothing when output.pb is "-".
+	if protos != nil {
+		if err := runSteps("proto", []genStep{
+			{"pb", func() error { return protodesign.RunPlugins(protos, projectRoot) }},
 		}); err != nil {
 			return err
 		}
@@ -56,12 +69,21 @@ func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string) er
 			return err
 		}
 	}
+	if protos.HasServices() {
+		if err := runSteps("grpc", []genStep{
+			{"server", func() error { return generateGRPCServers(protos, cfg, projectRoot) }},
+			{"service", func() error { return generateGRPCServices(protos, cfg, projectRoot) }},
+		}); err != nil {
+			return err
+		}
+	}
 	return runSteps("", []genStep{
 		{"routes-umbrella", func() error { return generateProjectRoutesUmbrella(proj, cfg, projectRoot) }},
 		{"wiring", func() error { return generateWiring(proj, cfg, projectRoot) }},
-		{"config", func() error { return generateRuntimeConfig(cfg, projectRoot) }},
+		{"wiring-grpc", func() error { return generateWiringGRPC(protos, cfg, projectRoot) }},
+		{"config", func() error { return generateRuntimeConfig(proj, protos, cfg, projectRoot) }},
 		{"svccontext", func() error { return generateSvccontext(proj, cfg, projectRoot) }},
-		{"main", func() error { return generateProjectMain(proj, cfg, projectRoot) }},
+		{"main", func() error { return generateProjectMain(proj, protos, cfg, projectRoot) }},
 	})
 }
 

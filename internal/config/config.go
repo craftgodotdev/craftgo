@@ -38,6 +38,7 @@ type Config struct {
 	Output  Output  `yaml:"output"`
 	OpenAPI OpenAPI `yaml:"openapi"`
 	Events  Events  `yaml:"events"`
+	Proto   Proto   `yaml:"proto"`
 
 	// Package is the Go import path prefix every generated file uses
 	// for its imports - the equivalent of <module>/<relPathFromGoMod>
@@ -96,6 +97,18 @@ type Output struct {
 	// example.config.yaml). main.go reads from `<Config>/config.yaml`
 	// at boot. Defaults to `./config`.
 	Config string `yaml:"config"`
+	// PB is the directory the protobuf plugins (protoc-gen-go,
+	// protoc-gen-go-grpc) write into: `<PB>/<proto dir>/<name>.pb.go` for
+	// every `.proto` under the design folder. `-` runs no plugin - a team
+	// generating pb code through its own buf or protoc pipeline - and then
+	// every design proto must carry `option go_package`. Defaults to
+	// `./internal/pb`, or `./gen/pb` for a contracts project.
+	PB string `yaml:"pb"`
+	// GRPC is the directory holding the generated gRPC server layer: one
+	// package per proto service, the server struct and one file per RPC,
+	// each delegating to the logic scaffold under Service. Defaults to
+	// `./internal/grpc`.
+	GRPC string `yaml:"grpc"`
 	// FileCase selects the naming convention for GENERATED file and
 	// directory names derived from DSL identifiers - the per-method
 	// handler/service files and the per-service directory. `snake`
@@ -110,6 +123,30 @@ type Output struct {
 // RuntimeDisabled reports whether the project opted out of the generated
 // runtime layer (main.go, config, svccontext) with `output.main: "-"`.
 func (o Output) RuntimeDisabled() bool { return o.Main == "-" }
+
+// PBDisabled reports whether the project opted out of running the
+// protobuf plugins with `output.pb: "-"`.
+func (o Output) PBDisabled() bool { return o.PB == "-" }
+
+// Proto configures how the `.proto` files under the design folder are
+// compiled. The design folder is always the first import root, so a
+// proto imports a sibling by its path relative to that folder.
+type Proto struct {
+	// Includes lists extra import roots, relative to the project root, for
+	// protos the design imports but does not own. Each file found there
+	// must carry `option go_package`: its pb code is not generated here.
+	Includes []string `yaml:"includes"`
+	// Plugins names the plugin executables. Empty runs each one through
+	// `go tool <name>`, pinned by the `tool` directives in go.mod.
+	Plugins Plugins `yaml:"plugins"`
+}
+
+// Plugins names the two protobuf plugins. A value is a command: a bare
+// name is looked up on PATH, a path is run as given.
+type Plugins struct {
+	Go     string `yaml:"go"`
+	GoGRPC string `yaml:"goGrpc"`
+}
 
 // Supported values for [Output.FileCase]. They name the case used for
 // generated file and directory names (not URLs or Go identifiers).
@@ -482,8 +519,19 @@ func (c *Config) validate() error {
 		{"output.middleware", c.Output.Middleware},
 		{"output.config", c.Output.Config},
 		{"output.wiring", c.Output.Wiring},
+		{"output.pb", c.Output.PB},
+		{"output.grpc", c.Output.GRPC},
 	} {
 		if err := checkWithinProject(out.key, out.val); err != nil {
+			return err
+		}
+	}
+	for i, inc := range c.Proto.Includes {
+		key := fmt.Sprintf("proto.includes[%d]", i)
+		if inc == "" || inc == "-" {
+			return fmt.Errorf("%s: an include names a directory", key)
+		}
+		if err := checkWithinProject(key, inc); err != nil {
 			return err
 		}
 	}
@@ -564,6 +612,17 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Output.Wiring == "" {
 		c.Output.Wiring = "./internal/wiring"
+	}
+	if c.Output.PB == "" {
+		// The pb messages are contract types other projects import, so
+		// a contracts project keeps them outside internal/ like Types.
+		c.Output.PB = "./internal/pb"
+		if c.Output.ContractsOnly() {
+			c.Output.PB = "./gen/pb"
+		}
+	}
+	if c.Output.GRPC == "" {
+		c.Output.GRPC = "./internal/grpc"
 	}
 	if c.Output.FileCase == "" {
 		c.Output.FileCase = DefaultFileCase
@@ -665,8 +724,8 @@ func quotedList(names []string) string {
 // would write the files and the import would only fail later, at
 // `go build`, as `invalid path element ".."`.
 // checkOutputUsable rejects `-` on a key that has no disabled mode. Only
-// main.go, the documents and the event targets can be turned off; the rest
-// name a package other generated code imports.
+// main.go, the documents, the pb plugins and the event targets can be
+// turned off; the rest name a package other generated code imports.
 // ContractsOnly reports whether this project generates only the half other
 // projects import.
 func (o Output) ContractsOnly() bool { return o.Kind == KindContracts }
@@ -686,9 +745,10 @@ func (c *Config) checkOutputUsable() error {
 		{"output.svccontext", c.Output.Svccontext},
 		{"output.middleware", c.Output.Middleware},
 		{"output.config", c.Output.Config},
+		{"output.grpc", c.Output.GRPC},
 	} {
 		if out.val == "-" {
-			return fmt.Errorf(`%s cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi and the event targets`, out.key)
+			return fmt.Errorf(`%s cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`, out.key)
 		}
 	}
 	return nil
@@ -709,6 +769,8 @@ func (c *Config) checkOutputCollisions() error {
 		{"output.service", outputDir(c.Output.Service)},
 		{"output.middleware", outputDir(c.Output.Middleware)},
 		{"output.config", outputDir(c.Output.Config)},
+		{"output.pb", outputDir(c.Output.PB)},
+		{"output.grpc", outputDir(c.Output.GRPC)},
 		{"output.svccontext", outputFileDir(c.Output.Svccontext)},
 		{"output.main", outputFileDir(c.Output.Main)},
 	}

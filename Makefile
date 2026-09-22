@@ -4,7 +4,7 @@
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
 EXAMPLE_DIR  := example
-EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers
+EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc
 
 GO           ?= go
 GOFLAGS      ?=

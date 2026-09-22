@@ -58,8 +58,10 @@ func runInit(args []string) error {
 	fmt.Printf("craftgo: wrote %s\n", dest)
 	fmt.Println("next steps:")
 	fmt.Printf("  1. ensure `go.mod` exists at your project root (`go mod init <module>`)\n")
-	fmt.Printf("  2. add at least one .craftgo file in %s declaring `package X` (types, services)\n", target)
-	fmt.Printf("  3. run `craftgo gen -f %s` to generate types, handlers, routes, openapi\n", target)
+	fmt.Printf("  2. add at least one .craftgo file in %s declaring `package X` (types, services),\n", target)
+	fmt.Printf("     or a .proto declaring a gRPC service (then pin the plugins once with\n")
+	fmt.Printf("     `go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`)\n")
+	fmt.Printf("  3. run `craftgo gen -f %s` to generate types, handlers, routes, openapi, and the gRPC layer\n", target)
 	return nil
 }
 

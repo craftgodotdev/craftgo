@@ -126,6 +126,7 @@ Kafka transports ship in `pkg/events/nats` and `pkg/events/kafka`.
 - **Validation as code.** `@length`, `@format(email)`, `@gte`, `@pattern` and the rest compile to ordinary `if` statements.
 - **A real type system.** Scalars that inherit their validators, enums, generics such as `Page<User>`, cross-package composition, mixins, typed error categories.
 - **Editor support.** A language server with completion, hover, go-to-definition, diagnostics and formatting, plus a VS Code extension.
+- **gRPC from protobuf.** A `.proto` in the design folder is a gRPC design: craftgo runs the protoc plugins for the pb code and generates the same structure around it - server layer, logic stubs, wiring, config, main - on the same runtime.
 - **Safe to regenerate.** Your logic lives in stubs the CLI writes once and never overwrites.
 
 ## What gets generated
@@ -140,6 +141,10 @@ design/*.craftgo  --craftgo gen-->  internal/types/<package>/      structs and V
                                     config/                        config struct and example file
                                     docs/openapi.yaml              the OpenAPI document
                                     main.go                        entry point
+design/*.proto    --craftgo gen-->  internal/pb/<dir>/             protoc-gen-go + protoc-gen-go-grpc output
+                                    internal/grpc/<service>/       server layer, one file per RPC
+                                    internal/service/<service>/    your logic (written once)
+                                    internal/wiring/grpc.go        RegisterGRPC
 ```
 
 Every path is a manifest key, so any of them can move. A design with no service generates the contract half alone,

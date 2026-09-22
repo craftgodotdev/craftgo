@@ -66,6 +66,9 @@ type methodSignature struct {
 	// NeedsHTTP reports whether the stub mentions net/http types (any raw
 	// side) and therefore needs the import.
 	NeedsHTTP bool
+	// NeedsGRPC reports whether the stub mentions a grpc stream type and
+	// therefore needs the import.
+	NeedsGRPC bool
 }
 
 // buildSignature derives the stub signature for mode. reqRef / respRef

@@ -124,7 +124,7 @@ func TestCatalogueMatchesSupportedLangs(t *testing.T) {
 func TestEveryEnabledTargetWritesItsOwnOutput(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	dir := t.TempDir()
-	if err := Generate(proj, eventsConfig(), dir); err != nil {
+	if err := Generate(Inputs{Design: proj}, eventsConfig(), dir); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	for _, want := range []string{
@@ -144,7 +144,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	cfg := eventsConfig()
 	dir := t.TempDir()
-	if err := Generate(proj, cfg, dir); err != nil {
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
 		t.Fatalf("generate all: %v", err)
 	}
 	goFile := filepath.Join(dir, "internal", "events", "orders", "events.go")
@@ -155,7 +155,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 		}
 	}
 	// Regenerate only the documents; the Go output must survive.
-	if err := Generate(proj, cfg, dir, TargetDocs); err != nil {
+	if err := Generate(Inputs{Design: proj}, cfg, dir, TargetDocs); err != nil {
 		t.Fatalf("generate docs: %v", err)
 	}
 	if _, err := os.Stat(goFile); err != nil {
@@ -166,7 +166,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 // An unknown target name fails rather than silently generating less.
 func TestUnknownTargetIsRejected(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
-	err := Generate(proj, eventsConfig(), t.TempDir(), "rust")
+	err := Generate(Inputs{Design: proj}, eventsConfig(), t.TempDir(), "rust")
 	if err == nil {
 		t.Fatal("expected an error for an unknown target")
 	}
@@ -181,7 +181,7 @@ func TestUnknownTargetIsRejected(t *testing.T) {
 func TestSelectableTargetsAreKnown(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	for _, name := range SelectableTargets() {
-		if err := Generate(proj, eventsConfig(), t.TempDir(), name); err != nil {
+		if err := Generate(Inputs{Design: proj}, eventsConfig(), t.TempDir(), name); err != nil {
 			t.Errorf("target %q is offered but does not run: %v", name, err)
 		}
 	}
@@ -225,7 +225,7 @@ func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), cfg, root), "output.kind is contracts")
+	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), nil, cfg, root), "output.kind is contracts")
 	if len(notes) != 1 || !strings.Contains(notes[0], cfg.Output.Transport) {
 		t.Errorf("leftover application output must be named: %v", notes)
 	}
@@ -243,8 +243,8 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	cfg.Output.Main = "-"
 	proj := analyzeProject(t, alphaSrc)
 
-	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "yours to write"); len(notes) != 1 {
-		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, cfg, root))
+	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 1 {
+		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, nil, cfg, root))
 	}
 
 	// Once the project supplies one, the note goes.
@@ -255,7 +255,7 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("package svccontext\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if notes := notesMatching(golang.EventOutputNotes(proj, cfg, root), "yours to write"); len(notes) != 0 {
+	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 0 {
 		t.Errorf("a hand-written container must silence it: %v", notes)
 	}
 }

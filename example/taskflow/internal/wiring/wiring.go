@@ -13,11 +13,10 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// Register attaches the design to srv: every HTTP route it declares. The
+// Register attaches every HTTP route the design declares to srv. The
 // body varies with the design; this signature does not, so main.go -
-// written once - never needs editing.
-//
-// The returned shutdown runs beside srv.Stop.
+// written once - never needs editing. main.go calls it while the design
+// has a route, and the returned shutdown then runs beside srv.Stop.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	routes.RegisterAll(srv, svcCtx)
 	// An HTTP middleware the design applies but nothing wired is skipped

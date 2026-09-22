@@ -1,6 +1,7 @@
 # Local runtime configuration. See example.config.yaml for the full
 # field documentation. This file typically belongs in .gitignore - commit
 # example.config.yaml as the documented reference instead.
+{{- if .HasHTTP}}
 
 server:
   addr: ":8080"
@@ -11,6 +12,14 @@ server:
     enabled: false
     minSize: 0
     level: 0
+{{- end}}
+{{- if .HasGRPC}}
+
+grpc:
+  addr: ":9000"
+  handlerTimeout: 0s
+  reflection: true
+{{- end}}
 
 logging:
   level: info
@@ -29,8 +38,11 @@ metrics:
   adminAddr: ":9090"
   path: /metrics
 
+{{- if .HasHTTP}}
+
 docs:
   enabled: true
   ui: redoc
   path: /docs
   specPath: /openapi.yaml
+{{- end}}

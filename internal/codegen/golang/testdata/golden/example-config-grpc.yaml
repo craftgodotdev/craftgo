@@ -1,0 +1,49 @@
+# Project runtime configuration - read by main.go at boot via
+# config.Load(). Copy this file to `config.yaml`, edit the values for
+# your environment, and commit the example only (the live file
+# typically lives in `.gitignore` or is rendered from secrets/CI).
+#
+# This file is the single source of truth: per-environment overrides
+# go in `config.yaml` itself (one file per env, mounted by the
+# deployer). No environment variables are read.
+# gRPC listener. The stats handler emits the spans and
+# rpc.server.call.duration against the telemetry stack configured below.
+# handlerTimeout bounds unary calls only; streams are not bounded.
+grpc:
+  addr: ":9000"               # bind address; "127.0.0.1:9000" for localhost-only
+  handlerTimeout: 0s          # default deadline for unary RPCs; 0 = no cap
+  reflection: true            # serve grpc.reflection for grpcurl/grpcui; off on public listeners
+
+# Process-wide logger. main.go feeds level to log.SetLevel, which retunes
+# the server and the generated logic layer together. Format (JSON vs
+# console) is chosen in main.go, not here.
+logging:
+  level: info                 # debug | info | warn | error; unknown → info
+
+# Identity of this process, shared by both telemetry signals as the
+# `service.name` resource attribute. Backends key on it to tell one
+# service's traces and metrics from another's. Each signal can override it
+# below, but only do that to report under a different name on purpose.
+serviceName: app
+
+# Distributed tracing via OpenTelemetry. Note that the HTTP middleware
+# emits BOTH signals from one wrapper, so `enabled: false` here stops the
+# SPANS, not the http.server.* metrics - those follow metrics.enabled.
+otel:
+  enabled: true               # false → no spans, no traceparent header
+  exporter: none              # none | stdout | otlp_grpc | otlp_http
+  endpoint: ""                # OTLP collector address; ignored for none/stdout
+                              # gRPC example: "otel-collector.observability:4317"
+                              # HTTP example: "http://collector:4318"
+  serviceName: ""             # overrides the top-level serviceName for spans
+
+# Metrics: OpenTelemetry meter + admin scrape listener.
+metrics:
+  enabled: true               # false → meter stays no-op; no admin listener
+  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none
+  endpoint: ""                # OTLP collector address; ignored for prometheus/none
+                              # gRPC example: "otel-collector.observability:4317"
+                              # HTTP example: "http://collector:4318"
+  serviceName: ""             # overrides the top-level serviceName for metrics
+  adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
+  path: /metrics              # route the scrape is exposed on (prometheus only)

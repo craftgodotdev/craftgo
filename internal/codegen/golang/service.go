@@ -2,7 +2,6 @@ package golang
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -27,9 +26,12 @@ type serviceData struct {
 	ResponseType     string
 	ResponsePkgAlias string
 	Doc              []string
-	HasRequest       bool
-	HasResponse      bool
-	NeedsTypes       bool
+	// Notes follow Doc as comment lines on the entry point: the usage
+	// hint of a streaming RPC. Empty for HTTP.
+	Notes       []string
+	HasRequest  bool
+	HasResponse bool
+	NeedsTypes  bool
 	// RawRequest / RawResponse report which transport sides logic owns
 	// (see wire.RawSides); IsPassthrough is both at once and only selects
 	// the stub's doc text. Sig is the declaration's parameter and result
@@ -49,6 +51,9 @@ type serviceData struct {
 	// or response types. Empty when both live in the service's own
 	// package.
 	ExtraTypesImports []extraImport
+	// PBImports lists the pb packages a gRPC scaffold's request and
+	// response types come from. Empty for HTTP.
+	PBImports []extraImport
 }
 
 // generateService scaffolds one `<method>.go` per method per service
@@ -76,25 +81,12 @@ func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 // service, skipping any that already exist on disk.
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg crossPkg) error {
 	groups := methodGroups(svc)
-	t := tmpl("service.tmpl")
 	for _, m := range svc.Methods {
 		group := groups[m.Name]
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
 		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group, cfg.Output.FileCase)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
 		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
-		fullPath := filepath.Join(dir, filename)
-		if _, err := os.Stat(fullPath); err == nil {
-			continue
-		}
-		data := buildServiceData(pkg.Name, svcName, m, imps, crossPkg)
-		formatted, err := renderGo(t, data)
-		if err != nil {
-			return fmt.Errorf("render %s: %w", filename, err)
-		}
-		if err := os.WriteFile(fullPath, formatted, 0o644); err != nil {
+		if err := writeScaffoldOnce(filepath.Join(dir, filename), "service.tmpl", buildServiceData(pkg.Name, svcName, m, imps, crossPkg)); err != nil {
 			return err
 		}
 	}

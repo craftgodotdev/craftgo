@@ -29,8 +29,17 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
+
+// Inputs is what a pass generates from: the analysed design, and the
+// compiled proto set when the design folder holds any `.proto` - nil
+// otherwise.
+type Inputs struct {
+	Design *semantic.Project
+	Protos *protodesign.Set
+}
 
 // LangTarget generates the event artefacts for one language.
 type LangTarget struct {
@@ -41,7 +50,7 @@ type LangTarget struct {
 	Generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
 	// OutputNotes reports what the target found in its output and could
 	// not account for.
-	OutputNotes func(proj *semantic.Project, cfg *config.Config, projectRoot string) []string
+	OutputNotes func(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string
 }
 
 // LangTargets is the closed set of supported languages. It must match
@@ -61,43 +70,43 @@ func SelectableTargets() []string {
 	return append(append([]string{}, config.SupportedLangs...), TargetDocs)
 }
 
-// Generate runs a whole generation pass for proj under projectRoot: the
+// Generate runs a whole generation pass for in under projectRoot: the
 // Go pipeline, then every configured event language target, then the
 // OpenAPI projection.
 //
 // targets narrows the run to the named ones; empty runs everything. A
 // target that does not run also does not sweep, so a narrowed pass never
 // deletes another target's output.
-func Generate(proj *semantic.Project, cfg *config.Config, projectRoot string, targets ...string) error {
+func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...string) error {
 	sel, err := selection(targets)
 	if err != nil {
 		return err
 	}
 	// The design is validated whatever is being generated: a design that
 	// cannot produce a correct document is not one to emit code from.
-	if err := validate(proj, cfg); err != nil {
+	if err := validate(in, cfg); err != nil {
 		return err
 	}
-	if err := emit(proj, cfg, projectRoot, sel); err != nil {
+	if err := emit(in, cfg, projectRoot, sel); err != nil {
 		return err
 	}
-	return prune(outputDirs(cfg, projectRoot, sel), regeneratedFiles(proj, cfg, projectRoot))
+	return prune(outputDirs(cfg, projectRoot, sel), regeneratedFiles(in, cfg, projectRoot))
 }
 
 // emit runs the selected targets in order. It is the writing half of a
 // pass; the sweep that follows is what makes what it wrote the whole of
 // what the output directories hold.
-func emit(proj *semantic.Project, cfg *config.Config, projectRoot string, sel map[string]bool) error {
+func emit(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) error {
 	if sel[config.LangGo] {
-		if err := golang.Generate(proj, cfg, projectRoot); err != nil {
+		if err := golang.Generate(in.Design, in.Protos, cfg, projectRoot); err != nil {
 			return err
 		}
 	}
-	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
+	if err := generateEventTargets(in.Design, cfg, projectRoot, sel); err != nil {
 		return err
 	}
 	if sel[TargetDocs] {
-		if err := GenerateDocuments(proj, cfg, projectRoot); err != nil {
+		if err := GenerateDocuments(in.Design, cfg, projectRoot); err != nil {
 			return err
 		}
 	}
@@ -125,13 +134,17 @@ func selection(targets []string) (map[string]bool, error) {
 }
 
 // validate runs the checks that must reject a design before any file is
-// written: malformed security schemes, and operationId / component-schema
-// name collisions.
-func validate(proj *semantic.Project, cfg *config.Config) error {
+// written: malformed security schemes, operationId / component-schema
+// name collisions, and a proto service sharing its output directory
+// with a DSL service.
+func validate(in Inputs, cfg *config.Config) error {
 	if errs := docs.ValidateSecuritySchemes(cfg); len(errs) > 0 {
 		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
 	}
-	return docs.ValidateOpenAPI(proj, cfg)
+	if err := docs.ValidateOpenAPI(in.Design, cfg); err != nil {
+		return err
+	}
+	return golang.ValidateProtoOutputs(in.Design, in.Protos, cfg)
 }
 
 // GenerateDocuments writes the OpenAPI projection, a pure function of the
@@ -150,7 +163,7 @@ func GenerateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoo
 	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
 		return err
 	}
-	return prune(eventOutputDirs(cfg, projectRoot, sel), regeneratedFiles(proj, cfg, projectRoot))
+	return prune(eventOutputDirs(cfg, projectRoot, sel), regeneratedFiles(Inputs{Design: proj}, cfg, projectRoot))
 }
 
 // generateEventTargets is [GenerateEventTargets] narrowed to a selection.
@@ -176,13 +189,13 @@ func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoo
 
 // OutputNotes reports what every enabled target found in its output and
 // could not account for.
-func OutputNotes(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
+func OutputNotes(in Inputs, cfg *config.Config, projectRoot string) []string {
 	var out []string
 	for _, target := range LangTargets {
 		if target.OutputNotes == nil {
 			continue
 		}
-		out = append(out, target.OutputNotes(proj, cfg, projectRoot)...)
+		out = append(out, target.OutputNotes(in.Design, in.Protos, cfg, projectRoot)...)
 	}
 	return out
 }

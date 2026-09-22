@@ -4,9 +4,20 @@
 // single source of truth. Traces and metrics are set up together by
 // [telemetry.Init], which keeps the exporter selection (none / stdout /
 // otlp_grpc / otlp_http / prometheus) next to the SDK rather than inline
+{{- if and .HasRoutes .HasGRPC}}
+// here, and gives both signals one `serviceName`, one HTTP wrapper, one
+// gRPC handler and one Shutdown. The only knob exposed to the deployer
+// is `config.yaml` (see config/example.config.yaml for the full field
+// reference).
+{{- else if .HasGRPC}}
+// here, and gives both signals one `serviceName`, one gRPC handler and
+// one Shutdown. The only knob exposed to the deployer is `config.yaml`
+// (see config/example.config.yaml for the full field reference).
+{{- else}}
 // here, and gives both signals one `serviceName`, one HTTP wrapper and
 // one Shutdown. The only knob exposed to the deployer is `config.yaml`
 // (see config/example.config.yaml for the full field reference).
+{{- end}}
 
 package main
 
@@ -15,14 +26,21 @@ import (
 {{- if .HasDocs}}
 	_ "embed"
 {{- end}}
+{{- if .HasRoutes}}
 	"net/http"
+{{- end}}
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+{{- if .HasGRPC}}
+	"github.com/craftgodotdev/craftgo/pkg/rpc"
+{{- end}}
+{{- if .HasRoutes}}
 	"github.com/craftgodotdev/craftgo/pkg/server"
+{{- end}}
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 
 	"{{.ConfigImport}}"
@@ -55,8 +73,17 @@ func main() {
 	}
 
 	ctx := context.Background()
+{{- if and .HasRoutes .HasGRPC}}
+
+	// Both signals share `serviceName`, one HTTP wrapper, one gRPC handler
+	// and one Shutdown.
+{{- else if .HasGRPC}}
+
+	// Both signals share `serviceName`, one gRPC handler and one Shutdown.
+{{- else}}
 
 	// Both signals share `serviceName`, one HTTP wrapper and one Shutdown.
+{{- end}}
 	tel, err := telemetry.Init(ctx, cfg.Config)
 	if err != nil {
 		log.Default().Error("init telemetry", log.Err(err))
@@ -83,6 +110,7 @@ func main() {
 	svc.{{.}} = middleware.New{{.}}Middleware()
 {{- end}}
 {{- end}}
+{{- if .HasRoutes}}
 
 	// Build the Server and attach runtime globals via Use. Order
 	// matters: OTel opens the span first so AccessLog sees the trace
@@ -112,10 +140,10 @@ func main() {
 	}
 
 
-	// One call attaches the whole design: every HTTP route it declares.
-	// The wiring package is regenerated on each `craftgo gen`, so this
-	// line stays put when the design gains or loses one. The returned
-	// shutdown runs beside srv.Stop below.
+	// One call attaches every HTTP route the design declares. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays
+	// put when the design gains or loses one. The returned shutdown runs
+	// beside srv.Stop below.
 	shutdownWiring, err := wiring.Register(ctx, srv, svc)
 	if err != nil {
 		log.Default().Error("wire services", log.Err(err))
@@ -134,6 +162,35 @@ func main() {
 		})
 	}
 {{- end}}
+{{- end}}
+{{- if .HasGRPC}}
+
+	// The gRPC listener's guards, outermost first. The OTel stats handler
+	// opens the span in the transport, ahead of every interceptor, so
+	// AccessLog sees the trace ids on ctx, and the same handler records
+	// `rpc.server.call.duration` against the configured MeterProvider.
+	// Recovery wraps every interceptor. Errors are mapped onto status
+	// codes where the generated server layer returns them (rpc.Error).
+	grpcSrv := rpc.New(svc,
+		rpc.WithStatsHandler(tel.GRPCServerHandler()),
+		rpc.WithReflection(cfg.GRPC.Reflection),
+	)
+	grpcSrv.Use(rpc.AccessLog(grpcSrv.Logger()))
+	// The default deadline for unary calls; a shorter client deadline
+	// still wins, and streams are not bounded.
+	grpcSrv.Use(rpc.Timeout(cfg.GRPC.HandlerTimeout))
+
+	// One call attaches every gRPC service the protos declare. The wiring
+	// package is regenerated on each `craftgo gen`, so this line stays put
+	// when the design gains or loses one. The returned shutdown runs
+	// beside grpcSrv.Stop below.
+	shutdownGRPC, err := wiring.RegisterGRPC(ctx, grpcSrv, svc)
+	if err != nil {
+		log.Default().Error("wire grpc services", log.Err(err))
+		os.Exit(1)
+	}
+{{- end}}
+{{- if .HasRoutes}}
 
 	go func() {
 		log.Default().Info("listening", log.String("addr", cfg.Server.Addr))
@@ -142,6 +199,17 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+{{- end}}
+{{- if .HasGRPC}}
+
+	go func() {
+		log.Default().Info("grpc listening", log.String("addr", cfg.GRPC.Addr))
+		if err := grpcSrv.Start(cfg.GRPC.Addr); err != nil {
+			log.Default().Error("grpc server start", log.Err(err))
+			os.Exit(1)
+		}
+	}()
+{{- end}}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -149,10 +217,18 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+{{- if .HasRoutes}}
 	_ = srv.Stop(shutdownCtx)
 	// Whatever Register attached is released within the same budget the
 	// HTTP drain uses.
 	_ = shutdownWiring(shutdownCtx)
+{{- end}}
+{{- if .HasGRPC}}
+	// In-flight RPCs finish within the same budget; whatever is still
+	// running when it runs out is cut off.
+	_ = grpcSrv.Stop(shutdownCtx)
+	_ = shutdownGRPC(shutdownCtx)
+{{- end}}
 	// Closes the scrape listener and drains any pending OTLP push batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))

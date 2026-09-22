@@ -148,13 +148,13 @@ func TestWiringNoteWhenMainImportsAnotherWiringPackage(t *testing.T) {
 				t.Fatal(err)
 			}
 			var got bool
-			for _, note := range EventOutputNotes(proj, cfg, dir) {
+			for _, note := range EventOutputNotes(proj, nil, cfg, dir) {
 				if strings.Contains(note, "imports a wiring package other than") {
 					got = true
 				}
 			}
 			if got != c.want {
-				t.Errorf("stale-wiring note = %v, want %v (notes: %v)", got, c.want, EventOutputNotes(proj, cfg, dir))
+				t.Errorf("stale-wiring note = %v, want %v (notes: %v)", got, c.want, EventOutputNotes(proj, nil, cfg, dir))
 			}
 		})
 	}
