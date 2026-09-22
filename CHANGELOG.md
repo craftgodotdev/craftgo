@@ -7,6 +7,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-22 [UTC+7]
+
 ### Added
 
 - **gRPC, designed in protobuf.** A `.proto` under the design folder is a
