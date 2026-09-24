@@ -15,6 +15,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   writes a JSON envelope into an event stream. The access log records the
   first final status written, the one the client receives.
 
+- **`Compress` survives a flush before any write.** A handler that flushes
+  before writing, as a server-sent-events stream does, gets a 200 head sent
+  uncompressed instead of a `WriteHeader(0)` panic and a 500.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

@@ -216,9 +216,12 @@ func (cw *compressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// Flush sends a still-buffered body uncompressed, or flushes the encoder, then flushes the
-// wrapped writer.
+// Flush sends the head, 200 unless a status was written, and a still-buffered body
+// uncompressed, or flushes the encoder, then flushes the wrapped writer.
 func (cw *compressWriter) Flush() {
+	if !cw.headerSet {
+		cw.WriteHeader(http.StatusOK)
+	}
 	if !cw.decided {
 		cw.commitPassthrough()
 	} else if cw.compress {

@@ -225,6 +225,29 @@ func TestCompressFlushBelowThresholdPassthrough(t *testing.T) {
 	}
 }
 
+// A Flush before any write sends a 200 head uncompressed, and the stream after it.
+func TestCompressFlushBeforeWrite(t *testing.T) {
+	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: hi\n\n"))
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !rec.Flushed {
+		t.Fatalf("status = %d, flushed = %v, want a flushed 200", rec.Code, rec.Flushed)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "" {
+		t.Errorf("Content-Encoding = %q, want none after an early flush", got)
+	}
+	if got := rec.Body.String(); got != "data: hi\n\n" {
+		t.Errorf("body = %q", got)
+	}
+}
+
 func TestCompressHEADBypasses(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

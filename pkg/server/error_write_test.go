@@ -132,23 +132,33 @@ func TestSetHandleUnknownError_Swaps(t *testing.T) {
 	}
 }
 
-// An error returned after a Flush is logged and leaves the flushed event stream alone.
+// An error returned after a Flush is logged and leaves the flushed event stream alone, with
+// or without Compress in the chain.
 func TestWriteErrorAfterFlushLeavesTheStream(t *testing.T) {
-	logs := observeLogs(t)
-	s := New(nil)
-	s.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.(http.Flusher).Flush()
-		WriteError(w, r, errors.New("subscribe failed"))
-	})
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/events", nil))
-	res := rec.Result()
-	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || rec.Body.Len() != 0 {
-		t.Errorf("flushed stream rewritten: status %d, Content-Type %q, body %q", res.StatusCode, res.Header.Get("Content-Type"), rec.Body.String())
-	}
-	if n := logs.FilterMessage("service error after response committed; not rewriting").Len(); n != 1 {
-		t.Errorf("want the error logged as after-commit once, got %d lines", n)
+	for name, compress := range map[string]bool{"plain": false, "compressed": true} {
+		t.Run(name, func(t *testing.T) {
+			logs := observeLogs(t)
+			s := New(nil)
+			if compress {
+				s.Use(Compress())
+			}
+			s.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.(http.Flusher).Flush()
+				WriteError(w, r, errors.New("subscribe failed"))
+			})
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/events", nil)
+			req.Header.Set("Accept-Encoding", "gzip")
+			s.Handler().ServeHTTP(rec, req)
+			res := rec.Result()
+			if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || rec.Body.Len() != 0 {
+				t.Errorf("flushed stream rewritten: status %d, Content-Type %q, body %q", res.StatusCode, res.Header.Get("Content-Type"), rec.Body.String())
+			}
+			if n := logs.FilterMessage("service error after response committed; not rewriting").Len(); n != 1 {
+				t.Errorf("want the error logged as after-commit once, got %d lines", n)
+			}
+		})
 	}
 }
 
