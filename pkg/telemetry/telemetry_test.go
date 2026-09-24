@@ -277,19 +277,43 @@ func TestOTLPHTTPTraceExporterHitsEndpoint(t *testing.T) {
 	}
 }
 
-// Init accepts a bare host:port and a full URL as an OTLP endpoint.
-func TestOTLPEndpointsAcceptHostPortAndURL(t *testing.T) {
-	for _, addr := range []string{"collector:4317", "http://collector:4317", "https://collector:4317"} {
-		for _, exporter := range []string{"otlp_grpc", "otlp_http"} {
-			tel, err := telemetry.Init(context.Background(), telemetry.Config{
-				OTel:    telemetry.OTelConfig{Enabled: exporter == "otlp_grpc", Exporter: exporter, Endpoint: addr},
-				Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: exporter, Endpoint: addr},
-			})
-			if err != nil {
-				t.Errorf("%s at %q: %v", exporter, addr, err)
+// Init accepts a bare host:port or a URL for otlp_grpc and an http or https URL for otlp_http.
+func TestOTLPEndpointForms(t *testing.T) {
+	for _, tc := range []struct{ exporter, addr string }{
+		{"otlp_grpc", "collector:4317"},
+		{"otlp_grpc", "http://collector:4317"},
+		{"otlp_grpc", "https://collector:4317"},
+		{"otlp_http", "http://collector:4318"},
+		{"otlp_http", "https://collector:4318/"},
+	} {
+		tel, err := telemetry.Init(context.Background(), telemetry.Config{
+			OTel:    telemetry.OTelConfig{Enabled: true, Exporter: tc.exporter, Endpoint: tc.addr},
+			Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: tc.exporter, Endpoint: tc.addr},
+		})
+		if err != nil {
+			t.Errorf("%s at %q: %v", tc.exporter, tc.addr, err)
+			continue
+		}
+		shortShutdown(t, tel)
+	}
+}
+
+// Init refuses an otlp_http endpoint that is not an http or https URL, for either signal.
+func TestOTLPHTTPEndpointMustBeAURL(t *testing.T) {
+	for _, addr := range []string{"collector:4318", "127.0.0.1:4318", "", "grpc://collector:4318", "http://"} {
+		for signal, c := range map[string]telemetry.Config{
+			"traces":  {OTel: telemetry.OTelConfig{Enabled: true, Exporter: "otlp_http", Endpoint: addr}},
+			"metrics": {Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "otlp_http", Endpoint: addr}},
+		} {
+			tel, err := telemetry.Init(context.Background(), c)
+			if err == nil {
+				shortShutdown(t, tel)
+				t.Errorf("%s: otlp_http endpoint %q accepted", signal, addr)
 				continue
 			}
-			shortShutdown(t, tel)
+			if !strings.Contains(err.Error(), "otlp_http endpoint") {
+				t.Errorf("%s: error %q does not name the endpoint", signal, err)
+			}
 		}
 	}
 }

@@ -36,8 +36,9 @@ type OTelConfig struct {
 	// Exporter is "stdout", "otlp_grpc" or "otlp_http"; any other value keeps
 	// spans in process, with valid ids for logs but no export.
 	Exporter string `yaml:"exporter"`
-	// Endpoint is the OTLP collector: a URL, whose scheme picks TLS, or for
-	// otlp_grpc also a bare host:port, dialled without TLS.
+	// Endpoint is the OTLP collector: an http:// or https:// URL, whose scheme
+	// picks TLS, or for otlp_grpc also a bare host:port, dialled without TLS.
+	// [Init] fails on any other otlp_http endpoint.
 	Endpoint string `yaml:"endpoint"`
 }
 

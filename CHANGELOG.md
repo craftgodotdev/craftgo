@@ -51,6 +51,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   registration and `Handler` read under, a data race when configuration ran
   on another goroutine.
 
+- **An `otlp_http` endpoint must be a URL.** `telemetry.Init` fails on an
+  `otlp_http` endpoint that is not an `http://` or `https://` URL. A bare
+  `host:port` was accepted, and the exporter then sent to `localhost:4318`
+  or nowhere; `otlp_grpc` still takes `host:port`.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

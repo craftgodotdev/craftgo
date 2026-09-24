@@ -370,10 +370,10 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 | `adminAddr`  | Listen address for `/metrics` scrape (prometheus only).                |
 | `path`       | URL path for the scrape (default `/metrics`).                          |
 
-For `otlp_grpc` / `otlp_http`, `endpoint` may be a bare `host:port` (plaintext)
-or a full URL whose scheme selects transport security - `http://…` (plaintext)
-or `https://…` (TLS). `exporter: none` installs a silent meter (no scrape, no
-push).
+For `otlp_grpc`, `endpoint` may be a bare `host:port` (plaintext) or a full URL
+whose scheme selects transport security - `http://…` (plaintext) or `https://…`
+(TLS). `otlp_http` takes the URL form only; `telemetry.Init` refuses anything
+else at startup. `exporter: none` installs a silent meter (no scrape, no push).
 
 ### Telemetry identity
 
