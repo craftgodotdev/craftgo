@@ -72,6 +72,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   error, as is a second path. The help text reads `craftgo fmt [-l] [-w]
   [path]`, and `craftgo fmt -h` exits 0.
 
+- **`craftgo fmt` checks a file outside every design folder on its own.** A
+  file beside a design folder was checked against that folder's project,
+  which does not hold it, so its semantic errors went unseen.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

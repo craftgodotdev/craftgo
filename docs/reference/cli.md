@@ -58,7 +58,7 @@ Flags go before the path; a flag after it, or a second path, is an error.
 
 Use `-l` in CI to fail when files are not formatted. Use the default in local pre-commit hooks.
 
-A file is formatted only when it has no errors, parse or semantic: a mistake the parser tolerates (a stray word read as a mixin, for example) must never be rearranged into something else. Such a file is reported on stderr with its diagnostics and left untouched, and the command exits 1. A file inside a project is checked with its whole project, so cross-package references resolve. A file whose formatted text would not parse, or would drop, duplicate or add a comment, is reported and left untouched the same way.
+A file is formatted only when it has no errors, parse or semantic: a mistake the parser tolerates (a stray word read as a mixin, for example) must never be rearranged into something else. Such a file is reported on stderr with its diagnostics and left untouched, and the command exits 1. A file inside a design folder is checked with its whole project, so cross-package references resolve; any other file is checked on its own. A file whose formatted text would not parse, or would drop, duplicate or add a comment, is reported and left untouched the same way.
 
 ## `craftgo version`
 

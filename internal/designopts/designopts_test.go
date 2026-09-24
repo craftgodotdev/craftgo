@@ -226,6 +226,46 @@ service S {
 	}
 }
 
+// ProjectOf finds the project whose design root holds a file, and none for a
+// file beside a design folder or outside any.
+func TestProjectOf(t *testing.T) {
+	root := tree(t, map[string]string{
+		"design/craftgo.design.yaml": "openapi:\n  title: Probe\n",
+		"design/app/app.craftgo":     "package app\n",
+		"stray.craftgo":              "package stray\n",
+	})
+	design := filepath.Join(root, "design")
+	cfg, got := ProjectOf(filepath.Join(design, "app", "app.craftgo"))
+	if got != design || cfg == nil || cfg.OpenAPI.Title != "Probe" {
+		t.Errorf("file under the design root: root %q, config %+v", got, cfg)
+	}
+	for _, path := range []string{filepath.Join(root, "stray.craftgo"), filepath.Join(t.TempDir(), "x.craftgo"), ""} {
+		if cfg, got := ProjectOf(path); got != "" || cfg != nil {
+			t.Errorf("ProjectOf(%q) = %+v, %q, want no project", path, cfg, got)
+		}
+	}
+}
+
+// FileErrors keeps the errors in the file and those tied to no file.
+func TestFileErrors(t *testing.T) {
+	at := func(file string, sev lexer.Severity, msg string) lexer.Diagnostic {
+		return lexer.Diagnostic{Pos: lexer.Position{Filename: file, Line: 1}, Severity: sev, Msg: msg}
+	}
+	diags := []lexer.Diagnostic{
+		at("a.craftgo", lexer.SeverityError, "in a"),
+		at("b.craftgo", lexer.SeverityError, "in b"),
+		at("a.craftgo", lexer.SeverityWarning, "warning in a"),
+		at("", lexer.SeverityError, "in no file"),
+	}
+	var got []string
+	for _, d := range FileErrors(diags, "a.craftgo") {
+		got = append(got, d.Msg)
+	}
+	if want := []string{"in a", "in no file"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("FileErrors = %q, want %q", got, want)
+	}
+}
+
 func hasCode(diags []lexer.Diagnostic, code string) bool {
 	for _, d := range diags {
 		if d.Code == code {

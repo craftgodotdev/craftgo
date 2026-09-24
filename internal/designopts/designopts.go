@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -144,4 +145,34 @@ func Analyze(srcs []Source, designRoot string, cfg *config.Config) (*semantic.Pr
 	parsed, diags := Parse(srcs)
 	proj, semDiags := semantic.AnalyzeProject(ASTs(parsed), For(designRoot, cfg))
 	return proj, parsed, append(diags, semDiags...)
+}
+
+// ProjectOf returns the manifest and design root of the project whose design
+// root holds path. Both are zero for an empty path and for a file no loadable
+// manifest's design root holds; such a file is analysed on its own.
+func ProjectOf(path string) (*config.Config, string) {
+	if path == "" {
+		return nil, ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, ""
+	}
+	cfg, _, root, err := config.Find(filepath.Dir(abs))
+	if err != nil || !strings.HasPrefix(abs, root+string(filepath.Separator)) {
+		return nil, ""
+	}
+	return cfg, root
+}
+
+// FileErrors returns the error diagnostics among diags that are in file or in
+// no file; a file with any is not formatted.
+func FileErrors(diags []lexer.Diagnostic, file string) []lexer.Diagnostic {
+	var out []lexer.Diagnostic
+	for _, d := range diags {
+		if d.IsError() && (d.Pos.Filename == file || d.Pos.Filename == "") {
+			out = append(out, d)
+		}
+	}
+	return out
 }

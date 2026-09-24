@@ -93,6 +93,24 @@ func TestRunFmtArguments(t *testing.T) {
 	}
 }
 
+// fmt analyses a file beside the design folder on its own, so its semantic
+// error blocks it.
+func TestRunFmtChecksAFileOutsideTheDesignRootAlone(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/app.craftgo", "package app\n\ntype A {\n\tx string\n}\n")
+	stray := "package stray\n\ntype B {  y   Missing }\n"
+	mustWrite(t, dir, "stray.craftgo", stray)
+	t.Chdir(dir)
+	err := runFmt([]string{"stray.craftgo"})
+	if err == nil || !strings.Contains(err.Error(), "1 file(s) left unformatted") {
+		t.Fatalf("err = %v, want the unformatted-file error", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "stray.craftgo")); string(got) != stray {
+		t.Errorf("file with errors was rewritten:\n%s", got)
+	}
+}
+
 // fmt honours the diagnostics of the formatter itself, here the parse errors of
 // a file beside the design folder that the project's analysis does not cover.
 func TestRunFmtRefusesWhatFormatReports(t *testing.T) {

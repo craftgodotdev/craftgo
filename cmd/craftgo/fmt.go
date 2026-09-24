@@ -8,13 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/format"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/parser"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // runFmt formats in place the design files under a path (default ".") or the
@@ -39,10 +36,7 @@ func runFmt(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no .craftgo files found under %q", path)
 	}
-	blocked, err := blockingDiagnostics(files)
-	if err != nil {
-		return err
-	}
+	projects := map[string][]lexer.Diagnostic{}
 	var changed []string
 	skipped := 0
 	for _, f := range files {
@@ -51,8 +45,10 @@ func runFmt(args []string) error {
 			return err
 		}
 		formatted, diags := format.Format(f, string(raw))
-		if blockers := blocked[f]; len(blockers) > 0 {
-			diags = blockers
+		if len(diags) == 0 {
+			if diags, err = analysisErrors(f, string(raw), projects); err != nil {
+				return err
+			}
 		}
 		if len(diags) > 0 {
 			skipped++
@@ -84,59 +80,29 @@ func runFmt(args []string) error {
 	return nil
 }
 
-// blockingDiagnostics returns, per file as given, the parser and analyser
-// errors that keep it from being formatted. A file in a project is analysed
-// with the whole project, any other file on its own.
-func blockingDiagnostics(files []string) (map[string][]lexer.Diagnostic, error) {
-	given := make(map[string]string, len(files))
-	absPaths := make([]string, len(files))
-	for i, f := range files {
-		abs, err := filepath.Abs(f)
+// analysisErrors returns the [designopts.FileErrors] of file, holding src, in
+// the analysis of its project, or of the file alone outside any project.
+// projects caches each project's diagnostics by design root.
+func analysisErrors(file, src string, projects map[string][]lexer.Diagnostic) ([]lexer.Diagnostic, error) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return nil, err
+	}
+	cfg, root := designopts.ProjectOf(abs)
+	if root == "" {
+		_, _, diags := designopts.Analyze([]designopts.Source{{Path: abs, Text: src}}, "", nil)
+		return designopts.FileErrors(diags, abs), nil
+	}
+	diags, ok := projects[root]
+	if !ok {
+		srcs, err := designopts.Load(root)
 		if err != nil {
 			return nil, err
 		}
-		given[abs] = f
-		absPaths[i] = abs
+		_, _, diags = designopts.Analyze(srcs, root, cfg)
+		projects[root] = diags
 	}
-	out := map[string][]lexer.Diagnostic{}
-	add := func(diags []lexer.Diagnostic, fallback string) {
-		for _, d := range diags {
-			key := d.Pos.Filename
-			if key == "" {
-				key = fallback
-			}
-			if f, ok := given[key]; ok && d.IsError() {
-				out[f] = append(out[f], d)
-			}
-		}
-	}
-	analysed := map[string]bool{}
-	for _, abs := range absPaths {
-		cfg, _, designDir, err := config.Find(filepath.Dir(abs))
-		if err != nil {
-			data, readErr := os.ReadFile(abs)
-			if readErr != nil {
-				continue
-			}
-			p := parser.New(abs, string(data))
-			file := p.Parse()
-			add(p.Diagnostics(), abs)
-			_, diags := semantic.Analyze([]*ast.File{file})
-			add(diags, abs)
-			continue
-		}
-		if analysed[designDir] {
-			continue
-		}
-		analysed[designDir] = true
-		srcs, err := designopts.Load(designDir)
-		if err != nil {
-			continue
-		}
-		_, _, diags := designopts.Analyze(srcs, designDir, cfg)
-		add(diags, abs)
-	}
-	return out, nil
+	return designopts.FileErrors(diags, abs), nil
 }
 
 // collectCraftgoFiles returns every design file under target, or target itself
