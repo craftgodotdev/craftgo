@@ -1,4 +1,3 @@
-// Per-declaration print methods + type-ref rendering.
 package format
 
 import (
@@ -36,10 +35,7 @@ func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 	p.nl()
 }
 
-// writeTrailing emits a `// note` after the just-written close brace
-// when the decl carries a trailing doc captured by the parser. The AST
-// holds []string for symmetry with Doc; multiple lines are joined with
-// a single space.
+// writeTrailing writes the trailing comment td after a closing brace.
 func (p *Printer) writeTrailing(td []string) {
 	if len(td) == 0 {
 		return
@@ -48,14 +44,8 @@ func (p *Printer) writeTrailing(td []string) {
 	p.write(strings.Join(td, " "))
 }
 
-// writeSourceTrailing emits the trailing `// comment` captured from the
-// source line, but ONLY when no decorator on the same line already
-// emitted it via its own TrailingDoc. The lexer attaches a line-trailing
-// comment to BOTH the last decorator's TrailingDoc AND the source line
-// map (p.trailing), so a decl that prints its decorators suppresses the
-// map copy here to keep the comment from being written twice. All three
-// decorated print sites (fields, enum values, scalars) route through
-// here.
+// writeSourceTrailing writes the trailing comment on line, unless a decorator on
+// that line already wrote it as its TrailingDoc (decoratorCarriesTrailing).
 func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
 	if decoratorCarriesTrailing {
 		return
@@ -66,16 +56,8 @@ func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
 	}
 }
 
-// printTypeBody prints a slice of TypeMember with column-aligned fields.
-// Mixins are printed un-aligned on their own lines. Doc lines that the
-// parser misattributed (i.e. trailing comments on the previous field's
-// source line) are filtered out and re-emitted as trailing comments on
-// the correct field - this avoids losing them and avoids printing them
-// in the wrong place.
-//
-// Blank-line grouping is preserved from the source: a member (or free
-// comment) separated from the previous one by one or more blank lines
-// keeps exactly one blank line in the output.
+// printTypeBody prints body with fields aligned in name and type columns,
+// keeping one blank line wherever the source had blank lines.
 func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	maxName, maxType := 0, 0
 	typeStr := make(map[*ast.Field]string, len(body))
@@ -85,13 +67,8 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 				maxName = n
 			}
 			ts := p.typeRefString(f.Type)
-			// Auto-fix: a field carrying `@default(...)` is conceptually
-			// optional - the default fires when the value is absent or null.
-			// If the author hasn't typed `?`, the formatter adds it on save so
-			// the source makes the optionality explicit. A `@path` field is
-			// exempt: a path segment is always present, so the semantic gate
-			// rejects an optional `@path`, and adding `?` would rewrite valid
-			// source into source `craftgo gen` refuses.
+			// @default makes a field optional, so its type gains `?`; a @path
+			// field is exempt because an optional @path is a semantic error.
 			if f.Type != nil && !f.Type.Optional && fieldHasDefault(f) && !ast.HasDecorator(f.Decorators, "path") {
 				ts += "?"
 			}
@@ -123,20 +100,16 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	}
 }
 
-// blankBetween emits a single blank line when the source had one or more
-// blank lines between a construct ending on line prevEnd and the next one
-// starting on line start. Collapses runs of blanks to one; never emits a
-// blank before the first member (prevEnd == 0) or when position info is
-// missing (hand-built ASTs carry zero positions).
+// blankBetween writes one blank line if the source had any between line prevEnd
+// and line start; a zero line (first member, or no position) writes none.
 func (p *Printer) blankBetween(prevEnd, start int) {
 	if prevEnd > 0 && start > prevEnd+1 {
 		p.nl()
 	}
 }
 
-// memberStartLine returns the first source line a member visually occupies:
-// its own line, adjusted upward for a leading decorator rendered above it
-// and for its doc block (always directly above the first token).
+// memberStartLine returns the first source line of a member: its first
+// decorator's line when that is above pos, less the doc lines.
 func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 	if len(decs) > 0 && decs[0].Pos.Line > 0 && decs[0].Pos.Line < pos {
 		pos = decs[0].Pos.Line
@@ -144,15 +117,10 @@ func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 	return pos - docLen
 }
 
-// fieldHasDefault reports whether f carries a `@default(...)` decorator.
-// The type-body printer uses it to auto-add `?` to the rendered type when
-// the author hasn't marked the field optional, since `@default` makes the
-// field optional (the default fires on an absent or null value).
 func fieldHasDefault(f *ast.Field) bool {
 	return f != nil && ast.HasDecorator(f.Decorators, "default")
 }
 
-// typeRefString renders a TypeRef to a string by reusing the printer.
 func (p *Printer) typeRefString(t *ast.TypeRef) string {
 	var buf bytes.Buffer
 	sub := &Printer{w: &buf}
@@ -160,9 +128,8 @@ func (p *Printer) typeRefString(t *ast.TypeRef) string {
 	return buf.String()
 }
 
-// alignedField prints a single Field padded to share columns with its
-// siblings. Decorators and the optional trailing comment follow the
-// padded type column.
+// alignedField prints f's doc, then f on one line padded to the maxName and
+// maxType columns.
 func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 	p.printFieldDoc(f)
 	p.indent()
@@ -176,9 +143,8 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 			if i > 0 {
 				p.write(" ")
 			}
-			// Render WITHOUT the inline trailing so a comment on a non-last
-			// decorator does not swallow the decorators that follow it on the
-			// collapsed line; collect it to re-emit at the end instead.
+			// Trailing comments move to the line end: mid-line, one would
+			// comment out the decorators after it.
 			p.decoratorCore(dec)
 			if dec.TrailingDoc != "" {
 				decTrailing = append(decTrailing, dec.TrailingDoc)
@@ -194,31 +160,12 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 	p.nl()
 }
 
-// printFieldDoc emits the field's leading doc comments, filtering out
-// any line the lexer actually picked up from the previous field's
-// trailing `//`. The lexer attaches every contiguous `//` block above
-// a token to that token's Doc - so when a field above ends with a
-// trailing comment AND the field below has its own leading block, the
-// trailing line ends up at the FRONT of the field-below's Doc. Without
-// this filter the trailing would be re-emitted as a leading comment on
-// the wrong field.
-//
-// The preceding field's printer pulls its trailing text from
-// p.trailing (built in [buildTrailingFromComments]), so dropping the
-// misattributed entry here does not lose information - it lands on
-// the correct field by way of the trailing map.
 func (p *Printer) printFieldDoc(f *ast.Field) {
 	p.printLeadingDoc(f.Doc, f.Pos.Line)
 }
 
-// printLeadingDoc emits a body member's leading doc comments (a field's or an
-// enum value's), filtering out any line the lexer misattributed from the
-// previous member's trailing `//`. The lexer attaches every contiguous `//`
-// block above a token to that token's Doc, so a trailing comment on the member
-// above lands at the FRONT of this member's Doc; those lines are re-emitted
-// from p.trailing on the correct member, so dropping them here loses nothing.
-// posLine is the member's source line; the Doc lines occupy the |Doc|-many
-// source lines immediately above it.
+// printLeadingDoc prints doc, dropping each line whose source line (assumed to
+// be directly above posLine) has a trailing comment.
 func (p *Printer) printLeadingDoc(doc []string, posLine int) {
 	if len(doc) == 0 {
 		return
@@ -365,9 +312,6 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	p.write(" {")
 	p.nl()
 	p.depth++
-	// Blank-line policy: preserve the source grouping when positions are
-	// known; hand-built ASTs (zero positions) keep the legacy one-blank-
-	// between-members shape.
 	printedAny := false
 	prevEnd := 0
 	for _, member := range d.Members {
@@ -390,10 +334,8 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	p.nl()
 }
 
-// serviceMemberGap emits the blank line between two service-body members.
-// With position info the source grouping wins (one or more blank source
-// lines → exactly one blank); without it (hand-built ASTs) every pair of
-// members keeps the legacy single blank separator.
+// serviceMemberGap separates service members as the source did, or by one
+// blank line when positions are missing.
 func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
 	if !printedAny {
 		return
@@ -405,8 +347,7 @@ func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
 	p.nl()
 }
 
-// endOrStart returns end, falling back to start for a hand-built AST that
-// carries no closing-brace position.
+// endOrStart returns end, or start when end is 0 (no closing-brace position).
 func endOrStart(end, start int) int {
 	if end == 0 {
 		return start
@@ -414,23 +355,17 @@ func endOrStart(end, start int) int {
 	return end
 }
 
-// memberClause is one `<keyword> <TypeRef>` line inside a service member
-// body. Keyword carries its own trailing padding so a method's request /
-// response pair stays column-aligned.
+// memberClause is one `<keyword> <type>` line of a method or event body;
+// keyword carries the padding that aligns the type column.
 type memberClause struct {
 	keyword string
 	line    int
 	ref     *ast.NamedTypeRef
-	// array prints the `[]` suffix an event payload may carry. A method
-	// clause never sets it - `request`/`response` refuse the suffix.
-	array bool
+	array   bool // an event payload's `[]` suffix
 }
 
-// memberBody prints the `{ ... }` of a service member: the clause lines
-// with free-floating body comments interleaved by source position, then
-// the closing brace and its trailing note. A body with nothing in it
-// renders as `{}` - the grammar always writes the braces, so round-trip
-// parity needs the empty literal.
+// memberBody prints a method or event body: clauses and free comments in
+// source order, then the closing brace; an empty body prints as `{}`.
 func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, trailing []string) {
 	if len(clauses) == 0 && len(comments) == 0 {
 		p.write(" {}")
@@ -560,11 +495,8 @@ func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
 	}
 }
 
-// declDecorators renders a vertical decorator block, one decorator per line.
-// keywordLine is the source line of the keyword that follows the chain (the
-// `type` / `service` / verb token); it lets the printer re-emit a comment
-// written between the last decorator and the keyword. Comments written between
-// two decorators are flushed just before the decorator they precede.
+// declDecorators prints decs one per line with the comments written inside the
+// chain; keywordLine is the source line of the keyword after the chain.
 func (p *Printer) declDecorators(decs []*ast.Decorator, keywordLine int) {
 	for _, d := range decs {
 		if block, ok := p.interDec[d.Pos.Line]; ok {

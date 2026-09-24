@@ -1,4 +1,3 @@
-// Decorator + expression printing for decorator argument trees.
 package format
 
 import (
@@ -15,20 +14,11 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 	}
 }
 
-// decoratorCore writes the `@name(args)` form WITHOUT the trailing
-// comment. A field's decorator chain collapses onto one line, so a
-// comment on a non-last decorator must land at the END of the line (it
-// would otherwise swallow the following decorators into comment text and
-// silently drop their constraints); alignedField renders via this and
-// emits the merged trailing itself.
+// decoratorCore writes `@name(args)` without d's trailing comment.
 func (p *Printer) decoratorCore(d *ast.Decorator) {
 	p.write("@")
 	name := d.Name
 	p.write(name)
-	// Canonical: emit parens only when there are real args. Empty
-	// `()` is stripped on save - both `@positive()` (Flag decorator
-	// authored with parens) and `@deprecated()` (no-arg form) round-
-	// trip to bare `@positive` / `@deprecated`.
 	if len(d.Args) > 0 {
 		p.write("(")
 		for i, a := range d.Args {
@@ -41,14 +31,8 @@ func (p *Printer) decoratorCore(d *ast.Decorator) {
 	}
 }
 
-// decoratorArgInContext renders a decorator argument with awareness
-// of the host decorator name + position index. The only context-
-// sensitive rewrite today is the string-to-ident canonicalisation
-// for `@format`: `@format("email")` is rewritten to `@format(email)`.
-// Rule - when the argument names a registered identifier (format
-// name, security scheme, ...), bare ident is canonical; free-form
-// values (regex, paths) stay quoted. Every other decorator falls
-// through to the generic [Printer.DecoratorArg] path unchanged.
+// decoratorArgInContext prints argument idx of decoratorName; a first positional
+// @format string spelled like an identifier prints bare (`@format(email)`).
 func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
 	if decoratorName == "format" && idx == 0 && !a.Named {
 		if s, ok := a.Value.(*ast.StringLit); ok && isPlainIdent(s.Value) {
@@ -59,11 +43,8 @@ func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.De
 	p.DecoratorArg(a)
 }
 
-// isPlainIdent reports whether s would parse as a bare identifier in
-// craftgo - leading letter / underscore, followed by letters / digits /
-// underscores. The string→ident format rewrite uses it as a guard so
-// strings with hyphens, dots, or spaces fall back to the quoted form
-// instead of producing an unparseable rewrite.
+// isPlainIdent reports whether s is spelled like an identifier; keywords such
+// as null and true also pass.
 func isPlainIdent(s string) bool {
 	if s == "" {
 		return false

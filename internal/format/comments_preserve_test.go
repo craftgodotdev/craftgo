@@ -1,6 +1,3 @@
-// Round-trip tests for comment placement and blank-line grouping: canonical
-// sources must format to themselves byte-for-byte, and messy blank runs must
-// collapse to the canonical single blank without moving any comment.
 package format
 
 import (
@@ -8,8 +5,7 @@ import (
 	"testing"
 )
 
-// formatExact runs Format and requires the output to equal want exactly,
-// then re-formats the output to prove idempotency.
+// formatExact requires Format(src) to equal want and to format to itself.
 func formatExact(t *testing.T, src, want string) {
 	t.Helper()
 	out, diags := Format("t.craftgo", src)
@@ -28,9 +24,8 @@ func formatExact(t *testing.T, src, want string) {
 	}
 }
 
-// TestFormatTypeBodyCommentPlacement pins the full comment vocabulary of a
-// type body in canonical form: attached docs, section dividers (attached and
-// blank-isolated), closing notes, and the blank-line grouping around them.
+// TestFormatTypeBodyCommentPlacement pins that a type body's docs, section
+// comments, closing note and blank lines format to themselves.
 func TestFormatTypeBodyCommentPlacement(t *testing.T) {
 	canonical := `package demo
 
@@ -61,12 +56,8 @@ type Order {
 	formatExact(t, canonical, canonical)
 }
 
-// TestFormatServiceBodyCommentPlacement pins comments inside service and
-// method bodies: section blocks between methods, comments above the
-// request/response lines, trailing notes on those lines, comments above a
-// method's closing brace, and a closing note attached to the service brace.
-// Before the parser-side FreeComment harvest these were dropped or moved to
-// the end of the file.
+// TestFormatServiceBodyCommentPlacement pins that comments in service and
+// method bodies, including trailing and closing-brace notes, format to themselves.
 func TestFormatServiceBodyCommentPlacement(t *testing.T) {
 	canonical := `package demo
 
@@ -105,8 +96,7 @@ service Things {
 	formatExact(t, canonical, canonical)
 }
 
-// TestFormatBlankRunsCollapse pins that runs of two or more blank lines
-// collapse to a single blank while zero-blank groupings stay tight.
+// TestFormatBlankRunsCollapse pins that a run of blank lines collapses to one.
 func TestFormatBlankRunsCollapse(t *testing.T) {
 	src := `package demo
 
@@ -134,9 +124,8 @@ type User {
 	formatExact(t, src, want)
 }
 
-// TestFormatNoBlankInsertedAfterBrace pins that a section comment sitting
-// directly under the opening brace stays there - the formatter must not
-// insert a blank line between `{` and the first member.
+// TestFormatNoBlankInsertedAfterBrace pins that a comment directly under an
+// opening brace gets no blank line above it.
 func TestFormatNoBlankInsertedAfterBrace(t *testing.T) {
 	canonical := `package demo
 
@@ -149,8 +138,8 @@ type User {
 	formatExact(t, canonical, canonical)
 }
 
-// TestFormatEmptyMethodTrailingNote pins the `// note` after an empty
-// method body literal, which the printer used to drop.
+// TestFormatEmptyMethodTrailingNote pins the trailing comment after an empty
+// method body `{}`.
 func TestFormatEmptyMethodTrailingNote(t *testing.T) {
 	canonical := `package demo
 
@@ -172,9 +161,8 @@ service Raw {
 	}
 }
 
-// TestFormatTopLevelBlocksKeepBlankSeparation pins that two file-scope
-// comment blocks separated by a blank line stay two blocks - the retired
-// loose-map merge used to fuse them with a bogus `//` line.
+// TestFormatTopLevelBlocksKeepBlankSeparation pins that two file-scope comment
+// blocks separated by a blank line stay two blocks.
 func TestFormatTopLevelBlocksKeepBlankSeparation(t *testing.T) {
 	canonical := `package demo
 
@@ -192,10 +180,8 @@ type User {
 	formatExact(t, canonical, canonical)
 }
 
-// TestFormatDetachedCommentAbovePackage pins a comment block separated from
-// the package line by a blank: it stays detached instead of being glued to
-// (and later absorbed as) the package doc. The old loose-map never flushed
-// blocks anchored to the package line, silently dropping them.
+// TestFormatDetachedCommentAbovePackage pins that a comment block separated
+// from the package line by a blank line stays detached from it.
 func TestFormatDetachedCommentAbovePackage(t *testing.T) {
 	canonical := `// file prologue, not the package doc
 
@@ -208,9 +194,8 @@ type User {
 	formatExact(t, canonical, canonical)
 }
 
-// TestFormatMethodGroupingPreserved pins that methods written back-to-back
-// stay tight while blank-separated methods keep one blank - the formatter
-// preserves the author's grouping instead of imposing one.
+// TestFormatMethodGroupingPreserved pins that adjacent methods stay adjacent
+// and blank-separated methods keep one blank line.
 func TestFormatMethodGroupingPreserved(t *testing.T) {
 	canonical := `package demo
 

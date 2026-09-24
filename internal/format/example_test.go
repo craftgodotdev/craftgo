@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-// TestFormatRealExamples runs the formatter against every .craftgo file in
-// the bundled example/ tree. It is a lightweight smoke test: each file must
-// (1) format without diagnostics, (2) be idempotent under reformat.
+// TestFormatRealExamples pins that every .craftgo file under example/ formats
+// without diagnostics and idempotently.
 func TestFormatRealExamples(t *testing.T) {
 	root, err := filepath.Abs("../../example")
 	if err != nil {

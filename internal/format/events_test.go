@@ -9,9 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// A file mixing a service with contracts must survive the format round
-// trip unchanged, with doc comments, decorators, body comments, trailing
-// notes and blank-line grouping all preserved.
+// A canonical file with an event and a service, comments included, formats to itself.
 func TestFormatServiceWithEventsIsStable(t *testing.T) {
 	src := `package orders
 
@@ -50,8 +48,7 @@ service OrderService {
 	}
 }
 
-// A compact one-line declaration is a documented feature; the formatter
-// expands it to canonical form exactly as it does for a method.
+// A one-line event declaration expands to canonical form.
 func TestFormatExpandsCompactEvent(t *testing.T) {
 	src := `package p
 event E { payload P }
@@ -65,9 +62,7 @@ event E { payload P }
 	}
 }
 
-// An array payload keeps its `[]`: the suffix lives on the clause, not on
-// the type reference the printer walks, so a missing case silently
-// rewrites the contract into one carrying a single object.
+// An event's array payload keeps its `[]` suffix.
 func TestFormatRoundTripsAnArrayPayload(t *testing.T) {
 	src := `package orders
 
@@ -92,10 +87,7 @@ event BatchPlaced {
 	}
 }
 
-// A contract declared outside a service is a top-level declaration; the
-// printer must round-trip it. A missing case in the decl switch drops the
-// declaration silently, which is the failure mode the formatter exists to
-// prevent.
+// A documented @contract event beside a service formats to itself.
 func TestFormatRoundTripsFileLevelEvent(t *testing.T) {
 	src := `package upstream
 
@@ -129,11 +121,7 @@ service LedgerService {
 	}
 }
 
-// Every declaration kind must reach a printer case. A missing case is
-// silent data loss - the declaration, or its inter-decorator comments,
-// vanish on `craftgo fmt` with no diagnostic. This walks the registry in
-// [ast.AllDeclKinds] so a new kind fails here rather than in a user's
-// editor.
+// Every declaration kind in [ast.AllDeclKinds] prints something.
 func TestEveryDeclKindPrints(t *testing.T) {
 	for _, d := range ast.AllDeclKinds() {
 		var buf bytes.Buffer
@@ -145,15 +133,8 @@ func TestEveryDeclKindPrints(t *testing.T) {
 	}
 }
 
-// The same registry guards the comment-chain walker: a declaration whose
-// decorators print as a vertical chain must be spanned, or every comment
-// written between them is dropped.
-//
-// ScalarDecl is the one exception and it is deliberate: it prints its
-// decorators inline (`scalar ID string @minLength(1)`), so there is no
-// chain to span. A comment interleaved with an inline decorator list has
-// nowhere to land in the canonical form and is lost - a separate,
-// pre-existing gap, not one this walker can close.
+// Every declaration kind but ScalarDecl, which prints its decorators inline,
+// has a decorator comment chain.
 func TestEveryDecoratedDeclKindHasACommentChain(t *testing.T) {
 	inlineDecorators := map[string]bool{"*ast.ScalarDecl": true}
 	dec := []*ast.Decorator{{Name: "doc", Pos: ast.Pos{Line: 1}}}
