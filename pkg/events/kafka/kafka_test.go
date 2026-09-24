@@ -11,9 +11,7 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// The ordering key becomes the record key, which is what puts one entity
-// in one partition, and the contract always travels in a header so a
-// topic carrying several contracts stays self-describing.
+// The ordering key becomes the record key and the contract a header.
 func TestEncodeCarriesContractAndKey(t *testing.T) {
 	tr := New([]string{"localhost:9092"})
 	rec := mustEncode(t, tr, &events.Message{
@@ -43,7 +41,7 @@ func TestEncodeCarriesContractAndKey(t *testing.T) {
 	}
 }
 
-// A round trip must preserve everything a consumer reads.
+// A round trip preserves everything a consumer reads.
 func TestDecodeRoundTrip(t *testing.T) {
 	tr := New(nil)
 	in := &events.Message{
@@ -65,10 +63,7 @@ func TestDecodeRoundTrip(t *testing.T) {
 	}
 }
 
-// A custom mapping reaches both the producer and the subscription.
-// Mapping two contracts onto one topic is not supported for consuming -
-// Subscribe refuses the second reader - but the mapping itself is one
-// function and both halves must read it.
+// WithTopic can map several contracts onto one topic.
 func TestTopicMappingCollapsesContracts(t *testing.T) {
 	tr := New(nil, WithTopic(func(string) string { return "orders" }))
 	if got := tr.topic("orders.OrderPlaced"); got != "orders" {
@@ -79,17 +74,12 @@ func TestTopicMappingCollapsesContracts(t *testing.T) {
 	}
 }
 
-// A default transport maps one contract to one topic.
 func TestDefaultTopicIsTheContract(t *testing.T) {
 	if got := New(nil).topic("orders.OrderPlaced"); got != "orders.OrderPlaced" {
 		t.Errorf("default topic = %q", got)
 	}
 }
 
-// THE LOSSY SHAPE: one group, one topic, two DIFFERENT contracts. The
-// readers would be two members dividing the topic, each skipping the
-// other's contract. Only a WithTopic mapping that collapses contracts can
-// reach it.
 func TestOneGroupCannotReadTwoContractsOnOneTopic(t *testing.T) {
 	tr := New(nil, WithTopic(func(string) string { return "orders" }))
 	if err := tr.claim("worker", tr.topic("orders.Placed"), "orders.Placed"); err != nil {
@@ -110,9 +100,6 @@ func TestOneGroupCannotReadTwoContractsOnOneTopic(t *testing.T) {
 	}
 }
 
-// THE BENIGN SHAPE: one group, one topic, the SAME contract twice -
-// ordinary replicas dividing the work, which is what the in-process
-// transport does with two identical subscriptions.
 func TestOneGroupMayRunReplicasOnOneContract(t *testing.T) {
 	tr := New(nil)
 	topic := tr.topic("orders.Placed")
@@ -123,8 +110,7 @@ func TestOneGroupMayRunReplicasOnOneContract(t *testing.T) {
 	}
 }
 
-// Different topics under one group are the feature and stay allowed, and
-// so is one topic read by two groups.
+// One group may read several topics, and two groups may read one topic.
 func TestOneGroupReadsSeveralTopics(t *testing.T) {
 	tr := New(nil)
 	for _, contract := range []string{"orders.Placed", "orders.Cancelled"} {
@@ -137,8 +123,6 @@ func TestOneGroupReadsSeveralTopics(t *testing.T) {
 	}
 }
 
-// A claim is held by every live reader, so one replica ending must not
-// free it while its siblings are still reading.
 func TestGroupClaimIsReleasedByTheLastReader(t *testing.T) {
 	tr := New(nil)
 	for i := 0; i < 2; i++ {
@@ -156,8 +140,6 @@ func TestGroupClaimIsReleasedByTheLastReader(t *testing.T) {
 	}
 }
 
-// Closing drops every claim, so a transport reused after Close starts
-// clean.
 func TestCloseReleasesGroupClaims(t *testing.T) {
 	tr := New(nil)
 	if err := tr.claim("worker", "orders", "orders.Placed"); err != nil {
@@ -171,7 +153,6 @@ func TestCloseReleasesGroupClaims(t *testing.T) {
 	}
 }
 
-// A caller's metadata rides a record header and comes back.
 func TestCallerMetadataRoundTripsThroughARecord(t *testing.T) {
 	tr := New(nil)
 	in := &events.Message{
@@ -190,10 +171,7 @@ func TestCallerMetadataRoundTripsThroughARecord(t *testing.T) {
 	}
 }
 
-// The contract and the key headers are this adapter's. A metadata entry
-// under one of their names must not be written a second time: decode
-// reads the last header of a name, so a duplicate would rename the
-// message or move it to another entity.
+// Metadata named like the contract or key header is not written again.
 func TestReservedHeadersAreNotForgedByMetadata(t *testing.T) {
 	tr := New(nil)
 	rec := mustEncode(t, tr, &events.Message{
@@ -222,10 +200,7 @@ func TestReservedHeadersAreNotForgedByMetadata(t *testing.T) {
 	}
 }
 
-// A message with no ordering key must reach the partitioner with a nil
-// Key. The default partitioner keys on `r.Key != nil`, so []byte("") is a
-// key as far as it is concerned and hashes every keyless record onto one
-// partition.
+// A keyless message's record key is nil, so the partitioner does not hash it.
 func TestAKeylessMessageCarriesANilKey(t *testing.T) {
 	tr := New([]string{"localhost:9092"})
 	rec := mustEncode(t, tr, &events.Message{Event: "shop.Placed", Payload: []byte(`{}`)})
@@ -238,8 +213,7 @@ func TestAKeylessMessageCarriesANilKey(t *testing.T) {
 	}
 }
 
-// mustEncode builds the Kafka record for msg, failing the test if this
-// adapter refuses it.
+// mustEncode returns tr's record for msg, failing the test on an error.
 func mustEncode(t *testing.T, tr *Transport, msg *events.Message) *kgo.Record {
 	t.Helper()
 	rec, err := tr.encode(msg)
@@ -249,7 +223,6 @@ func mustEncode(t *testing.T, tr *Transport, msg *events.Message) *kgo.Record {
 	return rec
 }
 
-// The timestamp option is this adapter's own, and reaches the record.
 func TestTheTimestampOptionSetsTheRecordTime(t *testing.T) {
 	tr := New(nil)
 	want := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
@@ -263,8 +236,6 @@ func TestTheTimestampOptionSetsTheRecordTime(t *testing.T) {
 	}
 }
 
-// The option key is this adapter's, so a value of the wrong type is a
-// mistake it must report rather than ignore.
 func TestATimestampOfTheWrongTypeFailsThePublish(t *testing.T) {
 	tr := New(nil)
 	_, err := tr.encode(&events.Message{
@@ -280,7 +251,6 @@ func TestATimestampOfTheWrongTypeFailsThePublish(t *testing.T) {
 	}
 }
 
-// An option addressed to another adapter is not this one's business.
 func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 	tr := New(nil)
 	rec := mustEncode(t, tr, &events.Message{
@@ -293,9 +263,7 @@ func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 	}
 }
 
-// What this transport can do with a delivery depends on the mode it was
-// built in, not on the type - which is why the capability is asked per
-// instance.
+// Only a share group can redeliver and reject; every mode settles.
 func TestCanDispositionFollowsTheMode(t *testing.T) {
 	classic := New(nil)
 	share := New(nil, WithShareGroup())
@@ -318,9 +286,7 @@ func TestCanDispositionFollowsTheMode(t *testing.T) {
 	}
 }
 
-// The cap bounds REDELIVERY, not delivery: a message that succeeds on the
-// last attempt is still taken as done. Rejecting it because it arrived
-// often would throw away the one delivery that worked.
+// The cap turns a Redeliver into a reject but never rejects a success.
 func TestMaxDeliveriesBoundsRedeliveryAndNotSuccess(t *testing.T) {
 	tr := New(nil, WithShareGroup(), WithMaxDeliveries(3))
 
@@ -353,10 +319,6 @@ func TestMaxDeliveriesBoundsRedeliveryAndNotSuccess(t *testing.T) {
 	}
 }
 
-// An unset disposition settles. A middleware that decided nothing is not
-// asking for the record back, and this is the line that stops a panicking
-// chain from redelivering for ever - the runtime clears the flag, and
-// cleared has to mean accept.
 func TestAnUnsetDispositionSettles(t *testing.T) {
 	tr := New(nil, WithShareGroup())
 	if got := tr.ackFor(&events.Message{}); got != kgo.AckAccept {
@@ -369,9 +331,7 @@ func TestAnUnsetDispositionSettles(t *testing.T) {
 	}
 }
 
-// Kafka used to DESTROY a deduplication ID: it never reached a record, so
-// a consumer could not recognise a repeat for itself either. Carrying it
-// is what makes "a transport without the notion ignores this" true.
+// The dedup ID travels in its own header and is not left in Metadata.
 func TestTheDeduplicationIDSurvivesARoundTrip(t *testing.T) {
 	tr := New(nil)
 	in := &events.Message{
@@ -397,15 +357,12 @@ func TestTheDeduplicationIDSurvivesARoundTrip(t *testing.T) {
 	if out.DedupID != "attempt-7" {
 		t.Errorf("round trip lost the dedup id: %q", out.DedupID)
 	}
-	// It is this adapter's header, not a caller value, so it must not
-	// come back as metadata too.
+	// It must not come back as metadata too.
 	if _, leaked := out.Metadata[HeaderDedupID]; leaked {
 		t.Errorf("the dedup header leaked into metadata: %v", out.Metadata)
 	}
 }
 
-// A message published without one carries no header at all, so a consumer
-// can tell "no identity given" from "this identity".
 func TestNoDeduplicationIDMeansNoHeader(t *testing.T) {
 	rec := mustEncode(t, New(nil), &events.Message{Event: "shop.Placed", Payload: []byte(`{}`)})
 	for _, h := range rec.Headers {
@@ -418,9 +375,6 @@ func TestNoDeduplicationIDMeansNoHeader(t *testing.T) {
 	}
 }
 
-// The header is this adapter's. A caller's metadata under that name must
-// not be written a second time, or decode would read the caller's value
-// as the message's deduplication identity.
 func TestTheDeduplicationHeaderCannotBeForgedByMetadata(t *testing.T) {
 	rec := mustEncode(t, New(nil), &events.Message{
 		Event:    "shop.Placed",
@@ -442,8 +396,7 @@ func TestTheDeduplicationHeaderCannotBeForgedByMetadata(t *testing.T) {
 	}
 }
 
-// And the runtime blocks it a layer earlier: the name is under
-// events.MetaPrefix, so a caller cannot even get it into Metadata.
+// The dedup header is under events.MetaPrefix, so WithHeader cannot set it.
 func TestTheDeduplicationHeaderNameIsReserved(t *testing.T) {
 	if !events.IsReservedMeta(HeaderDedupID) {
 		t.Errorf("%s is not reserved, so WithHeader could set it", HeaderDedupID)

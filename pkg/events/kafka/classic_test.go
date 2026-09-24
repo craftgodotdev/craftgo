@@ -11,10 +11,7 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// A classic consumer group keeps ONE offset per partition, so the group
-// commits past a record its handler failed on and no restart brings it
-// back. This is the behaviour a share group exists to replace, and it is
-// what makes classic mode at-most-once whatever a middleware returns.
+// A classic group commits past a failed record; a restart does not replay it.
 func TestAClassicGroupCommitsPastAFailedRecord(t *testing.T) {
 	const (
 		contract = "orders.Placed"
@@ -45,8 +42,7 @@ func TestAClassicGroupCommitsPastAFailedRecord(t *testing.T) {
 	cancel()
 	_ = first.Close()
 
-	// The same group again. Nothing comes back - not the failure, not
-	// the two that succeeded after it.
+	// The same group again: nothing comes back.
 	second := New(addrs)
 	defer func() { _ = second.Close() }()
 	back := newDeliveries()

@@ -12,10 +12,7 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// closeCounter records how many times each client was closed, through
-// franz-go's own hook rather than by watching for a crash - the two
-// closes need not overlap to be wrong, and counting does not depend on
-// whether they do.
+// closeCounter counts each client's closes through franz-go's hook.
 type closeCounter struct {
 	mu sync.Mutex
 	n  map[*kgo.Client]int
@@ -43,13 +40,7 @@ func (c *closeCounter) twice() int {
 	return n
 }
 
-// A consumer client has two closers - the read loop it belongs to, and
-// [Transport.Close] - and kgo.Client.Close has no guard of its own, so
-// closing twice runs one client's teardown against itself.
-//
-// This is the shutdown craftgo generates: wiring.Register's shutdown
-// cancels the delivery context, the registered transport close runs after
-// it, and nothing synchronises either against the read loops.
+// A consumer client is closed once whether ctx is cancelled or Close runs first.
 func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 	for _, order := range []string{"cancel first", "close first"} {
 		t.Run(order, func(t *testing.T) {
@@ -90,10 +81,6 @@ func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 	}
 }
 
-// A read loop whose own context is cancelled closes its client rather
-// than leaving it open until the transport goes. That is the exit
-// [Transport.Close] does not reach, so letting Close own every client
-// would leak this one.
 func TestASubscriptionCancelledOnItsOwnClosesItsClient(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_2_0())

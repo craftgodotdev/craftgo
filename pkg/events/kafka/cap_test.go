@@ -12,11 +12,7 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// When the cap overrides a redelivery the chain asked for, the record is
-// rejected and the chain never hears about it: the chain's own
-// dead-letter middleware sees a message on its way back, not one given
-// up, so it writes no record. The transport's error handler is the only
-// layer left that can say the record is gone.
+// The error handler hears when the cap turns a Redeliver into a reject.
 func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 	const (
 		contract = "orders.Placed"
