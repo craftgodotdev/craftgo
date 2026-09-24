@@ -1,4 +1,3 @@
-// Wiring umbrella: the one call main.go makes to attach the design.
 package golang
 
 import (
@@ -11,30 +10,23 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// wiringData is the template input for `wiring.tmpl`.
+// wiringData is the template input for wiring.tmpl.
 type wiringData struct {
 	RoutesImport     string
 	SvccontextImport string
 	HasRoutes        bool
-	// Guards is one startup check per HTTP middleware the design APPLIES.
-	// A declared-but-unapplied middleware is a dead wire the design layer
-	// already reports, so guarding it here would complain twice about one
-	// mistake.
+	// Guards has one startup check per middleware a method runs.
 	Guards []middlewareGuard
 }
 
-// middlewareGuard is one nil check in Register: the field main.go has to
-// assign, and the message naming the line that assigns it.
+// middlewareGuard is one nil check in Register and the error naming the assignment to add.
 type middlewareGuard struct {
 	Field     string
 	QuotedMsg string
 }
 
-// generateWiring writes the wiring package: one `Register` call attaching
-// every HTTP route the design declares.
-//
-// It is emitted for every project, including one declaring none, because
-// main.go is written once and calls it unconditionally.
+// generateWiring writes output.wiring/wiring.go, whose Register attaches every HTTP route. It is
+// written even for a design without routes, since a gen-once main.go may still call Register.
 func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	data := wiringData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
@@ -51,21 +43,9 @@ func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot stri
 	return writeRendered(dir, "wiring.go", "wiring.tmpl", data)
 }
 
-// middlewareGuards collects a startup check for every middleware a method
-// actually runs.
-//
-// The suggested line carries `/* args */` rather than `()`: the impl is a
-// gen-once scaffold whose parameters are the author's to change, so
-// naming a signature would be a guess. This is the spelling
-// middleware.tmpl's own wiring example uses.
-//
-// A nil entry is skipped by the chain rather than called, so without the
-// check a middleware the design states and main.go forgets is simply
-// absent at runtime: no error, no log line, and the guarantee the design
-// makes is not kept.
+// middlewareGuards returns a nil check for every middleware a method runs; the chain silently
+// skips a nil middleware.
 func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard {
-	// A `main: "-"` project has no generated main.go to point at: its
-	// container is built by hand, and that is where the assignment goes.
 	where := "in main.go"
 	if handWired {
 		where = "where you build the ServiceContext"

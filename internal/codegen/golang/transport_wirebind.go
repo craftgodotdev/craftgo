@@ -1,6 +1,3 @@
-// Wire-bind rendering: the per-source (query/header/cookie/path/form)
-// binding descriptors, the primitive parse table, and the Go-source
-// generator for one field's bind line.
 package golang
 
 import (
@@ -16,9 +13,9 @@ import (
 )
 
 type queryPrim struct {
-	parser string // strconv.ParseX function or "" for direct string
-	goType string // type-argument for the bind helper ("int", "float64", ...) or "" for bool/string
-	label  string // human-readable kind for error messages
+	parser string // strconv.ParseX function, "" for a string
+	goType string // bind helper type argument ("int", "float64", ...), "" for bool and string
+	label  string // kind named in a parse error
 }
 
 // wirePrim returns the binder metadata for a wire-parseable primitive.
@@ -43,34 +40,17 @@ func wirePrim(name string) (queryPrim, bool) {
 	return q, true
 }
 
-// wireSource describes a binding's HTTP wire source. Different bindings
-// extract the raw string differently but share the same downstream
-// parse / cast / wrap logic, so we abstract the source extraction
-// behind these closures and dispatch through [renderWireBindLine].
-//
-// Cookie is special-cased: `r.Cookie(name)` returns (cookie, error)
-// rather than a bare string, so the renderer wraps the whole produced
-// block in `if c, err := r.Cookie(name); err == nil { ... }` when
-// cookieGuard is true. SingleExpr / arrayExpr for cookie return
-// `c.Value` / "" - the wrap supplies `c`.
+// wireSource is how a handler reads the raw strings of one binding source.
 type wireSource struct {
 	kind         string
 	singleExpr   func(wireName string) string
-	arrayExpr    func(wireName string) string // "" if arrays unsupported for this source
-	presenceExpr func(wireName string) string // Go bool expr: key present? nil = no presence check for this source
-	cookieGuard  bool
+	arrayExpr    func(wireName string) string // "" when the source has no multi-value form
+	presenceExpr func(wireName string) string // key-present expression; nil skips the presence check
+	cookieGuard  bool                         // wrap in `if c, err := r.Cookie(name)`, which supplies c
 }
 
-// querySource / headerSource / cookieSource / formSource build the
-// wireSource for each of the four supported bindings. Hot path - kept
-// allocation-free by capturing the wireName by value at the call site.
 func querySource() wireSource {
-	// Reads come off `_q`, the `url.Values` the handler parses ONCE via
-	// `_q := r.URL.Query()` (the template emits it when QueryParams is
-	// non-empty). r.URL.Query() reparses RawQuery and allocates a fresh
-	// map on every call, so binding N query fields off one `_q` instead
-	// of N `r.URL.Query()` calls is N× fewer parses + maps. The %q is the
-	// WIRE name (honours `@query("x-q")`), not the Go field name.
+	// transport.tmpl declares `_q := r.URL.Query()` once when the method has query params.
 	return wireSource{
 		kind:         wire.BindingQuery,
 		singleExpr:   func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
@@ -98,12 +78,7 @@ func cookieSource() wireSource {
 	}
 }
 
-// pathSource reads a single segment via `r.PathValue("id")`. A path has
-// no multi-value form, so arrayExpr returns "" and [renderWireBindLine]
-// rejects an array-typed @path field. A matched route always supplies
-// the segment, so the value is treated as present (the semantic layer
-// rejects an optional @path field, so only the required shapes -
-// directSingle / singleParsed - are ever emitted here).
+// pathSource has no presence check: a matched route always supplies the segment.
 func pathSource() wireSource {
 	return wireSource{
 		kind:       wire.BindingPath,
@@ -120,16 +95,8 @@ func formSource() wireSource {
 	}
 }
 
-// renderWireBindLine renders the per-field binding statement for any
-// of the four HTTP wire-string sources (query / header / cookie / form).
-// The source-extraction expressions come from src; the rest of the
-// pipeline (primitive resolution, scalar / enum cast, parse + 400 on
-// failure, optional pointer wrap, array loop) is shared.
-//
-// Returns the rendered Go code, a flag indicating whether the line
-// needs `strconv` imported, and an error describing why a particular
-// field shape cannot ride the wire (cookies have no array form, maps
-// and structs ride only `@body`, etc.).
+// renderWireBindLine renders the statement binding field f from src into req.goName, or an error
+// for a shape src cannot carry (a map, a struct, an array on a single-value source).
 func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver, pkgAlias, wireName, goName string, src wireSource) (string, error) {
 	if f.Type == nil {
 		return "", fmt.Errorf("field %q has no resolved type", f.Name)
@@ -150,9 +117,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	prim, ok := wirePrim(declName)
 	cast := ""
 	if !ok {
-		// A scalar or enum casts to its declared name. For a cross-package
-		// ref declName is already the qualified name (`xshared.XEmail`),
-		// which is also the correct Go cast - no extra prefix needed.
+		// A scalar or enum casts to its declared name, already qualified when cross-package.
 		if sc := r.LookupScalar(declName); sc != nil {
 			if p2, pOk := wirePrim(sc.Primitive); pOk {
 				prim = p2
@@ -171,11 +136,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	if !ok {
 		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f), src.kind)
 	}
-	// Local refs get the request-pkg alias prefix (`Email` →
-	// `xrefs.Email`). Qualified refs already carry their pkg
-	// (`xshared.XEmail`) and pass through untouched. Detect by the
-	// presence of `.` - declName from a bare `*ast.QualifiedIdent`
-	// is dotless.
+	// A local cast gets the request package's alias.
 	if cast != "" && pkgAlias != "" && !strings.Contains(cast, ".") {
 		cast = pkgAlias + "." + cast
 	}
@@ -194,9 +155,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 		SingleSource:  singleSrc,
 		ArraySource:   arraySrc,
 	}
-	// Parsed primitives bind through the generic [server] helpers; the
-	// type argument is the scalar cast when present, else the builtin
-	// Go type (bool has no goType entry, so fall back to the DSL name).
+	// The parser's type argument is the cast, else the Go type, else (for bool) the DSL name.
 	if prim.parser != "" {
 		bindType := cast
 		if bindType == "" {
@@ -209,14 +168,8 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	}
 	var shape string
 	if f.Type.Array {
-		// An array @default pre-fills the slice; the binding must REPLACE it
-		// when the key is present and PRESERVE it when absent. The parsed
-		// path's server.BindValues already does both; the string-slice paths
-		// otherwise overwrite-with-nil (direct) or append (cast), destroying
-		// or polluting the default - so they use presence-guarded variants.
-		// The has-default test uses semantic.ResolveDefaultValue - the same oracle the
-		// prefill emits from - so an enum-member array default (`[Red, Blue]`,
-		// which defaultValue can't resolve) is seen as a default here too.
+		// A present key replaces an array @default and an absent key keeps it: server.BindValues
+		// does both, and the string-slice shapes have *Defaulted variants for it.
 		_, hasDef := semantic.ResolveDefaultValue(f, pkg)
 		if prim.parser == "" {
 			if cast == "" {
@@ -237,9 +190,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 			shape = renderWireBindShape("arrayParsed", data)
 		}
 	} else {
-		// Single (non-array). An absent param and a present-but-empty one
-		// (`?x=`) both leave the field unset: nil for an optional pointer,
-		// the zero value for a required field.
+		// An absent and an empty (`?x=`) value both leave a single field unset.
 		if prim.parser == "" {
 			if goFieldIsPointer(f, pkg, r) {
 				if cast == "" {
@@ -249,11 +200,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 					shape = renderWireBindShape("optionalStringCast", data)
 				}
 			} else if _, hasDef := semantic.ResolveDefaultValue(f, pkg); hasDef {
-				// A string-backed param carrying @default: only overwrite
-				// the pre-filled default when the param is actually present,
-				// mirroring the parsed path's `raw != ""` guard. An
-				// unconditional assign would clobber the default with "" on
-				// an absent (or `?x=`) request.
+				// Only a non-empty value overwrites the pre-filled @default.
 				data.Wrap = wrap("_v")
 				shape = renderWireBindShape("directSingleDefaulted", data)
 			} else {
@@ -271,16 +218,8 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	if src.cookieGuard {
 		shape = wrapCookieGuard(wireName, shape)
 	}
-	// A required param (non-optional, no @default) on a source that can
-	// distinguish present from absent gets a presence check: the OpenAPI
-	// advertises required:true, so the runtime 400s on a missing key instead
-	// of silently accepting the zero value. This covers arrays too (a
-	// required array @query / @header 400s when the key is absent), matching
-	// the required:true the spec carries. A present-but-empty value (`?q=`)
-	// passes - the test is on the key, not the value. @default fields are
-	// exempt (the default covers absence). The check sits OUTSIDE the
-	// cookie-guard wrap so an absent required cookie 400s rather than
-	// skipping silently.
+	// A missing required key (non-optional, no @default) answers 400; a present empty value passes.
+	// The check sits outside the cookie guard, so a missing cookie reaches it.
 	if src.presenceExpr != nil && !f.Type.Optional {
 		if _, hasDef := semantic.ResolveDefaultValue(f, pkg); !hasDef {
 			guard := fmt.Sprintf("if !server.RequirePresent(w, r, %s, %q, %q) {\nreturn\n}", src.presenceExpr(wireName), wireName, src.kind)
@@ -290,21 +229,13 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	return shape, nil
 }
 
-// wrapCookieGuard wraps a rendered shape in the
-// `if c, err := r.Cookie(name); err == nil { ... }` prelude. Cookie
-// retrieval returns (Cookie, error); we surface a missing-cookie state
-// the same way other wire bindings handle empty values - the field
-// stays at its zero value (or nil pointer for optional shapes).
-//
-// The inner body is indented one tab so the produced code stays
-// gofmt-clean without a post-render pass.
+// wrapCookieGuard runs inner only when the request carries the cookie.
 func wrapCookieGuard(wireName, inner string) string {
 	indented := indentLines(inner, "\t")
 	return fmt.Sprintf("if c, err := r.Cookie(%q); err == nil {\n%s\n}", wireName, indented)
 }
 
-// indentLines prepends prefix to every non-blank line of s. Used by
-// the cookie-guard wrap so the inner block sits one level deeper.
+// indentLines prepends prefix to every non-empty line of s.
 func indentLines(s, prefix string) string {
 	lines := strings.Split(s, "\n")
 	for i, ln := range lines {
@@ -316,31 +247,20 @@ func indentLines(s, prefix string) string {
 	return strings.Join(lines, "\n")
 }
 
-// wireBindData is the payload threaded through every named block in
-// transport_wire_bind.tmpl. Fields that a particular shape does not
-// reference stay empty - the template only slots what it asks for so
-// unused entries are harmless.
-//
-// `SingleSource` / `ArraySource` are the binding-specific source
-// extraction expressions (e.g. `r.URL.Query().Get("x")` for query,
-// `c.Value` for cookie). They are supplied by the caller's
-// [wireSource]; the template stays unaware of which wire format it is
-// emitting for.
+// wireBindData is the input of every shape in transport_wire_bind.tmpl; a shape reads only
+// the fields it needs. SingleSource and ArraySource are the src expressions (`_q.Get("x")`, `c.Value`).
 type wireBindData struct {
 	DSLNameQuoted string
 	GoName        string
 	Wrap          string
-	// ParseFn is the generic parse function the bind helpers receive,
-	// e.g. `server.ParseSigned[int]` or `server.ParseSigned[types.Cents]`.
+	// ParseFn is the generic parser the bind helper calls, e.g. `server.ParseSigned[types.Cents]`.
 	ParseFn      string
 	Label        string
 	SingleSource string
 	ArraySource  string
 }
 
-// bindParseFamily maps a strconv parser to the matching generic
-// [server] parse helper. The type argument (appended by the caller)
-// carries the per-type bit width and any scalar conversion.
+// bindParseFamily maps a strconv parser to the generic pkg/server parser a handler calls.
 func bindParseFamily(parser string) string {
 	switch parser {
 	case "strconv.ParseBool":
@@ -354,10 +274,7 @@ func bindParseFamily(parser string) string {
 	}
 }
 
-// renderWireBindShape executes one named block from
-// transport_wire_bind.tmpl. The shape name is a compile-time constant
-// at every call site so a typo would fail the next test run with a
-// clear "template not found" panic.
+// renderWireBindShape executes the named shape of transport_wire_bind.tmpl; an unknown name panics.
 func renderWireBindShape(name string, data wireBindData) string {
 	var buf bytes.Buffer
 	if err := transportWireBindTemplate.ExecuteTemplate(&buf, name, data); err != nil {
@@ -366,9 +283,4 @@ func renderWireBindShape(name string, data wireBindData) string {
 	return buf.String()
 }
 
-// transportWireBindTemplate is parsed once at first use; subsequent
-// renders are pure ExecuteTemplate dispatches by name. The template
-// holds the catalogue of shapes (see file header comment) so adding a
-// new wire-bound primitive is a template-only change once the Go
-// dispatcher knows which name to pick.
 var transportWireBindTemplate = tmpl("transport_wire_bind.tmpl")

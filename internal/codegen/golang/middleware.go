@@ -12,39 +12,18 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// middlewareData drives the scaffold template that emits one
-// `<name>-middleware.go` file per `middleware Name` declaration. The
-// scaffold is gen-once: the file is created with a stub constructor
-// and a stub middleware function, and subsequent gen runs skip it so
-// user-authored body / parameters survive regeneration.
+// middlewareData is the template input for middleware.tmpl.
 type middlewareData struct {
 	Name string
 }
 
-// middlewareFieldsData is the input for `middleware-fields.tmpl`. The
-// type declared by that template lives next to svccontext.go and lists
-// one server.Middleware field per declaration.
+// middlewareFieldsData is the template input for middleware-fields.tmpl.
 type middlewareFieldsData struct {
 	Names []string
 }
 
-// generateProjectMiddlewares emits the unified `svccontext/middlewares.go`
-// + per-middleware scaffolds for every package in the project. Middleware
-// names are global (the project resolver enforces uniqueness), so a
-// single Middlewares struct embeds every declaration regardless of which
-// package it lives in. Run ONCE per `craftgo gen` instead of per-package.
-//
-// Two artefacts per `middleware Name` block:
-//
-//  1. The IMPLEMENTATION at `<output.middleware>/<kebab-name>-middleware.go`.
-//     Scaffold-only - gen-once; existing files are left alone.
-//  2. The TYPE declaration list at `<svccontext-dir>/middlewares.go`.
-//     Always overwritten - derived purely from the DSL.
-//
-// Users embed the generated `Middlewares` struct into their own
-// ServiceContext, then assign each field to a concrete impl in main.go.
-// Routes consume the middleware via the embedded fields directly, so no
-// runtime name registry lookup is needed.
+// generateProjectMiddlewares writes middlewares.go beside output.svccontext, one Middlewares
+// field per declared middleware, and each middleware's gen-once scaffold under output.middleware.
 func generateProjectMiddlewares(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	names := projectSortedMiddlewareNames(proj)
 	if err := writeMiddlewareFields(cfg, projectRoot, names); err != nil {
@@ -53,10 +32,6 @@ func generateProjectMiddlewares(proj *semantic.Project, cfg *config.Config, proj
 	return writeProjectMiddlewareImpls(cfg, projectRoot, proj, names)
 }
 
-// projectSortedMiddlewareNames collects middleware decl names from every
-// package in the project, deduplicates, and sorts. Cross-package
-// uniqueness is already enforced at semantic time so no two packages
-// can claim the same name; the dedupe is defensive.
 func projectSortedMiddlewareNames(proj *semantic.Project) []string {
 	seen := map[string]struct{}{}
 	for _, pkg := range proj.Packages {
@@ -70,10 +45,7 @@ func projectSortedMiddlewareNames(proj *semantic.Project) []string {
 	return sortedKeys(seen)
 }
 
-// writeProjectMiddlewareImpls emits scaffold files for every middleware
-// in the project. Existing files survive - the framework only writes
-// missing scaffolds so user edits in the impl body are preserved across
-// `craftgo gen` runs.
+// writeProjectMiddlewareImpls writes each middleware's scaffold unless its file exists.
 func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *semantic.Project, names []string) error {
 	if len(names) == 0 {
 		return nil
@@ -102,9 +74,7 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *s
 	return nil
 }
 
-// projectMiddlewareDecls flattens every package's middleware decls
-// into a single name → MiddlewareDecl map. Names are project-globally
-// unique (semantic phase enforces this), so the dedupe is defensive.
+// projectMiddlewareDecls maps every package's middleware declarations by name.
 func projectMiddlewareDecls(proj *semantic.Project) map[string]*ast.MiddlewareDecl {
 	out := map[string]*ast.MiddlewareDecl{}
 	if proj == nil {
@@ -119,16 +89,12 @@ func projectMiddlewareDecls(proj *semantic.Project) map[string]*ast.MiddlewareDe
 	return out
 }
 
-// buildMiddlewareData fills the scaffold-template inputs. The DSL
-// captures only the name; configuration shape (params, defaults,
-// dependencies) is the user's choice in the hand-written impl file.
 func buildMiddlewareData(name string, _ *ast.MiddlewareDecl) middlewareData {
 	return middlewareData{Name: name}
 }
 
-// writeMiddlewareFields emits svccontext/middlewares.go (overwrite).
-// Always emitted - even when the DSL declares no middlewares - so the
-// `Middlewares` type embedded by svccontext.go stays defined.
+// writeMiddlewareFields writes middlewares.go even with no middleware, since svccontext.go embeds
+// its Middlewares type.
 func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []string) error {
 	dir := filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext))
 	dest := filepath.Join(dir, "middlewares.go")
@@ -142,9 +108,6 @@ func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []strin
 	return os.WriteFile(dest, formatted, 0o644)
 }
 
-// sortedMiddlewareNames returns the package's middleware declarations
-// in deterministic order so successive codegen runs produce stable
-// diffs.
 func sortedMiddlewareNames(pkg *semantic.Package) []string {
 	return sortedKeys(pkg.Middlewares)
 }

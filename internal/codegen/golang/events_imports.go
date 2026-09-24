@@ -7,24 +7,20 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// reservedAliases are the identifiers the event template binds. A
-// payload package whose DSL name is one of these is imported under a
-// different alias, or the generated file would shadow the name.
+// reservedAliases are the identifiers events.tmpl binds; a payload package named like one is
+// imported under another alias.
 var reservedAliases = map[string]bool{
 	"craftevents": true,
 }
 
-// grpcReservedAliases are the identifiers the gRPC templates bind: the
-// service's own pb package, the logic package, the runtime, and the
-// standard packages the files spell literally.
+// grpcReservedAliases are the identifiers the gRPC templates bind.
 var grpcReservedAliases = map[string]bool{
 	pbAlias: true, "service": true, "svccontext": true, "rpc": true, "grpc": true,
 	"context": true, "log": true,
 }
 
-// importSet accumulates the Go imports a generated file needs, keyed by
-// path so the same package is never imported twice, and keeps every
-// alias distinct from each other and from the names the template binds.
+// importSet collects a generated file's imports, one per path, under aliases distinct from each
+// other and from the template's reserved names.
 type importSet struct {
 	crossPkg crossPkg
 	reserved map[string]bool
@@ -54,9 +50,7 @@ func (s *importSet) add(imp extraImport) {
 	s.byPath[imp.Path] = s.claim(imp.Alias, imp.Path)
 }
 
-// claim returns an alias for path that no other import in the file uses.
-// A blank alias is left blank - it names an import the template spells
-// literally, and those are the aliases everything else avoids.
+// claim returns an alias for path that no other import in the file uses; a blank alias stays blank.
 func (s *importSet) claim(alias, path string) string {
 	if alias == "" {
 		return ""
@@ -86,8 +80,7 @@ func (s *importSet) sorted() []extraImport {
 	return out
 }
 
-// payloadRefType renders a payload written as a type reference in the
-// current package, pinning every import the reference reaches into.
+// payloadRefType renders ref as written in the current package and adds every import it reaches.
 func (s *importSet) payloadRefType(ref *ast.NamedTypeRef, typesImport string) string {
 	alias, bare, extra, use := resolveTypeRef(ref, s.crossPkg)
 	if use.LocalTypes {
@@ -101,8 +94,7 @@ func (s *importSet) payloadRefType(ref *ast.NamedTypeRef, typesImport string) st
 	return alias + "." + bare
 }
 
-// addRefImports pins every cross-package import a reference and its
-// generic arguments reach into.
+// addRefImports adds every cross-package import ref and its generic arguments reach.
 func (s *importSet) addRefImports(ref *ast.NamedTypeRef) {
 	set := map[string]bool{}
 	walkCrossPkgImports(&ast.TypeRef{Named: ref}, s.crossPkg, set)

@@ -9,18 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// Generate runs the Go pipeline for proj under projectRoot: the
-// pre-flight checks that reject a design before any file is written,
-// then per package the type artefacts (types, enums, errors,
-// validators), the middleware scaffolds, per package the service
-// artefacts (transport, service stubs, routes), per proto service the
-// gRPC server package and logic stubs, and finally the project-wide
-// files (routes umbrella, runtime scaffolds, main.go).
-//
-// protos is the compiled proto set, nil when the design holds none.
-//
-// The design is validated, and the event target and the OpenAPI
-// projection run, around it; see [codegen.Generate].
+// Generate writes the Go output of proj under projectRoot: the types and pb code, then, unless the
+// project is contracts-only, the application layer. protos is nil when the design has no proto.
 func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	names := sortedPackageNames(proj)
 	resolvers := make(map[string]*projectResolver, len(names))
@@ -39,8 +29,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 			return err
 		}
 	}
-	// The pb code is a contract artefact, generated for every project
-	// kind; the plugins write nothing when output.pb is "-".
+	// The plugins write nothing when output.pb is "-".
 	if protos != nil {
 		if err := runSteps("proto", []genStep{
 			{"pb", func() error { return protodesign.RunPlugins(protos, projectRoot) }},
@@ -48,8 +37,6 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 			return err
 		}
 	}
-	// A contracts project stops here: the rest is the application half,
-	// which the deployables that import this one generate for themselves.
 	if cfg.Output.ContractsOnly() {
 		return nil
 	}

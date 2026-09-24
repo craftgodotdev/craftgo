@@ -9,24 +9,15 @@ import (
 	"text/template"
 )
 
-// builtinTemplates embeds every codegen template shipped with the binary.
-// Templates are looked up exclusively here - there is no project-local
-// override mechanism. Projects that need custom shapes fork the
-// repository and edit the .tmpl files directly.
+// builtinTemplates embeds every codegen template.
 //
 //go:embed templates/*.tmpl
 var builtinTemplates embed.FS
 
-// tmplCache memoizes parsed templates by name. The embedded sources are
-// immutable for the process lifetime and an executed *template.Template is
-// safe for concurrent use, so each template parses exactly once no matter how
-// many services / methods render through it.
+// tmplCache holds each parsed template by name; a parsed template is safe for concurrent execution.
 var tmplCache sync.Map // name → *template.Template
 
-// tmpl loads a single named template from [builtinTemplates], parsing it on
-// first use and serving the cached parse afterwards. Lazy parsing keeps a
-// missing/broken template failing at its first render with a clear name
-// rather than at process start.
+// tmpl returns the named template, parsing it on first use; a missing or broken template panics.
 func tmpl(name string) *template.Template {
 	if t, ok := tmplCache.Load(name); ok {
 		return t.(*template.Template)
@@ -39,8 +30,7 @@ func tmpl(name string) *template.Template {
 	return actual.(*template.Template)
 }
 
-// renderGo executes tmpl with data, then runs `go/format.Source` over the
-// result. Returns the formatted bytes ready to be written to disk.
+// renderGo executes tmpl with data and gofmts the result.
 func renderGo(tmpl *template.Template, data any) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {

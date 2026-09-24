@@ -9,18 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// The files this package REGENERATES and the directories it puts them in.
-// A run ends by sweeping those directories of every generated file it did
-// not write, so an emitter that gains or moves a file has to be named
-// here or its output is deleted the moment it is written. The codegen
-// package regenerates a design and compares the result against this
-// list, so a drift fails a test rather than a user's project.
-//
-// Gen-once scaffolds - the logic stubs, the middleware impls, config,
-// main.go, svccontext.go - are absent on purpose: they are written only
-// when missing, and the sweep never walks their directories.
-
-// RegeneratedFiles names what [Generate] writes.
+// RegeneratedFiles names every file [Generate] rewrites. The sweep deletes any other generated file
+// under [OutputDirs], so an emitted path missing here is removed after it is written.
 func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	typesRoot := filepath.Join(projectRoot, cfg.Output.Types)
 	var files []string
@@ -42,7 +32,6 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 			files = append(files, filepath.Join(typesRoot, name, "errors.go"))
 		}
 	}
-	// The pb code is contract-side, generated for every project kind.
 	files = append(files, protos.PBFiles(projectRoot)...)
 	if cfg.Output.ContractsOnly() {
 		return files
@@ -66,8 +55,7 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 			routes = append(routes, filepath.Join(routesRoot, filepath.FromSlash(seg), "routes.go"))
 		}
 	}
-	// The umbrella exists for as long as one route does; with none it is
-	// left unwritten and the sweep takes what an earlier run put there.
+	// The umbrella routes.go exists while some route does.
 	if len(routes) > 0 {
 		routes = append(routes, filepath.Join(routesRoot, "routes.go"))
 	}
@@ -88,10 +76,8 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	return append(files, filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext), "middlewares.go"))
 }
 
-// OutputDirs names the directories [Generate] regenerates into. The
-// gen-once outputs - output.service, output.middleware, output.config,
-// main.go - are not among them: nothing there is ever rewritten, so
-// nothing there is ever swept.
+// OutputDirs names the directories [Generate] regenerates into; the gen-once outputs
+// (output.service, output.middleware, output.config, main.go) are not among them.
 func OutputDirs(cfg *config.Config, projectRoot string) []string {
 	dirs := []string{filepath.Join(projectRoot, cfg.Output.Types)}
 	if cfg.Output.ContractsOnly() {

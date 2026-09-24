@@ -14,31 +14,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// memberChain returns the chain of middleware identifiers one method
-// runs, assembled outermost-first so codegen wraps the handler in the
-// same order a reader sees the decorators:
-//
-//  1. Primary service-level `@<decorator>(...)`
-//  2. Extend-block-level (decorators marked Propagated=true that the
-//     semantic merge copied onto the member)
-//  3. Member-level (decorators with Propagated=false that the user wrote
-//     directly above the method or the consumer)
-//
-// `@ignoreMiddleware` on the member drops layers 1 + 2 - the inherited
-// chain - so the member starts fresh from layer 3. This implements the
-// clear-then-append pattern documented in
-// docs/guide/decorators.md#service-level-decorators-and-inheritance.
-//
-// A name repeated across layers is kept ONCE, at its outermost position.
-// The layers append rather than override, so re-stating an inherited
-// middleware is easy to do by accident - `@middlewares(Auth)` on both the
-// primary service and an `extend` block of it, say - and the duplicate is
-// never what the author meant: the generated route would list
-// `svcCtx.Auth, svcCtx.Auth` and run the middleware twice per request.
-// Keeping the FIRST occurrence preserves the inherited layer's outer
-// position, which is the guarantee service-level decorators exist to give.
-// This mirrors the dedup the same inherited chains already get in the
-// OpenAPI emitters ([operationTags], [dedupSecurity]).
+// memberChain lists the decorator's names for a member outermost first (primary service, extend
+// block, member), each once; the member's own @ignoreMiddleware drops the two inherited layers.
 func memberChain(decorator string, own []*ast.Decorator, svc *ast.ServiceDecl) []string {
 	ignore := false
 	for _, d := range own {
@@ -78,16 +55,8 @@ func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
 	return memberChain("middlewares", m.Decorators, svc)
 }
 
-// buildHandlerCall produces the Go expression that lands as the SECOND
-// argument to `srv.Handle` - the handler itself, with `server.WithLimits`
-// applied when the method declares `@timeout` or `@maxBodySize`. The
-// middleware chain is rendered separately as variadic args by
-// [buildMiddlewareArgs] so the route line stays flat regardless of
-// chain depth.
-//
-// Limits wrap the handler INSIDE the middleware chain so middlewares
-// see the timeout/body-cap-bound handler - the timeout cancels the
-// downstream work, not the middleware's own bookkeeping.
+// buildHandlerCall renders the handler argument of srv.Handle, wrapped in server.WithLimits
+// when m declares @timeout or @maxBodySize.
 func buildHandlerCall(m *ast.Method, transportAlias string) (call string, needsTime bool) {
 	core := transportAlias + "." + m.Name + "(svcCtx)"
 	lit, usesTime, ok := methodLimitsLiteral(m)
@@ -97,15 +66,7 @@ func buildHandlerCall(m *ast.Method, transportAlias string) (call string, needsT
 	return core, usesTime
 }
 
-// buildMiddlewareArgs produces the variadic-middleware-arg list that
-// the routes template splices after the handler. Returns the comma-
-// separated `svcCtx.A, svcCtx.B, svcCtx.C` form (no leading comma)
-// when the chain is non-empty, otherwise "" so the template skips the
-// argument entirely.
-//
-// The first name in mws is the OUTERMOST frame at runtime;
-// server.Handle's variadic wrap iterates right-to-left so the chain
-// reads top-to-bottom in the generated route line.
+// buildMiddlewareArgs renders mws as `svcCtx.A, svcCtx.B`; srv.Handle runs the first outermost.
 func buildMiddlewareArgs(mws []string) string {
 	if len(mws) == 0 {
 		return ""
@@ -117,13 +78,8 @@ func buildMiddlewareArgs(mws []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// methodLimitsLiteral renders a `server.Limits{...}` Go-source struct
-// literal from the method's decorators, reporting whether the literal
-// names `time` so the routes file imports it. ok is false when neither
-// `@timeout` nor `@maxBodySize` is present. Both apply to every
-// mode, raw sides included: the timeout only derives a context deadline
-// (see server.Limits), so a streaming handler that honours ctx.Done()
-// stops cleanly and nothing is cut off on the wire.
+// methodLimitsLiteral renders m's @timeout and @maxBodySize as a server.Limits literal; ok is
+// false when m declares neither.
 func methodLimitsLiteral(m *ast.Method) (lit string, usesTime, ok bool) {
 	var fields []string
 	if d := durationDecoratorArg(m.Decorators, "timeout"); d != "" {
@@ -139,11 +95,8 @@ func methodLimitsLiteral(m *ast.Method) (lit string, usesTime, ok bool) {
 	return "server.Limits{" + strings.Join(fields, ", ") + "}", usesTime, true
 }
 
-// durationDecoratorArg returns the Go-source expression for a
-// duration argument like `@timeout(30s)`. Supports both
-// DurationLit (preferred) and bare integers (interpreted as seconds
-// per the README's "bare number → seconds" rule). Empty string means
-// the decorator is absent or carries an unsupported literal.
+// durationDecoratorArg renders @name's duration as Go source, a bare integer counting seconds;
+// "" when absent or unparsable.
 func durationDecoratorArg(ds []*ast.Decorator, name string) string {
 	for _, d := range ds {
 		if d.Name != name || len(d.Args) == 0 {
@@ -161,9 +114,7 @@ func durationDecoratorArg(ds []*ast.Decorator, name string) string {
 	return ""
 }
 
-// sizeDecoratorArg returns the byte count for a size argument like
-// `@maxBodySize(10MB)` or `@maxBodySize(1024)`. Reuses the size parser
-// from the file-validator codegen path.
+// sizeDecoratorArg returns @name's size in bytes (`10MB`, `1024`), 0 when absent.
 func sizeDecoratorArg(ds []*ast.Decorator, name string) int64 {
 	for _, d := range ds {
 		if d.Name != name || len(d.Args) == 0 {
@@ -176,9 +127,6 @@ func sizeDecoratorArg(ds []*ast.Decorator, name string) int64 {
 	return 0
 }
 
-// parseDurationText converts a DSL duration literal (e.g. "30s",
-// "1.5h") into a time.Duration. Wraps the stdlib parser so we don't
-// duplicate the suffix matrix.
 func parseDurationText(text string) (time.Duration, bool) {
 	// `µs` and `us` are both DSL-legal; ParseDuration accepts both.
 	d, err := time.ParseDuration(text)
@@ -188,9 +136,7 @@ func parseDurationText(text string) (time.Duration, bool) {
 	return d, true
 }
 
-// formatDurationGo emits a duration as a Go-source expression,
-// preferring the largest unit that divides cleanly so the generated
-// routes file reads naturally ("30 * time.Second" beats "30000000000").
+// formatDurationGo renders d in the largest unit that divides it (`30 * time.Second`).
 func formatDurationGo(d time.Duration) string {
 	switch {
 	case d%time.Hour == 0:
@@ -205,11 +151,8 @@ func formatDurationGo(d time.Duration) string {
 	return fmt.Sprintf("%d * time.Nanosecond", d.Nanoseconds())
 }
 
-// extractMiddlewareNames pulls the identifier arguments out of every
-// `@<decorator>(...)` in ds and returns the BARE name for each - the
-// package prefix in `pkg.Name` is dropped because a middleware is
-// addressed by name alone on the struct that carries it, and the project
-// resolver already guarantees names are unique across packages.
+// extractMiddlewareNames returns the identifier arguments of every @decorator in ds without their
+// package qualifier; middleware names are unique across the project.
 func extractMiddlewareNames(decorator string, ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
@@ -231,17 +174,7 @@ func extractMiddlewareNames(decorator string, ds []*ast.Decorator) []string {
 	return out
 }
 
-// routeEntry is one row in the routes table emitted by `routes.tmpl`.
-// HandlerCall is the bare handler expression (plus optional
-// `server.WithLimits` wrap when @timeout/@maxBodySize is declared);
-// Middlewares is the variadic-arg list (`svcCtx.A, svcCtx.B`) the
-// template splices AFTER the handler so the call reads flat:
-//
-//	srv.Handle("POST /x", handler, svcCtx.A, svcCtx.B)
-//
-// Empty Middlewares means the method opted out of the inherited
-// chain via `@ignoreMiddleware` and declared no replacement, so the
-// template skips the trailing comma + args entirely.
+// routeEntry is one `srv.Handle(Pattern, HandlerCall, Middlewares)` line of routes.tmpl.
 type routeEntry struct {
 	Pattern     string
 	Method      string
@@ -249,17 +182,10 @@ type routeEntry struct {
 	Middlewares string
 }
 
-// routesData is the template input for `routes.tmpl`. NeedsTime tells
-// the template whether to import "time"; we set it when at least one
-// route emits a duration literal so the generated file stays clean
-// for projects that don't use timeout decorators.
+// routesData is the template input for routes.tmpl.
 type routesData struct {
-	Package string
-	Service string
-	// TransportImports is one entry per distinct @group the service's
-	// methods live in (the ungrouped root plus each group folder). Each
-	// carries its own import alias so several group packages coexist in
-	// one routes file. Empty when the service declares no methods.
+	Package          string
+	Service          string
 	TransportImports []transportImport
 	SvccontextImport string
 	Routes           []routeEntry
@@ -272,14 +198,8 @@ type transportImport struct {
 	Path  string
 }
 
-// generateRoutes emits the per-directory `routes.go` files for pkg's
-// services under `<output.routes>/`. The project-wide umbrella that wires
-// every directory into one `RegisterAll` is [generateProjectRoutesUmbrella].
-//
-// The unit of emission is the OUTPUT DIRECTORY, not the service: only
-// one `routes.go` can live in a folder, and `@group` deliberately lets
-// several services share one. Every service landing in a directory
-// contributes its methods to that directory's single RegisterRoutes.
+// generateRoutes writes one output.routes/<segment>/routes.go per segment pkg's services occupy;
+// services sharing a segment through @group share its RegisterRoutes.
 func generateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
@@ -293,22 +213,15 @@ func generateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot strin
 	return nil
 }
 
-// segContribution is one service's share of an output directory: the
-// service, and the @group that routed it there (""= its own directory).
-// A service reaching one directory from several blocks that resolve to
-// the same group appears once.
+// segContribution is one service's methods under one @group ("" when ungrouped).
 type segContribution struct {
 	svcName string
 	svc     *semantic.ServiceInfo
 	group   string
 }
 
-// routeSegments maps each output segment the package occupies to the
-// services contributing to it, in sorted service order so the emitted
-// route table is stable run to run. Sharing a segment is legal and
-// merges; the analyser has already rejected the two shapes a merge
-// cannot express (contributors from different DSL packages, and two
-// contributors declaring the same method name).
+// routeSegments maps each output segment of pkg to its contributors in service order; the
+// analyser rejects a segment shared across DSL packages or repeating a method name.
 func routeSegments(pkg *semantic.Package, cfg *config.Config) map[string][]segContribution {
 	out := map[string][]segContribution{}
 	for _, svcName := range sortedServices(pkg) {
@@ -321,11 +234,8 @@ func routeSegments(pkg *semantic.Package, cfg *config.Config) map[string][]segCo
 	return out
 }
 
-// generateProjectRoutesUmbrella emits the top-level
-// `<output.routes>/routes.go` that exposes `RegisterAll(srv, svcCtx)`,
-// aggregating every service from every DSL package in the project.
-// When no package declares a service the file is skipped - calling
-// `RegisterAll` from main.go would also be a no-op.
+// generateProjectRoutesUmbrella writes output.routes/routes.go, whose RegisterAll calls every
+// segment's RegisterRoutes; no file is written when no service has a method.
 func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	type svcEntry struct {
 		name    string
@@ -339,24 +249,15 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 			continue
 		}
 		for _, svcName := range sortedServices(p) {
-			// One candidate entry per (service, group); the dedupe below
-			// collapses them to one per output directory, which is the unit
-			// routes.go is actually emitted for.
 			for _, g := range distinctGroups(p.Services[svcName]) {
 				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g, cfg.Output.FileCase)})
 			}
 		}
 	}
-	// With no route left the umbrella is not written, and the sweep takes
-	// the one a previous run wrote: leaving it behind means a generated
-	// file calling into per-service packages this run no longer emits.
 	if len(entries) == 0 {
 		return nil
 	}
-	// Stable iteration order: by (service name, group). Service names are
-	// project-unique after merging, but one service contributes one entry PER
-	// GROUP - without the group tie-break the equal-name entries land in map
-	// iteration order and the emitted file differs run to run.
+	// Service names are project-unique, but a service has one entry per group.
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].name != entries[j].name {
 			return entries[i].name < entries[j].name
@@ -371,11 +272,7 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	data := routesAllData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
-	// Dedupe by output directory AFTER sorting, so the surviving entry is
-	// the deterministic first claimant. Several services may share a
-	// segment; their routes already merged into that folder's single
-	// RegisterRoutes, and calling it once per service would re-register
-	// every pattern it holds.
+	// Services sharing a segment share its RegisterRoutes, so it is called once.
 	seen := map[string]bool{}
 	for _, e := range entries {
 		if seen[e.seg] {
@@ -391,17 +288,13 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
 }
 
-// routesAllImport is one row in the umbrella routes.go's import
-// block. The Alias is the package alias used at the call site so the
-// generated code compiles even when several services would otherwise
-// resolve to the same Go package name.
+// routesAllImport is one aliased routes-package import of the umbrella routes.go.
 type routesAllImport struct {
 	Alias string
 	Path  string
 }
 
-// makeRoutesAllImport builds the aliased import for one (service, group) routes
-// hub.
+// makeRoutesAllImport builds the umbrella's import of one segment's routes package.
 func makeRoutesAllImport(cfg *config.Config, name, group, seg string) routesAllImport {
 	return routesAllImport{
 		Alias: servicePackage(name) + groupAliasSuffix(group) + "routes",
@@ -415,16 +308,8 @@ type routesAllData struct {
 	SvccontextImport string
 }
 
-// generateRoutesForSegment emits the single routes.go that serves one
-// output directory, registering the methods every contributing service
-// put there. An ungrouped service is the one-contributor case and emits
-// exactly what it always did, at its own service directory.
-//
-// All contributors share the directory's transport package, so the file
-// carries ONE transport import; its alias comes from the first
-// contributor so the common single-service file is unchanged. Routes are
-// laid out contributor by contributor, each service's methods in source
-// order.
+// generateRoutesForSegment writes the routes.go of segment seg: each contributor's methods in
+// source order, all through the segment's one transport package.
 func generateRoutesForSegment(seg string, contribs []segContribution, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if len(contribs) == 0 {
 		return nil
@@ -471,9 +356,7 @@ func generateRoutesForSegment(seg string, contribs []segContribution, pkg *seman
 	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
 }
 
-// contributorLabel names the services a routes.go covers, for its doc
-// comment. One service reads exactly as before ("wires every Foo
-// endpoint"); a shared directory lists every contributor.
+// contributorLabel joins the contributing service names for the routes.go doc ("A, B and C").
 func contributorLabel(contribs []segContribution) string {
 	seen := map[string]bool{}
 	var names []string

@@ -10,12 +10,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// The gRPC half of the application: for every proto service, a server
-// package under output.grpc (regenerated - the struct implementing the
-// generated interface and one file per RPC delegating to logic) and the
-// logic scaffolds under output.service (written once), the same split
-// the HTTP transport and service layers make.
-
 // grpcImports bundles the import paths one proto service's files use.
 type grpcImports struct {
 	PB         string
@@ -23,20 +17,16 @@ type grpcImports struct {
 	Svccontext string
 }
 
-// pbAlias is the import alias every generated file gives the service's
-// own pb package; a message from another proto package is imported
-// under that package's own name.
+// pbAlias is the import alias of a proto service's own pb package.
 const pbAlias = "pb"
 
-// grpcServerFile is the file holding the server struct, beside the
-// per-RPC files; an RPC whose file would take the name is rejected.
+// grpcServerFile is the base name of the file holding the server struct.
 const grpcServerFile = "server"
 
-// logicTypeName is the name of the per-RPC logic struct, the rule the
-// HTTP scaffold sets for its methods.
+// logicTypeName is the name of an RPC's logic struct.
 func logicTypeName(method string) string { return method + "Service" }
 
-// grpcServerData is the template input for `grpc_server.tmpl`.
+// grpcServerData is the template input for grpc_server.tmpl.
 type grpcServerData struct {
 	Package          string
 	Service          string
@@ -45,7 +35,7 @@ type grpcServerData struct {
 	SvccontextImport string
 }
 
-// grpcMethodData is the template input for `grpc_method.tmpl`.
+// grpcMethodData is the template input for grpc_method.tmpl.
 type grpcMethodData struct {
 	Package       string
 	Method        string
@@ -59,7 +49,6 @@ type grpcMethodData struct {
 	ExtraImports  []extraImport
 }
 
-// grpcImportsFor computes the import paths of one proto service.
 func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
 	return grpcImports{
 		PB:         svc.PBImport,
@@ -68,18 +57,17 @@ func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
 	}
 }
 
-// grpcServerDir is where a proto service's server package is written.
+// grpcServerDir holds a proto service's server package.
 func grpcServerDir(projectRoot string, cfg *config.Config, svc *protodesign.Service) string {
 	return filepath.Join(projectRoot, cfg.Output.GRPC, svc.Dir)
 }
 
-// grpcServiceDir is where a proto service's logic scaffolds are written.
+// grpcServiceDir holds a proto service's logic scaffolds.
 func grpcServiceDir(projectRoot string, cfg *config.Config, svc *protodesign.Service) string {
 	return filepath.Join(projectRoot, cfg.Output.Service, svc.Dir)
 }
 
-// generateGRPCServers writes the server package of every proto service:
-// server.go and one file per RPC, all regenerated.
+// generateGRPCServers writes each proto service's server package: server.go and one file per RPC.
 func generateGRPCServers(protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	for _, svc := range protos.Services {
 		dir := grpcServerDir(projectRoot, cfg, svc)
@@ -96,7 +84,6 @@ func generateGRPCServers(protos *protodesign.Set, cfg *config.Config, projectRoo
 	return nil
 }
 
-// buildGRPCServerData populates the server struct input for one service.
 func buildGRPCServerData(svc *protodesign.Service, imps grpcImports) grpcServerData {
 	return grpcServerData{
 		Package:          svc.Package,
@@ -107,7 +94,6 @@ func buildGRPCServerData(svc *protodesign.Service, imps grpcImports) grpcServerD
 	}
 }
 
-// buildGRPCMethodData populates the server-layer input for one RPC.
 func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) grpcMethodData {
 	refs := newTypeRefs(svc)
 	d := grpcMethodData{
@@ -124,9 +110,7 @@ func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps g
 	return d
 }
 
-// generateGRPCServices scaffolds the logic of every proto service: one
-// `<rpc>.go` per RPC under output.service/<service>, written once, from
-// the same template the HTTP logic scaffolds use.
+// generateGRPCServices writes each RPC's gen-once logic scaffold, rendered from service.tmpl.
 func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	for _, svc := range protos.Services {
 		dir := grpcServiceDir(projectRoot, cfg, svc)
@@ -140,9 +124,7 @@ func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRo
 	return nil
 }
 
-// buildGRPCServiceData populates the logic-scaffold input for one RPC.
-// Every HTTP-only field stays at its zero value, so the template renders
-// the plain entry-point shape.
+// buildGRPCServiceData leaves every HTTP-only field zero, so service.tmpl renders the plain entry point.
 func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) serviceData {
 	refs := newTypeRefs(svc)
 	sig := buildGRPCSignature(m, refs.render(m.In), refs.render(m.Out))
@@ -163,9 +145,8 @@ func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps 
 	return d
 }
 
-// typeRefs renders message types for one service's files: the service's
-// own pb package under [pbAlias], every other under its package name,
-// through the file's import set so the aliases stay distinct.
+// typeRefs renders message types for one file: the service's own under [pbAlias], every other
+// under its package name.
 type typeRefs struct {
 	own     string
 	imports *importSet
@@ -186,8 +167,7 @@ func (r *typeRefs) render(ref protodesign.TypeRef) string {
 	return r.imports.aliasFor(ref.ImportPath) + "." + ref.Name
 }
 
-// writeScaffoldOnce renders tmplName into path unless a file is already
-// there: the scaffold is the user's once written.
+// writeScaffoldOnce renders tmplName into path unless the file exists.
 func writeScaffoldOnce(path, tmplName string, data any) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
@@ -202,14 +182,9 @@ func writeScaffoldOnce(path, tmplName string, data any) error {
 	return os.WriteFile(path, formatted, 0o644)
 }
 
-// ValidateProtoOutputs rejects what the gRPC emitters would write over
-// each other: a proto service whose logic directory a DSL service already
-// owns (both would write `<output.service>/<dir>`, with different package
-// clauses), an RPC whose file would take the server struct's, and an RPC
-// whose logic type another RPC's constructor is named after (`X` beside
-// `NewX`). The DSL side's own collisions are the analyser's, the proto
-// side's are protodesign's; this is the one check that sees the emitted
-// names.
+// ValidateProtoOutputs rejects gRPC output that would collide: an RPC file named like the server
+// struct's, a logic type named like another RPC's constructor (`X` beside `NewX`), or a proto
+// service writing into a DSL service's output.service directory.
 func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) error {
 	if protos == nil {
 		return nil

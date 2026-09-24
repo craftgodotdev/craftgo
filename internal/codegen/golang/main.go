@@ -13,50 +13,26 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// mainData is the template input for `main.tmpl`. The one wiring call
-// keeps the import set tiny - main.go references only `config`,
-// `wiring`, `middleware`, `svccontext`, the runtime observability
-// packages, and `pkg/rpc` when the design declares a proto service.
+// mainData is the template input for main.tmpl.
 type mainData struct {
-	ConfigImport string
-	// WiringImport is the generated wiring package holding Register, the
-	// one call main.go makes to attach the design. It is imported
-	// unconditionally: Register exists for every project, so a design
-	// that gains or loses routes leaves this file alone.
+	ConfigImport     string
 	WiringImport     string
 	MiddlewareImport string
 	SvccontextImport string
 	Middlewares      []string
 	HasMiddlewares   bool
-	// HasDocs gates the in-process API-docs wiring: the `embed` import, the
-	// embedded spec var, and the cfg.Docs ServeDocs call. False when the
-	// OpenAPI document is disabled or lives outside the main package's tree
-	// (go:embed cannot reach a `../` path).
+	// HasDocs embeds and serves the OpenAPI document when the design has routes and the document
+	// sits under main.go's directory, which go:embed cannot leave.
 	HasDocs bool
-	// OpenAPIEmbed is the forward-slash path of the generated OpenAPI document
-	// relative to main.go's directory, for the `//go:embed` directive.
+	// OpenAPIEmbed is the document's forward-slash path relative to main.go, for go:embed.
 	OpenAPIEmbed string
-	// HasRoutes gates the HTTP listener: the server, its middleware, the
-	// wiring.Register call, the docs and the drain.
+	// HasRoutes adds the HTTP listener and its wiring.Register call.
 	HasRoutes bool
-	// HasGRPC gates the gRPC listener: the rpc server, its interceptors,
-	// the wiring.RegisterGRPC call and the drain.
+	// HasGRPC adds the gRPC listener and its wiring.RegisterGRPC call.
 	HasGRPC bool
 }
 
-// generateProjectMain scaffolds the project's main.go (`output.main`)
-// using the union of services and middlewares from every package. The
-// single shared umbrella `routes.RegisterAll` (emitted by
-// [generateProjectRoutesUmbrella]) is the one-call wire-up so the
-// template doesn't have to import per-package routes packages.
-//
-// The file is gen-once: written when missing, skipped on subsequent
-// gen runs so user-written boot code (extra middlewares, config
-// loading, OTel SDK setup, etc.) survives regeneration.
-//
-// Setting `output.main: "-"` in the manifest opts the project out of
-// scaffolding entirely - useful for test fixtures that ship their own
-// httptest server and would collide with a generated `package main`.
+// generateProjectMain writes the gen-once output.main when the design has a route or an RPC to serve.
 func generateProjectMain(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	if proj == nil {
 		return nil
@@ -64,10 +40,6 @@ func generateProjectMain(proj *semantic.Project, protos *protodesign.Set, cfg *c
 	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
-	// Skip when nothing is wireable: main.go boots the listeners, and a
-	// design with no route and no RPC has none to boot. An events-only
-	// deployable builds its own bus and calls the generated Register
-	// itself.
 	if !projectHasRoutes(proj) && !protos.HasServices() {
 		return nil
 	}
@@ -101,9 +73,7 @@ func projectHasRoutes(proj *semantic.Project) bool {
 	return false
 }
 
-// buildProjectMainData unions every package's middleware names into
-// one deterministic list. The umbrella RegisterAll already aggregates
-// services so the template needs no further per-package wiring.
+// buildProjectMainData lists every package's middlewares once, in package order.
 func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) mainData {
 	d := mainData{
 		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
@@ -129,9 +99,6 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 	}
 	d.HasMiddlewares = len(d.Middlewares) > 0
 
-	// Wire the in-process API docs only when there is an HTTP server to
-	// serve them, the OpenAPI document is emitted, and it lives under
-	// main.go's directory (go:embed cannot cross `..`).
 	if spec := cfg.Output.OpenAPI; d.HasRoutes && spec != "" && spec != "-" {
 		mainDir := filepath.Dir(filepath.Clean(cfg.Output.Main))
 		if rel, err := filepath.Rel(mainDir, filepath.Clean(spec)); err == nil {
@@ -145,11 +112,8 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 	return d
 }
 
-// operationNameFor extracts the last segment of a Go module path
-// (`github.com/foo/myapp` → `myapp`) for use as the OTel span name.
-// Falls back to a generic `api` when the input has no segments -
-// keeps the generated main.go compilable even on degenerate
-// configs.
+// operationNameFor is the config's default serviceName: the module path's last segment
+// (`github.com/foo/myapp` → `myapp`), or "api" for an empty path.
 func operationNameFor(modulePath string) string {
 	for i := len(modulePath) - 1; i >= 0; i-- {
 		if modulePath[i] == '/' {

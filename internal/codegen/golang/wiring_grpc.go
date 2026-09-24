@@ -9,7 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// wiringGRPCData is the template input for `wiring_grpc.tmpl`.
+// wiringGRPCData is the template input for wiring_grpc.tmpl.
 type wiringGRPCData struct {
 	SvccontextImport string
 	// Imports lists every pb and server package once, sorted by path.
@@ -25,11 +25,8 @@ type wiringGRPCService struct {
 	ServerAlias string
 }
 
-// generateWiringGRPC writes `grpc.go` beside wiring.go: the RegisterGRPC
-// call attaching every proto service. It is written only when a proto
-// declares a service, and swept with the wiring directory otherwise,
-// so an HTTP-only project's wiring package never imports the gRPC
-// runtime.
+// generateWiringGRPC writes output.wiring/grpc.go, whose RegisterGRPC attaches every proto
+// service; with no proto service there is no file, and the sweep removes an old one.
 func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	if !protos.HasServices() {
 		return nil
@@ -41,9 +38,8 @@ func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot
 	return writeRendered(dir, "grpc.go", "wiring_grpc.tmpl", buildWiringGRPCData(protos, cfg))
 }
 
-// buildWiringGRPCData gives every pb package one alias (`<name>pb`) and
-// every server package one (`<dir>grpc`) through the file's import set,
-// so two packages of one name coexist in the file.
+// buildWiringGRPCData imports each pb package as `<name>pb` and each server package as
+// `<dir>grpc`; the import set numbers a clashing alias.
 func buildWiringGRPCData(protos *protodesign.Set, cfg *config.Config) wiringGRPCData {
 	imports := newGRPCImportSet()
 	d := wiringGRPCData{SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext))}
