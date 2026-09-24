@@ -154,72 +154,53 @@ func pathBindableField(v projectView, f *ast.Field) bool {
 // the names an `extend service` can target.
 func (r *request) serviceNameCompletions() []protocol.CompletionItem {
 	v := r.project()
-	pkg := v.proj.Packages[v.currentPackage()]
+	current := v.currentPackage()
+	pkg := v.proj.Packages[current]
 	if pkg == nil {
 		return nil
 	}
-	return declItems(pkg, semantic.ServiceDecls, protocol.CompletionItemKindInterface, map[string]bool{})
-}
-
-// declItems offers the declarations of kinds in pkg whose name is not in seen,
-// adding each name to seen.
-func declItems(pkg *semantic.Package, kinds semantic.DeclKind, kind protocol.CompletionItemKind, seen map[string]bool) []protocol.CompletionItem {
 	var out []protocol.CompletionItem
-	for _, d := range pkg.Decls(kinds) {
-		name := d.DeclName()
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		out = append(out, protocol.CompletionItem{
-			Label:         name,
-			Kind:          kind,
-			Detail:        kindDetail(declKind(d), pkg.Name),
-			Documentation: strings.Join(infoOf(d).doc, "\n"),
-			InsertText:    name,
-		})
+	for _, d := range pkg.Decls(semantic.ServiceDecls) {
+		out = append(out, declItem(d, current, current))
 	}
 	return out
+}
+
+// declItem is the completion item of d, a declaration of package pkg offered
+// in package current; another package's declaration names its package in the
+// detail.
+func declItem(d ast.Decl, pkg, current string) protocol.CompletionItem {
+	info := infoOf(d)
+	detail := info.summary
+	if pkg != "" && pkg != current {
+		detail += " (" + pkg + ")"
+	}
+	return protocol.CompletionItem{
+		Label:         d.DeclName(),
+		Kind:          info.item,
+		Detail:        detail,
+		Documentation: strings.Join(info.doc, "\n"),
+		InsertText:    d.DeclName(),
+	}
 }
 
 // projectDeclItems offers the declarations of kinds across the project, one per
 // name (the first package by name wins), sorted by label.
-func (r *request) projectDeclItems(kinds semantic.DeclKind, kind protocol.CompletionItemKind) []protocol.CompletionItem {
+func (r *request) projectDeclItems(kinds semantic.DeclKind) []protocol.CompletionItem {
 	v := r.project()
+	current := v.currentPackage()
 	seen := map[string]bool{}
 	var out []protocol.CompletionItem
 	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
-		out = append(out, declItems(v.proj.Packages[pkgName], kinds, kind, seen)...)
+		for _, d := range v.proj.Packages[pkgName].Decls(kinds) {
+			if !seen[d.DeclName()] {
+				seen[d.DeclName()] = true
+				out = append(out, declItem(d, pkgName, current))
+			}
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
-}
-
-// declKind spells d's kind as the source does: `type`, `error NotFound`, ...
-func declKind(d ast.Decl) string {
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		return "type"
-	case *ast.EnumDecl:
-		return "enum"
-	case *ast.ScalarDecl:
-		return "scalar"
-	case *ast.ErrorDecl:
-		return "error " + v.Category
-	case *ast.MiddlewareDecl:
-		return "middleware"
-	case *ast.ServiceDecl:
-		return "service"
-	}
-	return ""
-}
-
-// kindDetail renders `kind (pkg)`, or kind alone for an unnamed package.
-func kindDetail(kind, pkg string) string {
-	if pkg == "" {
-		return kind
-	}
-	return kind + " (" + pkg + ")"
 }
 
 // securitySchemeCompletions offers the manifest's openapi.securitySchemes, with
@@ -256,12 +237,12 @@ func (r *request) securitySchemeCompletions() []protocol.CompletionItem {
 
 // middlewareNameCompletions offers every middleware in the project.
 func (r *request) middlewareNameCompletions() []protocol.CompletionItem {
-	return r.projectDeclItems(semantic.MiddlewareDecls, protocol.CompletionItemKindFunction)
+	return r.projectDeclItems(semantic.MiddlewareDecls)
 }
 
 // errorNameCompletions offers every error in the project.
 func (r *request) errorNameCompletions() []protocol.CompletionItem {
-	return r.projectDeclItems(semantic.ErrorDecls, protocol.CompletionItemKindClass)
+	return r.projectDeclItems(semantic.ErrorDecls)
 }
 
 // typeCompletionsProjectWide offers what a field type can name: the built-ins,
@@ -324,21 +305,13 @@ func (r *request) declCompletions(kinds semantic.DeclKind) []protocol.Completion
 	currentPkg := v.currentPackage()
 	var items []protocol.CompletionItem
 	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
-		pkg := v.proj.Packages[pkgName]
-		for _, d := range pkg.Decls(kinds) {
-			info := infoOf(d)
-			label, detail := d.DeclName(), info.summary
-			if pkg.Name != "" && pkg.Name != currentPkg {
-				label = pkg.Name + "." + d.DeclName()
-				detail = pkg.Name + " - " + detail
+		for _, d := range v.proj.Packages[pkgName].Decls(kinds) {
+			item := declItem(d, pkgName, currentPkg)
+			if pkgName != "" && pkgName != currentPkg {
+				item.Label = pkgName + "." + item.Label
+				item.InsertText = item.Label
 			}
-			items = append(items, protocol.CompletionItem{
-				Label:         label,
-				Kind:          info.item,
-				Detail:        detail,
-				Documentation: strings.Join(info.doc, "\n"),
-				InsertText:    label,
-			})
+			items = append(items, item)
 		}
 	}
 	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {

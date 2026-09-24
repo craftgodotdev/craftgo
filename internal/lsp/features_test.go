@@ -407,6 +407,39 @@ func keys(m map[string]string) []string {
 	return out
 }
 
+// A declaration completes as one item in every slot that offers it; a type
+// slot only qualifies the label with the package.
+func TestCompletionItemIsOnePerDeclaration(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)
+	mustWrite(t, filepath.Join(root, "design", "shared", "s.craftgo"),
+		"package shared\n\n// Auth checks the token.\nmiddleware Auth\n\n// Money is an amount.\ntype Money { amount int }\n")
+	path := filepath.Join(root, "design", "app", "a.craftgo")
+	complete := func(src string) map[string]protocol.CompletionItem {
+		t.Helper()
+		clean, pos := markCursor(t, src)
+		mustWrite(t, path, clean)
+		u := uri.File(path)
+		byLabel := map[string]protocol.CompletionItem{}
+		for _, it := range completionItems(t, &server{docs: map[uri.URI]string{u: clean}}, u, pos) {
+			byLabel[it.Label] = it
+		}
+		return byLabel
+	}
+	head := "package app\n\nimport \"shared\"\n\n"
+	mwArg := complete(head + "service S {\n\t@middlewares(|)\n\tget G /g {}\n}\n")
+	member := complete(head + "type T {\n\tm shared.|\n}\n")
+	typeSlot := complete(head + "type T {\n\tm |\n}\n")
+	for _, c := range []struct{ a, b protocol.CompletionItem }{
+		{mwArg["Auth"], member["Auth"]},
+		{member["Money"], typeSlot["shared.Money"]},
+	} {
+		if c.a.Label == "" || c.b.Label == "" || c.a.Kind != c.b.Kind || c.a.Detail != c.b.Detail || c.a.Documentation != c.b.Documentation {
+			t.Errorf("items differ:\n%+v\n%+v", c.a, c.b)
+		}
+	}
+}
+
 // A just-opened type, error or enum body offers nothing.
 func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	cases := []struct {

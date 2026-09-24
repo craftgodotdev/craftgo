@@ -127,19 +127,14 @@ func packageItems(names map[string]int, detail string) []protocol.CompletionItem
 // packageDeclCompletions offers every declaration of package pkg except its
 // errors, for `pkg.|`.
 func (r *request) packageDeclCompletions(pkg string) []protocol.CompletionItem {
-	p := r.project().proj.Packages[pkg]
+	v := r.project()
+	p := v.proj.Packages[pkg]
 	if p == nil {
 		return nil
 	}
 	var out []protocol.CompletionItem
 	for _, d := range p.Decls(semantic.AnyDecl &^ semantic.ErrorDecls) {
-		info := infoOf(d)
-		out = append(out, protocol.CompletionItem{
-			Label:         d.DeclName(),
-			Kind:          info.item,
-			Detail:        info.summary,
-			Documentation: strings.Join(info.doc, "\n"),
-		})
+		out = append(out, declItem(d, pkg, v.currentPackage()))
 	}
 	return out
 }
