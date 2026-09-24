@@ -104,10 +104,9 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 }
 
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
-	groups := methodGroups(svc)
 	t := tmpl("transport.tmpl")
 	for _, m := range svc.Methods {
-		group := groups[m.Name]
+		group := semantic.MethodGroupOf(svc, m)
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
 		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group, cfg.Output.FileCase)
 		if err := os.MkdirAll(dir, 0o755); err != nil {

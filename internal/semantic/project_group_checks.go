@@ -168,7 +168,6 @@ func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase str
 	if si == nil {
 		return out
 	}
-	primaryGroup := route.ServiceGroup(si.Primary)
 	add := func(block *ast.ServiceDecl, group string) {
 		members := blockStubMembers(block)
 		if len(members) == 0 {
@@ -182,9 +181,8 @@ func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase str
 		claim.members = append(claim.members, members...)
 		out[seg] = claim
 	}
-	add(si.Primary, primaryGroup)
-	for _, e := range si.Extends {
-		add(e, route.EffectiveGroup(e, primaryGroup))
+	for _, b := range si.blocks() {
+		add(b, si.blockGroup(b))
 	}
 	return out
 }

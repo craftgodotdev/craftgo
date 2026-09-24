@@ -283,9 +283,8 @@ func generateRoutesForSegment(seg string, contribs []segContribution, pkg *seman
 		}},
 	}
 	for _, c := range contribs {
-		groups := methodGroups(c.svc)
 		for _, m := range c.svc.Methods {
-			if groups[m.Name] != c.group {
+			if semantic.MethodGroupOf(c.svc, m) != c.group {
 				continue
 			}
 			full := route.Resolve(cfg.OpenAPI.BasePath, c.svc.Primary, m)

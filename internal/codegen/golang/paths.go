@@ -1,13 +1,11 @@
 package golang
 
 import (
-	"maps"
 	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
@@ -87,41 +85,14 @@ func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, gro
 	}
 }
 
-// methodGroups maps each method name to its block's [route.EffectiveGroup], "" when ungrouped.
-func methodGroups(svc *semantic.ServiceInfo) map[string]string {
-	return memberGroups(svc, func(d *ast.ServiceDecl) []string {
-		out := make([]string, 0, len(d.Members))
-		for _, m := range d.Methods() {
-			out = append(out, m.Name)
-		}
-		return out
-	})
-}
-
-// memberGroups maps each name that names returns for a block to the block's effective @group.
-func memberGroups(svc *semantic.ServiceInfo, names func(*ast.ServiceDecl) []string) map[string]string {
-	out := map[string]string{}
-	if svc == nil {
-		return out
-	}
-	primaryGroup := route.ServiceGroup(svc.Primary)
-	if svc.Primary != nil {
-		for _, n := range names(svc.Primary) {
-			out[n] = primaryGroup
-		}
-	}
-	for _, e := range svc.Extends {
-		g := route.EffectiveGroup(e, primaryGroup)
-		for _, n := range names(e) {
-			out[n] = g
-		}
-	}
-	return out
-}
-
 // distinctGroups returns the @groups the service's methods use, sorted, "" first.
 func distinctGroups(svc *semantic.ServiceInfo) []string {
-	return slices.Compact(slices.Sorted(maps.Values(methodGroups(svc))))
+	groups := make([]string, 0, len(svc.Methods))
+	for _, m := range svc.Methods {
+		groups = append(groups, semantic.MethodGroupOf(svc, m))
+	}
+	slices.Sort(groups)
+	return slices.Compact(groups)
 }
 
 // groupAliasSuffix is the import-alias suffix of a @group ("admin/ops" → "AdminOps", "" → "").

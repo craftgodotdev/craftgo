@@ -60,9 +60,8 @@ func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 }
 
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg crossPkg) error {
-	groups := methodGroups(svc)
 	for _, m := range svc.Methods {
-		group := groups[m.Name]
+		group := semantic.MethodGroupOf(svc, m)
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
 		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group, cfg.Output.FileCase)
 		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"

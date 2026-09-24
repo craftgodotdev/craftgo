@@ -47,9 +47,8 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		}
 		for _, svcName := range pkg.ServiceNames() {
 			svc := pkg.Services[svcName]
-			groups := methodGroups(svc)
 			for _, m := range svc.Methods {
-				dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, groups[m.Name], cfg.Output.FileCase)
+				dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
 				files = append(files, filepath.Join(dir, idents.FileName(m.Name, cfg.Output.FileCase)+".go"))
 			}
 		}

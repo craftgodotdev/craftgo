@@ -259,6 +259,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   mixin's type arguments, also when the mixin sits inside another package's
   mixin.
 
+- **The editor's `@group` hover describes the layout gen writes.** It said a
+  group nests files under `<service>/<group>/`; the group replaces the
+  service's directory, as the decorators guide says.
+
 - **Fewer duplicate diagnostics.** A generic mixin with the wrong number of
   arguments, or a mixin naming an error or a middleware, got a second
   diagnostic beside `mixin/arity` or `mixin/non-type`; an event payload

@@ -26,19 +26,6 @@ func inheritedFrom(e *ast.ServiceDecl) []*ast.Decorator {
 	return out
 }
 
-// blockOf returns the declaration of svc that declares a method named like
-// m, the primary before its extend blocks, or nil.
-func (svc *ServiceInfo) blockOf(m *ast.Method) *ast.ServiceDecl {
-	for _, b := range append([]*ast.ServiceDecl{svc.Primary}, svc.Extends...) {
-		for _, bm := range b.Methods() {
-			if bm.Name == m.Name {
-				return b
-			}
-		}
-	}
-	return nil
-}
-
 // InheritedDecorators returns the @middlewares, @security or @tags
 // decorators, as name says, that apply to m, outermost first: service holds
 // the primary service's, member those of m's extend block, then m's own. The
