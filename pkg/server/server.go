@@ -125,21 +125,14 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 }
 
 // applyDefaults wraps h in the default body cap (inner) and handler timeout (outer), each
-// unless h sets its own.
+// unless h is a [WithLimits] handler that sets its own.
 func (s *Server) applyDefaults(h http.Handler) http.Handler {
-	return s.applyDefaultTimeout(s.applyDefaultBodyLimit(h))
-}
-
-func (s *Server) applyDefaultBodyLimit(h http.Handler) http.Handler {
-	if s.defaultMaxBodySize > 0 && !handlerHasBodyLimit(h) {
-		return maxBodySizeHandler(h, s.defaultMaxBodySize)
+	own, _ := h.(limitedHandler)
+	if s.defaultMaxBodySize > 0 && !own.bodyLimited {
+		h = maxBodySizeHandler(h, s.defaultMaxBodySize)
 	}
-	return h
-}
-
-func (s *Server) applyDefaultTimeout(h http.Handler) http.Handler {
-	if s.defaultHandlerTimeout > 0 && !handlerHasTimeout(h) {
-		return timeoutHandler(h, s.defaultHandlerTimeout)
+	if s.defaultHandlerTimeout > 0 && !own.timeoutSet {
+		h = timeoutHandler(h, s.defaultHandlerTimeout)
 	}
 	return h
 }

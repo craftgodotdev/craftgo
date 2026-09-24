@@ -19,6 +19,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   before writing, as a server-sent-events stream does, gets a 200 head sent
   uncompressed instead of a `WriteHeader(0)` panic and a 500.
 
+- **A method's own `@timeout` survives the default body cap.** With both
+  `server.handlerTimeout` and `server.maxBodySize` set, a method with a
+  `@timeout` longer than the default and no `@maxBodySize` was cut to the
+  default deadline; its own timeout now applies alone, as documented.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

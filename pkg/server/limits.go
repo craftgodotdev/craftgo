@@ -37,16 +37,6 @@ type limitedHandler struct {
 	timeoutSet  bool
 }
 
-func handlerHasBodyLimit(h http.Handler) bool {
-	lh, ok := h.(limitedHandler)
-	return ok && lh.bodyLimited
-}
-
-func handlerHasTimeout(h http.Handler) bool {
-	lh, ok := h.(limitedHandler)
-	return ok && lh.timeoutSet
-}
-
 // timeoutHandler runs h on the calling goroutine with a deadline of d on its context.
 func timeoutHandler(h http.Handler, d time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
