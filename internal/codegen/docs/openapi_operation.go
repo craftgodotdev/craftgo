@@ -3,6 +3,7 @@ package docs
 import (
 	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,35 +41,9 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		Summary:     summaryOf(m.Decorators),
 	}
 	svc := pkg.Services[svcName]
-	// Service `@security` requirements come first, then the method's; any one
-	// is enough. The method's own `@ignoreSecurity` drops the inherited ones.
-	ignoreSec := hasOwnDecorator(m.Decorators, "ignoreSecurity")
-	var sec *openapi3.SecurityRequirements
-	if !ignoreSec && svc != nil && svc.Primary != nil {
-		sec = securityFromDecorators(svc.Primary.Decorators)
-	}
-	methodDecs := m.Decorators
-	if ignoreSec {
-		// `@security` propagated from an extend block is inherited too.
-		filtered := make([]*ast.Decorator, 0, len(m.Decorators))
-		for _, d := range m.Decorators {
-			if d != nil && d.Propagated && d.Name == "security" {
-				continue
-			}
-			filtered = append(filtered, d)
-		}
-		methodDecs = filtered
-	}
-	if methodSec := securityFromDecorators(methodDecs); methodSec != nil {
-		if sec == nil {
-			sec = methodSec
-		} else {
-			combined := append(openapi3.SecurityRequirements{}, *sec...)
-			combined = append(combined, *methodSec...)
-			sec = &combined
-		}
-	}
-	if sec != nil {
+	// Any one requirement is enough; the service's come first.
+	service, member, _ := svc.InheritedDecorators(m, "security")
+	if sec := securityFromDecorators(slices.Concat(service, member)); sec != nil {
 		deduped := dedupSecurity(*sec)
 		op.Security = &deduped
 	}
@@ -453,20 +428,6 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 	return params
 }
 
-// hasOwnDecorator reports whether ds carries a decorator called name that
-// was written on the method, not propagated ([ast.Decorator.Propagated]).
-func hasOwnDecorator(ds []*ast.Decorator, name string) bool {
-	for _, d := range ds {
-		if d == nil || d.Propagated {
-			continue
-		}
-		if d.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
 // setOperation puts op in item's slot for verb.
 func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) {
 	switch strings.ToUpper(verb) {
@@ -492,39 +453,26 @@ func operationID(m *ast.Method, base string) string {
 }
 
 // operationTags returns the service's `@tags`, its `@group`, then the method's
-// `@tags`, else the service name. `@ignoreTags` keeps only the method's own.
+// `@tags`, each once, else the service name. `@ignoreTags` keeps only the
+// method's own.
 func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
-	seen := map[string]bool{}
 	var out []string
-	add := func(t string) {
-		if t == "" || seen[t] {
-			return
-		}
-		seen[t] = true
-		out = append(out, t)
-	}
-	ignore := hasOwnDecorator(m.Decorators, "ignoreTags")
-	if !ignore {
-		if svc, ok := pkg.Services[svcName]; ok && svc.Primary != nil {
-			for _, t := range tagsFromDecorators(svc.Primary.Decorators) {
-				add(t)
+	add := func(tags ...string) {
+		for _, t := range tags {
+			if t != "" && !slices.Contains(out, t) {
+				out = append(out, t)
 			}
-			// The group, whole ("admin/ops"), is that of the method's own
-			// block: an extend block's methods carry its @group.
-			add(semantic.MethodGroupOf(svc, m))
 		}
 	}
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "tags" {
-			continue
-		}
-		if d.Propagated && ignore {
-			continue
-		}
-		for _, t := range tagsFromDecorators([]*ast.Decorator{d}) {
-			add(t)
-		}
+	svc := pkg.Services[svcName]
+	service, member, ignored := svc.InheritedDecorators(m, "tags")
+	add(tagsFromDecorators(service)...)
+	if !ignored && svc.Primary != nil {
+		// The group, whole ("admin/ops"), is that of the method's own
+		// block: an extend block's methods carry its @group.
+		add(semantic.MethodGroupOf(svc, m))
 	}
+	add(tagsFromDecorators(member)...)
 	if len(out) == 0 {
 		out = []string{svcName}
 	}

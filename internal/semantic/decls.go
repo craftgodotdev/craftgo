@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -130,9 +131,10 @@ func (a *analyzer) registerMember(table map[string]lexer.Position, key string, p
 	return true
 }
 
-// mergeServices fills each service's Methods. An extend block's
-// method-level decorators are prepended to each of its methods, @group
-// stays on the block, and any other known decorator on the block is an error.
+// mergeServices fills each service's Methods. The decorators an extend
+// block's methods inherit ([inheritedFrom]) are prepended to each of them,
+// @group stays on the block, and any other known decorator on the block is
+// an error.
 func (a *analyzer) mergeServices() {
 	for name, si := range a.pkg.Services {
 		if si.Primary == nil {
@@ -140,45 +142,27 @@ func (a *analyzer) mergeServices() {
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
 		for _, e := range si.Extends {
-			var propagate []*ast.Decorator
 			for _, d := range e.Decorators {
 				spec, ok := Lookup(d.Name)
-				if !ok {
-					continue
-				}
-				if d.Name == "group" {
+				switch {
+				case !ok:
+				case d.Name == "group":
 					// The args pass skips extend blocks, so @group's argument is checked here.
 					a.checkGroupArg(d)
-					continue
-				}
-				if spec.Levels&LvlMethod == 0 {
+				case spec.Levels&LvlMethod == 0:
 					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
 						"decorator @%s on extend service %q is not valid on a method; move it to the primary service", d.Name, name)
-					continue
 				}
-				propagate = append(propagate, d)
 			}
+			inherited := inheritedFrom(e)
 			for _, m := range e.Methods() {
-				m.Decorators = prependPropagated(propagate, m.Decorators)
+				if len(inherited) > 0 {
+					m.Decorators = append(slices.Clone(inherited), m.Decorators...)
+				}
 				si.Methods = append(si.Methods, m)
 			}
 		}
 	}
-}
-
-// prependPropagated returns copies of propagate, marked Propagated, followed
-// by own; the block's own decorators stay unmarked.
-func prependPropagated(propagate, own []*ast.Decorator) []*ast.Decorator {
-	if len(propagate) == 0 {
-		return own
-	}
-	merged := make([]*ast.Decorator, 0, len(propagate)+len(own))
-	for _, src := range propagate {
-		cp := *src
-		cp.Propagated = true
-		merged = append(merged, &cp)
-	}
-	return append(merged, own...)
 }
 
 // checkExtendOrphans reports every `extend service` block whose service

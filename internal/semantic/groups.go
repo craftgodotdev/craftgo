@@ -11,20 +11,9 @@ func MethodGroupOf(svc *ServiceInfo, m *ast.Method) string {
 	if svc == nil || m == nil {
 		return ""
 	}
-	primaryGroup := route.ServiceGroup(svc.Primary)
-	if svc.Primary != nil {
-		for _, pm := range svc.Primary.Methods() {
-			if pm.Name == m.Name {
-				return primaryGroup
-			}
-		}
+	block := svc.blockOf(m)
+	if block == nil {
+		return ""
 	}
-	for _, e := range svc.Extends {
-		for _, em := range e.Methods() {
-			if em.Name == m.Name {
-				return route.EffectiveGroup(e, primaryGroup)
-			}
-		}
-	}
-	return ""
+	return route.EffectiveGroup(block, route.ServiceGroup(svc.Primary))
 }

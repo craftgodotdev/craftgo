@@ -30,7 +30,6 @@ func TestRawSides(t *testing.T) {
 		{"passthrough + rawRequest", decs("passthrough", "rawRequest"), true, true},
 		{"passthrough + rawResponse", decs("rawResponse", "passthrough"), true, true},
 		{"nil entry tolerated", []*ast.Decorator{nil, {Name: "rawResponse"}}, false, true},
-		{"propagated flag counts", []*ast.Decorator{{Name: "rawRequest", Propagated: true}}, true, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

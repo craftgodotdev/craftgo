@@ -41,14 +41,16 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	case *ast.ErrorDecl:
 		// An error's decorators name no other declaration.
 	case *ast.ServiceDecl:
+		var inherited []*ast.Decorator
 		if dd.Extend {
-			// Resolved once on the block, not on each method it is copied to.
+			// Resolved once on the block, not on each method that inherits it.
 			a.checkMemberLevelRefs(dd.Decorators, LvlMethod)
+			inherited = inheritedFrom(dd)
 		} else {
 			a.checkServiceLevelRefs(dd.Decorators)
 		}
 		for _, m := range dd.Methods() {
-			a.checkMemberLevelRefs(m.Decorators, LvlMethod)
+			a.checkMemberLevelRefs(ownDecorators(m, inherited), LvlMethod)
 		}
 	}
 }
@@ -167,10 +169,10 @@ func (a *analyzer) checkServiceLevelRefs(decs []*ast.Decorator) {
 
 // checkMemberLevelRefs resolves the @errors, @middlewares and @security
 // names in decorators written at level lvl. A decorator not allowed at lvl
-// is left to the placement check, and a propagated copy to its extend block.
+// is left to the placement check.
 func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator, lvl Level) {
 	for _, d := range decs {
-		if d == nil || d.Propagated {
+		if d == nil {
 			continue
 		}
 		if spec, ok := Lookup(d.Name); !ok || spec.Levels&lvl == 0 {

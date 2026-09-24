@@ -16,45 +16,19 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// memberChain lists the decorator's names for a member outermost first (primary service, extend
-// block, member), each once; the member's own @ignoreMiddleware drops the two inherited layers.
-func memberChain(decorator string, own []*ast.Decorator, svc *ast.ServiceDecl) []string {
-	ignore := false
-	for _, d := range own {
-		if d != nil && !d.Propagated && d.Name == "ignoreMiddleware" {
-			ignore = true
-			break
-		}
-	}
+// middlewareNames lists the @middlewares chain of m, a method of svc, outermost first, each name
+// once and without its package qualifier; middleware names are unique across the project.
+func middlewareNames(svc *semantic.ServiceInfo, m *ast.Method) []string {
+	service, member, _ := svc.InheritedDecorators(m, "middlewares")
 	var names []string
-	seen := map[string]bool{}
-	appendNames := func(ns []string) {
-		for _, n := range ns {
-			if seen[n] {
-				continue
+	for _, d := range slices.Concat(service, member) {
+		for _, n := range ast.ArgNames(d) {
+			if name := n.Value[strings.LastIndexByte(n.Value, '.')+1:]; !slices.Contains(names, name) {
+				names = append(names, name)
 			}
-			seen[n] = true
-			names = append(names, n)
 		}
-	}
-	if svc != nil && !ignore {
-		appendNames(extractMiddlewareNames(decorator, svc.Decorators))
-	}
-	for _, d := range own {
-		if d == nil || d.Name != decorator {
-			continue
-		}
-		if d.Propagated && ignore {
-			continue
-		}
-		appendNames(extractMiddlewareNames(decorator, []*ast.Decorator{d}))
 	}
 	return names
-}
-
-// middlewareNames is [memberChain] for a method's `@middlewares` chain.
-func middlewareNames(m *ast.Method, svc *ast.ServiceDecl) []string {
-	return memberChain("middlewares", m.Decorators, svc)
 }
 
 // buildHandlerCall renders the handler argument of srv.Handle, wrapped in server.WithLimits
@@ -151,21 +125,6 @@ func formatDurationGo(d time.Duration) string {
 		return fmt.Sprintf("%d * time.Millisecond", d/time.Millisecond)
 	}
 	return fmt.Sprintf("%d * time.Nanosecond", d.Nanoseconds())
-}
-
-// extractMiddlewareNames returns the names every @decorator in ds lists without their package
-// qualifier; middleware names are unique across the project.
-func extractMiddlewareNames(decorator string, ds []*ast.Decorator) []string {
-	var out []string
-	for _, d := range ds {
-		if d == nil || d.Name != decorator {
-			continue
-		}
-		for _, n := range ast.ArgNames(d) {
-			out = append(out, n.Value[strings.LastIndexByte(n.Value, '.')+1:])
-		}
-	}
-	return out
 }
 
 // routeEntry is one `srv.Handle(Pattern, HandlerCall, Middlewares)` line of routes.tmpl.
@@ -330,7 +289,7 @@ func generateRoutesForSegment(seg string, contribs []segContribution, pkg *seman
 				continue
 			}
 			full := route.Resolve(cfg.OpenAPI.BasePath, c.svc.Primary, m)
-			mws := middlewareNames(m, c.svc.Primary)
+			mws := middlewareNames(c.svc, m)
 			call, needsTime := buildHandlerCall(m, alias)
 			if needsTime {
 				data.NeedsTime = true

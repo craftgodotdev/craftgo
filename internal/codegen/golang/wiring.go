@@ -67,7 +67,7 @@ func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard 
 				continue
 			}
 			for _, m := range svc.Methods {
-				for _, n := range middlewareNames(m, svc.Primary) {
+				for _, n := range middlewareNames(svc, m) {
 					if _, ok := seen[n]; !ok {
 						seen[n] = applied{
 							decl:   "middleware " + n,

@@ -7,9 +7,6 @@ type Decorator struct {
 	Args []*DecoratorArg
 	// HasParens is set when the source wrote `(...)`, even empty.
 	HasParens bool
-	// Propagated marks a copy semantic prepends to a method from its
-	// `extend service` block.
-	Propagated bool
 }
 
 // DecoratorArg is one decorator argument, held in Value, Nested or Object;
