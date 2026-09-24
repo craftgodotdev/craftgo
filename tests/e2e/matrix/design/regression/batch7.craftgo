@@ -17,9 +17,9 @@ type Rg7Maps {
 // @header field is written onto the response (not dropped by the envelope
 // name-skip), and @example on an error field renders into the schema.
 error Forbidden Rg7Secret {
-	secret string @sensitive
+	secret string  @sensitive
 	reason string? @example("rate limit hit")
-	code   string @header("X-Error-Code")
+	code   string  @header("X-Error-Code")
 	note   string
 }
 

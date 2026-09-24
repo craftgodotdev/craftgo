@@ -18,11 +18,11 @@ package services
 // the JSON body via the runtime header/cookie writers.
 type PaginatedResp {
 	items    shared.ID[]
-	count    int       @header("X-Total-Count")
-	traceId  shared.ID @header("X-Trace-Id")    // string scalar → string(...)
-	nextPage string?   @header("X-Next-Page")
-	hasMore  bool      @cookie("has_more")
-	session  string    @cookie("session_id")
+	count    int         @header("X-Total-Count")
+	traceId  shared.ID   @header("X-Trace-Id") // string scalar → string(...)
+	nextPage string?     @header("X-Next-Page")
+	hasMore  bool        @cookie("has_more")
+	session  string      @cookie("session_id")
 }
 
 // RateLimited surfaces the back-off hint on a non-string `Retry-After`

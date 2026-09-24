@@ -7,7 +7,7 @@ package regression
 
 scalar RgCents int @gte(0)
 
-scalar RgCode string @length(4)  // single-arg exact length
+scalar RgCode string @length(4) // single-arg exact length
 
 scalar RgToken bytes @minLength(16) @maxLength(16)
 

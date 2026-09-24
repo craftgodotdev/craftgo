@@ -24,8 +24,8 @@ type PairsNum {
 // the inner checks automatically through scalar leaf inheritance -
 // no explicit per-element decorator required.
 //
-//	scalar Tag string @length(1, 20)
-//	type PairsArr { tags Tag[] @minItems(1) @maxItems(10) @uniqueItems }
+// 	scalar Tag string @length(1, 20)
+// 	type PairsArr { tags Tag[] @minItems(1) @maxItems(10) @uniqueItems }
 type PairsArr {
 	tags string[] @minItems(1) @maxItems(10) @uniqueItems
 }

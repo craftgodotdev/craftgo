@@ -17,7 +17,7 @@ error TooManyRequests RateLimitedErr {
 
 error ServiceUnavailable MaintenanceWindow {
 	reason         MaintenanceReason
-	estimatedEndAt string             @format(datetime)
+	estimatedEndAt string            @format(datetime)
 }
 
 error Internal InternalErr

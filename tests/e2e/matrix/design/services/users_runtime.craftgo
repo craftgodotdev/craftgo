@@ -12,15 +12,15 @@ type AcctDeleteUserReq {
 
 // AcctCreateUserReq is the body for POST /account-users.
 type AcctCreateUserReq {
-	name string @length(1, 50)
+	name string              @length(1, 50)
 	age  int?
 	tags string[]
 	meta map<string, string>
 }
 
 type AcctUpdateUserReq {
-	id   string @path
-	name string @length(1, 50)
+	id   string              @path
+	name string              @length(1, 50)
 	age  int?
 	tags string[]
 	meta map<string, string>

@@ -14,7 +14,7 @@ enum DiscKind {
 // exported Go field (`Type`, `Error`, `Map`, `Delete`) with the keyword
 // as its JSON tag; `map` as a field name coexists with `map<>` as a type.
 type KeywordFieldNames {
-	type   string @pattern("^(cross_sell|up_sell|combo)$")
+	type   string           @pattern("^(cross_sell|up_sell|combo)$")
 	error  string?
 	map    string?
 	delete bool

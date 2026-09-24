@@ -182,8 +182,10 @@ func (v *GetOrderReq) Validate() error {
 // Validate checks every field-level constraint declared on ListOrdersReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListOrdersReq) Validate() error {
-	if err := v.Limit.Validate(); err != nil {
-		return fmt.Errorf("limit: %w", err)
+	if v.Limit != nil {
+		if err := v.Limit.Validate(); err != nil {
+			return fmt.Errorf("limit: %w", err)
+		}
 	}
 	return nil
 }

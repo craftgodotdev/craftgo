@@ -53,7 +53,7 @@ type WarehouseClosed {
 	warehouse Warehouse
 	reason    string?
 	closedAt  datetime?
-	details   bytes? @format(raw)
+	details   bytes?    @format(raw)
 }
 
 // An event may carry a payload of its own name - separate namespaces.
@@ -66,7 +66,7 @@ type StocktakeStarted {
 // through xshared rather than through this package.
 type TierPromoted {
 	tier     xshared.XTier
-	memberId string @minLength(1)
+	memberId string        @minLength(1)
 }
 
 // Envelope is generic: an event payload that instantiates it must reach

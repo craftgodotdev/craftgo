@@ -145,13 +145,13 @@ type GetItemReq {
 // shape on the wire, so the optional binder works just like for
 // plain strings).
 type SearchReq {
-	cursor  string?  @query
-	limit   int      @query @gte(1) @lte(100)
-	sort    Color?   @query
-	ids     int[]?   @query
-	active  bool     @query
-	offset  int?     @query @gte(0)
-	verbose bool?    @query
+	cursor  string? @query
+	limit   int     @query @gte(1) @lte(100)
+	sort    Color?  @query
+	ids     int[]?  @query
+	active  bool    @query
+	offset  int?    @query @gte(0)
+	verbose bool?   @query
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The

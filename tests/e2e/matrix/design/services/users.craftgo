@@ -48,7 +48,7 @@ type User {
 	shared.Audit
 	id    shared.ID
 	email shared.Email
-	name  string @minLength(1)
+	name  string       @minLength(1)
 }
 
 // ListUsersReq embeds `shared.Pagination` cross-package. The

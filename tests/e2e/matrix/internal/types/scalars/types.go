@@ -138,17 +138,11 @@ type GetOrderReq struct {
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.
 // The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
 // inside @query - codegen parses the wire string as int then casts
-// up to the alias.
-//
-// NOTE: limit cannot be `Cents?` because optional numeric primitives
-// cannot bind to query - the transport pass rejects them since
-// `*int` from a query string needs a tri-state (absent / empty /
-// parsed) that the framework has no clean idiom for. The bare-int
-// form uses 0 as the absent sentinel, with @default providing the
-// canonical fallback the handler sees after pre-fill.
+// up to the alias. An absent limit takes its @default, pre-filled
+// before the query binds.
 type ListOrdersReq struct {
 	Cursor *string `json:"cursor,omitempty"`
-	Limit  Cents   `json:"limit"`
+	Limit  *Cents  `json:"limit,omitempty"`
 }
 
 // MapValueGeneric verifies that generic instances ride the `map<K, V>`

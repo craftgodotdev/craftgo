@@ -24,9 +24,9 @@ scalar PageSize int @gte(1) @lte(100)
 //   - negOne: @default(-1) with strict @lt(0) - the default is the
 //     largest value that still satisfies the strict bound.
 type DefaultsBoundary {
-	zero   int?  @default(0)   @gte(0)
+	zero   int?  @default(0) @gte(0)
 	flag   bool? @default(true)
-	negOne int?  @default(-1)  @lt(0)
+	negOne int?  @default(-1) @lt(0)
 }
 
 // DefaultsConflict exercises a default literal that fails the per-field

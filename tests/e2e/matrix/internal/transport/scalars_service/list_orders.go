@@ -17,12 +17,15 @@ import (
 func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
-		req.Limit = types.Cents(20)
+		{
+			__d := types.Cents(20)
+			req.Limit = &__d
+		}
 		_q := r.URL.Query()
 		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[types.Cents]) {
+		if !server.BindValuePtr(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[types.Cents]) {
 			return
 		}
 		if err := req.Validate(); err != nil {

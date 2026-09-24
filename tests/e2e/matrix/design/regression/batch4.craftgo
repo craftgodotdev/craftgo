@@ -75,6 +75,6 @@ service RegressionBatch4 {
 	}
 
 	get DoCollideQuery /collide-q {
-		request Rg4CollideQuery
+		request  Rg4CollideQuery
 	}
 }
