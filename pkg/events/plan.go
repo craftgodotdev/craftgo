@@ -22,23 +22,23 @@ type PlanConsumer struct {
 	Consumer string `json:"consumer"`
 }
 
-// Plan reports what is registered, before or after [Bus.Start], with groups sorted by
-// name and consumers by contract then consumer.
+// Plan reports what is registered, before or after [Bus.Start], in the order Start hands
+// it over: groups by name, consumers by contract then consumer.
 func (b *Bus) Plan() Plan {
 	b.mu.Lock()
-	subs := make([]Subscription, len(b.subs))
-	copy(subs, b.subs)
+	subs := sortedSubscriptions(b.subs)
 	b.mu.Unlock()
 
-	byName := map[Group][]PlanConsumer{}
+	out := Plan{Groups: []PlanGroup{}}
 	for _, sub := range subs {
-		byName[sub.Group] = append(byName[sub.Group], PlanConsumer{Event: sub.Event, Consumer: sub.Consumer})
+		consumer := PlanConsumer{Event: sub.Event, Consumer: sub.Consumer}
+		if last := len(out.Groups) - 1; last >= 0 && out.Groups[last].Name == sub.Group {
+			out.Groups[last].Consumers = append(out.Groups[last].Consumers, consumer)
+			continue
+		}
+		out.Groups = append(out.Groups, PlanGroup{Name: sub.Group, Consumers: []PlanConsumer{consumer}})
 	}
-	out := Plan{Groups: make([]PlanGroup, 0, len(byName))}
-	for name, consumers := range byName {
-		out.Groups = append(out.Groups, PlanGroup{Name: name, Consumers: consumers})
-	}
-	return orderedPlan(out)
+	return out
 }
 
 // MarshalJSON renders the plan sorted as [Bus.Plan] orders it, whatever order it was
