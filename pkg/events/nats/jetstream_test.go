@@ -943,6 +943,42 @@ func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
 	}
 }
 
+// A zero ack timeout keeps a publish and a batch waiting past the client's 5s default, until Close.
+func TestAZeroPublishAckTimeoutWaitsUntilCloseOnBothPaths(t *testing.T) {
+	conn := runJetStreamServer(t)
+	quietStream(t, conn, "QUIET", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(0))
+
+	waiting := map[string]chan error{"Publish": make(chan error, 1), "PublishBatch": make(chan error, 1)}
+	go func() {
+		waiting["Publish"] <- tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)})
+	}()
+	go func() {
+		waiting["PublishBatch"] <- tr.PublishBatch(context.Background(), []*events.Message{{Event: "orders.Paid", Payload: []byte(`{}`)}})
+	}()
+
+	select {
+	case err := <-waiting["Publish"]:
+		t.Fatalf("Publish returned %v before Close", err)
+	case err := <-waiting["PublishBatch"]:
+		t.Fatalf("PublishBatch returned %v before Close", err)
+	case <-time.After(6 * time.Second):
+	}
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	for path, done := range waiting {
+		select {
+		case err := <-done:
+			if !errors.Is(err, craftnats.ErrClosed) {
+				t.Errorf("%s: err = %v, want ErrClosed", path, err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Errorf("%s: Close did not end the wait", path)
+		}
+	}
+}
+
 // A ctx that ends during the ack wait does not fail a stored message.
 func TestPublishDoesNotFailAMessageTheStreamStored(t *testing.T) {
 	conn := runJetStreamServer(t)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -79,8 +80,8 @@ func WithProbeTimeout(d time.Duration) JetStreamOption {
 }
 
 // WithPublishAckTimeout bounds a publish's wait for the stream's verdict;
-// keep it under the duplicate window. Default 30s; negative fails
-// [NewJetStream]; zero leaves a batch waiting until [JetStream.Close].
+// keep it under the duplicate window. Default 30s; zero waits until
+// [JetStream.Close]; negative fails [NewJetStream].
 func WithPublishAckTimeout(d time.Duration) JetStreamOption {
 	return func(j *JetStream) { j.ackTimeout = d }
 }
@@ -223,11 +224,7 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 		}
 	}
 
-	clientOpts := []jetstream.JetStreamOpt{jetstream.WithPublishAsyncTimeout(j.ackTimeout)}
-	if j.ackTimeout > 0 {
-		clientOpts = append(clientOpts, jetstream.WithDefaultTimeout(j.ackTimeout))
-	}
-	js, err := jetstream.New(conn, clientOpts...)
+	js, err := jetstream.New(conn, jetstream.WithPublishAsyncTimeout(j.ackTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("nats: jetstream: %w", err)
 	}
@@ -265,7 +262,7 @@ func (j *JetStream) Publish(ctx context.Context, msg *events.Message) error {
 	if j.closeCtx.Err() != nil {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
 	}
-	waitCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	waitCtx, cancel := j.ackContext(ctx)
 	defer cancel()
 	stopOnClose := context.AfterFunc(j.closeCtx, cancel)
 	defer stopOnClose()
@@ -277,6 +274,16 @@ func (j *JetStream) Publish(ctx context.Context, msg *events.Message) error {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
 	}
 	return nil
+}
+
+// ackContext detaches ctx from its cancellation and bounds it by [WithPublishAckTimeout];
+// zero is the longest timeout there is, as the client bounds a context with no deadline.
+func (j *JetStream) ackContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := j.ackTimeout
+	if timeout == 0 {
+		timeout = math.MaxInt64
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
 }
 
 // PublishBatch publishes the whole batch, then waits for every

@@ -123,6 +123,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   sent the password in clear. A nil config now dials with an empty one,
   which verifies the brokers against the system roots.
 
+- **A zero `nats.WithPublishAckTimeout` waits until `JetStream.Close` on
+  both publish paths.** A batch waited for its verdicts until `Close`, but
+  a single `Publish` gave up after the client's own 5s default.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
