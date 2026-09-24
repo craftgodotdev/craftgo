@@ -5,6 +5,7 @@ package format
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strconv"
 
@@ -14,14 +15,58 @@ import (
 )
 
 // Format parses src (filename only labels diagnostics) and returns its canonical
-// text and the diagnostics; with diagnostics the text is what the parser recovered.
+// text. With diagnostics it returns src unchanged: src does not parse, or its
+// canonical text would not parse or would not hold the same comments.
 func Format(filename, src string) (string, []lexer.Diagnostic) {
 	p := parser.New(filename, src)
 	f := p.Parse()
+	if diags := p.Diagnostics(); len(diags) > 0 {
+		return src, diags
+	}
 	var buf bytes.Buffer
-	pr := newPrinter(&buf, f)
-	pr.File(f)
-	return buf.String(), p.Diagnostics()
+	newPrinter(&buf, f).File(f)
+	out := buf.String()
+	if diags := checkOutput(filename, f, out); len(diags) > 0 {
+		return src, diags
+	}
+	return out, nil
+}
+
+// checkOutput reports why out, the canonical text of in, cannot replace the
+// source in was parsed from: out does not parse, or its comments differ.
+func checkOutput(filename string, in *ast.File, out string) []lexer.Diagnostic {
+	fileStart := lexer.Position{Filename: filename, Line: 1, Column: 1}
+	p := parser.New(filename, out)
+	outFile := p.Parse()
+	if diags := p.Diagnostics(); len(diags) > 0 {
+		return refusal(fileStart, "the formatted text would not parse (%s on its line %d)", diags[0].Msg, diags[0].Pos.Line)
+	}
+	extra := map[string]int{}
+	for _, c := range outFile.Comments {
+		extra[c.Text]++
+	}
+	for _, c := range in.Comments {
+		extra[c.Text]--
+	}
+	for _, c := range in.Comments {
+		switch {
+		case extra[c.Text] < 0:
+			return refusal(c.Pos, "formatting would drop the comment %q", c.Text)
+		case extra[c.Text] > 0:
+			return refusal(c.Pos, "formatting would duplicate the comment %q", c.Text)
+		}
+	}
+	for _, c := range outFile.Comments {
+		if extra[c.Text] > 0 {
+			return refusal(fileStart, "formatting would add the comment %q", c.Text)
+		}
+	}
+	return nil
+}
+
+// refusal is the single error diagnostic of a Format that returns src unchanged.
+func refusal(pos lexer.Position, format string, args ...any) []lexer.Diagnostic {
+	return []lexer.Diagnostic{{Pos: pos, Msg: fmt.Sprintf(format, args...)}}
 }
 
 // Print writes the canonical text of f to w and returns the first write error.

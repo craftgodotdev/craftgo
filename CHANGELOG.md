@@ -56,6 +56,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   `host:port` was accepted, and the exporter then sent to `localhost:4318`
   or nowhere; `otlp_grpc` still takes `host:port`.
 
+- **Formatting leaves a file alone rather than damage it.** `craftgo fmt`
+  and the editor's Format Document keep a file unchanged when its formatted
+  text would not parse, or would drop, duplicate or add a comment.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
