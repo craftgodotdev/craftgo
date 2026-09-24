@@ -3,7 +3,6 @@
 # ---- vars ----------------------------------------------------------------
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
-EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc
 
 GO           ?= go
 GOFLAGS      ?=
@@ -11,17 +10,25 @@ GOFLAGS      ?=
 TESTFLAGS    ?=
 # Root packages under `make test`; ./tests/e2e is the orchestrator `make e2e` runs.
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
+# The CLI the gen targets run; `make gen` runs bin/craftgo instead.
+CRAFTGO      ?= $(GO) run ./cmd/craftgo
 
-# Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
+# Projects `craftgo gen` regenerates from their design/ folder.
+EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc
+E2E_DIRS     := tests/e2e/matrix
+
 # pkg/events and pkg/wire are their own modules so a generated contract package
-# can depend on them without pulling in the rest of craftgo; they are therefore
-# not covered by GO_PKGS and are tested, vetted and linted here instead.
-SUBMODULES   := $(EXAMPLE_PROJECTS) tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire
+# can depend on them without pulling in the rest of craftgo; GO_PKGS does not
+# reach them, so vet and golangci run in each.
+PUBLISHED    := pkg/events pkg/events/nats pkg/events/kafka pkg/wire
+
+# Every module with its own go.mod besides the root.
+SUBMODULES   := $(EXAMPLE_PROJECTS) $(E2E_DIRS) $(PUBLISHED)
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
 help: ## Show this help.
-	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z0-9_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z0-9_%-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ---- build ---------------------------------------------------------------
 .PHONY: build
@@ -37,11 +44,11 @@ build-all: ## Compile the root module and every sub-module.
 	done
 
 .PHONY: install
-install: ## Install craftgo into $$GOBIN (or $$GOPATH/bin).
+install: ## Install craftgo into $GOBIN (or $GOPATH/bin).
 	$(GO) install $(GOFLAGS) ./cmd/craftgo
 
 .PHONY: install-lsp
-install-lsp: ## Install craftgo-lsp into $$GOBIN. Run after editing internal/lsp or internal/semantic, then restart the language server in VS Code.
+install-lsp: ## Install craftgo-lsp into $GOBIN. Run after editing internal/lsp or internal/semantic, then restart the language server in VS Code.
 	$(GO) install $(GOFLAGS) ./cmd/craftgo-lsp
 
 # ---- docs ---------------------------------------------------------------
@@ -81,7 +88,7 @@ e2e: ## Run the e2e orchestrator: gen + `go test` the matrix fixture.
 	$(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 ./tests/e2e/...
 
 .PHONY: test-submodules
-test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
+test-submodules: ## Run tests inside every sub-module: the examples, the e2e fixture, the published modules.
 	@for d in $(SUBMODULES); do \
 		echo "→ test $$d"; (cd "$$d" && $(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 ./...) || exit 1; \
 	done
@@ -92,10 +99,9 @@ test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestra
 .PHONY: vet
 vet: ## go vet over all root packages and every published nested module.
 	$(GO) vet ./...
-	@(cd pkg/events && $(GO) vet ./...)
-	@(cd pkg/events/nats && $(GO) vet ./...)
-	@(cd pkg/events/kafka && $(GO) vet ./...)
-	@(cd pkg/wire && $(GO) vet ./...)
+	@for d in $(PUBLISHED); do \
+		(cd "$$d" && $(GO) vet ./...) || exit 1; \
+	done
 
 .PHONY: fmt
 fmt: ## gofmt -w on the entire tree.
@@ -114,65 +120,36 @@ lint: vet fmt-check golangci ## vet + fmt-check + golangci-lint.
 .PHONY: golangci
 golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not installed.
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run $(GO_PKGS) || exit 1; \
-		(cd pkg/events && golangci-lint run ./...) || exit 1; \
-		(cd pkg/events/nats && golangci-lint run ./...) || exit 1; \
-		(cd pkg/events/kafka && golangci-lint run ./...) || exit 1; \
-		(cd pkg/wire && golangci-lint run ./...) || exit 1; \
+		golangci-lint run ./... || exit 1; \
+		for d in $(PUBLISHED); do \
+			(cd "$$d" && golangci-lint run ./...) || exit 1; \
+		done; \
 	else echo "golangci-lint not installed - skipping"; fi
 
 # ---- codegen + example --------------------------------------------------
-# The single consolidated e2e fixture (matrix). Its design exercises every DSL
-# construct and boots a server for the http-roundtrip tests.
-E2E_DIRS := tests/e2e/matrix
+.PHONY: gen gen-go gen-e2e
+gen: build ## Build bin/craftgo, then regenerate every example with it.
+gen-go: ## Regenerate every example through `go run ./cmd/craftgo`.
+gen-e2e: ## Regenerate the e2e matrix fixture.
 
-.PHONY: gen
-gen: build ## Regenerate every example mini-project (todo, upload, raw, ecommerce, taskflow, brokers).
-	@for d in $(EXAMPLE_PROJECTS); do \
-		echo "→ gen $$d"; ./$(BIN) gen -f "$$d/design" -c "$$d" || exit 1; \
-	done
-
-.PHONY: gen-go
-gen-go: ## Regenerate every example mini-project without rebuilding the CLI.
-	@for d in $(EXAMPLE_PROJECTS); do \
-		echo "→ gen $$d"; $(GO) run ./cmd/craftgo gen -f "$$d/design" -c "$$d" || exit 1; \
-	done
-
-.PHONY: gen-e2e
-gen-e2e: ## Regenerate every manifest in the e2e fixtures.
-	@for d in $(E2E_DIRS); do \
-		for m in $$(find "$$d" -name craftgo.design.yaml | sort); do \
-			mdir=$$(dirname "$$m"); \
-			echo "→ gen $$mdir"; $(GO) run ./cmd/craftgo gen -f "$$mdir" -c "$$(dirname "$$mdir")" || exit 1; \
-		done; \
+# One loop serves every gen target: craftgo gen -f <project>/design -c <project>.
+gen: CRAFTGO = ./$(BIN)
+gen gen-go: GEN_PROJECTS = $(EXAMPLE_PROJECTS)
+gen-e2e: GEN_PROJECTS = $(E2E_DIRS)
+gen gen-go gen-e2e:
+	@for d in $(GEN_PROJECTS); do \
+		echo "→ gen $$d"; $(CRAFTGO) gen -f "$$d/design" -c "$$d" || exit 1; \
 	done
 
 .PHONY: gen-all
-gen-all: gen-go gen-e2e ## Regenerate the example mini-projects AND every e2e fixture.
+gen-all: gen-go gen-e2e ## Regenerate every example and the e2e fixture.
 
-.PHONY: example-todo
-example-todo: ## Run the todo example server.
-	cd example/todo && $(GO) run .
+# Extra `go run` arguments for an example's server, keyed by the example's name.
+EXAMPLE_ARGS_brokers := -transport memory
 
-.PHONY: example-upload
-example-upload: ## Run the upload example server.
-	cd example/upload && $(GO) run .
-
-.PHONY: example-raw
-example-raw: ## Run the raw passthrough example server.
-	cd example/raw && $(GO) run .
-
-.PHONY: example-ecommerce
-example-ecommerce: ## Run the ecommerce showcase server.
-	cd example/ecommerce && $(GO) run .
-
-.PHONY: example-taskflow
-example-taskflow: ## Run the taskflow reference application.
-	cd example/taskflow && $(GO) run .
-
-.PHONY: example-brokers
-example-brokers: ## Run the brokers event example over the in-process transport.
-	cd example/brokers && $(GO) run . -transport memory
+# example-% stays off .PHONY: make never applies a pattern rule to a phony target.
+example-%: ## Run an example's server: example-todo, example-grpc, ... one per folder in example/.
+	cd example/$* && $(GO) run . $(EXAMPLE_ARGS_$*)
 
 .PHONY: gen-diff
 gen-diff: gen-all ## Re-gen examples + e2e and fail on any changed or new file under example/ or tests/e2e (drift guard for CI).
@@ -193,12 +170,12 @@ BENCH_TIME   ?= 2s
 BENCH_COUNT  ?= 3
 
 .PHONY: bench
-bench: ## Run bind-path microbenchmarks; raw output to $(BENCH_RAW).
+bench: ## Run bind-path microbenchmarks; raw output to bench/results.txt.
 	@mkdir -p $(BENCH_DIR)
 	$(GO) test -run=^$$ -bench=$(BENCH_RUN) -benchmem -benchtime=$(BENCH_TIME) -count=$(BENCH_COUNT) $(BENCH_PKG) | tee $(BENCH_RAW)
 
 .PHONY: bench-report
-bench-report: ## Convert $(BENCH_RAW) into Markdown at $(BENCH_REPORT).
+bench-report: ## Convert bench/results.txt into Markdown at bench/REPORT.md.
 	@scripts/bench-report.sh $(BENCH_RAW) $(BENCH_REPORT)
 
 .PHONY: bench-all
@@ -223,7 +200,7 @@ clean: ## Remove build artefacts and coverage files.
 	@find . -type f \( -name '*.test' -o -name '*.out' -o -name '*.prof' -o -name '*.cov' \) -delete
 
 .PHONY: clean-gen
-clean-gen: ## Remove regenerable artefacts under every example mini-project + e2e fixture (transport, routes, types, docs).
+clean-gen: ## Delete the generated transport, routes, types, events and docs folders of every example and the e2e fixture.
 	@for d in $(EXAMPLE_PROJECTS) $(E2E_DIRS); do \
 		echo "→ clean $$d"; \
 		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/internal/events" "$$d/docs"; \
@@ -256,7 +233,7 @@ tag-list: ## Show the four latest tags of each published module (five modules).
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
-ci: lint test-all build ## What CI runs: lint, every test suite (root + e2e + submodules), build.
+ci: lint test-race e2e test-submodules gen-diff build ## Run the CI gates locally: lint, race tests, e2e, sub-module tests, codegen drift, build.
 
 # ---- docs diagrams --------------------------------------------------------
 # Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with
