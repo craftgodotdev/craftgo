@@ -1,6 +1,8 @@
 package kafka
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -248,6 +250,22 @@ func TestATimestampOfTheWrongTypeFailsThePublish(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), OptionTimestamp) {
 		t.Errorf("error does not name the option: %v", err)
+	}
+}
+
+// A failed publish names the adapter and the contract, and keeps its cause.
+func TestAFailedPublishNamesTheContract(t *testing.T) {
+	tr := New([]string{"127.0.0.1:1"})
+	defer func() { _ = tr.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	err := tr.Publish(ctx, &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+	if want := "kafka: publish orders.Placed: "; !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("err = %q, want it to begin %q", err, want)
 	}
 }
 

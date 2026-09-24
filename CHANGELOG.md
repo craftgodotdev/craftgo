@@ -22,6 +22,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Formatting sets every trailing comment off by one space**, where a
   closing brace, a decorator, an import or a scalar took two.
 
+- **Kafka publish errors name the adapter and the contract**, as the NATS
+  adapters' do: `kafka: publish orders.Placed: <cause>`, `kafka: publish
+  batch of N: <cause>`, and `kafka: <cause>` inside a
+  `*PartialPublishError`. `errors.Is` still reaches franz-go's error.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

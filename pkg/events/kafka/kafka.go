@@ -286,7 +286,10 @@ func (t *Transport) Publish(ctx context.Context, msg *events.Message) error {
 	if err != nil {
 		return err
 	}
-	return cl.ProduceSync(ctx, rec).FirstErr()
+	if err := cl.ProduceSync(ctx, rec).FirstErr(); err != nil {
+		return fmt.Errorf("kafka: publish %s: %w", msg.Event, err)
+	}
+	return nil
 }
 
 // PublishBatch produces the whole batch in one call. A message it cannot
@@ -327,9 +330,9 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 	}
 	if len(unsent) == 0 {
 		// No failure named a record of this batch, so no index is known.
-		return firstErr
+		return fmt.Errorf("kafka: publish batch of %d: %w", len(msgs), firstErr)
 	}
-	return events.UnsentAt(unsent, msgs, firstErr)
+	return events.UnsentAt(unsent, msgs, fmt.Errorf("kafka: %w", firstErr))
 }
 
 // encode maps msg onto a Kafka record. Metadata never overrides the adapter's
@@ -551,10 +554,9 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 			return
 		}
 		fetches.EachError(func(topic string, _ int32, err error) {
-			if ctx.Err() != nil || t.onError == nil {
-				return
+			if ctx.Err() == nil {
+				t.report(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
 			}
-			t.onError(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
 		})
 
 		var polled []*kgo.Record
@@ -563,8 +565,8 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 			t.deliver(ctx, cl, sub, rec)
 		})
 		if !t.share && len(polled) > 0 {
-			if err := cl.CommitRecords(ctx, polled...); err != nil && t.onError != nil && ctx.Err() == nil {
-				t.onError(sub, nil, fmt.Errorf("kafka: commit: %w", err))
+			if err := cl.CommitRecords(ctx, polled...); err != nil && ctx.Err() == nil {
+				t.report(sub, nil, fmt.Errorf("kafka: commit: %w", err))
 			}
 		}
 	}
@@ -577,9 +579,7 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 
 	// A record of another contract on this topic is reported and skipped.
 	if msg.Event != sub.Event {
-		if t.onError != nil {
-			t.onError(sub, msg, fmt.Errorf("kafka: topic %s carried %s, which %s does not consume - skipped", rec.Topic, msg.Event, sub.Consumer))
-		}
+		t.report(sub, msg, fmt.Errorf("kafka: topic %s carried %s, which %s does not consume - skipped", rec.Topic, msg.Event, sub.Consumer))
 		if t.share {
 			rec.Ack(kgo.AckAccept)
 		}
@@ -590,15 +590,21 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 	err := sub.Handle(withRecord(ctx, rec), msg)
 	stop()
 
-	if err != nil && t.onError != nil {
-		t.onError(sub, msg, err)
+	if err != nil {
+		t.report(sub, msg, err)
 	}
 	if t.share {
 		// The chain never sees the cap turn its Redeliver into a reject.
-		if t.capped(msg) && t.onError != nil {
-			t.onError(sub, msg, fmt.Errorf("kafka: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), t.maxDeliveries))
+		if t.capped(msg) {
+			t.report(sub, msg, fmt.Errorf("kafka: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), t.maxDeliveries))
 		}
 		rec.Ack(t.ackFor(msg))
+	}
+}
+
+func (t *Transport) report(sub events.Subscription, msg *events.Message, err error) {
+	if t.onError != nil {
+		t.onError(sub, msg, err)
 	}
 }
 
