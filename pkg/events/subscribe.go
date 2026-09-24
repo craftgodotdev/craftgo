@@ -35,9 +35,6 @@ func (e *PanicError) Unwrap() error {
 // decorated wraps sub's handler in the order [Bus.Start] describes. busChain is the chain
 // Start read under the lock; escaped is what the outer recover asks for.
 func decorated(busChain Chain, sub Subscription, escaped Disposition) Handler {
-	if sub.Handle == nil {
-		return nil
-	}
 	h := recoverHandler(sub, sub.Handle, DispositionUnset)
 	chain := busChain.Append(sub.Chain...)
 	if len(chain) == 0 {

@@ -9,6 +9,7 @@ package memory
 
 import (
 	"context"
+	"maps"
 	"sync"
 	"sync/atomic"
 
@@ -131,7 +132,7 @@ func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 			defer t.finish()
 			// Each delivery gets its own copy, Metadata included.
 			delivered := *msg
-			delivered.Metadata = cloneMeta(msg.Metadata)
+			delivered.Metadata = maps.Clone(msg.Metadata)
 			if err := sub.Handle(context.Background(), &delivered); err != nil && t.onError != nil {
 				t.onError(sub, &delivered, err)
 			}
@@ -182,17 +183,6 @@ func (g *group) pick() (events.Subscription, bool) {
 		}
 	}
 	return events.Subscription{}, false
-}
-
-func cloneMeta(in map[string]string) map[string]string {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
 
 // PublishBatch implements [events.BatchPublisher] by publishing msgs in order.

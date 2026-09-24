@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -218,7 +220,7 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 	if j.maxInFlight < 1 {
 		return nil, fmt.Errorf("nats: WithMaxInFlight(%d) must be at least 1", j.maxInFlight)
 	}
-	for _, group := range sortedGroups(j.perGroup) {
+	for _, group := range slices.Sorted(maps.Keys(j.perGroup)) {
 		if n := j.perGroup[group].maxInFlight; n < 0 {
 			return nil, fmt.Errorf("nats: WithGroupConfig(%q, MaxInFlight(%d)) must be at least 1", group, n)
 		}
@@ -421,16 +423,6 @@ func (j *JetStream) configFor(group events.Group) groupConfig {
 	return cfg
 }
 
-// sortedGroups returns m's groups in name order, for a stable refusal.
-func sortedGroups(m map[events.Group]*groupConfig) []events.Group {
-	out := make([]events.Group, 0, len(m))
-	for group := range m {
-		out = append(out, group)
-	}
-	sort.Slice(out, func(i, k int) bool { return out[i] < out[k] })
-	return out
-}
-
 func (j *JetStream) subscribed(group events.Group) bool {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -588,7 +580,7 @@ const (
 // Only a widening is repointed without allowNarrow; no filter is every subject.
 func adopting(carried, planned []string, allowNarrow bool) adoption {
 	switch {
-	case equalSets(carried, planned):
+	case slices.Equal(carried, planned):
 		return adoptAsIs
 	case allowNarrow:
 		return repoint
@@ -652,18 +644,6 @@ func filterOf(cfg jetstream.ConsumerConfig) []string {
 		return []string{cfg.FilterSubject}
 	}
 	return nil
-}
-
-func equalSets(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (j *JetStream) report(sub events.Subscription, msg *events.Message, err error) {
@@ -854,11 +834,9 @@ func checkGroup(group events.Group) error {
 
 func firstRejected(s events.Group) string {
 	for _, r := range s {
-		if strings.ContainsRune(groupRejected, r) || r == ' ' {
+		if strings.ContainsRune(groupRejected, r) {
 			return string(r)
 		}
 	}
 	return ""
 }
-
-var errNoJetStreamMsg = errors.New("nats: no JetStream message on this context - this middleware is installed on a transport that is not JetStream")

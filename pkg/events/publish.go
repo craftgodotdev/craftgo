@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -158,21 +159,11 @@ func (b *Bus) checkAdapterOptions(env Envelope) error {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if !contains(known, key) {
+		if !slices.Contains(known, key) {
 			return &UnknownOptionError{Adapter: name, Key: key, Event: env.Event, Known: known}
 		}
 	}
 	return nil
-}
-
-// contains reports whether list holds v.
-func contains(list []string, v string) bool {
-	for _, s := range list {
-		if s == v {
-			return true
-		}
-	}
-	return false
 }
 
 // Publish encodes payload with the contract's codec and hands it to the transport;

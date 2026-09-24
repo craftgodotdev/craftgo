@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,7 +68,7 @@ func TestTheFilterSetIsReadFromEitherField(t *testing.T) {
 		t.Errorf("filterOf(single) = %v", got)
 	}
 	multi := jetstream.ConsumerConfig{FilterSubjects: []string{"orders.Shipped", "orders.Placed"}}
-	if got := filterOf(multi); !equalSets(got, []string{"orders.Placed", "orders.Shipped"}) {
+	if got := filterOf(multi); !slices.Equal(got, []string{"orders.Placed", "orders.Shipped"}) {
 		t.Errorf("filterOf(multi) = %v, want sorted", got)
 	}
 	if got := filterOf(jetstream.ConsumerConfig{}); got != nil {

@@ -42,7 +42,7 @@ func JetStreamMsgFrom(ctx context.Context) (jetstream.Msg, bool) {
 func MustJetStreamMsg(ctx context.Context) jetstream.Msg {
 	m, ok := JetStreamMsgFrom(ctx)
 	if !ok {
-		panic(errNoJetStreamMsg.Error())
+		panic("nats: no JetStream message on this context - this middleware is installed on a transport that is not JetStream")
 	}
 	return m
 }
