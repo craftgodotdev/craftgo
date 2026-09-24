@@ -7,9 +7,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Interceptor is one guard in both shapes gRPC needs: the unary and the
-// stream interceptor. Either may be nil for a guard that only applies to
-// one shape - [Timeout] bounds unary calls and leaves streams alone.
+// Interceptor pairs the unary and stream forms of one guard; either may be nil.
 type Interceptor struct {
 	Unary  grpc.UnaryServerInterceptor
 	Stream grpc.StreamServerInterceptor
@@ -21,10 +19,8 @@ func Unary(f grpc.UnaryServerInterceptor) Interceptor { return Interceptor{Unary
 // Stream wraps a stream-only interceptor.
 func Stream(f grpc.StreamServerInterceptor) Interceptor { return Interceptor{Stream: f} }
 
-// IsInfrastructureMethod reports whether fullMethod belongs to the health
-// or reflection services the server registers itself. Those calls skip
-// the Use chain and the telemetry filter keeps them out of the traces, as
-// the HTTP probes never reach the middleware chain.
+// IsInfrastructureMethod reports whether fullMethod belongs to the gRPC health
+// or reflection service.
 func IsInfrastructureMethod(fullMethod string) bool {
 	return strings.HasPrefix(fullMethod, "/grpc.health.v1.") || strings.HasPrefix(fullMethod, "/grpc.reflection.")
 }

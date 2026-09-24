@@ -13,14 +13,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// The caller's half of the runtime. A gRPC client sends nothing of the
-// trace on its own: without a stats handler there is no `traceparent` in
-// the request metadata, so the service it calls opens a trace of its own
-// and the two halves of one request never meet. [Dial] is where that is
-// decided once, beside the deadline and the access log the server side
-// has.
-
-// clientConfig is what [Dial] builds a connection from.
 type clientConfig struct {
 	stats   stats.Handler
 	creds   credentials.TransportCredentials
@@ -32,10 +24,9 @@ type clientConfig struct {
 // ClientOption configures [Dial].
 type ClientOption func(*clientConfig)
 
-// WithClientStatsHandler installs a stats handler - the telemetry
-// stack's `GRPCClientHandler()` - which opens the client span, records
-// the call duration and writes the trace context onto the wire. A nil
-// handler is ignored: grpc would log an error for it.
+// WithClientStatsHandler installs h, such as the telemetry stack's
+// GRPCClientHandler. Without a stats handler a gRPC client sends no
+// traceparent, so the server starts a new trace. A nil h is ignored.
 func WithClientStatsHandler(h stats.Handler) ClientOption {
 	return func(c *clientConfig) {
 		if h != nil {
@@ -44,10 +35,8 @@ func WithClientStatsHandler(h stats.Handler) ClientOption {
 	}
 }
 
-// WithClientTransportCredentials sets the transport security. The
-// default is [insecure.NewCredentials], which is what a call inside a
-// cluster or a mesh uses; a connection crossing a trust boundary passes
-// its own.
+// WithClientTransportCredentials sets the transport security, which defaults
+// to [insecure.NewCredentials]; nil creds are ignored.
 func WithClientTransportCredentials(creds credentials.TransportCredentials) ClientOption {
 	return func(c *clientConfig) {
 		if creds != nil {
@@ -56,33 +45,26 @@ func WithClientTransportCredentials(creds credentials.TransportCredentials) Clie
 	}
 }
 
-// WithClientTimeout bounds every unary call whose context carries no
-// deadline of its own; a caller that sets one keeps it, shorter or
-// longer. Streams are not bounded - a long-lived stream is the point of
-// one. d <= 0 installs nothing.
+// WithClientTimeout gives every unary call whose context has no deadline a
+// deadline of d. Streams are not bounded; d <= 0 installs nothing.
 func WithClientTimeout(d time.Duration) ClientOption {
 	return func(c *clientConfig) { c.timeout = d }
 }
 
-// WithClientAccessLog logs one `grpc client` line per unary call with
-// `method`, `code` and `latency`, plus the trace ids the context carries
-// - the caller-side twin of [AccessLog].
+// WithClientAccessLog logs a `grpc client` line to l for every unary call, with
+// `method`, `code`, `latency` and the context's trace ids.
 func WithClientAccessLog(l log.Logger) ClientOption {
 	return func(c *clientConfig) { c.logger = l }
 }
 
-// WithDialOptions passes options straight to grpc.NewClient - a
-// resolver, a load-balancing policy, keepalive, message size limits,
-// interceptors of your own.
+// WithDialOptions passes opts through to grpc.NewClient.
 func WithDialOptions(opts ...grpc.DialOption) ClientOption {
 	return func(c *clientConfig) { c.extra = append(c.extra, opts...) }
 }
 
-// Dial returns a connection to target with the guards a craftgo service
-// makes calls under: the stats handler that carries the trace to the
-// other side, a default deadline, and an access log. Nothing is dialed
-// yet - grpc.NewClient connects lazily - so the error is a bad target or
-// a bad option, not an unreachable server. The caller closes it.
+// Dial returns a client connection to target, which connects lazily: it fails
+// on a bad target or option, never on an unreachable server. The caller closes
+// the connection.
 func Dial(target string, opts ...ClientOption) (*grpc.ClientConn, error) {
 	cfg := &clientConfig{creds: insecure.NewCredentials()}
 	for _, o := range opts {
@@ -99,9 +81,8 @@ func Dial(target string, opts ...ClientOption) (*grpc.ClientConn, error) {
 	return grpc.NewClient(target, dialOpts...)
 }
 
-// unaryChain is the interceptor chain in the order the server installs
-// its own: the deadline first, so the access log measures the call the
-// caller actually waited for.
+// unaryChain puts the deadline outside the access log, so the logged latency is
+// the bounded call.
 func (c *clientConfig) unaryChain() []grpc.UnaryClientInterceptor {
 	var chain []grpc.UnaryClientInterceptor
 	if c.timeout > 0 {
@@ -125,7 +106,6 @@ func clientTimeout(d time.Duration) grpc.UnaryClientInterceptor {
 	}
 }
 
-// clientAccessLog logs one line per unary call once it has answered.
 func clientAccessLog(logger log.Logger) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := time.Now()

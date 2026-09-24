@@ -73,10 +73,8 @@ func (c *capture) lines(msg string) []entry {
 	return out
 }
 
-// echoServer is the hand-written service the tests register: what
-// protoc-gen-go-grpc would generate for
-//
-//	service Echo { rpc Ping(StringValue) returns (StringValue); rpc Count(StringValue) returns (stream StringValue); }
+// echoServer is the service the tests register: a unary Ping and a
+// server-streaming Count.
 type echoServer interface {
 	Ping(context.Context, *wrapperspb.StringValue) (*wrapperspb.StringValue, error)
 	Count(*wrapperspb.StringValue, grpc.ServerStream) error
@@ -128,8 +126,7 @@ var echoDesc = grpc.ServiceDesc{
 	Metadata: "test.proto",
 }
 
-// serve registers impl on srv, serves it on an in-memory listener and
-// returns a client connection to it.
+// serve registers impl on srv, serves it in memory and returns a client connection.
 func serve(t *testing.T, srv *Server, impl echoServer) *grpc.ClientConn {
 	t.Helper()
 	srv.RegisterService(&echoDesc, impl)
@@ -215,8 +212,7 @@ func TestUnaryChainLogsRecoversAndOrders(t *testing.T) {
 	if got := logs.lines("panic recovered"); len(got) != 1 || got[0].fields["panic"] != "kaboom" || got[0].fields["stack"] == "" {
 		t.Errorf("recovery log = %+v", got)
 	}
-	// A panic unwinds through the access log, as through the HTTP one:
-	// the recovery line, with the same trace context, is the record.
+	// A panic leaves no access line; the recovery line is the record.
 	if access := logs.lines("grpc access"); len(access) != 1 {
 		t.Errorf("access after panic = %+v", access)
 	}
@@ -243,7 +239,7 @@ func TestErrorMapsServiceErrorsLikeWriteError(t *testing.T) {
 	}
 	wrapped := fmt.Errorf("lookup: %w", &notFoundErr{id: "7"})
 	st := status.Convert(Error(ctx, wrapped))
-	// The message is the typed error's own, as WriteError renders it.
+	// The message is the typed error's own text.
 	if st.Code() != codes.NotFound || st.Message() != "todo 7 not found" {
 		t.Errorf("typed error → %v", st)
 	}
@@ -348,8 +344,7 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 		}
 		return status.Error(codes.Aborted, "enough")
 	}})
-	// count opens the server stream, sends the request, and collects every
-	// message until the stream ends, returning the ending status.
+	// count sends text to Count and returns the messages and the final status.
 	count := func(text string) ([]string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -492,7 +487,7 @@ func TestStopCutsOffAfterTheDeadline(t *testing.T) {
 	if err := <-inflight; err == nil {
 		t.Error("the hung call must fail once the server is cut off")
 	}
-	// Probes stopped routing traffic here the moment Stop began.
+	// Stop set the health service NOT_SERVING.
 	resp, err := srv.health.Check(context.Background(), &healthpb.HealthCheckRequest{Service: "test.Echo"})
 	if err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Errorf("health after Stop = %v, %v", resp, err)
@@ -515,7 +510,7 @@ func TestRegisterServiceAfterBuild(t *testing.T) {
 	}
 }
 
-// Serve after Stop answers nil, as the HTTP Start does once closed.
+// Serve after Stop returns nil.
 func TestServeAfterStopReturnsNil(t *testing.T) {
 	srv := New(nil).SetLogger(newCapture())
 	if err := srv.Stop(context.Background()); err != nil {

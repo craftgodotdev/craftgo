@@ -16,10 +16,9 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// UnknownErrorHandler turns an error that is neither a gRPC status nor a
-// [server.StatusError] into the status the client receives. The default
-// logs the full error with the call's trace ids and answers Internal with
-// an opaque message - the raw text stays in the log, never on the wire.
+// UnknownErrorHandler turns an error [Error] cannot map into the status the
+// client receives. The default logs it to [log.Default] and answers Internal
+// with an opaque message.
 type UnknownErrorHandler func(ctx context.Context, err error) error
 
 var unknownError atomic.Value
@@ -31,9 +30,8 @@ func defaultUnknownError(ctx context.Context, err error) error {
 	return status.Error(codes.Internal, "internal server error")
 }
 
-// SetHandleUnknownError installs a process-wide handler for service errors
-// that carry neither a gRPC status nor an HTTP status. Pass nil to revert
-// to the default.
+// SetHandleUnknownError installs the process-wide [UnknownErrorHandler]; nil
+// restores the default.
 func SetHandleUnknownError(h UnknownErrorHandler) {
 	if h == nil {
 		h = defaultUnknownError
@@ -41,18 +39,10 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 	unknownError.Store(h)
 }
 
-// Error is what the generated server layer returns when service logic
-// fails, the counterpart of [server.WriteError]:
-//
-//   - a gRPC status error, or an error wrapping one, is returned as is;
-//   - a [server.StatusError] anywhere in the chain becomes the status
-//     code its HTTP status maps to, with the error text as the message
-//     and, when the error reports an `ErrCode()`, an ErrorInfo detail
-//     carrying that code as its reason and the service as its domain.
-//     A typed error is an expected outcome and is not logged;
-//   - a context cancellation or deadline becomes Canceled or
-//     DeadlineExceeded;
-//   - anything else goes to the [SetHandleUnknownError] handler.
+// Error maps err to a gRPC status error. A status error passes through; a
+// [server.StatusError] keeps its text under its HTTP status's code, with an
+// ErrorInfo carrying its ErrCode if any; a context error becomes Canceled or
+// DeadlineExceeded; anything else goes to the installed [UnknownErrorHandler].
 func Error(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
@@ -78,7 +68,7 @@ func Error(ctx context.Context, err error) error {
 	return unknownError.Load().(UnknownErrorHandler)(ctx, err)
 }
 
-// serviceOf is the service part of the call's full method
+// serviceOf returns the service of the call's full method
 // (`/greet.Greeter/SayHello` → `greet.Greeter`), or "" outside a call.
 func serviceOf(ctx context.Context) string {
 	full, ok := grpc.Method(ctx)
@@ -92,9 +82,8 @@ func serviceOf(ctx context.Context) string {
 	return full
 }
 
-// httpCodes maps every HTTP status the error catalogue can declare onto
-// the gRPC code with the same meaning. A status outside the table answers
-// Unknown, which keeps the message and says nothing false about the cause.
+// httpCodes maps each HTTP status the error catalogue can declare to the gRPC
+// code of the same meaning; codeFor answers Unknown for any other status.
 var httpCodes = map[int]codes.Code{
 	http.StatusBadRequest:            codes.InvalidArgument,
 	http.StatusUnauthorized:          codes.Unauthenticated,
