@@ -96,6 +96,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   category "{"`, `type name "{" should start with an uppercase letter`; the
   missing name is now the only error.
 
+- **Formatting a CRLF file writes LF line ends throughout.** A line with a
+  trailing comment kept its `\r`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

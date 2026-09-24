@@ -85,10 +85,6 @@ type Lexer struct {
 	// allComments records every comment, including those a blank line
 	// detached from any token.
 	allComments []*Comment
-
-	// sawNewlineSinceLastToken is true at file start and after a newline; a
-	// comment seen while it is false trails the previous token.
-	sawNewlineSinceLastToken bool
 }
 
 // New returns a Lexer over src. filename goes into every Position and may be
@@ -99,8 +95,6 @@ func New(filename, src string) *Lexer {
 		filename: filename,
 		line:     1,
 		column:   1,
-		// A comment before the first token is leading.
-		sawNewlineSinceLastToken: true,
 	}
 }
 
@@ -148,47 +142,44 @@ func (l *Lexer) Next() Token {
 		tok.Doc = l.pendingDoc
 		l.pendingDoc = nil
 	}
-	tok.Trailing = l.consumeTrailingComment(tok.Pos.Line)
-	l.sawNewlineSinceLastToken = false
+	tok.Trailing = l.consumeTrailingComment()
 	return tok
 }
 
 // consumeTrailingComment consumes a `//` comment later on the current line and
 // returns its text; without one it leaves the cursor and returns "".
-func (l *Lexer) consumeTrailingComment(tokenLine int) string {
+func (l *Lexer) consumeTrailingComment() string {
 	saveOffset, saveLine, saveCol := l.offset, l.line, l.column
 	for l.offset < len(l.src) {
 		r := l.peek()
-		if r != ' ' && r != '\t' {
+		if r != ' ' && r != '\t' && r != '\r' {
 			break
 		}
 		l.advance()
 	}
-	if l.offset+1 >= len(l.src) || l.src[l.offset] != '/' || l.src[l.offset+1] != '/' {
+	if !l.atLineComment() {
 		l.offset, l.line, l.column = saveOffset, saveLine, saveCol
 		return ""
 	}
-	commentPos := l.pos()
-	l.advance()
-	l.advance()
-	start := l.offset
-	for l.offset < len(l.src) {
-		r := l.peek()
-		if r == '\n' {
-			break
-		}
+	return l.lineComment(CommentTrailing)
+}
+
+// atLineComment reports whether a `//` comment starts at the cursor.
+func (l *Lexer) atLineComment() bool {
+	return strings.HasPrefix(l.src[l.offset:], "//")
+}
+
+// lineComment consumes the `//` comment at the cursor up to the end of its
+// line, records it as kind and returns its text: without the slashes, one
+// space after them and a CRLF's '\r'.
+func (l *Lexer) lineComment(kind CommentKind) string {
+	pos := l.pos()
+	start := l.offset + len("//")
+	for l.offset < len(l.src) && l.src[l.offset] != '\n' {
 		l.advance()
 	}
-	text := l.src[start:l.offset]
-	if len(text) > 0 && text[0] == ' ' {
-		text = text[1:]
-	}
-	l.allComments = append(l.allComments, &Comment{
-		Pos:  commentPos,
-		Text: text,
-		Kind: CommentTrailing,
-	})
-	_ = tokenLine
+	text := strings.TrimPrefix(strings.TrimSuffix(l.src[start:l.offset], "\r"), " ")
+	l.allComments = append(l.allComments, &Comment{Pos: pos, Text: text, Kind: kind})
 	return text
 }
 
@@ -408,7 +399,8 @@ func (l *Lexer) lexRawString(pos Position) Token {
 }
 
 // skipWhitespaceAndComments skips whitespace and `//` comments, recording each
-// comment and queueing the leading ones as the next token's Doc.
+// and queueing it as the next token's Doc; the comment after a token on its
+// line is consumed with the token.
 func (l *Lexer) skipWhitespaceAndComments() {
 	consecutiveNewlines := 0
 	for l.offset < len(l.src) {
@@ -416,7 +408,6 @@ func (l *Lexer) skipWhitespaceAndComments() {
 		switch {
 		case r == '\n':
 			consecutiveNewlines++
-			l.sawNewlineSinceLastToken = true
 			if consecutiveNewlines >= 2 {
 				// A blank line detaches the comments above from the next token.
 				l.pendingDoc = nil
@@ -424,36 +415,8 @@ func (l *Lexer) skipWhitespaceAndComments() {
 			l.advance()
 		case r == ' ' || r == '\t' || r == '\r':
 			l.advance()
-		case r == '/' && l.offset+1 < len(l.src) && l.src[l.offset+1] == '/':
-			commentPos := l.pos()
-			start := l.offset + 2 // skip the two slashes
-			for l.offset < len(l.src) {
-				rr := l.peek()
-				if rr == '\n' {
-					break
-				}
-				l.advance()
-			}
-			line := l.src[start:l.offset]
-			// Drop the '\r' of a CRLF line ending.
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			if len(line) > 0 && line[0] == ' ' {
-				line = line[1:]
-			}
-			kind := CommentLeading
-			if !l.sawNewlineSinceLastToken {
-				kind = CommentTrailing
-			}
-			l.allComments = append(l.allComments, &Comment{
-				Pos:  commentPos,
-				Text: line,
-				Kind: kind,
-			})
-			if kind == CommentLeading {
-				l.pendingDoc = append(l.pendingDoc, line)
-			}
+		case l.atLineComment():
+			l.pendingDoc = append(l.pendingDoc, l.lineComment(CommentLeading))
 			consecutiveNewlines = 0
 		default:
 			return
