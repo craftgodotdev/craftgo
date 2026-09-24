@@ -221,6 +221,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   listed a design's problems in an order that changed from run to run; they
   are now sorted by file and position.
 
+- **A `@sensitive` field no longer fills a path variable.** `get /users/{id}`
+  with a request field `id string @sensitive` passed analysis, then
+  generated a route that never read `{id}` and an OpenAPI path without the
+  parameter. The design is now rejected with `path/param-missing`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

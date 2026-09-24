@@ -438,3 +438,11 @@ service S { get M /u/{id} { request R  response Resp } }`
 		t.Errorf("expected path-coverage reject, got: %v", diags)
 	}
 }
+
+// A @sensitive field never rides the wire, so a same-named segment stays unbound.
+func TestSensitiveFieldDoesNotCoverPathSegment(t *testing.T) {
+	d := expectError(t, `package p
+type R { id string @sensitive }
+service S { get M /users/{id} { request R } }`, CodePathParamMissing)
+	expectMessage(t, d, "{id}")
+}

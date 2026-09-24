@@ -207,33 +207,18 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	for _, p := range pathParams {
 		paramSet[p] = true
 	}
+	bodyVerb := wire.IsBodyVerb(m.Verb)
 	out := &pathParamSet{all: map[string]bool{}}
 	for _, pf := range fields {
-		f := pf.Field
-		if ast.HasDecorator(f.Decorators, wire.BindingPath) {
-			name := wire.WireName(f, wire.BindPath)
-			out.all[name] = true
-			out.explicit = append(out.explicit, name)
+		b, auto := wire.RequestFieldBinding(pf.Field, paramSet, bodyVerb)
+		if b != wire.BindPath {
 			continue
 		}
-		// A same-named field binds its segment unless another binding claims it.
-		if paramSet[f.Name] && !hasDivertingWireBinding(f.Decorators) {
-			out.all[f.Name] = true
+		name := wire.WireName(pf.Field, wire.BindPath)
+		out.all[name] = true
+		if !auto {
+			out.explicit = append(out.explicit, name)
 		}
 	}
 	return out
-}
-
-// hasDivertingWireBinding reports a binding decorator other than @path.
-func hasDivertingWireBinding(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingBody, wire.BindingForm:
-			return true
-		}
-	}
-	return false
 }
