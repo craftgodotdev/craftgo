@@ -6,10 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// TestParseEveryDocumentedDecorator pins the parser's coverage of every
-// decorator listed in the README's "Decorators by level" table. The DSL
-// below exercises each decorator at least once; if any of them ever
-// stops parsing, this test fails loudly so the regression is obvious.
+// TestParseEveryDocumentedDecorator pins that every built-in decorator parses
+// at the level it belongs to.
 func TestParseEveryDocumentedDecorator(t *testing.T) {
 	src := `@version("1.0.0")
 @doc("file-level doc")
@@ -124,7 +122,6 @@ middleware RateLimit
 	if d := p.Diagnostics(); len(d) > 0 {
 		t.Fatalf("decorators failed to parse: %v", d)
 	}
-	// Spot-check that high-level decorators landed where expected.
 	if len(f.Decorators) < 3 {
 		t.Errorf("file decorators count = %d, want >= 3", len(f.Decorators))
 	}
@@ -151,9 +148,7 @@ middleware RateLimit
 	}
 }
 
-// collectAllDecoratorNames walks every node carrying a Decorators slice
-// and returns the set of decorator names seen. The walker is hand-coded
-// instead of using a visitor because the AST is small and stable.
+// collectAllDecoratorNames returns the names of the decorators in f.
 func collectAllDecoratorNames(f *ast.File) map[string]bool {
 	out := map[string]bool{}
 	add := func(ds []*ast.Decorator) {
@@ -202,9 +197,8 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 	return out
 }
 
-// TestParseMultiLineDecoratorChain exercises the readability convention
-// where a long decorator chain is split across many lines. The parser
-// must accept arbitrary newlines between decorators on the same field.
+// TestParseMultiLineDecoratorChain pins that a field's trailing decorators may
+// span several lines.
 func TestParseMultiLineDecoratorChain(t *testing.T) {
 	f := parseSrc(t, `package design
 type T {
@@ -219,9 +213,6 @@ type T {
 	if len(field.Decorators) != len(want) {
 		t.Fatalf("expected %d trailing decorators, got %d", len(want), len(field.Decorators))
 	}
-	// Per-position assertion: a parser that accidentally reverses the
-	// slice would still produce the same comma-joined string after a
-	// sort, so check each slot explicitly.
 	for i, w := range want {
 		if got := field.Decorators[i].Name; got != w {
 			t.Errorf("decorator[%d] = %q, want %q", i, got, w)
@@ -229,10 +220,8 @@ type T {
 	}
 }
 
-// TestParseScalarDoesNotStealNextDecorator pins that a scalar declaration
-// only consumes decorators on its own line: a decorator on the following
-// line is the leading decorator of the next declaration, not a trailing
-// decorator of the scalar.
+// TestParseScalarDoesNotStealNextDecorator pins that a scalar takes only the
+// decorators on its own line.
 func TestParseScalarDoesNotStealNextDecorator(t *testing.T) {
 	f := parseSrc(t, `package design
 scalar Email string

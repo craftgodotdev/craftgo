@@ -7,7 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// parseSrc is a tiny helper that parses src and fails fast on diagnostics.
+// parseSrc parses src and fails the test on any diagnostic.
 func parseSrc(t *testing.T, src string) *ast.File {
 	t.Helper()
 	p := New("k.craftgo", src)
@@ -42,7 +42,6 @@ type X { id string }
 }
 
 func TestParseAllKeywordsRoundTrip(t *testing.T) {
-	// Every reserved keyword + decorator should parse without error.
 	src := `@version("1")
 package design
 
@@ -119,7 +118,6 @@ extend service S {
 	if len(f.Decorators) != 1 {
 		t.Errorf("want 1 file decorator, got %d", len(f.Decorators))
 	}
-	// Find the service.
 	var svcCount int
 	var allMethods int
 	for _, d := range f.Decls {
@@ -206,16 +204,13 @@ service S {
 	}
 }
 
-// TestParsePathParamReservedKeyword pins that a URL like
-// `/logs/{service}` parses as a path-param named `service`, not as a
-// literal `/logs/` followed by a method body that starts with the
-// `service` keyword. Same coverage for the `file`, `type`, and verb
-// (`get`) keywords - they're DSL constructs but legitimate URL labels.
+// TestParsePathParamReservedKeyword pins that a reserved word in braces, as in
+// `/logs/{service}`, is a path parameter.
 func TestParsePathParamReservedKeyword(t *testing.T) {
 	cases := []struct {
 		name string
-		path string // the path that appears after the method name
-		want string // expected pathStr round-trip
+		path string
+		want string
 	}{
 		{name: "service keyword", path: "/logs/{service}", want: "/logs/{service}"},
 		{name: "file keyword", path: "/uploads/{file}", want: "/uploads/{file}"},
@@ -255,11 +250,8 @@ service S {
 	}
 }
 
-// TestParsePathDisambiguationKeepsMethodBody pins that `/ { request X
-// response Y }` (empty path followed by a method body that opens with
-// the `request` keyword) parses the body, not a path-param named
-// `request`. The 3-token `{ <word> }` shape is what disambiguates a
-// path-param from a method body brace.
+// TestParsePathDisambiguationKeepsMethodBody pins that the brace after the
+// root path `/` opens the method body, not a `{request}` parameter.
 func TestParsePathDisambiguationKeepsMethodBody(t *testing.T) {
 	src := `package design
 type Req { id string }
@@ -280,7 +272,6 @@ service S {
 			continue
 		}
 		m := s.Methods()[0]
-		// Path must be `/` (one empty segment) - NOT `/{request}`.
 		if m.Path == nil || len(m.Path.Segments) != 1 {
 			t.Fatalf("expected path with 1 segment, got %v", m.Path)
 		}
@@ -293,7 +284,7 @@ service S {
 	}
 }
 
-// pathStr renders a Path back to a string for assertion convenience.
+// pathStr renders a Path as source text.
 func pathStr(p *ast.Path) string {
 	var sb strings.Builder
 	for _, s := range p.Segments {

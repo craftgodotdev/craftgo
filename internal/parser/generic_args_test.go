@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// An unfinished type-argument list is reported and parsing moves on; it
-// used to spin forever on the token that is not a type.
+// TestUnfinishedTypeArgsDoNotHang pins that an unfinished type-argument list
+// is reported without hanging the parser.
 func TestUnfinishedTypeArgsDoNotHang(t *testing.T) {
 	for _, src := range []string{
 		"package p\ntype A { x < }\n",

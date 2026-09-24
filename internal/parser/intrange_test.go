@@ -2,10 +2,9 @@ package parser
 
 import "testing"
 
+// TestIntLiteralOutOfRangeRejected pins that an integer literal outside the
+// int64 range is an error.
 func TestIntLiteralOutOfRangeRejected(t *testing.T) {
-	// A literal beyond the signed-64-bit range can't be stored in the int64
-	// IntLit, so strconv clamps it to MaxInt64 - silently corrupting a bound
-	// (e.g. a uint64 @lte above MaxInt64). The parser rejects it instead.
 	outOfRange := []string{
 		`type X { a uint64 @lte(18446744073709551615) }`, // MaxUint64
 		`type X { a uint64 @gte(9223372036854775808) }`,  // MaxInt64 + 1

@@ -19,8 +19,8 @@ func firstMsg(msgs []string) string {
 	return msgs[0]
 }
 
-// A slash the route cannot carry is reported instead of being dropped by
-// the formatter or the route builder; the root path `/` stays valid.
+// TestPathSlashes pins that `//` and a trailing `/` are errors while the root
+// path `/` is valid.
 func TestPathSlashes(t *testing.T) {
 	_, msgs := parseWithErrors(t, "package p\nservice S {\n\tget X /items/ { response A }\n}\n")
 	if !strings.Contains(firstMsg(msgs), "path ends with '/'") {
@@ -39,8 +39,8 @@ func TestPathSlashes(t *testing.T) {
 	}
 }
 
-// Decorators with nothing after them are reported, not lost: at the top
-// of a file whose package line is missing, and after the last declaration.
+// TestOrphanDecoratorsReported pins that decorators with no declaration after
+// them are reported.
 func TestOrphanDecoratorsReported(t *testing.T) {
 	for _, src := range []string{
 		"@doc(\"pkg\")\n@version(\"1\")\n// package p\n",
@@ -54,8 +54,7 @@ func TestOrphanDecoratorsReported(t *testing.T) {
 	}
 }
 
-// Every list needs its separators; a missing comma is reported instead of
-// being inserted by the formatter.
+// TestMissingCommaReported pins that a missing list separator is reported.
 func TestMissingCommaReported(t *testing.T) {
 	cases := map[string]string{
 		"package p\ntype A { x string @length(1 2) }\n":          "',' or ')'",

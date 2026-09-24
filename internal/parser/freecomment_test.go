@@ -1,6 +1,3 @@
-// Tests for free-floating comment harvesting: every leading comment inside
-// a body that no Doc field claims must surface as a position-accurate
-// [ast.FreeComment], and claimed comments must never be harvested twice.
 package parser
 
 import (
@@ -9,9 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// TestFreeCommentHarvestTypeBody pins mid-body section dividers and closing
-// notes inside a type body: each becomes a FreeComment member at its source
-// slot, carrying the position of its first `//` line.
+// TestFreeCommentHarvestTypeBody pins that comment blocks in a type body
+// become FreeComment members at their source lines.
 func TestFreeCommentHarvestTypeBody(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -58,8 +54,8 @@ type User {
 	}
 }
 
-// TestFreeCommentFieldDocNotHarvested pins that a comment block claimed as a
-// field's Doc stays a Doc - it must not double as a FreeComment member.
+// TestFreeCommentFieldDocNotHarvested pins that a field's Doc is not also a
+// FreeComment.
 func TestFreeCommentFieldDocNotHarvested(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -104,9 +100,8 @@ enum Status {
 	}
 }
 
-// TestFreeCommentHarvestService pins service-level blocks between methods
-// plus method-body comments (above request / above the closing brace),
-// and that Method.EndPos records the body's closing brace.
+// TestFreeCommentHarvestService pins comment blocks between methods and inside
+// a method body, and that Method.EndPos is the body's closing brace.
 func TestFreeCommentHarvestService(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -155,10 +150,8 @@ service Things {
 	}
 }
 
-// TestFreeCommentMethodChainNotHarvested pins that a comment inside a
-// method's decorator chain is claimed for the formatter's inter-decorator
-// recovery - it must not surface as a service member or body comment (that
-// would print it twice).
+// TestFreeCommentMethodChainNotHarvested pins that a comment inside a method's
+// decorator chain is neither a service member nor a body comment.
 func TestFreeCommentMethodChainNotHarvested(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -181,9 +174,8 @@ service Things {
 	}
 }
 
-// TestFreeCommentHarvestFileScope pins file-scope blocks: detached from the
-// package line, between declarations, and after the last declaration - all
-// land on File.FreeComments with real positions, never on a Doc field.
+// TestFreeCommentHarvestFileScope pins that blocks above the package line,
+// between declarations and at the end land on File.FreeComments.
 func TestFreeCommentHarvestFileScope(t *testing.T) {
 	f := mustParse(t, `// above package, detached
 
@@ -217,8 +209,7 @@ type B {
 }
 
 // TestFreeCommentDeclChainNotHarvested pins that a comment inside a
-// top-level declaration's decorator chain stays with the formatter's
-// inter-decorator recovery - it must not also surface on File.FreeComments.
+// declaration's decorator chain is not a file-scope FreeComment.
 func TestFreeCommentDeclChainNotHarvested(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -233,8 +224,7 @@ type Name {
 	}
 }
 
-// TestMixinDocCaptured pins that a `//` block above a mixin reference is
-// retained on the Mixin node instead of being dropped.
+// TestMixinDocCaptured pins that the comment above a mixin is its Doc.
 func TestMixinDocCaptured(t *testing.T) {
 	f := mustParse(t, `package p
 

@@ -67,9 +67,8 @@ service OrderService {
 	}
 }
 
-// `consume` left the reserved-word list with the listener declarations;
-// a design still carrying one is told where the listener went rather
-// than being handed the generic member error.
+// TestParseConsumeInServiceBodyIsRejected pins the dedicated diagnostic for
+// `consume` in a service body.
 func TestParseConsumeInServiceBodyIsRejected(t *testing.T) {
 	p := New("test.craftgo", `package p
 service S {
@@ -84,8 +83,8 @@ service S {
 	}
 }
 
-// An `event` inside a service body used to declare the contract that
-// service publishes; the diagnostic says where it belongs now.
+// TestParseEventInServiceBodyIsRejected pins that an `event` in a service body
+// is told to move to file level.
 func TestParseEventInServiceBodyIsRejected(t *testing.T) {
 	p := New("test.craftgo", `package p
 service S {
@@ -121,9 +120,8 @@ event E {
 	}
 }
 
-// A contract may carry an array of a declared type - a JSON array body -
-// so `payload Order[]` parses, with the suffix recorded on the clause
-// rather than dropped.
+// TestParseEventAcceptsAnArrayPayload pins that `payload Order[]` parses with
+// Array set.
 func TestParseEventAcceptsAnArrayPayload(t *testing.T) {
 	e := parseEvent(t, `package p
 event E { payload Order[] }`)
@@ -138,8 +136,7 @@ event E { payload Order[] }`)
 	}
 }
 
-// A map is not a payload at all: a contract names a type so its body has
-// named fields, and `map<...>` names none.
+// TestParseEventRejectsMapPayload pins that a map payload is an error.
 func TestParseEventRejectsMapPayload(t *testing.T) {
 	p := New("test.craftgo", `package p
 event E { payload map<string, int> }`)
@@ -150,9 +147,8 @@ event E { payload map<string, int> }`)
 	}
 }
 
-// A single dimension is the whole of it: an array of arrays has no
-// declared element type to validate, so it keeps a diagnostic pointing at
-// the wrapper type.
+// TestParseEventRejectsNestedArrayPayload pins that `payload Order[][]` is an
+// error.
 func TestParseEventRejectsNestedArrayPayload(t *testing.T) {
 	p := New("test.craftgo", `package p
 event E { payload Order[][] }`)
@@ -163,8 +159,8 @@ event E { payload Order[][] }`)
 	}
 }
 
-// The `?` marker stays refused on every clause, array payload included:
-// a nullable message is a field of the type, not the type.
+// TestParseEventRejectsOptionalArrayPayload pins that `payload Order[]?` is an
+// error.
 func TestParseEventRejectsOptionalArrayPayload(t *testing.T) {
 	p := New("test.craftgo", `package p
 event E { payload Order[]? }`)
@@ -175,10 +171,8 @@ event E { payload Order[]? }`)
 	}
 }
 
-// The event keywords stay contextual where the grammar leaves no
-// ambiguity: a type body member is a field or a mixin, and a keyword
-// never spells a mixin, so `event` / `payload` remain legal field names.
-// `consume` is an ordinary identifier again and needs no such rule.
+// TestNewKeywordsStillWorkAsFieldNames pins that `event`, `consume` and
+// `payload` are legal field names.
 func TestNewKeywordsStillWorkAsFieldNames(t *testing.T) {
 	p := New("test.craftgo", `package p
 type T {
@@ -204,9 +198,8 @@ type T {
 	}
 }
 
-// A reserved word in a decorator argument slot names a field, not a
-// literal - the only reading that leaves `@requiresOneOf(payload, ...)`
-// meaningful once `payload` became a keyword.
+// TestKeywordSpellingsWorkAsDecoratorArguments pins that a reserved word in a
+// decorator argument is an identifier.
 func TestKeywordSpellingsWorkAsDecoratorArguments(t *testing.T) {
 	p := New("test.craftgo", `package p
 @requiresOneOf(payload, event)
@@ -231,8 +224,8 @@ type T {
 	}
 }
 
-// Reserved words are legal path segments and path-parameter names, so a
-// route is unaffected by the keyword table growing.
+// TestNewKeywordsStillWorkInPaths pins that reserved words work as path
+// segments and parameter names.
 func TestNewKeywordsStillWorkInPaths(t *testing.T) {
 	sd := parseService(t, `package p
 service S {

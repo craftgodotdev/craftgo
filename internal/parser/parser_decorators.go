@@ -1,5 +1,3 @@
-// Decorator and literal-expression parsing: @name(args), object/array/value
-// literals, and string unquoting.
 package parser
 
 import (
@@ -10,12 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// rejectMixinDecorators fires a parser diagnostic for every decorator
-// the user attached to a mixin reference. The AST [ast.Mixin] has no
-// decorator slot - mixins are pure embedding - so silently dropping
-// them would surface as "my @deprecated note disappeared" later. Fire
-// at design time at the mixin reference position so the editor can
-// underline the right span.
+// rejectMixinDecorators reports every decorator in decs: a mixin takes none.
 func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Decorator) {
 	for _, d := range decs {
 		if d == nil {
@@ -25,7 +18,7 @@ func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Deco
 	}
 }
 
-// parseDecorators reads zero or more leading `@name(...)` decorators.
+// parseDecorators parses zero or more decorators.
 func (p *Parser) parseDecorators() []*ast.Decorator {
 	var decs []*ast.Decorator
 	for p.peek().Kind == lexer.At {
@@ -34,10 +27,8 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 	return decs
 }
 
-// parseDecorator reads a single `@Name [(args...)]`. The name token may be
-// any [lexer.Ident] or any keyword spelling - this lets users name decorators
-// after reserved words (e.g. `@true`) without clashing with keyword usage
-// elsewhere in the grammar.
+// parseDecorator parses `@name` or `@name(args)`; the name may be a reserved
+// word.
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
@@ -47,10 +38,7 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	}
 	p.advance()
 	d := &ast.Decorator{Pos: at.Pos, Name: nameTok.Text}
-	// lastTok tracks the decorator's final token so we can capture its
-	// Trailing into d.TrailingDoc. For a bare `@deprecated` the last
-	// token is the name Ident; for `@length(1, 80)` it is the closing
-	// `)`.
+	// The comment after the decorator's last token is its TrailingDoc.
 	lastTok := nameTok
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
@@ -72,8 +60,8 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	return d
 }
 
-// parseDecoratorArg dispatches between the four DecoratorArg shapes:
-// nested decorator, object literal, named `name: value`, or bare value.
+// parseDecoratorArg parses a nested decorator, an object literal, `name: value`
+// or a bare value.
 func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
 	pos := p.peek().Pos
 	arg := &ast.DecoratorArg{Pos: pos}
@@ -97,7 +85,7 @@ func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
 	return arg
 }
 
-// parseObjectLiteral reads a `{ k: v, ... }` decorator argument body.
+// parseObjectLiteral parses `{ key: value, ... }`.
 func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 	p.expect(lexer.LBrace)
 	var fields []*ast.ObjectField
@@ -119,9 +107,8 @@ func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 	return fields
 }
 
-// expectFieldKey reads an object-literal key. A key names a field, and a
-// field may be spelled with a reserved word (see parseTypeMember), so a
-// keyword here is the key's text.
+// expectFieldKey parses an object-literal key, which like a field name may be a
+// reserved word.
 func (p *Parser) expectFieldKey() string {
 	t := p.peek()
 	if t.Kind == lexer.Ident || isKeywordKind(t.Kind) {
@@ -132,7 +119,7 @@ func (p *Parser) expectFieldKey() string {
 	return ""
 }
 
-// parseValueOrArray dispatches between scalar and array literal forms.
+// parseValueOrArray parses an array literal or a single value.
 func (p *Parser) parseValueOrArray() ast.Expr {
 	if p.peek().Kind == lexer.LBracket {
 		return p.parseArray()
@@ -140,14 +127,11 @@ func (p *Parser) parseValueOrArray() ast.Expr {
 	return p.parseValue()
 }
 
-// parseArray reads `[v1, v2, ...]` literals.
+// parseArray parses `[a, b, ...]`, whose elements may be arrays.
 func (p *Parser) parseArray() ast.Expr {
 	pos := p.advance().Pos
 	arr := &ast.ArrayLit{Pos: pos}
 	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
-		// parseValueOrArray (not parseValue) so a NESTED array literal
-		// like `[["a", "b"], ["c"]]` parses - parseValue has no `[` case
-		// and would record a diagnostic on the inner bracket.
 		arr.Elements = append(arr.Elements, p.parseValueOrArray())
 		switch p.peek().Kind {
 		case lexer.Comma:
@@ -161,10 +145,8 @@ func (p *Parser) parseArray() ast.Expr {
 	return arr
 }
 
-// parseValue reads a single literal expression: string, number (signed),
-// boolean, null, duration, size, or qualified identifier. On unrecognised
-// input it records a diagnostic, advances one token, and returns a [ast.NullLit]
-// so downstream code does not see a nil [ast.Expr].
+// parseValue parses one literal or qualified identifier. Other input is
+// reported and skipped, and yields a NullLit rather than nil.
 func (p *Parser) parseValue() ast.Expr {
 	t := p.peek()
 	switch t.Kind {
@@ -178,11 +160,6 @@ func (p *Parser) parseValue() ast.Expr {
 		p.advance()
 		n, err := strconv.ParseInt(t.Text, 10, 64)
 		if err != nil {
-			// strconv clamps an out-of-range literal to MaxInt64 with an
-			// ErrRange; emitting the clamped value would silently corrupt a
-			// bound (e.g. a uint64 @lte above MaxInt64). Reject instead - the
-			// IntLit's int64 storage can't represent values beyond the signed
-			// 64-bit range yet.
 			p.errorf(t.Pos, "integer literal %s is out of range - values beyond the signed 64-bit range (max %s) aren't supported yet", t.Text, "9223372036854775807")
 		}
 		return &ast.IntLit{Pos: t.Pos, Value: n}
@@ -228,10 +205,8 @@ func (p *Parser) parseValue() ast.Expr {
 		qi := p.parseQualifiedIdent()
 		return &ast.IdentExpr{Pos: qi.Pos, Name: qi}
 	}
-	// A reserved word in an argument slot is an identifier argument: the
-	// literal keywords matched above, so the only reading left is a name.
-	// Field names may be spelled with a reserved word (see
-	// parseTypeMember), so `@requiresOneOf(payload, name)` must work.
+	// Any other reserved word is a name, such as the field in
+	// `@requiresOneOf(payload, name)`.
 	if isKeywordKind(t.Kind) {
 		p.advance()
 		return &ast.IdentExpr{Pos: t.Pos, Name: &ast.QualifiedIdent{Pos: t.Pos, Parts: []string{t.Text}}}
@@ -241,17 +216,13 @@ func (p *Parser) parseValue() ast.Expr {
 	return &ast.NullLit{Pos: t.Pos}
 }
 
-// unquoteString unescapes a `"..."` literal, supporting `\n \t \r \" \\`
-// and `\u{HEX}` Unicode escapes. Unknown escapes pass through verbatim
-// (without the leading `\`) so partially-malformed input still produces
-// useful values for IDE autocomplete.
+// unquoteString decodes a `"..."` literal; an unknown escape keeps its
+// character and drops the backslash.
 func unquoteString(s string) string {
 	if len(s) < 2 {
 		return s
 	}
 	inner := s[1 : len(s)-1]
-	// Hot path: byte-by-byte escape decoding. Builder is the right
-	// tool - concatenation would allocate on every byte.
 	var sb strings.Builder
 	for i := 0; i < len(inner); i++ {
 		c := inner[i]
@@ -291,9 +262,7 @@ func unquoteString(s string) string {
 	return sb.String()
 }
 
-// unquoteRaw strips the surrounding backticks from a raw string literal.
-// No further processing is performed - that is the whole point of raw
-// strings in the DSL.
+// unquoteRaw strips a raw literal's backticks.
 func unquoteRaw(s string) string {
 	if len(s) < 2 {
 		return s

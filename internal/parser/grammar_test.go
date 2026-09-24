@@ -7,17 +7,8 @@ import (
 	"testing"
 )
 
-// TestParseCornercaseFixtures walks every `.craftgo` file under the
-// cornercase e2e fixture tree and asserts the parser accepts it
-// without diagnostics. The cornercase corpus is the project's
-// authoritative collection of "every shape the DSL ever supported";
-// the codegen drift guard runs against it, so a parser regression
-// would surface there sooner or later - but the smoke test in this
-// file fires earlier (parse-time) with a focused failure label and
-// no codegen overhead.
-//
-// Adding a new fixture under `tests/e2e/cornercase/design/` → new
-// subtest automatically. No edit to this file needed.
+// TestParseCornercaseFixtures pins that every cornercase design file parses
+// without diagnostics.
 func TestParseCornercaseFixtures(t *testing.T) {
 	root := filepath.Join("..", "..", "tests", "e2e", "cornercase", "design")
 	if _, err := os.Stat(root); os.IsNotExist(err) {

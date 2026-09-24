@@ -10,10 +10,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// TestCaptureDocPropagatesDoc covers the if-true branch of
-// [Parser.captureDoc]: when the peeked token carries doc-comment
-// lines, captureDoc must copy them onto pendingDoc so the next decl
-// picks them up.
+// TestCaptureDocPropagatesDoc pins that a declaration takes the comment lines
+// above it as its Doc.
 func TestCaptureDocPropagatesDoc(t *testing.T) {
 	src := `// Foo is the canonical example.
 // Two-line doc.
@@ -33,10 +31,8 @@ type Foo {
 	}
 }
 
-// TestIsPathWordTokenBranches pins each return path of
-// [isPathWordToken]: identifier, keyword/verb range, and the
-// "anything else" false branch. The false branch is what tells the
-// path parser when to stop consuming segments.
+// TestIsPathWordTokenBranches pins that identifiers and reserved words are
+// path words and nothing else is.
 func TestIsPathWordTokenBranches(t *testing.T) {
 	cases := []struct {
 		name string
@@ -69,11 +65,8 @@ func mustParse(t *testing.T, src string) *ast.File {
 	return f
 }
 
-// mustParseTypeDecl is the parser-test convenience wrapper for
-// "parse this DSL and give me the first TypeDecl". Fatal if the source
-// doesn't parse OR doesn't start with a TypeDecl. Used heavily by the
-// table-driven type-shape tests so each case stays focused on
-// assertion shape, not the cast-and-extract dance.
+// mustParseTypeDecl parses src without diagnostics and returns its first
+// declaration as a TypeDecl.
 func mustParseTypeDecl(t *testing.T, src string) *ast.TypeDecl {
 	t.Helper()
 	f := mustParse(t, src)
@@ -87,10 +80,7 @@ func mustParseTypeDecl(t *testing.T, src string) *ast.TypeDecl {
 	return td
 }
 
-// stringsEqual is a small helper for slice-of-string equality where
-// nil and empty should both be treated as "no entries". Test cases
-// that don't supply wantParams should compare equal to a parser that
-// emits a nil slice for non-generic type decls.
+// stringsEqual compares string slices, treating nil and empty as equal.
 func stringsEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -103,9 +93,8 @@ func stringsEqual(a, b []string) bool {
 	return true
 }
 
-// renderMembers gives a compact dump of a type body for failure
-// messages - `[id string; name string]` is easier to scan than the
-// raw `%+v` of nested AST nodes.
+// renderMembers renders a type body as `[id string; name string]` for failure
+// messages.
 func renderMembers(ms []ast.TypeMember) string {
 	parts := make([]string, len(ms))
 	for i, m := range ms {
@@ -168,8 +157,6 @@ func parseWithErrors(t *testing.T, src string) (*ast.File, []string) {
 	return f, msgs
 }
 
-// ---------- package + import ----------
-
 func TestParsePackage(t *testing.T) {
 	f := mustParse(t, "package design")
 	if f.Package == nil || f.Package.Name != "design" {
@@ -200,8 +187,6 @@ import`)
 	}
 }
 
-// ---------- file decorators ----------
-
 func TestFileDecorators(t *testing.T) {
 	f := mustParse(t, `@version("1.0")
 @doc("file-level doc")
@@ -211,24 +196,14 @@ package design`)
 	}
 }
 
-// ---------- type ----------
-
-// TestParseTypeShapes table-drives every type-body shape variant the
-// parser produces. Each row is one DSL source line + the expected
-// TypeDecl shape; the assertion goes through [ast.Equal] / [ast.MembersEqual]
-// so adding a new variant is one row, not one function.
-//
-// Decorator presence, doc, comments are NOT asserted here - they have
-// their own dedicated table below ([TestParseTypeDecorators]) so a
-// failure in shape parsing doesn't drown out decorator regressions
-// and vice versa.
+// TestParseTypeShapes pins the fields and mixins each type-body form parses to.
 func TestParseTypeShapes(t *testing.T) {
 	cases := []struct {
 		name       string
 		src        string
 		wantName   string
-		wantParams []string         // generic type params
-		wantBody   []ast.TypeMember // expected body in source order
+		wantParams []string
+		wantBody   []ast.TypeMember
 	}{
 		{
 			name:     "simple two fields",
@@ -294,8 +269,6 @@ func TestParseTypeShapes(t *testing.T) {
 			},
 		},
 		{
-			// PascalCase + builtin must land as a Field, not a Mixin -
-			// users are free to spell JSON keys however they want.
 			name:     "PascalCase + builtin = field",
 			src:      `type X { CreateUser int }`,
 			wantName: "X",
@@ -341,8 +314,8 @@ func TestParseTypeShapes(t *testing.T) {
 	}
 }
 
-// TestParseTypeFieldDecorators stays separate from shape tests so a
-// decorator regression surfaces with a focused failure label.
+// TestParseTypeFieldDecorators pins that a field keeps its trailing
+// decorators in order.
 func TestParseTypeFieldDecorators(t *testing.T) {
 	field := mustParseTypeDecl(t, `type X { name string @doc("the name") @length(1, 100) }`).
 		Body[0].(*ast.Field)
@@ -363,7 +336,6 @@ func TestTypeMemberNonIdent(t *testing.T) {
 }
 
 func TestKeywordFieldNames(t *testing.T) {
-	// Reserved words are field names in a type body (contextual keywords).
 	td := mustParseTypeDecl(t, `type X {
 		type   string
 		error  string
@@ -406,8 +378,6 @@ func TestEmptyTypeBody(t *testing.T) {
 	}
 }
 
-// ---------- enum ----------
-
 func TestEnumBare(t *testing.T) {
 	f := mustParse(t, `enum Status { Active  Inactive }`)
 	ed := f.Decls[0].(*ast.EnumDecl)
@@ -433,8 +403,6 @@ func TestEnumString(t *testing.T) {
 }
 
 func TestEnumNegativeInt(t *testing.T) {
-	// `Left = -1` must parse as a single signed EnumInt, not leave the '-' as
-	// a stray token that cascades into "expected enum value name" errors.
 	f := mustParse(t, `enum Direction { Left = -1  Right = 1 }`)
 	vs := f.Decls[0].(*ast.EnumDecl).EnumValues()
 	if len(vs) != 2 {
@@ -449,8 +417,6 @@ func TestEnumNegativeInt(t *testing.T) {
 }
 
 func TestEnumDashWithoutInt(t *testing.T) {
-	// A lone '-' with no following integer is a clear single error, not the
-	// old three-error cascade.
 	_, errs := parseWithErrors(t, `enum X { A = - }`)
 	if len(errs) == 0 {
 		t.Error("expected an error for '-' with no integer")
@@ -471,8 +437,6 @@ func TestEnumValueBadAfterEqual(t *testing.T) {
 		t.Error("expected error")
 	}
 }
-
-// ---------- error ----------
 
 func TestErrorShort(t *testing.T) {
 	f := mustParse(t, `error NotFound UserNotFound`)
@@ -497,8 +461,6 @@ func TestErrorInvalidCategory(t *testing.T) {
 	}
 }
 
-// ---------- scalar ----------
-
 func TestScalar(t *testing.T) {
 	f := mustParse(t, `scalar Email string @format("email")`)
 	sd := f.Decls[0].(*ast.ScalarDecl)
@@ -507,8 +469,6 @@ func TestScalar(t *testing.T) {
 	}
 }
 
-// ---------- middleware ----------
-
 func TestMiddlewareNoParams(t *testing.T) {
 	f := mustParse(t, `middleware Auth`)
 	if f.Decls[0].(*ast.MiddlewareDecl).Name != "Auth" {
@@ -516,10 +476,8 @@ func TestMiddlewareNoParams(t *testing.T) {
 	}
 }
 
-// TestMiddlewareRejectsParams pins the rule that the DSL captures
-// only the middleware name. Any `(...)` after the name fails parsing
-// because configuration (params, defaults, dependencies) lives in the
-// hand-written Go impl file, never in the DSL surface.
+// TestMiddlewareRejectsParams pins that a middleware declaration with
+// parameters is an error.
 func TestMiddlewareRejectsParams(t *testing.T) {
 	p := New("t.craftgo", `middleware RateLimit(rps: int = 100)`)
 	p.Parse()
@@ -531,8 +489,6 @@ func TestMiddlewareRejectsParams(t *testing.T) {
 		t.Errorf("expected 'no parameters' diagnostic, got %q", got)
 	}
 }
-
-// ---------- service + method ----------
 
 func TestServiceEmpty(t *testing.T) {
 	f := mustParse(t, `service S {}`)
@@ -663,8 +619,6 @@ func TestExtendNotService(t *testing.T) {
 	}
 }
 
-// ---------- decorators / args / values ----------
-
 func TestDecoratorNoArgs(t *testing.T) {
 	f := mustParse(t, `@deprecated
 type X {}`)
@@ -683,10 +637,7 @@ type X {}`)
 }
 
 func TestDecoratorNamedArgs(t *testing.T) {
-	// Parser-level: confirm `name: value` is captured as a named arg and
-	// retains its position in the arg slice. The decorator name is
-	// arbitrary - the parser accepts any decorator shape and lets the
-	// semantic registry decide which names + arg shapes are valid.
+	// Any decorator name parses; semantic checks names and arguments.
 	f := mustParse(t, `@hypothetical(positional, key: "value")
 type X {}`)
 	d := f.Decls[0].(*ast.TypeDecl).Decorators[0]
@@ -699,12 +650,7 @@ type X {}`)
 }
 
 func TestDecoratorNested(t *testing.T) {
-	// Parser-level: confirm a decorator-arg in the form `@outer(@inner)`
-	// preserves the nested decorator on `arg.Nested`. The semantic
-	// registry doesn't recognise this decorator pair - that's
-	// intentional, the parser must keep the grammar shape even when no
-	// downstream consumer claims it, so future meta-decorators can
-	// land without grammar churn.
+	// The grammar allows a nested decorator, though no decorator accepts one.
 	f := mustParse(t, `@wrap(@length(1, 20))
 type X {}`)
 	a := f.Decls[0].(*ast.TypeDecl).Decorators[0].Args[0]
@@ -828,16 +774,12 @@ type X {}`)
 	}
 }
 
-// ---------- top-level errors ----------
-
 func TestUnknownTopLevel(t *testing.T) {
 	_, errs := parseWithErrors(t, `foobar`)
 	if len(errs) == 0 {
 		t.Error()
 	}
 }
-
-// ---------- string unquoting ----------
 
 func TestUnquoteString(t *testing.T) {
 	cases := []struct {
@@ -874,8 +816,6 @@ func TestUnquoteRaw(t *testing.T) {
 	}
 }
 
-// ---------- helpers ----------
-
 func TestIsUpperFirst(t *testing.T) {
 	if !isUpperFirst("Profile") {
 		t.Error()
@@ -894,26 +834,20 @@ func TestVerbFromTokenInvalid(t *testing.T) {
 	}
 }
 
-// ---------- peekAt out of range ----------
-
 func TestPeekAtOutOfRange(t *testing.T) {
 	p := New("", "x")
-	// peekAt past EOF returns a zero-value fallback token without panicking.
+	// peekAt past the end returns the final EOF token.
 	tok := p.peekAt(100)
 	_ = tok
 }
 
-// ---------- expect failure path ----------
-
 func TestExpectFailure(t *testing.T) {
-	// `package` without ident triggers expect failure inside parsePackage.
+	// A `package` keyword with no name fails expect.
 	_, errs := parseWithErrors(t, "package")
 	if len(errs) == 0 {
 		t.Error()
 	}
 }
-
-// ---------- qualified ident with bad continuation ----------
 
 func TestQualifiedIdentBadContinuation(t *testing.T) {
 	_, errs := parseWithErrors(t, "import alias")
@@ -922,16 +856,12 @@ func TestQualifiedIdentBadContinuation(t *testing.T) {
 	}
 }
 
-// ---------- map type errors ----------
-
 func TestMapBad(t *testing.T) {
 	_, errs := parseWithErrors(t, `type X { m map<string, > }`)
 	if len(errs) == 0 {
 		t.Error("expected error")
 	}
 }
-
-// ---------- generic instance ----------
 
 func TestNamedTypeRefGenericMulti(t *testing.T) {
 	f := mustParse(t, `type X { p Pair<A, B> }`)
@@ -941,8 +871,6 @@ func TestNamedTypeRefGenericMulti(t *testing.T) {
 	}
 }
 
-// ---------- type params error ----------
-
 func TestTypeParamsEmpty(t *testing.T) {
 	_, errs := parseWithErrors(t, `type X<> {}`)
 	if len(errs) == 0 {
@@ -950,9 +878,7 @@ func TestTypeParamsEmpty(t *testing.T) {
 	}
 }
 
-// A duplicate type-parameter name lowers to `type X[T any, T any]`, which the
-// Go compiler rejects - so it must be rejected at parse time instead of
-// producing non-compiling generated Go.
+// TestTypeParamsDuplicate pins that a repeated type-parameter name is an error.
 func TestTypeParamsDuplicate(t *testing.T) {
 	for _, src := range []string{`type Pair<T, T> { a T  b T }`, `type Triple<T, T, T> { a T }`} {
 		_, errs := parseWithErrors(t, src)
@@ -960,13 +886,10 @@ func TestTypeParamsDuplicate(t *testing.T) {
 			t.Errorf("expected duplicate-type-parameter error for %q", src)
 		}
 	}
-	// Distinct names are fine.
 	if _, errs := parseWithErrors(t, `type OK<K, V> { k K  v V }`); len(errs) != 0 {
 		t.Errorf("distinct type params should parse clean, got %v", errs)
 	}
 }
-
-// ---------- request without type ----------
 
 func TestMethodMissingRequestType(t *testing.T) {
 	_, errs := parseWithErrors(t, `service S { get Op { request } }`)
@@ -975,7 +898,8 @@ func TestMethodMissingRequestType(t *testing.T) {
 	}
 }
 
-// A second request/response clause silently discarded the first - reject it.
+// TestMethodDuplicateClause pins that a second request or response clause is
+// an error.
 func TestMethodDuplicateClause(t *testing.T) {
 	for _, src := range []string{
 		`service S { get G /g { request A  request B  response C } }`,
@@ -990,10 +914,8 @@ func TestMethodDuplicateClause(t *testing.T) {
 	}
 }
 
-// ---------- path trailing slash ----------
-
-// A trailing slash is reported and left out of the route: the route
-// builder and the formatter both dropped it silently before.
+// TestPathTrailingSlash pins that a trailing slash is reported and left out of
+// the path.
 func TestPathTrailingSlash(t *testing.T) {
 	f, errs := parseWithErrors(t, `service S { get Op /users/ {} }`)
 	if len(errs) != 1 || !strings.Contains(errs[0], "path ends with '/'") {
@@ -1005,16 +927,12 @@ func TestPathTrailingSlash(t *testing.T) {
 	}
 }
 
-// ---------- path bad dash ----------
-
 func TestPathBadDash(t *testing.T) {
 	_, errs := parseWithErrors(t, `service S { get Op /api- {} }`)
 	if len(errs) == 0 {
 		t.Error()
 	}
 }
-
-// ---------- coverage gap fillers ----------
 
 func TestDecoratorBadName(t *testing.T) {
 	_, errs := parseWithErrors(t, `@123
@@ -1025,7 +943,7 @@ type X {}`)
 }
 
 func TestTrailingDecoratorAtEOF(t *testing.T) {
-	// Exercises parseTopLevelWith's EOF case after inner parseDecorators consumes tokens.
+	// Decorators after the last declaration are reported without a panic.
 	parseWithErrors(t, `type X {}
 @trailing`)
 }
@@ -1038,7 +956,7 @@ func TestTypeParamsExpectFails(t *testing.T) {
 }
 
 func TestTypeNoBody(t *testing.T) {
-	// `type X` without body - exercises parseTypeBody early return.
+	// A type without a body leaves the next declaration intact.
 	f, _ := parseWithErrors(t, `type X
 type Y {}`)
 	if len(f.Decls) < 2 {
@@ -1047,7 +965,7 @@ type Y {}`)
 }
 
 func TestQualifiedIdentBadAfterDot(t *testing.T) {
-	// `pkg.` followed by `}` (not Ident) hits the inner !ok branch after dot.
+	// `pkg.` with no name after the dot is an error.
 	_, errs := parseWithErrors(t, `type X { name pkg. }`)
 	if len(errs) == 0 {
 		t.Error()
@@ -1055,19 +973,14 @@ func TestQualifiedIdentBadAfterDot(t *testing.T) {
 }
 
 func TestQualifiedIdentMissingFirstIdent(t *testing.T) {
-	// Field with missing type triggers parseQualifiedIdent at peek != Ident.
+	// A field without a type is an error.
 	_, errs := parseWithErrors(t, `type X { name }`)
 	if len(errs) == 0 {
 		t.Error()
 	}
 }
 
-// ---------- method body type suffix rejection ----------
-
 func TestMethodResponseRejectsBareArray(t *testing.T) {
-	// `response Order[]` would silently leave the `[` token on the
-	// next iteration; instead emit a hint pointing users to wrap the
-	// array in a named type.
 	_, msgs := parseWithErrors(t, `package design
 service S { get H /h { response Order[] } }`)
 	if len(msgs) == 0 || !strings.Contains(msgs[0], "bare array") {
@@ -1076,8 +989,6 @@ service S { get H /h { response Order[] } }`)
 }
 
 func TestMethodResponseRejectsOptionalMarker(t *testing.T) {
-	// `response User?` would silently leave the `?` and confuse the
-	// next-iteration parser. Reject with a clear message.
 	_, msgs := parseWithErrors(t, `package design
 service S { get H /h { response User? } }`)
 	if len(msgs) == 0 || !strings.Contains(msgs[0], "optional") {
@@ -1092,8 +1003,6 @@ service S { post H /h { request Order[] } }`)
 		t.Fatalf("expected bare-array diagnostic, got %v", msgs)
 	}
 }
-
-// ---------- golden ----------
 
 func TestGoldenSample(t *testing.T) {
 	path, err := filepath.Abs("testdata/sample.craftgo")
@@ -1120,9 +1029,7 @@ func TestGoldenSample(t *testing.T) {
 	}
 }
 
-// TestParseNestedArrayLiteral confirms array elements parse via
-// parseValueOrArray, so a nested array literal parses cleanly instead of
-// erroring on the inner '['.
+// TestParseNestedArrayLiteral pins that an array literal may hold arrays.
 func TestParseNestedArrayLiteral(t *testing.T) {
 	p := New("test", `package design
 type X { f string @example([["a", "b"], ["c"]]) }`)
